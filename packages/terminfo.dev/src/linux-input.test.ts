@@ -44,6 +44,11 @@ case "$1" in
     else printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW"; fi
     ;;
   getactivewindow|windowactivate)
+    if [ "\${TEST_INPUT_WM_ACCEPTS:-0}" = 1 ] && [ "$1" = windowactivate ]; then
+      for last; do :; done
+      printf '%s\\n' "$last" > "$TEST_INPUT_LOG.focus"
+      exit 0
+    fi
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
@@ -130,6 +135,8 @@ afterEach(() => {
     "TEST_INPUT_FAIL_WINDOWSIZE",
     "TEST_INPUT_POINTER_WINDOW",
     "TEST_INPUT_STALE_GEOMETRY",
+    "TEST_INPUT_WM_ACCEPTS",
+    "TERMINFO_XVFB_WM",
   ]) {
     delete process.env[key]
   }
@@ -188,6 +195,42 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_INPUT_ROOT_FOCUS = "99"
     await expect(input.focusRoundTrip()).rejects.toThrow(/focus/)
     expect(argvLines(log).at(-2)).toBe("windowfocus 42")
+  },
+)
+
+// #33305: a window manager owns activation, so the arm asks it for the owned window and still
+// proves the same owned/root/owned witness; the root step stays the raw roundtrip.
+test.runIf(process.platform === "linux")(
+  "focus roundtrip asks the owned window manager to activate and keeps the same witness",
+  async () => {
+    const { log } = fixture()
+    process.env.TEST_INPUT_WM_ACCEPTS = "1"
+    process.env.TERMINFO_XVFB_WM = "openbox"
+    const input = await createLinuxInput(liveExecutable())
+    if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
+    expect(await input.focusRoundTrip()).toEqual({
+      ownedWindowId: "42",
+      rootWindowId: "543",
+      focusedWindowIds: ["42", "543", "42"],
+    })
+    expect(argvLines(log).filter((line) => line.startsWith("windowactivate "))).toEqual([
+      "windowactivate --sync 42",
+      "windowactivate --sync 42",
+    ])
+    expect(argvLines(log).filter((line) => line.startsWith("windowfocus "))).toEqual(["windowfocus 543"])
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "focus roundtrip refuses loudly when the owned window manager will not activate the window",
+  async () => {
+    const { log } = fixture()
+    process.env.TERMINFO_XVFB_WM = "openbox"
+    const input = await createLinuxInput(liveExecutable())
+    if (!input.focusRoundTrip) throw new Error("Missing owned focus roundtrip")
+    await expect(input.focusRoundTrip()).rejects.toThrow(/openbox/)
+    expect(argvLines(log)).toContain("windowactivate --sync 42")
+    expect(argvLines(log).filter((line) => line === "windowfocus 42")).toEqual([])
   },
 )
 
@@ -255,7 +298,11 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_INPUT_POINTER_WINDOW = "1"
     const before = argvLines(log).length
     await expect(input.injectClick(1)).rejects.toThrow(/pointer is not on the owned window/)
-    expect(argvLines(log).slice(before).some((line) => line.startsWith("click "))).toBe(false)
+    expect(
+      argvLines(log)
+        .slice(before)
+        .some((line) => line.startsWith("click ")),
+    ).toBe(false)
   },
 )
 

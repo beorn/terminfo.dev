@@ -9,6 +9,13 @@
  */
 import type { CapturePixelGeometry, CaptureRequest } from "./types.ts"
 
+/**
+ * The SGR that paints one cell of calibration's solid grid, by form, written before a space. The
+ * ONE sentinel paint: calibration paints its solid grid with it, and the region readback's layout
+ * check repaints one cell with it to find where that cell lands now (33000).
+ */
+export const CALIBRATION_SOLID_PAINT = { basic: "\x1b[45m", reverse: "\x1b[7m" } as const
+
 export type CalibratedGeometrySource =
   | { readonly geometry: CapturePixelGeometry; readonly pixelGeometry?: never }
   | { readonly pixelGeometry: CapturePixelGeometry; readonly geometry?: never }

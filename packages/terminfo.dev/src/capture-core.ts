@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { CaptureRectangle } from "@terminfo/probe-defs"
+import type { CaptureLocated, CaptureRectangle } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -288,6 +288,37 @@ export async function decodeCapture({
   return { width, height, rgba }
 }
 
+/**
+ * Where one exact RGB colour sits in a decoded frame: the bounding box of every matching pixel and
+ * how many matched, or null when no pixel has that colour. Alpha is not compared, as calibration
+ * compares only RGB when it learns the colour.
+ */
+export function locateColour(frame: CapturedFrame, rgb: readonly [number, number, number]): CaptureLocated | null {
+  if (!rgb.every((channel) => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255)) {
+    throw new Error(`Capture locate needs an integer RGB colour 0..255; got ${JSON.stringify(rgb)}`)
+  }
+  let left = Infinity
+  let top = Infinity
+  let right = -1
+  let bottom = -1
+  let pixels = 0
+  for (let y = 0; y < frame.height; y++) {
+    for (let x = 0; x < frame.width; x++) {
+      const offset = (y * frame.width + x) * 4
+      if (frame.rgba[offset] !== rgb[0] || frame.rgba[offset + 1] !== rgb[1] || frame.rgba[offset + 2] !== rgb[2]) {
+        continue
+      }
+      pixels++
+      if (x < left) left = x
+      if (x > right) right = x
+      if (y < top) top = y
+      if (y > bottom) bottom = y
+    }
+  }
+  if (pixels === 0) return null
+  return { box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels }
+}
+
 /** Finish one acquired frame; currency and capture scheduling belong to the caller. */
 export async function finishCapture(input: {
   directory: string
@@ -303,7 +334,7 @@ export async function finishCapture(input: {
   deadline?: number
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
   const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
-  const { featureId, role, label, cells, pixelGeometry } = checkpoint
+  const { featureId, role, label, cells, controlCells, pixelGeometry, locate } = checkpoint
   const { width, height, format, bytes: original, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
@@ -317,6 +348,9 @@ export async function finishCapture(input: {
       `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
     )
   }
+  if (controlCells !== undefined && cells === undefined) {
+    throw new Error(`Capture ${featureId} was asked for a same-shot control region without the region it controls`)
+  }
   const decoded = predecoded ?? (await decodeCapture({ source, featureId, deadline }))
   if (decoded.width !== width || decoded.height !== height || decoded.rgba.byteLength !== width * height * 4) {
     throw new Error(
@@ -326,20 +360,41 @@ export async function finishCapture(input: {
   const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
   let regionRectangle: CaptureRectangle | undefined
+  let controlRegionDigest: string | undefined
+  let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
+  const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
     if (!placement || typeof placement.basis !== "string" || placement.basis.trim().length === 0 || !placement.origin) {
       throw new Error(`Capture ${featureId} lacks a named text-area origin`)
     }
-    const rectangle = cellRectangle({
-      cells,
-      pixelGeometry,
-      textOrigin: placement.origin,
-      windowWidth: width,
-      windowHeight: height,
-      ...(placement.visible ? { visible: placement.visible } : {}),
-    })
+    const cropRegion = (regionCells: NonNullable<Checkpoint["cells"]>) => {
+      const rectangle = cellRectangle({
+        cells: regionCells,
+        pixelGeometry,
+        textOrigin: placement.origin,
+        windowWidth: width,
+        windowHeight: height,
+        ...(placement.visible ? { visible: placement.visible } : {}),
+      })
+      const cropExpected = rectangle.width * rectangle.height * 4
+      const cropped = Buffer.alloc(cropExpected)
+      const rowBytes = rectangle.width * 4
+      for (let row = 0; row < rectangle.height; row++) {
+        const start = ((rectangle.y + row) * width + rectangle.x) * 4
+        cropped.set(decoded.rgba.subarray(start, start + rowBytes), row * rowBytes)
+      }
+      if (cropped.length !== cropExpected) {
+        throw new Error(
+          `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
+        )
+      }
+      return { rectangle, digest: `sha256:${digest(cropped)}` }
+    }
+    const region = cropRegion(cells)
+    const rectangle = region.rectangle
+    const control = controlCells !== undefined ? cropRegion(controlCells) : undefined
     const rawCommand = [`${format}:-`, "-depth", "8", "rgba:-"]
     const cropCommand = [
       `${format}:-`,
@@ -350,22 +405,13 @@ export async function finishCapture(input: {
       "8",
       "rgba:-",
     ]
-    const cropExpected = rectangle.width * rectangle.height * 4
-    const cropped = Buffer.alloc(cropExpected)
-    const rowBytes = rectangle.width * 4
-    for (let row = 0; row < rectangle.height; row++) {
-      const start = ((rectangle.y + row) * width + rectangle.x) * 4
-      cropped.set(decoded.rgba.subarray(start, start + rowBytes), row * rowBytes)
-    }
-    if (cropped.length !== cropExpected) {
-      throw new Error(
-        `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
-      )
-    }
-    regionDigest = `sha256:${digest(cropped)}`
+    regionDigest = region.digest
     regionRectangle = rectangle
+    controlRegionDigest = control?.digest
+    controlRegionRectangle = control?.rectangle
     regionTrace = {
       cells,
+      ...(controlCells !== undefined ? { controlCells } : {}),
       pixelGeometry,
       textArea: {
         origin: placement.origin,
@@ -374,11 +420,17 @@ export async function finishCapture(input: {
         basis: placement.basis,
       },
       rectangle,
+      ...(control !== undefined ? { controlRectangle: control.rectangle } : {}),
       rawCommand: ["magick", ...rawCommand],
       cropCommand: ["magick", ...cropCommand],
       retained: { png: `${pngStem}.png`, [format]: `${sourceStem}.${format}` },
       reproduceWhole: `magick ${pngStem}.png -depth 8 rgba:- | sha256sum`,
       reproduceRegion: `magick ${pngStem}.png -crop ${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
+      ...(control !== undefined
+        ? {
+            reproduceControlRegion: `magick ${pngStem}.png -crop ${control.rectangle.width}x${control.rectangle.height}+${control.rectangle.x}+${control.rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
+          }
+        : {}),
     }
   }
   return {
@@ -392,7 +444,10 @@ export async function finishCapture(input: {
       pixelsDigest,
       ...(regionDigest !== undefined ? { regionDigest } : {}),
       ...(regionRectangle !== undefined ? { regionRectangle } : {}),
+      ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
+      ...(controlRegionRectangle !== undefined ? { controlRegionRectangle } : {}),
+      ...(located !== undefined ? { located } : {}),
     },
-    trace: { ...trace, ...regionTrace },
+    trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }
 }

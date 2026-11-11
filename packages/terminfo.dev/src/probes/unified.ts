@@ -21,6 +21,7 @@ import {
   type ProbeSubject,
   type RunDraft,
   type CaptureCells,
+  type CaptureRequest,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
   type InputFixture,
@@ -160,8 +161,12 @@ export type ProbeCapture = (checkpoint: {
   label: string
   /** The cell-aligned region to digest; the collector maps it to window pixels itself. */
   cells?: CaptureCells
+  /** A second cell-aligned region digested from the same captured image, beside `cells`. */
+  controlCells?: CaptureCells
   /** The terminal's own pixel report, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /** An exact colour to find in the whole decoded frame; the frame answers `located`. */
+  locate?: CaptureRequest["locate"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
@@ -1086,11 +1091,16 @@ export async function runProbeBatch(
             : {}),
           ...(rawReplyRef ? { rawReplyRef } : {}),
         })
-        for (const assertion of result.assertions ?? []) {
+        for (const { witness, ...assertion } of result.assertions ?? []) {
           batch.assertions.push({
             featureId: probe.id,
             ...assertion,
-            ...(resized ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` } : {}),
+            // A resized row is re-labelled resized-capture, so a branch's witness no longer stands for it (#33054).
+            ...(resized
+              ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` }
+              : witness === undefined
+                ? {}
+                : { witness }),
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }

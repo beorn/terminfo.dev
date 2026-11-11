@@ -25,6 +25,19 @@ const AUTOMATION_OR_UNANSWERED = /ETIMEDOUT|timed out|not authori[sz]ed|not perm
 
 /** AppleScript takes a before-ID census and returns its new window ID plus the exact tab TTY. */
 export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
+  return launchTerminalWindowCensus(scriptPath).terminalWindow
+}
+
+/** #33152 (@cto 5c2b1f65): the owned window plus the census this one transaction already computes. */
+export interface TerminalLaunchCensus {
+  terminalWindow: TerminalAppWindow
+  beforeIds: number[]
+  afterIds: number[]
+  /** tty is the sole tab's tty; null for a window with more than one tab, which has no single tty. */
+  newIds: Array<{ windowId: number; tabCount: number; tty: string | null }>
+}
+
+export function launchTerminalWindowCensus(scriptPath: string): TerminalLaunchCensus {
   // The path is interpolated into `do script` verbatim, so a missing one reaches AppleScript as the
   // literal `undefined` and fails as a script error instead of naming the broken caller (30729).
   if (typeof scriptPath !== "string" || !isAbsolute(scriptPath)) {
@@ -60,6 +73,8 @@ export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
       set inventory to inventory & linefeed & (windowId as string) & "|" & (tabCount as string) & "|" & onlyTTY
     end if
   end repeat
+  -- #33152: the after census from this same transaction, so the run record can show the window was new.
+  set inventory to inventory & linefeed & "after:" & (postIds as string)
   return inventory
 end tell`
   let answered: string
@@ -78,7 +93,10 @@ end tell`
   if (lines.length < 3) {
     throw new Error(`Terminal launch returned no new-window/TTY inventory: ${JSON.stringify(output)}`)
   }
-  const [before, returnedTTY, ...windows] = lines
+  const [before, returnedTTY, ...rest] = lines
+  const last = rest.at(-1)
+  const afterLine = last?.startsWith("after:") ? last.slice("after:".length) : undefined
+  const windows = afterLine === undefined ? rest : rest.slice(0, -1)
   const launchedTTY = tty(returnedTTY ?? "")
   const priorIds = before?.trim() ? before.split(",").map((value) => Number(value.trim())) : []
   if (priorIds.some((id) => !Number.isSafeInteger(id) || id < 1) || new Set(priorIds).size !== priorIds.length) {
@@ -86,6 +104,7 @@ end tell`
   }
   const seen = new Set<number>()
   const matching: number[] = []
+  const newIds: TerminalLaunchCensus["newIds"] = []
   for (const row of windows) {
     const match = /^([1-9]\d*)\|([0-9]+)\|(.*)$/.exec(row)
     const windowId = Number(match?.[1])
@@ -94,6 +113,7 @@ end tell`
       throw new Error(`Terminal returned invalid or duplicate post-launch window row: ${JSON.stringify(row)}`)
     }
     seen.add(windowId)
+    if (!priorIds.includes(windowId)) newIds.push({ windowId, tabCount, tty: match[3] ? tty(match[3]) : null })
     if (priorIds.includes(windowId) || tabCount !== 1 || !match[3]) continue
     if (tty(match[3]) === launchedTTY) matching.push(windowId)
   }
@@ -103,7 +123,22 @@ end tell`
       `Expected exactly one new single-tab Terminal window with returned TTY ${launchedTTY}; found ${matching.length}`,
     )
   }
-  return { provider: "terminal-app", windowId, tty: launchedTTY }
+  const afterIds = afterLine?.trim() ? afterLine.split(",").map((value) => Number(value.trim())) : []
+  if (
+    afterLine === undefined ||
+    !afterIds.includes(windowId) ||
+    afterIds.some((id) => !Number.isSafeInteger(id) || id < 1)
+  ) {
+    throw new Error(
+      `Terminal launch returned no valid after census containing window ${windowId}: ${JSON.stringify(afterLine)}`,
+    )
+  }
+  return {
+    terminalWindow: { provider: "terminal-app", windowId, tty: launchedTTY },
+    beforeIds: priorIds,
+    afterIds,
+    newIds,
+  }
 }
 
 function plist(bundlePath: string, key: string): string {

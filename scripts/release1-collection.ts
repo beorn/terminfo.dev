@@ -42,6 +42,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
+import { assertTerminalWindowRecord } from "../packages/admin/src/terminal-window-record.ts"
 import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
@@ -247,7 +248,8 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
       })
     } else if (os === "linux") contexts.push(linuxAppRow(id))
     else if (os === "macos" && UNMEASURABLE_MAC_APPS.has(id)) {
-      const fact = UNMEASURABLE_MAC_APPS.get(id)!
+      const fact = UNMEASURABLE_MAC_APPS.get(id)
+      if (!fact) throw new Error(`UNMEASURABLE_MAC_APPS lost ${id} between has() and get()`)
       contexts.push({
         id,
         os,
@@ -436,6 +438,17 @@ export function ownedAppCommand(
  * stand in for the bytes this one measured. */
 /** Where a context's owned-app artifacts land: the local route writes into the context's own
  * output, the transport driver into <output>/transport. The collector reads from here only. */
+/** #33152: a hosted Terminal.app record without its owned window's launch and disposal cannot be placed. */
+export function assertHostedWindowCustody(
+  context: Pick<CollectionContext, "route" | "os" | "id">,
+  rawReplies: Record<string, string>,
+  path: string,
+): void {
+  if (context.route === "hosted-workflow" && context.os === "macos" && context.id === "terminal-app") {
+    assertTerminalWindowRecord(rawReplies, path)
+  }
+}
+
 export function ownedAppRunsDirectory(output: string, runner: string): string {
   return runner === "local" ? output : join(output, "transport")
 }
@@ -805,6 +818,7 @@ export async function collectPass(
         throw new Error(`raw run does not identify the expected current schema-4 ${context.kind}:${context.id} context`)
       }
       if (run.runId !== handed.draft.runId) throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
+      assertHostedWindowCustody(context, run.rawReplies, path)
       if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
       if (run.sourceRevision !== sourceRevision) {
         throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)

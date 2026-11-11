@@ -1992,6 +1992,64 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
   }
 })
 
+// #33054: a resize re-labels the row resized-capture, so a branch witness on its negative would disagree with the
+// row's branch and the parser would refuse the whole run. The collector keeps the assertion and drops the witness.
+it("drops a branch witness from a negative whose capture resized, so the run still parses", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const original = { needs: definition.termNeedsGeometry, term: definition.term }
+  definition.termNeedsGeometry = true
+  const digest = (text: string) => `sha256:${text.repeat(64).slice(0, 64)}`
+  // The real callback runs its DA query, so the row keeps its retained raw payload; its result is replaced.
+  definition.term = async (...args: Parameters<NonNullable<typeof original.term>>) => {
+    await original.term!(...args)
+    return {
+      pass: false,
+      criterionBranch: "colour-no-attribute-witness",
+      response: "\x1b[?62;4c",
+      tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+      observation: { outcome: "unsupported", assertionType: "query_reply", note: "painted nothing" },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: "negative",
+          expected: "paints something other than plain text",
+          observed: digest("b"),
+          witness: {
+            kind: "colour-no-attribute-witness",
+            rowId: definition.id,
+            encoding: "58;2;255;0;128",
+            rectangle: { x: 1, y: 2, width: 3, height: 4 },
+            frames: { seed: digest("a"), expected: digest("b"), noAttribute: digest("b") },
+          },
+        },
+      ],
+    }
+  }
+  let reads = 0
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids: [definition.id],
+      ownedTerminal: geometryOwner(measured(24, 61), async () => (++reads === 1 ? measured(24, 61) : measured(31, 73))),
+    })
+    expect(batch.results.find((result) => result.featureId === definition.id)).toMatchObject({
+      criterionBranch: "resized-capture",
+    })
+    expect(batch.assertions).toHaveLength(1)
+    expect(batch.assertions[0]).toMatchObject({ kind: "negative", note: expect.stringContaining("resized") })
+    expect(batch.assertions[0]).not.toHaveProperty("witness")
+    const decoded = decodeCollectorDraft("resized-witness.json", JSON.stringify(asRun(batch)), manifest, sourceRevision)
+    expect(decoded.run.assertions).toEqual(batch.assertions)
+  } finally {
+    definition.termNeedsGeometry = original.needs
+    definition.term = original.term
+  }
+})
+
 // A dormant boundary the audit family exposed: an app coverage claim must be bound to a NONEMPTY raw
 // trace, and the shared parser must accept the record rather than reject the whole run.
 it("binds an app named coverage record to its own retained raw trace", async () => {
@@ -3315,50 +3373,62 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
     if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;1R"))
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({
-    ids: ["extensions.osc52-write", "sgr.blink"],
-    capture: async ({ role, label }) => {
-      order.push(`capture-${role}`)
-      return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
-    },
-    ownedTerminal: {
-      ...geometryOwner(measured(24, 80)),
-      clipboard: {
-        profile: "allow",
-        config: "fixture",
-        permissions: "fixture",
-        summary: "{}",
-        assertOwned: async () => {},
-        readTitle: async () => {
-          throw new Error("This clipboard fixture has no title reader")
-        },
-        dispose: async () => {},
-        withClipboardFixture: createClipboardTransaction(baseline, {
-          async readText(trace, kind, verify) {
-            await verify()
-            trace({
-              kind,
-              at: new Date().toISOString(),
-              sha256: createHash("sha256").update(clipboardText).digest("hex"),
-              length: clipboardText.length,
-            })
-            return clipboardText
+  // sgr.blink samples on a real 7500 ms schedule; fake timers keep that wall out of this test.
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["extensions.osc52-write", "sgr.blink"],
+          capture: async ({ role, label }) => {
+            order.push(`capture-${role}`)
+            return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
           },
-          async writeText(text, trace, kind, verify) {
-            await verify()
-            clipboardText = text
-            trace({
-              kind,
-              at: new Date().toISOString(),
-              sha256: createHash("sha256").update(text).digest("hex"),
-              length: text.length,
-            })
+          ownedTerminal: {
+            ...geometryOwner(measured(24, 80)),
+            clipboard: {
+              profile: "allow",
+              config: "fixture",
+              permissions: "fixture",
+              summary: "{}",
+              assertOwned: async () => {},
+              readTitle: async () => {
+                throw new Error("This clipboard fixture has no title reader")
+              },
+              dispose: async () => {},
+              withClipboardFixture: createClipboardTransaction(baseline, {
+                async readText(trace, kind, verify) {
+                  await verify()
+                  trace({
+                    kind,
+                    at: new Date().toISOString(),
+                    sha256: createHash("sha256").update(clipboardText).digest("hex"),
+                    length: clipboardText.length,
+                  })
+                  return clipboardText
+                },
+                async writeText(text, trace, kind, verify) {
+                  await verify()
+                  clipboardText = text
+                  trace({
+                    kind,
+                    at: new Date().toISOString(),
+                    sha256: createHash("sha256").update(text).digest("hex"),
+                    length: text.length,
+                  })
+                },
+              }),
+            },
           },
         }),
-      },
-    },
-  })
-  expect(order).toEqual(["capture-control", ...Array.from({ length: 9 }, () => "capture-target"), "osc52"])
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  expect(order).toEqual(["capture-control", ...Array.from({ length: 16 }, () => "capture-target"), "osc52"])
   expect(batch.observations.find((item) => item.featureId === "extensions.osc52-write")).toMatchObject({
     outcome: "supported",
     rawReplyRef: "extensions.osc52-write",
@@ -3687,6 +3757,17 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
 // transport tests only observe replies and cannot detect a detached screenshot.
 it("retains same-callback control and target frames without declaring visual support", async (context) => {
   verifiedBatchFixture()
+  // sgr.blink samples on a real 7500 ms schedule in the live callback and both replays below;
+  // fake timers drive those waits so this retention contract costs no wall time per pass.
+  const withFakeTimers = async <T>(operation: () => Promise<T>): Promise<T> => {
+    vi.useFakeTimers()
+    try {
+      const [value] = await Promise.all([operation(), vi.runAllTimersAsync()])
+      return value
+    } finally {
+      vi.useRealTimers()
+    }
+  }
   const writes: string[] = []
   process.stdout.write = ((value: string) => {
     writes.push(value)
@@ -3700,32 +3781,34 @@ it("retains same-callback control and target frames without declaring visual sup
   const blobs = new Map<string, { path: string; sha256: string }>()
   const frames: ObservationFrame[] = []
   const checkpoints: Array<{ featureId: string; role: string; writes: string }> = []
-  const batch = await runProbeBatch({
-    ids: ["sgr.blink"],
-    ownedTerminal: geometryOwner(measured(24, 80)),
-    capture: async ({ featureId, role, label }) => {
-      checkpoints.push({ featureId, role, writes: writes.join("") })
-      const png = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
-        "base64",
-      )
-      const captured = await finishCapture({
-        directory: artifacts,
-        onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
-        checkpoint: { featureId, role, label },
-        source: { format: "png", bytes: png, width: 1, height: 1, capturedAt: checkpoints.length },
-        png,
-        decoded: { width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) },
-        origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
-        trace: {},
-      })
-      frames.push(captured.frame)
-      return captured
-    },
-  })
+  const batch = await withFakeTimers(() =>
+    runProbeBatch({
+      ids: ["sgr.blink"],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async ({ featureId, role, label }) => {
+        checkpoints.push({ featureId, role, writes: writes.join("") })
+        const png = Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+          "base64",
+        )
+        const captured = await finishCapture({
+          directory: artifacts,
+          onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+          checkpoint: { featureId, role, label },
+          source: { format: "png", bytes: png, width: 1, height: 1, capturedAt: checkpoints.length },
+          png,
+          decoded: { width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) },
+          origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+          trace: {},
+        })
+        frames.push(captured.frame)
+        return captured
+      },
+    }),
+  )
   expect(checkpoints.map(({ featureId, role }) => ({ featureId, role }))).toEqual([
     { featureId: "sgr.blink", role: "control" },
-    ...Array.from({ length: 9 }, () => ({ featureId: "sgr.blink", role: "target" })),
+    ...Array.from({ length: 16 }, () => ({ featureId: "sgr.blink", role: "target" })),
   ])
   // The DECRQSS readback attempt writes the styled sequence to set the state it queries, so assert
   // on the rendered sample: the control frame renders it unstyled, the target frame styled.
@@ -3745,7 +3828,7 @@ it("retains same-callback control and target frames without declaring visual sup
     }),
   ])
   const trace = JSON.parse(batch.rawReplies["sgr.blink"]!) as { captures: unknown[] }
-  expect(trace.captures).toHaveLength(10)
+  expect(trace.captures).toHaveLength(17)
   // The capture writer clones the batch before persistence; recorder proxies must not escape.
   expect(structuredClone(batch)).toEqual(batch)
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
@@ -3792,7 +3875,7 @@ it("retains same-callback control and target frames without declaring visual sup
   const recording = withCallLog(changedSource, { mode: "record", log: negativeLog })
   const callback = ALL_PROBES.find(({ id }) => id === "sgr.blink")?.term
   if (!callback) throw new Error("Missing retained SGR callback")
-  await callback(recording.context)
+  await withFakeTimers(() => callback(recording.context))
   recording.finish()
   replay.finish()
   const negative = structuredClone(draft)
@@ -3839,12 +3922,14 @@ it("retains same-callback control and target frames without declaring visual sup
   const expected = { manifest, sourceRevision, subject: draft.subject }
   expect(readProbeCapture(finalRoot, source, expected).files.length).toBeGreaterThan(1)
   const beforeOffline = writes.length
-  const replayed = await runEraseReplay(context, {
-    directory: finalRoot,
-    source,
-    expected,
-    featureId: "sgr.blink",
-  })
+  const replayed = await withFakeTimers(() =>
+    runEraseReplay(context, {
+      directory: finalRoot,
+      source,
+      expected,
+      featureId: "sgr.blink",
+    }),
+  )
   expect(replayed.assertions).toHaveLength(2)
   expect(structuredClone(replayed)).toEqual(replayed)
   const live = batch.results.find(({ featureId }) => featureId === "sgr.blink")!

@@ -158,7 +158,7 @@ program
         if (opts.output) {
           writeFileSync(opts.output, decoded.raw, { flag: "wx", mode: 0o600 })
           console.error(
-            `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`,
+            `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256} as written here, before any finalise step; identity ${decoded.run.identity}`,
           )
         } else {
           process.stdout.write(decoded.raw)
@@ -203,7 +203,7 @@ program
       if (opts.output) {
         writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
         console.error(
-          `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`,
+          `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256} as written here, before any finalise step; identity ${decoded.run.identity}`,
         )
         return
       }

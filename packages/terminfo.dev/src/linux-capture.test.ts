@@ -365,6 +365,27 @@ test.runIf(process.platform === "linux")(
   },
 )
 
+// The installed Linux arm, not a fake: its raw path carries the locate request to the finalizer (33000).
+test.runIf(process.platform === "linux")(
+  "the Linux capture installer answers a locate request from its decoded frame",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    // The stub converter paints the top chrome rows RGB 1,1,1 and the rest black.
+    process.env.TEST_CAPTURE_CHROME_ROWS = "3"
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+    const checkpoint = { featureId: "fixture", role: "control" as const, label: "layout check" }
+    const found = await captureRaw({ ...checkpoint, locate: { rgb: [1, 1, 1] } })
+    const width = found.decoded.width
+    expect(found.result.frame.located).toEqual({ box: { x: 0, y: 0, width, height: 3 }, pixels: width * 3 })
+    const absent = await captureRaw({ ...checkpoint, locate: { rgb: [9, 9, 9] } })
+    expect(absent.result.frame.located).toBeNull()
+    const plain = await captureRaw(checkpoint)
+    expect(plain.result.frame).not.toHaveProperty("located")
+    expect(plain.result.trace).not.toHaveProperty("locate")
+  },
+)
+
 // The existing XWD fixtures cannot prove that an OSC22 frame contains the X pointer.
 test.runIf(process.platform === "linux")("OSC22 captures pointer PNG through the same owned window", async () => {
   const { directory, release, stdin, png } = fixture()
@@ -733,6 +754,47 @@ test.runIf(process.platform === "linux")("window 1304x814 on a 1024x768 screen n
     "window 1304x814 exceeds the 1024x768 screen",
   )
 })
+
+// #33117: a checkpoint naming a same-shot control region still acquires exactly once (one xwd
+// invocation); both region digests are crops of that one acquired image.
+test.runIf(process.platform === "linux")(
+  "Linux capture crops target and same-shot control from one acquired image",
+  async () => {
+    const { directory, release } = fixture()
+    const acquisitions = join(directory, "xwd-count")
+    const xwd = join(directory, "xwd")
+    const xwdReal = join(directory, "xwd-real")
+    writeFileSync(xwdReal, readFileSync(xwd))
+    chmodSync(xwdReal, 0o700)
+    executable(xwd, `printf x >> "$TEST_CAPTURE_XWD_COUNT"\nexec "${xwdReal}" "$@"`)
+    process.env.TEST_CAPTURE_XWD_COUNT = acquisitions
+    process.env.TEST_CAPTURE_WIDTH = "800"
+    process.env.TEST_CAPTURE_HEIGHT = "600"
+    writeFileSync(release, "continue")
+    try {
+      const { capture } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+      writeFileSync(acquisitions, "")
+      const result = await capture(
+        {
+          featureId: "sgr.blink",
+          role: "target",
+          label: "styled row beside plain row",
+          cells: { top: 3, left: 1, bottom: 3, right: 3 },
+          controlCells: { top: 1, left: 1, bottom: 1, right: 3 },
+          pixelGeometry: GHOSTTY_GEOMETRY,
+        },
+        { origin: { x: 0, y: 0 }, basis: "collector complete witnessed raster" },
+      )
+      expect(readFileSync(acquisitions, "utf8")).toBe("x")
+      expect(result.frame.regionRectangle).toEqual({ x: 0, y: 48, width: 39, height: 24 })
+      expect(result.frame.controlRegionRectangle).toEqual({ x: 0, y: 0, width: 39, height: 24 })
+      expect(result.frame.regionDigest).toMatch(/^sha256:/)
+      expect(result.frame.controlRegionDigest).toMatch(/^sha256:/)
+    } finally {
+      delete process.env.TEST_CAPTURE_XWD_COUNT
+    }
+  },
+)
 
 test.runIf(process.platform === "linux")(
   "a title bar inside the client area places the compared region below it (#28756)",

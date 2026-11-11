@@ -79,6 +79,7 @@ function compose(
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
   capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
+  wm: { host?: unknown; container?: unknown; omitContainerDisplay?: boolean } = { host: null, container: null },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -90,6 +91,7 @@ function compose(
       clipboardProfile: "default",
       sourceArtifact: { url: "https://example.invalid/kitty.txz" },
       runnerArtifact: { frozenRunnerSha256: "runner-hash", buildReceiptSha256: "receipt-hash" },
+      xvfbWm: wm.host ?? null,
       runtime: { imageId: "sha256:image", imageTarSha256: "tar-hash" },
     }),
   )
@@ -103,7 +105,11 @@ function compose(
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
         collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
         probeRun: { path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" },
-        display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+        display: {
+          glxinfo: "llvmpipe",
+          geometry: "WIDTH=800",
+          ...(wm.omitContainerDisplay === true ? {} : { wm: wm.container ?? null }),
+        },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
         capture,
       }),
@@ -692,6 +698,49 @@ describe("container run receipt composition", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "allow")
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain("container clipboard fixture disagrees")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  // #33305: a window-manager run and a WM-free run must never be told apart by guessing, so the
+  // receipt names the manager it ran and the host-declared switch has to agree with it.
+  it("records the window manager the container ran and the switch the host declared", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: { name: "openbox", version: "3.6.1", argv: ["openbox", "--config-file", "/home/runner/wm-rc.xml"] },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as { display: { wm: { name: string; version: string } } }
+    expect(receipt.display.wm).toMatchObject({ name: "openbox", version: "3.6.1" })
+  })
+
+  it("refuses a display receipt that never says which window manager ran", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: null,
+      container: null,
+      omitContainerDisplay: true,
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("window manager")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses a host-declared window manager that the container did not run", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: null,
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("host-declared window manager disagrees")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses a window manager named without the argv it was launched with", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", undefined, {
+      host: "openbox",
+      container: { name: "openbox", version: "3.6.1" },
+    })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("named by name, version and argv")
     expect(existsSync(output)).toBe(false)
   })
 })
@@ -1390,7 +1439,7 @@ it.each([false, true])("writes a Linux completion receipt for captured bytes, pe
         .update(readFileSync(join(dir, "v3-capture.json")))
         .digest("hex"),
     },
-    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
+    display: { glxinfo: "llvmpipe", geometry: "WIDTH=800", wm: null },
     clipboardFixture: { runId: capture.runId, profile: "default", sha256: "fixture-hash" },
     capture: null,
   }

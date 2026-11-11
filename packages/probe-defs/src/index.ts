@@ -32,6 +32,8 @@ export type {
   CapturePixelGeometry,
   CaptureRectangle,
   CaptureRequest,
+  CaptureLocated,
+  CalibrationSentinel,
 } from "./types.ts"
 export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, HOST_INPUT_NAMES, frameDigests } from "./types.ts"
 export type {
@@ -57,6 +59,7 @@ export type {
   ProbeAssertion,
   ProbeWitness,
   ColourSiblingSeparationWitness,
+  ColourNoAttributeWitness,
   UngradedDiagnostic,
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
@@ -122,7 +125,11 @@ export {
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
-export { assertCalibratedCaptureGeometry, type CalibratedGeometrySource } from "./calibrated-capture-geometry.ts"
+export {
+  assertCalibratedCaptureGeometry,
+  CALIBRATION_SOLID_PAINT,
+  type CalibratedGeometrySource,
+} from "./calibrated-capture-geometry.ts"
 
 // The kind tables, so a real-backend test (packages/probes) can run every kind row's parser arm
 // against a terminal that actually implements the sequences (@cto 28450 must-fix 1, 2026-10-12).

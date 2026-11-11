@@ -12,6 +12,8 @@ import {
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import { MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -70,7 +72,6 @@ export interface SelectedCell extends ReadObservation {
     runSha256: string
     rawReplyRef?: string
     screenshotRef?: string
-    correctionId?: string
     sources?: string[]
   }
 }
@@ -172,6 +173,16 @@ export interface SelectedContextCell {
     | { filled: false; open: string }
     | { filled: false; noted: ProbeResult["status"] }
   )
+  /**
+   * Set only when a reopened-cells row (reopened-cells.ts, #33164) withdrew this cell's grade: the feature result reads
+   * probe-todo, while `result`, `run` and `origin` stay the witnessed original.
+   */
+  reopened?: ReopenedMarker
+  /**
+   * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
+   * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
+   */
+  derived?: DerivedMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -201,6 +212,8 @@ export interface SelectedContextSummary {
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
   counts: Record<FeatureResultStatus, number>
+  /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
+  derivedIds: string[]
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -362,10 +375,15 @@ export function projectResults(
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
     log?: (line: string) => void
+    /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
+    reopened?: readonly ReopenedCell[]
+    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
+    derived?: readonly DerivedPair[]
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  checkReopenedWitnesses(policy.reopened ?? [], runs)
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   // 33119: a context supplement is never a context, so it is set aside before any context is counted or keyed.
@@ -503,7 +521,60 @@ export function projectResults(
       admittedContextKeys(projection.versions),
       policy.log,
       supplements,
+      policy.reopened ?? [],
+      policy.derived ?? DERIVED_UNSUPPORTED,
     ),
+  }
+}
+
+/** Every witness of a reopened row is a run the projection read, citing the row's feature at that assertion index. */
+function checkReopenedWitnesses(rows: readonly ReopenedCell[], runs: readonly LoadedRun[]): void {
+  const byId = new Map(runs.map((run) => [run.runId, run]))
+  for (const row of rows) {
+    for (const { runId, assertionIndex } of row.witnesses) {
+      const run = byId.get(runId)
+      if (!run) throw new Error(`Reopened cell ${cellLabel(row)} cites witness run ${runId}, which is not placed`)
+      const assertion = run.assertions[assertionIndex]
+      if (assertion?.featureId !== row.featureId) {
+        throw new Error(
+          `Reopened cell ${cellLabel(row)} cites ${runId} assertion ${assertionIndex}, which is ${
+            assertion ? `for ${assertion.featureId}` : "absent"
+          }`,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Read the reopened rows into one context's cells (#33164). A row whose cell this context grades as the row's withdrawn
+ * grade reopens it: the feature result reads probe-todo with the row's words; result, run and origin stay. A
+ * remeasured row whose cell is graded under a suite it does not name is stale and throws.
+ */
+function applyReopened(
+  contextKey: string,
+  cells: Record<string, SelectedContextCell>,
+  subject: ProbeSubject | undefined,
+  rows: readonly ReopenedCell[],
+  applied: Set<ReopenedCell>,
+): void {
+  if (!subject) return
+  for (const row of rows) {
+    if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
+    const cell = cells[row.featureId]
+    const featureResult = cell?.featureResult
+    if (!cell || featureResult?.status !== row.graded) continue
+    if (row.exit.kind === "remeasured" && !row.exit.suiteIds.includes(cell.run.suiteId)) {
+      throw new Error(
+        `Reopened cell ${cellLabel(row)} is graded ${row.graded} in ${contextKey} by run ${cell.run.runId} under suite ${cell.run.suiteId}, which the row does not name; it was re-measured, so delete the row`,
+      )
+    }
+    cells[row.featureId] = {
+      ...cell,
+      featureResult: { ...featureResult, status: "probe-todo", strength: null },
+      reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
+    }
+    applied.add(row)
   }
 }
 
@@ -540,7 +611,10 @@ function composeContextSummaries(
   contextKeys: ReadonlyMap<string, string>,
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
+  reopened: readonly ReopenedCell[] = [],
+  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
 ): Record<string, SelectedContextSummary> {
+  const reopenedApplied = new Set<ReopenedCell>()
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
     // A pass may cite its original draft and its sealed admitted snapshot: one run, different
@@ -726,6 +800,9 @@ function composeContextSummaries(
       supplements.filter((input) => input.contextKey === contextKey),
       decided,
     )
+    applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
+    const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -741,6 +818,7 @@ function composeContextSummaries(
       viewIds.map((featureId) => ({
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+        ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
       })),
       viewIds,
     )
@@ -764,9 +842,19 @@ function composeContextSummaries(
       contributingRunIds,
       attempts,
       counts: aggregate.counts,
+      derivedIds,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
+  }
+  // No silent no-match: a row that reopened nothing names a cell no context grades that way any more.
+  const unmatched = reopened.filter((row) => !reopenedApplied.has(row))
+  if (unmatched.length > 0) {
+    throw new Error(
+      `${unmatched.length} reopened row(s) match no context cell graded as withdrawn; delete or re-confirm: ${unmatched
+        .map((row) => `${cellLabel(row)} (${row.graded})`)
+        .join(", ")}`,
+    )
   }
   return summaries
 }
@@ -932,7 +1020,8 @@ export function loadSelectedResults(
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
-  const catalog = Object.keys(loadFeatures(contentDir))
+  const features = loadFeatures(contentDir)
+  const catalog = Object.keys(features)
   const runs = loadStoredRuns(contentDir, catalog)
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
@@ -957,6 +1046,7 @@ export function loadSelectedResults(
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
       log: (line) => console.log(line),
+      reopened: loadReopenedCells(contentDir, features),
     },
     loadArchivedExclusions(contentDir),
   )

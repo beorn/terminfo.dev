@@ -325,6 +325,26 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * carries neither.
    */
   regionRectangle?: CaptureRectangle
+  /**
+   * Raw-pixel digest of the second cell-aligned region named by the request's `controlCells`,
+   * cropped from the SAME captured image as `regionDigest` and `pixelsDigest`, so the two
+   * regions are simultaneous rather than one capture apart. Present exactly when the request
+   * named control cells and the arm could crop both regions from its one shot.
+   */
+  controlRegionDigest?: string
+  /**
+   * The screen rectangle the control region was cropped from, in the captured window's own
+   * pixels. Carried beside `controlRegionDigest` exactly as `regionRectangle` is carried beside
+   * `regionDigest`. Present exactly when `controlRegionDigest` is.
+   */
+  controlRegionRectangle?: CaptureRectangle
+  /**
+   * Where the request's `locate` colour sits in this decoded frame: the bounding box of every pixel
+   * of exactly that colour, in the captured window's own pixels, and how many pixels matched.
+   * `null` means the colour is absent from the whole frame. Absent (undefined) when the request
+   * named no colour, or when the arm could not decode its frame; undefined is never read as null.
+   */
+  located?: CaptureLocated | null
 }
 
 /**
@@ -338,6 +358,9 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   regionDigest?: never
   pixelsDigest?: never
   regionRectangle?: never
+  controlRegionDigest?: never
+  controlRegionRectangle?: never
+  located?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -435,8 +458,32 @@ export interface CaptureRequest {
   label: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
+  /**
+   * A second region to digest from the SAME captured image, in cells: the control beside the
+   * target, simultaneous with it rather than one capture later. Only alongside `cells`, under
+   * the same `pixelGeometry`. An arm that cannot crop both regions from one shot returns a
+   * frame without the control digest, and the consumer names that absence.
+   */
+  controlCells?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
+  /**
+   * An exact RGB colour to find in the whole decoded frame; the frame answers `located`. Optional:
+   * a request without it is byte for byte the previous path. Needs no `cells`.
+   */
+  locate?: { rgb: readonly [number, number, number] }
+}
+
+/** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */
+export interface CalibrationSentinel {
+  form: "basic" | "reverse"
+  rgb: readonly [number, number, number]
+}
+
+/** One colour's footprint in a decoded frame: its bounding box and its matching-pixel count. */
+export interface CaptureLocated {
+  box: CaptureRectangle
+  pixels: number
 }
 
 export interface ProbeSubject {
@@ -577,7 +624,22 @@ export interface ProbeSuiteManifest {
 /** Proof a negative assertion was decided on. A union on `kind`, so the next witness adds a member
  * rather than a field on ProbeAssertion. Added 2026-11-10 (#33041); optional and additive, so
  * schemaVersion stays 4 and runs written before this parse unchanged. */
-export type ProbeWitness = ColourSiblingSeparationWitness
+export type ProbeWitness = ColourSiblingSeparationWitness | ColourNoAttributeWitness
+
+/**
+ * The underline-colour negative witnessed by this row's own frames (#33054, moved from prose): the
+ * seed frame shows the underline, and the expected frame equals the no-attribute (plain text)
+ * frame after the sequence ran. The parser checks the three digests are this row's frames, that
+ * expected equals noAttribute while the seed differs, and the rectangle against those frames.
+ */
+export interface ColourNoAttributeWitness {
+  kind: "colour-no-attribute-witness"
+  rowId: string
+  /** The SGR parameters under test, e.g. `58;2;255;0;128`. */
+  encoding: string
+  rectangle: { x: number; y: number; width: number; height: number }
+  frames: { seed: string; expected: string; noAttribute: string }
+}
 
 /**
  * The same-channel sibling that proves this capture can show a colour in this rectangle.
@@ -1059,6 +1121,13 @@ export interface ClipboardFixture {
   readonly writePollMs?: number
   readText(): Promise<string>
   writeText(text: string): Promise<void>
+  /**
+   * X selection fixtures only: one real key event (shift press and release) on the owned window, recorded in the
+   * clipboard trace. A terminal stamps its OSC 52 selection claim with its last input-event time, and X ignores a
+   * claim older than the current owner's, so a terminal that never saw input loses to the fixture's own writer
+   * (#33145). The OSC 52 write and roundtrip probes call it before their write, inside a PTY read.
+   */
+  realKeyEvent?(): Promise<void>
 }
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
@@ -1150,6 +1219,12 @@ export interface TermProbeSource {
   captureGeometry?: {
     geometry: CapturePixelGeometry
     source: "measured by complete raster calibration"
+    /**
+     * The solid paint calibration witnessed, and the exact colour it measured for it. A later
+     * layout check repaints with this form and looks for this colour; absent on a run calibrated
+     * before the check existed.
+     */
+    sentinel?: CalibrationSentinel
   }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>

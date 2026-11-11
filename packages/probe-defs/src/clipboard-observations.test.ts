@@ -1163,3 +1163,187 @@ describe("native clipboard paste encoding", () => {
     }
   })
 })
+
+// #33145 (@cto 70645b74): on an X selection, xterm and Alacritty stamp their OSC 52 claim with their last
+// input-event time, so a terminal that never saw input loses the selection to the harness's own xclip owner.
+// A fixture that offers a real key event gets it before every write and roundtrip, inside a PTY read that
+// refuses the sample if the press reached the application as bytes.
+describe("real key event before the OSC 52 write", () => {
+  const silent = { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+  function keyedSource(options: {
+    readonly events: string[]
+    readonly outcome?: typeof silent | { match: string[]; reason: "reply"; raw: string; rawBase64: string }
+    readonly pressFails?: boolean
+    readonly noReadInjected?: boolean
+  }): TermProbeSource {
+    let clipboard = "baseline"
+    let queued = ""
+    const fixture: ClipboardFixture = {
+      baseline: "baseline",
+      writeDeadlineMs: 20,
+      writePollMs: 5,
+      readText: async () => clipboard,
+      writeText: async (text) => {
+        clipboard = text
+      },
+      realKeyEvent: async () => {
+        options.events.push("key")
+        if (options.pressFails) throw new Error("Real key event before the OSC 52 write failed: getwindowfocus is 1")
+      },
+    }
+    return termSource({
+      write(sequence) {
+        options.events.push("osc-write")
+        queued = writtenNonce(sequence)
+      },
+      queryCursorPosition: async () => {
+        clipboard = queued
+        return { row: 1, col: 1 }
+      },
+      ...(!options.noReadInjected && {
+        readInjected: async (_pattern: RegExp, _timeoutMs: number, inject: () => Promise<void>) => {
+          options.events.push("pty-armed")
+          await inject()
+          return options.outcome ?? silent
+        },
+      }),
+      withClipboardFixture: async (work) => work(fixture),
+    })
+  }
+  const term = (id: string) => ALL_PROBES.find((item) => item.id === id)!.term!
+
+  test.each(["extensions.osc52-write", "extensions.osc52-clipboard"])(
+    "%s presses inside the PTY read before the OSC 52 write",
+    async (id) => {
+      const events: string[] = []
+      await term(id)(keyedSource({ events }))
+      expect(events.slice(0, 3)).toEqual(["pty-armed", "key", "osc-write"])
+    },
+  )
+
+  test("a passing write does not mention the press", async () => {
+    const result = await writeProbe()(keyedSource({ events: [] }))
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "clipboard" })
+    expect(JSON.stringify(result)).not.toMatch(/key event|press/i)
+  })
+
+  test("osc52-read gets no press", async () => {
+    const events: string[] = []
+    await term("extensions.osc52-read")(keyedSource({ events }))
+    expect(events).not.toContain("key")
+  })
+
+  test("bytes on the PTY across the press refuse the sample as probe-invalid and send no OSC 52", async () => {
+    const events: string[] = []
+    const raw = "\x1b[57441;2u"
+    const result = await writeProbe()(
+      keyedSource({
+        events,
+        outcome: { match: [raw], reason: "reply", raw, rawBase64: Buffer.from(raw).toString("base64") },
+      }),
+    )
+    expect(events).not.toContain("osc-write")
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: expect.stringMatching(/^Real key event before the OSC 52 write put 10 bytes into the application/),
+    })
+  })
+
+  test("a failed focus or XTEST press is a named probe-invalid", async () => {
+    const events: string[] = []
+    const result = await writeProbe()(keyedSource({ events, pressFails: true }))
+    expect(events).not.toContain("osc-write")
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: "Real key event before the OSC 52 write failed: getwindowfocus is 1",
+    })
+  })
+
+  test("a source that cannot read the PTY across the press refuses instead of pressing blind", async () => {
+    const events: string[] = []
+    const result = await writeProbe()(keyedSource({ events, noReadInjected: true }))
+    expect(events).toEqual([])
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-invalid",
+      reason: expect.stringMatching(/needs the PTY read/),
+    })
+  })
+})
+
+// #33145 read leg (@cto 7fd99ad2): a terminal may answer OSC 52 read from its own earlier write for a moment after
+// another client takes the selection. The roundtrip re-queries only while the reply is the probe's OWN earlier
+// nonce, bounded by the write deadline; the settled reply decides, and the row says how long it took.
+describe("roundtrip read leg settles a stale own-nonce reply", () => {
+  function roundtripSource(replyFor: (asked: number, own: string, written: string) => string): {
+    source: TermProbeSource
+    asked: () => number
+  } {
+    let clipboard = "baseline"
+    let own = ""
+    let written = ""
+    let asked = 0
+    const reply = (value: string) => {
+      const raw = `\x1b]52;c;${btoa(value)}\x1b\\`
+      return { match: [raw, btoa(value)], reason: "reply" as const, raw, rawBase64: "" }
+    }
+    const source = termSource({
+      write(sequence) {
+        own = writtenNonce(sequence)
+      },
+      queryCursorPosition: async () => {
+        clipboard = own
+        return { row: 1, col: 1 }
+      },
+      queryOutcome: async () => {
+        asked += 1
+        return reply(replyFor(asked, own, written))
+      },
+      withClipboardFixture: async (work) =>
+        work({
+          baseline: "baseline",
+          writeDeadlineMs: 60,
+          writePollMs: 5,
+          readText: async () => clipboard,
+          writeText: async (text) => {
+            clipboard = text
+            written = text
+          },
+        }),
+    })
+    return { source, asked: () => asked }
+  }
+  const roundtrip = () => ALL_PROBES.find((item) => item.id === "extensions.osc52-clipboard")!.term!
+
+  test("own earlier nonce twice, then the written nonce: supported, and the row records the re-queries", async () => {
+    const { source, asked } = roundtripSource((n, own, written) => (n <= 2 ? own : written))
+    const result = await roundtrip()(source)
+    expect(asked()).toBe(3)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    expect(result.observation?.note).toMatch(
+      /^OSC 52 read returned the probe's own earlier write nonce for \d+ ms before the independently written nonce \(2 re-queries; replies at \+\d+ms own, \+\d+ms own, \+\d+ms written\)$/,
+    )
+  })
+
+  test("own earlier nonce through the deadline: named inconclusive with a test row, not unsupported", async () => {
+    const { source, asked } = roundtripSource((_n, own) => own)
+    const result = await roundtrip()(source)
+    expect(asked()).toBeGreaterThan(1)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringMatching(/^OSC 52 reply carried own earlier nonce for \d+ ms \(\d+ re-queries\)$/),
+    })
+  })
+
+  test("any other wrong value decides at once with its named inconclusive", async () => {
+    const { source, asked } = roundtripSource(() => "someone-else")
+    const result = await roundtrip()(source)
+    expect(asked()).toBe(1)
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringMatching(
+        /^OSC 52 reply carried a value other than the independently written nonce \(length=12, sha256=[0-9a-f]{64}\)$/,
+      ),
+    })
+  })
+})

@@ -31,6 +31,7 @@ import type {
   AssertionType,
   CapturePixelGeometry,
   CaptureRectangle,
+  ColourNoAttributeWitness,
   ObservationFrame,
   ProbeCallbackResult,
   MeasuredProbeCallbackResult,
@@ -39,6 +40,7 @@ import type {
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { replyFailure, utf8DecodingRefusal } from "./helpers.ts"
+import { CALIBRATION_SOLID_PAINT } from "./calibrated-capture-geometry.ts"
 
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
@@ -398,6 +400,11 @@ export async function awaitPaintWitness(options: {
   priorFrames?: ObservationFrame[]
   /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
   assertionType?: "screenshot" | "buffer_state"
+  /**
+   * The layout check for the "witness still while the frame moved" timeout: its clause replaces
+   * "cause not determined" only when it has one. Run after the probe's own reads, never before.
+   */
+  layout?: () => Promise<string | undefined>
 }): Promise<{ witness: RegionCapture } | ProbeCallbackResult> {
   const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs, requireSameCrop } =
     options
@@ -438,12 +445,16 @@ export async function awaitPaintWitness(options: {
     }
     const frameMoved = painted.pixelsDigest !== baseline.pixelsDigest
     if (Date.now() >= deadline) {
+      const layoutClause =
+        options.expectedDigest === undefined && frameMoved && assertionType === "screenshot"
+          ? await options.layout?.()
+          : undefined
       return inconclusive(
         id,
         options.expectedDigest !== undefined
           ? `${id}: no paint witness return to the measured sentinel digest within ${timeoutMs} ms after ${label}; the requested space/glyph roundtrip did not complete`
           : frameMoved
-            ? `${id}: witness cell ${witnessCell.top},${witnessCell.left} unchanged for ${timeoutMs} ms after ${label} while the frame changed; cause not determined`
+            ? `${id}: witness cell ${witnessCell.top},${witnessCell.left} unchanged for ${timeoutMs} ms after ${label} while the frame changed; ${layoutClause ?? "cause not determined"}`
             : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
         "timeout",
         assertionType,
@@ -465,6 +476,96 @@ export async function awaitPaintWitness(options: {
 
 function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): result is { witness: RegionCapture } {
   return "witness" in result
+}
+
+/** Calibration's own cell tolerance: one blended pixel line may sit at each edge of a painted cell. */
+const CELL_EDGE_TOLERANCE_PX = 1
+
+/**
+ * Where calibration's sentinel paint lands now at `cell`, asked only after a probe's own reads ended
+ * undecided (33000). Warp's normal screen is a command block whose header can cover the rows
+ * calibration measured, so a crop at the calibrated cell reads the header instead of the probe.
+ * Returns the clause the open reason gains, or undefined when no check can run on this run (no
+ * pixel capture, or a calibration that recorded no sentinel) or when the sentinel sits inside the
+ * calibrated crop, so an unmoved window keeps today's sentence. It changes reason text only: it
+ * can never decide a cell. It repaints one cell and restores it to a blank default cell, with the
+ * cursor and rendition saved and restored around both writes; the probe's own teardown follows.
+ */
+export async function layoutSinceCalibration(check: {
+  ctx: Pick<TermProbeSource, "write" | "capture" | "captureKind" | "captureGeometry">
+  label: string
+  cell: { row: number; col: number }
+  /** The pixels the calibrated geometry gives `cell` on this run. */
+  calibratedCrop: CaptureRectangle
+  timeoutMs: number
+  pollMs: number
+}): Promise<string | undefined> {
+  const { ctx, label, cell, calibratedCrop: crop, timeoutMs, pollMs } = check
+  const sentinel = ctx.captureGeometry?.sentinel
+  if (!ctx.capture || ctx.captureKind === "text-cells" || !sentinel) return undefined
+  const at = `\x1b[${cell.row};${cell.col}H`
+  const where = `cell ${cell.row},${cell.col}`
+  let located: ObservationFrame["located"]
+  ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`)
+  try {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      const frame = await ctx.capture({
+        role: "control",
+        label: `${label} — layout check`,
+        locate: { rgb: sentinel.rgb },
+      })
+      located = frame.located
+      if (located !== null || Date.now() >= deadline) break
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, pollMs)
+      })
+    }
+  } finally {
+    ctx.write(`\x1b7${at}\x1b[0m \x1b8`)
+  }
+  if (located === undefined) {
+    return `layout check unanswered: the capture arm returned no located field for calibration's sentinel at ${where}`
+  }
+  if (located === null) {
+    return `probe text not in view: calibration's sentinel painted at ${where} is nowhere in the window within ${timeoutMs} ms`
+  }
+  const { box, pixels } = located
+  const fits = (size: number, cellSize: number) => size <= cellSize && size >= cellSize - 2 * CELL_EDGE_TOLERANCE_PX
+  if (pixels !== box.width * box.height || !fits(box.width, crop.width) || !fits(box.height, crop.height)) {
+    return `sentinel found but not as one cell block: ${pixels} px in a ${box.width}x${box.height} box at ${box.x},${box.y}, against a ${crop.width}x${crop.height} cell painted at ${where}`
+  }
+  if (
+    box.x >= crop.x &&
+    box.y >= crop.y &&
+    box.x + box.width <= crop.x + crop.width &&
+    box.y + box.height <= crop.y + crop.height
+  ) {
+    return undefined
+  }
+  return `window layout moved since calibration: calibration's sentinel painted at ${where} landed at ${box.x},${box.y}, ${box.x - crop.x},${box.y - crop.y} px from its calibrated crop at ${crop.x},${crop.y}`
+}
+
+/** The layout check for one witness cell, when its baseline crop says where calibration put it. */
+function layoutCheckFor(
+  ctx: TermProbeSource,
+  label: string,
+  witnessCell: CellRegion,
+  baseline: RegionCapture | undefined,
+  timeoutMs: number,
+  pollMs: number,
+): (() => Promise<string | undefined>) | undefined {
+  const calibratedCrop = baseline?.regionRectangle
+  if (!calibratedCrop) return undefined
+  return () =>
+    layoutSinceCalibration({
+      ctx,
+      label,
+      cell: { row: witnessCell.top, col: witnessCell.left },
+      calibratedCrop,
+      timeoutMs,
+      pollMs,
+    })
 }
 
 /** Two crop rectangles cover the same cells only when all four integers match. */
@@ -1074,6 +1175,7 @@ export async function sgrAttributeCaptureResult(
         timeoutMs: DEFAULT_TIMEOUT_MS,
         pollMs: DEFAULT_POLL_MS,
         requireSameCrop: true,
+        layout: layoutCheckFor(ctx, label, witnessCell, baseline, DEFAULT_TIMEOUT_MS, DEFAULT_POLL_MS),
       }
       const glyph = `${witnessGlyph(index)}-${witnessNonce}`
       ctx.write(`\x1b[1;1H${glyph}`)
@@ -1264,6 +1366,8 @@ export async function captureRegionReadbackDecision(
   const park = `\x1b[${spec.cursorRow};1H`
   const timeoutMs = spec.timeoutMs > 0 ? spec.timeoutMs : DEFAULT_TIMEOUT_MS
   const pollMs = spec.pollMs ?? DEFAULT_POLL_MS
+  /** The last witness baseline: where calibration put the witness cell, for the layout check. */
+  let witnessBaseline: RegionCapture | undefined
   const steps: Array<{
     role: ObservationFrame["role"]
     label: string
@@ -1389,7 +1493,9 @@ export async function captureRegionReadbackDecision(
         pollMs,
         requireSameCrop: witnessedPixels,
         assertionType,
+        layout: layoutCheckFor(ctx, step.label, witnessCell, baseline, timeoutMs, pollMs),
       }
+      witnessBaseline = baseline
       const result = await awaitPaintWitness(witnessOptions)
       if (!witnessed(result)) {
         return review(result, result.observation?.reason === "timeout" ? "no freshness witness" : undefined)
@@ -1603,10 +1709,14 @@ export async function captureRegionReadbackDecision(
       })
     }
     if (seed === expected && discriminator?.expected !== "no-change") {
+      const layoutClause =
+        assertionType === "screenshot"
+          ? await layoutCheckFor(ctx, `${id}: same cells`, witnessCell, witnessBaseline, timeoutMs, pollMs)?.()
+          : undefined
       return review(
         inconclusive(
           id,
-          `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
+          `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them${layoutClause ? `; ${layoutClause}` : ""}`,
           "insufficient-evidence",
           assertionType,
           cite(targetScreenshotRef, frames),
@@ -1618,6 +1728,17 @@ export async function captureRegionReadbackDecision(
       // paints nothing. That is a witnessed negative, not an unseparable fixture.
       if (spec.noAttributeNegative !== undefined && seed !== noAttribute) {
         const reason = `${id}: painted nothing for SGR ${spec.noAttributeNegative.sequence}: the frame equals plain text, and the underline was visible in the seed frame of this run`
+        const rectangle = cropRectangles[2]
+        if (rectangle === undefined) {
+          throw new Error(`${id}: the expected frame reached the witness negative with no rectangle`)
+        }
+        const witness: ColourNoAttributeWitness = {
+          kind: "colour-no-attribute-witness",
+          rowId: id,
+          encoding: spec.noAttributeNegative.sequence,
+          rectangle: { x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height },
+          frames: { seed, expected, noAttribute },
+        }
         return {
           pass: false,
           criterionBranch: "colour-no-attribute-witness",
@@ -1635,6 +1756,8 @@ export async function captureRegionReadbackDecision(
               kind: "negative",
               expected: `${id}: the terminal paints SGR ${spec.noAttributeNegative.sequence} as something other than plain text`,
               observed: expected,
+              note: reason,
+              witness,
             },
           ],
         }

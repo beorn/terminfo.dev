@@ -2,9 +2,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 
-/** Time left after the poll so the job can stop the collector and write run.json before timeout-minutes ends. */
-export const COLLECTOR_FLUSH_MARGIN_S = 180
-
 export type ExpiredHarness = "killed-mid-probe" | "never-started"
 
 export interface ExpiredCollectionRow {
@@ -14,14 +11,6 @@ export interface ExpiredCollectionRow {
   harnessOutcome: ExpiredHarness
   attempt: { scope: "none" }
   tests: [{ id: "criterion"; status: "probe-todo"; reason: string; attempt: { scope: "none" } }]
-}
-
-/**
- * Poll length from the job limit, the flush margin, and the seconds already spent before the poll.
- * The margin is not a second copy of the poll: changing timeout-minutes changes this length.
- */
-export function collectorPollSeconds(jobLimitS: number, elapsedS: number, marginS = COLLECTOR_FLUSH_MARGIN_S): number {
-  return Math.max(1, jobLimitS - marginS - elapsedS)
 }
 
 /** The last listed id that appears in the collector log is the one the poll interrupted. */
@@ -126,11 +115,10 @@ if (import.meta.main) {
   const log = logPath === undefined || logPath === "" ? "" : readFileSync(logPath, "utf8")
   const prior = existsSync(path) ? readExistingRun(path) : undefined
   const base = isRecord(prior) ? prior : {}
-  const run = expiredCollectionRun({
+  writeExpiredCollection(path, {
     ids,
     existing: { ...base, results: fromDraft.finished },
     startedId: fromDraft.startedId ?? startedIdFromLog(log, ids),
     collectorDurationMs: Number(duration),
   })
-  writeFileSync(path, `${JSON.stringify(run, null, 2)}\n`)
 }

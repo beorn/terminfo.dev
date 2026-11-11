@@ -5,14 +5,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
 import type { ProbeSuiteManifest } from "../../probe-defs/src/types.ts"
 import { parseProbeResults, parseRun } from "../../run-parser/src/index.ts"
-import {
-  COLLECTOR_FLUSH_MARGIN_S,
-  collectorPollSeconds,
-  collectionIds,
-  rowsFromDraft,
-  startedIdFromLog,
-  writeExpiredCollection,
-} from "./flush-expired-collection.ts"
+import { collectionIds, rowsFromDraft, startedIdFromLog, writeExpiredCollection } from "./flush-expired-collection.ts"
 
 const roots: string[] = []
 afterEach(() => {
@@ -28,7 +21,6 @@ const finished = {
 }
 
 test("a collector that outlives the poll leaves a run the parser accepts", () => {
-  expect(collectorPollSeconds(25 * 60, 113)).toBe(25 * 60 - COLLECTOR_FLUSH_MARGIN_S - 113)
   expect(
     collectionIds("null", join(dirname(fileURLToPath(import.meta.url)), "../../../content")).length,
   ).toBeGreaterThan(0)

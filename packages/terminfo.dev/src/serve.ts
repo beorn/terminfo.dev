@@ -735,6 +735,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             probeSource.captureGeometry = {
               geometry: textOrigin.pixelGeometry,
               source: "measured by complete raster calibration",
+              sentinel: textOrigin.sentinel,
             }
             captureCalibration = {
               outcome: "installed",

@@ -6,6 +6,7 @@ import {
   OBSERVATION_REASONS,
   frameDigests,
   type AssertionType,
+  type CaptureLocated,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -202,6 +203,23 @@ function frameCellRectangle(
   }
   return rectangle
 }
+/** A pixel frame's `located` answer: null (colour absent) or a box with 1..area matching pixels. */
+function frameLocated(
+  value: unknown,
+  path: string,
+  index: number,
+  featureId: string,
+): CaptureLocated | null | undefined {
+  if (value === undefined || value === null) return value
+  if (!object(value)) fail(path, `invalid frame located ${index} for ${featureId}`)
+  const box = frameRegionRectangle(value.box, path, index, featureId)
+  if (!box) fail(path, `invalid frame located ${index} for ${featureId}: no box`)
+  const pixels = value.pixels
+  if (typeof pixels !== "number" || !Number.isSafeInteger(pixels) || pixels < 1 || pixels > box.width * box.height) {
+    fail(path, `invalid frame located pixels ${index} for ${featureId}: 1..box area`)
+  }
+  return { box, pixels }
+}
 export function parseObservationFrames(
   value: unknown,
   path: string,
@@ -241,7 +259,14 @@ export function parseObservationFrames(
       fail(path, `pixels observation for ${featureId} cites a ${kind} frame ${index}`)
     }
     const textFields = ["cellDigest", "frameDigest", "cellRectangle"] as const
-    const pixelFields = ["regionDigest", "pixelsDigest", "regionRectangle"] as const
+    const pixelFields = [
+      "regionDigest",
+      "pixelsDigest",
+      "regionRectangle",
+      "controlRegionDigest",
+      "controlRegionRectangle",
+      "located",
+    ] as const
     if (kind === "pixels") {
       const stray = textFields.find((field) => entry[field] !== undefined)
       if (stray !== undefined) {
@@ -278,6 +303,27 @@ export function parseObservationFrames(
       fail(path, `invalid frame pixelsDigest ${index} for ${featureId}`)
     }
     const regionRectangle = frameRegionRectangle(entry.regionRectangle, path, index, featureId)
+    const controlRegionDigest = entry.controlRegionDigest
+    if (controlRegionDigest !== undefined && !screenshotDigest(controlRegionDigest)) {
+      fail(path, `invalid frame controlRegionDigest ${index} for ${featureId}`)
+    }
+    const controlRegionRectangle = frameRegionRectangle(entry.controlRegionRectangle, path, index, featureId)
+    const located = frameLocated(entry.located, path, index, featureId)
+    // The same-shot control crop is one measurement in two fields: its digest and rectangle are
+    // carried together or not at all, and the control crop can never be the target crop again.
+    if ((controlRegionDigest === undefined) !== (entry.controlRegionRectangle === undefined)) {
+      fail(path, `frame control region ${index} for ${featureId} carries only one of its digest and rectangle`)
+    }
+    if (
+      regionRectangle &&
+      controlRegionRectangle &&
+      controlRegionRectangle.x < regionRectangle.x + regionRectangle.width &&
+      regionRectangle.x < controlRegionRectangle.x + controlRegionRectangle.width &&
+      controlRegionRectangle.y < regionRectangle.y + regionRectangle.height &&
+      regionRectangle.y < controlRegionRectangle.y + controlRegionRectangle.height
+    ) {
+      fail(path, `frame control region ${index} for ${featureId} overlaps its target region`)
+    }
     const base = {
       role: entry.role as ObservationFrame["role"],
       ref,
@@ -298,6 +344,9 @@ export function parseObservationFrames(
       ...(regionDigest && { regionDigest }),
       ...(pixelsDigest && { pixelsDigest }),
       ...(regionRectangle && { regionRectangle }),
+      ...(controlRegionDigest && { controlRegionDigest }),
+      ...(controlRegionRectangle && { controlRegionRectangle }),
+      ...(located !== undefined && { located }),
     }
   })
   const targets = frames.filter((frame) => frame.role === "target")
