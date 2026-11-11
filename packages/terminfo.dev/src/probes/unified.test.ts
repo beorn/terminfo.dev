@@ -1879,10 +1879,12 @@ it.each([undefined, "after-probes"] as const)(
 describe("an after-probes finish beside a before-probes preparation (32670)", () => {
   const id = "reset.ris"
   const probeOrder: string[] = []
+  let callbackSource: TermProbeSource | undefined
   let restore: () => void = () => {}
   beforeEach(() => {
     verifiedBatchFixture()
     probeOrder.length = 0
+    callbackSource = undefined
     const definition = ALL_PROBES.find((item) => item.id === id)!
     const original = {
       term: definition.term,
@@ -1893,6 +1895,7 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
     delete definition.termNeedsGeometry
     definition.termWrites = "query"
     definition.term = async (probeSource) => {
+      callbackSource = probeSource
       probeOrder.push("callback")
       probeSource.write("fixture:reset.ris")
       return {
@@ -1906,41 +1909,70 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
   })
   afterEach(() => restore())
 
-  it("calibrates before every probe and qualifies after the last, each under its own trace", async () => {
-    const batch = await runProbeBatch({
-      ids: [id],
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ source: probeSource, featureId }) => {
-        expect(featureId).toBe("collector.captureCalibration")
-        probeOrder.push("calibrate")
-        probeSource.write("calibration:paint")
-      },
-      finishCapture: async ({ source: probeSource, featureId }) => {
-        expect(featureId).toBe("collector.textQualification")
-        probeOrder.push("qualify")
-        probeSource.write("qualification:paint")
-      },
-    })
-    expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
-    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
-      writes: ["calibration:paint"],
-    })
-    expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
-      writes: ["qualification:paint"],
-    })
-  })
+  // CTO26812ffa: phase order alone misses a second preparation rewriting state already handed to rows.
+  it.each(["geometry", "refusal", "late-refusal"] as const)(
+    "preserves handed %s through the finish and retains its separate trace",
+    async (state) => {
+      const geometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration" as const,
+      }
+      const priorRefusal = "calibration refused before probes"
+      const finalRefusal = "qualification refused after probes"
+      const checkpointTraces: string[] = []
+      const batch = await runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        onCheckpoint: (checkpoint) => {
+          const trace = checkpoint.rawReplies["collector.textQualification.trace"]
+          if (trace) checkpointTraces.push(trace)
+        },
+        prepareCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.captureCalibration")
+          probeOrder.push("calibrate")
+          probeSource.write("calibration:paint")
+          if (state === "refusal") throw Object.assign(new Error(priorRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = geometry
+        },
+        finishCapture: async ({ source: probeSource, featureId }) => {
+          expect(featureId).toBe("collector.textQualification")
+          probeOrder.push("qualify")
+          probeSource.write("qualification:paint")
+          expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+          expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+          if (state !== "geometry") throw Object.assign(new Error(finalRefusal), { name: "CaptureCalibrationRefused" })
+          probeSource.captureGeometry = { ...geometry, geometry: { ...geometry.geometry, cellWidth: 16 } }
+        },
+      })
+      expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
+      expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
+      expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+        writes: ["calibration:paint"],
+        ...(state === "refusal" ? { refusal: priorRefusal } : {}),
+      })
+      expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
+        writes: ["qualification:paint"],
+        ...(state !== "geometry" ? { refusal: finalRefusal } : {}),
+      })
+      expect(checkpointTraces).toContain(batch.rawReplies["collector.textQualification.trace"])
+    },
+  )
 
   it("fails the whole run, returning no batch, when the after-probes qualification fails", async () => {
     await expect(
       runProbeBatch({
         ids: [id],
         ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          probeOrder.push("calibrate")
+        },
         finishCapture: async () => {
           throw new Error("qualification fixture failed after probes")
         },
       }),
     ).rejects.toThrow("qualification fixture failed after probes")
-    expect(probeOrder).toEqual(["callback"])
+    expect(probeOrder).toEqual(["calibrate", "callback"])
   })
 })
 
