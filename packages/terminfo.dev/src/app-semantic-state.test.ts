@@ -191,7 +191,7 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
     } else {
       expect(result.observation, mode).toMatchObject({ outcome: mode === "works" ? "supported" : "unsupported" })
     }
-    if (mode !== "wrong-pane")
+    if (mode !== "wrong-pane") {
       expect(
         weztermCli.mock.calls.map(([file, args, options]) => ({
           file,
@@ -205,6 +205,7 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
         socket: "/owned/wezterm.sock",
         pane: "17",
       })
+    }
   }
   expect(
     appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux" }),
