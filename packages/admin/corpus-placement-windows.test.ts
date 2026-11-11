@@ -21,7 +21,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { parseSuiteManifest, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
-import { placeCollectedRun } from "./corpus-placement.ts"
+import { placeCollectedRun, placeSuiteManifest } from "./corpus-placement.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
 
 const dirs: string[] = []
@@ -251,3 +251,28 @@ test.each(["valid", "wrong-da", "missing-mesa", "wrong-executable", "extra-dll"]
     }
   },
 )
+
+// 33109 (@cto 0e10dc13): the suite command writes through placement's own writer. Before it no row wrote a suite
+// manifest without a run, so nothing showed the two writes agree byte for byte or that a rerun is safe.
+test("the suite command after a placement at the same suite is the identical no-op", () => {
+  const f = fixture()
+  writeFileSync(f.source, JSON.stringify(f.run))
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const path = join(f.content, "suites", `${f.manifest.probeHash}.json`)
+  const placed = readFileSync(path)
+  expect(placeSuiteManifest(f.content)).toMatchObject({ suiteId: f.manifest.probeHash, path, outcome: "existing" })
+  expect(readFileSync(path)).toEqual(placed)
+})
+
+test("the suite command writes once, reruns as a no-op, and refuses different bytes under the same id", () => {
+  const f = fixture()
+  const first = placeSuiteManifest(f.content)
+  expect(first).toMatchObject({ suiteId: f.manifest.probeHash, outcome: "created" })
+  const bytes = readFileSync(first.path)
+  expect(placeSuiteManifest(f.content).outcome).toBe("existing")
+  writeFileSync(first.path, `${bytes.toString("utf8")} `)
+  expect(() => placeSuiteManifest(f.content)).toThrow(/Refusing to overwrite a different collection suite manifest/)
+  // A placement at that suite meets the same refusal, so the two writers cannot disagree silently.
+  writeFileSync(f.source, JSON.stringify(f.run))
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/different collection suite manifest/)
+})
