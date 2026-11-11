@@ -304,52 +304,6 @@
     },
     {
       "kind": "term",
-      "id": "alacritty",
-      "os": "linux",
-      "featureId": "sgr.blink",
-      "graded": "unsupported",
-      "reason": "the stored capture window may be shorter than the blink period, so this grade is withdrawn until it is measured again",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
-      "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
-      "exit": {
-        "kind": "remeasured",
-        "suiteIds": [
-          "6722b2437108"
-        ]
-      },
-      "witnesses": [
-        {
-          "runId": "6fa9cc2b3098dd1d90dc89d2c60ad7a4",
-          "assertionIndex": 49
-        }
-      ]
-    },
-    {
-      "kind": "term",
-      "id": "ghostty",
-      "os": "linux",
-      "featureId": "sgr.blink",
-      "graded": "unsupported",
-      "reason": "the stored capture window may be shorter than the blink period, so this grade is withdrawn until it is measured again",
-      "reopenedOn": "2026-11-10",
-      "ruling": "@cto 2026-11-10 12:42 PST (f58c5889) item 3, issue 33117",
-      "evidence": "@dev/luna6 stored-record table blink-witness-table-2026-11-10.txt sha256 803c5b2a3d01b80e3ec3396bb61959d964f60d204285190c32ed9c76e9424074",
-      "exit": {
-        "kind": "remeasured",
-        "suiteIds": [
-          "6722b2437108"
-        ]
-      },
-      "witnesses": [
-        {
-          "runId": "97f0b21b46a75ea76f81c85ff1611483",
-          "assertionIndex": 58
-        }
-      ]
-    },
-    {
-      "kind": "term",
       "id": "iterm2",
       "os": "macos",
       "featureId": "sgr.blink",
@@ -360,9 +314,7 @@
       "evidence": "@cpo/term request 5af9e33d: the only Supported evidence is the query reply; the pixel series could not decide",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "8533e1c9630b"
-        ]
+        "suiteIds": ["8533e1c9630b"]
       },
       "witnesses": [
         {
