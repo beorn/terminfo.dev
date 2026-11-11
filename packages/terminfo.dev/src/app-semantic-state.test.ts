@@ -758,6 +758,36 @@ test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audi
   )
 })
 
+test("Ghostty 1.4.0 declares osc133-d and semantic-prompts untestable from the shipped default, not a missing bus (#33529)", () => {
+  const subject = { kind: "term" as const, id: "ghostty", version: "1.4.0", os: "linux" }
+  const present = appSemanticDeclarations(subject, {
+    observedAt: "2026-11-11T00:00:00.000Z",
+    address: "present" as const,
+    socket: { path: "/run/user/3001/bus", outcome: "present" as const },
+  })
+  const absent = appSemanticDeclarations(subject, {
+    observedAt: "2026-11-11T00:00:00.000Z",
+    address: "absent" as const,
+    socket: { path: "/run/user/3001/bus", outcome: "absent" as const, code: "ENOENT" },
+  })
+  for (const id of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+    // The declaration is a fact about the shipped configuration, so a live session bus cannot remove it: the
+    // per-run bus made both rows fall to "No reviewed App semantic reader" and read probe-todo (ghostty
+    // 2026-11-11T07-15-34-288Z-169c5c86d456).
+    expect(present[id]).toBe(absent[id])
+    expect(present[id]).toMatch(/^Untestable \(no setup\): Ghostty 1\.4\.0 at its shipped default configuration/)
+    for (const citation of [
+      "Config.zig:1214",
+      "1228-1231",
+      "Config.zig:1265",
+      "surface.zig:1192-1218",
+      "Terminal.zig:2266-2271",
+    ]) {
+      expect(present[id]).toContain(citation)
+    }
+  }
+})
+
 test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {
   const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
   for (const id of [

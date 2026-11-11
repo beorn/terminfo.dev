@@ -241,15 +241,17 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 has no OSC 633 parser or corresponding stored command-line/Cwd reader. Read tag v1.4.0 src/terminal/osc.zig:485 and src/input/Binding.zig; opening a new tab is not this probe's Cwd reader.",
   })),
+  // #33529 (@chief 2026-11-11T15:18Z): no readback at ghostty's SHIPPED default, which is what every App run is
+  // launched at. The notification that carries the exit code needs three deviations from that default, and a
+  // launch naming a notification setting is refused as non-default, so that route can never grade this row.
   ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
     kind: "term",
     id: "ghostty",
     version: "1.4.0",
     os: "linux",
     featureId,
-    requiresMissingSessionBus: true as const,
     reason:
-      "Untestable (no setup): Ghostty 1.4.0 exposes the end mark, but the exit number reaches a desktop notification. Read tag v1.4.0 src/terminal/Terminal.zig:2266-2271 and src/apprt/gtk/class/surface.zig:1204-1218. A mark alone cannot observe D or the complete A/C/D cycle.",
+      "Untestable (no setup): Ghostty 1.4.0 at its shipped default configuration exposes no readback of OSC 133;D. notify-on-command-finish defaults to never and its action to bell without notify (src/config/Config.zig:1214, 1228-1231), a notification also needs a command longer than five seconds (src/config/Config.zig:1265), and the path reaching sendDesktopNotification is gated on all three (src/apprt/gtk/class/surface.zig:1192-1218). OSC 133;D itself only sets internal row content (src/terminal/Terminal.zig:2266-2271). The run is at that default by construction: a launch naming any notification setting is refused as non-default, so a notification read cannot grade this row.",
   })),
   {
     kind: "term",
