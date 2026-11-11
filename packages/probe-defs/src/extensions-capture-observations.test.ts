@@ -8,6 +8,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
+import { ScrollbackReadingUnavailable } from "./scrollback.ts"
 import { DECLARED_UNTESTABLE_TEST, HEADLESS_OBSERVABLE_REVIEW, recordExecutedProbe } from "./helpers.ts"
 import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
@@ -759,6 +760,38 @@ test("extensions.osc720-scroll-up excludes tmux and screen so their cells keep t
     reason: "no-semantic-observable",
     noObservable: "terminal reports no viewport offset",
   })
+})
+
+test("OSC 720 retains unavailable history as unmeasured while unexpected reader errors still fail", async () => {
+  const featureId = "extensions.osc720-scroll-up"
+  const definition = find(featureId)
+  // Hosted Terminal.app run 355f60ec: the owned reader refused before its marker control.
+  const reason =
+    "Terminal.app history holds a line of 310 characters on a 120-column grid, so it wrapped and its lines are not rows"
+  for (const mux of [undefined, "tmux", "screen"] as const) {
+    const { context } = captureApp(30, 120)
+    if (mux !== undefined) context.mux = mux
+    context.getScrollback = async () => {
+      throw new ScrollbackReadingUnavailable(reason)
+    }
+    const result = await definition.term!(context)
+    expect(result.notTested?.noObservable).toContain(reason)
+    expect(
+      recordExecutedProbe({
+        featureId,
+        attempt: { scope: "probe", startedAt: "2026-11-11T01:33:28.453Z" },
+        assertions: [],
+        coverage: result.notTested && { featureId, ...result.notTested, rawReplyRef: featureId },
+      }).status,
+    ).toBe("probe-todo")
+  }
+
+  const { context } = captureApp(30, 120)
+  const unexpected = new Error("owned history transport failed")
+  context.getScrollback = async () => {
+    throw unexpected
+  }
+  await expect(definition.term!(context)).rejects.toBe(unexpected)
 })
 
 test.each([
