@@ -40,7 +40,7 @@ export default {
     const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
     const routeGroups = new Map<string, typeof data.backends>()
     for (const backend of data.backends) {
-      const routeKey = data.selectedByBackend[backend.name]!.routeKey
+      const routeKey = data.selectedByBackend[backend.name].routeKey
       const columns = routeGroups.get(routeKey) ?? []
       columns.push(backend)
       routeGroups.set(routeKey, columns)
@@ -49,7 +49,7 @@ export default {
     // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
     // target can neither be listed nor have its run data serialized into a page bundle.
     const pages: Array<{ params: Record<string, string> }> = [...routeGroups].map(([routeKey, columns]) => {
-      const b = columns.find((column) => column.name === routeKey) ?? columns[0]!
+      const b = columns.find((column) => column.name === routeKey) ?? columns[0]
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name]
       if (data.selectedByBackend[b.name] && !stats) {

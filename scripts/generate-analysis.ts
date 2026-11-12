@@ -86,6 +86,7 @@ type AnalysisSource = { runId: string; sha256: string; measuredAt: string; suite
 interface TerminalStats {
   name: string
   slug: string
+  analysisId: string
   total: number
   yes: number
   no: number
@@ -336,6 +337,8 @@ function computeTerminalStats(
   return {
     name: termMeta.label,
     slug: termMeta.slug,
+    // Analysis storage distinguishes OS columns while public links retain the released slug.
+    analysisId: termId === data.routeKey ? termMeta.slug : `${termMeta.slug}#${data.os ?? "unknown"}`,
     total,
     yes,
     no,
@@ -1246,9 +1249,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
   // 1. Terminal pages
   for (const [termId, stats] of allStats) {
     const slug = stats.slug
-    const input = resultMap.get(termId)!
-    // Analysis documents may distinguish OS groups; links inside them still use the released slug.
-    const analysisId = termId === input.routeKey ? slug : `${slug}#${input.os ?? "unknown"}`
+    const analysisId = stats.analysisId
     if (slugSeen.has(analysisId)) continue
     slugSeen.add(analysisId)
 

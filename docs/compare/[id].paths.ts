@@ -52,7 +52,13 @@ export default {
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
-        routeKey: data.selectedByBackend[b.name]!.routeKey,
+        routeKey: data.selectedByBackend[b.name].routeKey,
+        appLabel: subjectLabel(
+          catalog,
+          selected.subject.id,
+          selected.subject.kind,
+          catalog[selected.subject.id]?.label,
+        ),
         slug,
         label: meta.label ?? b.name,
         description: meta.description ?? "",
@@ -175,6 +181,7 @@ export default {
         pairs.push({
           params: {
             id: compareId,
+            pairTitle: `${a.appLabel} vs ${b.appLabel}`,
             termAId: a.name,
             termBId: b.name,
             termASlug: a.slug,
@@ -232,16 +239,11 @@ export default {
       byRoutePair.set(pair.params.id, group)
     }
     return [...byRoutePair.values()].map((group) => {
-      const first = group[0]!
+      const first = group[0]
       const names = [...new Set(group.flatMap((pair) => [pair.params.termAId, pair.params.termBId]))]
-      const appLabel = (name: string): string => {
-        const subject = data.selectedByBackend[name]!.selected.subject!
-        return subjectLabel(catalog, subject.id, subject.kind, catalog[subject.id]?.label)
-      }
       return {
         params: {
           ...first.params,
-          pairTitle: `${appLabel(first.params.termAId)} vs ${appLabel(first.params.termBId)}`,
           osBackends: JSON.stringify(names),
           comparisonPairs: JSON.stringify(
             group.map(({ params }) => ({

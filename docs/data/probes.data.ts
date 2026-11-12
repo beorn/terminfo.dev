@@ -227,19 +227,16 @@ export function loadFullProbes(): ProbeData {
   for (const [key, { selected, routeKey, os }] of bySubject) {
     if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
-    if (!routeMeta.has(routeKey)) {
-      routeMeta.set(
-        routeKey,
-        routeKey === id
-          ? { ...meta[id] }
-          : {
-              ...meta[id],
-              label: subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label),
-              slug: routeKey,
-            },
-      )
-    }
-    const original = routeMeta.get(routeKey)!
+    const original =
+      routeMeta.get(routeKey) ??
+      (routeKey === id
+        ? { ...meta[id] }
+        : {
+            ...meta[id],
+            label: subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label),
+            slug: routeKey,
+          })
+    routeMeta.set(routeKey, original)
     meta[key] = {
       ...original,
       ...((systemCounts.get(routeKey) ?? 0) > 1 && {
