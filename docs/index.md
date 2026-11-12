@@ -897,7 +897,7 @@ strips, or mishandles.
 .baseline-backend-name {
   width: 80px;
   flex-shrink: 0;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.95em;
@@ -1137,7 +1137,7 @@ strips, or mishandles.
 
 /* Compact homepage comparison; terminal detail tables keep their own layout. */
 .VPHome .summary-row { display:grid; grid-template-columns:148px 18px 82px minmax(0,1fr) 74px; gap:14px; padding:12px 0; border-bottom:1px solid var(--vp-c-divider); }
-.VPHome .summary-name { width:auto; min-width:0; white-space:nowrap; font-size:14px; }
+.VPHome .summary-name { width:auto; min-width:0; white-space:normal; font-size:14px; }
 .VPHome .summary-platforms { width:18px; }
 .VPHome .summary-version { width:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .VPHome .summary-bar { height:24px; min-width:0; border-radius:4px; }

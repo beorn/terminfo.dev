@@ -10,6 +10,13 @@ import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
+const osColumns = JSON.parse(p.osBackends || '[]').map(name => ({
+  name,
+  label: data.meta[name]?.label ?? name,
+  selected: data.selectedByBackend[name].selected,
+}))
+const multipleSystems = osColumns.length > 2
+const comparisonPairs = JSON.parse(p.comparisonPairs || '[]')
 
 const categories = JSON.parse(p.categories)
 
@@ -48,14 +55,15 @@ for (const cat of categories) {
 <nav class="breadcrumb">
   <span>Compare</span>
   <span class="sep">›</span>
-  <span>{{ p.termALabel }} vs {{ p.termBLabel }}</span>
+  <span>{{ multipleSystems ? p.pairTitle : p.termALabel + ' vs ' + p.termBLabel }}</span>
 </nav>
 
-# {{ p.termALabel }} vs {{ p.termBLabel }}
+# {{ multipleSystems ? p.pairTitle : p.termALabel + ' vs ' + p.termBLabel }}
 
 <p class="compare-subtitle">Side-by-side selected terminal observations</p>
 
-<p v-if="p.comparableScope === 'true'" class="compare-scope">
+<p v-if="multipleSystems" class="compare-scope">Each operating system has its own measurements. Pairwise differences below require matching recorded contexts, suites and methods.</p>
+<p v-else-if="p.comparableScope === 'true'" class="compare-scope">
   Support scores use each frozen catalog. Differences require matching recorded contexts, suites and methods. Other environment differences may remain.
 </p>
 <p v-else class="compare-scope compare-scope--limited">
@@ -64,7 +72,17 @@ for (const cat of categories) {
 
 ## Summary
 
-<div class="compare-summary">
+<div v-if="multipleSystems" class="compare-table-scroll">
+  <table class="compare-table">
+    <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
+    <tbody>
+      <tr><th>Supported / graded features</th><td v-for="column in osColumns" :key="column.name">{{ column.selected.counts.supported }} / {{ column.selected.score.all }}</td></tr>
+      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ run.subject.version }} · {{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div v-else class="compare-summary">
   <div class="compare-card">
     <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
@@ -100,7 +118,7 @@ for (const cat of categories) {
   </div>
 </div>
 
-<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured by the same method</p>
+<p v-if="!multipleSystems && p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured by the same method</p>
 
 ## Feature Comparison
 
@@ -113,21 +131,28 @@ for (const cat of categories) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
+      <template v-if="multipleSystems"><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></template>
+      <template v-else>
       <th :data-tooltip="termTooltip(p.termALabel, p.termADescription, p.termAType, p.termAUrl)">
         <a :href="'/terminals/' + p.termASlug">{{ p.termALabel }}</a>
       </th>
       <th :data-tooltip="termTooltip(p.termBLabel, p.termBDescription, p.termBType, p.termBUrl)">
         <a :href="'/terminals/' + p.termBSlug">{{ p.termBLabel }}</a>
       </th>
+      </template>
     </tr>
   </thead>
   <tbody>
-    <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
+    <tr v-for="f in cat.features" :key="f.id" :class="multipleSystems ? '' : diffClass(f)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
+      <template v-if="multipleSystems"><td v-for="column in osColumns" :key="column.name"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
+        :version="column.selected" :cell="publicResultFor(column.selected, f.id)" /></td></template>
+      <template v-else>
       <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="p.termALabel"
         :version="data.selectedByBackend[p.termAId]?.selected" :cell="publicResultFor(data.selectedByBackend[p.termAId]?.selected, f.id)" /></td>
       <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="p.termBLabel"
         :version="data.selectedByBackend[p.termBId]?.selected" :cell="publicResultFor(data.selectedByBackend[p.termBId]?.selected, f.id)" /></td>
+      </template>
     </tr>
   </tbody>
 </table>
@@ -135,7 +160,7 @@ for (const cat of categories) {
 
 </div>
 
-<div v-if="onlyAFeatures.length > 0">
+<div v-if="!multipleSystems && onlyAFeatures.length > 0">
 
 ## Supported in {{ p.termALabel }}, unsupported in {{ p.termBLabel }}
 
@@ -150,7 +175,7 @@ for (const cat of categories) {
 
 </div>
 
-<div v-if="onlyBFeatures.length > 0">
+<div v-if="!multipleSystems && onlyBFeatures.length > 0">
 
 ## Supported in {{ p.termBLabel }}, unsupported in {{ p.termALabel }}
 
@@ -163,6 +188,15 @@ for (const cat of categories) {
   </li>
 </ul>
 
+</div>
+
+<div v-if="multipleSystems">
+  <section v-for="pair in comparisonPairs" :key="pair.labelA + pair.labelB">
+    <h2>{{ pair.labelA }} vs {{ pair.labelB }}</h2>
+    <p v-if="pair.comparable">{{ pair.differ }} differences among {{ pair.conclusive }} shared features measured by the same method.</p>
+    <p v-else>Recorded contexts differ or are incomplete; no pairwise support difference is claimed.</p>
+    <ul><li v-for="feature in pair.differences" :key="feature.id"><a :href="'/' + feature.category + '/' + feature.slug">{{ feature.name }}</a> · {{ pair.labelA }}: {{ feature.resultA === 'yes' ? 'Supported' : 'Unsupported' }} · {{ pair.labelB }}: {{ feature.resultB === 'yes' ? 'Supported' : 'Unsupported' }}</li></ul>
+  </section>
 </div>
 
 <p class="back-link">

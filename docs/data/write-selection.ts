@@ -14,7 +14,7 @@ import {
   type SelectedContextCell,
   type SelectedProjection,
 } from "./selected-results.ts"
-import { compatibilitySubjects, joinedAppCells } from "./current-results.ts"
+import { compatibilitySubjects, joinedAppCells, type CurrentResult } from "./current-results.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
 
@@ -145,6 +145,7 @@ if (import.meta.main) {
 
 /** One app as the site counts it: every context that measured the same release, joined by rule (@cto d321729a). */
 export interface SelectionFileApp {
+  routeKey: string
   kind: string
   /** The measured app id, the same `terminalId` the per-cell rows carry. */
   id: string
@@ -170,7 +171,7 @@ export interface SelectionFileApp {
  */
 export function appSections(
   projection: SelectedProjection,
-  subjects: ReadonlyMap<string, { contextKey: string }>,
+  subjects: ReadonlyMap<string, CurrentResult>,
   contentDir: string,
 ): Record<string, SelectionFileApp> {
   const joined = joinedAppCells(projection, subjects)
@@ -196,9 +197,10 @@ export function appSections(
       }
     }
     apps[key] = {
+      routeKey: subject.routeKey,
       kind: primary.subject.kind,
       id: primary.subject.id,
-      os: primary.subject.os ?? null,
+      os: subject.os,
       date,
       contexts: app.contexts,
       runs: [...runs].sort(),

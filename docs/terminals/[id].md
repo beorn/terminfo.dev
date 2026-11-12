@@ -13,6 +13,17 @@ import { environmentGroupIds } from '../../packages/probe-defs/src/environment-g
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
 const { params } = useData()
 const p = params.value
+const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
+  const selected = data.selectedByBackend[name].selected
+  return {
+    name,
+    label: data.meta[name]?.label ?? name,
+    selected,
+    bar: aggregateCurrentResults(Object.values(selected.featureResults), selected.catalogIds),
+    sources: Object.values(selected.sources),
+  }
+})
+const multipleSystems = osColumns.length > 1
 
 const categories = p.categories ? JSON.parse(p.categories) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
@@ -170,7 +181,20 @@ const breadcrumbParent = (() => {
 
 <p v-if="!defaultRun && !isHistorical">No result is selected for the main {{ p.terminalType === 'lib' ? 'library' : p.terminalType === 'mux' ? 'multiplexer' : 'application' }} table.</p>
 
-<div v-if="measuredBar" class="score-card">
+<div v-if="multipleSystems" class="score-card">
+  <h2 class="results-heading">Feature support</h2>
+  <table class="feature-table">
+    <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
+    <tbody>
+      <tr><th>Supported share</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }}</td></tr>
+      <tr><th>Coverage</th><td v-for="column in osColumns" :key="column.name">{{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
+      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ [...new Set(column.sources.map(run => run.subject.version))].join(', ') }}</td></tr>
+      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in column.sources" :key="run.runId">{{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div v-if="measuredBar && !multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
@@ -189,7 +213,7 @@ const breadcrumbParent = (() => {
   <p v-else>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
 </div>
 
-<details v-if="selectedRun" class="run-context">
+<details v-if="selectedRun && !multipleSystems" class="run-context">
   <summary>Test environment and recorded versions</summary>
 
   <p>Each feature retains its original run, version, suite and measurement date. Results from different suites are not directly comparable.</p>
@@ -214,7 +238,7 @@ const breadcrumbParent = (() => {
   </dl>
 </details>
 
-<details v-if="p.analysis && !runSha" class="analysis">
+<details v-if="p.analysis && !runSha && !multipleSystems" class="analysis">
   <summary>Analysis · {{ p.analysisDate }}</summary>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
@@ -230,16 +254,22 @@ const breadcrumbParent = (() => {
   <thead>
     <tr>
       <th>Feature</th>
-      <th>Support</th>
-      <th>Notes</th>
+      <template v-if="multipleSystems"><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></template>
+      <template v-else><th>Support</th><th>Notes</th></template>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
+      <template v-if="multipleSystems">
+        <td v-for="column in osColumns" :key="column.name" class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
+          :version="column.selected" :cell="publicResultFor(column.selected, f.id)" display="text" /></td>
+      </template>
+      <template v-else>
       <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="p.backendName"
         :version="selectedRun" :cell="publicResultFor(selectedRun, f.id)" display="text" /></td>
       <td class="note-cell">{{ featureNote(f.id) }}</td>
+      </template>
     </tr>
   </tbody>
 </table>

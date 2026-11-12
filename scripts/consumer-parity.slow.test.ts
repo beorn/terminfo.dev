@@ -347,7 +347,12 @@ function addFixtureSubject(
   run.sha256 = createHash("sha256").update(run.runId).digest("hex")
   Object.assign(projection, recompose(projection, [run]))
   const selected = requiredContext(projection, kind, id)
-  return { contextKey: selected.contextKey, selected }
+  return {
+    routeKey: kind === "lib" && id === "ghostty" ? "headless-ghostty" : id,
+    os: selected.subject?.os ?? null,
+    contextKey: selected.contextKey,
+    selected,
+  }
 }
 
 function analysisSources(context: SelectedContextSummary) {
@@ -493,14 +498,21 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(keys(v3.history),[]);
         assert.ok(Object.values(analyses).every(entry=>!entry.sources?.length));
       }
-      for (const [key,{selected}] of compatibility) {
+      for (const [key,{selected,routeKey}] of compatibility) {
         assert.deepEqual(matrix.stats[key].score,selected.score);
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
-        const page=pages.find(page=>page.params.backendId===key);
-        assert.equal(page.params.total,String(selected.score.all));
-        assert.equal(page.params.yes,String(selected.score.supported));
+        const matchingPages=pages.filter(page=>JSON.parse(page.params.osBackends||"[]").includes(key));
+        assert.equal(matchingPages.length,1,"each OS column belongs to one released app page");
+        const page=matchingPages[0];
+        assert.equal(page.params.routeKey,routeKey);
+        // A shared route retains its legacy primary params; its other OS columns read the
+        // same matrix checked above. They must not create duplicate public routes.
+        if (page.params.backendId===key) {
+          assert.equal(page.params.total,String(selected.score.all));
+          assert.equal(page.params.yes,String(selected.score.supported));
+        }
       }
       if (!v3.contextCount) {
         assert.deepEqual(site.stats,{});
@@ -765,7 +777,7 @@ describe("selected-run consumer parity", () => {
     (rawStatus) => {
       const projection = currentResults.loadCurrentResults("").projection
       const selected = requiredContext(projection, "term", "kitty")
-      const entry = { contextKey: selected.contextKey, selected }
+      const entry = { routeKey: "kitty", os: selected.subject?.os ?? null, contextKey: selected.contextKey, selected }
       for (const [id, cell] of Object.entries(selected.cells)) {
         cell.result.status = "supported"
         if (cell.featureResult) {
@@ -951,7 +963,12 @@ describe("selected-run consumer parity", () => {
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
-      const targets = new Map([["kitty", { contextKey: context.contextKey, selected: context }]])
+      const targets = new Map([
+        [
+          "kitty",
+          { routeKey: "kitty", os: context.subject?.os ?? null, contextKey: context.contextKey, selected: context },
+        ],
+      ])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
       // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
@@ -1615,6 +1632,63 @@ it("does not name a subject with no current run on the site", () => {
   } finally {
     probes?.mockRestore()
     analysis?.mockRestore()
+    selection.mockRestore()
+    warning.mockRestore()
+  }
+})
+
+it("uses explicit route and OS facts when display-column keys are opaque", () => {
+  // #33854, CTO condition 1: renaming a display column must not rename the released URL or hide an OS.
+  // The older route tests used app IDs as column keys, so parsing or reusing the key looked correct.
+  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const original = requiredContext(projection, "term", "kitty")
+  const source = Object.values(original.cells)[0]?.run
+  if (!source) throw new Error("Missing original app fixture")
+  const linux = structuredClone(source)
+  linux.subject = { ...linux.subject, os: "linux" }
+  linux.runId += "-linux-os-column"
+  linux.sha256 = createHash("sha256").update(linux.runId).digest("hex")
+  Object.assign(projection, recompose(projection, [linux]))
+  const subjects = currentResults.compatibilitySubjects(projection, "")
+  const opaque = new Map([...subjects.values()].map((entry, index) => [`opaque-column-${index}`, entry]))
+  const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+  const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(opaque)
+  // This deliberately small corpus omits other catalog subjects; retain and check its expected warnings.
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+  let probes: ReturnType<typeof vi.spyOn> | undefined
+  let analysis: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    const data = loadFullProbes()
+    const columns = Object.entries(data.selectedByBackend).filter(
+      ([, entry]) => entry.selected.subject?.id === "kitty" && entry.selected.subject.kind === "term",
+    )
+    expect(columns.map(([, entry]) => entry.os).sort()).toEqual(["linux", "macos"])
+    for (const [name] of columns) expect(data.meta[name]?.slug).toBe("kitty")
+    probes = vi.spyOn(probeData, "loadProbes").mockReturnValue(data)
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generateAnalysis())
+    const pages = terminalPaths.paths().filter((page) => page.params.id === "kitty")
+    expect(pages).toHaveLength(1)
+    expect(new Set(JSON.parse(pages[0]!.params.osBackends!) as string[])).toEqual(
+      new Set(columns.map(([name]) => name)),
+    )
+    const compare = comparePaths.paths()
+    expect(new Set(compare.map((page) => page.params.id)).size).toBe(compare.length)
+    expect(
+      compare.some((page) => {
+        const backends = JSON.parse(page.params.osBackends) as string[]
+        return columns.every(([name]) => backends.includes(name))
+      }),
+    ).toBe(true)
+    expect(
+      warning.mock.calls
+        .flat()
+        .every((message) => /^Warning: Terminal '.+' has no stored current runs$/.test(String(message))),
+    ).toBe(true)
+    expect(warning).not.toHaveBeenCalledWith("Warning: Terminal 'kitty' has no stored current runs")
+  } finally {
+    analysis?.mockRestore()
+    probes?.mockRestore()
+    targets.mockRestore()
     selection.mockRestore()
     warning.mockRestore()
   }

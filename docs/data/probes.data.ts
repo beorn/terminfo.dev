@@ -219,13 +219,29 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  // Matrix metadata follows the selected contexts and their recorded physical subjects.
-  for (const [key, { selected }] of bySubject) {
+  const systemCounts = new Map<string, number>()
+  const routeMeta = new Map<string, BackendMeta>()
+  const platformLabels = loadPlatformLabels()
+  for (const { routeKey } of bySubject.values()) systemCounts.set(routeKey, (systemCounts.get(routeKey) ?? 0) + 1)
+  // Columns have their own explicit OS, but every OS of one app links to its released app route.
+  for (const [key, { selected, routeKey, os }] of bySubject) {
     if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
-    if (key !== id) {
-      const label = subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label)
-      meta[key] = { ...meta[id], label, slug: key }
+    const original =
+      routeMeta.get(routeKey) ??
+      (routeKey === id
+        ? { ...meta[id] }
+        : {
+            ...meta[id],
+            label: subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label),
+            slug: routeKey,
+          })
+    routeMeta.set(routeKey, original)
+    meta[key] = {
+      ...original,
+      ...((systemCounts.get(routeKey) ?? 0) > 1 && {
+        label: `${original.label ?? id} (${os === null ? "OS not recorded" : (platformLabels[os] ?? os)})`,
+      }),
     }
   }
   const annotations = loadAnnotations()
@@ -318,7 +334,7 @@ export function loadFullProbes(): ProbeData {
     baselineStats: {},
     categoryLabels: Object.fromEntries(Object.entries(categoryCatalog).map(([id, value]) => [id, value.label])),
     categoryOrder: orderedCategoryIds(categoryCatalog),
-    platformLabels: loadPlatformLabels(),
+    platformLabels,
     generated,
     selected: published.projection,
     selectedByBackend,

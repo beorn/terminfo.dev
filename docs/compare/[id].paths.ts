@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadFeatures } from "@terminfo/catalog"
+import { loadFeatures, loadTerminals, subjectLabel } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicContextSummary } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
@@ -40,17 +40,26 @@ export default {
   paths() {
     const data = loadProbes()
     const featuresMeta = loadFeatures(contentDir)
+    const catalog = loadTerminals(contentDir)
 
     // Build terminal info from reviewed selected runs.
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
-      const selected = data.selectedByBackend[b.name]?.selected
-      if (!selected?.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
+      const current = data.selectedByBackend[b.name]
+      const selected = current?.selected
+      if (!current || !selected?.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
       const states = data.selectedByBackend[b.name]?.states
       if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
+        routeKey: current.routeKey,
+        appLabel: subjectLabel(
+          catalog,
+          selected.subject.id,
+          selected.subject.kind,
+          catalog[selected.subject.id]?.label,
+        ),
         slug,
         label: meta.label ?? b.name,
         description: meta.description ?? "",
@@ -97,6 +106,7 @@ export default {
     const pairs = []
     for (const [index, left] of terminals.entries()) {
       for (const right of terminals.slice(index + 1)) {
+        if (left.routeKey === right.routeKey) continue
         // Always put alphabetically-first slug as A for deterministic URLs
         const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
@@ -172,6 +182,7 @@ export default {
         pairs.push({
           params: {
             id: compareId,
+            pairTitle: `${a.appLabel} vs ${b.appLabel}`,
             termAId: a.name,
             termBId: b.name,
             termASlug: a.slug,
@@ -221,6 +232,40 @@ export default {
       }
     }
 
-    return pairs
+    // One released comparison URL contains every OS column of the two apps, not duplicate pages.
+    const byRoutePair = new Map<string, { first: (typeof pairs)[number]; pairs: typeof pairs }>()
+    for (const pair of pairs) {
+      const group = byRoutePair.get(pair.params.id)
+      if (group) group.pairs.push(pair)
+      else byRoutePair.set(pair.params.id, { first: pair, pairs: [pair] })
+    }
+    return [...byRoutePair.values()].map(({ first, pairs: group }) => {
+      const names = [...new Set(group.flatMap((pair) => [pair.params.termAId, pair.params.termBId]))]
+      return {
+        params: {
+          ...first.params,
+          osBackends: JSON.stringify(names),
+          comparisonPairs: JSON.stringify(
+            group.map(({ params }) => ({
+              labelA: params.termALabel,
+              labelB: params.termBLabel,
+              comparable: params.comparableScope === "true",
+              conclusive: params.jointConclusive,
+              differ: params.differ,
+              differences: (JSON.parse(params.categories) as typeof categories).flatMap((category) =>
+                category.features.filter(
+                  (feature) =>
+                    "comparable" in feature &&
+                    feature.comparable &&
+                    "resultA" in feature &&
+                    "resultB" in feature &&
+                    feature.resultA !== feature.resultB,
+                ),
+              ),
+            })),
+          ),
+        },
+      }
+    })
   },
 }
