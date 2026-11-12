@@ -423,7 +423,7 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
 
   it("gives the evidence cell the manual-by-design words only for a stored PROBE TODO", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
-    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status, derived.value)")
+    expect(cell).toContain("evidenceStatus(props.featureId, joined.value?.status ?? currentResult.value?.status, derived.value)")
   })
 
   it("renders a stored supported environment row as Supported, never NOT MEASURED (D1)", () => {
