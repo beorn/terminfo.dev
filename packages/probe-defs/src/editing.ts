@@ -19,6 +19,7 @@ import {
   sentinelNegativeResult,
   sentinelSilenceResult,
   unmeasuredCellResult,
+  completeFramePair,
 } from "./helpers.ts"
 
 // DECRQCRA's checksum must be arithmetic over the requested cells. An absolute sum is not portable
@@ -744,6 +745,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           )
           if (!invalid) return null
           const target = captures.findLast((frame) => frame.role === "target")
+          const pair = completeFramePair(captures.slice(-3))
           return {
             pass: false,
             observation: {
@@ -751,7 +753,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               reason: "insufficient-evidence",
               assertionType: "screenshot",
               screenshotRef: target?.ref ?? invalid.ref,
-              ...(target ? { frames: captures.slice(-3) } : {}),
+              ...(pair ? { frames: pair } : {}),
               note: `editing.decsace: ${invalid.label} is pixels without the required pixel cells digest and rectangle`,
             },
           }

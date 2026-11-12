@@ -304,6 +304,7 @@ function ligatureApp(
     text?: boolean
     moved?: boolean
     lagPaint?: boolean
+    neverPaint?: boolean
   } = {},
 ) {
   const app = captureApp(3, 80)
@@ -326,6 +327,8 @@ function ligatureApp(
   }
   app.context.write = (bytes) => {
     app.writes.push(bytes)
+    // A subject that accepts bytes and paints nothing is the shortest path to the paint-witness return.
+    if (options.neverPaint) return
     if (options.lagPaint) pending.push(bytes)
     else surface.feed(bytes)
   }
@@ -388,29 +391,41 @@ test.each([
   ["neighbour bleed without shaping", { bleed: true }, "inconclusive"],
   ["neighbour bleed even with shaping", { bleed: true, pair: 3 }, "inconclusive"],
   ["blind positive control", { blind: true }, "inconclusive"],
+  // #33639: the first paint-witness return has captured one frame. It must cite no frames, never a lone one.
+  ["never paints, so no paint witness arrives", { neverPaint: true }, "inconclusive"],
   ["text cells cannot show shaping", { text: true }, "inconclusive"],
   ["target crop moved", { moved: true }, "inconclusive"],
-] as const)("extensions.font-ligatures: %s", async (_name, options, outcome) => {
-  const { context, frames, writes } = ligatureApp(options)
-  const result = await find("extensions.font-ligatures").term!(context)
-  expect(result.observation?.outcome ?? "inconclusive").toBe(outcome)
-  expect(result.pass).toBe(outcome === "supported")
-  if (outcome !== "inconclusive") {
-    expect(JSON.parse(result.response!)).toMatchObject({ font: "font" in options ? options.font : "unreported" })
-    expect(result.assertions).toHaveLength(1)
-    const target = frames.filter((frame) => frame.role === "target")
-    expect(target).toHaveLength(10)
-    expect(target.map((frame) => frame.regionRectangle?.x)).toEqual([16, 24, 40, 48, 64, 72, 88, 96, 112, 120])
-    expect(target.every((frame) => frame.regionRectangle?.width === 8 && frame.regionRectangle.height === 16)).toBe(
-      true,
-    )
-    expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(false)
-  }
-  if (!("text" in options)) {
-    expect(writes.at(-1)).toContain("\x1b[2J")
-    expect(writes.some((write) => write.includes("\x1b[?25h"))).toBe(true)
-  }
-})
+] as const)(
+  "extensions.font-ligatures: %s",
+  async (_name, options, outcome) => {
+    const { context, frames, writes } = ligatureApp(options)
+    const result = await find("extensions.font-ligatures").term!(context)
+    expect(result.observation?.outcome ?? "inconclusive").toBe(outcome)
+    expect(result.pass).toBe(outcome === "supported")
+    // The run parser refuses any list that is not a control/target pair, so a cited list is always complete.
+    const cited = result.observation?.frames
+    if (cited !== undefined) {
+      expect(cited.length).toBeGreaterThanOrEqual(2)
+      expect(new Set(cited.map((frame) => frame.role))).toEqual(new Set(["control", "target"]))
+    }
+    if (outcome !== "inconclusive") {
+      expect(JSON.parse(result.response!)).toMatchObject({ font: "font" in options ? options.font : "unreported" })
+      expect(result.assertions).toHaveLength(1)
+      const target = frames.filter((frame) => frame.role === "target")
+      expect(target).toHaveLength(10)
+      expect(target.map((frame) => frame.regionRectangle?.x)).toEqual([16, 24, 40, 48, 64, 72, 88, 96, 112, 120])
+      expect(target.every((frame) => frame.regionRectangle?.width === 8 && frame.regionRectangle.height === 16)).toBe(
+        true,
+      )
+      expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(false)
+    }
+    if (!("text" in options)) {
+      expect(writes.at(-1)).toContain("\x1b[2J")
+      expect(writes.some((write) => write.includes("\x1b[?25h"))).toBe(true)
+    }
+  },
+  20_000,
+)
 
 test("extensions.font-ligatures leaves missing pixel geometry unresolved", async () => {
   const app = ligatureApp()
