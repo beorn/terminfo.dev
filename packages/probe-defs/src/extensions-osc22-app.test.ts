@@ -134,6 +134,10 @@ test("a silent OSC 22 query says why it stays open, per subject kind", async () 
     const result = await definition().term!({ ...input.source, mux })
     expect(result.notTested?.noObservable, mux).toBe(osc22SilentMultiplexer(mux))
     expect(result.notTested?.noObservable, mux).toContain(`belongs to the outer terminal, not ${mux}`)
+    // 33633 (@cto 67b6002f): PROBE TODO, never a new Untestable reason; the note names what was sent and the deciding row.
+    expect(result.notTested?.noObservable, mux).toContain(`sent the OSC 22 selected-shape query (OSC 22 ; ?__current__) and ${mux} gave no reply`)
+    expect(result.notTested?.noObservable, mux).toContain("the outer terminal's own OSC 22 pointer row is the observer that decides it")
+    expect(result.tests, mux).toBeUndefined()
     expect(result.observation?.outcome, mux).toBeUndefined()
     expect(input.writes, mux).toEqual([])
   }

@@ -1122,7 +1122,15 @@ test.each([
       ])
     } else if (outcome === null) {
       expect(result.observation).toBeUndefined()
-      expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: "no DECRPM reply" }])
+      // 33633 (@cto 67b6002f): synchronized output's missing reply says what was sent and that no observer is known
+      // yet; the other modes keep the bare reason. The earlier row only checked the bare text for every mode.
+      const reason =
+        mode !== 2026
+          ? "no DECRPM reply"
+          : snapshot === null
+            ? "This probe sent DECRQM CSI ? 2026 $ p and got no DECRPM reply, so it did not set the mode; a missing reply decides nothing. No observer is known yet."
+            : "This probe sent DECRQM CSI ? 2026 $ p (reply Ps 2), then DECSET ?2026h and the same query, which got no DECRPM reply; a missing reply decides nothing. No observer is known yet."
+      expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason }])
     } else {
       expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
       expect(result.note).toContain(facet)

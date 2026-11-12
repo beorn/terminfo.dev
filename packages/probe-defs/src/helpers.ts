@@ -1825,6 +1825,19 @@ export function syncOutputCaptureTooSlow(settleMs: number): string {
 }
 
 /**
+ * No DECRPM reply on synchronized output (33633, @cto 67b6002f): a missing reply decides nothing, so the row stays PROBE
+ * TODO and says what the run sent and that no observer is known yet. This read does not tell a timeout from a fence
+ * that arrived without a reply, so the note claims no silence.
+ */
+export function syncOutputNoReply(snapshot: number | null): string {
+  const sent =
+    snapshot === null
+      ? "This probe sent DECRQM CSI ? 2026 $ p and got no DECRPM reply, so it did not set the mode"
+      : `This probe sent DECRQM CSI ? 2026 $ p (reply Ps ${String(snapshot)}), then DECSET ?2026h and the same query, which got no DECRPM reply`
+  return `${sent}; a missing reply decides nothing. No observer is known yet.`
+}
+
+/**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
  */
@@ -1853,11 +1866,12 @@ export function decrpmModeProbe(
       }
       const response = JSON.stringify({ snapshot, ...(snapshot === 2 ? { afterSet: ps } : {}) })
       if (ps === null) {
+        const reason = modeNum === 2026 ? syncOutputNoReply(snapshot) : "no DECRPM reply"
         return {
           pass: false,
           response,
-          note: "no DECRPM reply",
-          tests: [{ id: "criterion", status: "probe-todo", reason: "no DECRPM reply" }],
+          note: reason,
+          tests: [{ id: "criterion", status: "probe-todo", reason }],
         }
       }
       if (modeNum === 2026 && snapshot === 2 && ps === 2) {

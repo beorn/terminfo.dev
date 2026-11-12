@@ -900,7 +900,7 @@ Unsupported without mutation. Snapshot Ps 2 sends DECSET, queries again and rest
 Ps 1/3 is Supported. For synchronized output 2026, a retained Ps 2 is PROBE INVALID:
 the reset reply cannot establish an enabled update, and rendered effect remains unmeasured.
 For the other three modes, a retained Ps 2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
-No reply is PROBE TODO "no DECRPM reply"; an attempted set still restores the reset snapshot.
+No reply is PROBE TODO "no DECRPM reply"; for synchronized output 2026 the note says what was sent and that no observer is known yet (33633). An attempted set still restores the reset snapshot.
 These callbacks require the existing disposable-terminal authority. Their limitation is
 "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured".
 Every other mode keeps the default recognition-only path.
