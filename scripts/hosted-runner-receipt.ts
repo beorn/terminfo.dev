@@ -9,6 +9,7 @@ import { sampleHostedIdentity, parseDisposableReceipt } from "../packages/termin
 import {
   ALACRITTY_VERSION_PATTERN,
   MAC_ALACRITTY_LAUNCH_DEVIATION,
+  MAC_WARP_LAUNCH_DEVIATION,
   WINDOWS_MESA_RENDERER_DLLS,
   parseAppLaunchReceipt,
   transformInvocation,
@@ -169,6 +170,30 @@ function measureAppLaunch(): Record<string, unknown> {
     executableSha256: hashBytes(`the ${appId} executable`, executablePath),
     sourceArtifact,
   }
+}
+
+/**
+ * 33000: Mac Warp's launch deviation, stated only when this job's own preference step recorded SnackbarEnabled
+ * read back as the string false. The step writes its record on every Warp launch, so a missing, unprepared or
+ * unconfirmed record refuses the receipt by name instead of publishing a run without its deviation.
+ */
+function warpLaunchDeviation(setupPath: string): string {
+  let setup: { prepared?: unknown; commands?: Array<{ label?: unknown; status?: unknown; stdout?: unknown }> }
+  try {
+    setup = JSON.parse(readFileSync(setupPath, "utf8")) as typeof setup
+  } catch (cause) {
+    throw new Error(`Hosted receipt appLaunch: cannot read Warp's preference record ${setupPath}`, { cause })
+  }
+  if (setup.prepared !== true) throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} is not prepared`)
+  const readback = Array.isArray(setup.commands)
+    ? setup.commands.find((command) => command.label === "snackbar-readback")
+    : undefined
+  if (!readback || readback.status !== 0 || typeof readback.stdout !== "string" || readback.stdout.trim() !== "false") {
+    throw new Error(
+      `Hosted receipt appLaunch: Warp's preference record ${setupPath} does not show SnackbarEnabled read back as false`,
+    )
+  }
+  return MAC_WARP_LAUNCH_DEVIATION
 }
 
 /** Measure Alacritty's version on Windows from the launched executable's own `--version` output.
@@ -574,6 +599,9 @@ async function main(): Promise<void> {
     process.stderr.write(
       `appLaunch argv absent: ${os === "Linux" ? "Linux has no app launch receipt" : `${appId} is a wrapper or an unpromoted hosted launch route`}\n`,
     )
+    if (os === "macOS" && appId === "warp" && appLaunch) {
+      appLaunch = { ...appLaunch, launchDeviation: warpLaunchDeviation(join(dirname(receiptPath), "warp-onboarding-setup.json")) }
+    }
   }
   const bytes =
     JSON.stringify(

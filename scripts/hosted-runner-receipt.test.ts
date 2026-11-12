@@ -15,7 +15,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { expect, test } from "vitest"
-import { MAC_ALACRITTY_LAUNCH_DEVIATION } from "../packages/run-parser/src/app-launch.ts"
+import { MAC_ALACRITTY_LAUNCH_DEVIATION, MAC_WARP_LAUNCH_DEVIATION } from "../packages/run-parser/src/app-launch.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 test("the actual hosted producer self-parses measured bytes and refuses incomplete or changed handoffs", async () => {
@@ -278,8 +278,24 @@ console.log(value);
       // Deliberately retain another app's valid cask archive: it must not enter this receipt.
       env.BREW_CASK_PATH = weztermInstaller
       const editorReceipt = join(dir, `${executableName}-host-measured.json`)
+      if (appId === "warp") {
+        // 33000: Warp's receipt states its one non-stock setting only from this job's own preference record,
+        // and refuses by name when that record is missing or does not show SnackbarEnabled read back as false.
+        const setupPath = join(dir, "warp-onboarding-setup.json")
+        await expect(run("emit", start, join(dir, "warp-no-setup.json"))).rejects.toThrow(
+          /cannot read Warp's preference record/,
+        )
+        const record = (stdout: string) =>
+          JSON.stringify({ prepared: true, commands: [{ label: "snackbar-readback", status: 0, stdout }] })
+        await writeFile(setupPath, record("true\n"))
+        await expect(run("emit", start, join(dir, "warp-header-on.json"))).rejects.toThrow(
+          /does not show SnackbarEnabled read back as false/,
+        )
+        await writeFile(setupPath, record("false\n"))
+      }
       await run("emit", start, editorReceipt)
       expect(parseDisposableReceipt(await readFile(editorReceipt, "utf8")).appLaunch).toEqual({
+        ...(appId === "warp" && { launchDeviation: MAC_WARP_LAUNCH_DEVIATION }),
         bundlePath: realpathSync(editorBundle),
         cfBundleShortVersionString: version,
         cfBundleVersion: build,

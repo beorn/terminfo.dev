@@ -542,6 +542,13 @@ jobs:
               ["restore-write", ["/usr/bin/defaults", "write", domain, "RestoreSession", "-string", "false"]],
               ["restore-readback", ["/usr/bin/defaults", "read", domain, "RestoreSession"]],
               ["restore-type", ["/usr/bin/defaults", "read-type", domain, "RestoreSession"]],
+              // 33000 (@cto 6d29aed9, da23ce0a): the Warp sticky command header (its "snackbar") covers grid rows 1-3
+              // while probes run. SnackbarEnabled is the preference key of that setting (general.snackbar_enabled), read
+              // from the Warp binary; appLaunch.launchDeviation records this override from the readback below.
+              ["snackbar-before", ["/usr/bin/defaults", "read", domain, "SnackbarEnabled"]],
+              ["snackbar-write", ["/usr/bin/defaults", "write", domain, "SnackbarEnabled", "-string", "false"]],
+              ["snackbar-readback", ["/usr/bin/defaults", "read", domain, "SnackbarEnabled"]],
+              ["snackbar-type", ["/usr/bin/defaults", "read-type", domain, "SnackbarEnabled"]],
             ]) {
               const started = new Date().toISOString();
               const maxBuffer = label === "processes" ? 1024 * 1024 : 65536;
@@ -553,7 +560,7 @@ jobs:
               if (result.error || result.signal) throw new Error(label + ": " + (result.error?.message ?? result.signal));
               if (label === "before") {
                 if (result.status !== 1 || !stderr.includes("does not exist")) throw new Error("before: expected a fresh absent key, see raw command result");
-              } else if (label === "migration-marker" || label === "restore-before") {
+              } else if (label === "migration-marker" || label === "restore-before" || label === "snackbar-before") {
                 if (result.status !== 0 && !(result.status === 1 && stderr.includes("does not exist"))) throw new Error(label + ": command exited " + result.status);
               } else if (result.status !== 0) throw new Error(label + ": command exited " + result.status);
               if (label === "bundle") {
@@ -562,8 +569,8 @@ jobs:
               }
               if (label === "processes" && /\/Warp[^/]*\.app\/Contents\/MacOS\//.test(stdout)) throw new Error("processes: Warp is already running before preparation");
               if (label === "readback" && stdout.trim() !== "true") throw new Error("readback: expected exact string true");
-              if (label === "restore-readback" && stdout.trim() !== "false") throw new Error("restore-readback: expected exact string false");
-              if ((label === "type" || label === "restore-type") && stdout.trim() !== "Type is string") throw new Error(label + ": expected string preference");
+              if ((label === "restore-readback" || label === "snackbar-readback") && stdout.trim() !== "false") throw new Error(label + ": expected exact string false");
+              if ((label === "type" || label === "restore-type" || label === "snackbar-type") && stdout.trim() !== "Type is string") throw new Error(label + ": expected string preference");
             }
             setup.prepared = true;
           } catch (error) {
