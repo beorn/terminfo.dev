@@ -37,7 +37,7 @@ import {
   type ReceiptTarget,
 } from "../terminfo.dev/src/disposable-receipt.ts"
 import { verifySuiteManifest } from "./suite-manifest.ts"
-import { probeSuiteSnapshot } from "./versions.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const CONTENT_DIR = join(ROOT, "content")
@@ -455,6 +455,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** The one path and byte form of a committed suite manifest: placement and placeSuiteManifest both write this. */
+function suiteManifestFile(manifest: ProbeSuiteManifest, contentDir: string): { path: string; bytes: Buffer } {
+  return {
+    path: join(contentDir, "suites", `${manifest.probeHash}.json`),
+    bytes: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
+  }
+}
+
+/**
+ * Write this tree's suite manifest into content/suites through placement's own writer (33109, @cto 0e10dc13,
+ * d05d6b32). A suite's manifest is a pure function of the tree that defines it; scripts/write-suite-manifest.ts runs
+ * this on main after a definition batch's final merge, so working runs at main's suite stay readable without anyone
+ * placing a run. Identical existing bytes are a no-op ("existing"); different bytes under the same suite id refuse.
+ */
+export function placeSuiteManifest(
+  contentDir: string = CONTENT_DIR,
+  root: string = ROOT,
+): { suiteId: string; path: string; outcome: "created" | "existing" } {
+  const snapshot = probeSuiteSnapshot(root)
+  const file = suiteManifestFile(derivedSuiteManifest(snapshot), contentDir)
+  verifySuiteManifest(file.path, snapshot, file.bytes.toString("utf8"))
+  const outcome = placeExclusive(file.path, file.bytes, "collection suite manifest")
+  return { suiteId: snapshot.probeHash, path: file.path, outcome }
+}
+
 /** Place one collected record after all factual checks, using its own subject and run identity. */
 export function placeCollectedRun(
   source: string,
@@ -467,11 +492,11 @@ export function placeCollectedRun(
   if (!isRecord(parsed) || parsed.schemaVersion !== 4) {
     throw new Error(`${source}: collection placement requires a current schema-4 record`)
   }
-  const manifestBytes = Buffer.from(`${JSON.stringify(trustedSuite, null, 2)}\n`, "utf8")
+  const manifestFile = suiteManifestFile(trustedSuite, contentDir)
   const manifest = verifySuiteManifest(
     `${source}: trusted collection suite`,
     probeSuiteSnapshot(ROOT),
-    manifestBytes.toString("utf8"),
+    manifestFile.bytes.toString("utf8"),
   )
   if (parsed.probeHash !== manifest.probeHash) {
     throw new Error(
@@ -504,11 +529,10 @@ export function placeCollectedRun(
     ...preflightArtifacts(source, loaded.screenshotRefs, contentDir, "screenshot"),
     ...preflightArtifacts(source, loaded.textSnapshotRefs, contentDir, "text-snapshot"),
   ]
-  const manifestPath = join(contentDir, "suites", `${manifest.probeHash}.json`)
   const destination = join(contentDir, RUN_DIRS[kind], `${id}-${version}-${os}-${loaded.runId}.json`)
-  preflightDestination(manifestPath, manifestBytes, "collection suite manifest")
+  preflightDestination(manifestFile.path, manifestFile.bytes, "collection suite manifest")
   preflightDestination(destination, bytes, "collected run")
-  placeExclusive(manifestPath, manifestBytes, "collection suite manifest")
+  placeExclusive(manifestFile.path, manifestFile.bytes, "collection suite manifest")
   for (const artifact of artifacts) placeExclusive(artifact.destination, artifact.bytes, "collected artifact")
   placeRun(destination, text)
   return destination
