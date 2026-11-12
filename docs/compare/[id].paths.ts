@@ -45,14 +45,15 @@ export default {
     // Build terminal info from reviewed selected runs.
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
-      const selected = data.selectedByBackend[b.name]?.selected
-      if (!selected?.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
+      const current = data.selectedByBackend[b.name]
+      if (!current?.selected.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
+      const selected = current.selected
       const states = data.selectedByBackend[b.name]?.states
       if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
-        routeKey: data.selectedByBackend[b.name].routeKey,
+        routeKey: current.routeKey,
         appLabel: subjectLabel(
           catalog,
           selected.subject.id,
@@ -232,14 +233,13 @@ export default {
     }
 
     // One released comparison URL contains every OS column of the two apps, not duplicate pages.
-    const byRoutePair = new Map<string, typeof pairs>()
+    const byRoutePair = new Map<string, { first: (typeof pairs)[number]; pairs: typeof pairs }>()
     for (const pair of pairs) {
-      const group = byRoutePair.get(pair.params.id) ?? []
-      group.push(pair)
-      byRoutePair.set(pair.params.id, group)
+      const group = byRoutePair.get(pair.params.id)
+      if (group) group.pairs.push(pair)
+      else byRoutePair.set(pair.params.id, { first: pair, pairs: [pair] })
     }
-    return [...byRoutePair.values()].map((group) => {
-      const first = group[0]
+    return [...byRoutePair.values()].map(({ first, pairs: group }) => {
       const names = [...new Set(group.flatMap((pair) => [pair.params.termAId, pair.params.termBId]))]
       return {
         params: {

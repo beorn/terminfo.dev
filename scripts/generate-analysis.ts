@@ -1248,7 +1248,6 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
   // 1. Terminal pages
   for (const [termId, stats] of allStats) {
-    const slug = stats.slug
     const analysisId = stats.analysisId
     if (slugSeen.has(analysisId)) continue
     slugSeen.add(analysisId)
