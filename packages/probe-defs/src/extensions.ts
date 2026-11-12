@@ -341,6 +341,15 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
 const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
 
 /**
+ * What one sibling mode query measured: a readable DECRPM reply, a measured fence with nothing
+ * before it, or neither (a timeout, or bytes we could not read). Only the first is an answer.
+ */
+function osc5522ControlOutcome(control: TerminalQueryOutcome): "reply" | "fenced-silence" | "other" {
+  if (replyFrame(control) !== null) return "reply"
+  return sentinelSilenceResult(control, "DECRPM prerequisite reply") !== null ? "fenced-silence" : "other"
+}
+
+/**
  * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569). When every sibling
  * is silent too, a library leaves recognition untested (PROBE TODO), and a terminal has no report to read, so it is
  * Untestable through the one declared route, its reason built from this run's silent control query (#32582, @cto
@@ -350,7 +359,7 @@ const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 10
 function osc5522AfterSiblings(
   replier: "library" | "terminal",
   reply: TerminalQueryOutcome,
-  controls: { mode: number; raw: string; answered: boolean }[],
+  controls: { mode: number; raw: string; outcome: "reply" | "fenced-silence" | "other" }[],
   allSilent: boolean,
 ): ProbeCallbackResult {
   const evidence = { detection: reply.raw, decrpmSiblings: controls }
@@ -367,14 +376,22 @@ function osc5522AfterSiblings(
       "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
     return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
   }
-  const silentControls = controls.filter((control) => !control.answered)
+  const answered = controls.filter((control) => control.outcome === "reply").map(({ mode }) => mode)
+  const silent = controls.filter((control) => control.outcome === "fenced-silence")
+  // "other" is a control that neither answered nor was measured silent: a timeout, or bytes the
+  // reporter sent that we could not read. Counting those as answers would put a claim in the note
+  // that the run did not see (@dev/15 on d35467098), so they are named for what they are.
+  const other = controls.filter((control) => control.outcome === "other").map(({ mode }) => mode)
   // A reporter that answers some modes but not the one under test has not told us anything about
   // 5522: its silence there decides nothing, and calling that a probe fault would blame the wrong
   // party (@cto c0dbe6ff, shape 2). Same outcome class as the all-silent net above.
-  if (replier === "terminal" && silentControls.length > 0) {
-    const answered = controls.filter((control) => control.answered).map(({ mode }) => mode)
+  if (replier === "terminal" && silent.length > 0) {
+    const unreadable =
+      other.length === 0
+        ? ""
+        : `; ${String(other.length)} of ${String(controls.length)} controls neither answered nor were measured silent (timeout or unreadable bytes: ${other.join(", ")}), so they say nothing`
     return declaredUntestableResult(
-      `Untestable (no way to tell): mode reporter answered ${answered.join(", ")} only; CSI ? 5522 $ p and ${silentControls.length} of ${controls.length} controls silent; the fence answered each time, so this terminal's silence on 5522 decides nothing.`,
+      `Untestable (no way to tell): mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls silent with the fence answered${unreadable}; this terminal's silence on 5522 decides nothing.`,
       evidence,
     )
   }
@@ -8363,9 +8380,9 @@ const extensionDefinitions: ProbeDefinition[] = [
               let allSilent = true
               for (const mode of OSC5522_DECRPM_SIBLINGS) {
                 const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
-                const answered = sentinelSilenceResult(control, "DECRPM prerequisite reply") === null
-                controls.push({ mode, raw: control.raw, answered })
-                if (answered) {
+                const outcome = osc5522ControlOutcome(control)
+                controls.push({ mode, raw: control.raw, outcome })
+                if (outcome !== "fenced-silence") {
                   allSilent = false
                   break
                 }
@@ -8388,11 +8405,11 @@ const extensionDefinitions: ProbeDefinition[] = [
             let allSilent = true
             for (const mode of OSC5522_DECRPM_SIBLINGS) {
               const control = await ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
-              const answered = sentinelSilenceResult(control, "DECRPM prerequisite reply") === null
-              controls.push({ mode, raw: control.raw, answered })
+              const outcome = osc5522ControlOutcome(control)
+              controls.push({ mode, raw: control.raw, outcome })
               // The terminal arm asks every control so the note can count what was actually asked;
               // stopping at the first answer would report silence over a partial list.
-              if (answered) {
+              if (outcome !== "fenced-silence") {
                 allSilent = false
               }
             }

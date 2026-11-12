@@ -2514,14 +2514,17 @@ describe("Kitty protocol detection", () => {
         expect(evidence.detection).toBe(da1)
         expect(evidence.decrpmSiblings).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ mode: 7, raw: da1, answered: false }),
-            expect.objectContaining({ mode: 2031, raw: da1, answered: false }),
+            expect.objectContaining({ mode: 7, raw: da1, outcome: "fenced-silence" }),
+            expect.objectContaining({ mode: 2031, raw: da1, outcome: "fenced-silence" }),
           ]),
         )
       } else if (qualified) {
+        // Bytes ahead of the fence are an answer only when they carry a DECRPM frame; anything else
+        // that the terminal said is neither an answer nor a measured silence (@dev/15 d35467098).
+        const outcome = /;\d\$y/.test(control) ? "reply" : "other"
         expect(JSON.parse(result.response!)).toEqual({
           detection: da1,
-          decrpmSiblings: [{ mode: 7, raw: control, answered: true }],
+          decrpmSiblings: [{ mode: 7, raw: control, outcome }],
         })
       } else expect(result.response).toBe(da1)
     }
@@ -2561,7 +2564,7 @@ describe("Kitty protocol detection", () => {
       const payload = JSON.parse(target.response!) as { detection: string; decrpmSiblings: unknown[] }
       expect(payload.detection).toBe(da1)
       expect(payload.decrpmSiblings).toEqual(
-        expect.arrayContaining([expect.objectContaining({ mode, raw: `\x1b[?${mode};2$y${da1}`, answered: true })]),
+        expect.arrayContaining([expect.objectContaining({ mode, raw: `\x1b[?${mode};2$y${da1}`, outcome: "reply" })]),
       )
       expect(target.observation).toBeUndefined()
       expect(target.assertions).toBeUndefined()
@@ -2577,14 +2580,27 @@ describe("Kitty protocol detection", () => {
   // @cto c0dbe6ff (shape 2): a reporter that answers some modes and not 5522 has decided nothing
   // about 5522, so that silence is Untestable through the same route rather than a probe fault.
   const oneSiblingSilent =
-    "Untestable (no way to tell): mode reporter answered 7 only; CSI ? 5522 $ p and 13 of 14 controls silent; the fence answered each time, so this terminal's silence on 5522 decides nothing."
+    "Untestable (no way to tell): mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls silent with the fence answered; this terminal's silence on 5522 decides nothing."
+  // @dev/15 on d35467098: a control that timed out is not an answer, and the note may not say the
+  // fence answered for it. The unreadable case is named for what it measured.
+  const oneSiblingAnsweredOneTimedOut =
+    "Untestable (no way to tell): mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls silent with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004), so they say nothing; this terminal's silence on 5522 decides nothing."
   test.each([
-    ["every sibling is silent", [] as number[], true, "untestable", 0, everySiblingSilent],
-    ["one sibling answers", [7], true, "untestable", 1, oneSiblingSilent],
-    ["the silence is unmeasured", [], false, "probe-invalid", 0, null],
+    ["every sibling is silent", { 7: "silent" }, true, "untestable", 14, 0, everySiblingSilent],
+    ["one sibling answers", { 7: "reply" }, true, "untestable", 13, 0, oneSiblingSilent],
+    [
+      "one sibling answers and one control times out",
+      { 7: "reply", 2004: "timeout" },
+      true,
+      "untestable",
+      12,
+      1,
+      oneSiblingAnsweredOneTimedOut,
+    ],
+    ["the silence is unmeasured", { 7: "timeout" }, false, "probe-invalid", 0, 0, null],
   ] as const)(
     "OSC 5522 terminal arm when the detector is silent and %s",
-    async (_name, answeredModes, qualified, expected, answeredCount, reason) => {
+    async (_name, modeOutcomes, qualified, expected, silentCount, otherCount, reason) => {
       const da1 = "\x1b[?1;2c"
       const queries: string[] = []
       const result = await probe("extensions.osc5522-clipboard").term!(
@@ -2592,15 +2608,23 @@ describe("Kitty protocol detection", () => {
           async queryWithSentinelOutcome(sequence, pattern) {
             queries.push(sequence)
             const mode = Number(/\?(\d+)\$p/.exec(sequence)?.[1])
-            const answers = sequence !== "\x1b[?5522$p" && (answeredModes as readonly number[]).includes(mode)
-            const raw = answers ? `\x1b[?${mode};2$y${da1}` : da1
+            const measured =
+              sequence === "\x1b[?5522$p" ? "silent" : ((modeOutcomes as Record<number, string>)[mode] ?? "silent")
+            const raw = measured === "reply" ? `\x1b[?${mode};2$y${da1}` : da1
             const match = raw.match(pattern)
             return {
               raw,
               rawBase64: btoa(raw),
               match,
-              reason: match ? "reply" : qualified ? "sentinel" : "timeout",
-              ...(qualified && { sentinel: { atMs: 1, graceMs: 250 } }),
+              reason:
+                measured === "reply"
+                  ? "reply"
+                  : measured === "timeout"
+                    ? "timeout"
+                    : qualified
+                      ? "sentinel"
+                      : "timeout",
+              ...(qualified && measured !== "timeout" && { sentinel: { atMs: 1, graceMs: 250 } }),
             }
           },
         }),
@@ -2621,14 +2645,17 @@ describe("Kitty protocol detection", () => {
         expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason }])
         const evidence = JSON.parse(result.response!) as {
           detection: string
-          decrpmSiblings: { mode: number; raw: string; answered: boolean }[]
+          decrpmSiblings: { mode: number; raw: string; outcome: string }[]
         }
         expect(evidence.detection).toBe(da1)
         expect(evidence.decrpmSiblings).toHaveLength(14)
         expect(evidence.decrpmSiblings.map(({ mode }) => mode)).toEqual([
           7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031,
         ])
-        expect(evidence.decrpmSiblings.filter((sibling) => sibling.answered)).toHaveLength(answeredCount)
+        expect(evidence.decrpmSiblings.filter((sibling) => sibling.outcome === "fenced-silence")).toHaveLength(
+          silentCount,
+        )
+        expect(evidence.decrpmSiblings.filter((sibling) => sibling.outcome === "other")).toHaveLength(otherCount)
       } else {
         expect(JSON.parse(result.response!)).toMatchObject({ detection: da1 })
       }
