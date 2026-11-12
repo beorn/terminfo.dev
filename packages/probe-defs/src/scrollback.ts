@@ -12,6 +12,7 @@ import {
   parserStateResult,
   replyFailure,
   notTestedResult,
+  declaredUntestableResult,
   productViewportAbsenceResult,
   tooSmall,
   validSize,
@@ -391,7 +392,14 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
 /** Linux App viewport-hold-output: in-run wheel displacement calibration and constructed-tail restoration. */
 async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (ctx.mux === "tmux" || ctx.mux === "screen") {
-    return notTestedResult("multiplexer viewport hold retains the manual recipe", { mux: ctx.mux })
+    // #33632 (@cto 3444380a route iii): the mux consumes the wheel before the application's viewport —
+    // tmux's first wheel-up enters copy mode and Screen ignores it (extensions.ts, @cto a4c6f79d). This arm
+    // therefore has no in-run scroll input to read through a multiplexer, and the catalog manual recipe is
+    // the declared limit rather than an unbuilt step.
+    return declaredUntestableResult(
+      `Hold-output through ${ctx.mux} is read by the catalog manual recipe: the ${ctx.mux} consumes the wheel before the application viewport, so this arm has no in-run scroll input to compare`,
+      { mux: ctx.mux },
+    )
   }
   const capture = ctx.capture
   const input = ctx.input

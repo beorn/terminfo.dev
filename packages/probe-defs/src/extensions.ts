@@ -6946,19 +6946,6 @@ const extensionDefinitions: ProbeDefinition[] = [
 
   {
     ...probe("extensions.reflow", mainScreenReflow, async (ctx): Promise<ProbeCallbackResult> => {
-      if (ctx.mux === "tmux" || ctx.mux === "screen") {
-        // #33363: the mux arm declined with a sentence that restated its status and named no blocker.
-        // The capability is not missing — an owned-outer mux run carries pixel frames, and its
-        // `resizeWindow` moves the pane's columns (run aedd2f5a recorded 61 -> 107). What is missing is
-        // our own step: this arm returns before it attempts the resize-and-read path on a mux subject,
-        // so the pane's own re-wrap is never read. The row names that unbuilt step, not the subject.
-        const note = `Reflow through ${ctx.mux} is not yet measured: this arm returns before it attempts a resize, so the ${ctx.mux} pane's own re-wrap stays unread`
-        return {
-          pass: false,
-          note,
-          tests: [{ id: "criterion", status: "probe-todo", reason: note }],
-        }
-      }
       const resizeWindow = ctx.input?.resizeWindow
       const capture = ctx.capture
       if (!resizeWindow || !capture || ctx.captureKind === "text-cells") {
@@ -7042,6 +7029,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         provisionalNarrowWidthPx,
         narrowWidthPx,
         retainedHistory: "unmeasured",
+        ...(ctx.mux && { mux: ctx.mux, paneColsBefore: initial.cols }),
       }
       const todoResult = (reason: string): ProbeCallbackResult => {
         const fullReason = `${reason}; retained history unmeasured`
@@ -7078,8 +7066,13 @@ const extensionDefinitions: ProbeDefinition[] = [
           (reading) => reading.rows === initial.rows && reading.cols >= 10 && reading.cols <= initial.cols - 4,
         )
         observed.preShrunk = preShrunk
+        if (ctx.mux) observed.paneColsAfterResize = preShrunk.reading?.cols
         if (!preShrunk.matched || !preShrunk.reading) {
-          return todoResult("Pre-shrink resize did not settle to a verified narrower width with unchanged rows")
+          return todoResult(
+            ctx.mux && preShrunk.reading?.cols === initial.cols
+              ? `The ${ctx.mux} pane did not follow the owned window resize: pane columns stayed ${initial.cols} after the window narrowed to ${narrowWidthPx}px`
+              : "Pre-shrink resize did not settle to a verified narrower width with unchanged rows",
+          )
         }
         const narrowCols = preShrunk.reading.cols
         const wideCols = initial.cols

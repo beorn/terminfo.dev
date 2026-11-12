@@ -1526,20 +1526,97 @@ test.each([
 )
 
 test.each(["tmux", "screen"] as const)(
-  "extensions.reflow names the unbuilt mux step behind its %s row (#33363)",
+  "extensions.reflow attempts its resize-and-read path on a %s subject instead of returning early (#33632)",
   async (mux) => {
     const app = captureApp(24, 80)
     app.context.mux = mux
-    const reason = `Reflow through ${mux} is not yet measured: this arm returns before it attempts a resize, so the ${mux} pane's own re-wrap stays unread`
     const result = await find("extensions.reflow").term!(app.context)
+    const reason = "No controlled resize and cell-content readback to measure reflow"
     expect(result).toEqual({
       pass: false,
       note: reason,
       tests: [{ id: "criterion", status: "probe-todo", reason }],
     })
+    // The arm reaches the shared path guard, so it reads the resize capability rather than declining by mux.
     expect(app.writes).toEqual([])
   },
 )
+
+test("extensions.reflow reads a mux pane that did not follow the owned window resize as named coverage, never a reflow fail (#33632)", async () => {
+  const mux = "screen" as const
+  const writes: string[] = []
+  const resizeCalls: { width: number; height: number }[] = []
+  const realSetTimeout = globalThis.setTimeout
+  const realDateNow = Date.now
+  let fakeNow = realDateNow()
+  Date.now = () => fakeNow
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    fakeNow += ms ?? 0
+    fn()
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  }) as typeof setTimeout
+  try {
+    const context: TermProbeSource = {
+      kind: "live",
+      rows: 24,
+      cols: 80,
+      mux,
+      captureKind: "pixels",
+      captureGeometry: { geometry: ITERM2_GEOMETRY, source: "measured by complete raster calibration" },
+      write: (bytes) => writes.push(bytes),
+      queryCursorPosition: async () => null,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async (sequence) => {
+        writes.push(sequence)
+        if (sequence === "\x1b[18t") {
+          // The mux answers from its own pane, which keeps the same 80 columns across every outer resize.
+          const raw = "\x1b[8;24;80t"
+          return {
+            match: /\x1b\[8;(\d+);(\d+)t/.exec(raw),
+            reason: "reply",
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          }
+        }
+        return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      },
+      queryMode: async () => null,
+      capture: async (request) => ({
+        role: request.role,
+        label: request.label,
+        capturedAt: 1,
+        ref: `sha256:${"a".repeat(64)}`,
+      }),
+      input: {
+        injectKey: async () => {},
+        injectClick: async () => {},
+        resizeWindow: async (width, height) => {
+          resizeCalls.push({ width, height })
+          return { width: 640, height: 408 }
+        },
+      },
+    }
+    const result = await find("extensions.reflow").term!(context)
+    expect(resizeCalls.length).toBeGreaterThan(0)
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([{ id: "criterion", status: "probe-todo" }])
+    expect(String(result.tests?.[0]?.reason)).toMatch(
+      /^The screen pane did not follow the owned window resize: pane columns stayed 80 after the window narrowed to \d+px; retained history unmeasured$/,
+    )
+    expect(JSON.parse(String(result.response))).toMatchObject({
+      mux,
+      paneColsBefore: 80,
+      paneColsAfterResize: 80,
+    })
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+    Date.now = realDateNow
+  }
+})
 
 test("extensions.reflow sizes narrow window from original 800px window width so capture-core cellRectangle fits 793px inset grid (#32797)", async () => {
   const featureId = "extensions.reflow"

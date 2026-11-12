@@ -9,7 +9,7 @@ import { createHash } from "node:crypto"
 import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import { eraseProbes } from "./erase.ts"
-import { recordExecutedProbe } from "./helpers.ts"
+import { isDeclaredUntestable, recordExecutedProbe } from "./helpers.ts"
 import type {
   ObservationFrame,
   TermProbeSource,
@@ -2071,7 +2071,12 @@ test.each([
   expectViewportTodo(result)
   expect(app.activity().targetWrites).toBe(0)
   if (cause === "tmux mux" || cause === "screen mux") {
-    expect(result.notTested?.noObservable).toBe("multiplexer viewport hold retains the manual recipe")
+    // #33632 (@cto 3444380a route iii): the mux row is a DECIDED declared limit naming the catalog manual
+    // recipe, not an unbuilt step recorded as TODO.
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(result.notTested?.noObservable).toMatch(
+      /^Hold-output through (tmux|screen) is read by the catalog manual recipe: the (tmux|screen) consumes the wheel before the application viewport, so this arm has no in-run scroll input to compare$/,
+    )
     expect(app.writes).toEqual([])
   }
   if (cause === "wheel up unmoved" || cause === "ambiguous calibration") {

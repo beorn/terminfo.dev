@@ -563,6 +563,11 @@ capture/harness errors fail. Complete pixel digests
 use the existing ED3 frame comparator without masks or container-ref equality. Other application contexts
 retain the catalog manual recipe. No production capture or result is supplied by this implementation.
 
+A multiplexer subject records that limit as a declared Untestable naming the recipe (#33632, @cto 3444380a
+route iii): the mux consumes the wheel before the application viewport, so no in-run scroll input exists to
+compare. Declaring mouse reporting inside the pane instead would measure the application, not the multiplexer,
+and is never the mux row's result.
+
 The optional library capability `productViewport: { available: false, reason }` explicitly declares
 that the library subject has no product viewport; an absent declaration means undeclared. The
 collector omits the probe source's scroll control for that declaration. Before any phase action or
@@ -814,12 +819,17 @@ Invalid alternate evidence stays visible without vetoing the required phases; cl
 
 Supported reasons on the library arm state: "ASCII reflow measured on main screen and retained history; wide characters,
 cursor on a wrapped line and terminal-app resize unmeasured". On the terminal-app arm, controlled window resize
-(`resizeWindow`) and cell-aligned capture readback measure main-screen ASCII shrink and grow only (`tmux` and GNU
-`screen` remain PROBE TODO on this arm), matching each resized frame against same-run probe-painted `reflowed`
+(`resizeWindow`) and cell-aligned capture readback measure main-screen ASCII shrink and grow, matching each
+resized frame against same-run probe-painted `reflowed`
 (either in place on screen or by pushing the top line into scrollback on narrow), `clipped` and `preserved` layouts
 and restoring window geometry in `finally`; its reasons state "retained history unmeasured" alongside wide characters,
 alternate screen and cursor on a wrapped line unmeasured. Private apparatus results grant no exact-run decision,
 corpus placement; the native absolute-row consumer hold remains with independent batch review.
+
+Multiplexer subjects take that same path (#33632, @cto 3444380a): the pane answers the size query inside itself, so
+the row records `paneColsBefore` and `paneColsAfterResize` and reads named coverage — never a reflow negative — when
+the mux did not follow the owned window resize. A mux subject without the owned resize control keeps its named
+no-I/O PROBE TODO.
 
 The libvterm adapter retains native history, enables `vterm_screen_enable_reflow` and records that
 setting. Libvterm is checked against the same main-screen and retained-history criterion; the recorded
