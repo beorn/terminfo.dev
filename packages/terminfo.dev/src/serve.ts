@@ -939,17 +939,19 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
       // Hosted runners install no input in this head (@cto 75732b9d P2-3): only the owned Terminal.app
       // arm does, with the owned-host limits.
-      // Hosted iTerm2 and Terminal.app use pixels; Kitty keeps its qualified text route.
+      // iTerm2 and both Terminal.app arms use pixels; Kitty keeps its qualified text route.
       // Without retention, still name the missing directory through the existing text adapter.
       const textFirst =
-        !captureDirectory || (terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
+        !captureDirectory ||
+        (kind !== "terminalApp" && terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
       if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      if (!textFirst && kind === "darwinHosted") installTextCapture(terminal)
+      if (!textFirst && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
         hostedAppId: terminal.hostedAppId,
+        expectedWindowId: kind === "terminalApp" ? options.terminalAppOwner?.windowId : undefined,
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
         onRetained,
@@ -989,7 +991,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
         terminalApp: options.terminalAppOwner,
       })
-      installTextCapture(ownedTerminal)
+      await installDarwinCapture(ownedTerminal)
       // An owned Mac: keys only, posted to Terminal's pid into the asserted window (@cto 60e39dfc).
       await installDarwinInput(ownedTerminal, {
         windowId: options.terminalAppOwner.windowId,
