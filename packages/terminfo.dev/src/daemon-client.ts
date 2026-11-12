@@ -147,6 +147,13 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
   }
 }
 
+/**
+ * How long the admin waits for one whole collection. 120 s cut off a full Terminal.app suite on
+ * codimac mid-run (33587 run 3: started 01:21:57Z, aborted at 01:23:57Z with 179 rows still
+ * probe-todo), so the limit is the slowest whole run we expect, not a typical one.
+ */
+const DAEMON_PROBE_TIMEOUT_MS = 15 * 60_000
+
 export async function requestDaemonProbe(
   daemon: DaemonRegistration,
   request?: DaemonOwnerRequest,
@@ -178,7 +185,7 @@ export async function requestDaemonProbe(
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
     ...(body && { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS),
   })
   if (!response.ok) {
     const failure = `Daemon on port ${daemon.port}: HTTP ${response.status}`
