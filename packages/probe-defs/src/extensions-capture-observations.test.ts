@@ -1025,25 +1025,122 @@ test.each([
   },
 )
 
-test("extensions.osc720-scroll-up excludes tmux and screen so their cells keep today's result", async () => {
-  const definition = find("extensions.osc720-scroll-up")
-  const tmuxApp = captureApp(24, 80)
-  tmuxApp.context.mux = "tmux"
-  tmuxApp.context.getScrollback = async () => ({ totalLines: 44, screenLines: 24, viewportOffset: 20 })
-  tmuxApp.context.queryCursorPosition = async () => ({ row: 1, col: 1 })
-  const tmuxResult = await definition.term!(tmuxApp.context)
-  expect(tmuxResult.observation).toBeUndefined()
-  expect(tmuxResult.tests).toEqual([
-    { id: "criterion", status: "probe-todo", reason: "Cursor answered; scrollback viewport was not measured" },
-  ])
+/**
+ * A tmux pane as its owned reader reports it (linux-clipboard.ts getScrollback): history grows with the lines
+ * written past the screen; copy mode (prefix, [) scrolls with Page Up and q leaves it at the bottom.
+ */
+function fakeTmuxPane(
+  rows: number,
+  behaviour: {
+    osc720Scrolls?: boolean
+    madeUpMoves?: boolean
+    copyModeDead?: boolean
+    quitDead?: boolean
+    noHistory?: boolean
+  } = {},
+) {
+  let newlines = 0
+  let fromBottom = 0
+  let inMode = false
+  let prefix = false
+  const history = () => (behaviour.noHistory ? 0 : Math.max(0, newlines - (rows - 1)))
+  const keys: string[] = []
+  const app = captureApp(rows, 80)
+  app.context.mux = "tmux"
+  app.context.queryCursorPosition = async () => ({ row: rows, col: 1 })
+  app.context.write = (bytes) => {
+    newlines += bytes.split("\n").length - 1
+    if (bytes.includes("\x1b]720\x07") && behaviour.osc720Scrolls) {
+      inMode = true
+      fromBottom = Math.min(history(), fromBottom + 1)
+    }
+    if (bytes.includes("\x1b]7207\x07") && behaviour.madeUpMoves) fromBottom = Math.min(history(), fromBottom + 1)
+  }
+  app.context.getScrollback = async () => ({
+    totalLines: history() + rows,
+    screenLines: rows,
+    viewportOffset: history() - fromBottom,
+  })
+  app.context.input = {
+    injectClick: async () => {},
+    injectKey: async (key) => {
+      keys.push(key)
+      if (key === "ctrl+b") {
+        prefix = true
+        return
+      }
+      if (prefix && key === "bracketleft" && !behaviour.copyModeDead) inMode = true
+      else if (inMode && key === "Prior") fromBottom = Math.min(history(), fromBottom + rows)
+      else if (inMode && key === "q" && !behaviour.quitDead) {
+        inMode = false
+        fromBottom = 0
+      }
+      prefix = false
+    },
+  }
+  return { context: app.context, keys }
+}
 
+test("tmux grades OSC 720 from its own viewport offset with a made-up OSC before and copy mode last (@cto 870b3dad)", async () => {
+  const definition = find("extensions.osc720-scroll-up")
+  const reason = (result: Awaited<ReturnType<NonNullable<typeof definition.term>>>) =>
+    result.observation?.note ?? result.tests?.[0]?.reason
+
+  const scrolls = fakeTmuxPane(24, { osc720Scrolls: true })
+  const supported = await definition.term!(scrolls.context)
+  expect(supported.observation?.outcome).toBe("supported")
+  expect(reason(supported)).toBe(
+    "tmux viewport offset 31 -> 30 after OSC 720 (history 31 lines; made-up OSC held 31; copy-mode control 30 -> 6; restored 31)",
+  )
+  const evidence = JSON.parse(supported.response!) as { historyLinesWritten: number; readings: object }
+  expect(evidence.historyLinesWritten).toBe(54)
+  expect(Object.keys(evidence.readings)).toEqual([
+    "beforeSeed",
+    "baseline",
+    "afterMadeUpOsc",
+    "afterOsc720",
+    "afterCopyModeControl",
+    "restored",
+  ])
+  // The moving control runs last, then the restore; q is only sent from inside copy mode.
+  expect(scrolls.keys).toEqual(["ctrl+b", "bracketleft", "Prior", "ctrl+b", "bracketleft", "q"])
+
+  const ignores = await definition.term!(fakeTmuxPane(24).context)
+  expect(ignores.observation?.outcome).toBe("unsupported")
+  expect(reason(ignores)).toBe(
+    "tmux viewport offset 31 -> 31 after OSC 720 (history 31 lines; made-up OSC held 31; copy-mode control 31 -> 7; restored 31)",
+  )
+
+  const deadControl = await definition.term!(fakeTmuxPane(24, { copyModeDead: true }).context)
+  expect(deadControl.observation).toBeUndefined()
+  expect(deadControl.tests?.[0]).toMatchObject({ status: "probe-todo" })
+  expect(reason(deadControl)).toMatch(/^the copy-mode control did not move tmux's viewport/)
+
+  const movingControl = await definition.term!(fakeTmuxPane(24, { madeUpMoves: true }).context)
+  expect(reason(movingControl)).toBe("the made-up OSC control moved tmux's viewport: offset 31 -> 30")
+
+  const stuck = await definition.term!(fakeTmuxPane(24, { quitDead: true }).context)
+  expect(stuck.observation).toBeUndefined()
+  expect(reason(stuck)).toMatch(/^the pane did not return to its baseline viewport after the controls: /)
+})
+
+test("tmux with no history to scroll leaves OSC 720 open, never Unsupported", async () => {
+  const pane = fakeTmuxPane(24, { noHistory: true })
+  const result = await find("extensions.osc720-scroll-up").term!(pane.context)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests?.[0]?.reason).toBe("wrote 54 lines but tmux history reads 0, so there is nothing to scroll")
+  expect(pane.keys).toEqual([])
+})
+
+test("screen keeps OSC 720 open with the reason that it reports no viewport offset (@cto 870b3dad)", async () => {
   const screenApp = captureApp(24, 80)
   screenApp.context.mux = "screen"
   screenApp.context.getScrollback = async () => ({ totalLines: 44, screenLines: 24 })
-  const screenResult = await definition.term!(screenApp.context)
+  const screenResult = await find("extensions.osc720-scroll-up").term!(screenApp.context)
   expect(screenResult.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: "terminal reports no viewport offset",
+    noObservable:
+      "screen reports no viewport offset, so a scroll of its own history cannot be read; anything seen on screen would grade the outer terminal",
   })
 })
 
