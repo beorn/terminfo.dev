@@ -699,9 +699,10 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: always() && (matrix.id == 'cursor' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
+        if: always() && (matrix.id == 'cursor' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'com.microsoft.VSCode')))
         env:
           APP_ID: ${{ matrix.id }}
+          COLLECT_OUTCOME: ${{ steps.collect.outcome }}
           ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
           ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
           COLLECT_STARTED_AT: ${{ steps.collect.outputs.collect_started_at }}
@@ -829,7 +830,9 @@ jobs:
             } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
           await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
-          if (failures.length && !terminal) process.exitCode = 1;
+          // Capture failures remain in artifacts and stderr after a successful Cursor collection.
+          const successfulCursor = process.env.APP_ID === "cursor" && process.env.COLLECT_OUTCOME === "success";
+          if (failures.length && !terminal && !successfulCursor) process.exitCode = 1;
           '
 
       - name: Retain editor launch files and close only its owned GUI
