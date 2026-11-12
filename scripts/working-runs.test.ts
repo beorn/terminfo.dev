@@ -233,7 +233,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       expect(apps).toHaveLength(3)
       expect(new Set(apps.map((context) => context.contextKey)).size).toBe(2)
       expect(apps.some((context) => context.contextKey.includes('"macos"'))).toBe(true)
-      expect(apps.find((context) => context.contextKey.includes('"macos"'))?.reviewedContextKey).toBeNull()
+      // A newly placed Mac corpus may supply a reviewed peer; it must never attach the Linux context.
+      const mac = apps.find((context) => context.contextKey.includes('"macos"'))!
+      if (mac.reviewedContextKey !== null) expect(mac.reviewedContextKey).toContain('"macos"')
       expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
         runId: linux.original.runId,
         measuredAt: linux.original.measuredAt,
