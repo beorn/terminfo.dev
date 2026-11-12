@@ -524,8 +524,11 @@ if [[ "${1:-}" == "--inside" ]]; then
         -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
         -o 'font_family=JetBrains Mono' -o font_size=16
         -o allow_remote_control=socket-only --listen-on "unix:/out/kitty-${TERMINFO_RUN_ID}.sock")
-      # Retain commands received by the outer Kitty in the existing daemon.log.
-      if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
+      # Retain commands received by the outer Kitty in the existing daemon.log. A mux run always
+      # asks for the trace; a direct run asks for it explicitly through TERMINFO_DUMP_COMMANDS=1,
+      # so the #33630 gate can read what the outer terminal received with no multiplexer between
+      # the sequence and the terminal.
+      if [[ -n "${TERMINFO_MUX_KIND:-}" || "${TERMINFO_DUMP_COMMANDS:-}" == 1 ]]; then
         target_launch_args+=(--dump-commands)
       fi
       # kitty --version prints one line, "kitty 0.49.2 created by Kovid Goyal": the version is the
@@ -1554,6 +1557,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_MUX_KIND=$mux_kind" --env "TERMINFO_MUX_PROFILE=$mux_profile" \
+  --env "TERMINFO_DUMP_COMMANDS=${TERMINFO_DUMP_COMMANDS:-}" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \
