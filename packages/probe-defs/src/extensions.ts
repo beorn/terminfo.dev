@@ -3240,7 +3240,7 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
     const reading = ctx.getScrollback ? await ctx.getScrollback() : null
     return notTestedResult(OSC720_SCREEN_OPEN, { reading })
   }
-  if (ctx.mux === "tmux") return await osc720ScrollUpTmux(ctx)
+  if (ctx.mux === "tmux") return osc720ScrollUpTmux(ctx)
 
   const capture = ctx.capture
   const input = ctx.input
