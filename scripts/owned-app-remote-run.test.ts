@@ -501,6 +501,24 @@ describe("owned-app ssh transport", () => {
     expect(existsSync(join(staged, "stray.ts"))).toBe(false)
   }, 60_000)
 
+  it("does not stage or witness mutable test caches", () => {
+    const caches = [".vitest", ".cache"]
+    for (const cache of caches) {
+      const directory = join(code, "node_modules", cache)
+      mkdirSync(directory, { recursive: true })
+      writeFileSync(join(directory, "results.json"), "before\n")
+    }
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    for (const cache of caches) {
+      expect(existsSync(join(stage, "source", "node_modules", cache))).toBe(false)
+      writeFileSync(join(code, "node_modules", cache, "results.json"), "changed while other tests run\n")
+    }
+    const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
+    expect(again.status, again.stderr).toBe(0)
+    expect(proof(again).resourceManifestSha256).toBe(proof(first).resourceManifestSha256)
+  }, 60_000)
+
   it("removes the stage only when asked", () => {
     expect(run({}, ["--remove-stage"]).status).toBe(0)
     expect(existsSync(stage)).toBe(false)
