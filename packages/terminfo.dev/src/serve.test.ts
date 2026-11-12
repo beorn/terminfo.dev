@@ -1570,7 +1570,7 @@ describe("private finite daemon startup", () => {
     { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
-    { arm: "terminalApp", app: "terminal-app", route: "text-cells", retained: true, pid: true },
+    { arm: "terminalApp", app: "terminal-app", route: "pixels", retained: true, pid: true },
     {
       arm: "terminalApp",
       app: "terminal-app",
@@ -1646,6 +1646,10 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
         createDarwinCapture: async (_directory, options) => {
           assert.equal(options.appPid, 5705)
+          if (arm === "terminalApp") {
+            assert.equal(options.expectedWindowId, 791, "Pixels must come from the asserted Terminal.app window")
+            assert.equal(options.ownedHost, true, "An owned Mac must retain window-only capture")
+          }
           return { captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") } }
         }
       }))
@@ -1669,7 +1673,7 @@ describe("private finite daemon startup", () => {
             // iTerm2 and Kitty still qualify before probes, and the hosted pixel arm still calibrates first.
             const ownerCloses = app === "terminal-app"
             assert.equal(typeof options.finishCapture, ownerCloses ? "function" : "undefined")
-            assert.equal(typeof options.prepareCapture, arm === "terminalApp" ? "undefined" : "function")
+            assert.equal(typeof options.prepareCapture, "function")
             for (const [prepare, featureId] of [
               [options.prepareCapture, "collector.captureCalibration"],
               [options.finishCapture, "collector.textQualification"],

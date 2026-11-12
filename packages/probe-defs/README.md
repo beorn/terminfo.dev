@@ -1288,7 +1288,10 @@ The execution writer freezes the qualification test before seal. The canonical p
 version-2 observer context against the same table; site projection preserves recorded results.
 Source verification supplies no native main-run, collection, grading or publication authority.
 
-The verified owned Terminal.app text route runs these same five witnesses after feature callbacks
+The verified owned Terminal.app collector uses the existing Darwin pixel adapter with its measured
+app PID and asserted window ID. An owned Mac captures only that window, without a screen-region
+fallback. The shared pixel calibration and style readers decide pixel evidence; text remains separate.
+Its text qualification runs these same five witnesses after feature callbacks
 and the final stdin drain, using the existing preparation source and trace. Its ending normalizes
 the screen for disposal without claiming restoration of prior modes. The worker retains status
 instead of printing after qualification, and its stderr goes to the private launch directory.
