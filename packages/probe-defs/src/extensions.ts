@@ -36,6 +36,7 @@ import {
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
+  completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
   sameFrame,
@@ -5996,6 +5997,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const samples: Array<{ phase: string; column: number; digest: string; frame: ObservationFrame }> = []
         const finish = (outcome: "supported" | "unsupported" | "inconclusive", note: string): ProbeCallbackResult => {
           const decided = outcome !== "inconclusive"
+          const pair = completeFramePair(frames)
           const response = JSON.stringify({ font, fontReply, pixelGeometry, geometrySource: reported.source, samples })
           return {
             pass: outcome === "supported",
@@ -6013,7 +6015,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               outcome,
               assertionType: "screenshot",
               ...(decided ? {} : { reason: "insufficient-evidence" as const }),
-              frames,
+              ...(pair ? { frames: pair } : {}),
               screenshotRef: samples.find((sample) => sample.phase === "target")?.frame.ref,
               note,
             },

@@ -1339,6 +1339,16 @@ export async function sgrCaptureFrames(
   }
 }
 
+/**
+ * The observation frames a capture may cite: one complete control/target pair, or nothing (#33563, #33639).
+ * The run parser refuses any other list outright, taking the whole run with it, so a writer whose capture can
+ * stop before its second frame keeps its screenshotRef and cites no frames.
+ */
+export function completeFramePair(frames: readonly ObservationFrame[]): ObservationFrame[] | undefined {
+  const roles = new Set(frames.map((frame) => frame.role))
+  return frames.length >= 2 && roles.has("control") && roles.has("target") ? [...frames] : undefined
+}
+
 /** The SGR pixel fixture: the attribute's sequence and the text sample it styles at a 1-based row and column. */
 export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row: number; col: number }>
 
