@@ -954,9 +954,6 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         expectedWindowId: kind === "terminalApp" ? options.terminalAppOwner?.windowId : undefined,
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
-        // 33821: a hosted runner cannot answer the System Events dialog the title reader needs, so
-        // measure whether the window name it already censuses carries a title this run writes.
-        measureWindowName: kind === "darwinHosted",
         onRetained,
       })
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
