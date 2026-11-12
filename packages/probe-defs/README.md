@@ -920,6 +920,9 @@ These callbacks require the existing disposable-terminal authority. Their limita
 Every other mode keeps the default recognition-only path.
 
 DECSSCLS is CSI Ps SP p, not a DEC mode: its term criterion still requires timed screenshots.
+Its reference, jump control and timed target stay on the screen whose origin the collector calibrated;
+the fixture does not enter another buffer after calibration. The shared capture lifecycle clears the
+disposable fixture, resets the speed and restores the cursor and prior DECSCLM mode on exit.
 Its library arm stays `headless-observable-review` with null assertion type and reason
 "presentation speed: headless engines paint no frames and expose no scroll-speed state".
 The missing presentation-speed observable remains PROBE TODO.
@@ -1152,6 +1155,15 @@ SGR colour captures, including indexed underline and its reset's independent-ref
 share one mux callback owner. An inconclusive capture through a mux reads PROBE TODO and names
 the missing outer-terminal control; the same frames cannot attribute the result to that hop.
 Non-mux decisions, measured positives and broken-measurement errors retain their existing results.
+
+After an unresolved RGB underline App result, the existing same-run capture can qualify an independent negative.
+On eight spaces it compares blank A, plain underline B, two SGR58 RGB samples C, and foreground-route underline controls D.
+The colours are RGB(255,0,128) and RGB(0,255,128), sent with colon groups and the empty RGB colourspace slot.
+Exact digest equality is used on both routes: B must differ from A; both D samples must differ from B and each other; both C samples must equal B.
+Only that complete observation decides Unsupported: colour ignored, decoration kept.
+Mixed samples remain PROBE TODO and name which colour moved; blind, matched or neither-reference controls add no new Supported result.
+Existing positives and the no-attribute negative keep precedence; mux negatives still require their outer control.
+The indexed comparison, result and capture implementation is shared, with its evidence bytes unchanged.
 
 `finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. A test marked untestable folds to PROBE TODO unless the result is the declared form (`isDeclaredUntestable`), which reads Untestable. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as PROBE TODO (see above); content validation uses that same reader.
 

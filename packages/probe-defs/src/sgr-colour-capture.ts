@@ -54,6 +54,7 @@ const CURSOR_ROW = 5
 
 /** The same-run branch of the indexed underline-colour witness; sgr.ts maps it for the mux finalizer. */
 export const UNDERLINE_INDEXED_BRANCH = "underline-colour-indexed-same-run"
+export const UNDERLINE_RGB_BRANCH = "underline-colour-rgb-same-run"
 
 interface ColourRow {
   /** The sequence under test, painted on the sample in the target and expected frames. */
@@ -174,50 +175,72 @@ export interface UnderlineIndexedDecision {
   evidence: Record<string, { A: string; B: string; C: string; "D'": string }>
 }
 
-/** The five outcomes, in the ruled order. Only exact digest equality between phases is read. */
-export function underlineColourIndexedDecision(digest: (name: string) => string): UnderlineIndexedDecision {
-  const id = UNDERLINE_INDEXED_ID
+/** One exact-digest comparison for indexed and RGB underline samples; no tolerance on either route. */
+function compareUnderlineColours(
+  digest: (name: string) => string,
+  samples: readonly { index: string; colour: string; route: string }[],
+) {
   const blank = digest(UNDERLINE_PHASE.blank)
   const plain = digest(UNDERLINE_PHASE.underline)
-  const rows = UNDERLINE_INDICES.map((index) => ({
+  const rows = samples.map(({ index, colour, route }) => ({
     index,
-    colour: digest(UNDERLINE_PHASE.colour(index)),
-    route: digest(UNDERLINE_PHASE.route(index)),
+    colour: digest(colour),
+    route: digest(route),
   }))
   const evidence = Object.fromEntries(
     rows.map(({ index, colour, route }) => [String(index), { A: blank, B: plain, C: colour, "D'": route }]),
   )
+  const [first, second] = rows
+  return {
+    visible: plain !== blank,
+    blindRoute: rows.find(({ route }) => route === plain),
+    sameRoutes: first !== undefined && second !== undefined && first.route === second.route,
+    evidence,
+    outcomes: rows.map((row) => ({
+      ...row,
+      outcome: row.colour === plain ? "ignored" : row.colour === row.route ? "matched" : "neither",
+    })),
+  }
+}
+
+/** Controls first, then neither, both matched, both ignored, mixed; exact digest equality only. */
+export function underlineColourIndexedDecision(digest: (name: string) => string): UnderlineIndexedDecision {
+  const id = UNDERLINE_INDEXED_ID
+  const comparison = compareUnderlineColours(
+    digest,
+    UNDERLINE_INDICES.map((index) => ({
+      index: String(index),
+      colour: UNDERLINE_PHASE.colour(index),
+      route: UNDERLINE_PHASE.route(index),
+    })),
+  )
+  const { evidence, outcomes } = comparison
   const decide = (status: UnderlineIndexedDecision["status"], note: string): UnderlineIndexedDecision => ({
     status,
     note: `${colourEncoding(id)}; ${note}`,
     evidence,
   })
   // The order is the ruling (@cto b3d7680f 1): controls first, so a blind control never becomes a verdict on 58.
-  if (plain === blank) {
+  if (!comparison.visible) {
     return decide(
       "probe-todo",
       `${id}: the plain underline drew nothing on these cells, so this row is not applicable here; the underline itself is decided by sgr.underline.single`,
     )
   }
-  for (const { index, route } of rows) {
-    if (route === plain) {
-      return decide(
-        "probe-todo",
-        `${id}: the underline under foreground 38:5:${index} painted like the default underline, so palette entry ${index} cannot be told apart on the foreground route; a terminal whose underline does not follow the foreground stays undecided by this probe, and this says nothing about 58`,
-      )
-    }
+  if (comparison.blindRoute) {
+    const { index } = comparison.blindRoute
+    return decide(
+      "probe-todo",
+      `${id}: the underline under foreground 38:5:${index} painted like the default underline, so palette entry ${index} cannot be told apart on the foreground route; a terminal whose underline does not follow the foreground stays undecided by this probe, and this says nothing about 58`,
+    )
   }
-  const [first, second] = rows
-  if (first && second && first.route === second.route) {
+  const [first, second] = outcomes
+  if (comparison.sameRoutes && first && second) {
     return decide(
       "probe-todo",
       `${id}: the two palette entries render alike here: the foreground-route underlines for indices ${first.index} and ${second.index} are identical`,
     )
   }
-  const outcomes = rows.map((row) => ({
-    ...row,
-    outcome: row.colour === plain ? "ignored" : row.colour === row.route ? "matched" : "neither",
-  }))
   const neither = outcomes.find(({ outcome }) => outcome === "neither")
   if (neither) {
     return decide(
@@ -248,9 +271,21 @@ export function underlineColourIndexedResult(
   run: SameRunCapture,
   decision: UnderlineIndexedDecision,
 ): ProbeCallbackResult {
+  return underlineColourResult(run, decision, {
+    branch: UNDERLINE_INDEXED_BRANCH,
+    target: UNDERLINE_PHASE.colour(UNDERLINE_INDICES[0]),
+    expected: `${UNDERLINE_INDEXED_ID}: 58:5:N matches the foreground-route underline exactly at every index`,
+  })
+}
+
+function underlineColourResult(
+  run: SameRunCapture,
+  decision: UnderlineIndexedDecision,
+  fixture: { branch: string; target: string; expected: string; phases?: readonly SameRunPhase[] },
+): ProbeCallbackResult {
   const { status, note } = decision
   const decided = status !== "probe-todo"
-  const target = run.measured.find(({ name }) => name === UNDERLINE_PHASE.colour(UNDERLINE_INDICES[0]))?.capture.frame
+  const target = run.measured.find(({ name }) => name === fixture.target)?.capture.frame
   const response = JSON.stringify({
     region: run.region,
     pixelGeometry: run.pixelGeometry,
@@ -258,12 +293,18 @@ export function underlineColourIndexedResult(
     stability: run.stability,
     samples: Object.fromEntries(run.measured.map(({ name, capture }) => [name, capture.regionDigest])),
     evidence: decision.evidence,
+    ...(fixture.phases && {
+      comparison: "exact digest equality",
+      measuredPhases: fixture.phases
+        .filter((phase) => run.measured.some(({ name }) => name === phase.name))
+        .map(({ name, sequence, sample }) => ({ name, sequence, sample })),
+    }),
   })
   return {
     pass: status === "supported",
     note,
     response,
-    criterionBranch: UNDERLINE_INDEXED_BRANCH,
+    criterionBranch: fixture.branch,
     tests: [{ id: "attribute", status, ...(decided ? { assertionRefs: [0] } : { reason: note }) }],
     observation: {
       outcome: decided ? status : "inconclusive",
@@ -279,7 +320,7 @@ export function underlineColourIndexedResult(
             {
               assertionType: "screenshot" as const,
               kind: status === "supported" ? ("positive" as const) : ("negative" as const),
-              expected: `${UNDERLINE_INDEXED_ID}: 58:5:N matches the foreground-route underline exactly at every index`,
+              expected: fixture.expected,
               observed: response,
             },
           ],
@@ -290,19 +331,112 @@ export function underlineColourIndexedResult(
 
 /** The capture arm: null when this run has no owned pixel capture. */
 export async function underlineColourIndexedCaptureResult(ctx: TermProbeSource): Promise<ProbeCallbackResult | null> {
-  return captureSameRunPhases(
+  return captureUnderlineColours(
     ctx,
     UNDERLINE_INDEXED_ID,
-    UNDERLINE_SAMPLE.length,
     UNDERLINE_INDEXED_PHASES,
+    underlineColourIndexedResult,
+    underlineColourIndexedDecision,
+  )
+}
+
+function captureUnderlineColours(
+  ctx: TermProbeSource,
+  id: string,
+  phases: readonly SameRunPhase[],
+  result: (run: SameRunCapture, decision: UnderlineIndexedDecision) => ProbeCallbackResult,
+  decide: (digest: (name: string) => string) => UnderlineIndexedDecision,
+): Promise<ProbeCallbackResult | null> {
+  return captureSameRunPhases(
+    ctx,
+    id,
+    UNDERLINE_SAMPLE.length,
+    phases,
     (run, note) =>
-      underlineColourIndexedResult(run, {
+      result(run, {
         status: "probe-todo",
-        note: `${colourEncoding(UNDERLINE_INDEXED_ID)}; ${note}`,
+        note: `${colourEncoding(id)}; ${note}`,
         evidence: {},
       }),
-    (run, digest) => underlineColourIndexedResult(run, underlineColourIndexedDecision(digest)),
+    (run, digest) => result(run, decide(digest)),
   )
+}
+
+const RGB_UNDERLINE_COLOURS = ["255:0:128", "0:255:128"] as const
+const RGB_UNDERLINE_SAMPLES = RGB_UNDERLINE_COLOURS.map((rgb) => ({
+  index: rgb,
+  colour: `C underline 58:2::${rgb}`,
+  route: `D' underline 38:2::${rgb}`,
+}))
+const RGB_UNDERLINE_PHASES: readonly SameRunPhase[] = [
+  { name: UNDERLINE_PHASE.blank, sequence: "", sample: UNDERLINE_SAMPLE },
+  { name: UNDERLINE_PHASE.underline, sequence: "\x1b[4m", sample: UNDERLINE_SAMPLE },
+  ...RGB_UNDERLINE_SAMPLES.flatMap(({ index: rgb, colour, route }, index): SameRunPhase[] => [
+    {
+      name: colour,
+      sequence: `\x1b[4m\x1b[58:2::${rgb}m`,
+      sample: UNDERLINE_SAMPLE,
+      role: index === 0 ? "target" : "control",
+    },
+    { name: route, sequence: `\x1b[4m\x1b[38:2::${rgb}m`, sample: UNDERLINE_SAMPLE },
+  ]),
+]
+
+/** Only the independent ignored-colour negative is admitted; matched RGB controls are not a new positive. */
+export async function underlineColourRgbCaptureResult(
+  ctx: TermProbeSource,
+  id: string,
+): Promise<ProbeCallbackResult | null> {
+  const result = (run: SameRunCapture, decision: UnderlineIndexedDecision) =>
+    underlineColourResult(run, decision, {
+      branch: UNDERLINE_RGB_BRANCH,
+      target: `C underline 58:2::${RGB_UNDERLINE_COLOURS[0]}`,
+      expected: `${id}: both SGR 58 RGB samples keep the plain underline while distinct foreground-route underlines prove colour visibility`,
+      phases: RGB_UNDERLINE_PHASES,
+    })
+  return captureUnderlineColours(ctx, id, RGB_UNDERLINE_PHASES, result, (digest) => {
+    const comparison = compareUnderlineColours(digest, RGB_UNDERLINE_SAMPLES)
+    const { outcomes, evidence } = comparison
+    const decide = (status: UnderlineIndexedDecision["status"], note: string): UnderlineIndexedDecision => ({
+      status,
+      note: `${colourEncoding(id)}; exact digest equality; ${id}: ${note}`,
+      evidence,
+    })
+    if (!comparison.visible) {
+      return decide(
+        "probe-todo",
+        "the plain underline drew nothing; independent RGB colour controls cannot decide this row",
+      )
+    }
+    if (comparison.blindRoute) {
+      return decide(
+        "probe-todo",
+        `foreground 38:2::${comparison.blindRoute.index} painted like the plain underline; that colour is not independently visible`,
+      )
+    }
+    if (comparison.sameRoutes) {
+      return decide(
+        "probe-todo",
+        "the two foreground-route RGB underlines render alike; the colour controls cannot be told apart",
+      )
+    }
+    if (outcomes.every(({ outcome }) => outcome === "ignored")) {
+      return decide(
+        "unsupported",
+        "both SGR 58 RGB samples left the plain underline while distinct foreground-route colours were visible: colour ignored, decoration kept",
+      )
+    }
+    if (outcomes.some(({ outcome }) => outcome === "ignored")) {
+      return decide(
+        "probe-todo",
+        `the RGB samples disagree: ${outcomes.map(({ index, outcome }) => `${index} ${outcome === "ignored" ? "kept the plain underline" : "moved away from the plain underline"}`).join(", ")}`,
+      )
+    }
+    return decide(
+      "probe-todo",
+      `the RGB samples do not both keep the plain underline: ${outcomes.map(({ index, outcome }) => `${index} ${outcome === "matched" ? "matched its foreground route" : "matched neither reference"}`).join(", ")}; these controls admit no new Supported result`,
+    )
+  })
 }
 
 /** One frame of the fixture: a clean screen, the row's seed, then the paint and the sample. */
@@ -465,6 +599,7 @@ export function colourCaptureCallbackResult(
     verdict.criterionBranch === "colour-no-attribute-witness" ||
     verdict.criterionBranch === "colour-walked-parameters" ||
     verdict.criterionBranch === UNDERLINE_INDEXED_BRANCH ||
+    verdict.criterionBranch === UNDERLINE_RGB_BRANCH ||
     (options?.mux !== undefined && observation.outcome === "inconclusive")
   ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether
