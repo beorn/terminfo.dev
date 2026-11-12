@@ -16,6 +16,7 @@ import { isDefaultOf, MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement }
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
+import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -190,6 +191,12 @@ export interface SelectedContextCell {
    * same suite reads the feature Supported, so the cell reads probe-invalid while `result` stays the original.
    */
   held?: HeldMarker
+  /**
+   * Set only when the mux-input demotion (mux-outer-demotion.ts, #33665) read this cell: the mux measured Unsupported on
+   * an input row the placed outer terminal of the same version also reads Unsupported, so the feature result reads
+   * untestable while `result`, `run` and `origin` stay the measured original.
+   */
+  outerAbsent?: OuterAbsentMarker
 }
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
@@ -225,6 +232,8 @@ export interface SelectedContextSummary {
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
+  /** Set only when a mux run's Unsupported input rows kept their reading: why, per run (#33665 condition 2). */
+  outerAbsentRefusals?: string[]
 }
 
 export interface SelectedProjection {
@@ -835,6 +844,10 @@ function composeContextSummaries(
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
     // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
     applyHeld(cells, HELD_NEGATIVES, heldWitnesses)
+    // After reopening and holding, before derivation, so a demoted parent derives nothing (#33665, @cto fccc41a9).
+    // Placed runs only: a working run is never an outer reading (@cto 0f1274ed condition 4).
+    const outerAbsentRefusals = applyOuterAbsent(contextKey, cells, acceptedRuns)
+    for (const refusal of outerAbsentRefusals) log?.(refusal)
     // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
     const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     const contributing = new Set(
@@ -879,6 +892,7 @@ function composeContextSummaries(
       derivedIds,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
+      ...(outerAbsentRefusals.length > 0 && { outerAbsentRefusals }),
     }
   }
   // No silent no-match: a row that reopened nothing names a cell no context grades that way any more.

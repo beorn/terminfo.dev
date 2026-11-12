@@ -39,6 +39,8 @@ export interface SelectionFileCell {
   supplement?: SelectedContextCell["supplement"]
   /** Present only when a reopened-cells row withdrew this cell's grade (#33164); the status map counts these (33109). */
   reopened?: SelectedContextCell["reopened"]
+  /** Present only when the mux-input demotion read this cell (#33665): measured status and the outer run it leaned on. */
+  outerAbsent?: SelectedContextCell["outerAbsent"]
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -50,7 +52,7 @@ export function selectionFile(
   projection: SelectedProjection,
   workingRunIds: ReadonlySet<string>,
   contentDir: string,
-): { cells: SelectionFileCell[] } {
+): { cells: SelectionFileCell[]; outerAbsentRefusals: string[] } {
   const root = resolve(contentDir, "..")
   const cells: SelectionFileCell[] = []
   for (const [context, summary] of Object.entries(projection.contexts)) {
@@ -78,11 +80,14 @@ export function selectionFile(
         contentPath: working ? null : relative(root, resolve(cell.run.path)).split(sep).join("/"),
         ...(cell.supplement && { supplement: cell.supplement }),
         ...(cell.reopened && { reopened: cell.reopened }),
+        ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent }),
       })
     }
   }
   cells.sort((a, b) => a.terminalId.localeCompare(b.terminalId) || a.featureId.localeCompare(b.featureId))
-  return { cells }
+  // #33665 condition 2: a mux run whose Unsupported input rows kept their reading says why, in the file the map reads.
+  const outerAbsentRefusals = Object.values(projection.contexts).flatMap((summary) => summary.outerAbsentRefusals ?? [])
+  return { cells, outerAbsentRefusals }
 }
 
 /** Refuse a path that is the content directory or inside it. */
