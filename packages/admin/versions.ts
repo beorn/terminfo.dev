@@ -68,6 +68,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/capture-calibration.ts",
   "packages/terminfo.dev/src/text-qualification.ts",
   "packages/terminfo.dev/src/linux-input.ts",
+  "packages/terminfo.dev/src/darwin-input.ts",
+  "packages/terminfo.dev/src/input-fixture.ts",
   "packages/terminfo.dev/src/terminal-environment.ts",
   "packages/terminfo.dev/src/notification-defaults.ts",
   "packages/terminfo.dev/src/serve.ts",
