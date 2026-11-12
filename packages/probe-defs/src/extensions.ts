@@ -394,7 +394,7 @@ function osc5522AfterSiblings(
         ? ""
         : `; ${String(other.length)} of ${String(controls.length)} controls neither answered nor were measured silent (timeout or unreadable bytes: ${other.join(", ")}) and say nothing`
     return notTestedResult(
-      `OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls were a measured silence with the fence answered${unreadable}; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise.`,
+      `OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls were a measured silence with the fence answered${unreadable}; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which needs clipboard-read permission this probe does not exercise.`,
       evidence,
     )
   }

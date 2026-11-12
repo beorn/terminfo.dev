@@ -2581,11 +2581,11 @@ describe("Kitty protocol detection", () => {
   // about 5522, so that silence is not a probe fault. @cpo/term 2ddb8d2a keeps existing Untestable
   // reasons and adds no new ones: the partial-silence case names the missing observer as PROBE TODO.
   const oneSiblingSilent =
-    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls were a measured silence with the fence answered; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
+    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls were a measured silence with the fence answered; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
   // @dev/15 on d35467098: a control that timed out is not an answer, and the note may not say the
   // fence answered for it. The unreadable case is named for what it measured.
   const oneSiblingAnsweredOneTimedOut =
-    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls were a measured silence with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004) and say nothing; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
+    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls were a measured silence with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004) and say nothing; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
   test.each([
     ["every sibling is silent", { 7: "silent" }, true, "untestable", 14, 0, everySiblingSilent],
     ["one sibling answers", { 7: "reply" }, true, "probe-todo", 13, 0, oneSiblingSilent],
