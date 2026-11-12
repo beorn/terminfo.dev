@@ -106,6 +106,47 @@ export function emptyRollupCounts(): RollupCounts {
 }
 
 /**
+ * A count set as a STORED file may hold it: the six stored statuses. `differs-by-context` is derived by the
+ * context join and never stored (@cto c3c2f885 condition 5), so a zero bucket is dropped and a NON-zero one
+ * refuses loudly — a derived count reaching a stored writer means the boundary broke, and silently dropping
+ * it would hide that. `where` names the file (and, for a summary, the engine) the count set belongs to.
+ */
+export function storedCounts<T extends Record<string, number>>(
+  counts: T,
+  where: string,
+): Omit<T, typeof DIFFERS_BY_CONTEXT> {
+  const { [DIFFERS_BY_CONTEXT]: derived, ...stored } = counts
+  if (derived !== undefined && derived !== 0) {
+    throw new Error(
+      `${where}: counts.${DIFFERS_BY_CONTEXT} is ${derived}; that bucket is derived by the context join and never enters a stored file (@cto c3c2f885)`,
+    )
+  }
+  return stored
+}
+
+/** A rollup as a stored file may hold it: identical sums, every count set reduced by `storedCounts`. */
+export interface StoredTerminalStatusRollup extends Omit<TerminalStatusRollup, "counts" | "families"> {
+  readonly counts: Record<FeatureResultStatus, number>
+  readonly families: Record<
+    string,
+    Omit<FamilyRollup, "counts"> & { readonly counts: Record<FeatureResultStatus, number> }
+  >
+}
+
+export function storedRollup(rollup: TerminalStatusRollup, where: string): StoredTerminalStatusRollup {
+  return {
+    ...rollup,
+    counts: storedCounts(rollup.counts, where),
+    families: Object.fromEntries(
+      Object.entries(rollup.families).map(([family, entry]) => [
+        family,
+        { ...entry, counts: storedCounts(entry.counts, `${where} family ${family}`) },
+      ]),
+    ),
+  }
+}
+
+/**
  * What one bucket means to a bar. Total over `AppCellStatus`: a new bucket is a compile error here, so no
  * reader can fold it into "open" or "supported" with a default branch. Differs is decided and is neither a
  * supported nor an unsupported measurement.
@@ -228,7 +269,10 @@ export function rollupTerminalStatuses(
   const decided = sumBuckets(counts, ["supported", "unsupported", "differs", "untestable"])
   const open = sumBuckets(counts, ["open"])
   const donePct = positions === 0 ? 0 : Math.round((100 * decided) / positions)
-  const supportedPct = decisive === 0 || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
+  // The share line and this number ask ONE predicate (@dev/16 on #33600): a bar whose only decided cells
+  // disagree judged something, so it reads 0% in both rather than a percentage beside a null.
+  const supportedPct =
+    runDecidedNothing(counts, derived) || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
   const completenessTier: 0 | 1 | 2 | 3 =
     positions === 0 ? 0 : counts["probe-todo"] > 0 ? 1 : counts["probe-invalid"] + counts["probe-conflict"] > 0 ? 2 : 3
 

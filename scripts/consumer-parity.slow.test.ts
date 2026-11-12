@@ -396,7 +396,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import { loadFullProbes } from ${entry("docs/data/probes.data.ts")};
       import probesLoader from ${entry("docs/data/probes.data.ts")};
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
-      import { generateApi } from ${entry("scripts/generate-api.ts")};
+      import { generateApi, storedDocument } from ${entry("scripts/generate-api.ts")};
       import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
       import { scoredFeatureIds } from ${entry("packages/probe-defs/src/index.ts")};
       const started = performance.now();
@@ -436,7 +436,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(keys(api.contexts), keys(published.contexts));
         for (const [key, context] of Object.entries(published.contexts)) {
           const {sources, ...summary} = api.contexts[key];
-          assert.deepEqual(summary, (({sources, ...rest}) => rest)(context));
+          // #33600: the published document is the stored shape — six stored statuses, never the site's
+          // derived differs bucket.
+          assert.deepEqual(summary, storedDocument((({sources, ...rest}) => rest)(context), key));
           assert.deepEqual(keys(sources), keys(context.sources));
           for (const [id, cell] of Object.entries(context.featureResults)) {
             assert.ok(sources[cell.origin.runId], key + "/" + id + " has original source");
@@ -452,7 +454,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
               const bytes=readFileSync(join(out,refs[i].url.slice(1)));
               collectEvery();
               assert.equal(digest(bytes),refs[i].documentSha256);
-              assert.deepEqual(JSON.parse(bytes.toString()),version);
+              assert.deepEqual(JSON.parse(bytes.toString()),storedDocument(version, refs[i].url));
               assert.ok(raw.has(version.sha256));
               referenced.add(version.sha256);
             }

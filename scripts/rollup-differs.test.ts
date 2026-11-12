@@ -26,6 +26,8 @@ import {
   rollupInputs,
   rollupTerminalStatuses,
   runDecidedNothing,
+  storedCounts,
+  storedRollup,
 } from "../docs/data/release-scope.ts"
 
 const CATALOG = ["sgr.bold", "sgr.italic"] as const
@@ -163,6 +165,43 @@ describe("the derived bucket never becomes a stored status", () => {
     expect(() => completenessTierOf({ "sgr.bold": DIFFERS_BY_CONTEXT })).toThrow(
       /stored statuses only.*differs-by-context/,
     )
+  })
+})
+
+describe("stored shapes drop the bucket at zero and refuse a nonzero one", () => {
+  it("drops a zero derived bucket from a stored count set", () => {
+    const rollup = rollupTerminalStatuses({ "sgr.bold": "supported" }, ["sgr.bold"])
+    expect(Object.keys(storedCounts(rollup.counts, "summary.json rollup kitty"))).toEqual([
+      "supported",
+      "unsupported",
+      "untestable",
+      "probe-todo",
+      "probe-invalid",
+      "probe-conflict",
+    ])
+  })
+
+  it("refuses a nonzero derived bucket, naming the key and the file it would have hidden", () => {
+    const rollup = rollupTerminalStatuses({ "sgr.bold": DIFFERS_BY_CONTEXT }, ["sgr.bold"])
+    expect(() => storedCounts(rollup.counts, "summary.json rollup kitty")).toThrow(
+      /summary\.json rollup kitty: counts\.differs-by-context is 1/,
+    )
+    expect(() => storedRollup(rollup, "summary.json rollup kitty")).toThrow(/differs-by-context is 1/)
+  })
+
+  it("reads the same percentage in the bar and in the rollup when every decided cell differs", () => {
+    const rollup = rollupTerminalStatuses({ "sgr.bold": DIFFERS_BY_CONTEXT }, ["sgr.bold"])
+    expect(rollup.supportedPct).toBe(0)
+    expect(
+      currentSupportedShare(
+        aggregateCurrentResults([{ featureId: "sgr.bold", status: DIFFERS_BY_CONTEXT }], ["sgr.bold"]),
+      ),
+    ).toBe("0/1 supported (0%)")
+  })
+
+  it("still reads null when nothing was decided at all", () => {
+    const rollup = rollupTerminalStatuses({ "sgr.bold": "probe-todo" }, ["sgr.bold"])
+    expect(rollup.supportedPct).toBeNull()
   })
 })
 
