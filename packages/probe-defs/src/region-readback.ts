@@ -577,6 +577,34 @@ function layoutCheckFor(
     })
 }
 
+/**
+ * 33644: a same-cells read whose witness cell is in view can still compare cells that are not — on
+ * Warp the command header covers rows 1-3 while the witness sits lower (run 43089755106, 19 rows). So
+ * when the witness check finds nothing, the compared region's own first cell takes the same check,
+ * against the calibrated crop of that cell (the region crop's top-left cell).
+ */
+async function comparedRegionLayout(
+  ctx: TermProbeSource,
+  id: string,
+  region: { top: number; left: number },
+  witnessCell: CellRegion,
+  regionCrop: CaptureRectangle | undefined,
+  timeoutMs: number,
+  pollMs: number,
+): Promise<string | undefined> {
+  const geometry = ctx.captureGeometry?.geometry
+  if (!regionCrop || !geometry) return undefined
+  if (region.top === witnessCell.top && region.left === witnessCell.left) return undefined
+  return layoutSinceCalibration({
+    ctx,
+    label: `${id}: same cells, compared region`,
+    cell: { row: region.top, col: region.left },
+    calibratedCrop: { x: regionCrop.x, y: regionCrop.y, width: geometry.cellWidth, height: geometry.cellHeight },
+    timeoutMs,
+    pollMs,
+  })
+}
+
 /** Two crop rectangles cover the same cells only when all four integers match. */
 function sameRectangle(left: CaptureRectangle, right: CaptureRectangle): boolean {
   return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height
@@ -1788,7 +1816,8 @@ export async function captureRegionReadbackDecision(
     if (seed === expected && discriminator?.expected !== "no-change") {
       const layoutClause =
         assertionType === "screenshot"
-          ? await layoutCheckFor(ctx, `${id}: same cells`, witnessCell, witnessBaseline, timeoutMs, pollMs)?.()
+          ? ((await layoutCheckFor(ctx, `${id}: same cells`, witnessCell, witnessBaseline, timeoutMs, pollMs)?.()) ??
+            (await comparedRegionLayout(ctx, id, spec.region, witnessCell, cropRectangles[0], timeoutMs, pollMs)))
           : undefined
       return review(
         inconclusive(
