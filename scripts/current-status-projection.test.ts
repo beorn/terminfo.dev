@@ -1085,6 +1085,69 @@ it("a harness outcome is placed when the probe hash changed", () => {
   expect(cell?.result.harnessOutcome).toBe("probe-exceeded")
 })
 
+// 33587 (@cto e22aad2c, 10cbb094 option A): a could-not-measure row, in the shape its producers write it
+// (attempt scope none: unified.ts grant refusal, helpers.ts recordCollectorSelection), never replaces a decided cell.
+describe("could-not-measure never replaces a decided cell", () => {
+  const featureId = ids[0]!
+  const GRANT = "Required grant missing: no verified disposable-ownership receipt was presented"
+  const NOT_SELECTED = "Not selected for this collection; no test was attempted."
+  const later = (reason: string, selected: boolean) => {
+    const startedAt = "2026-10-21T07:00:00.000Z"
+    const results = todos()
+    results[0] =
+      reason === GRANT
+        ? {
+            featureId,
+            status: "probe-todo",
+            attempt: { scope: "none" },
+            reason,
+            rawReplyRef: featureId,
+            tests: [
+              { id: "prerequisite", status: "probe-todo", attempt: { scope: "none" }, reason, rawReplyRef: featureId },
+            ],
+          }
+        : { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason }
+    // A neighbouring row the run did measure, so the run is a real later attempt, not an empty one.
+    results[4] = {
+      featureId: ids[4]!,
+      status: "probe-todo",
+      attempt: { scope: "probe", startedAt },
+      tests: [{ id: "criterion", status: "probe-todo", attempt: { scope: "none" }, reason: "No reply" }],
+      reason: "No reply",
+    }
+    const value = raw(results)
+    const selection = selected ? [featureId, ids[4]!] : [ids[4]!]
+    return parse({
+      ...value,
+      runId: `later-${selected ? "selected" : "unselected"}`,
+      measuredAt: startedAt,
+      rawReplies: {
+        ...value.rawReplies,
+        ...(reason === GRANT && { [featureId]: JSON.stringify({ writes: [], queries: [], events: [] }) }),
+        "collector.selection": JSON.stringify({ ids: selection }),
+        "collector.collectionAttempt": JSON.stringify({ ids: selection, startedAt, result: "completed" }),
+      },
+    })
+  }
+  it.each([
+    ["grant missing, row selected", GRANT, true],
+    ["not selected", NOT_SELECTED, false],
+  ] as const)("%s: the decided cell and its source run stand", (_label, reason, selected) => {
+    const prior = supportedBaseline()
+    const latest = later(reason, selected)
+    const context = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, []).contexts[
+      "term:kitty"
+    ]
+    const cell = context?.cells[featureId]
+    expect(cell?.origin.runId).toBe(prior.runId)
+    expect(cell?.result.status).toBe("supported")
+    expect(cell?.run.measuredAt).toBe(prior.measuredAt)
+    // The later run still counts as an attempt, and its emitted row is placed.
+    expect(context?.attempts.map((entry) => entry.runId)).toContain(latest.runId)
+    expect(context?.cells[ids[4]!]?.origin.runId).toBe(latest.runId)
+  })
+})
+
 it("an open cell takes a newer harness outcome", () => {
   const featureId = ids[0]!
   const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
