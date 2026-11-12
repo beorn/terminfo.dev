@@ -184,6 +184,47 @@ test("Darwin capture falls back to a region capture of the window bounds when th
   }
 })
 
+// 33587, @cto 730017b6: an owned Mac's console shows other people's apps, so a refused window image
+// refuses by name there and no region of the screen is ever captured.
+test("Darwin capture on an owned host refuses a refused window image instead of capturing a screen region", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-owned-"))
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 12, y: 31, width: 1000, height: 677 },
+    alpha: 1,
+    onscreen: true,
+  }
+  const calls: string[][] = []
+  const runner = vi
+    .spyOn(captureCore, "command")
+    .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "magick") return Buffer.from(args[0] === "-version" ? "test converter" : "1000x677")
+      if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      calls.push(args)
+      if (args[0] === "-l") {
+        onStderr?.(Buffer.from("could not create image from window\n"))
+        throw Object.assign(new Error("command exited 1"), {
+          captureCommand: { file, args, stdoutBase64: "", stderrBase64: "", code: 1, signal: null, killed: false },
+        })
+      }
+      writeFileSync(args.at(-1)!, PNG_STUB)
+      return Buffer.alloc(0)
+    })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, ownedHost: true, onRetained: () => {} })
+    await expect(
+      adapter.captureRaw({ featureId: "extensions.truecolor", role: "control", label: "diagnostic" }),
+    ).rejects.toThrow(/owned host never captures a screen region/)
+    expect(calls.map((args) => args[0])).toEqual(["-l"])
+  } finally {
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // #33117: a checkpoint naming a same-shot control region still acquires exactly one screenshot;
 // both region digests are crops of that one acquired image, never a second acquisition.
 test("Darwin capture crops target and same-shot control from one acquired screenshot", async () => {

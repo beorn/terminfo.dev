@@ -213,6 +213,10 @@ function runDarwinArm(scenario: {
   /** The claim's own run id, when it differs from the worker's. */
   claimRunId?: string
   batch?: "process" | "terminal-app" | "disposed"
+  /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
+  comms?: Record<string, string>
+  /** The Terminal ancestor's pid the terminal-app owner must adopt. */
+  terminalAppPid?: number
   text?: {
     stdout?: string | number[]
     socket?: string
@@ -263,6 +267,12 @@ function runDarwinArm(scenario: {
         return scenario.command ?? executablePath + " " + scenario.marker.flag + " " + scenario.marker.value
       }
       if (field === "ppid=") return parent[pid] === undefined ? "" : String(parent[pid])
+      // The unmeasured ancestry walk reads pid, ppid and comm in one call (Terminal.app's pid, 33587).
+      if (field === "pid=") {
+        if (parent[pid] === undefined) return ""
+        const comm = scenario.comms?.[pid] ?? (pid === scenario.ownerPid ? executablePath : pid === 1 ? "launchd" : "-zsh")
+        return pid + " " + parent[pid] + " " + comm + "\\n"
+      }
       throw new Error("unexpected ps field " + args.join(" "))
     }
     mock.module("node:fs", () => ({
@@ -334,6 +344,8 @@ function runDarwinArm(scenario: {
       assert.equal(summary.ownedOwnerAssertion, undefined)
       // The pid serve's Darwin capture adopts is the one this proof checked, never a second reading.
       if (scenario.batch !== "terminal-app") assert.equal(owner.appPid, assertion.ownerPid)
+      // Terminal.app's assertion names no app, so its pid is the collector's own Terminal ancestor (33587).
+      else assert.equal(owner.appPid, scenario.terminalAppPid)
       if (scenario.text) {
         assert.equal(typeof owner.readCells, "function")
         if (scenario.text.disposed) await owner.dispose()
@@ -540,7 +552,13 @@ test.each([
     workerPid: "self",
     ownerPid: 4242,
     marker,
-    parent: { self: 4242, "4242": 1 },
+    // Terminal.app's tab: collector <- login shell 4242 <- Terminal 777 <- launchd.
+    parent:
+      batch === "terminal-app" ? { self: 4242, "4242": 777, "777": 1, "1": 0 } : { self: 4242, "4242": 1 },
+    ...(batch === "terminal-app" && {
+      comms: { "777": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+      terminalAppPid: 777,
+    }),
     batch,
   })
   expect(result.status).toBe(0)
