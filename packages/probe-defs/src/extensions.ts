@@ -7,6 +7,7 @@ import type {
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,
+  TerminalScrollbackReading,
   CallbackHostRecipeCause,
   HostInputName,
   HostRecipeName,
@@ -3136,29 +3137,110 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
   }
 }
 
+/** Screen has no reader for its own history position, so the row stays open (TODO), never Untestable (@cto 870b3dad). */
+const OSC720_SCREEN_OPEN =
+  "screen reports no viewport offset, so a scroll of its own history cannot be read; anything seen on screen would grade the outer terminal"
+/** The must-not-move control: a made-up OSC no terminal defines. */
+const OSC720_MUX_MADE_UP = "\x1b]7207\x07"
+
 /**
- * App extensions.osc720-scroll-up (#32785, @cto a4c6f79d, 85d819da):
- * 1. Route order: tmux and Screen keep today's result; then wheel plus capture; otherwise today's
- *    code, unchanged.
- * 2. tmux and Screen are excluded (Condition 6): tmux's first wheel-up only enters copy mode and
- *    Screen ignores the wheel, so their cells keep today's result.
+ * tmux decides OSC 720 from its own viewport offset (#32785, @cto 870b3dad). Seed history and record the line
+ * count; read the baseline; a made-up OSC that must not move it; OSC 720; then the known-to-move control last (copy
+ * mode: prefix, [, Page Up, by XTEST keys) so it cannot leave the pane scrolled for the reading that grades. Every
+ * reading is fenced by a cursor-position reply and kept in the evidence. The pane is then restored (leave copy mode)
+ * and must read its baseline offset again, or the row stays open.
+ */
+async function osc720ScrollUpTmux(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const read = ctx.getScrollback
+  const input = ctx.input
+  if (!read) return notTestedResult("owned tmux scrollback reader", {})
+  // The reader qualifies before anything is written: a reader with no reading this run throws its named
+  // reason here (ScrollbackReadingUnavailable), which the probe records as unmeasured.
+  const beforeSeed = await read()
+  if (!input) return notTestedResult("XTEST key input for the tmux copy-mode control", { beforeSeed })
+  const historyLinesWritten = ctx.rows + OSC720_HISTORY_LINES
+  const readings: Record<string, TerminalScrollbackReading> = { beforeSeed }
+  const state = { route: "tmux viewport offset", historyLinesWritten, readings }
+  const open = (note: string): ProbeCallbackResult => ({
+    pass: false,
+    response: JSON.stringify(state),
+    note,
+    tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+  })
+  const step = async (label: string): Promise<TerminalScrollbackReading | undefined> => {
+    if (!(await ctx.queryCursorPosition())) return undefined
+    const reading = await read()
+    readings[label] = reading
+    return reading
+  }
+  const sameExtent = (a: TerminalScrollbackReading, b: TerminalScrollbackReading) =>
+    a.totalLines === b.totalLines && a.screenLines === b.screenLines
+
+  ctx.write("\x1b[2J\x1b[H")
+  for (let i = 0; i < historyLinesWritten; i++) ctx.write(`scroll-${i}\r\n`)
+  const baseline = await step("baseline")
+  if (!baseline) return open("no cursor-position reply to fence the baseline reading")
+  const base = baseline.viewportOffset
+  if (base === undefined || baseline.screenLines === undefined) {
+    return notTestedResult("tmux reports no viewport offset", state)
+  }
+  const history = baseline.totalLines - baseline.screenLines
+  if (history <= 0) {
+    return open(`wrote ${historyLinesWritten} lines but tmux history reads ${history}, so there is nothing to scroll`)
+  }
+
+  ctx.write(OSC720_MUX_MADE_UP)
+  const madeUp = await step("afterMadeUpOsc")
+  if (!madeUp) return open("no cursor-position reply to fence the made-up OSC control")
+  if (madeUp.viewportOffset !== base || !sameExtent(madeUp, baseline)) {
+    return open(`the made-up OSC control moved tmux's viewport: offset ${base} -> ${madeUp.viewportOffset}`)
+  }
+
+  ctx.write("\x1b]720\x07")
+  const afterOsc720 = await step("afterOsc720")
+  if (!afterOsc720) return open("no cursor-position reply to fence OSC 720")
+
+  await input.injectKey("ctrl+b")
+  await input.injectKey("bracketleft")
+  await input.injectKey("Prior")
+  const afterControl = await step("afterCopyModeControl")
+  if (!afterControl) return open("no cursor-position reply to fence the copy-mode control")
+
+  // Leave copy mode. Entering it first makes q a copy-mode key, never input that reaches the probe.
+  await input.injectKey("ctrl+b")
+  await input.injectKey("bracketleft")
+  await input.injectKey("q")
+  const restored = await step("restored")
+  if (!restored) return open("no cursor-position reply to fence the viewport restore")
+
+  const osc = afterOsc720.viewportOffset
+  const control = afterControl.viewportOffset
+  const summary =
+    `tmux viewport offset ${base} -> ${osc} after OSC 720 (history ${history} lines; made-up OSC held ${base}; ` +
+    `copy-mode control ${osc} -> ${control}; restored ${restored.viewportOffset})`
+  if (restored.viewportOffset !== base) {
+    return open(`the pane did not return to its baseline viewport after the controls: ${summary}`)
+  }
+  if (osc === undefined || control === undefined) return open(`a reading lost its viewport offset: ${summary}`)
+  if (!sameExtent(afterOsc720, baseline)) return open(`OSC 720 changed the buffer geometry: ${summary}`)
+  if (osc < base) return parserStateResult(true, OSC720_CLAIM, state, summary)
+  if (control < osc) return parserStateResult(false, OSC720_CLAIM, state, summary)
+  return open(`the copy-mode control did not move tmux's viewport, so an unchanged offset shows nothing: ${summary}`)
+}
+
+/**
+ * App extensions.osc720-scroll-up (#32785, @cto a4c6f79d, 85d819da, 870b3dad):
+ * 1. Route order: Screen stays open with its reason; tmux decides from its own viewport offset
+ *    (osc720ScrollUpTmux); then wheel plus capture; otherwise today's code, unchanged.
+ * 2. Multiplexers never use the wheel arm: tmux's first wheel-up only enters copy mode and Screen
+ *    ignores the wheel.
  */
 async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
-  if (ctx.mux === "tmux" || ctx.mux === "screen") {
-    if (ctx.getScrollback) {
-      const reading = await ctx.getScrollback()
-      if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
-        return notTestedResult("terminal reports no viewport offset", reading)
-      }
-    }
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]720\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      ctx,
-      pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
-    )
+  if (ctx.mux === "screen") {
+    const reading = ctx.getScrollback ? await ctx.getScrollback() : null
+    return notTestedResult(OSC720_SCREEN_OPEN, { reading })
   }
+  if (ctx.mux === "tmux") return await osc720ScrollUpTmux(ctx)
 
   const capture = ctx.capture
   const input = ctx.input
