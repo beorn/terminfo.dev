@@ -17,7 +17,7 @@ import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, win32 } from "node:path"
-import { homedir, tmpdir } from "node:os"
+import { homedir } from "node:os"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
@@ -69,13 +69,14 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
-import { retain } from "./capture-core.ts"
+import { command, retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   buildDarwinInputHelper,
   createDarwinInput,
   DARWIN_INPUT_HELPER_ENV,
+  ownedHostHelperPath,
   type DarwinLaunchTarget,
 } from "./darwin-input.ts"
 import {
@@ -888,24 +889,31 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         return
       }
       try {
-        // An owned Mac (33587) has no job step that builds the helper, so it is compiled here from
-        // the staged source; a hosted runner keeps its job-built helper and refuses when it is unset.
-        // A set but empty variable names a run with no helper: it refuses by name and builds nothing.
-        const helperPath =
-          process.env[DARWIN_INPUT_HELPER_ENV] ??
-          (owned
-            ? buildDarwinInputHelper(
-                join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
-                join(tmpdir(), `terminfo-darwin-input-${process.pid}`),
-              )
-            : undefined)
+        // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
+        // from the staged source; a hosted runner keeps its job-built helper and refuses when unset.
+        const preset = process.env[DARWIN_INPUT_HELPER_ENV]
+        const helperPath = owned
+          ? ownedHostHelperPath(preset, () =>
+              buildDarwinInputHelper(join(SOURCE_ROOT, "native", "darwin-input", "main.swift")),
+            )
+          : preset
         input = await createDarwinInput({
           appPid,
           appName: terminal.hostedAppId ?? kind ?? "macOS app",
           helperPath,
           // The owner assertion names the run's own window and tab; a hosted run reads its launch receipt.
           ...(owned ?? launchedWindowTarget()),
-          ...(owned && { ownedHost: true }),
+          ...(owned && {
+            ownedHost: true,
+            // Apple events to Terminal only (@cto 615cf90b): the selected tab's tty, read before each key.
+            readSelectedTabTty: async (windowId: number) =>
+              (
+                await command("/usr/bin/osascript", [
+                  "-e",
+                  `tell application "Terminal" to get tty of selected tab of window id ${String(windowId)}`,
+                ])
+              ).toString(),
+          }),
           log: (line) => process.stderr.write(`collector.input ${line}\n`),
           selfTest: async (inject) => {
             // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -

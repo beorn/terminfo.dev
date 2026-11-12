@@ -9,8 +9,10 @@
 // this file, on a fleet host or on a person's Mac.
 //
 // Keys are posted to the measured app's pid only (CGEvent.postToPid), never to the HID or session
-// tap, so a synthetic key can never reach another process; each key post first proves, in the same
-// call, that the run's own window is the app's front layer-0 window AND its key window (@cto
+// tap, so a synthetic key never reaches another app; inside the app it reaches the key window's
+// selected tab, which the collector checks against the run's own tab before each post on an owned
+// host. Each key post first proves, in the same call, that the run's own window is the app's front
+// layer-0 window AND its key window (@cto
 // 60e39dfc, 33587: codimac's console has other people's apps open). Mouse and wheel events still use
 // the HID tap; they land by screen position, and the collector never posts them on an owned host. A
 // posting the app ignores is not detectable here: the collector installs this helper only after one
@@ -279,7 +281,7 @@ func requireKeyWindow(_ pid: pid_t, _ target: Int) -> String {
             "the accessibility layer reports the key window at \(describe(keyFrame)), so a posting would land " +
             "in another window and its silence would be read as terminal behaviour")
     }
-    return "frontmost=true key=true pid=\(pid) window=\(target)"
+    return "front-window=true key=true pid=\(pid) window=\(target)"
 }
 
 func windowId(_ raw: String, _ verb: String) -> Int {
@@ -306,7 +308,8 @@ case "front":
     let pid = processId(arguments[2])
     activate(pid)
     if arguments.count == 4 {
-        out(requireKeyWindow(pid, windowId(arguments[3], "front")))
+        // activate() has just proven the app frontmost; the key-window proof adds the window.
+        out("frontmost=true \(requireKeyWindow(pid, windowId(arguments[3], "front")))")
     } else {
         out("frontmost=true pid=\(pid)")
     }

@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   createDarwinInput,
+  ownedHostHelperPath,
   ownedHostMechanism,
   DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO,
   DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
@@ -152,8 +153,8 @@ describe("macOS input on an owned host", () => {
         `printf '%s\\n' "$*" >> '${argv}'`,
         'case "$1" in',
         '  windows) printf \'[{"id":33,"x":40,"y":40,"width":700,"height":400}]\\n\' ;;',
-        '  front) printf \'frontmost=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
-        '  key) printf \'posted=key route=pid frontmost=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        '  front) printf \'frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        '  key) printf \'posted=key route=pid front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
         "esac",
         "",
       ].join("\n"),
@@ -184,14 +185,51 @@ describe("macOS input on an owned host", () => {
       expect(calls.filter((call) => call.startsWith("key "))).toEqual(["key 4242 33 z", "key 4242 33 a"])
       expect(calls.filter((call) => call.startsWith("mouse"))).toEqual([])
       expect(logged.filter((line) => line.startsWith("posted="))).toEqual([
-        "posted=key route=pid frontmost=true key=true pid=4242 window=33",
-        "posted=key route=pid frontmost=true key=true pid=4242 window=33",
+        "posted=key route=pid front-window=true key=true pid=4242 window=33",
+        "posted=key route=pid front-window=true key=true pid=4242 window=33",
       ])
       expect(logged).not.toContain('[{"id":33,"x":40,"y":40,"width":700,"height":400}]')
       expect(facts[0]).toMatch(/^darwin input installed \(owned host: keys to pid only\): pid 4242, window 33,/)
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
+  })
+})
+
+describe("macOS input on an owned host: tab and helper", () => {
+  it("posts no key while another tab of the run's window is selected", async () => {
+    const fake = fakeInputMechanism()
+    const selected = ["/dev/ttys004", "/dev/ttys009"]
+    const input = await createDarwinInput(
+      options({
+        mechanism: fake.mechanism,
+        windowId: 33,
+        windowTty: "/dev/ttys004",
+        ownedHost: true,
+        readSelectedTabTty: async (windowId) => {
+          expect(windowId).toBe(33)
+          return `${selected.shift() ?? "/dev/ttys004"}\n`
+        },
+        selfTest: async (inject) => {
+          await inject()
+          return DARWIN_INPUT_SELF_TEST_KEYSYM
+        },
+      }),
+    )
+    await expect(input.injectKey("a")).rejects.toThrow(
+      /selected tab of window 33 is "\/dev\/ttys009", not the run's own tab \/dev\/ttys004/,
+    )
+    expect(fake.calls.filter((call) => call.op === "key").map((call) => call.args[0])).toEqual([
+      DARWIN_INPUT_SELF_TEST_KEYSYM,
+    ])
+  })
+
+  it("builds the helper from source, and refuses a preset helper binary", () => {
+    expect(ownedHostHelperPath(undefined, () => "/built/helper")).toBe("/built/helper")
+    expect(ownedHostHelperPath("", () => "/built/helper")).toBeUndefined()
+    expect(() => ownedHostHelperPath("/somewhere/helper", () => "/built/helper")).toThrow(
+      /TERMINFO_DARWIN_INPUT_HELPER="\/somewhere\/helper" is refused/,
+    )
   })
 })
 
