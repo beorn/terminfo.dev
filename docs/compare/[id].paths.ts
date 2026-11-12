@@ -46,8 +46,8 @@ export default {
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const current = data.selectedByBackend[b.name]
-      if (!current?.selected.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
-      const selected = current.selected
+      const selected = current?.selected
+      if (!current || !selected?.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
       const states = data.selectedByBackend[b.name]?.states
       if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
