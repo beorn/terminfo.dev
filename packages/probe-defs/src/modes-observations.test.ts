@@ -3196,9 +3196,7 @@ test("modes.decsscls places the authored marker band on the row its reference sa
   // The ruled placement: authored seven lines before the burst's end, settled eight rows up.
   expect(settledRow).toBe(rows - 8)
 
-  const reference = writes.find(
-    (write) => write.includes("\x1b[2J\x1b[H\r\n") && write.includes("\x1b[48;5;196m"),
-  )
+  const reference = writes.find((write) => write.includes("\x1b[2J\x1b[H\r\n") && write.includes("\x1b[48;5;196m"))
   expect(reference).toBeDefined()
   const beforeBand = reference!.slice(0, reference!.indexOf("\x1b[48;5;196m"))
   const referenceRow = (beforeBand.match(/\r\n/g) ?? []).length + 1
