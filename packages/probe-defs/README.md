@@ -920,6 +920,9 @@ These callbacks require the existing disposable-terminal authority. Their limita
 Every other mode keeps the default recognition-only path.
 
 DECSSCLS is CSI Ps SP p, not a DEC mode: its term criterion still requires timed screenshots.
+Its reference, jump control and timed target stay on the screen whose origin the collector calibrated;
+the fixture does not enter another buffer after calibration. The shared capture lifecycle clears the
+disposable fixture, resets the speed and restores the cursor and prior DECSCLM mode on exit.
 Its library arm stays `headless-observable-review` with null assertion type and reason
 "presentation speed: headless engines paint no frames and expose no scroll-speed state".
 The missing presentation-speed observable remains PROBE TODO.
