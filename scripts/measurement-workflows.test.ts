@@ -530,17 +530,18 @@ process.exit(7);
 // Terminal acquisition can refuse with collector exit0; the older app cases supply iTerm timestamps
 // and cannot catch skipped diagnostics or a lost collection interval/identity in that success path.
 test.each([
-  { appId: "terminal-app", missingLaunch: false },
-  { appId: "terminal-app", missingLaunch: true },
-  { appId: "warp", missingLaunch: false },
-  { appId: "iterm2", missingLaunch: false },
-  { appId: "cmux", missingLaunch: false },
-  { appId: "cursor", missingLaunch: false },
-  { appId: "com.microsoft.VSCode", missingLaunch: false },
-  { appId: "cursor", missingLaunch: true },
+  { appId: "terminal-app", missingLaunch: false, collectOutcome: "success", expectedExit: 0 },
+  { appId: "terminal-app", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
+  { appId: "warp", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "iterm2", missingLaunch: false, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "cmux", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "cursor", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "com.microsoft.VSCode", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "cursor", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "cursor", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
 ])(
-  "$appId failures retain bounded evidence before cleanup (missing launch: $missingLaunch)",
-  ({ appId, missingLaunch }) => {
+  "$appId diagnostics preserve collection outcome (missing launch: $missingLaunch, collect: $collectOutcome)",
+  ({ appId, missingLaunch, collectOutcome, expectedExit }) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const step = workflow.jobs["measure-macos"].steps.find(
       (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
@@ -625,6 +626,7 @@ test.each([
         env: {
           ...process.env,
           APP_ID: appId,
+          COLLECT_OUTCOME: collectOutcome,
           RUNNER_TEMP: directory,
           GITHUB_WORKSPACE: root,
           COLLECT_STARTED_AT: "2026-10-20T02:00:00Z",
@@ -632,7 +634,8 @@ test.each([
           ITERM_LAUNCH_END: terminal ? "" : "2026-10-20T02:00:01Z",
         },
       })
-      expect(result.status, result.stderr).toBe(!terminal && (missingLaunch || appId === "iterm2") ? 1 : 0)
+      expect(result.status, result.stderr).toBe(expectedExit)
+      expect(step.env.COLLECT_OUTCOME).toBe("${{ steps.collect.outcome }}")
       const prefix = appId === "iterm2" ? "iterm" : appId === "com.microsoft.VSCode" ? "vscode" : appId
       const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
       expect(summary).toMatchObject({
