@@ -699,7 +699,7 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: always() && (matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
+        if: always() && (matrix.id == 'cursor' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
         env:
           APP_ID: ${{ matrix.id }}
           ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
