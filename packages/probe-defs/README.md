@@ -4,6 +4,12 @@
 
 This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored results change.
 
+The hosted Mac Alacritty launcher explicitly sets one pixel of window padding on both axes.
+Its measured launch receipt retains the actual invocation and a plain `launchDeviation` sentence
+when the recorded GUI arguments carry that override; padding-like child arguments do not qualify.
+The shared run parser preserves this optional Mac receipt field in `origin.appLaunch`.
+Unchanged columns/rows and clean pixel calibration remain fresh-run requirements, not receipt claims.
+
 ## Vocabulary and current code
 
 - **Probe subject**: the exact terminal app, emulator library or multiplexer being probed, at a recorded path, OS and version. `ProbeSubject.kind` is `term`, `lib` or `mux`.

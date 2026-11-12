@@ -504,7 +504,10 @@ jobs:
               nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
-              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH")
+              # 33601 (@cto e2ce2090, 5cffb5d6): request 1 px padding per side to move cells off the shaded edge.
+              # appLaunch.launchDeviation records this override. Fresh calibration must still prove the
+              # retained cols x rows, corner <=8 px and no stray edge pixels; no tolerance changes here.
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -o window.padding.x=1 -o window.padding.y=1 -e /bin/bash "$COMMAND_PATH")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
               "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
               ;;
@@ -699,9 +702,10 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: always() && (matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')))
+        if: always() && (matrix.id == 'cursor' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'com.microsoft.VSCode')))
         env:
           APP_ID: ${{ matrix.id }}
+          COLLECT_OUTCOME: ${{ steps.collect.outcome }}
           ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
           ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
           COLLECT_STARTED_AT: ${{ steps.collect.outputs.collect_started_at }}
@@ -829,7 +833,9 @@ jobs:
             } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
           await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
-          if (failures.length && !terminal) process.exitCode = 1;
+          // Capture failures remain in artifacts and stderr after a successful Cursor collection.
+          const successfulCursor = process.env.APP_ID === "cursor" && process.env.COLLECT_OUTCOME === "success";
+          if (failures.length && !terminal && !successfulCursor) process.exitCode = 1;
           '
 
       - name: Retain editor launch files and close only its owned GUI
