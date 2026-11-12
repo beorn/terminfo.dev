@@ -188,7 +188,10 @@ test.each([
   }))
   const result = sgr(id).lib!(reportingSource({ records }))
   expect(result.observation?.outcome).toBe("unsupported")
-  expect(JSON.parse(result.response!)).toHaveProperty("unhandled.added", records.map((record) => record.code))
+  expect(JSON.parse(result.response!)).toHaveProperty(
+    "unhandled.added",
+    records.map((record) => record.code),
+  )
   expect(result.observation?.note).toContain("measured: library reported the code unhandled")
 
   for (const source of [
