@@ -710,10 +710,14 @@ describe("probe method classification", () => {
       for (const result of run.results ?? []) {
         if (!scoredFeatureIds([result.featureId]).length) continue
         const classified = classifyResultMethod(result, run.subject, run.assertions)
-        // Alt-screen exit is a query and a screenshot. That pair stays mixed; any other mix fails here.
+        // Alt-screen exit is a query plus one observer of the restored screen: a screenshot (hosted runs) or the
+        // window's text (owned Mac reader, buffer_state; run 1c4e73d9, 33862). That mix stays mixed; any other fails.
         if (classified.kind === "mixed") {
           expect(result.featureId).toBe("modes.alt-screen.exit")
-          expect(classified.assertionTypes).toEqual(["query_reply", "screenshot"])
+          const observers = classified.assertionTypes.filter((type) => type !== "query_reply")
+          expect(classified.assertionTypes).toContain("query_reply")
+          expect(observers).toHaveLength(1)
+          expect(["screenshot", "buffer_state"]).toContain(observers[0])
           continue
         }
         expect(classified.kind).not.toBe("unmapped")
