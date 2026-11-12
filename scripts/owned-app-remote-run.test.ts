@@ -224,6 +224,7 @@ function fixture(): void {
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
       '     [ "${SHIM_PROBE_CLOBBER_MARKER:-}" = 1 ] && printf \'not ours\\n\' > "$out/../../.owned-app-transport-stage"',
+      '     if [ "${SHIM_PROBE_LOCK:-}" = 1 ]; then mkdir -p "$out/../locked"; printf \'cannot be unlinked\\n\' > "$out/../locked/held.txt"; chmod 555 "$out/../locked"; fi',
       '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/kitty-1.0-macos-run1.json"',
       "     printf 'fixture nested output\\n' > \"$out/nested/extra.log\"",
       "     echo 'fixture probe stdout' ;;",
@@ -503,6 +504,34 @@ describe("owned-app ssh transport", () => {
   it("removes the stage only when asked", () => {
     expect(run({}, ["--remove-stage"]).status).toBe(0)
     expect(existsSync(stage)).toBe(false)
+  }, 60_000)
+
+  it("keeps a stage that existed before this run even when asked to remove it, so an earlier run's outputs survive", () => {
+    // 33587 run 2: --remove-stage on the default stage deleted an earlier run's retained runs/ with it.
+    expect(run().status).toBe(0)
+    const earlier = readdirSync(join(stage, "runs"))
+    expect(earlier.length).toBeGreaterThan(0)
+    const again = run({}, ["--remove-stage"], ["bun", "packages/admin/src/index.ts"], "wezterm")
+    expect(again.status, again.stderr).toBe(0)
+    expect(again.stderr).toContain(`${stage} existed before this run; --remove-stage keeps it`)
+    for (const entry of earlier) expect(existsSync(join(stage, "runs", entry)), entry).toBe(true)
+  }, 60_000)
+
+  it("stages the bundle checkout's own package node_modules links, so a package's dependency resolves on the host", () => {
+    // 33587 run 2: under bun's isolated install packages/terminfo.dev resolves protobufjs only
+    // through its own gitignored node_modules link, which the bundle cannot carry.
+    const store = join(code, "node_modules", ".bun", "dep@1.0.0", "node_modules", "dep")
+    mkdirSync(store, { recursive: true })
+    writeFileSync(join(store, "index.js"), "export const dep = 'fixture'\n")
+    const links = join(source, "packages", "terminfo.dev", "node_modules")
+    mkdirSync(links, { recursive: true })
+    const target = join("..", "..", "..", "..", "..", "node_modules", ".bun", "dep@1.0.0", "node_modules", "dep")
+    symlinkSync(target, join(links, "dep"))
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const staged = join(stage, "source", "vendor", "terminfo.dev", "packages", "terminfo.dev", "node_modules", "dep")
+    expect(readlinkSync(staged)).toBe(target)
+    expect(readFileSync(join(staged, "index.js"), "utf8")).toBe("export const dep = 'fixture'\n")
   }, 60_000)
 
   it("refuses an unmarked stage and leaves it untouched rather than deleting a stranger's directory", () => {
@@ -898,12 +927,10 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("leaves only the renamed aside when a removal is interrupted, so the stage path is free again", () => {
-    mkdirSync(join(stage, "runs", "locked"), { recursive: true })
-    writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
-    writeFileSync(join(stage, "runs", "locked", "held.txt"), "cannot be unlinked\n")
-    chmodSync(join(stage, "runs", "locked"), 0o555)
+    // The run creates the stage (only a stage it created is removed), and its probe leaves a
+    // directory that cannot be emptied, so the removal stops part-way.
     try {
-      const result = run({}, ["--remove-stage"])
+      const result = run({ SHIM_PROBE_LOCK: "1" }, ["--remove-stage"])
       expect(result.status).toBe(1)
       expect(result.stderr).toContain("stage removal failed")
       expect(result.stderr).toMatch(/moved to \S*\/stage\.removing-[0-9a-f]{12} and only part of it was deleted/)
