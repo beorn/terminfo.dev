@@ -40,7 +40,7 @@ function blockAt(dy: number): CaptureLocated {
  * glyph written, so editing.delete-chars reaches the same-cells reason; a locate request (no cells)
  * answers `located`.
  */
-function calibratedSource(located: Located) {
+function calibratedSource(located: Located | ((paintedCell: string) => Located)) {
   const writes: string[] = []
   const locates: CaptureRequest[] = []
   let reads = 0
@@ -80,7 +80,15 @@ function calibratedSource(located: Located) {
     }
     if (request.locate) {
       locates.push(request)
-      return { ...frame, pixelsDigest: `sha256:layout-${reads}`, ...(located === "omitted" ? {} : { located }) }
+      // The cell the layout check painted, from its last DECSC-wrapped paint write.
+      const painted = writes.filter((entry) => entry.startsWith("\x1b7\x1b[") && entry.includes("\x1b[45m")).at(-1)
+      const cell =
+        painted
+          ?.match(/^\x1b7\x1b\[(\d+);(\d+)H/)
+          ?.slice(1)
+          .join(",") ?? ""
+      const answer = typeof located === "function" ? located(cell) : located
+      return { ...frame, pixelsDigest: `sha256:layout-${reads}`, ...(answer === "omitted" ? {} : { located: answer }) }
     }
     const region = request.cells!
     const key = `${region.top},${region.left},${region.bottom},${region.right}`
@@ -96,7 +104,7 @@ function calibratedSource(located: Located) {
   return { context, writes, locates }
 }
 
-async function sameCellsNote(located: Located) {
+async function sameCellsNote(located: Located | ((paintedCell: string) => Located)) {
   const source = calibratedSource(located)
   const probe = editingProbes.find((entry) => entry.id === "editing.delete-chars")!
   const result = await probe.term!(source.context)
@@ -118,11 +126,33 @@ test("a same-cells read on a window whose layout moved after calibration names t
 })
 
 test("on a window that did not move, the same-cells sentence is today's, unchanged (33000 control)", async () => {
-  const { note } = await sameCellsNote(blockAt(0))
+  // Each painted cell is found in its own calibrated crop: the witness 3,1 and, since 33644, the compared region's 1,1.
+  const inPlace = (cell: string): Located =>
+    cell === "3,1"
+      ? blockAt(0)
+      : { box: crop({ top: 1, left: 1, bottom: 1, right: 1 }), pixels: CELL.width * CELL.height }
+  const { note, locates } = await sameCellsNote(inPlace)
+  expect(locates).toHaveLength(2)
   expect(note).toBe(
     "editing.delete-chars: the seed frame and the expected frame read the same cells, so this run cannot separate them",
   )
 })
+
+test("a same-cells read whose witness is in view but whose compared region is covered names the region (33644)", async () => {
+  // Warp run 43089755106: the header covers rows 1-3; the witness (row 3 here) is found in place, the
+  // region's first cell 1,1 is nowhere in the window.
+  const { result, note, locates, writes } = await sameCellsNote((cell) => (cell === "3,1" ? blockAt(0) : null))
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(note).toContain(
+    "read the same cells, so this run cannot separate them; probe text not in view: calibration's sentinel painted at cell 1,1 is nowhere in the window",
+  )
+  // One locate for the witness, then the region check polls until its timeout before saying "not in view".
+  expect(locates.length).toBeGreaterThan(1)
+  // The region cell is painted and restored the same way the witness cell is.
+  const paint = writes.indexOf("\x1b7\x1b[1;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  expect(paint).toBeGreaterThan(-1)
+  expect(writes[paint + 1]).toBe("\x1b7\x1b[1;1H\x1b[0m \x1b8")
+}, 20_000)
 
 test.each<[string, Located, string]>([
   [
