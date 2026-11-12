@@ -54,6 +54,7 @@ const CURSOR_ROW = 5
 
 /** The same-run branch of the indexed underline-colour witness; sgr.ts maps it for the mux finalizer. */
 export const UNDERLINE_INDEXED_BRANCH = "underline-colour-indexed-same-run"
+export const UNDERLINE_RGB_BRANCH = "underline-colour-rgb-same-run"
 
 interface ColourRow {
   /** The sequence under test, painted on the sample in the target and expected frames. */
@@ -280,7 +281,7 @@ export function underlineColourIndexedResult(
 function underlineColourResult(
   run: SameRunCapture,
   decision: UnderlineIndexedDecision,
-  fixture: { branch: string; target: string; expected: string },
+  fixture: { branch: string; target: string; expected: string; phases?: readonly SameRunPhase[] },
 ): ProbeCallbackResult {
   const { status, note } = decision
   const decided = status !== "probe-todo"
@@ -292,6 +293,12 @@ function underlineColourResult(
     stability: run.stability,
     samples: Object.fromEntries(run.measured.map(({ name, capture }) => [name, capture.regionDigest])),
     evidence: decision.evidence,
+    ...(fixture.phases && {
+      comparison: "exact digest equality",
+      measuredPhases: fixture.phases
+        .filter((phase) => run.measured.some(({ name }) => name === phase.name))
+        .map(({ name, sequence, sample }) => ({ name, sequence, sample })),
+    }),
   })
   return {
     pass: status === "supported",
@@ -382,9 +389,10 @@ export async function underlineColourRgbCaptureResult(
 ): Promise<ProbeCallbackResult | null> {
   const result = (run: SameRunCapture, decision: UnderlineIndexedDecision) =>
     underlineColourResult(run, decision, {
-      branch: UNDERLINE_INDEXED_BRANCH,
+      branch: UNDERLINE_RGB_BRANCH,
       target: RGB_UNDERLINE_SAMPLES[0]!.colour,
       expected: `${id}: both SGR 58 RGB samples keep the plain underline while distinct foreground-route underlines prove colour visibility`,
+      phases: RGB_UNDERLINE_PHASES,
     })
   return captureUnderlineColours(ctx, id, RGB_UNDERLINE_PHASES, result, (digest) => {
     const comparison = compareUnderlineColours(digest, RGB_UNDERLINE_SAMPLES)
@@ -586,6 +594,7 @@ export function colourCaptureCallbackResult(
     verdict.criterionBranch === "colour-no-attribute-witness" ||
     verdict.criterionBranch === "colour-walked-parameters" ||
     verdict.criterionBranch === UNDERLINE_INDEXED_BRANCH ||
+    verdict.criterionBranch === UNDERLINE_RGB_BRANCH ||
     (options?.mux !== undefined && observation.outcome === "inconclusive")
   ) {
     // A multiplexer has no outer control in this arm, so the same frames cannot single out whether

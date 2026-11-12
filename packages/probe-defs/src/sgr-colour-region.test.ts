@@ -25,6 +25,7 @@ import {
   UNDERLINE_INDEXED_PHASES,
   UNDERLINE_INDEXED_BRANCH,
   colourCaptureCallbackResult,
+  underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
 import { captureRegionCallbackResult } from "./region-readback.ts"
 import { recordExecutedProbe } from "./helpers.ts"
@@ -160,6 +161,9 @@ type Mode =
   | "collapse-bright"
   | "deferred-paint"
   | "ignore-58"
+  | "ignore-58-rgb-first"
+  | "ignore-58-rgb-second"
+  | "ignore-underline"
   | "walk-58"
   | "frozen"
 
@@ -324,7 +328,7 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       continue
     }
     if (param === 4) {
-      next.underline = true
+      next.underline = mode !== "ignore-underline"
       index += 1
       continue
     }
@@ -455,7 +459,13 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
       const params = (control[1] ?? "")
         .split(";")
         // An unknown colon group is one SGR parameter; only the semicolon form walks into 5/N.
-        .flatMap((part) => (mode === "ignore-58" && part.startsWith("58:") ? [] : part.split(":")))
+        .flatMap((part) =>
+          (mode === "ignore-58" && part.startsWith("58:")) ||
+          (mode === "ignore-58-rgb-first" && part === "58:2::255:0:128") ||
+          (mode === "ignore-58-rgb-second" && part === "58:2::0:255:128")
+            ? []
+            : part.split(":"),
+        )
         .filter((part) => part.length > 0)
         .map(Number)
       const final = control[2]
@@ -503,7 +513,10 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette, supp
 function cellText(cell: Cell | undefined): string {
   if (!cell) return "outside"
   // Pixel samples of spaces show no foreground glyph. A default underline follows the foreground.
-  const underlineColour = cell.underline && cell.underlineColour === "default" ? cell.fg : cell.underlineColour
+  // Pixels of equal RGB underlines are equal regardless of the channel that selected them.
+  const underlineColour = (
+    cell.underline && cell.underlineColour === "default" ? cell.fg : cell.underlineColour
+  ).replace(/^(fg|underline):/, "")
   return `${cell.char}${cell.char === " " ? "" : cell.fg}${cell.bg}${underlineColour}${cell.underline ? "u" : ""}${cell.blink ? "k" : ""}${cell.strike ? "s" : ""}`
 }
 
@@ -994,8 +1007,79 @@ test.each(["sgr.underline.color", "sgr.underline-color-rgb"])(
     expect(result.tests).toEqual([{ id: "attribute", status: "unsupported", assertionRefs: [0] }])
     expect(result.assertions).toHaveLength(1)
     expect(result.pass).toBe(false)
+    const evidence = JSON.parse(result.response ?? "{}")
+    expect(evidence.comparison).toBe("exact digest equality")
+    expect(evidence.measuredPhases).toHaveLength(6)
+    for (const rgb of ["255:0:128", "0:255:128"]) {
+      expect(evidence.measuredPhases).toContainEqual(
+        expect.objectContaining({ sequence: `\x1b[4m\x1b[58:2::${rgb}m`, sample: " ".repeat(8) }),
+      )
+      expect(evidence.measuredPhases).toContainEqual(
+        expect.objectContaining({ sequence: `\x1b[4m\x1b[38:2::${rgb}m`, sample: " ".repeat(8) }),
+      )
+    }
   },
 )
+
+/**
+ * @failure One working SGR58 sample is mistaken for two ignored colours, or a blind independent
+ *   route is taken as a negative. CTO cb04095e requires both samples ignored and names mixed movement.
+ * @level l1
+ * @consumer The shared independent RGB App witness and its two callbacks.
+ * @testonly none
+ */
+test.each([
+  ["ignore-58-rgb-first", "0:255:128"],
+  ["ignore-58-rgb-second", "255:0:128"],
+] as const)("the independent RGB witness keeps %s mixed with its moving sample named", async (mode, moved) => {
+  const result = await underlineColourRgbCaptureResult(
+    colourTerminal(mode, PALETTES[0] as Palette).ctx,
+    "sgr.underline.color",
+  )
+  expect(result?.observation?.outcome).toBe("inconclusive")
+  expect(result?.observation?.note).toContain(`${moved} moved away from the plain underline`)
+  expect(result?.tests?.[0]?.status).toBe("probe-todo")
+  expect(result?.assertions).toBeUndefined()
+})
+
+test.each([
+  ["ignore-underline", "plain underline drew nothing"],
+  ["ignore", "not independently visible"],
+  ["collapse", "foreground-route RGB underlines render alike"],
+] as const)("the independent RGB witness keeps %s controls unresolved", async (mode, missing) => {
+  const result = await underlineColourRgbCaptureResult(
+    colourTerminal(mode, PALETTES[0] as Palette).ctx,
+    "sgr.underline.color",
+  )
+  expect(result?.observation?.outcome).toBe("inconclusive")
+  expect(result?.observation?.note).toContain(missing)
+  expect(result?.assertions).toBeUndefined()
+})
+
+test("a broken independent RGB capture propagates its operational error", async () => {
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const capture = ctx.capture!
+  ctx.capture = async (request) => {
+    if (request.label?.includes("C underline 58:2::")) throw new Error("independent RGB pixel reader failed")
+    return capture(request)
+  }
+  await expect(run("sgr.underline.color", ctx)).rejects.toThrow("independent RGB pixel reader failed")
+})
+
+test("a matched independent RGB witness adds no positive, while the old positive keeps precedence", async () => {
+  const independent = await underlineColourRgbCaptureResult(
+    colourTerminal("render", PALETTES[0] as Palette).ctx,
+    "sgr.underline.color",
+  )
+  expect(independent?.observation?.outcome).toBe("inconclusive")
+  expect(independent?.observation?.note).toContain("255:0:128 matched its foreground route")
+  expect(independent?.assertions).toBeUndefined()
+  const priorPositive = await run(
+    "sgr.underline.color",
+    colourTerminal("ignore-58-rgb-second", PALETTES[0] as Palette).ctx,
+  )
+  expect(priorPositive.observation?.outcome).toBe("supported")
+})
 
 /**
  * @failure A frame a code-by-code walker paints with blink on is sampled at whatever blink phase
