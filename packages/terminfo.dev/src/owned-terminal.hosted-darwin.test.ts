@@ -314,12 +314,14 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
     id: "cursor",
     comm: "Cursor",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"[Extension Development Host] Cursor"'),
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Visual Studio Code.app/Contents/MacOS/Code")).toEqual({
     id: "com.microsoft.VSCode",
     comm: "Code",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"[Extension Development Host] Visual Studio Code"'),
   })
   // 33056: Warp alone declares a chrome band; every other row's exact match proves the default is none.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
@@ -331,7 +333,8 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",
     comm: "cmux",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"Terminal"'),
   })
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
