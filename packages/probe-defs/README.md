@@ -646,6 +646,14 @@ faint, italic, strikethrough and the four underline styles) may move; delivery c
 outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
 cohort below and the following DEC colour/setup slice.
 
+The three underline-colour setters also consult this runtime report when their cell colour is
+unexposed. Their selected bytes remain colon-form SGR58, including the empty RGB colourspace field.
+The measured Rust callback reports that RGB field as0; the report target names that exact code,
+while the indexed target requires both selected58:5:1m and58:5:4m reports in order. The existing
+handled SGR1/bold control and exact report-list matcher decide Unsupported; absent, different or
+extra reports leave TODO. Reasons say “measured: library reported the code unhandled”; no source
+grade or silence-positive is admitted, and a previously decided cell result keeps precedence.
+
 Libvterm R1 uses that same report verdict for DECSSCLS and Kitty image transmit/display,
 with a handled OSC 2/title control. Its public CSI fallback retains native normalized parameters
 and the final byte; its APC fallback retains only the initial payload byte (`G`), without image
