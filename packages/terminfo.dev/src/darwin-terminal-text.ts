@@ -512,7 +512,14 @@ function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): 
     // refusal below carries the typed record, never the screen.
     const held = rawReplyText(parsed.diagnostic)
     const lines = held === undefined ? undefined : rawReplyLines(held, diagnostic?.terminatorRemoved === true)
-    const split = lines === undefined ? undefined : splitLogicalRows(lines, options.cols, options.rows)
+    // A split measures row boundaries at a column count, so it is attempted only when the reply
+    // stated a grid and that grid is the measured one. A record this read could not type proves
+    // nothing about the screen, and a grid that disagrees is another screen by the same rule the
+    // read path refuses below; in both cases the refusal stands, never an assumed grid.
+    const gridIsMeasured =
+      diagnostic !== undefined && diagnostic.appCols === options.cols && diagnostic.appRows === options.rows
+    const split =
+      lines === undefined || !gridIsMeasured ? undefined : splitLogicalRows(lines, options.cols, options.rows)
     if (split !== undefined && "rows" in split) {
       return {
         status: "read",
@@ -523,7 +530,12 @@ function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): 
         splitLineCount: split.splitLineCount,
       }
     }
-    const detail = split === undefined ? undefined : split.reason
+    const detail =
+      split !== undefined && "reason" in split
+        ? split.reason
+        : diagnostic !== undefined && !gridIsMeasured
+          ? `${label} reports ${String(diagnostic.appRows)}x${String(diagnostic.appCols)} where the measured grid is ${String(options.rows)}x${String(options.cols)}, so its lines are not the measured screen`
+          : undefined
     const refused = detail === undefined ? reason : `${reason}, and ${detail}`
     return diagnostic === undefined
       ? { status: "refused", reason: refused, diagnosticDropped: 1 }

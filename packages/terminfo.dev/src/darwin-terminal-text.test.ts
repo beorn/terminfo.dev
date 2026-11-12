@@ -816,6 +816,63 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     expect(JSON.stringify(read)).not.toContain(ascii(121))
   })
 
+  // @dev/15's revise on 4b48cfd7e: a split is measured at the app's column count, so it may only
+  // run where the reply stated a grid and that grid IS the measured one. Neither arm may assume it.
+  it("does not split a reply whose diagnostic this read could not type, so no grid is assumed", () => {
+    const read = readTerminalTextSnapshot({
+      app: "terminal-app",
+      tty: "/dev/ttys003",
+      cols: 3,
+      rows: 1,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "Terminal.app returned 1 rows where the measured screen has 1",
+            diagnostic: { contents: "abcdef\n", tty: "/dev/ttys003", appCols: 3, appRows: 1 },
+          }),
+        }),
+    })
+    expect(read).toEqual({
+      status: "refused",
+      reason: "Terminal.app returned 1 rows where the measured screen has 1",
+      diagnosticDropped: 1,
+    })
+  })
+
+  it("refuses an app grid that is not the measured one instead of splitting at the measured width", () => {
+    const read = readTerminalTextSnapshot({
+      app: "terminal-app",
+      tty: "/dev/ttys003",
+      cols: 3,
+      rows: 1,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "Terminal.app returned 1 rows where the measured screen has 1",
+            diagnostic: {
+              contents: "abcabc\n",
+              tty: "/dev/ttys003",
+              appCols: 6,
+              appRows: 1,
+              splitRows: 2,
+              terminatorRemoved: true,
+              rowsAfterPop: 1,
+              lineLengths: [6],
+            },
+          }),
+        }),
+    })
+    expect(read.status).toBe("refused")
+    if (read.status === "refused") {
+      expect(read.reason).toMatch(
+        /returned 1 rows where the measured screen has 1, and Terminal.app reports 1x6 where the measured grid is 1x3, so its lines are not the measured screen/u,
+      )
+    }
+    expect(JSON.stringify(read)).not.toContain("abcabc")
+  })
+
   // A partial record would read as a measured zero, so the whole diagnostic is dropped and the drop
   // is counted: a missing field is never filled in.
   it.each([
