@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { parseAppLaunchReceipt, transformInvocation } from "./app-launch.ts"
+import { MAC_ALACRITTY_LAUNCH_DEVIATION, parseAppLaunchReceipt, transformInvocation } from "./app-launch.ts"
 
 // Retain only the measured receipt verbatim; this parser does not decode a capture run.
 const ZEROS = "0".repeat(64)
@@ -125,6 +125,40 @@ describe("a measured receipt still parses", () => {
     }
     expect(parsed.sourceArtifact.kind).toBe("derived-source-tree")
     expect(parsed.sourceArtifact.sha256).toBe("c3".repeat(32))
+  })
+})
+
+// 33601: Mac Alacritty launches with 1 px window padding; a published result must show that deviation
+// from stock. Before this field the bundle parser copied only known keys, so a stated deviation was
+// silently dropped from the run record.
+describe("a launch off stock says so in appLaunch.launchDeviation", () => {
+  it("keeps the Mac Alacritty deviation sentence beside the padded argv", () => {
+    const receipt = {
+      ...MEASURED,
+      argv: [MEASURED.executablePath, "-o", "window.padding.x=1", "-o", "window.padding.y=1", "-e", "/bin/bash", "/c"],
+      launchDeviation: MAC_ALACRITTY_LAUNCH_DEVIATION,
+    } satisfies AppLaunchReceipt
+    expect(parse(receipt)).toEqual(receipt)
+  })
+
+  it("refuses an empty, multi-line or padded deviation by name", () => {
+    expect(() => parse({ ...appLaunchOf(), launchDeviation: "" })).toThrow(/missing appLaunch\.launchDeviation/)
+    for (const launchDeviation of ["  ", "two\nlines", " leading space"]) {
+      expect(() => parse({ ...appLaunchOf(), launchDeviation })).toThrow(/appLaunch\.launchDeviation must be one/)
+    }
+  })
+
+  it("refuses a deviation on the Windows arm, which has no such field", () => {
+    expect(() =>
+      parse({
+        platform: "win32",
+        executablePath: String.raw`C:\runner\a.exe`,
+        productVersion: "1.0",
+        executableSha256: "c3".repeat(32),
+        sourceArtifact: { kind: "portable-exe", path: String.raw`C:\runner\a.exe`, sha256: "c3".repeat(32) },
+        launchDeviation: MAC_ALACRITTY_LAUNCH_DEVIATION,
+      }),
+    ).toThrow(/invalid win32 appLaunch fields/)
   })
 })
 

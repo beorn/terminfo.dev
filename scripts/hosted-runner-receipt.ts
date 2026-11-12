@@ -8,6 +8,7 @@ import { dirname, isAbsolute, join } from "node:path"
 import { sampleHostedIdentity, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import {
   ALACRITTY_VERSION_PATTERN,
+  MAC_ALACRITTY_LAUNCH_DEVIATION,
   WINDOWS_MESA_RENDERER_DLLS,
   parseAppLaunchReceipt,
   transformInvocation,
@@ -555,7 +556,20 @@ async function main(): Promise<void> {
       throw new Error(`Hosted receipt cannot read transformed invocation handoff ${handoff}`, { cause })
     }
     if (!Array.isArray(argv)) throw new Error(`Hosted receipt invocation handoff ${handoff} must contain an array`)
-    appLaunch = parseAppLaunchReceipt({ ...appLaunch, argv }, "collector", "term", handoff)
+    // Describe the approved GUI override only when this recorded invocation actually carries it.
+    const paddedAlacritty =
+      os === "macOS" &&
+      appId === "alacritty" &&
+      ["-o", "window.padding.x=1", "-o", "window.padding.y=1", "-e"].every(
+        (argument, index) => argv[index + 1] === argument,
+      )
+    const launchDeviation = paddedAlacritty ? MAC_ALACRITTY_LAUNCH_DEVIATION : undefined
+    appLaunch = parseAppLaunchReceipt(
+      { ...appLaunch, argv, ...(launchDeviation !== undefined && { launchDeviation }) },
+      "collector",
+      "term",
+      handoff,
+    )
   } else {
     process.stderr.write(
       `appLaunch argv absent: ${os === "Linux" ? "Linux has no app launch receipt" : `${appId} is a wrapper or an unpromoted hosted launch route`}\n`,

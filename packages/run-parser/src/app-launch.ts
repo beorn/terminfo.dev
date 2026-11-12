@@ -36,6 +36,13 @@ const asString = (value: unknown, path: string, name: string): string =>
  * receipt nothing derived (27874). */
 export const PLACEHOLDER = /^(.)\1*$/
 
+/**
+ * The one non-stock launch a hosted Mac app carries (33601, @cto e2ce2090/5cffb5d6): the workflow's
+ * alacritty case adds `-o window.padding.x=1 -o window.padding.y=1`, and the receipt states it here.
+ */
+export const MAC_ALACRITTY_LAUNCH_DEVIATION =
+  "window padding explicitly set to 1 px on both axes instead of stock 0, to move cells away from the macOS shaded window edge"
+
 /** Matches `alacritty <semver> (<rev>)` from `alacritty --version` stdout. */
 export const ALACRITTY_VERSION_PATTERN =
   /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i
@@ -311,8 +318,20 @@ export function parseAppLaunchReceipt(
   } else {
     fail(path, "unknown appLaunch.sourceArtifact kind")
   }
+  let launchDeviation: string | undefined
+  if (value.launchDeviation !== undefined) {
+    launchDeviation = asString(value.launchDeviation, path, "appLaunch.launchDeviation")
+    if (
+      launchDeviation.trim().length === 0 ||
+      launchDeviation !== launchDeviation.trim() ||
+      /[\r\n]/.test(launchDeviation)
+    ) {
+      fail(path, "appLaunch.launchDeviation must be one non-empty line without surrounding whitespace")
+    }
+  }
   return {
     ...(argv !== undefined && { argv }),
+    ...(launchDeviation !== undefined && { launchDeviation }),
     bundlePath,
     cfBundleShortVersionString,
     cfBundleVersion,
