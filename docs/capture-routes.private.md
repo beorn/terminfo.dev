@@ -196,6 +196,11 @@ These describe workflow and launcher code, not measured results.
 - The workflow requires `HasCompletedOnboarding` to be absent before writing it with
   `-string true`. It writes `RestoreSession` with `-string false`, then reads back each value
   and its type. Those source steps do not establish current window behavior.
+- It also writes `SnackbarEnabled` with `-string false` and reads back the value and its type
+  (33000). This turns off the sticky command header, which otherwise covers grid rows 1-3 while
+  probes run. It is a launch deviation from stock, so the receipt's `appLaunch.launchDeviation`
+  states it, and only when this job's own setup record shows the readback as `false`. The key was
+  read from the Warp binary. Only a hosted frame with rows 1-3 uncovered shows that it works.
 - cmux takes its defaults domain from the installed bundle. The workflow writes
   `cmux.cloud.welcome.seenVersion` as the string `0.65.1` and reads back the value and its type.
   It also writes a Ghostty `initial-command` configuration. That onboarding step invokes one

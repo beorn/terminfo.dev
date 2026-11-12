@@ -530,17 +530,18 @@ process.exit(7);
 // Terminal acquisition can refuse with collector exit0; the older app cases supply iTerm timestamps
 // and cannot catch skipped diagnostics or a lost collection interval/identity in that success path.
 test.each([
-  { appId: "terminal-app", missingLaunch: false },
-  { appId: "terminal-app", missingLaunch: true },
-  { appId: "warp", missingLaunch: false },
-  { appId: "iterm2", missingLaunch: false },
-  { appId: "cmux", missingLaunch: false },
-  { appId: "cursor", missingLaunch: false },
-  { appId: "com.microsoft.VSCode", missingLaunch: false },
-  { appId: "cursor", missingLaunch: true },
+  { appId: "terminal-app", missingLaunch: false, collectOutcome: "success", expectedExit: 0 },
+  { appId: "terminal-app", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
+  { appId: "warp", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "iterm2", missingLaunch: false, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "cmux", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "cursor", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "com.microsoft.VSCode", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
+  { appId: "cursor", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "cursor", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
 ])(
-  "$appId failures retain bounded evidence before cleanup (missing launch: $missingLaunch)",
-  ({ appId, missingLaunch }) => {
+  "$appId diagnostics preserve collection outcome (missing launch: $missingLaunch, collect: $collectOutcome)",
+  ({ appId, missingLaunch, collectOutcome, expectedExit }) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const step = workflow.jobs["measure-macos"].steps.find(
       (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
@@ -625,6 +626,7 @@ test.each([
         env: {
           ...process.env,
           APP_ID: appId,
+          COLLECT_OUTCOME: collectOutcome,
           RUNNER_TEMP: directory,
           GITHUB_WORKSPACE: root,
           COLLECT_STARTED_AT: "2026-10-20T02:00:00Z",
@@ -632,7 +634,8 @@ test.each([
           ITERM_LAUNCH_END: terminal ? "" : "2026-10-20T02:00:01Z",
         },
       })
-      expect(result.status, result.stderr).toBe(!terminal && (missingLaunch || appId === "iterm2") ? 1 : 0)
+      expect(result.status, result.stderr).toBe(expectedExit)
+      expect(step.env.COLLECT_OUTCOME).toBe("${{ steps.collect.outcome }}")
       const prefix = appId === "iterm2" ? "iterm" : appId === "com.microsoft.VSCode" ? "vscode" : appId
       const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
       expect(summary).toMatchObject({
@@ -679,6 +682,7 @@ test.each([
         // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
+      // Cursor retains its title-timeout diagnostic even when the collector exits successfully.
       // Evaluate the workflow's existing boolean expression with a successful collect step;
       // executing the body alone would miss a GitHub condition that skips all this evidence.
       expect(
@@ -688,7 +692,7 @@ test.each([
           matrix: { id: appId },
           steps: { collect: { outputs: { iterm_failure: "" } } },
         }),
-      ).toBe(terminal)
+      ).toBe(terminal || appId === "cursor")
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
@@ -1033,6 +1037,10 @@ test.each([
   "restore-write-error",
   "restore-wrong-value",
   "restore-wrong-type",
+  // 33000: SnackbarEnabled=false (the sticky command header off) must be written and read back as the string false.
+  "snackbar-write-error",
+  "snackbar-wrong-value",
+  "snackbar-wrong-type",
   "existing-settings",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
@@ -1064,10 +1072,10 @@ if (name === "PlistBuddy") console.log(scenario === "wrong-domain" ? "dev.warp.W
 else if (name === "ps") console.log("PID COMM\\n" + (scenario === "running" ? "4242 /Applications/Warp.app/Contents/MacOS/stable" : scenario === "success" ? "1 /usr/libexec/fixture-process\\n".repeat(3000) + "9999 /fixture/census-end" : "1 /sbin/launchd"));
 else if (name === "defaults") {
   if (args[0] === "write") {
-    if (scenario === "write-error" || (scenario === "restore-write-error" && key === "RestoreSession")) { console.error("fixture write denied"); process.exit(9); }
+    if (scenario === "write-error" || (scenario === "restore-write-error" && key === "RestoreSession") || (scenario === "snackbar-write-error" && key === "SnackbarEnabled")) { console.error("fixture write denied"); process.exit(9); }
     fs.writeFileSync(marker, args[4]);
-  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") ? "Type is boolean" : "Type is string");
-  else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : scenario === "restore-wrong-value" && key === "RestoreSession" ? "true" : fs.readFileSync(marker, "utf8"));
+  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled") ? "Type is boolean" : "Type is string");
+  else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : (scenario === "restore-wrong-value" && key === "RestoreSession") || (scenario === "snackbar-wrong-value" && key === "SnackbarEnabled") ? "true" : fs.readFileSync(marker, "utf8"));
   else if (scenario === "existing-settings" && key === "SettingsFileMigrationComplete") console.log("true");
   else if (scenario === "present") console.log("true");
   else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
@@ -1123,7 +1131,9 @@ childBoundary.spawn = (file, args, options) => {
       preferenceCalls.every(
         (row) =>
           row.args[1] === "dev.warp.Warp-Stable" &&
-          ["HasCompletedOnboarding", "RestoreSession", "SettingsFileMigrationComplete"].includes(row.args[2]!),
+          ["HasCompletedOnboarding", "RestoreSession", "SettingsFileMigrationComplete", "SnackbarEnabled"].includes(
+            row.args[2]!,
+          ),
       ),
     ).toBe(true)
     if (scenario !== "success" && scenario !== "existing-settings") {
@@ -1134,7 +1144,15 @@ childBoundary.spawn = (file, args, options) => {
       if (["wrong-domain", "running", "present", "before-error"].includes(scenario)) {
         expect(preferenceCalls.filter((row) => row.args[0] === "write")).toHaveLength(0)
       }
-      if (scenario === "write-error") expect(JSON.stringify(setup)).toContain("fixture write denied")
+      if (scenario === "write-error" || scenario === "snackbar-write-error") {
+        expect(JSON.stringify(setup)).toContain("fixture write denied")
+      }
+      if (scenario === "snackbar-wrong-value") {
+        expect(JSON.stringify(setup)).toContain("snackbar-readback: expected exact string false")
+      }
+      if (scenario === "snackbar-wrong-type") {
+        expect(JSON.stringify(setup)).toContain("snackbar-type: expected string preference")
+      }
       if (scenario === "before-error") expect(JSON.stringify(setup)).toContain("fixture permission denied")
       return
     }
@@ -1158,6 +1176,10 @@ childBoundary.spawn = (file, args, options) => {
       ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
       ["read", "dev.warp.Warp-Stable", "RestoreSession"],
       ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
+      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+      ["write", "dev.warp.Warp-Stable", "SnackbarEnabled", "-string", "false"],
+      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+      ["read-type", "dev.warp.Warp-Stable", "SnackbarEnabled"],
     ])
     expect(JSON.stringify(setup)).toContain("does not exist")
     expect(readFileSync(join(out, "collect.command"), "utf8")).toBe("the actual generated command bytes")

@@ -36,6 +36,20 @@ const asString = (value: unknown, path: string, name: string): string =>
  * receipt nothing derived (27874). */
 export const PLACEHOLDER = /^(.)\1*$/
 
+/**
+ * The one non-stock launch a hosted Mac app carries (33601, @cto e2ce2090/5cffb5d6): the workflow's
+ * alacritty case adds `-o window.padding.x=1 -o window.padding.y=1`, and the receipt states it here.
+ */
+export const MAC_ALACRITTY_LAUNCH_DEVIATION =
+  "window padding explicitly set to 1 px on both axes instead of stock 0, to move cells away from the macOS shaded window edge"
+
+/**
+ * Mac Warp's one non-stock setting (33000, @cto 6d29aed9/da23ce0a): the workflow's Warp preference step writes
+ * SnackbarEnabled=false so the sticky command header does not cover grid rows 1-3, and the receipt states it here.
+ */
+export const MAC_WARP_LAUNCH_DEVIATION =
+  "sticky command header turned off (Warp preference SnackbarEnabled=false) instead of stock on, so it does not cover the top grid rows the capture reads"
+
 /** Matches `alacritty <semver> (<rev>)` from `alacritty --version` stdout. */
 export const ALACRITTY_VERSION_PATTERN =
   /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i
@@ -311,8 +325,20 @@ export function parseAppLaunchReceipt(
   } else {
     fail(path, "unknown appLaunch.sourceArtifact kind")
   }
+  let launchDeviation: string | undefined
+  if (value.launchDeviation !== undefined) {
+    launchDeviation = asString(value.launchDeviation, path, "appLaunch.launchDeviation")
+    if (
+      launchDeviation.trim().length === 0 ||
+      launchDeviation !== launchDeviation.trim() ||
+      /[\r\n]/.test(launchDeviation)
+    ) {
+      fail(path, "appLaunch.launchDeviation must be one non-empty line without surrounding whitespace")
+    }
+  }
   return {
     ...(argv !== undefined && { argv }),
+    ...(launchDeviation !== undefined && { launchDeviation }),
     bundlePath,
     cfBundleShortVersionString,
     cfBundleVersion,
