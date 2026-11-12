@@ -1276,6 +1276,8 @@ export type OuterCommandRead =
       target: string
       targetSent: boolean
       outer: { app: string; version: string }
+      /** Custody of the retained window: the bytes this read kept, never the row's evidence by itself. */
+      trace?: { sha256: string; lines: number; window: { offset: number; endOffset?: number } }
       detail: object
     }
   | { status: "unavailable"; reason: string; detail?: object }

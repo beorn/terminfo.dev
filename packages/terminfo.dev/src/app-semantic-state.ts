@@ -1,7 +1,7 @@
 import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
 import { ANSI_REGEX } from "@silvery/ansi"
 import {
@@ -61,6 +61,22 @@ const declarations: readonly AppSemanticCapability[] = [
       outerCommands: true as const,
     })),
   ),
+  // 33630: tmux only. These five rows read the outer terminal's own command record; Screen's rows for the same
+  // features stay out of this slice and keep their existing arm.
+  ...[
+    "extensions.kitty-graphics",
+    "extensions.osc701-locale",
+    "extensions.osc702-version",
+    "extensions.osc776-cell-size",
+    "extensions.osc7770-font-size",
+  ].map((featureId) => ({
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId,
+    outerCommands: true as const,
+  })),
   {
     kind: "mux",
     id: "tmux",
@@ -985,12 +1001,104 @@ function controlTargetMatcher(spec: {
   }
 }
 
+/**
+ * A row whose outer evidence is one report line inside the window opened by the DA1 control (33630, @cto ac738b73).
+ * The callback sends the target first and the DA1 second, so the window closes at the control line and a target line
+ * found before it belongs to this invocation. No control line in the slice is no window: that read fails by name.
+ * The line shapes come from the direct outer run that qualified the rows (`/hh/var/@dev2/33630/gate-table.md`).
+ */
+function windowedLineMatcher(spec: {
+  label: string
+  write: string
+  target: RegExp
+  otherForm: RegExp
+}): OuterCommandMatcher {
+  return {
+    label: spec.label,
+    artifact: "mux-outer-row",
+    plan(writes) {
+      if (!writes.includes(spec.write)) {
+        throw new Error(`Outer ${spec.label} trace has no target write for this row`)
+      }
+      return {
+        nonce: "",
+        window: "deadline",
+        scan(text) {
+          const unknown: string[] = []
+          let control: number | undefined
+          let target: number | undefined
+          for (const match of text.matchAll(/([^\n]*)\n/g)) {
+            const line = match[1] ?? ""
+            if (line === "report_device_attributes 0 0") {
+              control = match.index
+              return {
+                commands: { control, target },
+                start: target ?? control,
+                end: match.index + match[0].length,
+                unknown: named(unknown),
+              }
+            }
+            if (target === undefined && spec.target.test(line)) {
+              target = match.index
+              continue
+            }
+            // Only lines that look like this row's own report are kept: anything else in the window is
+            // another probe's traffic and is not evidence about this row.
+            if (spec.otherForm.test(line)) unknown.push(line)
+          }
+          return { commands: { control, target }, start: target, unknown: named(unknown) }
+        },
+        decide(scan) {
+          const seen = scan.commands as { control?: number; target?: number }
+          if (seen.control === undefined) {
+            throw new Error(`Outer command record has no device-attributes control line for ${spec.label}`)
+          }
+          if (seen.target === undefined && scan.unknown.lines.length > 0) {
+            throw new Error(`Outer command record has ${spec.label} in another form: ${scan.unknown.lines[0]}`)
+          }
+          return { target: spec.label, targetSent: seen.target !== undefined }
+        },
+      }
+    },
+  }
+}
+
 const outerCommandMatchers: Readonly<Record<string, OuterCommandMatcher>> = {
   ...Object.fromEntries(sgrProbes.map(({ id }) => [id, sgrPaintMatcher])),
   "extensions.osc22-pointer": controlTargetMatcher({
     label: "OSC 22",
     control: { write: /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/, line: (nonce) => `set_title ${nonce}` },
     target: { write: "\x1b]22;pointer\x1b\\", line: "set_dynamic_color 22 pointer" },
+  }),
+  "extensions.kitty-graphics": windowedLineMatcher({
+    label: "the Kitty graphics query",
+    write: "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+    target: /^graphics_command \{.*"action": "q".*"format": 24,.*"id": 31,/,
+    otherForm: /^(?:Malformed )?[Gg]raphics/,
+  }),
+  "extensions.osc701-locale": windowedLineMatcher({
+    label: "OSC 701",
+    write: "\x1b]701;?\x07",
+    target: /^\[[0-9.]+\] Ignoring OSC 701, used by mintty for locale$/,
+    otherForm: /OSC 701|escape code: 701/,
+  }),
+  "extensions.osc702-version": windowedLineMatcher({
+    label: "OSC 702",
+    write: "\x1b]702;?\x07",
+    target: /^\[[0-9.]+\] Unknown OSC escape code: 702;\?$/,
+    otherForm: /escape code: 702(?!;\?$)|OSC 702/,
+  }),
+  "extensions.osc776-cell-size": windowedLineMatcher({
+    label: "OSC 776",
+    write: "\x1b]776\x07",
+    target: /^\[[0-9.]+\] Unknown OSC escape code: 776$/,
+    otherForm: /escape code: 776(?!$)|OSC 776/,
+  }),
+  "extensions.osc7770-font-size": windowedLineMatcher({
+    label: "OSC 7770",
+    write: "\x1b]7770;?\x07",
+    target: /^\[[0-9.]+\] Ignoring OSC 7770, used by mintty for font size$/,
+    otherForm: /OSC 7770|escape code: 7770/,
   }),
 }
 
@@ -1095,7 +1203,21 @@ export function beginMuxSgrCommandRead(input: {
           }
           detail.closedBy = reading.complete ? "match" : "deadline"
           const { target, targetSent } = plan.decide(parsed)
-          return { status: "measured" as const, target, targetSent, outer, detail }
+          // Custody of the retained window (33630): the digest and size of the bytes this read kept. The row's
+          // evidence stays the control and target lines; this only lets a reason name the trace it read.
+          const retained = Buffer.from(reading.text)
+          const trace = {
+            sha256: createHash("sha256").update(retained).digest("hex"),
+            lines:
+              retained.length === 0
+                ? 0
+                : retained
+                    .toString("utf8")
+                    .split("\n")
+                    .filter((line) => line.length > 0).length,
+            window: { offset, endOffset: reading.endOffset },
+          }
+          return { status: "measured" as const, target, targetSent, outer, trace, detail }
         } catch (error) {
           return {
             status: "unavailable" as const,

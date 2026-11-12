@@ -1,0 +1,31 @@
+# The six windows from the direct outer kitty 0.49.2 run that qualified the rows in 33630.
+# Path: /hh/main.hab/state/instruments/terminfo-remeasure/apps/kitty/linux/runs/2026-11-12T22-58-21-717Z-a52ed78d2c07/pass-7Qa4c3/linux/kitty/77dd5b64288052cd1564dad806a14087/raw/daemon.log
+# Whole-trace sha256 92a79999086e8380d7bf3688f1381f1e88e6468560851bded2dffa5886d45f5f. Copied verbatim; markers are test scaffolding.
+
+# window: decrqcra
+select_graphic_rendition 0
+screen_erase_in_display 2 0
+screen_cursor_position 1 1
+draw ABCDE
+screen_cursor_position 1 1
+report_device_attributes 0 0
+
+# window: kitty-graphics
+graphics_command {"action": "q", "delete_action": "\u0000", "transmission_type": "d", "compressed": "\u0000", "format": 24, "more": 0, "id": 31, "image_number": 0, "placement_id": 0, "quiet": 0, "width": 0, "height": 0, "x_offset": 0, "y_offset": 0, "data_height": 1, "data_width": 1, "data_sz": 0, "data_offset": 0, "num_cells": 0, "num_lines": 0, "cell_x_offset": 0, "cell_y_offset": 0, "cursor_movement": 0, "unicode_placement": 0, "parent_id": 0, "parent_placement_id": 0, "usage_hints": 0, "z_index": 0, "offset_from_parent_x": 0, "offset_from_parent_y": 0, "": "\u0000\u0000\u0000"}
+report_device_attributes 0 0
+
+# window: osc7770
+[83.158] Ignoring OSC 7770, used by mintty for font size
+report_device_attributes 0 0
+
+# window: osc701
+[83.756] Ignoring OSC 701, used by mintty for locale
+report_device_attributes 0 0
+
+# window: osc702
+[84.039] Unknown OSC escape code: 702;?
+report_device_attributes 0 0
+
+# window: osc776
+[86.579] Unknown OSC escape code: 776
+report_device_attributes 0 0
