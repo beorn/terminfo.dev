@@ -47,7 +47,13 @@ import {
   utf8Mouse1005,
 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { captureRegionCallbackResult, cropPositionRefusal, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
+import {
+  beginCaptureLifecycle,
+  captureRegionCallbackResult,
+  cropPositionRefusal,
+  DEFAULT_TIMEOUT_MS,
+  endCaptureLifecycle,
+} from "./region-readback.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -1669,7 +1675,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   ): Promise<DecssclsPair> => {
     ctx.write(DECSSCLM_SMOOTH)
     const startedAt = performance.now()
-    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
+    ctx.write("\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
     const firstElapsedMs = performance.now() - startedAt
     const firstBand = await captureBand(role, `${label} t0 band`)
@@ -1699,7 +1705,10 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const restored =
     "CSI 0 SP p, and DECSCLM restored to the mode read before the probe; the DECSSCLS speed itself is not queryable"
   try {
-    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + "\r\n".repeat(markerRow - 1) + decssclsBand(cols) + "\r\n")
+    // Calibration belongs to the current screen. Entering another buffer here can move its pixel
+    // origin while the adapter still crops with the calibrated one (the retained Warp control).
+    beginCaptureLifecycle(ctx)
+    ctx.write("\x1b[2J\x1b[H" + "\r\n".repeat(markerRow - 1) + decssclsBand(cols) + "\r\n")
     markerRef = (await captureBand("control", "DECSSCLS marker reference")).cells
     const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control", DECSSCLS_SETTLE_MS)
     const target = await phase(
@@ -1844,7 +1853,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       },
     }
   } finally {
-    ctx.write(DECSSCLS_SLOW + restoreMode + "\x1b[?1049l\x1b[0m")
+    endCaptureLifecycle(ctx, DECSSCLS_SLOW + restoreMode)
   }
 }
 

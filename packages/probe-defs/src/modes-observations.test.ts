@@ -3114,14 +3114,59 @@ test("modes.decsscls grades text moving through the witness region inside the wi
   expect(requests.slice(1).filter((request) => request.cells?.top !== request.cells?.bottom)).toHaveLength(4)
   expect(writes.some((write) => write.includes("\x1b[?4h"))).toBe(true)
   // DECSCLM is restored to what DECRQM 4 reported; this fixture answers nothing, so it restores reset.
-  const exit = writes.find((write) => write.includes("\x1b[?1049l"))
+  const exit = writes.findLast((write) => write.includes("\x1b[0 p"))
   expect(exit).toContain("\x1b[0 p")
   expect(exit).toContain("\x1b[?4l")
   expect(result.response).toContain("prior DECSCLM unknown, restored reset")
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
   expect(writes.some((write) => write.includes("line 40"))).toBe(true)
-  expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
+  expect(writes.slice(-2)).toEqual(["\x1b[?25h", "\x1b[0m\x1b[2J\x1b[H"])
+})
+
+// #33666: the retained Warp band is at (1,516), while the primary-screen crop reads (17,526).
+// Model the vertical sub-cell displacement: that crop includes the next row after entering alt.
+// The shared terminal, not a supplied presence flag, determines what the callback actually paints.
+test("modes.decsscls keeps its band control on the screen whose origin was calibrated", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const screen = createSemanticSurface({ rows: 24, cols: 80 })
+  const context = decssclsSource([], writes, frames)
+  context.write = (bytes) => {
+    writes.push(bytes)
+    screen.feed(bytes)
+  }
+  context.capture = async (request) => {
+    const cells = request.cells!
+    const sampled = []
+    // A shifted origin cuts the band partway through and includes the following row. An aligned
+    // primary-screen crop reads only the requested rows; the same condition applies to every frame.
+    const bottom = Math.min(24, cells.bottom + (screen.getMode("altScreen") ? 1 : 0))
+    for (let row = cells.top - 1; row < bottom; row++) {
+      for (let col = cells.left - 1; col < cells.right; col++) {
+        const cell = screen.getCell(row, col)
+        sampled.push([cell.char, cell.bg])
+      }
+    }
+    const digest = createHash("sha256").update(JSON.stringify(sampled)).digest("hex")
+    const frame: ObservationFrame = {
+      role: request.role,
+      label: request.label,
+      capturedAt: frames.length + 1,
+      ref: `sha256:${digest}`,
+      pixelsDigest: `sha256:${digest}`,
+      regionDigest: `sha256:${digest}`,
+      regionRectangle: { x: 0, y: (cells.top - 1) * 20, width: 800, height: (cells.bottom - cells.top + 1) * 20 },
+    }
+    frames.push(frame)
+    return frame
+  }
+  await withDecssclsClock(50, 50, async () => {
+    const result = await decsscls().term!(context)
+    // The surface repaints instantly, so a qualified band control witnesses an ignored rate.
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(JSON.parse(result.response!).marker.control).toEqual([true, true])
+  })
 })
 
 test("modes.decsscls places the authored marker band on the row its reference sample reads", async () => {
@@ -3138,7 +3183,7 @@ test("modes.decsscls places the authored marker band on the row its reference sa
   )
   expect(result.observation).toMatchObject({ outcome: "supported" })
 
-  const targetBurst = writes.find((write) => write.includes("\x1b[?1049h\x1b[2J\x1b[H\x1b[9 p"))
+  const targetBurst = writes.find((write) => write.includes("\x1b[2J\x1b[H\x1b[9 p"))
   expect(targetBurst).toBeDefined()
   const setting = "\x1b[9 p"
   const authored = targetBurst!.slice(targetBurst!.indexOf(setting) + setting.length).split("\r\n")
@@ -3152,7 +3197,7 @@ test("modes.decsscls places the authored marker band on the row its reference sa
   expect(settledRow).toBe(rows - 8)
 
   const reference = writes.find(
-    (write) => write.includes("\x1b[?1049h\x1b[2J\x1b[H\r\n") && write.includes("\x1b[48;5;196m"),
+    (write) => write.includes("\x1b[2J\x1b[H\r\n") && write.includes("\x1b[48;5;196m"),
   )
   expect(reference).toBeDefined()
   const beforeBand = reference!.slice(0, reference!.indexOf("\x1b[48;5;196m"))
@@ -3216,7 +3261,7 @@ test("modes.decsscls puts back the DECSCLM state it read before the probe", asyn
       }),
     )
     expect(result.observation?.outcome, prior).toBe("supported")
-    const exit = writes.find((write) => write.includes("\x1b[?1049l"))
+    const exit = writes.findLast((write) => write.includes("\x1b[0 p"))
     expect(exit, prior).toContain(expected)
     expect(result.response, prior).toContain(`"prior":"${prior}"`)
   }
@@ -3365,7 +3410,7 @@ test("modes.decsscls refuses a text-cells frame instead of grading a buffer", as
       decssclsSource(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, { textCellsAt: 2 }),
     ),
   ).rejects.toThrow(/returned a text-cells frame/)
-  expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
+  expect(writes.slice(-2)).toEqual(["\x1b[?25h", "\x1b[0m\x1b[2J\x1b[H"])
 })
 
 test("modes.decsscls raises on a pixel frame with no digest for the requested cells", async () => {
