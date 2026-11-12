@@ -550,15 +550,17 @@ export function readCollectionPassRow(
         (row.context.id === context.id && row.context.kind === context.kind && row.context.os === context.os)),
   )
   let row = rows[0]
-  if (rows.length !== 1 || !record(row))
+  if (rows.length !== 1 || !record(row)) {
     throw new Error(`${path}: expected one retained context; name its rawRun instead`)
+  }
   if (supplement !== undefined) {
     const supplements = Array.isArray(row.supplements)
       ? row.supplements.filter((item) => record(item) && item.name === supplement)
       : []
     row = supplements[0]
-    if (supplements.length !== 1 || !record(row))
+    if (supplements.length !== 1 || !record(row)) {
       throw new Error(`${path}: no single retained supplement ${supplement}`)
+    }
   }
   if (typeof row.rawRun !== "string") throw new Error(`${path}: retained row has no rawRun`)
   const rawPath = resolve(dirname(path), row.rawRun)
@@ -568,8 +570,9 @@ export function readCollectionPassRow(
   } catch (cause) {
     throw new Error(`${path}: rawRun ${rawPath} is missing or unreadable`, { cause })
   }
-  if (!physical.startsWith(realpathSync(dirname(path)) + sep))
+  if (!physical.startsWith(realpathSync(dirname(path)) + sep)) {
     throw new Error(`${path}: rawRun ${rawPath} is outside its pass directory`)
+  }
   return { path: physical, row }
 }
 
