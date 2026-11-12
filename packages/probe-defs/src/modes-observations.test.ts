@@ -3165,7 +3165,7 @@ test("modes.decsscls keeps its band control on the screen whose origin was calib
     const result = await decsscls().term!(context)
     // The surface repaints instantly, so a qualified band control witnesses an ignored rate.
     expect(result.observation?.outcome).toBe("unsupported")
-    expect(JSON.parse(result.response!).marker.control).toEqual([true, true])
+    expect(JSON.parse(result.response!)).toMatchObject({ marker: { control: [true, true] } })
   })
 })
 
