@@ -160,8 +160,8 @@ it("decides tmux reverse video from its own DECRPM 0 beside the no-change pixels
   )
 })
 
-// One shared owner covers the whole registry and status fold. Native tests retain only the
-// distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
+// One shared owner covers the registry and status fold. Recorder failures after a callback need
+// declared, not confirmed-sent wording; an unstarted row remains a generic collection diagnostic.
 it("requires app and mux visual evidence while preserving library cell and non-SGR results", () => {
   const targets = [
     { target: { kind: "term", id: "fixture" }, pending: true },
@@ -170,26 +170,48 @@ it("requires app and mux visual evidence while preserving library cell and non-S
     { target: { kind: "lib", id: "fixture", rendering: "parser-only" }, pending: false },
     { target: { kind: "lib", id: "fixture" }, pending: false },
   ] as const
-  for (const featureId of [...sgrProbes.map(({ id }) => id), "modes.bracketed-paste"]) {
-    for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid"] as const) {
+  for (const featureId of [...sgrProbes.map(({ id }) => id), "extensions.truecolor", "modes.bracketed-paste"]) {
+    const colour = featureId.includes("truecolor") || featureId.endsWith(".256") || featureId.includes("color")
+    for (const status of ["supported", "unsupported", "probe-todo", "probe-invalid", "untestable"] as const) {
+      const rowAttempt = status === "probe-todo" ? { scope: "none" as const } : attempt
       const recorded: ProbeResult = {
         featureId,
         status,
-        attempt,
+        attempt: rowAttempt,
         reason: "Recorded criterion cause",
-        tests: [{ id: "criterion", status, attempt }],
+        tests: [{ id: "criterion", status, attempt: rowAttempt, reason: "Recorded test cause" }],
         rawReplyRef: featureId,
       }
       for (const { target, pending } of targets) {
         const result = finalizeVisualResult(recorded, target, [])
         const conclusive = status === "supported" || status === "unsupported"
-        if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
+        const declaredColour = colour && rowAttempt.scope === "probe"
+        if (declaredColour) {
+          expect(result.reason).toContain("Recorded criterion cause")
+          for (const reason of [result.reason, result.tests[0]!.reason]) {
+            expect(reason).toMatch(/SGR (?:38|48|58)[;:]/)
+            expect(reason).toMatch(/\((?:colon|semicolon) form\)/)
+          }
+          expect(result.tests[0]!.reason).toContain("Recorded test cause")
+          expect(result.tests[0]).toMatchObject({ id: "criterion", status, attempt: rowAttempt })
+          if (status === "probe-invalid") {
+            expect(result.reason).toContain("declared, not confirmed sent")
+            expect(result.tests[0]!.reason).toContain("declared, not confirmed sent")
+          }
+        }
+        if (featureId !== "modes.bracketed-paste" && featureId !== "extensions.truecolor" && pending && conclusive) {
           expect(result.status).toBe("probe-todo")
-          expect(result.reason).toBe("visual effect not observed in this run")
+          expect(result.reason).toContain("visual effect not observed in this run")
+          if (!colour) {
+            expect(result.reason).toBe("visual effect not observed in this run")
+          }
           expect(result.rawReplyRef).toBe(recorded.rawReplyRef)
-          expect(result.tests[0]).toEqual(recorded.tests[0])
-        } else {
+          if (!colour) expect(result.tests[0]).toEqual(recorded.tests[0])
+        } else if (!declaredColour) {
           expect(result).toEqual(recorded)
+        } else {
+          expect(result).toMatchObject({ status, attempt: rowAttempt, rawReplyRef: recorded.rawReplyRef })
+          expect(result.tests).toHaveLength(1)
         }
       }
     }
@@ -494,7 +516,11 @@ it.each([
   } as unknown as TermProbeSource)
   expect(cursorReads).toBe(readings.length)
   expect(attempts).toHaveLength(
-    readings.length + (id === "reset.sgr" || id.startsWith("sgr.") || id === "text.wrap" ? 1 : 0),
+    // The indexed underline witness never asks DECRQSS; its fallback retains only the actual CPR.
+    readings.length +
+      (id === "reset.sgr" || (id.startsWith("sgr.") && id !== "sgr.underline-color-indexed") || id === "text.wrap"
+        ? 1
+        : 0),
   )
   if (cleanup) expect(writes.at(-1)).toBe(cleanup)
   if (["unicode.tab-stops", "text.tbc", "text.cht", "text.cbt"].includes(id)) {
@@ -871,10 +897,18 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   ]
   const cases = [
     ["fixture.sgr", "Cursor advance does not verify SGR styling", 2],
-    ["sgr.underline-color-indexed", "Cursor advance does not verify SGR styling", 2],
-    ["sgr.underline-color-reset", "Cursor advance does not verify the reset rendered", 3],
+    ["sgr.underline-color-indexed", "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling", 2],
+    [
+      "sgr.underline-color-reset",
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); Cursor advance does not verify the reset rendered",
+      3,
+    ],
     ["sgr.selective-reset.bold", "Cursor advance does not verify SGR reset", 3],
-    ["extensions.truecolor", "SGR was consumed; RGB cell color was not measured", 2],
+    [
+      "extensions.truecolor",
+      "extensions.truecolor: SGR 38;2;255;128;0 (semicolon form); SGR 38;2;17;97;201 (semicolon form) is the secondary contrasting library sample; SGR was consumed; RGB cell color was not measured",
+      2,
+    ],
     ["extensions.osc720-scroll-up", "Cursor answered; scrollback viewport was not measured", 2],
     ["extensions.osc8", "Cursor movement cannot verify OSC 8 link metadata or click behavior", 2],
     ...["xtpushsgr", "xtpopsgr", "xtsave", "xtrestore", "xtpushcolors", "xtpopcolors"].map(
@@ -910,9 +944,16 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     queryCursorPosition: async () => ({ row: 1, col: 9 }),
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
-  expect(record(wrong)).toMatchObject({ status: "probe-invalid", reason: "Cursor advance does not verify SGR styling" })
+  expect(record(wrong)).toMatchObject({
+    status: "probe-invalid",
+    reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+  })
   for (const [id, col, reason] of [
-    ["sgr.underline-color-reset", 9, "Cursor advance does not verify the reset rendered"],
+    [
+      "sgr.underline-color-reset",
+      9,
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); Cursor advance does not verify the reset rendered",
+    ],
     ["sgr.selective-reset.bold", 9, "Cursor did not reach the expected position"],
     [
       "fixture.sgr",
@@ -922,12 +963,12 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     [
       "sgr.underline-color-indexed",
       null,
-      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      "SGR 58:5:1 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
     [
       "sgr.underline-color-reset",
       null,
-      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
     [
       "sgr.selective-reset.bold",

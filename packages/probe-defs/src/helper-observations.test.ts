@@ -26,7 +26,11 @@ import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./typ
  */
 function expectNoSamePathTodo(result: ProbeCallbackResult, id?: string, noObservable = NO_SAME_PATH_CONTROL) {
   expect(result.pass, id).toBe(false)
-  expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+  // Colour rows prepend the exact encoding; the named coverage cause must remain intact.
+  expect(result.notTested, id).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining(noObservable),
+  })
   expect(result.criterionBranch, id).toBeUndefined()
   expect(result.tests, id).toBeUndefined()
   expect(result.observation, id).toBeUndefined()
@@ -305,12 +309,14 @@ test("a former source-review request keeps PROBE TODO with its state and leaves 
   )
   const reason = "Cell readback cannot distinguish an absent style from an unreported attribute"
   for (const pass of [null, false]) {
-    expect(parserStateResult(pass, expected, state, undefined, reason)).toEqual({
-      pass: false,
-      response,
-      note: NO_SAME_PATH_CONTROL,
-      notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
-    })
+    for (const note of [undefined, "Scroll-speed presentation remains unmeasured"]) {
+      expect(parserStateResult(pass, expected, state, note, reason)).toEqual({
+        pass: false,
+        response,
+        note: NO_SAME_PATH_CONTROL,
+        notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+      })
+    }
   }
   expect(() => parserStateResult(true, expected, state, undefined, reason)).toThrow(/positive.*source review/i)
 })
@@ -554,7 +560,13 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     expect(small.observation, id).toBeUndefined()
     expect(small, id).toMatchObject({
       tests: [
-        expect.objectContaining({ status: "probe-todo", reason: "SGR fixture needs at least 3x34, measured 2x33" }),
+        expect.objectContaining({
+          status: "probe-todo",
+          reason:
+            id === "sgr.underline-color-reset"
+              ? "Selected SGR 59 after setup SGR 58:2::255:0:128 (colon form); selected feature bytes were not sent; SGR fixture needs at least 3x34, measured 2x33"
+              : "SGR fixture needs at least 3x34, measured 2x33",
+        }),
       ],
     })
     expect(smallWrites, id).toEqual([])
@@ -666,7 +678,12 @@ test("underline color needs an observed color, not only an underline or a consum
     const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
     expect(consumed.observation, id).toBeUndefined()
     expect(consumed, id).toMatchObject({
-      tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
+      tests: [
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: "SGR 58:2::255:0:128 (colon form); Cursor advance does not verify SGR styling",
+        }),
+      ],
     })
     expect(consumed.assertions, id).toBeUndefined()
   }
@@ -677,13 +694,13 @@ test("indexed underline color follows two distinct measured palette controls", a
   if (!probe?.lib || !probe.term) throw new Error("missing indexed underline color callback")
   const measure = probe.lib
   const index4 = { r: 10, g: 20, b: 30 }
-  const index5 = { r: 40, g: 50, b: 60 }
+  const index1 = { r: 40, g: 50, b: 60 }
   const run = (
-    colorOnFive: typeof index4 | null | undefined,
-    colorOnFour: typeof index5 | null | undefined,
-    secondFg = index5,
+    colorOnOne: typeof index4 | null | undefined,
+    colorOnFour: typeof index1 | null | undefined,
+    secondFg = index1,
     default4: typeof index4 | null | undefined = null,
-    default5: typeof index5 | null | undefined = null,
+    default1: typeof index1 | null | undefined = null,
   ) =>
     measure(
       headless({
@@ -692,27 +709,27 @@ test("indexed underline color follows two distinct measured palette controls", a
           char: ["A", "X", "B", "Y"][col] ?? "",
           underline: true,
           fg: col < 2 ? index4 : secondFg,
-          underlineColor: [default4, colorOnFive, default5, colorOnFour][col],
+          underlineColor: [default4, colorOnOne, default1, colorOnFour][col],
         }),
       }),
     )
 
   const unexposed = run(undefined, undefined)
   expectNoSamePathTodo(unexposed, undefined, underlineColorUnexposed)
-  expect(JSON.parse(unexposed.response ?? "")).toMatchObject({ target5: { char: "X" }, target4: { char: "Y" } })
+  expect(JSON.parse(unexposed.response ?? "")).toMatchObject({ target1: { char: "X" }, target4: { char: "Y" } })
 
-  const matched = run(index5, index4)
+  const matched = run(index1, index4)
   expect(matched.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(matched.assertions).toMatchObject([{ kind: "positive", observed: matched.response }])
   expect(JSON.parse(matched.response ?? "")).toMatchObject({
     default4: { fg: index4, underlineColor: null },
-    target5: { fg: index4, underlineColor: index5 },
-    default5: { fg: index5, underlineColor: null },
-    target4: { fg: index5, underlineColor: index4 },
+    target1: { fg: index4, underlineColor: index1 },
+    default1: { fg: index1, underlineColor: null },
+    target4: { fg: index1, underlineColor: index4 },
   })
 
   const ignoredColor = { r: 0, g: 0, b: 0 }
-  const ignored = run(ignoredColor, ignoredColor, index5, index4, index5)
+  const ignored = run(ignoredColor, ignoredColor, index1, index4, index1)
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
 
@@ -722,7 +739,12 @@ test("indexed underline color follows two distinct measured palette controls", a
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    tests: [expect.objectContaining({ status: "probe-todo", reason: "Cursor advance does not verify SGR styling" })],
+    tests: [
+      expect.objectContaining({
+        status: "probe-todo",
+        reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+      }),
+    ],
   })
 })
 
@@ -741,7 +763,7 @@ test("underline color reset needs both an observed colored before cell and defau
   expect(missingBefore.notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable:
-      "Open: after we set an underline colour (SGR 58), the screen cell showed none, so the setup did not show and the reset cannot be tested.",
+      "SGR 59 after setup SGR 58:2::255:0:128 (colon form): after the setup the screen cell showed no underline colour, so the setup did not show and the reset cannot be tested.",
   })
 
   const missingAfter = probe.lib(
@@ -790,7 +812,7 @@ test("a null underline color from an adapter with no color readback is PROBE TOD
     expectNoSamePathTodo(result, id, underlineColorUnexposed)
     expect(JSON.parse(result.response ?? ""), id).toMatchObject(
       indexed
-        ? { target5: { char: "X", underlineColor: null }, target4: { char: "Y", underlineColor: null } }
+        ? { target1: { char: "X", underlineColor: null }, target4: { char: "Y", underlineColor: null } }
         : { target: { char: "X", underlineColor: null } },
     )
   }
@@ -1168,6 +1190,12 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
   for (const channel of ["fg", "bg"]) {
     for (const family of ["standard", "bright", "256", "truecolor", "default"]) {
       const id = `sgr.${channel}.${family}`
+      const encoding =
+        family === "256"
+          ? `SGR ${channel === "fg" ? 38 : 48};5;67 (semicolon form); `
+          : family === "truecolor"
+            ? `SGR ${channel === "fg" ? "38;2;255;128;0" : "48;2;0;255;128"} (semicolon form); `
+            : ""
       const probe = sgrProbes.find((item) => item.id === id)
       if (!probe?.term) throw new Error(`missing ${id} TTY callback`)
       const writes: string[] = []
@@ -1182,7 +1210,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
           reason:
             family === "default"
               ? "Cursor advance does not verify the reset rendered"
-              : "Cursor advance does not verify SGR styling",
+              : `${encoding}Cursor advance does not verify SGR styling`,
         },
       ])
       expect(answered.assertions, id).toBeUndefined()
@@ -1193,7 +1221,7 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
         {
           id: "criterion",
           status: "probe-invalid",
-          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          reason: `${encoding}no parsable cursor position reply; the public projection returned null and retained no bytes`,
         },
       ])
     }

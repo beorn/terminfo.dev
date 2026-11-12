@@ -18,6 +18,7 @@ import type {
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
+  MeasuredProbeCallbackResult,
   ExecutionOnlyProbeCallbackResult,
   TerminalQueryOutcome,
   LibProbeSource,
@@ -495,7 +496,9 @@ export function parserStateResult(
     throw new Error("A positive parser state cannot require source review")
   }
   // A former source-negative verdict: source code never grades a probe (@cto 9fad23d7, #32246).
-  if (sourceReviewReason !== undefined) return notTestedResult(NO_SAME_PATH_CONTROL, state)
+  if (sourceReviewReason !== undefined) {
+    return notTestedResult(NO_SAME_PATH_CONTROL, state)
+  }
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
     pass === null ? undefined : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
@@ -963,6 +966,15 @@ export async function cursorStyleReadbackDecision(
  */
 const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21 }
 
+/** Internal fixture wording; retain the transmitted separators rather than a normalized reply token. */
+export function sgrColourEncoding(sequence: string): string {
+  return [
+    ...new Set([...sequence.matchAll(/\x1b\[(?:38|48|58)[;:][0-9;:]*m/g)].map(([encoded]) => encoded.slice(2, -1))),
+  ]
+    .map((parameters) => `SGR ${parameters} (${parameters.includes(":") ? "colon" : "semicolon"} form)`)
+    .join(" and ")
+}
+
 /**
  * Decide an SGR claim from the terminal own DECRQSS report. A style-qualified underline claim
  * needs its own style token in a valid reply. A collapsed or omitted style is coverage (PROBE
@@ -984,6 +996,7 @@ function evaluateSgrReadback(
   readback: SgrReadback,
   setupVerified: boolean,
 ): ProbeCallbackResult {
+  const encoding = sgrColourEncoding(sequence)
   // Extended-color operands are one parameter, never independent attributes. Keep the raw state
   // below, but compare equivalent legacy semicolon and colon reports as complete color tokens.
   const parameters: string[] = []
@@ -1033,6 +1046,7 @@ function evaluateSgrReadback(
   }
   const observed = state.length === 0 ? "0" : state.join(";")
   if (unmeasured) {
+    if (encoding) unmeasured = `Selected ${encoding}; ${unmeasured}`
     return {
       pass: false,
       response: JSON.stringify({ sgr: observed }),
@@ -1076,7 +1090,11 @@ function evaluateSgrReadback(
     (readback.requireTokens ?? []).some(
       (token) => !parameters.some((actual) => leadingSgrCode(actual) === leadingSgrCode(token)),
     )
-  if (absent && !forbidden && !setupVerified) return notTestedResult(NO_SAME_PATH_CONTROL, { sgr: observed })
+  if (absent && !forbidden && !setupVerified) {
+    return notTestedResult(encoding ? `Selected ${encoding}; ${NO_SAME_PATH_CONTROL}` : NO_SAME_PATH_CONTROL, {
+      sgr: observed,
+    })
+  }
   const ok = required && !forbidden && tokensRequired
   const requiredCodes = [...readback.require.map(String), ...(readback.requireTokens ?? [])]
   // A forbid-only claim (reset.sgr, sgr.reset, sgr.fg.default, sgr.bg.default) requires nothing, so its
@@ -1087,12 +1105,18 @@ function evaluateSgrReadback(
       : readback.forbid !== undefined && readback.forbid.length > 0
         ? `none of ${readback.forbid.join(";")}`
         : "0"
+  const note = encoding
+    ? `Selected ${encoding}; DECRQSS reports ${observed}; this status reply does not verify the painted colour`
+    : undefined
   return {
     pass: ok,
     response: JSON.stringify({ sgr: observed }),
-    observation: ok
-      ? { outcome: "supported", assertionType: "query_reply" }
-      : { outcome: "unsupported", assertionType: "query_reply" },
+    ...(note && { note }),
+    observation: {
+      outcome: ok ? "supported" : "unsupported",
+      assertionType: "query_reply",
+      ...(note && { note }),
+    },
     assertions: [
       {
         assertionType: "query_reply" as const,
@@ -1163,7 +1187,12 @@ export async function sgrReadbackDecision(
             const captured = await captureReadback(observed, "setup")
             if (captured) return captured
           }
-          const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
+          const colourSetup = sgrColourEncoding(setup.sequence)
+          const target = `SGR ${sequence.slice(2, -1)}`
+          const attempt = colourSetup
+            ? `Selected ${target} after setup ${colourSetup}; ${phase === "baseline" ? "setup bytes not sent; " : "setup bytes sent; "}${target} not sent; `
+            : ""
+          const note = `${id}: ${attempt}${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
           if (qualified.notTested) {
             return {
               ...qualified,
@@ -1226,7 +1255,7 @@ export const SGR_CAPTURE_MIN_COLS = 34
  * whose arm writes before falling back (the DECRQSS readback) still calls this first, so the refusal
  * is never preceded by bytes of its own.
  */
-export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ProbeCallbackResult | undefined {
+export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ExecutionOnlyProbeCallbackResult | undefined {
   const { rows, cols } = ctx
   if (Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 1 && cols >= 2) return undefined
   return {
@@ -1238,7 +1267,10 @@ export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ProbeCallbackResu
 }
 
 /** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
-export function sgrCaptureTooSmall(ctx: TermProbeSource, feature = "SGR capture"): ProbeCallbackResult | undefined {
+export function sgrCaptureTooSmall(
+  ctx: TermProbeSource,
+  feature = "SGR capture",
+): ExecutionOnlyProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   const { rows, cols } = ctx
   if (
@@ -1270,7 +1302,7 @@ export async function sgrCaptureFrames(
   meta: Record<string, unknown> = {},
   note = "Control and target pixels captured; no same-run pixel check decides the visual effect",
   controlLabel = `${targetLabel} control`,
-): Promise<ProbeCallbackResult> {
+): Promise<MeasuredProbeCallbackResult> {
   if (!ctx.capture) throw new Error(`${targetLabel}: SGR pixel capture requires a capture callback`)
   ctx.write(control)
   const controlFrame = await ctx.capture({ role: "control", label: controlLabel })
@@ -1369,18 +1401,25 @@ export function withUnhandledSgrReport(
     const result = body(ctx)
     if (reportsDecidedOutcome(result)) return result
     const cursor = ctx.getCursor()
-    return (
-      unhandledSequenceVerdict(
-        ctx,
-        { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
-        {
-          feed: "\x1b[0m\x1b[1mC",
-          applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
-          cleanup: "\x1b[0m",
-        },
-        { sequence, ...(result.response !== undefined && { body: result.response }) },
-      ) ?? result
+    const reported = unhandledSequenceVerdict(
+      ctx,
+      { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
+      {
+        feed: "\x1b[0m\x1b[1mC",
+        applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
+        cleanup: "\x1b[0m",
+      },
+      { sequence, ...(result.response !== undefined && { body: result.response }) },
     )
+    if (!reported) return result
+    // This colour reset also has a multiparameter setup; retain its exact encoding when the
+    // library's own SGR 59 report replaces the undecided body (#33157).
+    if (id !== "sgr.underline-color-reset" || result.note === undefined) return reported
+    const note = `${result.note}; ${reported.note}`
+    if (reported.observation !== undefined) {
+      return { ...reported, note, observation: { ...reported.observation, note } }
+    }
+    return { ...reported, note }
   }
 }
 

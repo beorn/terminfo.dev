@@ -5832,11 +5832,13 @@ const OSC7_TITLE_CONTROL_OPEN =
   "Open: this run's public title did not hold the OSC 2 control titles, so the title could not witness OSC 7 and the observation does not decide the result."
 
 const extensionDefinitions: ProbeDefinition[] = [
-  // Truecolor — capability flag (termless) or SGR parse check (term)
+  // Truecolor — exact foreground cell RGB (library) or the foreground pixel controls (App).
   {
     ...probe(
       "extensions.truecolor",
       (ctx) => {
+        const encoding =
+          "extensions.truecolor: SGR 38;2;255;128;0 (semicolon form); SGR 38;2;17;97;201 (semicolon form) is the secondary contrasting library sample"
         // Use the same independent controls and two RGB samples as sgr.fg.truecolor.
         const first = { r: 255, g: 128, b: 0 }
         const second = { r: 17, g: 97, b: 201 }
@@ -5847,7 +5849,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const targetFirst = ctx.getCell(0, 3)
         const targetSecond = ctx.getCell(0, 4)
         const state = { baseline, controlFirst, controlSecond, targetFirst, targetSecond }
-        const expected = "Two distinct direct-RGB foreground samples match their requested values"
+        const expected = `${encoding}; two distinct direct-RGB foreground samples match their requested values`
         const same = (a: typeof first | null, b: typeof first) =>
           a !== null && a !== undefined && a.r === b.r && a.g === b.g && a.b === b.b
         const framed =
@@ -5860,14 +5862,16 @@ const extensionDefinitions: ProbeDefinition[] = [
           // #30701, @cto ruling C: an RGB target that reads no color is a measured ignore while the
           // independent controls show two distinct colors; without them the channel is not shown.
           if (controlFirst.fg && controlSecond.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
-            return parserStateResult(false, expected, state)
+            return parserStateResult(
+              false,
+              expected,
+              state,
+              `${encoding}; RGB targets exposed no color while the independent controls showed distinct colors`,
+            )
           }
-          return parserStateResult(
-            null,
-            expected,
+          return notTestedResult(
+            `${encoding}; independent foreground controls did not establish color readback; ${NO_SAME_PATH_CONTROL}`,
             state,
-            undefined,
-            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
           )
         }
         if (
@@ -5879,18 +5883,28 @@ const extensionDefinitions: ProbeDefinition[] = [
           !targetFirst.fg ||
           !targetSecond.fg
         ) {
-          return parserStateResult(null, expected, state, "RGB targets or controls were not exposed")
+          return parserStateResult(null, expected, state, `${encoding}; RGB targets or controls were not exposed`)
         }
         if (!controlSecond.fg || same(controlSecond.fg, first)) {
-          return parserStateResult(null, expected, state, "The preceding color can mimic an ignored RGB request")
+          return parserStateResult(
+            null,
+            expected,
+            state,
+            `${encoding}; the preceding color can mimic an ignored RGB request`,
+          )
         }
         if (same(targetFirst.fg, first) && same(targetSecond.fg, second)) {
-          return parserStateResult(true, expected, state)
+          return parserStateResult(true, expected, state, `${encoding}; both requested foreground RGB samples matched`)
         }
         if (controlFirst.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
-          return parserStateResult(false, expected, state)
+          return parserStateResult(
+            false,
+            expected,
+            state,
+            `${encoding}; requested foreground RGB samples did not match despite distinct independent color controls`,
+          )
         }
-        return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
+        return parserStateResult(null, expected, state, `${encoding}; independent color-channel calibration was absent`)
       },
       // The row's claim is the one sgr.fg.truecolor states: the exact RGB is kept. A state read
       // decides where the terminal answers one; otherwise the row runs sgr.fg.truecolor's own pixel
@@ -5901,15 +5915,17 @@ const extensionDefinitions: ProbeDefinition[] = [
         "\x1b[38;2;255;128;0m",
         { require: [38], requireTokens: ["38:2:255:128:0"] },
         async (ctx) => {
+          const encoding =
+            "extensions.truecolor: SGR 38;2;255;128;0 (semicolon form); SGR 38;2;17;97;201 (semicolon form) is the secondary contrasting library sample"
           ctx.write("\x1b[1;1H\x1b[2K")
-          ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
+          ctx.write("\x1b[38;2;255;128;0mX\x1b[0m")
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return unverifiedEffect(ctx, "No cursor response; RGB color was not measured")
+          if (!pos) return unverifiedEffect(ctx, `${encoding}; no cursor response; RGB color was not measured`)
           return unverifiedEffect(
             ctx,
             pos.col === 2
-              ? "SGR was consumed; RGB cell color was not measured"
-              : `Cursor at col ${pos.col}; RGB color was not measured`,
+              ? `${encoding}; SGR was consumed; RGB cell color was not measured`
+              : `${encoding}; cursor at col ${pos.col}; RGB color was not measured`,
           )
         },
       ),
