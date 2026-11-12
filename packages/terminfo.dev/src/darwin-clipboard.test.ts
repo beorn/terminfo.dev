@@ -55,3 +55,24 @@ test("a system-events declaration reads the window name and does not depend on t
   await expect(adapter.readTitle()).resolves.toBe("Measured Title")
   expect(scripts).toEqual([`-e\ntell application "System Events" to get name of window 1 of process "stable"`])
 })
+
+test("a measured title refusal is thrown verbatim and never spawns a reader", async () => {
+  const readers: string[] = []
+  const run: DarwinCommand = async (file) => {
+    if (file.endsWith("pbpaste")) return "baseline\n"
+    readers.push(file)
+    throw new Error(`unexpected ${file}`)
+  }
+  const titleUnavailable =
+    "Hosted Darwin title read unavailable for cmux: the window server reports the app's own window title (\"Terminal\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43327254711: read-failed with that name observed)"
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "cmux",
+    titleRead: "system-events",
+    titleUnavailable,
+    assertOwned: async () => {},
+    run,
+  })
+  // The refusal is the route's own reason: no osascript, and no generic 5 s System Events timeout.
+  await expect(adapter.readTitle()).rejects.toThrow(titleUnavailable)
+  expect(readers).toEqual([])
+})

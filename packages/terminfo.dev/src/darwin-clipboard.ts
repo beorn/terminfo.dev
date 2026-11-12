@@ -45,6 +45,12 @@ function pasteboardText(raw: string): string {
 export async function createDarwinClipboardAdapter(input: {
   appComm: string
   titleRead: DarwinTitleRead
+  /**
+   * The named refusal this route returns instead of a title, when the window-title instrument cannot
+   * observe the app at all (33821). It must say WHY in measured terms — the window name that was
+   * observed and the calibration outcome — because "no title" alone cannot be told from a bug.
+   */
+  titleUnavailable?: string
   assertOwned: () => Promise<void>
   run?: DarwinCommand
 }): Promise<LinuxClipboardAdapter> {
@@ -74,6 +80,9 @@ export async function createDarwinClipboardAdapter(input: {
     assertOwned: input.assertOwned,
     async readTitle() {
       await input.assertOwned()
+      // A route that knows it cannot observe the title refuses before spawning anything: the hosting
+      // app is not going to answer a System Events prompt, and a 5 s timeout reads like a bug.
+      if (input.titleUnavailable !== undefined) throw new Error(input.titleUnavailable)
       // `none` never spawns osascript. The subject row records why that subject declares it.
       if (input.titleRead === "none") {
         throw new Error("Hosted Darwin title read does not use System Events")

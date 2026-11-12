@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { capturePixels, command, decodeCapture, finishCapture, type NamedTextOrigin } from "./capture-core.ts"
 import type { ProbeCapture } from "./probes/unified.ts"
-import { writeTTY } from "./tty.ts"
 
 export interface DarwinWindow {
   id: number
@@ -54,110 +53,6 @@ export interface DarwinInstallCensus {
   }
   ownedWindows: DarwinOwnedWindow[]
   takenAt: string
-  /**
-   * The window name read against a title this run wrote itself (33821). No probe consumes it and no
-   * verdict depends on it; it exists to settle, on a hosted runner, whether the window server's name
-   * carries the terminal title for this app.
-   */
-  titleMeasurement?: WindowNameMeasurement
-}
-
-/**
- * One marker title written from the collector's own TTY, then the window name polled until it matches
- * or the cap passes. The three outcomes are kept apart because they mean different things:
- * `equal` is the window name carrying the terminal title on this app; `withheld` is a key the window
- * server did not supply (or supplied empty, which proves nothing on its own); `other-title` is a
- * real, different title — an editor's own window name, say — where the terminal title may only reach a
- * tab, and the census reader is the wrong tool for that app.
- */
-export interface WindowNameMeasurement {
-  expected: string
-  observed: { present: boolean; value: string | null }
-  waitedMs: number
-  /**
-   * The three title outcomes, plus `read-failed` for a measurement that never got a usable name: the
-   * read errored, was killed at the deadline, or came back after it. A failed read is never folded into
-   * `withheld`, because withheld is a fact about the window server and this is a fact about the read.
-   */
-  outcome: "equal" | "withheld" | "other-title" | "read-failed"
-  /** Present exactly when `outcome` is `read-failed`: which read failed, and how. */
-  failure?: { name: string; message: string }
-}
-
-/** `marker` must be unique per run, so a title left over from an earlier attempt can never match. */
-export async function measureWindowName(options: {
-  marker: string
-  writeMarker: (sequence: string) => void
-  /**
-   * One read, bounded by the ABSOLUTE `deadline` (epoch ms) it is handed and must pass into whatever
-   * command it runs, so a slow census is killed at the cap instead of finishing after it. A name that
-   * only arrives once the cap has passed is not this measurement's title, however well it matches.
-   */
-  readName: (deadline: number) => Promise<{ present: boolean; value: string | null }>
-  capMs?: number
-  pollMs?: number
-  now?: () => number
-  sleep?: (ms: number) => Promise<void>
-}): Promise<WindowNameMeasurement> {
-  const capMs = options.capMs ?? 2000
-  const pollMs = options.pollMs ?? 100
-  const now = options.now ?? (() => Date.now())
-  const sleep =
-    options.sleep ??
-    ((ms: number) =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, ms)
-      }))
-  if (!options.marker) throw new Error("Darwin window-name measurement requires a non-empty marker title")
-  options.writeMarker(`\u001b]2;${options.marker}\u0007`)
-  const started = now()
-  const deadline = started + capMs
-  let observed: { present: boolean; value: string | null } = { present: false, value: null }
-  for (;;) {
-    // The poll budget is spent. Classify what the last read actually saw; do NOT start another read,
-    // because the deadline it would carry is already expired and the command refuses before
-    // invocation — which would turn an observed `withheld` or `other-title` into `read-failed`.
-    if (now() >= deadline) break
-    let read: { present: boolean; value: string | null }
-    try {
-      read = await options.readName(deadline)
-    } catch (cause) {
-      const error = cause instanceof Error ? cause : new Error(String(cause))
-      return {
-        expected: options.marker,
-        observed,
-        waitedMs: now() - started,
-        outcome: "read-failed",
-        failure: {
-          name: error.name,
-          message: `window-name read for ${options.marker} failed inside the ${capMs}ms measurement: ${error.message}`,
-        },
-      }
-    }
-    const at = now()
-    if (at > deadline) {
-      return {
-        expected: options.marker,
-        observed: read,
-        waitedMs: at - started,
-        outcome: "read-failed",
-        failure: {
-          name: "WindowNameReadOverranDeadline",
-          message: `window-name read for ${options.marker} returned ${at - deadline}ms after the ${capMs}ms measurement deadline; a late name is not this measurement's title`,
-        },
-      }
-    }
-    observed = read
-    if (observed.present && observed.value === options.marker) break
-    await sleep(Math.min(pollMs, deadline - at))
-  }
-  const outcome: WindowNameMeasurement["outcome"] =
-    observed.present && observed.value === options.marker
-      ? "equal"
-      : observed.present && observed.value !== null && observed.value !== ""
-        ? "other-title"
-        : "withheld"
-  return { expected: options.marker, observed, waitedMs: now() - started, outcome }
 }
 
 type DarwinCensusRow = Omit<DarwinOwnedWindow, "disposition">
@@ -340,7 +235,6 @@ export async function createDarwinCapture(
     hostedAppId,
     expectedWindowId,
     ownedHost,
-    measureWindowName: measureTitle = false,
     onRetained,
   }: {
     appPid: number
@@ -353,12 +247,6 @@ export async function createDarwinCapture(
     hostedAppId?: string
     /** The launch receipt window id this run owns, when the caller already resolved it. */
     expectedWindowId?: number
-    /**
-     * Measure whether the window server's name carries a title this run writes (33821). Only the
-     * hosted Darwin route asks for it: the measurement writes to the controlling TTY and re-reads the
-     * census, so a caller that is not measuring must not pay either.
-     */
-    measureWindowName?: boolean
     onRetained: Parameters<typeof finishCapture>[0]["onRetained"]
   },
 ) {
@@ -386,30 +274,8 @@ export async function createDarwinCapture(
   }
   const installed = await census()
   const { name: _installedName, ...installedCensus } = installed
-  // 33821: no probe consumes this measurement and no verdict depends on it; it answers whether the
-  // window server's name carries the terminal title on this app (@cto, A). The write is the run's
-  // own title, so nothing has to be restored and a stale title can never match a unique marker.
-  const installedWindowId = installed.window.id
-  const titleMeasurement = measureTitle
-    ? await measureWindowName({
-        marker: `hh-title-${randomBytes(6).toString("hex")}`,
-        writeMarker: writeTTY,
-        // Every poll is bounded by the measurement deadline the poll loop hands it, and reads the
-        // window the install census measured — never whatever is largest now.
-        readName: async (deadline) => {
-          const current = await census(deadline, installedWindowId)
-          if (current.window.id !== installedWindowId) {
-            throw new Error(
-              `Darwin window-name measurement read window ${current.window.id}, not the installed window ${installedWindowId}`,
-            )
-          }
-          return current.name
-        },
-      })
-    : undefined
   const installCensus: DarwinInstallCensus = {
     ...installedCensus,
-    ...(titleMeasurement ? { titleMeasurement } : {}),
     takenAt: new Date().toISOString(),
   }
   const { window } = installed
