@@ -1092,6 +1092,32 @@ test.each([
       /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured/,
   },
   {
+    // #33632: a multiplexer client that follows the owned window resize is measured on the same path as a
+    // terminal, so the deleted early return cannot silently keep a mux subject at coverage.
+    name: "supported-in-place-reflow-through-tmux",
+    mux: "tmux" as const,
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured/,
+  },
+  {
+    name: "supported-in-place-reflow-through-screen",
+    mux: "screen" as const,
+    growBehavior: "reflowed" as const,
+    shrinkBehavior: "reflowed" as const,
+    expectedStatus: "supported" as const,
+    expectedOutcome: "supported" as const,
+    expectedAssertions: 1,
+    expectedFrames: 12,
+    expectedReason:
+      /main-screen reflow measured across shrink \(reflowed\) and grow \(reflowed\); retained history unmeasured/,
+  },
+  {
     name: "supported-in-place-reflow-via-cpr-clamp",
     growBehavior: "reflowed" as const,
     shrinkBehavior: "reflowed" as const,
@@ -1206,6 +1232,7 @@ test.each([
   "extensions.reflow App resize+capture round-trips through parseRun for $name",
   async ({
     name,
+    mux,
     growBehavior,
     shrinkBehavior,
     disableCsi18t,
@@ -1268,6 +1295,7 @@ test.each([
         kind: "live",
         rows,
         cols: wideCols,
+        ...(mux && { mux }),
         captureKind: "pixels",
         captureGeometry: {
           geometry: {
@@ -1440,6 +1468,13 @@ test.each([
       }
       expect(result.observation?.outcome).toBe(expectedOutcome)
       expect(result.observation?.frames ?? []).toHaveLength(expectedFrames)
+      if (mux) {
+        expect(JSON.parse(String(result.response))).toMatchObject({
+          mux,
+          paneColsBefore: wideCols,
+          paneColsAfterResize: narrowCols,
+        })
+      }
       const assertions = (result.assertions ?? []).map((entry) => ({
         ...entry,
         featureId,
