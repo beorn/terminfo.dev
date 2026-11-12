@@ -82,7 +82,11 @@ function calibratedSource(located: Located | ((paintedCell: string) => Located))
       locates.push(request)
       // The cell the layout check painted, from its last DECSC-wrapped paint write.
       const painted = writes.filter((entry) => entry.startsWith("\x1b7\x1b[") && entry.includes("\x1b[45m")).at(-1)
-      const cell = painted?.match(/^\x1b7\x1b\[(\d+);(\d+)H/)?.slice(1).join(",") ?? ""
+      const cell =
+        painted
+          ?.match(/^\x1b7\x1b\[(\d+);(\d+)H/)
+          ?.slice(1)
+          .join(",") ?? ""
       const answer = typeof located === "function" ? located(cell) : located
       return { ...frame, pixelsDigest: `sha256:layout-${reads}`, ...(answer === "omitted" ? {} : { located: answer }) }
     }
@@ -124,7 +128,9 @@ test("a same-cells read on a window whose layout moved after calibration names t
 test("on a window that did not move, the same-cells sentence is today's, unchanged (33000 control)", async () => {
   // Each painted cell is found in its own calibrated crop: the witness 3,1 and, since 33644, the compared region's 1,1.
   const inPlace = (cell: string): Located =>
-    cell === "3,1" ? blockAt(0) : { box: crop({ top: 1, left: 1, bottom: 1, right: 1 }), pixels: CELL.width * CELL.height }
+    cell === "3,1"
+      ? blockAt(0)
+      : { box: crop({ top: 1, left: 1, bottom: 1, right: 1 }), pixels: CELL.width * CELL.height }
   const { note, locates } = await sameCellsNote(inPlace)
   expect(locates).toHaveLength(2)
   expect(note).toBe(
