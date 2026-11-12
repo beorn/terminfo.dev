@@ -151,7 +151,7 @@ function barSegmentItems(backendName, segment) {
     const feature = data.features.find(feature => feature.id === result.featureId)
     return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
       href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
-      symbol: {supported:'✓',unsupported:'✗',untestable:'?', 'probe-todo':'–', 'probe-invalid':'!', 'probe-conflict':'!'}[segment],
+      symbol: {supported:'✓',unsupported:'✗','differs-by-context':'≠',untestable:'?', 'probe-todo':'–', 'probe-invalid':'!', 'probe-conflict':'!'}[segment],
       note: result.reason }
   })
 }
@@ -159,6 +159,9 @@ function barSegmentItems(backendName, segment) {
 const barSegments = [
   { id: 'supported', label: 'Supported', style: 'yes' },
   { id: 'unsupported', label: 'Unsupported', style: 'fail' },
+  // @cto c3c2f885: a cell two same-suite contexts disagree on is decided, so it gets its own segment
+  // rather than stopping the bar or reading as Supported/Unsupported.
+  { id: 'differs-by-context', label: 'Differs by context', style: 'differs' },
   { id: 'untestable', label: 'Untestable', style: 'partial' },
   { id: 'probe-todo', label: 'PROBE TODO', style: 'remainder' },
   { id: 'probe-invalid', label: 'PROBE INVALID', style: 'remainder' },
@@ -741,6 +744,12 @@ strips, or mishandles.
 .bar-fail {
   height: 100%;
   background: transparent;
+  transition: width 0.3s ease;
+}
+
+.bar-differs {
+  height: 100%;
+  background: #6366f1;
   transition: width 0.3s ease;
 }
 

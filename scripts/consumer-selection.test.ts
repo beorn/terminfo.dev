@@ -27,7 +27,7 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import probesLoader from "../docs/data/probes.data.ts"
-import { generateApi } from "./generate-api.ts"
+import { generateApi, storedDocument } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
@@ -110,6 +110,40 @@ function writeSuite(content: string, probeHash: string): void {
     }),
   )
 }
+
+// #33600 condition 5: the site derives differs-by-context from the context join; the published v3
+// documents are stored shapes keyed by the original run's sha256, so the bucket never reaches one.
+it("publishes API documents without the site's derived differs bucket", () => {
+  const published = storedDocument(
+    {
+      counts: {
+        supported: 1,
+        unsupported: 0,
+        untestable: 0,
+        "differs-by-context": 0,
+        "probe-todo": 0,
+        "probe-invalid": 0,
+        "probe-conflict": 0,
+      },
+      families: { sgr: { counts: { supported: 1, "differs-by-context": 0 } } },
+    },
+    "api/v3/runs/fixture.json",
+  )
+  expect(published.counts).toEqual({
+    supported: 1,
+    unsupported: 0,
+    untestable: 0,
+    "probe-todo": 0,
+    "probe-invalid": 0,
+    "probe-conflict": 0,
+  })
+  expect(published.families.sgr.counts).toEqual({ supported: 1 })
+  // @dev/16 on #33600: a nonzero derived bucket refuses naming the document; only a zero is dropped.
+  expect(() => storedDocument({ counts: { supported: 1, "differs-by-context": 2 } }, "api/v3/runs/abc.json")).toThrow(
+    /api\/v3\/runs\/abc\.json: counts\.differs-by-context is 2/,
+  )
+  expect(JSON.stringify(published)).not.toContain("differs-by-context")
+})
 
 describe("consumer selection", () => {
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
@@ -416,12 +450,13 @@ describe("consumer selection", () => {
               suiteFreshness: version.suiteFreshness,
               sourceRevision: version.sourceRevision,
               sha256: version.sha256,
-              counts: version.counts,
+              // The published document is the stored shape (#33600): six stored statuses per count set.
+              counts: storedDocument({ counts: version.counts }, `api/v3/runs/${version.sha256}.json`).counts,
               url: `/api/v3/runs/${version.sha256}.json`,
             })
             const bytes = readFileSync(join(out, ref.url))
             expect(createHash("sha256").update(bytes).digest("hex")).toBe(ref.documentSha256)
-            expect(JSON.parse(bytes.toString("utf8"))).toEqual(version)
+            expect(JSON.parse(bytes.toString("utf8"))).toEqual(storedDocument(version, ref.url))
           })
         }
       }

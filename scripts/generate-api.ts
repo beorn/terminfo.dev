@@ -33,6 +33,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../docs/data/working-runs.ts"
 import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
+import { storedCounts } from "../docs/data/release-scope.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -97,6 +98,20 @@ export function assertDeploymentLimits(dir: string): {
   const fileHeadroom = maxOutputFiles - fileCount
   return { fileCount, fileLimit: maxOutputFiles, fileHeadroom, traceFiles, traceBytes, dataJsonBytes }
 }
+
+/**
+ * A published API document as a STORED shape (#33600): every `counts` object goes through `storedCounts`, so
+ * the six stored statuses stay and a NON-zero derived bucket refuses naming the document. The v3 documents
+ * are byte-stable contracts keyed by the original run's sha256; `where` names the file in that refusal.
+ */
+export const storedDocument = <T>(document: T, where: string): T =>
+  JSON.parse(
+    JSON.stringify(document, (key, value: unknown) =>
+      key === "counts" && value && typeof value === "object" && !Array.isArray(value)
+        ? storedCounts(value as Record<string, number>, where)
+        : value,
+    ),
+  ) as T
 
 // --- Types ---
 
@@ -310,7 +325,7 @@ export function generateApi(
   let serialized = 0
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
-    const bytes = Buffer.from(JSON.stringify(version) + "\n")
+    const bytes = Buffer.from(JSON.stringify(storedDocument(version, url)) + "\n")
     if (++serialized % 5 === 0) collectGarbage()
     const prior = runDocuments.get(url)
     if (prior && !prior.equals(bytes)) throw new Error(`Conflicting current run document ${url}`)
@@ -370,7 +385,7 @@ export function generateApi(
   mkdirSync(v3Dir, { recursive: true })
   const dataPath = join(v3Dir, "data.json")
   writeEvidence(outDir ?? publicDir, published.documents, runDocuments, resultsDir)
-  writeAsset(dataPath, JSON.stringify(currentData) + "\n")
+  writeAsset(dataPath, JSON.stringify(storedDocument(currentData, dataPath)) + "\n")
 
   return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }
 }

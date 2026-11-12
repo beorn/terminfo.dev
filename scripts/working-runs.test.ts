@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { loadFeatures } from "@terminfo/catalog"
-import { rollupTerminalStatuses } from "../docs/data/release-scope.ts"
+import { rollupTerminalStatuses, storedRollup, type TerminalStatusRollup } from "../docs/data/release-scope.ts"
 import {
   RAW_LABEL,
   composeWorkingView,
@@ -33,6 +33,13 @@ import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 import clientProbes, { loadFullProbes } from "../docs/data/probes.data.ts"
+
+/**
+ * A rollup as the hourly tool writes it into `summary.json` (#33600): probes data through the ONE
+ * `storedRollup` rule, the six STORED statuses with a nonzero derived bucket refusing loudly. Fixtures stand
+ * in for a written summary; the reader's refusal of that key is tested below.
+ */
+const storedRollupFixture = (rollup: TerminalStatusRollup) => storedRollup(rollup, "summary.json rollup vterm")
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -124,9 +131,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       missingEngines: [],
       refused: [],
       rollups: {
-        vterm: rollupTerminalStatuses(
-          Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])),
-          catalogIds,
+        vterm: storedRollupFixture(
+          rollupTerminalStatuses(Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])), catalogIds),
         ),
       },
     }
@@ -192,9 +198,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         missingEngines: [],
         refused: [],
         rollups: {
-          [`ghostty/${os}`]: rollupTerminalStatuses(
-            Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
-            catalogIds,
+          [`ghostty/${os}`]: storedRollupFixture(
+            rollupTerminalStatuses(
+              Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
+              catalogIds,
+            ),
           ),
         },
         moved: { since: join(parent, OLD), moves: [] },
@@ -487,9 +495,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       prior.rawReplies["sgr.bold"] = assertion.observed
       writeFileSync(priorPath, JSON.stringify(prior))
       const decoded = loadRawCapture(priorPath, { root, catalogIds })
-      older.summary.rollups.vterm = rollupTerminalStatuses(
-        Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
-        catalogIds,
+      older.summary.rollups.vterm = storedRollupFixture(
+        rollupTerminalStatuses(
+          Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
+          catalogIds,
+        ),
       )
       older.save()
 
@@ -1002,7 +1012,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
       presentEngines: ["kitty"],
       missingEngines: [],
       refused: [],
-      rollups: { kitty: rollupTerminalStatuses({}, []) },
+      rollups: { kitty: storedRollupFixture(rollupTerminalStatuses({}, [])) },
     })
     mkdirSync(join(dir, "headless"))
     const rawRun = join(dir, "headless", "kitty.draft.json")

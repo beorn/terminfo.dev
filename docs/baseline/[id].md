@@ -25,6 +25,8 @@ const headlessScores = scores.filter(s => s.type === 'lib')
 const barSegments = [
   { id: 'supported', label: 'Supported', symbol: '✓' },
   { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
+  // @cto c3c2f885: decided by two disagreeing same-suite contexts, never Supported or Unsupported.
+  { id: 'differs-by-context', label: 'Differs by context', symbol: '≠' },
   { id: 'untestable', label: 'Untestable', symbol: '?' },
   { id: 'probe-todo', label: 'PROBE TODO', symbol: '–' },
   { id: 'probe-invalid', label: 'PROBE INVALID', symbol: '!' },
@@ -140,7 +142,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
     <span class="summary-version" tabindex="0" :aria-label="'Source versions: ' + s.version" :title="s.version" :data-tooltip="'Source versions: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -165,7 +167,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -368,6 +370,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 .baseline-page .bar-unsupported,
 .baseline-page .bar-inconclusive,
 .baseline-page .bar-errors,
+.baseline-page .bar-differs,
 .baseline-page .bar-untested {
   height: 100%;
   transition: width 0.3s ease;
@@ -377,6 +380,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 .baseline-page .bar-unsupported { background: #ef4444; }
 .baseline-page .bar-inconclusive { background: #f59e0b; }
 .baseline-page .bar-errors { background: #a855f7; }
+.baseline-page .bar-differs { background: #6366f1; }
 .baseline-page .bar-untested { background: var(--vp-c-divider); }
 
 .baseline-page .summary-version {
