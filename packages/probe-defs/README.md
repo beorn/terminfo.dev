@@ -4,6 +4,12 @@
 
 This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored results change.
 
+The hosted Mac Alacritty launcher explicitly sets one pixel of window padding on both axes.
+Its measured launch receipt retains the actual invocation and a plain `launchDeviation` sentence
+when the recorded GUI arguments carry that override; padding-like child arguments do not qualify.
+The shared run parser preserves this optional Mac receipt field in `origin.appLaunch`.
+Unchanged columns/rows and clean pixel calibration remain fresh-run requirements, not receipt claims.
+
 ## Vocabulary and current code
 
 - **Probe subject**: the exact terminal app, emulator library or multiplexer being probed, at a recorded path, OS and version. `ProbeSubject.kind` is `term`, `lib` or `mux`.
@@ -646,6 +652,14 @@ faint, italic, strikethrough and the four underline styles) may move; delivery c
 outcome, a missing member and any other code keep their own path, except for the exact vt100-rust
 cohort below and the following DEC colour/setup slice.
 
+The three underline-colour setters also consult this runtime report when their cell colour is
+unexposed. Their selected bytes remain colon-form SGR 58, including the empty RGB colourspace field.
+The measured Rust callback reports that RGB field as 0; the report target names that exact code,
+while the indexed target requires both selected `58:5:1m` and `58:5:4m` reports in order. The existing
+handled SGR 1/bold control and exact report-list matcher decide Unsupported; absent, different or
+extra reports leave TODO. Reasons say “measured: library reported the code unhandled”; no source
+grade or silence-positive is admitted, and a previously decided cell result keeps precedence.
+
 Libvterm R1 uses that same report verdict for DECSSCLS and Kitty image transmit/display,
 with a handled OSC 2/title control. Its public CSI fallback retains native normalized parameters
 and the final byte; its APC fallback retains only the initial payload byte (`G`), without image
@@ -1141,6 +1155,15 @@ SGR colour captures, including indexed underline and its reset's independent-ref
 share one mux callback owner. An inconclusive capture through a mux reads PROBE TODO and names
 the missing outer-terminal control; the same frames cannot attribute the result to that hop.
 Non-mux decisions, measured positives and broken-measurement errors retain their existing results.
+
+After an unresolved RGB underline App result, the existing same-run capture can qualify an independent negative.
+On eight spaces it compares blank A, plain underline B, two SGR58 RGB samples C, and foreground-route underline controls D.
+The colours are RGB(255,0,128) and RGB(0,255,128), sent with colon groups and the empty RGB colourspace slot.
+Exact digest equality is used on both routes: B must differ from A; both D samples must differ from B and each other; both C samples must equal B.
+Only that complete observation decides Unsupported: colour ignored, decoration kept.
+Mixed samples remain PROBE TODO and name which colour moved; blind, matched or neither-reference controls add no new Supported result.
+Existing positives and the no-attribute negative keep precedence; mux negatives still require their outer control.
+The indexed comparison, result and capture implementation is shared, with its evidence bytes unchanged.
 
 `finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. A test marked untestable folds to PROBE TODO unless the result is the declared form (`isDeclaredUntestable`), which reads Untestable. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as PROBE TODO (see above); content validation uses that same reader.
 

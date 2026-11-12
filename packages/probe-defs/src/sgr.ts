@@ -37,9 +37,11 @@ import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   COLOUR_CAPTURE,
   UNDERLINE_INDEXED_BRANCH,
+  UNDERLINE_RGB_BRANCH,
   UNDERLINE_INDEXED_PHASES,
   colourCaptureCallbackResult,
   underlineColourIndexedCaptureResult,
+  underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
@@ -826,81 +828,121 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
   return {
     ...probe(
       id,
-      (ctx) => {
-        // Two default-color controls distinguish an exposed, foreground-following
-        // underline from a backend that simply ignores SGR 58.
-        ctx.feed("\x1b[4m\x1b[59m\x1b[38;2;0;0;255mA\x1b[38;2;0;255;0mB\x1b[58:2::255:0:128mX")
-        const blueControl = ctx.getCell(0, 0)
-        const greenControl = ctx.getCell(0, 1)
-        const target = ctx.getCell(0, 2)
-        const state = { blueControl, greenControl, target }
-        const expected = `${id}: ${encoding} gives X explicit rgb(255,0,128) underline distinct from the reset/default B cell`
-        const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
-        if (framed && target.underlineColor == null) {
-          return (
-            underlineColorUnknownArm(ctx, "2::1:2:3", expected, state) ??
-            notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
-          )
-        }
-        if (
-          blueControl.char !== "A" ||
-          greenControl.char !== "B" ||
-          target.char !== "X" ||
-          !blueControl.underline ||
-          !greenControl.underline ||
-          !target.underline ||
-          target.underlineColor == null
-        ) {
+      withUnhandledSgrReport(
+        id,
+        sequence,
+        (ctx) => {
+          // Two default-color controls distinguish an exposed, foreground-following
+          // underline from a backend that simply ignores SGR 58.
+          ctx.feed("\x1b[4m\x1b[59m\x1b[38;2;0;0;255mA\x1b[38;2;0;255;0mB\x1b[58:2::255:0:128mX")
+          const blueControl = ctx.getCell(0, 0)
+          const greenControl = ctx.getCell(0, 1)
+          const target = ctx.getCell(0, 2)
+          const state = { blueControl, greenControl, target }
+          const expected = `${id}: ${encoding} gives X explicit rgb(255,0,128) underline distinct from the reset/default B cell`
+          const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
+          if (framed && target.underlineColor == null) {
+            return (
+              underlineColorUnknownArm(ctx, "2::1:2:3", expected, state) ??
+              notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
+            )
+          }
+          if (
+            blueControl.char !== "A" ||
+            greenControl.char !== "B" ||
+            target.char !== "X" ||
+            !blueControl.underline ||
+            !greenControl.underline ||
+            !target.underline ||
+            target.underlineColor == null
+          ) {
+            return parserStateResult(
+              null,
+              expected,
+              state,
+              `${encoding}: underlined control, target, or target colour was not exposed`,
+            )
+          }
+          if (greenControl.underlineColor && sameRgb(greenControl.underlineColor, requestedUnderlineColor)) {
+            return parserStateResult(
+              null,
+              expected,
+              state,
+              `${encoding}: default underline already matches the requested colour`,
+            )
+          }
+          if (sameRgb(target.underlineColor, requestedUnderlineColor)) {
+            return parserStateResult(
+              true,
+              expected,
+              state,
+              `${encoding}: target underline matches RGB(255,0,128); foreground controls 38;2;0;0;255 and 38;2;0;255;0 (semicolon form) distinguish the default underline`,
+            )
+          }
+          if (
+            blueControl.fg &&
+            greenControl.fg &&
+            !sameRgb(blueControl.fg, greenControl.fg) &&
+            blueControl.underlineColor &&
+            greenControl.underlineColor &&
+            !sameRgb(blueControl.underlineColor, greenControl.underlineColor)
+          ) {
+            return parserStateResult(
+              false,
+              expected,
+              state,
+              `${encoding}: target underline did not match RGB(255,0,128), while the distinct default-underline controls calibrated the colour readback`,
+            )
+          }
           return parserStateResult(
             null,
             expected,
             state,
-            `${encoding}: underlined control, target, or target colour was not exposed`,
+            `${encoding}: underline colour readback was not calibrated for a negative`,
           )
-        }
-        if (greenControl.underlineColor && sameRgb(greenControl.underlineColor, requestedUnderlineColor)) {
-          return parserStateResult(
-            null,
-            expected,
-            state,
-            `${encoding}: default underline already matches the requested colour`,
-          )
-        }
-        if (sameRgb(target.underlineColor, requestedUnderlineColor)) {
-          return parserStateResult(
-            true,
-            expected,
-            state,
-            `${encoding}: target underline matches RGB(255,0,128); foreground controls 38;2;0;0;255 and 38;2;0;255;0 (semicolon form) distinguish the default underline`,
-          )
-        }
-        if (
-          blueControl.fg &&
-          greenControl.fg &&
-          !sameRgb(blueControl.fg, greenControl.fg) &&
-          blueControl.underlineColor &&
-          greenControl.underlineColor &&
-          !sameRgb(blueControl.underlineColor, greenControl.underlineColor)
-        ) {
-          return parserStateResult(
-            false,
-            expected,
-            state,
-            `${encoding}: target underline did not match RGB(255,0,128), while the distinct default-underline controls calibrated the colour readback`,
-          )
-        }
-        return parserStateResult(
-          null,
-          expected,
-          state,
-          `${encoding}: underline colour readback was not calibrated for a negative`,
-        )
-      },
+        },
+        { feed: sequence, codes: [{ kind: "csi", code: "58:2:0:255:0:128m" }] },
+      ),
       async (ctx) => {
         // The readback writes the sequence before it answers, so the fixture's own geometry refusal
         // has to run ahead of it — a 1x2 terminal must refuse with a zero-byte trace.
         const refusal = sgrPlainFixtureTooSmall(ctx)
-        if (!refusal) return armed(ctx)
+        if (!refusal) {
+          const prior = await armed(ctx)
+          if (
+            "notTested" in prior ||
+            prior.observation?.outcome !== "inconclusive" ||
+            prior.observation.assertionType !== "screenshot"
+          ) {
+            return prior
+          }
+          const captured = await underlineColourRgbCaptureResult(ctx, id)
+          if (!captured) return prior
+          const independent = colourCaptureCallbackResult(id, captured, { mux: ctx.mux })
+          if (independent.observation?.outcome === "unsupported") return independent
+          if (
+            independent.observation?.outcome === "error" ||
+            independent.tests?.some((test) => test.status === "probe-invalid")
+          ) {
+            return independent
+          }
+          // Keep the existing result when controls cannot decide. Retain both runs' evidence and
+          // the specific missing control; a matched or mixed RGB witness never adds Supported.
+          const note = independent.observation?.note ?? independent.tests?.[0]?.reason
+          const explain = (reason?: string) => [reason, note].filter(Boolean).join("; ")
+          return {
+            ...prior,
+            response: JSON.stringify({ prior: prior.response, independent: independent.response }),
+            tests: prior.tests?.map((test) =>
+              test.reason === undefined ? test : { ...test, reason: explain(test.reason) },
+            ),
+            observation: {
+              ...prior.observation,
+              note: explain(prior.observation.note),
+              frames: [...(prior.observation.frames ?? []), ...(independent.observation?.frames ?? [])],
+            },
+          }
+        }
         const [first, ...rest] = refusal.tests
         return {
           ...refusal,
@@ -1547,89 +1589,100 @@ export const sgrProbes: ProbeDefinition[] = [
   {
     ...probe(
       "sgr.underline-color-indexed",
-      (ctx) => {
-        const encoding = `${sgrColourEncoding("\x1b[58:5:1m\x1b[58:5:4m")}; two contrasting palette entries rule out a coincidental default-colour match`
-        ctx.feed("\x1b[4m\x1b[38:5:4m\x1b[59mA\x1b[58:5:1mX\x1b[38:5:1m\x1b[59mB\x1b[58:5:4mY")
-        const default4 = ctx.getCell(0, 0)
-        const target1 = ctx.getCell(0, 1)
-        const default1 = ctx.getCell(0, 2)
-        const target4 = ctx.getCell(0, 3)
-        const state = {
-          default4,
-          target1,
-          default1,
-          target4,
-        }
-        const expected =
-          "SGR 58:5:1 and 58:5:4 (colon form) underline colours match the opposite foreground-route palette controls; both indices must differ from their same-foreground defaults to rule out a coincidental palette match"
-        const framed = default4.char === "A" && target1.char === "X" && default1.char === "B" && target4.char === "Y"
-        if (framed && target1.underlineColor == null && target4.underlineColor == null) {
-          return (
-            underlineColorUnknownArm(ctx, "5:1", expected, state) ??
-            notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
-          )
-        }
-        if (
-          default4.char !== "A" ||
-          target1.char !== "X" ||
-          default1.char !== "B" ||
-          target4.char !== "Y" ||
-          !default4.underline ||
-          !target1.underline ||
-          !default1.underline ||
-          !target4.underline ||
-          !default4.fg ||
-          !default1.fg ||
-          target1.underlineColor == null ||
-          target4.underlineColor == null
-        ) {
+      withUnhandledSgrReport(
+        "sgr.underline-color-indexed",
+        "\x1b[4m\x1b[58:5:1m\x1b[58:5:4m",
+        (ctx) => {
+          const encoding = `${sgrColourEncoding("\x1b[58:5:1m\x1b[58:5:4m")}; two contrasting palette entries rule out a coincidental default-colour match`
+          ctx.feed("\x1b[4m\x1b[38:5:4m\x1b[59mA\x1b[58:5:1mX\x1b[38:5:1m\x1b[59mB\x1b[58:5:4mY")
+          const default4 = ctx.getCell(0, 0)
+          const target1 = ctx.getCell(0, 1)
+          const default1 = ctx.getCell(0, 2)
+          const target4 = ctx.getCell(0, 3)
+          const state = {
+            default4,
+            target1,
+            default1,
+            target4,
+          }
+          const expected =
+            "SGR 58:5:1 and 58:5:4 (colon form) underline colours match the opposite foreground-route palette controls; both indices must differ from their same-foreground defaults to rule out a coincidental palette match"
+          const framed = default4.char === "A" && target1.char === "X" && default1.char === "B" && target4.char === "Y"
+          if (framed && target1.underlineColor == null && target4.underlineColor == null) {
+            return (
+              underlineColorUnknownArm(ctx, "5:1", expected, state) ??
+              notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
+            )
+          }
+          if (
+            default4.char !== "A" ||
+            target1.char !== "X" ||
+            default1.char !== "B" ||
+            target4.char !== "Y" ||
+            !default4.underline ||
+            !target1.underline ||
+            !default1.underline ||
+            !target4.underline ||
+            !default4.fg ||
+            !default1.fg ||
+            target1.underlineColor == null ||
+            target4.underlineColor == null
+          ) {
+            return parserStateResult(
+              null,
+              expected,
+              state,
+              `${encoding}: palette control or underline cell state was not exposed`,
+            )
+          }
+          if (sameRgb(default4.fg, default1.fg)) {
+            return parserStateResult(
+              null,
+              expected,
+              state,
+              `${encoding}: palette controls resolve to indistinguishable colours`,
+            )
+          }
+          const matches =
+            sameRgb(default1.fg, target1.underlineColor) &&
+            sameRgb(default4.fg, target4.underlineColor) &&
+            (!default4.underlineColor || !sameRgb(default4.underlineColor, target1.underlineColor)) &&
+            (!default1.underlineColor || !sameRgb(default1.underlineColor, target4.underlineColor))
+          if (matches) {
+            return parserStateResult(
+              true,
+              expected,
+              state,
+              `${encoding}: both underline colours matched the opposite foreground-route palette controls`,
+            )
+          }
+          if (
+            default4.underlineColor &&
+            default1.underlineColor &&
+            !sameRgb(default4.underlineColor, default1.underlineColor)
+          ) {
+            return parserStateResult(
+              false,
+              expected,
+              state,
+              `${encoding}: underline colours did not match their requested palette entries while distinct default-underline controls calibrated readback`,
+            )
+          }
           return parserStateResult(
             null,
             expected,
             state,
-            `${encoding}: palette control or underline cell state was not exposed`,
+            `${encoding}: underline colour readback was not calibrated for a negative`,
           )
-        }
-        if (sameRgb(default4.fg, default1.fg)) {
-          return parserStateResult(
-            null,
-            expected,
-            state,
-            `${encoding}: palette controls resolve to indistinguishable colours`,
-          )
-        }
-        const matches =
-          sameRgb(default1.fg, target1.underlineColor) &&
-          sameRgb(default4.fg, target4.underlineColor) &&
-          (!default4.underlineColor || !sameRgb(default4.underlineColor, target1.underlineColor)) &&
-          (!default1.underlineColor || !sameRgb(default1.underlineColor, target4.underlineColor))
-        if (matches) {
-          return parserStateResult(
-            true,
-            expected,
-            state,
-            `${encoding}: both underline colours matched the opposite foreground-route palette controls`,
-          )
-        }
-        if (
-          default4.underlineColor &&
-          default1.underlineColor &&
-          !sameRgb(default4.underlineColor, default1.underlineColor)
-        ) {
-          return parserStateResult(
-            false,
-            expected,
-            state,
-            `${encoding}: underline colours did not match their requested palette entries while distinct default-underline controls calibrated readback`,
-          )
-        }
-        return parserStateResult(
-          null,
-          expected,
-          state,
-          `${encoding}: underline colour readback was not calibrated for a negative`,
-        )
-      },
+        },
+        {
+          feed: "\x1b[4m\x1b[58:5:1m\x1b[58:5:4m",
+          codes: [
+            { kind: "csi", code: "58:5:1m" },
+            { kind: "csi", code: "58:5:4m" },
+          ],
+        },
+      ),
       // #33146: pixels decide this row from one same-run witness, colon form only; DECRQSS decides
       // nothing here (@cto d2f24294, b3d7680f). Without an owned pixel capture the cursor reply only
       // proves consumption.
@@ -1810,6 +1863,7 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
   ["sgr-blink-flat", { featureId: "sgr.blink", testId: "blink" }],
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
   [UNDERLINE_INDEXED_BRANCH, { featureId: "sgr.underline-color-indexed", testId: "attribute" }],
+  [UNDERLINE_RGB_BRANCH, { featureId: null, testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
   ["sgr-reset-saved-rendition", { featureId: "sgr.reset", testId: "criterion" }],

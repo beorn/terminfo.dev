@@ -1339,6 +1339,16 @@ export async function sgrCaptureFrames(
   }
 }
 
+/**
+ * The observation frames a capture may cite: one complete control/target pair, or nothing (#33563, #33639).
+ * The run parser refuses any other list outright, taking the whole run with it, so a writer whose capture can
+ * stop before its second frame keeps its screenshotRef and cites no frames.
+ */
+export function completeFramePair(frames: readonly ObservationFrame[]): ObservationFrame[] | undefined {
+  const roles = new Set(frames.map((frame) => frame.role))
+  return frames.length >= 2 && roles.has("control") && roles.has("target") ? [...frames] : undefined
+}
+
 /** The SGR pixel fixture: the attribute's sequence and the text sample it styles at a 1-based row and column. */
 export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row: number; col: number }>
 
@@ -1396,6 +1406,7 @@ export function withUnhandledSgrReport(
   id: string,
   sequence: string,
   body: (ctx: LibProbeSource) => ProbeCallbackResult,
+  target?: Parameters<typeof unhandledSequenceVerdict>[1],
 ): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
     const result = body(ctx)
@@ -1403,7 +1414,7 @@ export function withUnhandledSgrReport(
     const cursor = ctx.getCursor()
     const reported = unhandledSequenceVerdict(
       ctx,
-      { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
+      target ?? { feed: sequence, code: { kind: "csi", code: sequence.slice(2) } },
       {
         feed: "\x1b[0m\x1b[1mC",
         applied: () => ctx.getCell(cursor.y, cursor.x).bold === true,
@@ -1411,15 +1422,22 @@ export function withUnhandledSgrReport(
       },
       { sequence, ...(result.response !== undefined && { body: result.response }) },
     )
-    if (!reported) return result
-    // This colour reset also has a multiparameter setup; retain its exact encoding when the
-    // library's own SGR 59 report replaces the undecided body (#33157).
-    if (id !== "sgr.underline-color-reset" || result.note === undefined) return reported
-    const note = `${result.note}; ${reported.note}`
-    if (reported.observation !== undefined) {
-      return { ...reported, note, observation: { ...reported.observation, note } }
+    if (!reported && target === undefined) return result
+    const selected = reported ?? result
+    // Retain selected colour bytes beside the measured report, including normalized RGB codes.
+    if (target === undefined && (id !== "sgr.underline-color-reset" || result.note === undefined)) return selected
+    const reportNote =
+      target === undefined
+        ? reported?.note
+        : reported
+          ? `measured: library reported the code unhandled; ${reported.note}`
+          : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
+    const note = [result.note, reportNote].filter(Boolean).join("; ")
+    if (selected.notTested) {
+      return { ...selected, note, notTested: { ...selected.notTested, noObservable: note } }
     }
-    return { ...reported, note }
+    if (selected.observation) return { ...selected, note, observation: { ...selected.observation, note } }
+    return { ...selected, note }
   }
 }
 

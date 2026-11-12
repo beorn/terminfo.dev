@@ -1,5 +1,6 @@
 import type { InputFixture } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
+import { createInjectedInput, type InputButton, type InputMechanism } from "./input-fixture.ts"
 import { kittyAncestor, windowPixels, windowRectangle, type LiveExecutable, type WindowRect } from "./linux-capture.ts"
 
 export interface CollectorInputAdapter extends InputFixture {
@@ -129,15 +130,7 @@ export async function createLinuxInput(
     return windowPixels((await command("xdotool", ["getwindowgeometry", "--shell", ownedWindowId])).toString())
   }
 
-  async function preparePointer(position = { x: 400, y: 300 }): Promise<void> {
-    await focusOwnedWindow()
-    const geometry = await ownedGeometry()
-    if (position.x < 1 || position.y < 1 || position.x >= geometry.width || position.y >= geometry.height) {
-      throw new Error(
-        `requested pointer ${position.x},${position.y} is outside the owned window ${geometry.width}x${geometry.height}; refusing the click`,
-      )
-    }
-    await command("xdotool", ["mousemove", "--window", ownedWindowId, String(position.x), String(position.y)])
+  async function verifyPointerOnOwnedWindow(): Promise<void> {
     const location = (await command("xdotool", ["getmouselocation", "--shell"])).toString()
     const pointerWindow = /^WINDOW=(\d+)$/m.exec(location)?.[1]
     // XQueryPointer names the deepest child. GTK under Xvfb reports WINDOW=0 for the owned
@@ -150,7 +143,33 @@ export async function createLinuxInput(
     }
   }
 
+  // The one adapter body both platforms run (input-fixture.ts); this is its XTEST mechanism.
+  // Owned-window pixels are the coordinate space, so the shared bounds check reads the size only.
+  const mechanism: InputMechanism = {
+    focus: focusOwnedWindow,
+    async geometry() {
+      return { x: 0, y: 0, ...(await ownedGeometry()) }
+    },
+    async moveTo(x: number, y: number, options: { verifyPointer: boolean; dragged: boolean }) {
+      await command("xdotool", ["mousemove", "--window", ownedWindowId, String(x), String(y)])
+      if (options.verifyPointer) await verifyPointerOnOwnedWindow()
+    },
+    async click(button: InputButton) {
+      await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
+    },
+    async press(button: InputButton) {
+      await command("xdotool", ["mousedown", "--window", "0", "--clearmodifiers", String(button)])
+    },
+    async release(button: InputButton) {
+      await command("xdotool", ["mouseup", "--window", "0", "--clearmodifiers", String(button)])
+    },
+    async key(keys: string) {
+      await command("xdotool", ["key", "--window", "0", "--clearmodifiers", keys])
+    },
+  }
+
   return {
+    ...createInjectedInput(mechanism, "XTEST"),
     focusRoundTrip,
     async resizeWindow(width: number, height: number, featureId?: string) {
       if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
@@ -171,25 +190,6 @@ export async function createLinuxInput(
       }
       if (options?.onResizeWindow && featureId) options.onResizeWindow(width, height, featureId)
       return original
-    },
-    async injectKey(keys: string) {
-      if (keys.length === 0) throw new Error("XTEST key injection requires a nonempty keysym")
-      await focusOwnedWindow()
-      await command("xdotool", ["key", "--window", "0", "--clearmodifiers", keys])
-    },
-    async injectClick(button: 1 | 4 | 5, position?: { x: number; y: number }) {
-      await preparePointer(position)
-      await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
-    },
-    async injectMove(x: number, y: number) {
-      await focusOwnedWindow()
-      await command("xdotool", ["mousemove", "--window", ownedWindowId, String(x), String(y)])
-    },
-    async injectDrag(button: 1) {
-      await preparePointer()
-      await command("xdotool", ["mousedown", "--window", "0", "--clearmodifiers", String(button)])
-      await command("xdotool", ["mousemove", "--window", ownedWindowId, "450", "300"])
-      await command("xdotool", ["mouseup", "--window", "0", "--clearmodifiers", String(button)])
     },
   }
 }

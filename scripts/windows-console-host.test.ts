@@ -151,6 +151,7 @@ describe("Windows console-host rule", () => {
       "probe-todo": 271,
       "probe-invalid": 1,
       "probe-conflict": 0,
+      "differs-by-context": 0,
     })
     expect(projection.table[run.runId]?.[ids[0]!]).toBe("probe-todo")
     expect(classifyDevelopmentRun(run).states[ids[0]!]).toBe("probe-todo")

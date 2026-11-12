@@ -73,6 +73,7 @@ test("a cell from a working run is marked working and a placed cell is not; each
         contentPath: "content/results/term/screen-placed.json",
       },
     ],
+    outerAbsentRefusals: [],
   })
 })
 

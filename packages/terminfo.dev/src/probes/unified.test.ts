@@ -1238,11 +1238,11 @@ it.each([
       // #33165 (@cto f2adcbf3): a status reply alone never decides a paint row and says so; a screenshot
       // assertion without this feature's own frame keeps the visual-not-observed reason.
       const statusReplyOnly = evidence === "foreign-captured" || evidence === "none"
-      expect(row.reason).toBe(
-        statusReplyOnly
-          ? "graded from a status reply only; this row is decided by what is painted"
-          : "visual effect not observed in this run",
-      )
+      // 6253e6d36: the finalizer keeps the declared fixture context as a prefix; the grade reason ends the text.
+      const gradeReason = statusReplyOnly
+        ? "graded from a status reply only; this row is decided by what is painted"
+        : "visual effect not observed in this run"
+      expect(row.reason === gradeReason || row.reason?.endsWith(`; ${gradeReason}`), row.reason).toBe(true)
       expect(row.tests).toContainEqual(expect.objectContaining({ status: "probe-todo", reason: row.reason }))
       expect(batch.observations.find((observation) => observation.featureId === id)?.outcome).toBe(outcome)
     }

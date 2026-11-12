@@ -12,6 +12,22 @@ import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+/**
+ * The owned terminalApp arms run against a fake macOS runtime with no compiled helper and, where the
+ * fake names none, no app pid, so the input adapter refuses by name on every collection and says so
+ * on stderr - collector.log - exactly as a real run without either does (#33574, 33587). Those lines
+ * are claimed facts, not noise: this keeps each arm's stderr assertion loud by naming the only lines
+ * it may carry, so any other line still fails. Hosted arms install no input in this head.
+ */
+const INPUT_INSTALL_REFUSALS = new Set([
+  "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset and no helper path was given",
+  "collector.inputInstall refused: the verified terminalApp terminal has no measured app PID",
+])
+
+function stderrWithoutInputInstall(stderr: string): string[] {
+  return stderr.split("\n").filter((line) => line.length > 0 && !INPUT_INSTALL_REFUSALS.has(line))
+}
+
 let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
@@ -1015,7 +1031,7 @@ describe("private finite daemon startup", () => {
         timeout: 5000,
       },
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1113,7 +1129,7 @@ describe("private finite daemon startup", () => {
       // where a reader needs to know which window the app owned before anything was asked.
       assert.deepEqual(fact.installCensus, installCensus)
     `)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1263,7 +1279,7 @@ describe("private finite daemon startup", () => {
     `,
       360_000,
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
     // GitHub killed this child at 90s on 875c2bc. A local run then took 129s.
     // Keep the child's limit below the outer test so a wedged child leaves its diagnostic result.
@@ -1398,7 +1414,7 @@ describe("private finite daemon startup", () => {
       assert.equal(frames, 0)
       assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
     `)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1527,7 +1543,7 @@ describe("private finite daemon startup", () => {
       ],
       { cwd: packageRoot, env: { ...process.env, HOME: home }, encoding: "utf8", timeout: 5000 },
     )
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     expect(result.status).toBe(0)
   })
 
@@ -1662,7 +1678,8 @@ describe("private finite daemon startup", () => {
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const collect = () => arm === "terminalApp"
-        ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
+        // The window and tab an owner assertion always names; input needs both (33587).
+        ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: { windowId: 791, tabTty: "/dev/ttys004" } })
         : collectProbeRun({ ids: ["device.xtversion"] })
       if (route === "platform-refused" || route === "owner-refused") {
         await assert.rejects(collect(), route === "platform-refused"
@@ -1713,6 +1730,8 @@ describe("private finite daemon startup", () => {
             FIXTURE_OWNER_FAILS: ownerFails ? "yes" : "no",
             TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
             TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
+            // An empty value names a run with no helper, so an owned terminalApp arm never compiles one.
+            TERMINFO_DARWIN_INPUT_HELPER: "",
             TERMINFO_RUNTIME_PROVENANCE: "",
             TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
           },
@@ -1720,9 +1739,18 @@ describe("private finite daemon startup", () => {
           timeout: 10_000,
         },
       )
-      const lines = result.stderr.split("\n").filter(Boolean)
+      const lines = stderrWithoutInputInstall(result.stderr)
       expect(result.status, result.stderr).toBe(0)
-      expect(lines).toHaveLength(retained ? 0 : 1)
+      expect(lines, result.stderr).toHaveLength(retained ? 0 : 1)
+      // 33587: an owned Terminal.app run installs keyboard input too, so with a pid and no helper it
+      // reaches the adapter and refuses there by name. A refused platform or owner stops the run first.
+      if (arm === "terminalApp" && pid && (route === "absent" || route === "text-cells")) {
+        expect(result.stderr).toContain(
+          "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset",
+        )
+      }
+      // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line.
+      if (arm !== "terminalApp") expect(result.stderr).not.toContain("collector.inputInstall")
       if (!retained) {
         expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
         expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
@@ -2042,7 +2070,7 @@ describe("private finite daemon startup", () => {
       },
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.stderr).toBe("")
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
   })
 
   // Extend the existing hosted consumer journey: its Windows-only case never exercised
@@ -2149,7 +2177,7 @@ describe("private finite daemon startup", () => {
         },
       )
       expect(result.status, result.stderr).toBe(0)
-      expect(result.stderr).toBe("")
+      expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
     },
   )
 

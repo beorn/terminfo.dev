@@ -221,9 +221,15 @@ export async function createDarwinCapture(
     appPid,
     hostedAppId,
     expectedWindowId,
+    ownedHost,
     onRetained,
   }: {
     appPid: number
+    /**
+     * An owned Mac (codimac, 33587) whose console shows other people's apps: capture is window-only,
+     * so a refused window image never falls back to a region of the screen (@cto 730017b6).
+     */
+    ownedHost?: boolean
     /** The app identity the arm detected, so an arm that can have a rival window can name its own. */
     hostedAppId?: string
     /** The launch receipt window id this run owns, when the caller already resolved it. */
@@ -327,6 +333,13 @@ export async function createDarwinCapture(
       first.bytes === undefined && first.stdout === undefined && first.stderr.toString().includes(WINDOW_IMAGE_REFUSAL)
         ? first
         : undefined
+    if (refused && ownedHost) {
+      fail(
+        "Darwin window server refused image of the selected window, and an owned host never captures a " +
+          "screen region instead: its bounds can include other apps' windows (@cto 730017b6)",
+        refused,
+      )
+    }
     const producing = refused ? await run(regionArgs) : first
     const bytes =
       producing.bytes ??

@@ -1099,6 +1099,7 @@ export async function createOwnedTerminal(options: {
   let windowsWezTermExecutable: string | undefined
   let hostedAncestor: AncestryRow | undefined
   let processOwnerPid: number | undefined
+  let terminalAppPid: number | undefined
   let processOwnerBasis: string | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
   let preflightIdentity: { pid: number; startedAtEpochSeconds: number; launchRunId: string } | undefined
@@ -1120,6 +1121,16 @@ export async function createOwnedTerminal(options: {
     const assertion = parseTerminalAppOwner(terminalApp)
     requireOwnWorker(assertion, expectedLaunchRunId, "Terminal.app")
     binding = darwinOutput(out, assertion.tabTty)
+    // The app's pid, for macOS keys posted to that pid only (33587, @cto 60e39dfc b): the assertion
+    // names the window and tab, not the app, so it is read from this collector's own ancestry. A
+    // chain that never reaches Terminal leaves the pid absent and says so here; input then refuses
+    // by name ("no measured app PID") and nothing else on the run changes. The pid read is printed
+    // by the input install's own report.
+    try {
+      terminalAppPid = requireHostedDarwinAppAncestor("Terminal", readProcessAncestry(process.pid)).pid
+    } catch (error) {
+      process.stderr.write(`Terminal.app pid not read: ${error instanceof Error ? error.message : String(error)}\n`)
+    }
   } else if (processOwner) {
     if (process.platform !== "darwin") throw new Error("Owned process owner requires Darwin")
     const assertion = parseProcessOwnerAssertion(processOwner)
@@ -1384,7 +1395,7 @@ export async function createOwnedTerminal(options: {
       }),
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
-    const appPid = hostedAncestor?.pid ?? processOwnerPid
+    const appPid = hostedAncestor?.pid ?? processOwnerPid ?? terminalAppPid
     // WT uses UIA; WezTerm's candidate uses the owned pane CLI. Both must pass the shared writer's
     // mapping and host-ownership witnesses. Alacritty retains its explicitly unqualified host read.
     const windowsTerminalPid = hostedWindowsApp?.id === "windows-terminal" ? hostedAncestor?.pid : undefined

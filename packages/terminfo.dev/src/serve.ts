@@ -45,6 +45,7 @@ import {
   type TextQualification,
   type TextSnapshotDiagnostic,
   type OuterColourControl,
+  type InputFixture,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { detectTerminal } from "./detect.ts"
@@ -56,7 +57,14 @@ import {
   resolveMeasuredAppVersion,
   verifyTerminalIdentity,
 } from "./identity-guard.ts"
-import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
+import {
+  withRawMode,
+  withTTYOperation,
+  drainStdin,
+  queryOutcome,
+  queryWithSentinelOutcome,
+  readResponse,
+} from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
@@ -65,6 +73,12 @@ import { collectTextQualification, recordTextQualificationTests } from "./text-q
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
+import {
+  buildDarwinInputHelper,
+  createDarwinInput,
+  DARWIN_INPUT_HELPER_ENV,
+  ownedHostHelperPath,
+} from "./darwin-input.ts"
 import {
   createOwnedTerminal,
   parseProcessOwnerAssertion,
@@ -223,6 +237,12 @@ export function textCellsFrame(
             droppedLines: textGrid.droppedLines,
             carriedHistory: textGrid.droppedLines > 0,
             paddedRows: textGrid.paddedRows,
+            // The app returned LOGICAL lines and this read rebuilt the rows from them (30729 AC3b):
+            // named in the trace so an evidence reader knows the rows were reconstructed, and how
+            // many lines had to be split, without re-deriving either from the retained text.
+            ...(textGrid.splitLineCount === undefined
+              ? {}
+              : { reconstructedFromLogicalLines: true, splitLineCount: textGrid.splitLineCount }),
           }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),
     },
@@ -720,7 +740,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
-    let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
+    let input: InputFixture | undefined
+    /**
+     * What happened when the Darwin input adapter was installed, so the run record carries it:
+     * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
+     */
+    let inputInstallFact: string | undefined
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
@@ -844,7 +869,72 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         installCapture(report.geometry, queries)
       }
     }
+    /**
+     * Bind OS-level injection to the owned app window (#33574). A missing helper, a missing
+     * Accessibility grant or a key that does not come back through the app's own TTY names the
+     * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
+     */
+    const installDarwinInput = async (terminal: OwnedTerminal, owned: { windowId: number; windowTty: string }) => {
+      const refuse = (reason: string) => {
+        inputInstallFact = `refused: ${reason}`
+        out.write(`input not installed: ${reason}\n`)
+        // The collector's stdout is the measured terminal, so a refusal kept only there never
+        // reaches the artifact. stderr lands in collector.log and rawReplies in run.json.
+        process.stderr.write(`collector.inputInstall refused: ${reason}\n`)
+      }
+      const appPid = terminal.appPid
+      if (!appPid) {
+        refuse(`the verified ${kind} terminal has no measured app PID`)
+        return
+      }
+      try {
+        // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
+        // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
+        const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
+          if (!captureDirectory) {
+            throw new Error(
+              "macOS input on an owned host builds its helper in the run directory, and this run has none",
+            )
+          }
+          return buildDarwinInputHelper(
+            join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
+            join(dirname(captureDirectory), "darwin-input-helper"),
+          )
+        })
+        input = await createDarwinInput({
+          appPid,
+          appName: terminal.hostedAppId ?? kind ?? "macOS app",
+          helperPath,
+          // The owner assertion names the run's own window and tab.
+          ...owned,
+          ownedHost: true,
+          log: (line) => process.stderr.write(`collector.input ${line}\n`),
+          selfTest: async (inject) => {
+            // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
+            // and it must restore the flowing state that withRawMode's lease restores, or the
+            // collector holds the launcher's poll open long after its run.json (run 43102072805).
+            try {
+              // Both self-test probes post a printable key and expect its echo; the pattern covers
+              // exactly those two (z, then x by bare keycode), so unrelated traffic cannot satisfy it.
+              const echoed = await readResponse(/[zx]/, 2500, inject)
+              return echoed === null ? null : echoed.join("")
+            } finally {
+              if (process.stdin.isTTY && process.stdin.readableFlowing === true) process.stdin.pause()
+            }
+          },
+          report: (fact) => {
+            inputInstallFact = `installed: ${fact}`
+            out.write(`${fact}\n`)
+            process.stderr.write(`collector.inputInstall ${fact}\n`)
+          },
+        })
+      } catch (error) {
+        refuse(error instanceof Error ? error.message : String(error))
+      }
+    }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
+      // Hosted runners install no input in this head (@cto 75732b9d P2-3): only the owned Terminal.app
+      // arm does, with the owned-host limits.
       // Hosted iTerm2 and Terminal.app use pixels; Kitty keeps its qualified text route.
       // Without retention, still name the missing directory through the existing text adapter.
       const textFirst =
@@ -856,6 +946,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
         hostedAppId: terminal.hostedAppId,
+        // Only a hosted runner's disposable VM may fall back to a region capture.
+        ownedHost: kind !== "darwinHosted",
         onRetained,
       })
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
@@ -894,6 +986,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         terminalApp: options.terminalAppOwner,
       })
       installTextCapture(ownedTerminal)
+      // An owned Mac: keys only, posted to Terminal's pid into the asserted window (@cto 60e39dfc).
+      await installDarwinInput(ownedTerminal, {
+        windowId: options.terminalAppOwner.windowId,
+        windowTty: options.terminalAppOwner.tabTty,
+      })
     } else if (kind === "process") {
       if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
       ownedTerminal = await createOwnedTerminal({
@@ -1098,6 +1195,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(finishCapture && { finishCapture }),
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
+              if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)

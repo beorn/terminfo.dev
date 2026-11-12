@@ -148,6 +148,7 @@ test("status reports reviewed current runs and refuses malformed archives", () =
       "probe-todo": 1,
       "probe-invalid": 1,
       "probe-conflict": 0,
+      "differs-by-context": 0,
     })
 
     const invoke = () =>

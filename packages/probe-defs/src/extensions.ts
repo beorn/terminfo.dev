@@ -7,6 +7,7 @@ import type {
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,
+  TerminalScrollbackReading,
   CallbackHostRecipeCause,
   HostInputName,
   HostRecipeName,
@@ -36,6 +37,7 @@ import {
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
+  completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
   sameFrame,
@@ -341,6 +343,15 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
 const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031] as const
 
 /**
+ * What one sibling mode query measured: a readable DECRPM reply, a measured fence with nothing
+ * before it, or neither (a timeout, or bytes we could not read). Only the first is an answer.
+ */
+function osc5522ControlOutcome(control: TerminalQueryOutcome): "reply" | "fenced-silence" | "other" {
+  if (replyFrame(control) !== null) return "reply"
+  return sentinelSilenceResult(control, "DECRPM prerequisite reply") !== null ? "fenced-silence" : "other"
+}
+
+/**
  * What a measured-silent OSC 5522 detector means, from its DECRPM siblings, on both arms (#32569). When every sibling
  * is silent too, a library leaves recognition untested (PROBE TODO), and a terminal has no report to read, so it is
  * Untestable through the one declared route, its reason built from this run's silent control query (#32582, @cto
@@ -350,7 +361,7 @@ const OSC5522_DECRPM_SIBLINGS = [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 10
 function osc5522AfterSiblings(
   replier: "library" | "terminal",
   reply: TerminalQueryOutcome,
-  controls: { mode: number; raw: string }[],
+  controls: { mode: number; raw: string; outcome: "reply" | "fenced-silence" | "other" }[],
   allSilent: boolean,
 ): ProbeCallbackResult {
   const evidence = { detection: reply.raw, decrpmSiblings: controls }
@@ -366,6 +377,28 @@ function osc5522AfterSiblings(
     const reason =
       "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing."
     return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+  }
+  const answered = controls.filter((control) => control.outcome === "reply").map(({ mode }) => mode)
+  const silent = controls.filter((control) => control.outcome === "fenced-silence")
+  // "other" is a control that neither answered nor was measured silent: a timeout, or bytes the
+  // reporter sent that we could not read. Counting those as answers would put a claim in the note
+  // that the run did not see (@dev/15 on d35467098), so they are named for what they are.
+  const other = controls.filter((control) => control.outcome === "other").map(({ mode }) => mode)
+  // A reporter that answers some modes but not the one under test has not told us anything about
+  // 5522: its silence there decides nothing, and calling that a probe fault would blame the wrong
+  // party (@cto c0dbe6ff, shape 2). It is not a second declared-Untestable reason beside the
+  // all-silent net above: nothing the protocol could report went missing, the observer did. So this
+  // states what it measured and names the missing observer as PROBE TODO (@cpo/term 2ddb8d2a: keep
+  // existing Untestable reasons, add no new ones), the same class the OSC 0 unknown already uses.
+  if (replier === "terminal" && silent.length > 0) {
+    const unreadable =
+      other.length === 0
+        ? ""
+        : `; ${String(other.length)} of ${String(controls.length)} controls neither answered nor were measured silent (timeout or unreadable bytes: ${other.join(", ")}) and say nothing`
+    return notTestedResult(
+      `This probe sends only the mode query CSI ? 5522 $ p; it writes nothing through OSC 5522 and reads nothing back, and no probe in this suite reads the clipboard for this mode. The mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls were a measured silence with the fence answered${unreadable}; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which a terminal may gate behind clipboard-read permission.`,
+      evidence,
+    )
   }
   return { ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined), response }
 }
@@ -3136,29 +3169,110 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
   }
 }
 
+/** Screen has no reader for its own history position, so the row stays open (TODO), never Untestable (@cto 870b3dad). */
+const OSC720_SCREEN_OPEN =
+  "screen reports no viewport offset, so a scroll of its own history cannot be read; anything seen on screen would grade the outer terminal"
+/** The must-not-move control: a made-up OSC no terminal defines. */
+const OSC720_MUX_MADE_UP = "\x1b]7207\x07"
+
 /**
- * App extensions.osc720-scroll-up (#32785, @cto a4c6f79d, 85d819da):
- * 1. Route order: tmux and Screen keep today's result; then wheel plus capture; otherwise today's
- *    code, unchanged.
- * 2. tmux and Screen are excluded (Condition 6): tmux's first wheel-up only enters copy mode and
- *    Screen ignores the wheel, so their cells keep today's result.
+ * tmux decides OSC 720 from its own viewport offset (#32785, @cto 870b3dad). Seed history and record the line
+ * count; read the baseline; a made-up OSC that must not move it; OSC 720; then the known-to-move control last (copy
+ * mode: prefix, [, Page Up, by XTEST keys) so it cannot leave the pane scrolled for the reading that grades. Every
+ * reading is fenced by a cursor-position reply and kept in the evidence. The pane is then restored (leave copy mode)
+ * and must read its baseline offset again, or the row stays open.
+ */
+async function osc720ScrollUpTmux(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const read = ctx.getScrollback
+  const input = ctx.input
+  if (!read) return notTestedResult("owned tmux scrollback reader", {})
+  // The reader qualifies before anything is written: a reader with no reading this run throws its named
+  // reason here (ScrollbackReadingUnavailable), which the probe records as unmeasured.
+  const beforeSeed = await read()
+  if (!input) return notTestedResult("XTEST key input for the tmux copy-mode control", { beforeSeed })
+  const historyLinesWritten = ctx.rows + OSC720_HISTORY_LINES
+  const readings: Record<string, TerminalScrollbackReading> = { beforeSeed }
+  const state = { route: "tmux viewport offset", historyLinesWritten, readings }
+  const open = (note: string): ProbeCallbackResult => ({
+    pass: false,
+    response: JSON.stringify(state),
+    note,
+    tests: [{ id: "criterion", status: "probe-todo", reason: note }],
+  })
+  const step = async (label: string): Promise<TerminalScrollbackReading | undefined> => {
+    if (!(await ctx.queryCursorPosition())) return undefined
+    const reading = await read()
+    readings[label] = reading
+    return reading
+  }
+  const sameExtent = (a: TerminalScrollbackReading, b: TerminalScrollbackReading) =>
+    a.totalLines === b.totalLines && a.screenLines === b.screenLines
+
+  ctx.write("\x1b[2J\x1b[H")
+  for (let i = 0; i < historyLinesWritten; i++) ctx.write(`scroll-${i}\r\n`)
+  const baseline = await step("baseline")
+  if (!baseline) return open("no cursor-position reply to fence the baseline reading")
+  const base = baseline.viewportOffset
+  if (base === undefined || baseline.screenLines === undefined) {
+    return notTestedResult("tmux reports no viewport offset", state)
+  }
+  const history = baseline.totalLines - baseline.screenLines
+  if (history <= 0) {
+    return open(`wrote ${historyLinesWritten} lines but tmux history reads ${history}, so there is nothing to scroll`)
+  }
+
+  ctx.write(OSC720_MUX_MADE_UP)
+  const madeUp = await step("afterMadeUpOsc")
+  if (!madeUp) return open("no cursor-position reply to fence the made-up OSC control")
+  if (madeUp.viewportOffset !== base || !sameExtent(madeUp, baseline)) {
+    return open(`the made-up OSC control moved tmux's viewport: offset ${base} -> ${madeUp.viewportOffset}`)
+  }
+
+  ctx.write("\x1b]720\x07")
+  const afterOsc720 = await step("afterOsc720")
+  if (!afterOsc720) return open("no cursor-position reply to fence OSC 720")
+
+  await input.injectKey("ctrl+b")
+  await input.injectKey("bracketleft")
+  await input.injectKey("Prior")
+  const afterControl = await step("afterCopyModeControl")
+  if (!afterControl) return open("no cursor-position reply to fence the copy-mode control")
+
+  // Leave copy mode. Entering it first makes q a copy-mode key, never input that reaches the probe.
+  await input.injectKey("ctrl+b")
+  await input.injectKey("bracketleft")
+  await input.injectKey("q")
+  const restored = await step("restored")
+  if (!restored) return open("no cursor-position reply to fence the viewport restore")
+
+  const osc = afterOsc720.viewportOffset
+  const control = afterControl.viewportOffset
+  const summary =
+    `tmux viewport offset ${base} -> ${osc} after OSC 720 (history ${history} lines; made-up OSC held ${base}; ` +
+    `copy-mode control ${osc} -> ${control}; restored ${restored.viewportOffset})`
+  if (restored.viewportOffset !== base) {
+    return open(`the pane did not return to its baseline viewport after the controls: ${summary}`)
+  }
+  if (osc === undefined || control === undefined) return open(`a reading lost its viewport offset: ${summary}`)
+  if (!sameExtent(afterOsc720, baseline)) return open(`OSC 720 changed the buffer geometry: ${summary}`)
+  if (osc < base) return parserStateResult(true, OSC720_CLAIM, state, summary)
+  if (control < osc) return parserStateResult(false, OSC720_CLAIM, state, summary)
+  return open(`the copy-mode control did not move tmux's viewport, so an unchanged offset shows nothing: ${summary}`)
+}
+
+/**
+ * App extensions.osc720-scroll-up (#32785, @cto a4c6f79d, 85d819da, 870b3dad):
+ * 1. Route order: Screen stays open with its reason; tmux decides from its own viewport offset
+ *    (osc720ScrollUpTmux); then wheel plus capture; otherwise today's code, unchanged.
+ * 2. Multiplexers never use the wheel arm: tmux's first wheel-up only enters copy mode and Screen
+ *    ignores the wheel.
  */
 async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
-  if (ctx.mux === "tmux" || ctx.mux === "screen") {
-    if (ctx.getScrollback) {
-      const reading = await ctx.getScrollback()
-      if (reading.viewportOffset === undefined || reading.screenLines === undefined) {
-        return notTestedResult("terminal reports no viewport offset", reading)
-      }
-    }
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]720\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      ctx,
-      pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
-    )
+  if (ctx.mux === "screen") {
+    const reading = ctx.getScrollback ? await ctx.getScrollback() : null
+    return notTestedResult(OSC720_SCREEN_OPEN, { reading })
   }
+  if (ctx.mux === "tmux") return osc720ScrollUpTmux(ctx)
 
   const capture = ctx.capture
   const input = ctx.input
@@ -5996,6 +6110,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const samples: Array<{ phase: string; column: number; digest: string; frame: ObservationFrame }> = []
         const finish = (outcome: "supported" | "unsupported" | "inconclusive", note: string): ProbeCallbackResult => {
           const decided = outcome !== "inconclusive"
+          const pair = completeFramePair(frames)
           const response = JSON.stringify({ font, fontReply, pixelGeometry, geometrySource: reported.source, samples })
           return {
             pass: outcome === "supported",
@@ -6013,7 +6128,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               outcome,
               assertionType: "screenshot",
               ...(decided ? {} : { reason: "insufficient-evidence" as const }),
-              frames,
+              ...(pair ? { frames: pair } : {}),
               screenshotRef: samples.find((sample) => sample.phase === "target")?.frame.ref,
               note,
             },
@@ -7574,16 +7689,34 @@ const extensionDefinitions: ProbeDefinition[] = [
               } else {
                 const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
                 state.icon = icon.raw
-                result = osc0IconTitleResult(
-                  icon.match?.[1] ?? null,
-                  state.title,
-                  { icon: icon.raw, title: state.title },
-                  { icon: icon.reason, title: "owned public title read" },
-                )
-                if (result.assertions) {
-                  result.assertions = result.assertions.map((assertion, index) =>
-                    index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                const iconLabel = icon.match?.[1] ?? null
+                // "sentinel" also covers bytes that arrived ahead of the DA1 answer without matching
+                // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
+                // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
+                // because "got no answer" would be false for it.
+                const silent =
+                  icon.reason === "timeout" || sentinelSilenceResult(icon, "OSC 0 icon-label reply") !== null
+                if (iconLabel === null && silent) {
+                  // The owned read has already proved the title clause. A terminal that answers DA1
+                  // yet stays silent on the icon-label report has limited what it will tell us; that
+                  // is not a failure of this probe, so the icon half stays an explicit unknown
+                  // instead of refusing the whole row.
+                  result = notTestedResult(
+                    `Open: the owned title read proved OSC 0 sets the window title, and the icon-label query (CSI 20 t) got no answer (${icon.reason}). With these readings, our test cannot tell whether OSC 0 also set an icon label.`,
+                    state,
                   )
+                } else {
+                  result = osc0IconTitleResult(
+                    iconLabel,
+                    state.title,
+                    { icon: icon.raw, title: state.title },
+                    { icon: icon.reason, title: "owned public title read" },
+                  )
+                  if (result.assertions) {
+                    result.assertions = result.assertions.map((assertion, index) =>
+                      index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                    )
+                  }
                 }
               }
             }
@@ -8334,8 +8467,9 @@ const extensionDefinitions: ProbeDefinition[] = [
               let allSilent = true
               for (const mode of OSC5522_DECRPM_SIBLINGS) {
                 const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
-                controls.push({ mode, raw: control.raw })
-                if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+                const outcome = osc5522ControlOutcome(control)
+                controls.push({ mode, raw: control.raw, outcome })
+                if (outcome !== "fenced-silence") {
                   allSilent = false
                   break
                 }
@@ -8358,10 +8492,12 @@ const extensionDefinitions: ProbeDefinition[] = [
             let allSilent = true
             for (const mode of OSC5522_DECRPM_SIBLINGS) {
               const control = await ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
-              controls.push({ mode, raw: control.raw })
-              if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+              const outcome = osc5522ControlOutcome(control)
+              controls.push({ mode, raw: control.raw, outcome })
+              // The terminal arm asks every control so the note can count what was actually asked;
+              // stopping at the first answer would report silence over a partial list.
+              if (outcome !== "fenced-silence") {
                 allSilent = false
-                break
               }
             }
             return osc5522AfterSiblings("terminal", reply, controls, allSilent)

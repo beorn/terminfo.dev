@@ -619,7 +619,12 @@ describe("probe method classification", () => {
               catalogIds: string[]
               featureResults: Record<
                 string,
-                { status: string; origin: { runId: string }; derived?: { ownStatus: string } }
+                {
+                  status: string
+                  origin: { runId: string }
+                  derived?: { ownStatus: string }
+                  outerAbsent?: { measured: string }
+                }
               >
             }
           >
@@ -635,6 +640,25 @@ describe("probe method classification", () => {
           .sort()
         expect(derived).toHaveLength(30)
         expect(digest(derived)).toBe("9298b48bcf4ccb9fba557e0a54b7b0c72d968282b89079f1b2b741c1d5bb9c32")
+        // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
+        const outerAbsent = Object.entries(api.contexts)
+          .flatMap(([key, context]) =>
+            Object.entries(context.featureResults)
+              .filter(([, result]) => result.outerAbsent !== undefined)
+              .map(([id]) => key + " " + id),
+          )
+          .sort()
+        expect(outerAbsent).toEqual([
+          "mux:screen input.button-event-mouse",
+          "mux:screen input.modify-other-keys",
+          "mux:screen input.modify-other-keys-3",
+          "mux:screen modes.application-keypad",
+          "mux:tmux input.button-event-mouse",
+          "mux:tmux input.modify-other-keys",
+          "mux:tmux input.modify-other-keys-3",
+          "mux:tmux input.x10-mouse",
+          "mux:tmux modes.application-keypad",
+        ])
         const pins = Object.entries(api.contexts)
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([key, context]) => [
@@ -645,8 +669,11 @@ describe("probe method classification", () => {
                 .map((id) => [
                   id,
                   // Each derived cell is read back at its own pre-derivation status, so this pin still proves
-                  // that nothing else moved (#33019).
-                  context.featureResults[id]?.derived?.ownStatus ?? context.featureResults[id]?.status ?? "probe-todo",
+                  // that nothing else moved (#33019); a demoted mux cell likewise at its measured status (#33665).
+                  context.featureResults[id]?.derived?.ownStatus ??
+                    context.featureResults[id]?.outerAbsent?.measured ??
+                    context.featureResults[id]?.status ??
+                    "probe-todo",
                   context.featureResults[id]?.origin.runId ?? null,
                 ]),
             ),

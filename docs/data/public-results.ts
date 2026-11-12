@@ -422,6 +422,7 @@ export function publicResults(
                 derived: cell.derived,
                 reason: publicDerivedReason(cell.derived),
               }),
+              ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
             },
           ]
         }),

@@ -118,7 +118,7 @@ test.each(["complete", "shape-refused", "shape-refused-diagnostic", "restore-mod
           expect(shape).toMatchObject({
             shape: "mid-line-gap",
             reason:
-              "text qualification mid-line-gap target: the terminal refused the text snapshot — Terminal.app returned 2 rows where the measured screen has 4",
+              "text qualification mid-line-gap target: the terminal refused the text snapshot — Terminal.app returned 2 rows where the measured screen has 4, and line 1 is 32 cells over 12 columns, which is not a whole number of rows, so its row boundary is unknown",
             diagnostic: {
               tty: "/dev/ttys003",
               appCols: 12,
