@@ -11,7 +11,7 @@ import {
   isDeclaredUntestable,
   NO_SAME_PATH_CONTROL,
   recordExecutedProbe,
-  SYNC_OUTPUT_RESET_UNMEASURED,
+  syncOutputResetUnmeasured,
   syncOutputCaptureTooSlow,
 } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
@@ -1165,10 +1165,14 @@ test("a reset reply after DECSET 2026 names the capture wait when the run declar
     expect(result.tests?.[0]?.status).toBe("probe-invalid")
     return result.tests?.[0]?.reason
   }
-  expect(await reasonFor(150)).toBe(syncOutputCaptureTooSlow(150))
+  expect(await reasonFor(150)).toBe(syncOutputCaptureTooSlow(150, 2, 2))
   expect(await reasonFor(150)).toContain("is not a refusal")
   expect(await reasonFor(150)).toContain("waits at least 150 ms before it reads the screen")
-  expect(await reasonFor(undefined)).toBe(SYNC_OUTPUT_RESET_UNMEASURED)
+  expect(await reasonFor(undefined)).toBe(syncOutputResetUnmeasured(2, 2))
+  // 33648 AC3: the refusal must name both answers, not just say "a reset reply".
+  for (const reason of [await reasonFor(150), await reasonFor(undefined)]) {
+    expect(reason).toContain("DECRPM 2026 answered Ps 2 before DECSET ?2026h and Ps 2 after it")
+  }
 })
 
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.

@@ -1833,13 +1833,19 @@ export function cursorProbe(
   }
 }
 
-/** A reset DECRPM reply after DECSET 2026, with no capture fact to measure the effect against. */
-export const SYNC_OUTPUT_RESET_UNMEASURED =
-  "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+/**
+ * A reset DECRPM reply after DECSET 2026, with no capture fact to measure the effect against. The
+ * reason carries the two answers it is built from, because "a reset reply" alone does not say what
+ * the terminal actually answered: `Ps 2` before DECSET is "reset", and `Ps 2` after it is still
+ * "reset", which is what makes the reply unobservable rather than a refusal (33648 AC3).
+ */
+export function syncOutputResetUnmeasured(beforeSet: number, afterSet: number): string {
+  return `synchronized-output set-state control unobservable: DECRPM 2026 answered Ps ${beforeSet} before DECSET ?2026h and Ps ${afterSet} after it, so a reset reply cannot establish an enabled update; rendered effect unmeasured`
+}
 
 /** The same reply where the run's capture declares its fixed wait: the effect is out of this collector's reach. */
-export function syncOutputCaptureTooSlow(settleMs: number): string {
-  return `synchronized-output set-state control unobservable: a DECRPM reset reply after DECSET is not a refusal, and the rendered effect cannot be read in this run: the capture waits at least ${settleMs} ms before it reads the screen, so an update held for a shorter time cannot be seen`
+export function syncOutputCaptureTooSlow(settleMs: number, beforeSet: number, afterSet: number): string {
+  return `synchronized-output set-state control unobservable: DECRPM 2026 answered Ps ${beforeSet} before DECSET ?2026h and Ps ${afterSet} after it, and that reset reply is not a refusal, but the rendered effect cannot be read in this run: the capture waits at least ${settleMs} ms before it reads the screen, so an update held for a shorter time cannot be seen`
 }
 
 /**
@@ -1884,8 +1890,8 @@ export function decrpmModeProbe(
         // reason states from that number why the effect cannot be read here (@cto e9641d54, #33032).
         const reason =
           ctx.captureSettleMs === undefined
-            ? SYNC_OUTPUT_RESET_UNMEASURED
-            : syncOutputCaptureTooSlow(ctx.captureSettleMs)
+            ? syncOutputResetUnmeasured(snapshot, ps)
+            : syncOutputCaptureTooSlow(ctx.captureSettleMs, snapshot, ps)
         return {
           pass: false,
           response,
