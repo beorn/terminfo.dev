@@ -79,6 +79,8 @@ const KITTY = rootOverride("OWNED_APP_TRANSPORT_KITTY_PATH", KITTY_BINARY_PATH)
 const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as const
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
+// Mutable caches are neither runtime resources nor part of the transported witness.
+const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".cache"])
 
 /**
  * The gitignored dependency-link directories INSIDE the bundle-owned checkout that exist in the code
@@ -227,7 +229,7 @@ function manifestScan(
     }
     if (info.isDirectory()) {
       for (const child of readdirSync(path).sort()) {
-        if (child === ".git") continue
+        if (RESOURCE_EXCLUDES.has(child)) continue
         walk(join(path, child))
       }
       return
@@ -835,18 +837,19 @@ function main(options: Parsed): OwnedAppTransportProof {
     ]) {
       rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
         "--delete",
-        "--exclude=.git",
+        ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
       ])
     }
     for (const entry of RESOURCE_FILES) {
       rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`)
     }
 
+    const resourcePrune = [...RESOURCE_EXCLUDES].map((name) => "-name " + shq(name) + " -prune").join(" -o ")
     const files = sshRun(
       options,
       "remote file listing",
       "resource manifest mismatch",
-      `cd ${shq(source)} && find . \\( -name .git -prune \\) -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256`,
+      `cd ${shq(source)} && find . \\( ${resourcePrune} \\) -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256`,
     ).stdout
     const links = sshRun(
       options,
@@ -856,7 +859,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         // The physical root, never the logical $PWD: under a symlinked ancestor (macOS /tmp) realpath
         // answers physically, so a logical root would read every valid link as an escape.
         `cd ${shq(source)} && R=$(pwd -P) && export R &&`,
-        `find . \\( -name .git -prune \\) -o -type l -exec sh -c '`,
+        `find . \\( ${resourcePrune} \\) -o -type l -exec sh -c '`,
         `  target=$(readlink "$1")`,
         `  if [ ! -e "$1" ]; then printf "%s\\t%s\\tdangling\\t%s\\n" "$1" "$target" "-"; exit 0; fi`,
         `  real=$(realpath "$1")`,
