@@ -553,8 +553,7 @@ test.each([
     ownerPid: 4242,
     marker,
     // Terminal.app's tab: collector <- login shell 4242 <- Terminal 777 <- launchd.
-    parent:
-      batch === "terminal-app" ? { self: 4242, "4242": 777, "777": 1, "1": 0 } : { self: 4242, "4242": 1 },
+    parent: batch === "terminal-app" ? { self: 4242, "4242": 777, "777": 1, "1": 0 } : { self: 4242, "4242": 1 },
     ...(batch === "terminal-app" && {
       comms: { "777": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
       terminalAppPid: 777,

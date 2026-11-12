@@ -874,10 +874,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * Accessibility grant or a key that does not come back through the app's own TTY names the
      * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
      */
-    const installDarwinInput = async (
-      terminal: OwnedTerminal,
-      owned?: { windowId: number; windowTty: string },
-    ) => {
+    const installDarwinInput = async (terminal: OwnedTerminal, owned?: { windowId: number; windowTty: string }) => {
       const refuse = (reason: string) => {
         inputInstallFact = `refused: ${reason}`
         out.write(`input not installed: ${reason}\n`)
