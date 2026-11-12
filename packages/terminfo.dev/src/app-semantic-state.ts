@@ -54,7 +54,13 @@ const declarations: readonly AppSemanticCapability[] = [
   ...[
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
     { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
-  ].flatMap((subject) => sgrProbes.map(({ id }) => ({ ...subject, featureId: id, outerCommands: true as const }))),
+  ].flatMap((subject) =>
+    [...sgrProbes.map(({ id }) => id), "extensions.osc22-pointer"].map((featureId) => ({
+      ...subject,
+      featureId,
+      outerCommands: true as const,
+    })),
+  ),
   {
     kind: "mux",
     id: "tmux",
@@ -763,8 +769,9 @@ export function openAppCommandLog(capture: string) {
 
 // These are command reports, not a second terminal emulator. Only the qualified
 // four invocation-bound paint-witness roundtrips bound this callback's command phases.
-function muxSgrCommandPhases(text: string, nonce: string) {
+function muxSgrCommandPhases(text: string, nonce: string): OuterCommandScan<[string[], string[], string[], string[]]> {
   const commands: [string[], string[], string[], string[]] = [[], [], [], []]
+  const unknown: string[] = []
   let phase: 0 | 1 | 2 | 3 = 0
   let witnesses = 0
   let cleared = false
@@ -811,7 +818,9 @@ function muxSgrCommandPhases(text: string, nonce: string) {
           } else if (witnesses === 1 && cleared && (matches || value === String(phase))) {
             witnesses = 0
             cleared = false
-            if (phase === 3) return { commands, error, start, end: match.index + match[0].length }
+            if (phase === 3) {
+              return { commands, error, start, end: match.index + match[0].length, unknown: named(unknown) }
+            }
             phase = phase === 0 ? 1 : phase === 1 ? 2 : 3
           } else if (full && !matches) {
             error = `Outer SGR command read encountered a different invocation or phase witness: ${value}`
@@ -819,12 +828,178 @@ function muxSgrCommandPhases(text: string, nonce: string) {
         }
       }
       column = column === undefined ? undefined : column + Array.from(value).length
+    } else if (start !== undefined) {
+      unknown.push(line)
     }
   }
-  return { commands, error, start, end: undefined }
+  return { commands, error, start, end: undefined, unknown: named(unknown) }
 }
 
-/** Collector-local read: ownership comes from the existing live terminal owner. */
+/** Record lines inside a probe's window that its matcher does not know: counted and named (@cto 1818f9ec). */
+type UnknownRecordLines = { count: number; lines: string[] }
+const named = (lines: string[]): UnknownRecordLines => ({ count: lines.length, lines })
+
+type OuterCommandScan<Commands> = {
+  commands: Commands
+  error?: string
+  start?: number
+  /** End of this invocation's window in the record, once the matcher has seen it close. */
+  end?: number
+  unknown: UnknownRecordLines
+}
+
+/** One invocation's plan, read from the callback's own writes. */
+type OuterCommandPlan = {
+  nonce: string
+  scan(text: string): OuterCommandScan<unknown>
+  /** "deadline": the reader's deadline closes a window the matcher could not close early. */
+  window: "matched" | "deadline"
+  /** The measured target, or a named failure for an expected line that is missing. */
+  decide(scan: OuterCommandScan<unknown>): { target: string; targetSent: boolean }
+}
+
+/** A per-probe phase matcher over the outer terminal's command record. */
+type OuterCommandMatcher = { label: string; artifact: string; plan(writes: readonly string[]): OuterCommandPlan }
+
+const sgrPaintMatcher: OuterCommandMatcher = {
+  label: "SGR",
+  artifact: "mux-sgr",
+  plan(writes) {
+    const paint = /^\x1b\[0m\x1b\[2J\x1b\[3;3H((?:\x1b\[[0-9;:]*m)*)([^\x1b]*)\x1b\[0m\x1b\[2;1H\x1b\[1;1H $/
+    const phases = writes
+      .flatMap((value) => {
+        const match = paint.exec(value)
+        return match ? [{ sequence: match[1], sample: match[2] }] : []
+      })
+      .slice(0, 4)
+    const target = /^\x1b\[([0-9:]+)m$/.exec(phases[1]?.sequence ?? "")?.[1]
+    const handled = /^\x1b\[([47])m$/.exec(phases[3]?.sequence ?? "")?.[1]
+    if (
+      phases.length !== 4 ||
+      phases[0]?.sequence !== "" ||
+      phases[2]?.sequence !== "\x1b[99m" ||
+      !target ||
+      !handled ||
+      phases.some((phase) => phase.sample !== phases[0]?.sample)
+    ) {
+      throw new Error("Outer SGR command read cannot join the four controlled paint phases")
+    }
+    const witnesses = writes
+      .flatMap((value) => {
+        const match = /^\x1b\[1;1H([0-3])-([a-f0-9]{24})$/.exec(value)
+        return match ? [{ phase: match[1], nonce: match[2] }] : []
+      })
+      .slice(0, 8)
+    const nonce = witnesses[0]?.nonce
+    if (
+      !nonce ||
+      witnesses.length !== 8 ||
+      witnesses.some((entry, index) => entry.nonce !== nonce || entry.phase !== String(Math.floor(index / 2)))
+    ) {
+      throw new Error("Outer SGR command read has no unique same-run phase witnesses")
+    }
+    return {
+      nonce,
+      window: "matched",
+      scan: (text) => muxSgrCommandPhases(text, nonce),
+      decide(scan) {
+        const commands = scan.commands as [string[], string[], string[], string[]]
+        if (!commands[3].includes(handled)) throw new Error("Outer SGR handled control was not forwarded")
+        const normalizedTarget = target === "21" ? "4:2" : target === "4:1" ? "4" : target
+        return { target: normalizedTarget, targetSent: commands[1].includes(normalizedTarget) }
+      },
+    }
+  },
+}
+
+/**
+ * A forwarding control carrying the invocation's nonce, then one target, as whole record lines.
+ * Lines are copied verbatim from the bare Kitty 0.49.2 --dump-commands capture
+ * /hh/var/@dev16/32593/kitty-dump/record.txt (sha256 a432e932819c98bfd7f5b41e0f76358f145a07a80691cbaa4bb8cb8c9355b49c),
+ * retained as fixtures/kitty-osc2-osc22-commands.txt; nothing here is read from terminal source.
+ */
+function controlTargetMatcher(spec: {
+  label: string
+  control: { write: RegExp; line: (nonce: string) => string }
+  target: { write: string; line: string }
+}): OuterCommandMatcher {
+  return {
+    label: spec.label,
+    artifact: "mux-commands",
+    plan(writes) {
+      const controls = writes.flatMap((value) => spec.control.write.exec(value)?.[1] ?? [])
+      const nonce = controls[0]
+      if (controls.length !== 1 || nonce === undefined) {
+        throw new Error(`Outer ${spec.label} trace has ${controls.length} forwarding control writes; one is required`)
+      }
+      const at = writes.findIndex((value) => spec.control.write.exec(value) !== null)
+      if (!writes.slice(at + 1).includes(spec.target.write)) {
+        throw new Error(`Outer ${spec.label} trace has no target write after its forwarding control`)
+      }
+      const controlLine = spec.control.line(nonce)
+      return {
+        nonce,
+        window: "deadline",
+        scan(text) {
+          const unknown: string[] = []
+          let control: number | undefined
+          let target: number | undefined
+          for (const match of text.matchAll(/([^\n]*)\n/g)) {
+            const line = match[1] ?? ""
+            // This invocation's control opens its window: the callback sends the nonce title first, then the
+            // target, so a target or any other line before the control is an earlier invocation's (32593 peer).
+            if (control === undefined) {
+              if (line === controlLine) control = match.index
+              continue
+            }
+            if (line === controlLine) continue
+            if (line === spec.target.line) {
+              target = match.index
+              return {
+                commands: { control, target },
+                start: control,
+                end: match.index + match[0].length,
+                unknown: named(unknown),
+              }
+            }
+            unknown.push(line)
+          }
+          return { commands: { control, target }, start: control, unknown: named(unknown) }
+        },
+        decide(scan) {
+          const seen = scan.commands as { control?: number; target?: number }
+          if (seen.control === undefined) {
+            throw new Error(`Outer command record has no forwarding control line: ${controlLine}`)
+          }
+          // A target forwarded in another form (terminator, parameter, name) is not "did not send"
+          // (@cto 18d11184). The command word is the declared target line's tokens before its value.
+          const command = spec.target.line.slice(0, spec.target.line.lastIndexOf(" "))
+          const other = scan.unknown.lines.find((line) => line.startsWith(`${command} `))
+          if (seen.target === undefined && other !== undefined) {
+            throw new Error(`Outer command record has ${command} in another form than the target line: ${other}`)
+          }
+          return { target: spec.target.line, targetSent: seen.target !== undefined }
+        },
+      }
+    },
+  }
+}
+
+const outerCommandMatchers: Readonly<Record<string, OuterCommandMatcher>> = {
+  ...Object.fromEntries(sgrProbes.map(({ id }) => [id, sgrPaintMatcher])),
+  "extensions.osc22-pointer": controlTargetMatcher({
+    label: "OSC 22",
+    control: { write: /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/, line: (nonce) => `set_title ${nonce}` },
+    target: { write: "\x1b]22;pointer\x1b\\", line: "set_dynamic_color 22 pointer" },
+  }),
+}
+
+/** True when the one outer command reader has a matcher for this probe's callback writes. */
+export function hasOuterCommandMatcher(featureId: string): boolean {
+  return featureId.startsWith("sgr.") || Object.hasOwn(outerCommandMatchers, featureId)
+}
+
+/** Collector-local outer command read for every per-probe matcher (the name predates the non-SGR matchers); ownership comes from the existing live terminal owner. */
 export function beginMuxSgrCommandRead(input: {
   featureId: string
   subject: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal">>
@@ -866,6 +1041,9 @@ export function beginMuxSgrCommandRead(input: {
     }
     const capture = env.TERMINFO_CAPTURE_DIRECTORY
     if (!capture || !isAbsolute(capture)) throw new Error("Outer command read has no owned artifact directory")
+    const matcher = outerCommandMatchers[input.featureId]
+    if (!matcher) throw new Error(`No outer command matcher for ${input.featureId}`)
+    const outer = { app: subject.outerTerminal, version: env.TERMINFO_TARGET_VERSION }
     const log = openAppCommandLog(capture)
     const offset = log.mark()
     return {
@@ -878,7 +1056,9 @@ export function beginMuxSgrCommandRead(input: {
           nonce?: string
           path?: string
           appended?: string
-          commands?: string[][]
+          commands?: unknown
+          unknown?: UnknownRecordLines
+          closedBy?: "match" | "deadline"
         } = { offset }
         try {
           if (callLog === undefined) throw new Error(`Missing same-run callback trace: ${input.featureId}.callLog`)
@@ -887,67 +1067,35 @@ export function beginMuxSgrCommandRead(input: {
             onOperation(operation) {
               if (operation.path !== "context.write") return
               const text = operation.args[0]
-              if (typeof text !== "string") throw new Error("Outer SGR trace contains a non-text context.write")
+              if (typeof text !== "string") {
+                throw new Error(`Outer ${matcher.label} trace contains a non-text context.write`)
+              }
               writes.push(text)
             },
           })
-          const paint = /^\x1b\[0m\x1b\[2J\x1b\[3;3H((?:\x1b\[[0-9;:]*m)*)([^\x1b]*)\x1b\[0m\x1b\[2;1H\x1b\[1;1H $/
-          const phases = writes
-            .flatMap((value) => {
-              const match = paint.exec(value)
-              return match ? [{ sequence: match[1], sample: match[2] }] : []
-            })
-            .slice(0, 4)
-          const target = /^\x1b\[([0-9:]+)m$/.exec(phases[1]?.sequence ?? "")?.[1]
-          const handled = /^\x1b\[([47])m$/.exec(phases[3]?.sequence ?? "")?.[1]
-          if (
-            phases.length !== 4 ||
-            phases[0]?.sequence !== "" ||
-            phases[2]?.sequence !== "\x1b[99m" ||
-            !target ||
-            !handled ||
-            phases.some((phase) => phase.sample !== phases[0]?.sample)
-          ) {
-            throw new Error("Outer SGR command read cannot join the four controlled paint phases")
-          }
-          const witnesses = writes
-            .flatMap((value) => {
-              const match = /^\x1b\[1;1H([0-3])-([a-f0-9]{24})$/.exec(value)
-              return match ? [{ phase: match[1], nonce: match[2] }] : []
-            })
-            .slice(0, 8)
-          const nonce = witnesses[0]?.nonce
-          if (
-            !nonce ||
-            witnesses.length !== 8 ||
-            witnesses.some((entry, index) => entry.nonce !== nonce || entry.phase !== String(Math.floor(index / 2)))
-          ) {
-            throw new Error("Outer SGR command read has no unique same-run phase witnesses")
-          }
-          detail.nonce = nonce
+          const plan = matcher.plan(writes)
+          detail.nonce = plan.nonce
           const reading = await log.read(
             offset,
-            `mux-sgr-${input.featureId}-${randomUUID()}.log`,
-            (text) => muxSgrCommandPhases(text, nonce).end,
+            `${matcher.artifact}-${input.featureId}-${randomUUID()}.log`,
+            (text) => plan.scan(text).end,
           )
           detail.path = reading.path
           detail.endOffset = reading.endOffset
           detail.appended = reading.text
-          const parsed = muxSgrCommandPhases(reading.text, nonce)
+          const parsed = plan.scan(reading.text)
           if (parsed.start !== undefined) {
             detail.phaseStartOffset = offset + Buffer.byteLength(reading.text.slice(0, parsed.start))
           }
           detail.commands = parsed.commands
+          detail.unknown = parsed.unknown
           if (parsed.error) throw new Error(parsed.error)
-          if (!reading.complete) throw new Error("Outer SGR command read did not observe phase completion")
-          if (!parsed.commands[3].includes(handled)) throw new Error("Outer SGR handled control was not forwarded")
-          const normalizedTarget = target === "21" ? "4:2" : target === "4:1" ? "4" : target
-          return {
-            status: "measured" as const,
-            target: normalizedTarget,
-            targetSent: parsed.commands[1].includes(normalizedTarget),
-            detail,
+          if (!reading.complete && plan.window === "matched") {
+            throw new Error(`Outer ${matcher.label} command read did not observe phase completion`)
           }
+          detail.closedBy = reading.complete ? "match" : "deadline"
+          const { target, targetSent } = plan.decide(parsed)
+          return { status: "measured" as const, target, targetSent, outer, detail }
         } catch (error) {
           return {
             status: "unavailable" as const,

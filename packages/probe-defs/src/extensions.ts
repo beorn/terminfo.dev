@@ -13,6 +13,7 @@ import type {
   HostRecipeName,
   ObservationFrame,
   UnhandledSequence,
+  OuterCommandRead,
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
@@ -5883,10 +5884,53 @@ const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
 export const OSC22_SILENT_TERMINAL =
   "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
 /** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
-export function osc22SilentMultiplexer(mux: "tmux" | "screen"): string {
-  return `Open by design: the mouse pointer belongs to the outer terminal, not ${mux}, so anything seen would grade the outer terminal; ${mux} gave no OSC 22 selected-shape reply.`
+export function osc22SilentMultiplexer(_mux: "tmux" | "screen"): string {
+  return "Open by design only for a run with no command record from the outer terminal: without that record nothing shows what the multiplexer sent."
 }
 const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
+
+/**
+ * Through a multiplexer, OSC 22 reads only the outer terminal's command record (@cto 5c25b17f, 1818f9ec):
+ * the pane sends an OSC 2 forwarding control carrying this invocation's nonce, then plain OSC 22 pointer.
+ * No made-up name, put-back write or shape query runs on this arm.
+ */
+export const OSC22_MUX_OUTER_BRANCH = "osc22-mux-outer-command"
+export const OSC22_MUX_TARGET_WRITE = "\x1b]22;pointer\x1b\\"
+export function osc22MuxControlWrite(nonce: string): string {
+  return `\x1b]2;tdv-title-${nonce}\x1b\\`
+}
+/** @cpo/term 10077051 reasons (1)-(3), verbatim. */
+export const OSC22_MUX_NOT_SENT =
+  "The multiplexer did not send OSC 22 to the outer terminal; its forwarding control arrived, so the path was open."
+export function osc22MuxSent(outer: string): string {
+  return `The multiplexer sent OSC 22 to the outer terminal (${outer}); whether the outer terminal applied the shape was not read.`
+}
+export const OSC22_MUX_NO_RECORD =
+  "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read."
+
+/** Grades only the outer command reading; a missing control or record arrives as `unavailable`. */
+export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
+  const state = { outerCommands: read }
+  const open = (status: "probe-todo" | "probe-invalid", reason: string): ProbeCallbackResult => ({
+    pass: false,
+    response: JSON.stringify(state),
+    criterionBranch: OSC22_MUX_OUTER_BRANCH,
+    tests: [{ id: "outer-command-record", status, reason }],
+  })
+  if (read.status !== "measured") return open("probe-invalid", OSC22_MUX_NO_RECORD)
+  if (read.targetSent) return open("probe-todo", osc22MuxSent(`${read.outer.app} ${read.outer.version}`))
+  return {
+    ...parserStateResult(
+      false,
+      `outer command record carries the forwarding control and ${read.target}`,
+      state,
+      OSC22_MUX_NOT_SENT,
+      undefined,
+      "query_reply",
+    ),
+    criterionBranch: OSC22_MUX_OUTER_BRANCH,
+  }
+}
 
 function readOsc22Shape(raw: string) {
   return { raw, shape: OSC22_SHAPE_REPLY.exec(raw)?.[1] }
@@ -8689,6 +8733,16 @@ const extensionDefinitions: ProbeDefinition[] = [
         return osc22QueryResult(controlShape, evidence)
       },
       async (ctx) => {
+        if (ctx.mux !== undefined) {
+          const controlWrite = osc22MuxControlWrite(randomUUID().replaceAll("-", "").slice(0, 24))
+          ctx.write(controlWrite)
+          ctx.write(OSC22_MUX_TARGET_WRITE)
+          // The collector's outer command read grades this branch; without it the cell stays open.
+          return {
+            ...notTestedResult(osc22SilentMultiplexer(ctx.mux), { controlWrite, targetWrite: OSC22_MUX_TARGET_WRITE }),
+            criterionBranch: OSC22_MUX_OUTER_BRANCH,
+          }
+        }
         if (ctx.capture && ctx.captureKind !== "text-cells") return osc22PointerAppCapture(ctx)
         const query = OSC22_CURRENT_QUERY
         const read = async () => {
@@ -8735,6 +8789,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsDisposable: true,
+    outerCommands: { branch: OSC22_MUX_OUTER_BRANCH, grade: osc22MuxGrade },
     libAssertionType: {
       when: (source: Pick<LibProbeSource, "getUnhandledSequences" | "getMouseShape" | "capabilities">) =>
         typeof source.getUnhandledSequences === "function" ||

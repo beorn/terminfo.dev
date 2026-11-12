@@ -1265,6 +1265,21 @@ export type TermFeaturesReading =
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
 
+/**
+ * The collector's one outer command reader (@cto 1818f9ec): what the outer terminal's command record
+ * showed for this callback's own writes. `target` is the record line or parameter the matcher looked
+ * for; `outer` names the run's qualified outer terminal. A missing expected line is `unavailable`.
+ */
+export type OuterCommandRead =
+  | {
+      status: "measured"
+      target: string
+      targetSent: boolean
+      outer: { app: string; version: string }
+      detail: object
+    }
+  | { status: "unavailable"; reason: string; detail?: object }
+
 /** Same-row observations from the owned App reader; no App identity enters probe definitions. */
 export type AppSemanticReading =
   | {
@@ -1404,6 +1419,11 @@ export interface ProbeDefinition {
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null
   /** Harness wall for this probe's app callback, in milliseconds. Absent uses the runner's 30s default. */
   wallMs?: number
+  /**
+   * A multiplexer arm that returns `branch` asks the collector's outer command reader, and `grade`
+   * decides from that reading alone (@cto 1818f9ec). No terminal or multiplexer name enters `grade`.
+   */
+  outerCommands?: { branch: string; grade: (read: OuterCommandRead) => ProbeCallbackResult }
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
   /**

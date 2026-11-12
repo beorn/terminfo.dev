@@ -66,7 +66,7 @@ import {
   type OwnedTerminal,
 } from "../owned-terminal.ts"
 import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
-import { beginMuxSgrCommandRead } from "../app-semantic-state.ts"
+import { beginMuxSgrCommandRead, hasOuterCommandMatcher } from "../app-semantic-state.ts"
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -1058,7 +1058,7 @@ export async function runProbeBatch(
       options.draft?.subject ?? options.subject
     const muxProof = options.ownedTerminal?.muxAttachmentProof
     const outerCommands =
-      ownsTerminal && subject?.kind === "mux" && probe.id.startsWith("sgr.")
+      ownsTerminal && subject?.kind === "mux" && hasOuterCommandMatcher(probe.id)
         ? beginMuxSgrCommandRead({
             featureId: probe.id,
             subject,
@@ -1071,7 +1071,8 @@ export async function runProbeBatch(
       // The SGR callback branches on its source's available methods. Retain that
       // context with the existing recorder; the inner TTY log still projects all
       // legacy transport events, while this artifact can replay the callback itself.
-      const sourceLog = probe.id.startsWith("sgr.") ? createCallLog() : undefined
+      // An outer command read matches this callback's own writes, so it records them the same way.
+      const sourceLog = probe.id.startsWith("sgr.") || outerCommands ? createCallLog() : undefined
       const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
       let result: ProbeCallbackResult
       let probeWallExceeded = false
@@ -1175,6 +1176,19 @@ export async function runProbeBatch(
           reason: query.reason,
         })),
       })
+      // A multiplexer arm that asks the outer command reader is graded by its own definition from
+      // that reading alone (@cto 1818f9ec). With no verified owned mux terminal the read is not attempted.
+      if (probe.outerCommands && subject?.kind === "mux" && result.criterionBranch === probe.outerCommands.branch) {
+        const commands =
+          outerCommands?.status === "ready"
+            ? await outerCommands.read(batch.rawReplies[`${probe.id}.callLog`])
+            : (outerCommands ?? {
+                status: "unavailable" as const,
+                reason: "Outer command read not attempted: no verified owned mux terminal",
+              })
+        batch.rawReplies[`${probe.id}.outerCommands`] = JSON.stringify(commands)
+        result = probe.outerCommands.grade(commands)
+      }
       // Screen's query is a candidate reader, not an already qualified title surface (@cto32573).
       // Preserve its failed controls as a named reader gap; never substitute the outer window.
       if (

@@ -133,10 +133,82 @@ test("a silent OSC 22 query says why it stays open, per subject kind", async () 
     const input = terminal("0", "initial-silent")
     const result = await definition().term!({ ...input.source, mux })
     expect(result.notTested?.noObservable, mux).toBe(osc22SilentMultiplexer(mux))
-    expect(result.notTested?.noObservable, mux).toContain(`belongs to the outer terminal, not ${mux}`)
+    expect(result.notTested?.noObservable, mux).toBe(
+      "Open by design only for a run with no command record from the outer terminal: without that record nothing shows what the multiplexer sent.",
+    )
     expect(result.observation?.outcome, mux).toBeUndefined()
-    expect(input.writes, mux).toEqual([])
+    // #32593: the multiplexer arm sends only the OSC 22 target after its forwarding control; no query.
+    expect(input.writes, mux).toEqual(["\x1b]22;pointer\x1b\\"])
+    expect(input.replies, mux).toEqual([])
   }
+})
+
+/**
+ * @failure The multiplexer arm grades OSC 22 from anything but the outer terminal's command record, names
+ *   a terminal or multiplexer in its grade, or drifts from @cpo/term's reasons (@cto 5c25b17f, 1818f9ec; #32593).
+ * @level l1
+ * @consumer extensions.osc22-pointer outerCommands.grade, fed fake outer reader results.
+ * @testonly none
+ */
+test.each([
+  {
+    name: "control seen, target absent: Unsupported, measured",
+    read: {
+      status: "measured",
+      target: "set_dynamic_color 22 pointer",
+      targetSent: false,
+      outer: { app: "kitty", version: "0.49.2" },
+      detail: {},
+    },
+    status: "unsupported",
+    reason:
+      "The multiplexer did not send OSC 22 to the outer terminal; its forwarding control arrived, so the path was open.",
+  },
+  {
+    name: "target seen: to do, naming the outer terminal and version",
+    read: {
+      status: "measured",
+      target: "set_dynamic_color 22 pointer",
+      targetSent: true,
+      outer: { app: "kitty", version: "0.49.2" },
+      detail: {},
+    },
+    status: "probe-todo",
+    reason:
+      "The multiplexer sent OSC 22 to the outer terminal (kitty 0.49.2); whether the outer terminal applied the shape was not read.",
+  },
+  {
+    name: "control missing: invalid",
+    read: {
+      status: "unavailable",
+      reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+      detail: {},
+    },
+    status: "probe-invalid",
+    reason:
+      "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
+  },
+  {
+    name: "not attempted: invalid with the no-record reason",
+    read: { status: "unavailable", reason: "Outer command read not attempted: no verified owned mux terminal" },
+    status: "probe-invalid",
+    reason:
+      "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
+  },
+] as const)("OSC 22 multiplexer grade: $name", ({ read, status, reason }) => {
+  const outer = definition().outerCommands!
+  expect(outer.branch).toBe("osc22-mux-outer-command")
+  const result = outer.grade(read)
+  expect(result.criterionBranch).toBe("osc22-mux-outer-command")
+  if (status === "unsupported") {
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply", note: reason })
+    expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
+    expect(result.tests).toBeUndefined()
+  } else {
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toEqual([{ id: "outer-command-record", status, reason }])
+  }
+  expect(JSON.parse(result.response!)).toEqual({ outerCommands: read })
 })
 
 test.each(["control-disabled", "control-silent", "target-malformed", "restore-disabled", "restore-silent"] as const)(
