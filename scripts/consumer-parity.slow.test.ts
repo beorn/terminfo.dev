@@ -421,9 +421,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       let reads = 0;
       const collectEvery = () => { if (++reads % 5 === 0) Bun.gc(true) };
       const raw = new Set();
+      let sealedRunFiles = 0;
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json"))) {
-          raw.add(digest(readFileSync(join(content, dir, file))));
+          const bytes = readFileSync(join(content, dir, file));
+          raw.add(digest(bytes));
+          // Count the same bytes in this bounded pass; a second uncollected parse of the corpus
+          // crossed 3 GiB as the six counted Mac runs arrived (#33804).
+          if ([3,4].includes(JSON.parse(bytes.toString("utf8")).schemaVersion)) sealedRunFiles += 1;
           collectEvery();
         }
       assert.deepEqual(keys(site.selected.contexts), keys(projection.contexts));
@@ -540,10 +545,6 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       };
       walkFrozen("");
       assert.deepEqual(frozenV1Actual, frozenV1Expected);
-      let sealedRunFiles = 0;
-      for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
-        for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
-          if ([3,4].includes(JSON.parse(readFileSync(join(content, dir, file), "utf8")).schemaVersion)) sealedRunFiles += 1;
       console.log(JSON.stringify({exactContexts:keys(projection.contexts).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
