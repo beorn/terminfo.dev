@@ -908,8 +908,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
             "notTested" in prior ||
             prior.observation?.outcome !== "inconclusive" ||
             prior.observation.assertionType !== "screenshot"
-          )
+          ) {
             return prior
+          }
           const captured = await underlineColourRgbCaptureResult(ctx, id)
           if (!captured) return prior
           const independent = colourCaptureCallbackResult(id, captured, { mux: ctx.mux })
