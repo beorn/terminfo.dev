@@ -771,6 +771,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           return adapter.capture(checkpoint, origin)
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+          textOrigin = undefined
+          calibrationError = undefined
+          probeSource.captureGeometry = undefined
+          probeSource.captureGeometryRefusal = undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
           await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {

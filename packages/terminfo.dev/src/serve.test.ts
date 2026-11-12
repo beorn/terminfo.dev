@@ -322,7 +322,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
       probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
     }, collectorRevision: revision }
-    let calibrations = 0, rawCaptures = 0, source
+    let calibrations = 0, rawCaptures = 0, source, calibrationFailure
     const checkpoints = [
       { featureId: visualId, role: "control", label: "spaced operator control", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
       { featureId: visualId, role: "target", label: "contiguous operator target", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
@@ -353,13 +353,13 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         declareWindowSize,
         captureRaw: async (checkpoint) => {
           rawCaptures++
-          assert.equal(checkpoint.featureId, "collector.captureCalibration")
+          assert.match(checkpoint.featureId, /^collector\.captureCalibration(?:\.renewal\.\d+)?$/)
           assert.equal(checkpoint.role, "control")
           assert.equal(checkpoint.label, "origin witness")
           return { result: raw, decoded }
         },
         capture: async (checkpoint, origin) => {
-          assert.equal(calibrations, 1, "graded captures follow the one batch calibration")
+          assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
           assert.strictEqual(origin, measured, "every graded capture receives the unchanged measured origin")
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
           capturedCheckpoints.push(checkpoint)
@@ -370,8 +370,11 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     } }))
     mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
       calibrations++
-      assert.strictEqual(options.ctx, source)
-      assert.equal(capturedCheckpoints.length, 0, "calibration precedes probe captures")
+      if (calibrations === 1) {
+        assert.strictEqual(options.ctx, source)
+        assert.equal(capturedCheckpoints.length, 0, "initial calibration precedes probe captures")
+      }
+      if (calibrationFailure) throw calibrationFailure
       assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
       return measured
     } }))
@@ -395,6 +398,21 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       for (const checkpoint of checkpoints) visualFrames.push((await options.capture(checkpoint)).frame)
       assert.deepEqual(capturedCheckpoints, checkpoints)
       assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
+      // Initial failure tests create a new adapter per run. Only re-entry on this same
+      // adapter exposes a stale closure error blocking capture after successful renewal.
+      if (proofState === "source-capable") {
+        const renewalSource = { kind: "live", rows: 24, cols: 80 }
+        calibrationFailure = Object.assign(new Error("renewal fixture refused"), { name: "CaptureCalibrationRefused" })
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.1", recordCapture: () => {} })
+        assert.equal(renewalSource.captureGeometry, undefined)
+        assert.equal(renewalSource.captureGeometryRefusal, "renewal fixture refused")
+        await assert.rejects(() => options.capture(checkpoints[0]), error => error === calibrationFailure)
+        calibrationFailure = undefined
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", recordCapture: () => {} })
+        assert.equal(renewalSource.captureGeometryRefusal, undefined, "successful renewal clears its prior refusal")
+        assert.strictEqual(renewalSource.captureGeometry.geometry, pixelGeometry)
+        await options.capture(checkpoints[0])
+      }
       const results = options.draft.results.map(row => row.featureId !== visualId ? row : {
         ...row, status: "probe-todo", assertionType: "screenshot", criterionBranch: "visual-review",
         rawReplyRef: visualId, frames: visualFrames,
@@ -413,8 +431,8 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     const run = await collectProbeRun({ ids: [visualId] })
     assert.strictEqual(declaredResizeHook, declareWindowSize, "serve.ts wires Linux capture resize declaration into createLinuxInput")
-    assert.equal(calibrations, 1)
-    assert.equal(rawCaptures, 1)
+    assert.equal(calibrations, proofState === "source-capable" ? 3 : 1)
+    assert.equal(rawCaptures, proofState === "source-capable" ? 2 : 1)
     assert.deepEqual(run.screenshotRefs, [raw.frame.ref])
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
@@ -1151,7 +1169,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
-      let reportedCellSize = null, frames = 0, calibrations = 0, calibrationFailure
+      let reportedCellSize = null, frames = 0, calibrationFailure
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -1192,7 +1210,6 @@ describe("private finite daemon startup", () => {
         }
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw, collectorLaunched }) => {
-        calibrations++
         assert.equal(collectorLaunched, true)
         // A restore timeout has already taken its screenshots; the failure draft must keep them (30666).
         if (calibrationFailure?.name === "CaptureRestoreFailed") {
@@ -1264,8 +1281,7 @@ describe("private finite daemon startup", () => {
       assert.equal(reportedFact.basis, "measured by complete raster calibration")
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
-      // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 6)
+      // The derived basis still reaches pixels; RIS rows may renew its calibration within a run.
       assert.ok(frames > 0)
       // Capture labels can include independently allocated image IDs; compare all deciding pixel facts, not those labels.
       const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt", "label"].includes(key) ? undefined : value))

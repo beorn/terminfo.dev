@@ -337,7 +337,11 @@ the incoming reported DECAWM state, or the explicitly established on state.
 Linux and Darwin pixel collectors share the complete-raster calibration in
 [`capture-calibration.ts`](../terminfo.dev/src/capture-calibration.ts). Before the first probe callback,
 one calibration witnesses the grid origin and every cell pitch, then confirms identical surface and cursor restoration.
-The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
+The batch carries that measured origin and geometry into each cell crop until a row writes RIS (`ESC c`).
+RIS can move a terminal's paint origin without changing its grid. After that row finishes, the next callback
+uses a fresh preparation; the resetting row's own captures and refusal stay unchanged.
+Each renewal retains a separate `collector.captureCalibration.renewal.N` trace beside the initial and finish traces.
+Preparation discards the prior attempt's origin and refusal; a refused renewal cannot reuse stale geometry.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
 Every confirmation compares consecutive complete frames under one fixed deadline.
 Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;

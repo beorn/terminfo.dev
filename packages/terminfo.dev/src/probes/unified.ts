@@ -529,9 +529,10 @@ export async function runProbeBatch(
     }
     return decodingAttempt
   }
-  // Prepare once before the first callback, and finish once after the last when the caller asks.
-  // The same measured geometry reaches later contexts; a query callback grants no paint authority.
+  // Preparation belongs to the batch; an RIS write expires its geometry after that row finishes.
+  // Keep each preparation's evidence, and finish once after the last when the caller asks.
   let capturePrepared = false
+  let capturePreparations = 0
   let captureGeometry: TermProbeSource["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
   const recordCapture = (
@@ -556,11 +557,10 @@ export async function runProbeBatch(
     prepareCapture: typeof options.prepareCapture,
     probe: ProbeDefinition,
     preGeometry?: GeometryMeasurement,
+    calibrationId = "collector.captureCalibration",
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
-      // A finish after a before-probes preparation keeps its own trace beside the calibration trace.
-      const calibrationId = capturePrepared ? "collector.textQualification" : "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number } | undefined
@@ -625,7 +625,6 @@ export async function runProbeBatch(
           probe: { ...probe, termNeedsGeometry: true },
           geometry: preparationGrid,
           utf8Decoding: readUtf8Decoding,
-          captureGeometryRefusal,
         })
         // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
         await withTTYOperation(
@@ -761,8 +760,12 @@ export async function runProbeBatch(
         continue
       }
     }
+    let rowSentRis = false
     const probeSource = createTermProbeSource({
-      ...(options.onWrite && { onWrite: options.onWrite }),
+      onWrite(text) {
+        rowSentRis ||= text.includes("\x1bc")
+        options.onWrite?.(text)
+      },
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
@@ -1028,7 +1031,12 @@ export async function runProbeBatch(
       }
     }
     if (options.prepareCapture && !capturePrepared) {
-      await prepareCaptureWith(options.prepareCapture, probe, preGeometry)
+      const calibrationId =
+        capturePreparations === 0
+          ? "collector.captureCalibration"
+          : `collector.captureCalibration.renewal.${capturePreparations}`
+      capturePreparations++
+      await prepareCaptureWith(options.prepareCapture, probe, preGeometry, calibrationId)
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
@@ -1472,13 +1480,27 @@ export async function runProbeBatch(
       ) {
         sizeLeftBehind = `modes.deccolm left the terminal at ${geometryCheck.post.rows}x${geometryCheck.post.cols}; it started at ${geometryCheck.pre.rows}x${geometryCheck.pre.cols}`
       }
+      // Do not reinterpret the resetting row's captures or mutate a source already handed to it.
+      // The next row must prepare again, even if this attempt previously refused calibration.
+      if (rowSentRis && options.prepareCapture) {
+        capturePrepared = false
+        captureGeometry = undefined
+        captureGeometryRefusal = undefined
+      }
       options.onCheckpoint?.(batch)
     }
   }
   if (options.finishCapture) {
     await verify?.()
     const probe = selected[0]
-    if (probe) await prepareCaptureWith(options.finishCapture, probe)
+    if (probe) {
+      await prepareCaptureWith(
+        options.finishCapture,
+        probe,
+        undefined,
+        capturePreparations === 0 ? "collector.captureCalibration" : "collector.textQualification",
+      )
+    }
   }
   if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
