@@ -461,6 +461,7 @@ export function createLibProbeSource(
   return {
     backendName: backend.name,
     kind: "live",
+    nativeCellKeys: typeof backend.nativeCellKeys === "function" ? backend.nativeCellKeys.bind(backend) : undefined,
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,
     resize(cols, rows) {

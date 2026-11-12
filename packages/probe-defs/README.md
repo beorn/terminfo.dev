@@ -12,6 +12,13 @@ Unchanged columns/rows and clean pixel calibration remain fresh-run requirements
 
 ## Vocabulary and current code
 
+For libvterm, vt100 and vt220 underline-colour probes, optional `nativeCellKeys(row, col)`
+reads the live native cell before adapter normalization. The field mapping lives beside
+the SGR callbacks. Measured absence retains the keys and adapter blob identity and can
+decide Untestable; an absent or failing reader stays Open. A present field follows the
+ordinary probe, and decided cell observations take precedence. SGR59 uses this absence
+route only for libvterm; existing vt100/vt220 reset decisions retain their criteria.
+
 - **Probe subject**: the exact terminal app, emulator library or multiplexer being probed, at a recorded path, OS and version. `ProbeSubject.kind` is `term`, `lib` or `mux`.
 - **Term feature**: one terminal behaviour being tested, identified by `featureId`, with one `ProbeDefinition` supplying lib and/or term paths. A mux uses the term path.
 - **Probe source**: where answers come from. Existing collectors supply `live` answers. Schema 4 also retains a `trace` artifact reference and its capture run, suite and source revision; the offline runner must validate those bindings against retained artifact bytes before replay.

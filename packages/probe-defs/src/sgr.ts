@@ -34,6 +34,7 @@ import {
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
+import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import {
   COLOUR_CAPTURE,
   UNDERLINE_INDEXED_BRANCH,
@@ -532,6 +533,38 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
 const UNDERLINE_COLOR_UNEXPOSED =
   "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it."
 
+// Native public cell field checked at run time. This mapping alone decides nothing.
+const NATIVE_UNDERLINE_FIELDS: Readonly<Record<string, string>> = {
+  libvterm: "underlineColor",
+  vt100: "underlineColor",
+  vt220: "underlineColor",
+}
+
+function nativeUnderlineAbsence(ctx: LibProbeSource, col: number, state: object): ProbeCallbackResult | undefined {
+  const field = NATIVE_UNDERLINE_FIELDS[ctx.backendName]
+  if (!field) return undefined
+  if (!ctx.nativeCellKeys) return notTestedResult("Open: no native cell-interface reader is available", state)
+  let keys: readonly string[]
+  try {
+    keys = ctx.nativeCellKeys(0, col)
+  } catch (cause) {
+    return notTestedResult(`Open: native cell-interface read failed: ${String(cause)}`, state)
+  }
+  if (keys.includes(field)) return undefined
+  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
+  const evidence = {
+    ...state,
+    nativeCellInterface: { row: 0, col, backend: ctx.backendName, field, keys, runtimeIdentity: identity },
+  }
+  if (!identity?.adapterSources?.length) {
+    return notTestedResult("Open: native cell keys were read, but the adapter blob identity is missing", evidence)
+  }
+  return declaredUntestableResult(
+    `Untestable: the live ${ctx.backendName} native cell has no ${field} readback field; observed own keys: ${keys.join(", ")}.`,
+    evidence,
+  )
+}
+
 const UNDERLINE_COLOR_UNKNOWN_REASON =
   "SGR 58 behaved exactly like an unknown number: the numbers after it ran as their own commands"
 
@@ -843,6 +876,7 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
           const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
           if (framed && target.underlineColor == null) {
             return (
+              nativeUnderlineAbsence(ctx, 2, state) ??
               underlineColorUnknownArm(ctx, "2::1:2:3", expected, state) ??
               notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
             )
@@ -1610,6 +1644,7 @@ export const sgrProbes: ProbeDefinition[] = [
           const framed = default4.char === "A" && target1.char === "X" && default1.char === "B" && target4.char === "Y"
           if (framed && target1.underlineColor == null && target4.underlineColor == null) {
             return (
+              nativeUnderlineAbsence(ctx, 1, state) ??
               underlineColorUnknownArm(ctx, "5:1", expected, state) ??
               notTestedResult(`${encoding}: ${UNDERLINE_COLOR_UNEXPOSED}`, state)
             )
@@ -1720,6 +1755,10 @@ export const sgrProbes: ProbeDefinition[] = [
         const expected = `${encoding}: X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C colour`
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
+          if (ctx.backendName === "libvterm") {
+            const absence = nativeUnderlineAbsence(ctx, 1, state)
+            if (absence) return absence
+          }
           // libvterm 0.3.3 has no SGR 59 report, and the same-run arm shows SGR 58 does not work there, so the
           // reset has nothing to act on (@cto routes-32 section 1). Any other identity keeps today's record.
           const version = ctx.runtimeIdentity?.engineVersion

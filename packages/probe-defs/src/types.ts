@@ -959,6 +959,8 @@ export interface UnhandledSequence {
 
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
+  /** Own keys of a live native cell before adapter normalization. A failed read throws. */
+  nativeCellKeys?(row: number, col: number): readonly string[]
   /** Existing adapter name, retained only for human-readable binding diagnostics. */
   readonly backendName: string
   readonly kind: ProbeSourceKind
