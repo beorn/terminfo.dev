@@ -1127,6 +1127,111 @@ test("the macOS alacritty window specimen no longer refuses for its corner fille
   expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
 })
 
+// The counted Alacritty run (workflow 43299582608, rev bcece93b) refused on 44 pixels, every one on
+// a bottom corner rim. Measured from that run's own frames: the grid is x 1..798 by y 29..626 at a
+// 6.00 px column pitch, the corner cuts hold 21 hole pixels on each side, and the rim just inside a
+// cut holds the paint colour one least-significant bit off — (173,65,65) and (170,68,68) against red
+// (172,66,66). The rim pixel is EXACT under the solid stage's magenta and off under the columns
+// stage's red, so a mask measured on the solid stage alone cannot cover it. FIXTURE MODEL, not a
+// transported binary: the numbers above are the frame's own, the 13 px row pitch is the same model
+// the earlier alacritty specimen records.
+const ALACRITTY_CUT: ReadonlyArray<readonly [number, number]> = [
+  [1, 626],
+  [2, 626],
+  [3, 626],
+  [4, 626],
+  [5, 626],
+  [6, 626],
+  [7, 626],
+  [792, 626],
+  [793, 626],
+  [794, 626],
+  [795, 626],
+  [796, 626],
+  [797, 626],
+  [798, 626],
+  [1, 625],
+  [2, 625],
+  [3, 625],
+  [4, 625],
+  [795, 625],
+  [796, 625],
+  [797, 625],
+  [798, 625],
+  [1, 624],
+  [2, 624],
+  [3, 624],
+  [4, 624],
+  [795, 624],
+  [796, 624],
+  [797, 624],
+  [798, 624],
+  [1, 623],
+  [2, 623],
+  [3, 623],
+  [796, 623],
+  [797, 623],
+  [798, 623],
+  [1, 622],
+  [798, 622],
+  [1, 621],
+  [798, 621],
+  [1, 620],
+  [798, 620],
+]
+
+/** The counted frame's four measured rim pixels: exact solid paint, one LSB off the columns paint. */
+const ALACRITTY_RIM: ReadonlyArray<readonly [number, number]> = [
+  [2, 622],
+  [5, 625],
+  [794, 625],
+  [797, 622],
+]
+
+function countedAlacrittyWindow(stage: "solid" | "columns" | "rows"): CapturedFrame {
+  const width = 800,
+    height = 628
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
+  for (let y = 29; y <= 626; y++) {
+    for (let x = 1; x <= 798; x++) {
+      const column = Math.min(132, Math.floor((x - 1) / 6))
+      const row = Math.min(45, Math.floor((y - 29) / 13))
+      const rgb =
+        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? column : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+      rgba.set([...rgb, 255], (y * width + x) * 4)
+    }
+  }
+  for (const [x, y] of ALACRITTY_CUT) rgba.set([0, 0, 0, 255], (y * width + x) * 4)
+  if (stage === "columns") for (const [x, y] of ALACRITTY_RIM) rgba.set([254, 1, 1, 255], (y * width + x) * 4)
+  return { width, height, rgba }
+}
+
+test("the counted alacritty run's corner rim does not refuse calibration", async () => {
+  const empty = { width: 800, height: 628, rgba: new Uint8Array(800 * 628 * 4) }
+  for (let offset = 3; offset < empty.rgba.length; offset += 4) empty.rgba[offset] = 255
+  const solid = countedAlacrittyWindow("solid")
+  const run = calibration({
+    rows: 46,
+    cols: 133,
+    frames: {
+      "before grid paint": [empty, empty],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [countedAlacrittyWindow("columns"), countedAlacrittyWindow("columns")],
+      "row edge paint": [countedAlacrittyWindow("rows"), countedAlacrittyWindow("rows")],
+      "restore grid paint": [empty, empty],
+    },
+  })
+  const settled = await run.promise.then(
+    () => ({ ok: true as const, message: "" }),
+    (error: unknown) => ({ ok: false as const, message: error instanceof Error ? error.message : String(error) }),
+  )
+  expect(settled.message).not.toMatch(/neither calibration nor blank/)
+  // Proven stage: the row stripes are only read once the columns frame's paint validates, so a read
+  // here means the rim was exempted rather than the frame refused before the corners mattered.
+  expect(run.reads.get("row edge paint")).toBeGreaterThan(0)
+})
+
 /** Hosted run 42861023633's retained calibration frames, by stage, under their own sha256 names (33056). */
 const WARP_FRAMES: Record<string, string> = {
   before: "003004e19b836de88bfa06de9f12166510f16b1339e166fffa94d708277ece96",

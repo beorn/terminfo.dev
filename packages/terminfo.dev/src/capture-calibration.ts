@@ -152,6 +152,33 @@ function assertCornerStaircase(
   }
 }
 
+/** The corner cut plus its one-pixel rim, clipped to the grid.
+ *
+ * A rounded corner's rim is a blend of the paint colour with the cut, so whether a rim pixel is
+ * exactly the paint depends on which colour is painted: on the retained Alacritty specimen the same
+ * rim is exactly the solid stage's magenta under `45m` and one least-significant bit off the columns
+ * stage's red under `41m` (44 rim pixels, rows 620-626, columns 1-6 and 793-798). The mask is
+ * measured on the solid stage alone, so it must cover the rim for every later stage; otherwise a
+ * window whose grid reaches its rounded corners can never validate. No rim pixel can carry a stripe
+ * edge — the arc stays inside CORNER_FILLET_BOUND — and a mask that would blanket a scanline still
+ * refuses as "every scanline is touched by a corner fillet". */
+function dilateFilletMask(fillets: readonly CornerFillet[], grid: CaptureRectangle, width: number): Set<number> {
+  const mask = new Set<number>()
+  for (const fillet of fillets) for (const key of fillet.holes) mask.add(key)
+  for (const key of Array.from(mask)) {
+    const x = key % width
+    const y = (key - x) / width
+    for (let nextX = x - 1; nextX <= x + 1; nextX++) {
+      if (nextX < grid.x || nextX >= grid.x + grid.width) continue
+      for (let nextY = y - 1; nextY <= y + 1; nextY++) {
+        if (nextY < grid.y || nextY >= grid.y + grid.height) continue
+        mask.add(nextY * width + nextX)
+      }
+    }
+  }
+  return mask
+}
+
 type Edge = "top" | "bottom" | "left" | "right"
 const EDGES: readonly Edge[] = ["top", "bottom", "left", "right"]
 
@@ -648,8 +675,7 @@ export async function calibrateCaptureOrigin({
     }
     const solidFrame = solid
     const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
-    const filletMask = new Set<number>()
-    for (const fillet of fillets) for (const key of fillet.holes) filletMask.add(key)
+    const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
     if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
       throw refusal(
