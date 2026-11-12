@@ -976,6 +976,28 @@ test("a terminal that ignores indexed colon colour reads unsupported from the pr
 })
 
 /**
+ * @failure Both RGB underline rows stay TODO when SGR 58 is ignored but decoration is kept;
+ *   their old target and expected frames repeat the same sequence. The independent foreground
+ *   underline controls must decide this case without admitting a new positive (33634, CTO cb04095e).
+ * @level l1
+ * @consumer sgr.underline.color and sgr.underline-color-rgb on owned App captures.
+ * @testonly none
+ */
+test.each(["sgr.underline.color", "sgr.underline-color-rgb"])(
+  "%s independently observes ignored RGB colour with the decoration kept",
+  async (id) => {
+    const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+    const result = await run(id, ctx)
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(result.observation?.note).toContain("colour ignored, decoration kept")
+    expect(result.observation?.note).toContain("exact digest equality")
+    expect(result.tests).toEqual([{ id: "attribute", status: "unsupported", assertionRefs: [0] }])
+    expect(result.assertions).toHaveLength(1)
+    expect(result.pass).toBe(false)
+  },
+)
+
+/**
  * @failure A frame a code-by-code walker paints with blink on is sampled at whatever blink phase
  *   each capture lands, so the same terminal reads differently run to run (#33181: xterm turned the
  *   5 of `58;5;5` into blink). Every frame the two underline-colour rows compare must hold still on
@@ -1013,9 +1035,6 @@ test("a walker paints every compared underline-colour frame static", async () =>
       phase.name,
     ).toBe(false)
   }
-  const result = await run("sgr.underline.color", colourTerminal("ignore-58", PALETTES[0] as Palette).ctx)
-  // An ignored colon group leaves the underline intact; the generic RGB controls cannot decide it.
-  expect(result.observation?.outcome).toBe("inconclusive")
 })
 
 /**
