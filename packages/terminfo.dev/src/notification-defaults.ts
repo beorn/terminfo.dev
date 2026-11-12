@@ -1,3 +1,5 @@
+import type { OuterColourControl } from "@terminfo/probe-defs"
+
 /**
  * Whether a run's launch is the terminal's DEFAULT configuration, as far as notifications go (#33333,
  * @cto a6fddd6e condition 4).
@@ -106,34 +108,26 @@ export interface OuterTerminalRecordReading {
 }
 
 export function qualifyOuterTerminalRecord(input: {
-  readonly record: unknown
+  readonly record: OuterColourControl | undefined
   readonly probeId: string
 }): OuterTerminalRecordReading {
-  const value = input.record
-  if (typeof value !== "object" || value === null) {
+  const control = input.record
+  if (control === undefined) {
     return { refusal: "This run recorded no outer-terminal record, so a multiplexer negative cannot be attributed" }
   }
-  const row = value as Record<string, unknown>
-  if (typeof row.missing === "string" && row.missing !== "") {
-    return { refusal: `This run recorded no outer-terminal record: ${row.missing}` }
+  if ("missing" in control) {
+    return { refusal: `This run recorded no outer-terminal record: ${control.missing}` }
   }
-  const id = row.id
-  const version = row.version
-  const recordRunId = row.recordRunId
-  if (typeof id !== "string" || id === "" || typeof version !== "string" || version === "") {
-    return { refusal: "This run's outer-terminal record names no terminal id and version" }
-  }
-  const statuses = row.statuses
-  if (typeof statuses !== "object" || statuses === null) {
-    return { refusal: `The outer-terminal record for ${id} ${version} carries no measured rows` }
-  }
-  const status = (statuses as Record<string, unknown>)[input.probeId]
+  // The launcher's matched record sits under `record` (readOuterColourControl in serve.ts); reading these
+  // fields at the top level found no id on every real run and refused both notification rows (#33629).
+  const { id, version, recordRunId, statuses } = control.record
+  const status = statuses[input.probeId]
   if (status !== "supported") {
     return {
-      refusal: `The terminal hosting this multiplexer, ${id} ${version}, reads ${String(status ?? "no result")} on ${input.probeId}, so the absence is not attributable to the multiplexer`,
+      refusal: `The terminal hosting this multiplexer, ${id} ${version}, reads ${status ?? "no result"} on ${input.probeId}, so the absence is not attributable to the multiplexer`,
     }
   }
-  const run = typeof recordRunId === "string" && recordRunId !== "" ? ` in run ${recordRunId}` : ""
+  const run = recordRunId !== "" ? ` in run ${recordRunId}` : ""
   return {
     record: `${id} ${version} measures ${input.probeId} supported${run}, so the absence belongs to the multiplexer's default pass-through`,
   }

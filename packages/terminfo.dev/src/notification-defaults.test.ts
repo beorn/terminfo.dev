@@ -6,6 +6,10 @@
  * @consumer extensions.notifications and extensions.osc777-notify on the App route.
  * @testonly none
  */
+import { randomUUID } from "node:crypto"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { expect, test } from "vitest"
 import { qualifyNotificationDefaults, readMuxAllowPassthrough } from "./notification-defaults.ts"
 
@@ -68,21 +72,43 @@ test("the passthrough reader tries the window form then the session form, and re
 
 test("a mux negative needs the hosting terminal's own supported measurement of that row", async () => {
   const { qualifyOuterTerminalRecord } = await import("./notification-defaults.ts")
-  const supported = {
-    id: "kitty",
-    version: "0.49.2",
-    recordRunId: "ec3c7f325b2d",
-    statuses: { "extensions.notifications": "supported", "extensions.osc777-notify": "supported" },
+  const { readOuterColourControl } = await import("./serve.ts")
+  // The record goes through the launcher's file and readOuterColourControl, the shape the collector really passes:
+  // a flat fixture here hid that the reader looked for id and version one level too high (#33629).
+  const directory = mkdtempSync(join(tmpdir(), "outer-record-"))
+  const control = (statuses: Record<string, string>) => {
+    const path = join(directory, `${randomUUID()}.json`)
+    writeFileSync(
+      path,
+      JSON.stringify({
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        recordPath: "content/probes-apps/kitty-0.49.2-linux-ce4f24d228321812c6a4d4b36c76690b.json",
+        recordRunId: "ce4f24d228321812c6a4d4b36c76690b",
+        statuses,
+      }),
+    )
+    return readOuterColourControl(path, { id: "kitty", version: "0.49.2", os: "linux" })
   }
-  const yes = qualifyOuterTerminalRecord({ record: supported, probeId: "extensions.notifications" })
-  expect(yes.record).toContain("kitty 0.49.2 measures extensions.notifications supported")
-  expect(yes.record).toContain("ec3c7f325b2d")
-  expect(yes.refusal).toBeUndefined()
+  try {
+    const supported = control({ "extensions.notifications": "supported", "extensions.osc777-notify": "supported" })
+    const yes = qualifyOuterTerminalRecord({ record: supported, probeId: "extensions.notifications" })
+    expect(yes.record).toBe(
+      "kitty 0.49.2 measures extensions.notifications supported in run ce4f24d228321812c6a4d4b36c76690b, so the absence belongs to the multiplexer's default pass-through",
+    )
+    expect(yes.refusal).toBeUndefined()
 
-  const stale = { ...supported, statuses: { "extensions.notifications": "untestable" } }
-  const no = qualifyOuterTerminalRecord({ record: stale, probeId: "extensions.notifications" })
-  expect(no.record).toBeUndefined()
-  expect(no.refusal).toContain("reads untestable")
+    const stale = control({ "extensions.notifications": "untestable" })
+    const no = qualifyOuterTerminalRecord({ record: stale, probeId: "extensions.notifications" })
+    expect(no.record).toBeUndefined()
+    expect(no.refusal).toContain("kitty 0.49.2, reads untestable on extensions.notifications")
+    expect(qualifyOuterTerminalRecord({ record: stale, probeId: "extensions.osc777-notify" }).refusal).toContain(
+      "reads no result",
+    )
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 
   expect(qualifyOuterTerminalRecord({ record: undefined, probeId: "extensions.notifications" }).refusal).toContain(
     "no outer-terminal record",
