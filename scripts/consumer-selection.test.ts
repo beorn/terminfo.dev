@@ -427,6 +427,10 @@ describe("consumer selection", () => {
         history: Record<string, RunReference[]>
         exclusions: unknown[]
       }
+      // Contexts, versions and history reference the same immutable documents. Check every
+      // reference's digest, but parse each expected version only once (#33804).
+      const documentDigests = new Map<string, string>()
+      const comparedVersions = new WeakSet<PublicVersion>()
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
         // The expected side is the published projection itself: it has no url/documentSha256 yet.
@@ -454,9 +458,17 @@ describe("consumer selection", () => {
               counts: storedDocument({ counts: version.counts }, `api/v3/runs/${version.sha256}.json`).counts,
               url: `/api/v3/runs/${version.sha256}.json`,
             })
-            const bytes = readFileSync(join(out, ref.url))
-            expect(createHash("sha256").update(bytes).digest("hex")).toBe(ref.documentSha256)
-            expect(JSON.parse(bytes.toString("utf8"))).toEqual(storedDocument(version, ref.url))
+            let bytes: Buffer | undefined
+            if (!documentDigests.has(ref.url)) {
+              bytes = readFileSync(join(out, ref.url))
+              documentDigests.set(ref.url, createHash("sha256").update(bytes).digest("hex"))
+            }
+            expect(documentDigests.get(ref.url)).toBe(ref.documentSha256)
+            if (!comparedVersions.has(version)) {
+              bytes ??= readFileSync(join(out, ref.url))
+              expect(JSON.parse(bytes.toString("utf8"))).toEqual(storedDocument(version, ref.url))
+              comparedVersions.add(version)
+            }
           })
         }
       }
