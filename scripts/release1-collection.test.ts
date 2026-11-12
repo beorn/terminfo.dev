@@ -1788,6 +1788,34 @@ it.each([
       expect(existsSync(join(raw, "run-receipt.json"))).toBe(false)
       return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
     }
+    if (fault === "matching" && command === "bash" && Array.isArray(args) && args.includes("--mux-profile")) {
+      // 33151: Screen's truecolor-on supplement run as the mux records it: its config, and no permissions.
+      const output = String(args.at(-1))
+      const draft = JSON.parse(
+        readFileSync(join(dirname(dirname(output)), "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
+      ) as RunDraft
+      const muxRun = {
+        ...structuredClone(draft),
+        subject: {
+          ...measuredTarget,
+          kind: "mux",
+          id: "screen",
+          version: "5.0.2",
+          os: "linux",
+          outerTerminal: "kitty",
+          mux: "screen",
+          config: "screen: defscrollback 1000; truecolor on",
+          permissions: null,
+        },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+      }
+      const rawDir = join(output, "fixture-run", "raw")
+      mkdirSync(rawDir, { recursive: true })
+      writeFileSync(join(rawDir, "v3-run.draft.json"), JSON.stringify(muxRun))
+      return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
+    }
     if (
       fault === "source-negative-pending" &&
       command === "bash" &&
@@ -2006,6 +2034,17 @@ it.each([
     }
     if (fault === "matching" || fault === "source-negative-pending") {
       expect(row.status, row.error).toBe("classified")
+      if (fault === "matching") {
+        // 33151: a config supplement on a mux is identified by its recorded config; a mux records no permissions,
+        // so none is required. The earlier rows only drove this supplement to a launcher failure, so they never
+        // reached the identity check that refused Screen's 10:51 PST run ("run records no permissions").
+        const screen = pass.contexts.find(
+          (entry) => entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux",
+        )!
+        const supplement = screen.supplements?.[0]
+        expect(supplement?.status, supplement?.error).toBe("classified")
+        expect(supplement).not.toHaveProperty("permissions")
+      }
       if (fault === "source-negative-pending") {
         // #32038 (@cto a6dbdad3): pre-resolution headless drafts live under first-pass/<engine>.draft.json,
         // and the pass output set holds exactly one draft per measured engine — the file pass.json names.
