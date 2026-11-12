@@ -1032,6 +1032,27 @@ function runSupplement(
   } catch (error) {
     row.error = `${label}: ${error instanceof Error ? error.message : String(error)}`
     row.status = row.directory ? "failed" : "not-started"
+    // #33497: a launch that died after the collector wrote its draft keeps that draft's own words and path.
+    // Reading it only adds; the launch error above stays first and the row stays failed.
+    if (row.directory) {
+      try {
+        const retained = linuxRawRun(row.directory, row.runId)
+        const actual = retained
+          ? (parseJsonStrict(retained, readFileSync(retained, "utf8")) as Partial<RunDraft> | null)
+          : undefined
+        if (retained && actual?.runId === row.runId && actual.rawReplies) {
+          row.rawRun = retained
+          const recorded = [readCollectorAttempt(actual.rawReplies)?.error, actual.rawReplies["collector.prerequisite"]]
+          const said = recorded.filter(
+            (text, index): text is string =>
+              typeof text === "string" && text !== "" && recorded.indexOf(text) === index,
+          )
+          if (said.length > 0) row.error += `; collector recorded: ${said.join("; ")} (${retained})`
+        }
+      } catch (readError) {
+        row.error += `; retained collector output unreadable: ${readError instanceof Error ? readError.message : String(readError)}`
+      }
+    }
   }
   return row
 }
