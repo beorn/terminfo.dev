@@ -1092,7 +1092,7 @@ test("tmux grades OSC 720 from its own viewport offset with a made-up OSC before
   expect(reason(supported)).toBe(
     "tmux viewport offset 31 -> 30 after OSC 720 (history 31 lines; made-up OSC held 31; copy-mode control 30 -> 6; restored 31)",
   )
-  const evidence = JSON.parse(supported.response!)
+  const evidence = JSON.parse(supported.response!) as { historyLinesWritten: number; readings: object }
   expect(evidence.historyLinesWritten).toBe(54)
   expect(Object.keys(evidence.readings)).toEqual([
     "beforeSeed",
