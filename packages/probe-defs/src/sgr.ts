@@ -1889,15 +1889,18 @@ export function finalizeVisualResult(
   }
   // CTO Ask2b: owning callbacks qualify no-change; this finalizer only adds actual subject identity.
   const mux = "id" in target && typeof target.id === "string" ? target.id : undefined
-  const noChangeIds = ["extensions.osc112-reset-cursor", "extensions.osc9-progress", "extensions.osc555-flash"]
-  if (mux === "screen") {
-    noChangeIds.push(
-      "extensions.osc104-reset-palette",
-      "extensions.osc110-reset-fg",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-    )
-  }
+  // 33345 (@cto bb54b152): the seven colour no-setup rows carry the hop suffix on screen and tmux alike.
+  const noChangeIds = [
+    "extensions.osc9-progress",
+    "extensions.osc555-flash",
+    "extensions.osc104-reset-palette",
+    "extensions.osc110-reset-fg",
+    "extensions.osc112-reset-cursor",
+    "extensions.osc30001-color-stack-push",
+    "extensions.osc30101-color-stack-pop",
+    "modes.xtpushcolors",
+    "modes.xtpopcolors",
+  ]
   if (
     target.kind === "mux" &&
     (mux === "screen" || mux === "tmux") &&

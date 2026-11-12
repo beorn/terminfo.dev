@@ -1463,7 +1463,8 @@ async function colorSetupAppCapture(
   )
   if (setup?.observation?.outcome === "unsupported") {
     return declaredUntestableResult(
-      `Untestable (no setup): OSC ${setCode} did not change the painted colour after a stable made-up OSC control and a distinct same-run SGR reference; the reset or colour stack has no changed colour to act on.`,
+      // 33345: criterion text verbatim from @cto bb54b152; it states what was seen, never whose gap it is.
+      `Untestable (no setup): in this run OSC ${setCode} set did not change the painted colour, while a made-up OSC control stayed stable and a same-run SGR reference painted distinctly, so the reset or colour stack has nothing to act on.`,
       { initial: fallback.response, control, setup },
     )
   }
@@ -1532,7 +1533,8 @@ async function cursorColorSetupAppCapture(
     }
     if (target.regionDigest === before) {
       return declaredUntestableResult(
-        "Untestable (no setup): OSC 12 left the visible steady cursor unchanged after shown/hidden/restored and made-up OSC controls; OSC112 has no changed cursor colour to reset.",
+        // 33345: criterion text verbatim from @cto bb54b152.
+        "Untestable (no setup): in this run OSC 12 set left the visible steady cursor unchanged, while the shown, hidden, restored and made-up OSC controls passed, so OSC 112 has no changed cursor colour to reset.",
         state,
       )
     }

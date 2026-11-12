@@ -2811,8 +2811,11 @@ test.each(
   const noSetup = id.includes("colors") && equal && fresh
   expect(isDeclaredUntestable(result)).toBe(noSetup)
   if (noSetup) {
-    expect(result.tests).toMatchObject([{ status: "untestable", reason: expect.stringContaining("OSC 4") }])
-    expect(result.observation?.note).toContain("blue and green")
+    // 33345: @cto's criterion text verbatim (bb54b152); it says what was seen, not that the app ignores OSC 4.
+    const sentence =
+      "Untestable (no setup): in this run OSC 4 set, the palette change a push or pop must show, did not take: blue and green painted the same while the paint witness moved, so a push or pop has nothing to show."
+    expect(result.tests).toMatchObject([{ status: "untestable", reason: sentence }])
+    expect(result.observation?.note).toBe(sentence)
   } else if (equal || !fresh) {
     expect(result.tests).toMatchObject([{ status: "probe-todo" }])
   } else {
