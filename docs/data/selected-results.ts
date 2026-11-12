@@ -232,6 +232,12 @@ export interface SelectedProjection {
   contexts: Record<string, SelectedContextSummary>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
+  /**
+   * Working inputs stay private: an unadmitted run's original resolves here, keyed by the context it
+   * joins, never through `history`. Without this a composed row that cites a working run cannot name
+   * the run it was measured from (#33640).
+   */
+  workingOriginals: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
   /** Archived assessment refusals followed by the current-run refusals this reading assessed. */
   exclusions: SelectedExclusion[]
@@ -405,6 +411,7 @@ export function projectResults(
     contexts: {},
     versions: {},
     history: {},
+    workingOriginals: {},
     table: {},
     exclusions: archivedExclusions.map((row) => ({ ...row })),
     treeSuiteId: policy.currentProbeHash,
@@ -412,7 +419,7 @@ export function projectResults(
   const table: Record<string, Record<string, ProbeStatus>> = {}
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
-  const historyVersion = (run: LoadedRun): CurrentSelectedVersion => {
+  const historyVersion = (run: LoadedRun, recordTable = true): CurrentSelectedVersion => {
     if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
@@ -420,7 +427,7 @@ export function projectResults(
     const aggregate = aggregateCurrentResults(results, run.catalogIds)
     const counts = aggregate.counts
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
-    table[run.runId] = states
+    if (recordTable) table[run.runId] = states
     const { suiteRelation, suiteFreshness } = suiteRelationOf(run.probeHash, policy.currentProbeHash)
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
@@ -504,16 +511,24 @@ export function projectResults(
     )
     projection.versions[key] = unique
   }
+  const admitted = admittedContextKeys(projection.versions)
+  const workingRuns = policy.workingRuns ?? []
+  for (const run of workingRuns) {
+    // A working run keeps its admitted subject's key, so its original resolves under the same context
+    // the composed row cites. It never enters `table`, `versions` or `history`.
+    const key = workingSubjectKey(admitted, run.subject)
+    ;(projection.workingOriginals[key] ??= []).push(historyVersion(run, false))
+  }
   return {
     ...projection,
     table,
     contexts: composeContextSummaries(
       acceptedRuns,
       baselineRunIds,
-      policy.workingRuns ?? [],
+      workingRuns,
       policy.workingAttempts ?? [],
       catalogIds,
-      admittedContextKeys(projection.versions),
+      admitted,
       policy.log,
       supplements,
       policy.reopened ?? [],
@@ -600,12 +615,21 @@ export function suiteRelationOf(
 
 /** Resolve one immutable original within its canonical context; working inputs stay private. */
 export function originalRunFor<T extends Pick<CurrentSelectedVersion, "runId">>(
-  projection: { history: Readonly<Record<string, readonly T[]>> },
+  projection: {
+    history: Readonly<Record<string, readonly T[]>>
+    workingOriginals?: Readonly<Record<string, readonly T[]>>
+  },
   contextKey: string,
   runId: string,
 ): T {
-  const run = projection.history[contextKey]?.find((original) => original.runId === runId)
-  if (!run) throw new Error(`Context ${contextKey} names missing original run ${runId}`)
+  const run =
+    projection.history[contextKey]?.find((original) => original.runId === runId) ??
+    projection.workingOriginals?.[contextKey]?.find((original) => original.runId === runId)
+  if (!run) {
+    throw new Error(
+      `Context ${contextKey} names missing original run ${runId}: it is in neither the admitted history nor this read's working inputs`,
+    )
+  }
   return run
 }
 

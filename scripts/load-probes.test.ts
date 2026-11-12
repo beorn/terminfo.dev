@@ -35,6 +35,7 @@ vi.mock("../docs/data/current-results.ts", () => ({
       contexts: {},
       versions: {},
       history: {},
+      workingOriginals: {},
       table: {},
       exclusions: [],
       treeSuiteId: "fixture",
