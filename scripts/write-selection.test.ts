@@ -76,6 +76,22 @@ test("a cell from a working run is marked working and a placed cell is not; each
   })
 })
 
+// 33109 row 4: the status map takes every App cell from this file, so a cell a reopened-cells row withdrew (#33164) must
+// say so here; the row above has no reopened cell, so it cannot see the marker being dropped.
+test("a cell a reopened-cells row withdrew carries that marker into the file", () => {
+  const reopened = { reason: "stored grade cannot stand", reopenedOn: "2026-11-10", exit: "remeasure" }
+  const cell = projection.contexts["term:screen"]!.cells["sgr.reset"]!
+  const withMarker = {
+    ...projection,
+    contexts: { "term:screen": { cells: { "sgr.reset": { ...cell, reopened } } } },
+  } as unknown as SelectedProjection
+  const [only] = selectionFile(withMarker, new Set(), "/repo/content").cells
+  expect(only).toMatchObject({ featureId: "sgr.reset", reopened })
+  expect(selectionFile(projection, new Set(["working-run"]), "/repo/content").cells.some((c) => "reopened" in c)).toBe(
+    false,
+  )
+})
+
 test("a placed cell whose run file is outside content/ is an error, not a guessed path", () => {
   expect(() => selectionFile(projection, new Set(), "/other/content")).toThrow(/not under/)
 })

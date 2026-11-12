@@ -37,6 +37,8 @@ export interface SelectionFileCell {
   contentPath: string | null
   /** Present only when a context supplement read this cell (selected-results.ts SelectedContextCell.supplement). */
   supplement?: SelectedContextCell["supplement"]
+  /** Present only when a reopened-cells row withdrew this cell's grade (#33164); the status map counts these (33109). */
+  reopened?: SelectedContextCell["reopened"]
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -75,6 +77,7 @@ export function selectionFile(
         source: working ? "working" : "placed",
         contentPath: working ? null : relative(root, resolve(cell.run.path)).split(sep).join("/"),
         ...(cell.supplement && { supplement: cell.supplement }),
+        ...(cell.reopened && { reopened: cell.reopened }),
       })
     }
   }
