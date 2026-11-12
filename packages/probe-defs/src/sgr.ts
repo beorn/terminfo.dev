@@ -904,7 +904,7 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const refusal = sgrPlainFixtureTooSmall(ctx)
         if (!refusal) {
           const prior = await armed(ctx)
-          if (prior.observation?.outcome !== "inconclusive") return prior
+          if ("notTested" in prior || prior.observation?.outcome !== "inconclusive") return prior
           const captured = await underlineColourRgbCaptureResult(ctx, id)
           if (!captured) return prior
           const independent = colourCaptureCallbackResult(id, captured, { mux: ctx.mux })
@@ -912,8 +912,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
           if (
             independent.observation?.outcome === "error" ||
             independent.tests?.some((test) => test.status === "probe-invalid")
-          )
+          ) {
             return independent
+          }
           // Keep the existing result when controls cannot decide. Retain both runs' evidence and
           // the specific missing control; a matched or mixed RGB witness never adds Supported.
           const note = independent.observation?.note ?? independent.tests?.[0]?.reason

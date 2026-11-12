@@ -1007,7 +1007,7 @@ test.each(["sgr.underline.color", "sgr.underline-color-rgb"])(
     expect(result.tests).toEqual([{ id: "attribute", status: "unsupported", assertionRefs: [0] }])
     expect(result.assertions).toHaveLength(1)
     expect(result.pass).toBe(false)
-    const evidence = JSON.parse(result.response ?? "{}")
+    const evidence = JSON.parse(result.response ?? "{}") as { comparison: string; measuredPhases: unknown[] }
     expect(evidence.comparison).toBe("exact digest equality")
     expect(evidence.measuredPhases).toHaveLength(6)
     for (const rgb of ["255:0:128", "0:255:128"]) {
@@ -1058,7 +1058,8 @@ test.each([
 
 test("a broken independent RGB capture propagates its operational error", async () => {
   const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
-  const capture = ctx.capture!
+  const capture = ctx.capture
+  if (!capture) throw new Error("The RGB terminal fixture has no pixel capture")
   ctx.capture = async (request) => {
     if (request.label?.includes("C underline 58:2::")) throw new Error("independent RGB pixel reader failed")
     return capture(request)

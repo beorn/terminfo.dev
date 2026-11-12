@@ -390,7 +390,7 @@ export async function underlineColourRgbCaptureResult(
   const result = (run: SameRunCapture, decision: UnderlineIndexedDecision) =>
     underlineColourResult(run, decision, {
       branch: UNDERLINE_RGB_BRANCH,
-      target: RGB_UNDERLINE_SAMPLES[0]!.colour,
+      target: `C underline 58:2::${RGB_UNDERLINE_COLOURS[0]}`,
       expected: `${id}: both SGR 58 RGB samples keep the plain underline while distinct foreground-route underlines prove colour visibility`,
       phases: RGB_UNDERLINE_PHASES,
     })
@@ -402,31 +402,36 @@ export async function underlineColourRgbCaptureResult(
       note: `${colourEncoding(id)}; exact digest equality; ${id}: ${note}`,
       evidence,
     })
-    if (!comparison.visible)
+    if (!comparison.visible) {
       return decide(
         "probe-todo",
         "the plain underline drew nothing; independent RGB colour controls cannot decide this row",
       )
-    if (comparison.blindRoute)
+    }
+    if (comparison.blindRoute) {
       return decide(
         "probe-todo",
         `foreground 38:2::${comparison.blindRoute.index} painted like the plain underline; that colour is not independently visible`,
       )
-    if (comparison.sameRoutes)
+    }
+    if (comparison.sameRoutes) {
       return decide(
         "probe-todo",
         "the two foreground-route RGB underlines render alike; the colour controls cannot be told apart",
       )
-    if (outcomes.every(({ outcome }) => outcome === "ignored"))
+    }
+    if (outcomes.every(({ outcome }) => outcome === "ignored")) {
       return decide(
         "unsupported",
         "both SGR 58 RGB samples left the plain underline while distinct foreground-route colours were visible: colour ignored, decoration kept",
       )
-    if (outcomes.some(({ outcome }) => outcome === "ignored"))
+    }
+    if (outcomes.some(({ outcome }) => outcome === "ignored")) {
       return decide(
         "probe-todo",
         `the RGB samples disagree: ${outcomes.map(({ index, outcome }) => `${index} ${outcome === "ignored" ? "kept the plain underline" : "moved away from the plain underline"}`).join(", ")}`,
       )
+    }
     return decide(
       "probe-todo",
       `the RGB samples do not both keep the plain underline: ${outcomes.map(({ index, outcome }) => `${index} ${outcome === "matched" ? "matched its foreground route" : "matched neither reference"}`).join(", ")}; these controls admit no new Supported result`,
