@@ -169,6 +169,44 @@ const recordsCsi = (code: string) => ({
   code: { kind: "csi" as const, code },
 })
 
+// #33157: the retained native callback normalizes an empty RGB colourspace to zero.
+// Existing core report tests miss the three colour callers, which did not consult that core.
+test.each([
+  ["sgr.underline.color", [["58:2::255:0:128m", "58:2:0:255:0:128m"]]],
+  ["sgr.underline-color-rgb", [["58:2::255:0:128m", "58:2:0:255:0:128m"]]],
+  [
+    "sgr.underline-color-indexed",
+    [
+      ["58:5:1m", "58:5:1m"],
+      ["58:5:4m", "58:5:4m"],
+    ],
+  ],
+] as const)("%s uses only its measured exact unhandled report with a handled control", (id, targets) => {
+  const records = targets.map(([feed, code]) => ({
+    ...recordsCsi(feed),
+    code: { kind: "csi" as const, code },
+  }))
+  const result = sgr(id).lib!(reportingSource({ records }))
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(JSON.parse(result.response!)).toHaveProperty(
+    "unhandled.added",
+    records.map((record) => record.code),
+  )
+  expect(result.observation?.note).toContain("measured: library reported the code unhandled")
+
+  for (const source of [
+    reportingSource({ records: [] }),
+    reportingSource({ records: records.map((record) => ({ ...record, code: { kind: "csi", code: "otherm" } })) }),
+    reportingSource({ records: [...records, records[0]!] }),
+    reportingSource({ records, boldApplies: false }),
+    { ...reportingSource({ records }), getUnhandledSequences: undefined },
+  ]) {
+    const unresolved = sgr(id).lib!(source)
+    expect(unresolved.observation?.outcome).not.toBe("unsupported")
+    expect(unresolved.note).toContain("unhandled report")
+  }
+})
+
 // Route 2: the clipboard is outside the library, but its own parser rejection
 // can decide the write. Missing controls and other subjects stay on their prior path.
 test.each(
