@@ -253,6 +253,17 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
     )
   })
 
+  // 30729 AC3b: a screen rebuilt from the app's logical lines says so in the trace, with how many
+  // lines had to be split, so an evidence reader never has to infer it from the retained text.
+  it("names a frame rebuilt from logical lines and how many lines it split", () => {
+    const split = textRead(["ab", "cd"], 0)
+    const result = textCellsFrame(checkpoint, { ...split, cells: { ...split.cells, splitLineCount: 1 } }, 1)
+    expect(result.trace).toMatchObject({ reconstructedFromLogicalLines: true, splitLineCount: 1 })
+    const whole = textCellsFrame(checkpoint, textRead(["ab", "cd"], 0), 1)
+    expect(whole.trace).not.toHaveProperty("reconstructedFromLogicalLines")
+    expect(whole.trace).not.toHaveProperty("splitLineCount")
+  })
+
   it("throws naming the checkpoint when the terminal refused the read", () => {
     expect(() => textCellsFrame(checkpoint, { status: "refused", reason: "iTerm2 is not frontmost" }, 1)).toThrow(
       /after erase: the terminal refused the text snapshot — iTerm2 is not frontmost/u,
