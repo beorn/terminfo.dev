@@ -835,7 +835,8 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     })
     expect(read).toEqual({
       status: "refused",
-      reason: "Terminal.app returned 1 rows where the measured screen has 1",
+      reason:
+        "Terminal.app returned 1 rows where the measured screen has 1, and the reply's grid could not be typed, so no split was attempted",
       diagnosticDropped: 1,
     })
   })
@@ -901,7 +902,11 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
       ...base,
       run: () => reply({ stdout: JSON.stringify({ status: "refused", reason: "short screen", diagnostic }) }),
     })
-    expect(read).toEqual({ status: "refused", reason: "short screen", diagnosticDropped: 1 })
+    expect(read).toEqual({
+      status: "refused",
+      reason: "short screen, and the reply's grid could not be typed, so no split was attempted",
+      diagnosticDropped: 1,
+    })
   })
 
   it("bounds the line lengths it keeps to the measured screen and says it truncated them", () => {

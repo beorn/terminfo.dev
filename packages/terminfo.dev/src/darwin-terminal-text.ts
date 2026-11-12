@@ -515,31 +515,34 @@ function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): 
     // A split measures row boundaries at a column count, so it is attempted only when the reply
     // stated a grid and that grid is the measured one. A record this read could not type proves
     // nothing about the screen, and a grid that disagrees is another screen by the same rule the
-    // read path refuses below; in both cases the refusal stands, never an assumed grid.
-    const gridIsMeasured =
-      diagnostic !== undefined && diagnostic.appCols === options.cols && diagnostic.appRows === options.rows
-    const split =
-      lines === undefined || !gridIsMeasured ? undefined : splitLogicalRows(lines, options.cols, options.rows)
+    // read path refuses below; either way the refusal stands, and the reason says which was missing.
+    if (diagnostic === undefined) {
+      return {
+        status: "refused",
+        reason: `${reason}, and the reply's grid could not be typed, so no split was attempted`,
+        diagnosticDropped: 1,
+      }
+    }
+    if (diagnostic.appCols !== options.cols || diagnostic.appRows !== options.rows) {
+      return {
+        status: "refused",
+        reason: `${reason}, and ${label} reports ${String(diagnostic.appRows)}x${String(diagnostic.appCols)} where the measured grid is ${String(options.rows)}x${String(options.cols)}, so its lines are not the measured screen`,
+        diagnostic,
+      }
+    }
+    const split = lines === undefined ? undefined : splitLogicalRows(lines, options.cols, options.rows)
     if (split !== undefined && "rows" in split) {
       return {
         status: "read",
         lines: split.rows,
-        appCols: diagnostic?.appCols ?? options.cols,
-        appRows: diagnostic?.appRows ?? options.rows,
+        appCols: diagnostic.appCols,
+        appRows: diagnostic.appRows,
         droppedLines: 0,
         splitLineCount: split.splitLineCount,
       }
     }
-    const detail =
-      split !== undefined && "reason" in split
-        ? split.reason
-        : diagnostic !== undefined && !gridIsMeasured
-          ? `${label} reports ${String(diagnostic.appRows)}x${String(diagnostic.appCols)} where the measured grid is ${String(options.rows)}x${String(options.cols)}, so its lines are not the measured screen`
-          : undefined
-    const refused = detail === undefined ? reason : `${reason}, and ${detail}`
-    return diagnostic === undefined
-      ? { status: "refused", reason: refused, diagnosticDropped: 1 }
-      : { status: "refused", reason: refused, diagnostic }
+    const refused = split === undefined ? reason : `${reason}, and ${split.reason}`
+    return { status: "refused", reason: refused, diagnostic }
   }
   if (parsed.status !== "read" || !("lines" in parsed)) {
     return { status: "refused", reason: `${label} returned an unrecognised snapshot` }
