@@ -952,15 +952,20 @@ function controlTargetMatcher(spec: {
           let target: number | undefined
           for (const match of text.matchAll(/([^\n]*)\n/g)) {
             const line = match[1] ?? ""
-            if (line === controlLine) control ??= match.index
-            else if (line === spec.target.line) target ??= match.index
-            else unknown.push(line)
-            if (control !== undefined && target !== undefined) {
-              const end = match.index + match[0].length
-              return { commands: { control, target }, start: Math.min(control, target), end, unknown: named(unknown) }
+            // This invocation's control opens its window: the callback sends the nonce title first, then the
+            // target, so a target or any other line before the control is an earlier invocation's (32593 peer).
+            if (control === undefined) {
+              if (line === controlLine) control = match.index
+              continue
             }
+            if (line === controlLine) continue
+            if (line === spec.target.line) {
+              target = match.index
+              return { commands: { control, target }, start: control, end: match.index + match[0].length, unknown: named(unknown) }
+            }
+            unknown.push(line)
           }
-          return { commands: { control, target }, start: control ?? target, unknown: named(unknown) }
+          return { commands: { control, target }, start: control, unknown: named(unknown) }
         },
         decide(scan) {
           const seen = scan.commands as { control?: number; target?: number }

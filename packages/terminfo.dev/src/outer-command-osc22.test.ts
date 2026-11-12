@@ -127,6 +127,35 @@ test("a record with the control and no OSC 22 line reads the target as not sent,
   })
 }, 20_000)
 
+// 32593 peer (@dev/3): the callback sends the nonce title first, then OSC 22, so a target line before this
+// invocation's control is an earlier invocation's and cannot qualify this one.
+test("a target line before this invocation's control does not read as sent", async () => {
+  const result = await read(
+    "tmux",
+    (title) =>
+      `set_dynamic_color 22 pointer\nset_title ${title}\n` +
+      capture
+        .replace("set_title tdv-title-32593\n", "")
+        .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
+        .replace("set_dynamic_color 22 pointer\n", ""),
+  )
+  expect(result).toMatchObject({ status: "measured", targetSent: false })
+  // Only the lines after the control are this invocation's: the earlier target is neither the target nor unknown.
+  expect(result.detail).toMatchObject({
+    closedBy: "deadline",
+    unknown: {
+      count: 5,
+      lines: [
+        "select_graphic_rendition 1",
+        "draw B",
+        "select_graphic_rendition 0",
+        "screen_carriage_return",
+        "screen_linefeed",
+      ],
+    },
+  })
+}, 20_000)
+
 // @cto 18d11184: a target forwarded in another form must never read as "did not send".
 test("the target's command word in another form is a named failure, never Unsupported", async () => {
   const result = await read("tmux", (title) =>
