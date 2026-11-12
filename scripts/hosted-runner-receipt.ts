@@ -184,7 +184,9 @@ function warpLaunchDeviation(setupPath: string): string {
   } catch (cause) {
     throw new Error(`Hosted receipt appLaunch: cannot read Warp's preference record ${setupPath}`, { cause })
   }
-  if (setup.prepared !== true) throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} is not prepared`)
+  if (setup.prepared !== true) {
+    throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} is not prepared`)
+  }
   const readback = Array.isArray(setup.commands)
     ? setup.commands.find((command) => command.label === "snackbar-readback")
     : undefined
@@ -600,7 +602,10 @@ async function main(): Promise<void> {
       `appLaunch argv absent: ${os === "Linux" ? "Linux has no app launch receipt" : `${appId} is a wrapper or an unpromoted hosted launch route`}\n`,
     )
     if (os === "macOS" && appId === "warp" && appLaunch) {
-      appLaunch = { ...appLaunch, launchDeviation: warpLaunchDeviation(join(dirname(receiptPath), "warp-onboarding-setup.json")) }
+      appLaunch = {
+        ...appLaunch,
+        launchDeviation: warpLaunchDeviation(join(dirname(receiptPath), "warp-onboarding-setup.json")),
+      }
     }
   }
   const bytes =

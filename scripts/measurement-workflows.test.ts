@@ -1147,8 +1147,12 @@ childBoundary.spawn = (file, args, options) => {
       if (scenario === "write-error" || scenario === "snackbar-write-error") {
         expect(JSON.stringify(setup)).toContain("fixture write denied")
       }
-      if (scenario === "snackbar-wrong-value") expect(JSON.stringify(setup)).toContain("snackbar-readback: expected exact string false")
-      if (scenario === "snackbar-wrong-type") expect(JSON.stringify(setup)).toContain("snackbar-type: expected string preference")
+      if (scenario === "snackbar-wrong-value") {
+        expect(JSON.stringify(setup)).toContain("snackbar-readback: expected exact string false")
+      }
+      if (scenario === "snackbar-wrong-type") {
+        expect(JSON.stringify(setup)).toContain("snackbar-type: expected string preference")
+      }
       if (scenario === "before-error") expect(JSON.stringify(setup)).toContain("fixture permission denied")
       return
     }
