@@ -13,9 +13,11 @@ import * as captureCore from "./capture-core.ts"
 import {
   censusDarwinWindows,
   createDarwinCapture,
+  measureWindowName,
   readTerminalLaunchWindowId,
   requireDarwinScale,
 } from "./darwin-capture.ts"
+import * as ttyModule from "./tty.ts"
 
 const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
 /** The capture target alone, as the selection tests read it. */
@@ -92,8 +94,48 @@ test("Darwin census retains every owned layer-0 window with its disposition", ()
     onscreen: true,
     sharingState: 1,
     memoryUsage: 2048,
+    name: { present: false, value: null },
     disposition: "selected",
   })
+})
+
+// 33821: the hosted title reader. A window name is present in the same census that proves window
+// identity, so the three shapes it can arrive in must stay distinguishable: a real title, a real
+// empty title, and a key the window server withheld (which is never a title and is what the hosted
+// run must refuse by name instead of falling back to AppleScript).
+test("Darwin census reports the window name and whether the key was there at all", () => {
+  const row = (id: number, extra: Record<string, unknown>) => ({
+    id,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width: 800, height: 600 },
+    alpha: 1,
+    onscreen: true,
+    ...extra,
+  })
+  const name = (extra: Record<string, unknown>) => censusDarwinWindows([row(7, extra)], 41).selected.name
+  expect(name({ namePresent: true, name: "~/hh — zsh" })).toEqual({ present: true, value: "~/hh — zsh" })
+  expect(name({ namePresent: true, name: "" })).toEqual({ present: true, value: "" })
+  expect(name({})).toEqual({ present: false, value: null })
+})
+
+test("a window name that is not a string is reported as withheld, not as a title", () => {
+  const census = censusDarwinWindows(
+    [
+      {
+        id: 7,
+        ownerPid: 41,
+        layer: 0,
+        bounds: { x: 0, y: 0, width: 800, height: 600 },
+        alpha: 1,
+        onscreen: true,
+        namePresent: true,
+        name: null,
+      },
+    ],
+    41,
+  )
+  expect(census.selected.name).toEqual({ present: true, value: null })
 })
 
 // 30390: the window server refuses an image of a window without a backing store; the same bounds are
@@ -551,4 +593,266 @@ test("hosted Terminal.app capture resolves the window tie through the launch rec
   } finally {
     rmSync(artifacts, { recursive: true, force: true })
   }
+})
+
+// 33821: the measurement writes a marker title from the run's own TTY and polls the census for it. The
+// three outcomes are the whole point, so they are asserted apart: the name carries this run's title,
+// the name was withheld (absent or empty), or the name is real and different — an editor's own window
+// name, where the terminal title may only reach a tab and the census reader is the wrong tool.
+const measureName = async (observed: Array<{ present: boolean; value: string | null }>) => {
+  const written: string[] = []
+  let clock = 0
+  let polls = 0
+  const measurement = await measureWindowName({
+    marker: "hh-title-ab12cd",
+    writeMarker: (sequence) => written.push(sequence),
+    readName: async () => observed[Math.min(polls++, observed.length - 1)] ?? { present: false, value: null },
+    capMs: 300,
+    pollMs: 100,
+    now: () => clock,
+    sleep: async (ms) => {
+      clock += ms
+    },
+  })
+  return { measurement, written, polls }
+}
+
+test("window-name measurement: the marker coming back is this app carrying the terminal title", async () => {
+  const { measurement, written, polls } = await measureName([{ present: true, value: "hh-title-ab12cd" }])
+  expect(written).toEqual(["\u001b]2;hh-title-ab12cd\u0007"])
+  expect(polls).toBe(1)
+  expect(measurement).toEqual({
+    expected: "hh-title-ab12cd",
+    observed: { present: true, value: "hh-title-ab12cd" },
+    waitedMs: 0,
+    outcome: "equal",
+  })
+})
+
+test("window-name measurement: a withheld key and an empty title are both withheld, not a title", async () => {
+  const absent = await measureName([{ present: false, value: null }])
+  expect(absent.measurement.outcome).toBe("withheld")
+  expect(absent.measurement.observed).toEqual({ present: false, value: null })
+  const empty = await measureName([{ present: true, value: "" }])
+  expect(empty.measurement.outcome).toBe("withheld")
+})
+
+test("window-name measurement: a real but different title is its own outcome, not withheld", async () => {
+  const { measurement, polls } = await measureName([{ present: true, value: "Visual Studio Code" }])
+  expect(measurement.outcome).toBe("other-title")
+  expect(measurement.observed).toEqual({ present: true, value: "Visual Studio Code" })
+  expect(measurement.waitedMs).toBe(300)
+  expect(polls).toBeGreaterThan(1)
+})
+
+test("window-name measurement: a title that arrives on a later poll still counts as equal", async () => {
+  const { measurement, polls } = await measureName([
+    { present: false, value: null },
+    { present: true, value: "hh-title-ab12cd" },
+  ])
+  expect(measurement.outcome).toBe("equal")
+  expect(measurement.waitedMs).toBe(100)
+  expect(polls).toBe(2)
+})
+
+test("window-name measurement: an empty marker is refused instead of writing a bare OSC 2", async () => {
+  await expect(
+    measureWindowName({
+      marker: "",
+      writeMarker: () => {},
+      readName: async () => ({ present: true, value: "" }),
+    }),
+  ).rejects.toThrow(/non-empty marker/)
+})
+
+// 33821 peer review: the cap must bound the WORK, not just the loop. A read that overruns the deadline
+// cannot certify a name it brought back late, however well it matches; every read is handed the one
+// absolute deadline so the command it runs is killed at the cap, and a failing read is recorded by name
+// instead of being folded into `withheld` (which is a fact about the window server, not about us).
+test("window-name measurement: a read returning after the cap cannot certify a late equal result", async () => {
+  let clock = 0
+  const measurement = await measureWindowName({
+    marker: "hh-title-ab12cd",
+    writeMarker: () => {},
+    readName: async () => {
+      clock = 2500
+      return { present: true, value: "hh-title-ab12cd" }
+    },
+    capMs: 2000,
+    pollMs: 100,
+    now: () => clock,
+    sleep: async () => {},
+  })
+  expect(measurement.outcome).toBe("read-failed")
+  expect(measurement.failure?.name).toBe("WindowNameReadOverranDeadline")
+  expect(measurement.failure?.message).toMatch(/500ms after the 2000ms measurement deadline/)
+  expect(measurement.observed).toEqual({ present: true, value: "hh-title-ab12cd" })
+  expect(measurement.waitedMs).toBe(2500)
+})
+
+test("window-name measurement: every read is handed one absolute deadline and sleep never passes it", async () => {
+  let clock = 0
+  const deadlines: number[] = []
+  const sleeps: number[] = []
+  const reads: number[] = []
+  const measurement = await measureWindowName({
+    marker: "hh-title-ab12cd",
+    writeMarker: () => {},
+    readName: async (deadline) => {
+      // Production capture-core.command refuses before invocation once the deadline has passed, so a
+      // read at the expired cap is not a read: it is the defect this test pins.
+      if (deadline - clock <= 0) {
+        throw new Error("Capture command /usr/bin/osascript deadline expired before invocation")
+      }
+      reads.push(clock)
+      deadlines.push(deadline)
+      return { present: false, value: null }
+    },
+    capMs: 250,
+    pollMs: 100,
+    now: () => clock,
+    sleep: async (ms) => {
+      sleeps.push(ms)
+      clock += ms
+    },
+  })
+  expect(reads).toEqual([0, 100, 200])
+  expect(deadlines).toEqual([250, 250, 250])
+  expect(sleeps).toEqual([100, 100, 50])
+  expect(measurement.waitedMs).toBe(250)
+  expect(measurement.outcome).toBe("withheld")
+})
+
+test("window-name measurement: a spent poll budget classifies the last observation, never a refused read", async () => {
+  for (const [observed, outcome] of [
+    [{ present: false, value: null }, "withheld"],
+    [{ present: true, value: "" }, "withheld"],
+    [{ present: true, value: "Editor title" }, "other-title"],
+  ] as const) {
+    let clock = 0
+    const measurement = await measureWindowName({
+      marker: "hh-title-ab12cd",
+      writeMarker: () => {},
+      readName: async (deadline) => {
+        if (deadline - clock <= 0) {
+          throw new Error("Capture command /usr/bin/osascript deadline expired before invocation")
+        }
+        return observed
+      },
+      capMs: 250,
+      pollMs: 100,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms
+      },
+    })
+    expect(measurement.outcome).toBe(outcome)
+    expect(measurement.observed).toEqual(observed)
+    expect(measurement.failure).toBeUndefined()
+  }
+})
+
+test("window-name measurement: a failing read is recorded by name, never as a withheld title", async () => {
+  const measurement = await measureWindowName({
+    marker: "hh-title-ab12cd",
+    writeMarker: () => {},
+    readName: async () => {
+      throw Object.assign(new Error("Capture command /usr/bin/osascript failed: SIGKILL"), {
+        name: "DarwinCensusKilled",
+      })
+    },
+    capMs: 2000,
+  })
+  expect(measurement.outcome).toBe("read-failed")
+  expect(measurement.failure).toEqual({
+    name: "DarwinCensusKilled",
+    message: expect.stringContaining("SIGKILL"),
+  })
+  expect(measurement.failure?.message).toContain("2000ms measurement")
+})
+
+// The wiring, not just the loop: measurement polls stay bound to the window the install census measured.
+// A rival window that grows after install would otherwise win the size rule and its name would be
+// recorded beside the installed window's census — a later app's title attributed to this run's window.
+const titleCensusRows = () => ({
+  installed: {
+    id: 34,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 10, y: 20, width: 400, height: 300 },
+    alpha: 1,
+    onscreen: true,
+    namePresent: false,
+    name: null,
+  },
+  rival: {
+    id: 99,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width: 900, height: 700 },
+    alpha: 1,
+    onscreen: true,
+    namePresent: true,
+    name: "rival-title",
+  },
+})
+
+const measureHostedTitle = async (
+  polls: (census: ReturnType<typeof titleCensusRows>, marker: () => string) => unknown[],
+) => {
+  const artifacts = mkdtempSync(join(tmpdir(), "darwin-title-pin-"))
+  const captureDirectory = join(artifacts, "artifacts")
+  const census = titleCensusRows()
+  let written = ""
+  const marker = () => written.slice("\u001b]2;".length, -1)
+  const tty = vi.spyOn(ttyModule, "writeTTY").mockImplementation((sequence: string) => {
+    written = sequence
+  })
+  const deadlines: Array<number | undefined> = []
+  let calls = 0
+  const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, _args, _input, deadline) => {
+    if (file === "/usr/bin/osascript") {
+      deadlines.push(deadline)
+      calls += 1
+      // Install sees only the run's own window; the rival appears (larger) between install and the poll.
+      const rows = calls === 1 ? [census.installed] : polls(census, marker)
+      return Buffer.from(JSON.stringify(rows))
+    }
+    if (file === "magick") return Buffer.from("test converter")
+    throw new Error(`Unexpected command ${file}`)
+  })
+  try {
+    const adapter = await createDarwinCapture(captureDirectory, {
+      appPid: 41,
+      hostedAppId: "ghostty",
+      measureWindowName: true,
+      onRetained: () => {},
+    })
+    return { measurement: adapter.installCensus.titleMeasurement, marker, deadlines, calls: () => calls }
+  } finally {
+    tty.mockRestore()
+    runner.mockRestore()
+    rmSync(artifacts, { recursive: true, force: true })
+  }
+}
+
+test("hosted title measurement reads the installed window, not a rival that grew after install", async () => {
+  const { measurement, marker, deadlines, calls } = await measureHostedTitle((census, currentMarker) => [
+    { ...census.installed, namePresent: true, name: currentMarker() },
+    census.rival,
+  ])
+  expect(measurement?.outcome).toBe("equal")
+  expect(measurement?.observed.value).toBe(marker())
+  // install census plus exactly one poll: the rival's larger area never re-selected the window.
+  expect(calls()).toBe(2)
+  expect(deadlines[0]).toBeUndefined()
+  expect(Number.isFinite(deadlines[1])).toBe(true)
+  expect(deadlines[1]! - Date.now()).toBeLessThanOrEqual(2000)
+})
+
+test("hosted title measurement records a vanished installed window by name instead of following another", async () => {
+  const { measurement } = await measureHostedTitle((census) => [census.rival])
+  expect(measurement?.outcome).toBe("read-failed")
+  expect(measurement?.failure?.message).toMatch(/expected owned window 34/)
+  expect(measurement?.observed).toEqual({ present: false, value: null })
 })
