@@ -2510,15 +2510,22 @@ describe("Kitty protocol detection", () => {
         expect(result.tests?.[0]?.reason).toBe(
           "Open: this test judges OSC 5522 by whether the library replies. Its control is a mode query (DECRPM), which should always get a reply, sent the same way. Some control replies did not come back in this run, so silence on OSC 5522 proves nothing.",
         )
-        expect(JSON.parse(result.response!)).toMatchObject({
-          detection: da1,
-          decrpmSiblings: expect.arrayContaining([
-            { mode: 7, raw: da1 },
-            { mode: 2031, raw: da1 },
+        const evidence = JSON.parse(result.response!) as { detection: string; decrpmSiblings: unknown[] }
+        expect(evidence.detection).toBe(da1)
+        expect(evidence.decrpmSiblings).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ mode: 7, raw: da1, outcome: "fenced-silence" }),
+            expect.objectContaining({ mode: 2031, raw: da1, outcome: "fenced-silence" }),
           ]),
-        })
+        )
       } else if (qualified) {
-        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
+        // Bytes ahead of the fence are an answer only when they carry a DECRPM frame; anything else
+        // that the terminal said is neither an answer nor a measured silence (@dev/15 d35467098).
+        const outcome = /;\d\$y/.test(control) ? "reply" : "other"
+        expect(JSON.parse(result.response!)).toEqual({
+          detection: da1,
+          decrpmSiblings: [{ mode: 7, raw: control, outcome }],
+        })
       } else expect(result.response).toBe(da1)
     }
 
@@ -2554,10 +2561,11 @@ describe("Kitty protocol detection", () => {
       expect(probe(id).lib!(ctx).observation?.outcome).toBe("supported")
       const target = p.lib!(ctx)
       expect(target.tests?.[0]?.status).toBe("probe-invalid")
-      expect(JSON.parse(target.response!)).toMatchObject({
-        detection: da1,
-        decrpmSiblings: expect.arrayContaining([{ mode, raw: `\x1b[?${mode};2$y${da1}` }]),
-      })
+      const payload = JSON.parse(target.response!) as { detection: string; decrpmSiblings: unknown[] }
+      expect(payload.detection).toBe(da1)
+      expect(payload.decrpmSiblings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ mode, raw: `\x1b[?${mode};2$y${da1}`, outcome: "reply" })]),
+      )
       expect(target.observation).toBeUndefined()
       expect(target.assertions).toBeUndefined()
     }
@@ -2567,32 +2575,63 @@ describe("Kitty protocol detection", () => {
   // library arm. #32582 (@cto fd9e55b1): a terminal that answers no DECRPM at all (Screen) has no report to read, so it
   // is Untestable through the one declared route, naming the silent control query. The cases above drive only the
   // library callback, which stays PROBE TODO, and an answering terminal must stay byte for byte as before.
+  const everySiblingSilent =
+    "Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes 7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031 all went unanswered, so this terminal has no report to read."
+  // @cto c0dbe6ff (shape 2): a reporter that answers some modes and not 5522 has decided nothing
+  // about 5522, so that silence is not a probe fault. @cpo/term 2ddb8d2a keeps existing Untestable
+  // reasons and adds no new ones: the partial-silence case names the missing observer as PROBE TODO.
+  const oneSiblingSilent =
+    "This probe sends only the mode query CSI ? 5522 $ p; it writes nothing through OSC 5522 and reads nothing back, and no probe in this suite reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls were a measured silence with the fence answered; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which a terminal may gate behind clipboard-read permission."
+  // @dev/15 on d35467098: a control that timed out is not an answer, and the note may not say the
+  // fence answered for it. The unreadable case is named for what it measured.
+  const oneSiblingAnsweredOneTimedOut =
+    "This probe sends only the mode query CSI ? 5522 $ p; it writes nothing through OSC 5522 and reads nothing back, and no probe in this suite reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls were a measured silence with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004) and say nothing; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which a terminal may gate behind clipboard-read permission."
   test.each([
-    ["every sibling is silent", "\x1b[?1;2c", true, "untestable"],
-    ["a sibling answers", "\x1b[?7;1$y\x1b[?1;2c", true, "probe-invalid"],
-    ["the silence is unmeasured", "\x1b[?1;2c", false, "probe-invalid"],
+    ["every sibling is silent", { 7: "silent" }, true, "untestable", 14, 0, everySiblingSilent],
+    ["one sibling answers", { 7: "reply" }, true, "probe-todo", 13, 0, oneSiblingSilent],
+    [
+      "one sibling answers and one control times out",
+      { 7: "reply", 2004: "timeout" },
+      true,
+      "probe-todo",
+      12,
+      1,
+      oneSiblingAnsweredOneTimedOut,
+    ],
+    ["the silence is unmeasured", { 7: "timeout" }, false, "probe-invalid", 0, 0, null],
   ] as const)(
     "OSC 5522 terminal arm when the detector is silent and %s",
-    async (_name, control, qualified, expected) => {
+    async (_name, modeOutcomes, qualified, expected, silentCount, otherCount, reason) => {
       const da1 = "\x1b[?1;2c"
       const queries: string[] = []
       const result = await probe("extensions.osc5522-clipboard").term!(
         terminalSource({
           async queryWithSentinelOutcome(sequence, pattern) {
             queries.push(sequence)
-            const raw = sequence === "\x1b[?5522$p" ? da1 : control
+            const mode = Number(/\?(\d+)\$p/.exec(sequence)?.[1])
+            const measured =
+              sequence === "\x1b[?5522$p" ? "silent" : ((modeOutcomes as Record<number, string>)[mode] ?? "silent")
+            const raw = measured === "reply" ? `\x1b[?${mode};2$y${da1}` : da1
             const match = raw.match(pattern)
             return {
               raw,
               rawBase64: btoa(raw),
               match,
-              reason: match ? "reply" : qualified ? "sentinel" : "timeout",
-              ...(qualified && { sentinel: { atMs: 1, graceMs: 250 } }),
+              reason:
+                measured === "reply"
+                  ? "reply"
+                  : measured === "timeout"
+                    ? "timeout"
+                    : qualified
+                      ? "sentinel"
+                      : "timeout",
+              ...(qualified && measured !== "timeout" && { sentinel: { atMs: 1, graceMs: 250 } }),
             }
           },
         }),
       )
-      expect(result.tests?.[0]?.status).toBe(expected)
+      const status = result.tests?.[0]?.status ?? (result.notTested === undefined ? undefined : "probe-todo")
+      expect(status).toBe(expected)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(queries[0]).toBe("\x1b[?5522$p")
@@ -2602,29 +2641,58 @@ describe("Kitty protocol detection", () => {
         return
       }
       expect(queries[1]).toBe("\x1b[?7$p")
-      if (expected === "untestable") {
+      if (reason !== null) {
         expect(queries).toHaveLength(15)
-        expect(isDeclaredUntestable(result)).toBe(true)
-        expect(result.tests).toEqual([
-          {
-            id: "declared-untestable",
-            status: "untestable",
-            reason:
-              "Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes 7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031 all went unanswered, so this terminal has no report to read.",
-          },
+        if (expected === "untestable") {
+          expect(isDeclaredUntestable(result)).toBe(true)
+          expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason }])
+        } else {
+          expect(isDeclaredUntestable(result)).toBe(false)
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: reason })
+        }
+        const evidence = JSON.parse(result.response!) as {
+          detection: string
+          decrpmSiblings: { mode: number; raw: string; outcome: string }[]
+        }
+        expect(evidence.detection).toBe(da1)
+        expect(evidence.decrpmSiblings).toHaveLength(14)
+        expect(evidence.decrpmSiblings.map(({ mode }) => mode)).toEqual([
+          7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031,
         ])
-        expect(JSON.parse(result.response!)).toMatchObject({
-          detection: da1,
-          decrpmSiblings: expect.arrayContaining([
-            { mode: 7, raw: da1 },
-            { mode: 2031, raw: da1 },
-          ]),
-        })
+        expect(evidence.decrpmSiblings.filter((sibling) => sibling.outcome === "fenced-silence")).toHaveLength(
+          silentCount,
+        )
+        expect(evidence.decrpmSiblings.filter((sibling) => sibling.outcome === "other")).toHaveLength(otherCount)
       } else {
-        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
+        expect(JSON.parse(result.response!)).toMatchObject({ detection: da1 })
       }
     },
   )
+
+  // @cto c0dbe6ff boundary kept on record: when every control answers and only 5522 is silent, the row
+  // behaves exactly as before this change — a probe-invalid detection, not the Untestable route.
+  test("OSC 5522 terminal arm keeps its detection reading when every control answers", async () => {
+    const da1 = "\x1b[?1;2c"
+    const result = await probe("extensions.osc5522-clipboard").term!(
+      terminalSource({
+        async queryWithSentinelOutcome(sequence, pattern) {
+          const mode = /\?(\d+)\$p/.exec(sequence)?.[1]
+          const raw = sequence === "\x1b[?5522$p" ? da1 : `\x1b[?${mode};2$y${da1}`
+          const match = raw.match(pattern)
+          return {
+            raw,
+            rawBase64: btoa(raw),
+            match,
+            reason: match ? ("reply" as const) : ("sentinel" as const),
+            sentinel: { atMs: 1, graceMs: 250 },
+          }
+        },
+      }),
+    )
+    expect(result.tests?.[0]?.status).toBe("probe-invalid")
+    expect(result.observation).toBeUndefined()
+    expect(result.note).toBe("OSC5522 detection has no complete matching reply in the deciding window")
+  })
 
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
