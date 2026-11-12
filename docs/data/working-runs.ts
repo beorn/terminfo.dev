@@ -534,6 +534,45 @@ export function siteWorkingView(contentDir: string, env: NodeJS.ProcessEnv = pro
   return composeWorkingView(projection, compatibilitySubjects(projection, contentDir), working)
 }
 
+/** Resolve a retained pass row to its original capture; metadata never substitutes for measured bytes. */
+export function readCollectionPassRow(
+  path: string,
+  context?: { kind: string; id: string; os: string },
+  supplement?: string,
+): { path: string; row: Record<string, unknown> } {
+  const pass = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${path}: missing retained contexts`)
+  const rows = pass.contexts.filter(
+    (row) =>
+      record(row) &&
+      record(row.context) &&
+      (context === undefined ||
+        (row.context.id === context.id && row.context.kind === context.kind && row.context.os === context.os)),
+  )
+  let row = rows[0]
+  if (rows.length !== 1 || !record(row))
+    throw new Error(`${path}: expected one retained context; name its rawRun instead`)
+  if (supplement !== undefined) {
+    const supplements = Array.isArray(row.supplements)
+      ? row.supplements.filter((item) => record(item) && item.name === supplement)
+      : []
+    row = supplements[0]
+    if (supplements.length !== 1 || !record(row))
+      throw new Error(`${path}: no single retained supplement ${supplement}`)
+  }
+  if (typeof row.rawRun !== "string") throw new Error(`${path}: retained row has no rawRun`)
+  const rawPath = resolve(dirname(path), row.rawRun)
+  let physical: string
+  try {
+    physical = realpathSync(rawPath)
+  } catch (cause) {
+    throw new Error(`${path}: rawRun ${rawPath} is missing or unreadable`, { cause })
+  }
+  if (!physical.startsWith(realpathSync(dirname(path)) + sep))
+    throw new Error(`${path}: rawRun ${rawPath} is outside its pass directory`)
+  return { path: physical, row }
+}
+
 /** App passes retain their own index; capture decoding and status folding keep their existing owners. */
 function loadAppWorkingRun(
   selection: WorkingRunSelection,
@@ -549,24 +588,12 @@ function loadAppWorkingRun(
     throw new Error(`${selection.dir}: expected one retained pass; found ${passes.length}`)
   }
   const path = join(selection.dir, passName, "pass.json")
-  const pass = parseJsonStrict(path, readFileSync(path, "utf8"))
-  if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${path}: missing retained contexts`)
-  const rows = pass.contexts.filter(
-    (row) =>
-      record(row) &&
-      record(row.context) &&
-      row.context.id === context.terminalId &&
-      row.context.kind === context.kind &&
-      row.context.os === context.os,
-  )
-  const row = rows[0]
-  if (rows.length !== 1 || !record(row) || row.status !== "classified" || typeof row.rawRun !== "string") {
-    throw new Error(`${path}: ${context.context} has no single classified raw capture`)
-  }
-  const rawPath = resolve(dirname(path), row.rawRun)
-  if (!realpathSync(rawPath).startsWith(realpathSync(selection.dir) + sep)) {
-    throw new Error(`${path}: raw capture outside its retained collection`)
-  }
+  const { path: rawPath, row } = readCollectionPassRow(path, {
+    id: context.terminalId,
+    kind: context.kind,
+    os: context.os,
+  })
+  if (row.status !== "classified") throw new Error(`${path}: ${context.context} has no single classified raw capture`)
   const options = { root: REPO_ROOT, catalogIds }
   let run: LoadedRun
   try {
