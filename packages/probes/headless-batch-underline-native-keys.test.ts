@@ -5,7 +5,7 @@
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the existing backend observation boundary. */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { createVt100Backend } from "@termless/vt100"
 import { ALL_PROBES } from "@terminfo/probe-defs"
 import { collectBatch } from "./headless-batch.ts"
@@ -40,11 +40,12 @@ test.runIf(OWNED_LAYOUT).each([
         { r: 0, g: 255, b: 0 },
         { r: 1, g: 2, b: 3 },
       ]
-      return { ...cell, underline: true, fg: colors[col] ?? null, underlineColor: colors[col] ?? null }
+      return { ...cell, underline: "single", fg: colors[col] ?? null, underlineColor: colors[col] ?? null }
     }
   }
   const identity = await headlessRuntimeIdentity("vt100", "@termless/vt100", "js")
   identity.adapterSources = readAdapterSources("vt100", backend)
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const batch = await collectBatch(
     async () => backend,
     "vt100",
@@ -58,6 +59,11 @@ test.runIf(OWNED_LAYOUT).each([
       adapterPath: fileURLToPath(import.meta.resolve("@termless/vt100")),
     },
   )
+    .then((batch) => {
+      expect(progress).toHaveBeenCalledExactlyOnceWith("headless vt100 probe sgr.underline-color-rgb\n")
+      return batch
+    })
+    .finally(() => progress.mockRestore())
   expect(batch.results, JSON.stringify(batch)).toMatchObject([{ status }])
   if (reading === "absent") {
     const evidence = JSON.stringify(batch.rawReplies)

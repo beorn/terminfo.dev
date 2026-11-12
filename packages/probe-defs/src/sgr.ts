@@ -1755,10 +1755,6 @@ export const sgrProbes: ProbeDefinition[] = [
         const expected = `${encoding}: X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C colour`
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
-          if (ctx.backendName === "libvterm") {
-            const absence = nativeUnderlineAbsence(ctx, 1, state)
-            if (absence) return absence
-          }
           // libvterm 0.3.3 has no SGR 59 report, and the same-run arm shows SGR 58 does not work there, so the
           // reset has nothing to act on (@cto routes-32 section 1). Any other identity keeps today's record.
           const version = ctx.runtimeIdentity?.engineVersion
@@ -1771,6 +1767,10 @@ export const sgrProbes: ProbeDefinition[] = [
               `${encoding}: ${LIBVTERM_RESET_NO_SETUP} Library version: ${version}; the same-run 58:2::1:2:3 versus made-up 77:2::1:2:3 (colon form) challenge used contrasting operands to show subparameter walking.`,
               state,
             )
+          }
+          if (ctx.backendName === "libvterm") {
+            const absence = nativeUnderlineAbsence(ctx, 1, state)
+            if (absence) return absence
           }
           // A missing prerequisite, not a missing control (@cto batch7 A-F5).
           return notTestedResult(
