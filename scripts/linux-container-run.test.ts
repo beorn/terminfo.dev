@@ -754,6 +754,44 @@ describe("disposable ownership receipt mount", () => {
   })
 })
 
+/** #33630's gate needs the same Kitty command trace a mux run gets, with no multiplexer between the
+ * sequence and the terminal. The guard is read out of the launcher and evaluated as written, so a
+ * change that drops the opt-in or makes it unconditional fails here rather than at the gate. */
+describe("direct outer command trace", () => {
+  const guard = (() => {
+    const source = readFileSync(launcher, "utf8")
+    const match = source.match(
+      /if \[\[ ([^\n]*TERMINFO_DUMP_COMMANDS[^\n]*) \]\]; then\s*\n\s*target_launch_args\+=\(--dump-commands\)/,
+    )
+    if (!match) throw new Error("kitty --dump-commands guard not found in scripts/linux-container-run.sh")
+    return match[1]!
+  })()
+
+  function traceRequested(env: Record<string, string>) {
+    const result = spawnSync("bash", ["-c", `[[ ${guard} ]]`], {
+      env: { ...process.env, TERMINFO_MUX_KIND: "", TERMINFO_DUMP_COMMANDS: "", ...env },
+    })
+    expect(String(result.stderr ?? "")).toBe("")
+    return result.status === 0
+  }
+
+  it("leaves an ordinary direct app run without the trace", () => {
+    expect(traceRequested({})).toBe(false)
+  })
+
+  it("keeps the trace on for a mux run", () => {
+    expect(traceRequested({ TERMINFO_MUX_KIND: "tmux" })).toBe(true)
+  })
+
+  it("takes the trace on a direct run when the caller opts in", () => {
+    expect(traceRequested({ TERMINFO_DUMP_COMMANDS: "1" })).toBe(true)
+  })
+
+  it("forwards the opt-in into the container", () => {
+    expect(readFileSync(launcher, "utf8")).toMatch(/--env "TERMINFO_DUMP_COMMANDS=\$\{TERMINFO_DUMP_COMMANDS:-\}"/)
+  })
+})
+
 /** A run whose selection called no capture callback carries no frame. That is a fact about the
  * run, not a failure of it (27875): the launcher records "no frame captured" and carries the run,
  * instead of aborting on a bare `jq -er` exit 2 that named nothing. */
