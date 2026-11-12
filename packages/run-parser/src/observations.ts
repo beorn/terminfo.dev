@@ -513,12 +513,19 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
     frames.some((frame) => frame.ref === digest || frameDigests(frame).cells === digest),
   )
   for (const digest of cited) {
-    // Whole-frame digests can accompany retained evidence, but cannot decide cells alone.
+    // Whole-frame digests and same-shot control crops can accompany retained evidence, but cannot decide cells alone.
+    // A control crop is a real digest of a retained frame: persistence keeps the frames capture() returned, never a
+    // probe's derived entries, so a derived plain-line digest lives on disk only as `controlRegionDigest` (33573).
     if (
       !frames.some((frame) => {
         const digests = frameDigests(frame)
-        const refOrCells = frame.ref === digest || digests.cells === digest
-        return refOrCells || frame.sourceRef === digest || digests.whole === digest
+        return (
+          frame.ref === digest ||
+          digests.cells === digest ||
+          frame.sourceRef === digest ||
+          digests.whole === digest ||
+          (frame.kind !== "text-cells" && frame.controlRegionDigest === digest)
+        )
       })
     ) {
       fail(
