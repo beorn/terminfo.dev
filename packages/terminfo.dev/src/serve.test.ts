@@ -1678,7 +1678,8 @@ describe("private finite daemon startup", () => {
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const collect = () => arm === "terminalApp"
-        ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
+        // The window and tab an owner assertion always names; input needs both (33587).
+        ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: { windowId: 791, tabTty: "/dev/ttys004" } })
         : collectProbeRun({ ids: ["device.xtversion"] })
       if (route === "platform-refused" || route === "owner-refused") {
         await assert.rejects(collect(), route === "platform-refused"

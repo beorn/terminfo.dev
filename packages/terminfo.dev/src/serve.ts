@@ -864,7 +864,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
         const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
           if (!captureDirectory) {
-            throw new Error("macOS input on an owned host builds its helper in the run directory, and this run has none")
+            throw new Error(
+              "macOS input on an owned host builds its helper in the run directory, and this run has none",
+            )
           }
           return buildDarwinInputHelper(
             join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
