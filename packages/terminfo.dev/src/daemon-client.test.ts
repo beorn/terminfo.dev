@@ -458,6 +458,27 @@ it("preserves the failed HTTP status when its original body cannot be read", asy
   expect(failure).not.toHaveProperty("sha256")
 })
 
+// 33587 run 3: a collection that outlasts the bound said only "The operation timed out.", naming
+// neither the daemon nor the bound, so its collection-error.json could not explain itself.
+it("names the daemon port and the bound when a collection outlasts it", async () => {
+  const registration = {
+    runId: "a".repeat(32),
+    pid: 222,
+    port: 12345,
+    token: "fixture-token",
+    terminal: "kitty",
+    terminalVersion: "0.49.1",
+  }
+  const cause = new DOMException("The operation timed out.", "TimeoutError")
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json(registration)).mockRejectedValueOnce(cause)
+  const failure = await requestDaemonProbe(registration).catch((error: unknown) => error)
+  expect(failure).toMatchObject({
+    name: "TimeoutError",
+    message: "Daemon on port 12345 did not answer /probe within 30 min",
+    cause,
+  })
+})
+
 // A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
 it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
   "retains failed daemon HTTP originals before rejecting collection (30412): %j",

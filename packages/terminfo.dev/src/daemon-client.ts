@@ -147,6 +147,14 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
   }
 }
 
+/**
+ * How long the admin waits for one whole collection. 120 s cut off a full Terminal.app suite on
+ * codimac mid-run (33587 run 3: started 01:21:57Z, aborted at 01:23:57Z with 179 rows still
+ * probe-todo). The slowest stored whole run, content/probes-apps/terminal-app-2.15-macos-3053c5ec940f5c18d6a4043a210e2c94.json,
+ * spans 16.4 min across its 264 probe attempts, so the bound is that worst case with margin.
+ */
+const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
+
 export async function requestDaemonProbe(
   daemon: DaemonRegistration,
   request?: DaemonOwnerRequest,
@@ -174,12 +182,27 @@ export async function requestDaemonProbe(
   }
   if (ids !== undefined) body = { ...body, ids }
   await verifyDaemonInfo(daemon)
-  const response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
-    method: body ? "POST" : "GET",
-    headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
-    ...(body && { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(120_000),
-  })
+  let response: Response
+  try {
+    response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
+      method: body ? "POST" : "GET",
+      headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
+      ...(body && { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS),
+    })
+  } catch (error) {
+    // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw Object.assign(
+        new Error(
+          `Daemon on port ${daemon.port} did not answer /probe within ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`,
+          { cause: error },
+        ),
+        { name: "TimeoutError" },
+      )
+    }
+    throw error
+  }
   if (!response.ok) {
     const failure = `Daemon on port ${daemon.port}: HTTP ${response.status}`
     let retained: { path: string; sha256: string }
