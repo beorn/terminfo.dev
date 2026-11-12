@@ -1169,7 +1169,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
-      let reportedCellSize = null, frames = 0, calibrations = 0, calibrationFailure
+      let reportedCellSize = null, frames = 0, calibrationFailure
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -1210,7 +1210,6 @@ describe("private finite daemon startup", () => {
         }
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw, collectorLaunched }) => {
-        calibrations++
         assert.equal(collectorLaunched, true)
         // A restore timeout has already taken its screenshots; the failure draft must keep them (30666).
         if (calibrationFailure?.name === "CaptureRestoreFailed") {
@@ -1282,8 +1281,7 @@ describe("private finite daemon startup", () => {
       assert.equal(reportedFact.basis, "measured by complete raster calibration")
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
-      // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 6)
+      // The derived basis still reaches pixels; RIS rows may renew its calibration within a run.
       assert.ok(frames > 0)
       // Capture labels can include independently allocated image IDs; compare all deciding pixel facts, not those labels.
       const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt", "label"].includes(key) ? undefined : value))

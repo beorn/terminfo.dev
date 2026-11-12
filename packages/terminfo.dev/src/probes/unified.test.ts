@@ -1903,7 +1903,12 @@ it.each([
         expect(source.captureGeometryRefusal).toBeUndefined()
         source.write(`calibration:${preparations}`)
         recordCapture({
-          frame: { role: "control", ref: `sha256:${String(preparations).repeat(64)}`, capturedAt: preparations },
+          frame: {
+            role: "control",
+            ref: `sha256:${String(preparations).repeat(64)}`,
+            capturedAt: preparations,
+            label: "calibration witness",
+          },
           trace: { captureCommand: "fixture-capture" },
         })
         expect(featureId).toBe(
@@ -1920,7 +1925,7 @@ it.each([
         order.push("finish")
         expect(featureId).toBe("collector.textQualification")
         recordCapture({
-          frame: { role: "control", ref: `sha256:${"f".repeat(64)}`, capturedAt: 3 },
+          frame: { role: "control", ref: `sha256:${"f".repeat(64)}`, capturedAt: 3, label: "finish witness" },
           trace: { captureCommand: "fixture-finish" },
         })
       },
