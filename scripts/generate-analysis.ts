@@ -183,6 +183,8 @@ function loadAnnotations(): Record<string, { note: string; url?: string }> {
 }
 
 interface SelectedAnalysisInput {
+  routeKey: string
+  os: string | null
   recordedResults: Array<{ featureId: string; status: FeatureResultStatus }>
   catalogIds: string[]
   aggregate: CurrentAggregate
@@ -197,7 +199,7 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilitySubjects(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
-  for (const [key, { contextKey, selected: version }] of selected) {
+  for (const [key, { contextKey, selected: version, routeKey, os }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
     const recordedResults = Object.values(version.cells).map((cell) => {
@@ -222,6 +224,8 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
       }
     })
     resultMap.set(key, {
+      routeKey,
+      os,
       sourceId: version.subject.id,
       results: Object.fromEntries(version.catalogIds.map((id) => [id, statuses[id] ?? "probe-todo"])),
       recordedResults,
@@ -1213,15 +1217,21 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
   // Compute stats for all terminals that have results
   const allStats = new Map<string, TerminalStats>()
+  const systemCounts = new Map<string, number>()
+  for (const data of resultMap.values()) systemCounts.set(data.routeKey, (systemCounts.get(data.routeKey) ?? 0) + 1)
   for (const [termId, data] of resultMap) {
     const related = Object.values(terminals).filter((terminal) => terminal.headlessBackends?.includes(data.sourceId))
     const source = terminals[data.sourceId] ?? (related.length === 1 ? related[0] : undefined)
     if (!source) throw new Error(`Missing catalog terminal ${data.sourceId} for analysis ${termId}`)
     const meta =
-      termId === data.sourceId && terminals[data.sourceId]
+      data.routeKey === data.sourceId && terminals[data.sourceId]
         ? source
-        : { ...source, slug: termId, label: subjectLabel(terminals, data.sourceId, data.type, source.label) }
-    const stats = computeTerminalStats(termId, meta, data, features, baselineFeatures, resultMap)
+        : { ...source, slug: data.routeKey, label: subjectLabel(terminals, data.sourceId, data.type, source.label) }
+    const label =
+      (systemCounts.get(data.routeKey) ?? 0) > 1
+        ? `${meta.label} (${data.os === "macos" ? "macOS" : data.os === "linux" ? "Linux" : (data.os ?? "OS not recorded")})`
+        : meta.label
+    const stats = computeTerminalStats(termId, { ...meta, label }, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
   }
 
@@ -1236,10 +1246,13 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
   // 1. Terminal pages
   for (const [termId, stats] of allStats) {
     const slug = stats.slug
-    if (slugSeen.has(slug)) continue
-    slugSeen.add(slug)
+    const input = resultMap.get(termId)!
+    // Analysis documents may distinguish OS groups; links inside them still use the released slug.
+    const analysisId = termId === input.routeKey ? slug : `${slug}#${input.os ?? "unknown"}`
+    if (slugSeen.has(analysisId)) continue
+    slugSeen.add(analysisId)
 
-    const key = `terminals/${slug}`
+    const key = `terminals/${analysisId}`
     const rank = ranks.get(termId) ?? totalTerminals
     const entry = generateTerminalAnalysis(termId, stats, rank, totalTerminals, comparable, features, baselines)
 

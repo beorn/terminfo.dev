@@ -534,7 +534,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("selects a stable summary without reading a reviewed default row and keeps both contexts", () => {
+  it("selects each OS without reading a reviewed default row and keeps the released app key", () => {
     const mac = { subject: { kind: "term", id: "kitty", os: "macos" } }
     const linux = { subject: { kind: "term", id: "kitty", os: "linux" } }
     const macKey = projectedContextKey(
@@ -569,7 +569,11 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
-      expect(compatibilitySubjects(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
+      const subjects = compatibilitySubjects(projection, content)
+      expect(subjects.get("kitty")?.contextKey).toBe(linuxKey)
+      // Retaining raw contexts alone did not protect the site's per-app selection (#33854).
+      expect([...subjects.values()].map((entry) => entry.os).sort()).toEqual(["linux", "macos"])
+      expect([...subjects.values()].map((entry) => entry.routeKey)).toEqual(["kitty", "kitty"])
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({

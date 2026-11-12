@@ -459,6 +459,8 @@ export function publicResults(
       return [
         key,
         {
+          routeKey: value.routeKey,
+          os: value.os,
           contextKey: value.contextKey,
           selected: app ? composeJoinedSummary(context, app, contexts) : context,
           states: Object.fromEntries(

@@ -1,6 +1,6 @@
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadTerminals as loadTerminalCatalog, type TerminalRecord } from "@terminfo/catalog"
+import { loadTerminals as loadTerminalCatalog, subjectLabel, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 
@@ -37,10 +37,19 @@ export default {
   paths() {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
+    const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
+    const routeGroups = new Map<string, typeof data.backends>()
+    for (const backend of data.backends) {
+      const routeKey = data.selectedByBackend[backend.name]!.routeKey
+      const columns = routeGroups.get(routeKey) ?? []
+      columns.push(backend)
+      routeGroups.set(routeKey, columns)
+    }
 
     // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
     // target can neither be listed nor have its run data serialized into a page bundle.
-    const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
+    const pages: Array<{ params: Record<string, string> }> = [...routeGroups].map(([routeKey, columns]) => {
+      const b = columns.find((column) => column.name === routeKey) ?? columns[0]!
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name]
       if (data.selectedByBackend[b.name] && !stats) {
@@ -118,6 +127,8 @@ export default {
         params: {
           id: slug,
           backendId: b.name,
+          routeKey,
+          osBackends: JSON.stringify(columns.map((column) => column.name)),
           backendName: meta.label ?? b.name,
           backendDescription: meta.description ?? "",
           backendUrl: meta.url ?? "",
@@ -125,7 +136,15 @@ export default {
           backendType: meta.type ?? "",
           backendCaveat: meta.caveat ?? "",
           // Terminal app info (separate from backend)
-          terminalName: meta.label ?? terminal.name ?? b.name,
+          terminalName:
+            columns.length > 1 && selected?.subject
+              ? subjectLabel(
+                  terminalsData,
+                  selected.subject.id,
+                  selected.subject.kind,
+                  terminalsData[selected.subject.id]?.label,
+                )
+              : (meta.label ?? terminal.name ?? b.name),
           terminalDescription: meta.description ?? terminal.description ?? "",
           terminalBody: linkifyContentExcluding(meta.body ?? terminal.body ?? "", new Set([`/terminals/${slug}`])),
           terminalUrl: meta.url ?? terminal.url ?? "",
@@ -152,7 +171,6 @@ export default {
     })
 
     // The terminal catalog for historical terminals and terminal type classification.
-    const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {

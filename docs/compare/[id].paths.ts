@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadFeatures } from "@terminfo/catalog"
+import { loadFeatures, loadTerminals, subjectLabel } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicContextSummary } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
@@ -40,6 +40,7 @@ export default {
   paths() {
     const data = loadProbes()
     const featuresMeta = loadFeatures(contentDir)
+    const catalog = loadTerminals(contentDir)
 
     // Build terminal info from reviewed selected runs.
     const terminals = data.backends.map((b) => {
@@ -51,6 +52,7 @@ export default {
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
+        routeKey: data.selectedByBackend[b.name]!.routeKey,
         slug,
         label: meta.label ?? b.name,
         description: meta.description ?? "",
@@ -97,6 +99,7 @@ export default {
     const pairs = []
     for (const [index, left] of terminals.entries()) {
       for (const right of terminals.slice(index + 1)) {
+        if (left.routeKey === right.routeKey) continue
         // Always put alphabetically-first slug as A for deterministic URLs
         const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
@@ -221,6 +224,46 @@ export default {
       }
     }
 
-    return pairs
+    // One released comparison URL contains every OS column of the two apps, not duplicate pages.
+    const byRoutePair = new Map<string, typeof pairs>()
+    for (const pair of pairs) {
+      const group = byRoutePair.get(pair.params.id) ?? []
+      group.push(pair)
+      byRoutePair.set(pair.params.id, group)
+    }
+    return [...byRoutePair.values()].map((group) => {
+      const first = group[0]!
+      const names = [...new Set(group.flatMap((pair) => [pair.params.termAId, pair.params.termBId]))]
+      const appLabel = (name: string): string => {
+        const subject = data.selectedByBackend[name]!.selected.subject!
+        return subjectLabel(catalog, subject.id, subject.kind, catalog[subject.id]?.label)
+      }
+      return {
+        params: {
+          ...first.params,
+          pairTitle: `${appLabel(first.params.termAId)} vs ${appLabel(first.params.termBId)}`,
+          osBackends: JSON.stringify(names),
+          comparisonPairs: JSON.stringify(
+            group.map(({ params }) => ({
+              labelA: params.termALabel,
+              labelB: params.termBLabel,
+              comparable: params.comparableScope === "true",
+              conclusive: params.jointConclusive,
+              differ: params.differ,
+              differences: (JSON.parse(params.categories) as typeof categories).flatMap((category) =>
+                category.features.filter(
+                  (feature) =>
+                    "comparable" in feature &&
+                    feature.comparable &&
+                    "resultA" in feature &&
+                    "resultB" in feature &&
+                    feature.resultA !== feature.resultB,
+                ),
+              ),
+            })),
+          ),
+        },
+      }
+    })
   },
 }

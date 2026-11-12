@@ -51,15 +51,23 @@ export default {
       return data.meta[name]?.label ?? terminals[name]?.label ?? name
     }
 
-    function findBackend(name: string, type?: string) {
-      return data.backends.find((b) => b.name === name && (!type || b.type === type))
+    function findBackend(name: string, type?: string, os?: string) {
+      return data.backends.find((b) => {
+        const selected = data.selectedByBackend[b.name]
+        return (
+          (selected?.selected.subject?.id === name || selected?.routeKey === name) &&
+          (!type || b.type === type) &&
+          (os === undefined || selected?.os === os)
+        )
+      })
     }
 
     function rowForTerminal(id: string, platformId: string, kind: "term" | "lib" | "mux"): TerminalRow | null {
       const term = terminals[id]
       if (!term) return null
 
-      const app = findBackend(id, kind === "mux" ? "mux" : "term")
+      const app =
+        findBackend(id, kind === "mux" ? "mux" : "term", platformId) ?? findBackend(id, kind === "mux" ? "mux" : "term")
       const parserName = term.headlessBackends?.find((b) => findBackend(b, "lib"))
       const parser = parserName ? findBackend(parserName, "lib") : undefined
       const inherited = term.manifestBackend ? findBackend(term.manifestBackend) : undefined
