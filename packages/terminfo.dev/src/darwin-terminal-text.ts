@@ -43,6 +43,8 @@ import {
   type TerminalScrollbackReading,
   type TextSnapshotDiagnostic,
 } from "@terminfo/probe-defs"
+import { hex, isSingleCellCodePoint } from "./single-cell.ts"
+import { splitLogicalLine, splitLogicalRows } from "./logical-rows.ts"
 
 /** The two macOS terminals this arm can read, with the bundle name JXA addresses. */
 export const TERMINAL_TEXT_APPS = {
@@ -66,6 +68,9 @@ export interface TerminalCellGrid {
   /** Rows the snapshot carried above the visible screen and the read did not map. Zero for a
    * terminal that reports its screen alone. */
   readonly droppedLines: number
+  /** How many returned logical lines had to be split into rows, when the app returned logical
+   * lines that wrapped (30729 AC3b). Absent when the rows came back as rows. */
+  readonly splitLineCount?: number
 }
 
 export type TerminalTextRead =
@@ -252,27 +257,7 @@ export function classifyOsascriptFailure(reply: OsascriptReply, app: TerminalTex
  * and never a range. The charset rows carry ASCII flank controls, so a glyph that filled two cells
  * would shift its flank and fail the row loudly instead of passing.
  */
-export const NAMED_SINGLE_CELL_GLYPHS = [
-  { codePoint: 0x00e9, name: "é, the UTF-8 sample cell" },
-  { codePoint: 0x2500, name: "─ horizontal line, DEC Special Graphics q" },
-  { codePoint: 0x2502, name: "│ vertical line, DEC Special Graphics x" },
-  { codePoint: 0x250c, name: "┌ upper-left corner, DEC Special Graphics l" },
-  { codePoint: 0x2510, name: "┐ upper-right corner, DEC Special Graphics k" },
-  { codePoint: 0x2514, name: "└ lower-left corner, DEC Special Graphics m" },
-  { codePoint: 0x2518, name: "┘ lower-right corner, DEC Special Graphics j" },
-] as const
-
-const NAMED_SINGLE_CELL_CODES: ReadonlySet<number> = new Set(NAMED_SINGLE_CELL_GLYPHS.map(({ codePoint }) => codePoint))
-
-/** True for the only code points this read maps to exactly one cell: printable ASCII and the named
- * glyphs above. Anything else — combining marks, wide characters, East Asian ambiguous characters,
- * control characters — has a cell width a text snapshot cannot name, and the mapping refuses rather
- * than guesses. */
-export function isSingleCellCodePoint(codePoint: number): boolean {
-  return (codePoint >= 0x20 && codePoint <= 0x7e) || NAMED_SINGLE_CELL_CODES.has(codePoint)
-}
-
-const hex = (codePoint: number): string => `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`
+export { NAMED_SINGLE_CELL_GLYPHS, isSingleCellCodePoint } from "./single-cell.ts"
 
 /**
  * Map the read's rows onto cols x rows cells, or refuse BY NAME where the mapping cannot be exact.
@@ -454,6 +439,23 @@ function parseSnapshotDiagnostic(value: unknown, rowBound: number): TextSnapshot
   }
 }
 
+/**
+ * The reply's raw `contents`, held only long enough to try a split. It is deliberately NOT copied
+ * into the diagnostic or the run record: the refusal still carries the typed record alone (30729).
+ */
+function rawReplyText(diagnostic: unknown): string | undefined {
+  if (typeof diagnostic !== "object" || diagnostic === null) return undefined
+  const contents = (diagnostic as Record<string, unknown>).contents
+  return typeof contents === "string" ? contents : undefined
+}
+
+/** The reply's logical lines, with the single trailing terminator removed exactly as the script did. */
+function rawReplyLines(text: string, terminatorRemoved: boolean): readonly string[] {
+  const lines = text.split(/\r?\n/)
+  if (terminatorRemoved && lines.length > 0 && lines[lines.length - 1] === "") lines.pop()
+  return lines
+}
+
 type SnapshotReply =
   | {
       readonly status: "refused"
@@ -468,6 +470,9 @@ type SnapshotReply =
       readonly appRows: number
       readonly droppedLines: number
       readonly history?: string
+      /** Set only when the rows were rebuilt from the terminal's LOGICAL lines, with how many lines
+       * had to be split. A read of the screen's own rows leaves it absent. */
+      readonly splitLineCount?: number
     }
 
 /** One owned-session script run and its reply checks, shared by the screen and history reads. */
@@ -502,9 +507,27 @@ function readSnapshotReply(options: TerminalTextReadOptions, history: boolean): 
     // A short screen is the refusal this diagnostic explains (33512); the measured screen plus a
     // margin is the bound, so an app that overstated its own grid cannot grow the record.
     const diagnostic = parseSnapshotDiagnostic(parsed.diagnostic, options.rows + DIAGNOSTIC_ROW_MARGIN)
+    // Terminal.app returns LOGICAL lines, so a short screen can be rows that wrapped (30729 AC3b).
+    // The split is attempted on the reply's held text, and that text never leaves this function: the
+    // refusal below carries the typed record, never the screen.
+    const held = rawReplyText(parsed.diagnostic)
+    const lines = held === undefined ? undefined : rawReplyLines(held, diagnostic?.terminatorRemoved === true)
+    const split = lines === undefined ? undefined : splitLogicalRows(lines, options.cols, options.rows)
+    if (split !== undefined && "rows" in split) {
+      return {
+        status: "read",
+        lines: split.rows,
+        appCols: diagnostic?.appCols ?? options.cols,
+        appRows: diagnostic?.appRows ?? options.rows,
+        droppedLines: 0,
+        splitLineCount: split.splitLineCount,
+      }
+    }
+    const detail = split === undefined ? undefined : split.reason
+    const refused = detail === undefined ? reason : `${reason}, and ${detail}`
     return diagnostic === undefined
-      ? { status: "refused", reason, diagnosticDropped: 1 }
-      : { status: "refused", reason, diagnostic }
+      ? { status: "refused", reason: refused, diagnosticDropped: 1 }
+      : { status: "refused", reason: refused, diagnostic }
   }
   if (parsed.status !== "read" || !("lines" in parsed)) {
     return { status: "refused", reason: `${label} returned an unrecognised snapshot` }
@@ -548,7 +571,11 @@ export function readTerminalTextSnapshot(options: TerminalTextReadOptions): Term
   if (snapshot.status === "refused") return snapshot
   const cells = mapSnapshotToCells(snapshot.lines, snapshot.appCols, snapshot.appRows, snapshot.droppedLines)
   if (typeof cells === "string") return { status: "refused", reason: cells }
-  return { status: "read", app: options.app, cells }
+  return {
+    status: "read",
+    app: options.app,
+    cells: snapshot.splitLineCount === undefined ? cells : { ...cells, splitLineCount: snapshot.splitLineCount },
+  }
 }
 
 export type TerminalHistoryRead =
@@ -586,24 +613,42 @@ export function readTerminalAppHistory(options: Omit<TerminalTextReadOptions, "a
   if (raw.length > 0 && raw[raw.length - 1] === "") raw.pop()
   const historyLines = trimTrailingEmpty(raw)
   const screen = trimTrailingEmpty(snapshot.lines)
-  const wrapped = [...historyLines, ...screen].find((line) => line.length > options.cols)
-  if (wrapped !== undefined) {
+  // History lines are not padded to full width, so only a line longer than the grid can have
+  // wrapped; a line at or under it is one row and passes through unchanged. A line that did wrap is
+  // split by the same splitter the screen read uses, never by a second set of rules (30729).
+  const rowsOf = (lines: readonly string[]): readonly string[] | { readonly reason: string } => {
+    const rebuilt: string[] = []
+    for (const [index, line] of lines.entries()) {
+      if ([...line].length <= options.cols) {
+        rebuilt.push(line)
+        continue
+      }
+      const pieces = splitLogicalLine(line, options.cols, index + 1)
+      if ("reason" in pieces) return pieces
+      rebuilt.push(...pieces)
+    }
+    return rebuilt
+  }
+  const historyRows = rowsOf(historyLines)
+  const screenRows = rowsOf(screen)
+  if ("reason" in historyRows || "reason" in screenRows) {
+    const wrapped = [...historyLines, ...screen].find((line) => [...line].length > options.cols) ?? ""
     return {
       status: "refused",
-      reason: `${label} history holds a line of ${String(wrapped.length)} characters on a ${String(options.cols)}-column grid, so it wrapped and its lines are not rows`,
+      reason: `${label} history holds a line of ${String([...wrapped].length)} characters on a ${String(options.cols)}-column grid, so it wrapped and its lines are not rows`,
     }
   }
-  const tail = historyLines.slice(historyLines.length - screen.length)
-  if (screen.length > historyLines.length || tail.some((line, index) => line !== screen[index])) {
+  const tail = historyRows.slice(historyRows.length - screenRows.length)
+  if (screenRows.length > historyRows.length || tail.some((line, index) => line !== screenRows[index])) {
     return {
       status: "refused",
-      reason: `${label} history does not end with the screen's ${String(screen.length)} lines, so its count cannot be placed above this screen`,
+      reason: `${label} history does not end with the screen's ${String(screenRows.length)} lines, so its count cannot be placed above this screen`,
     }
   }
   return {
     status: "read",
     historyLines,
-    reading: { totalLines: historyLines.length - screen.length + options.rows, screenLines: options.rows },
+    reading: { totalLines: historyRows.length - screenRows.length + options.rows, screenLines: options.rows },
   }
 }
 

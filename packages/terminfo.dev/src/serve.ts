@@ -223,6 +223,12 @@ export function textCellsFrame(
             droppedLines: textGrid.droppedLines,
             carriedHistory: textGrid.droppedLines > 0,
             paddedRows: textGrid.paddedRows,
+            // The app returned LOGICAL lines and this read rebuilt the rows from them (30729 AC3b):
+            // named in the trace so an evidence reader knows the rows were reconstructed, and how
+            // many lines had to be split, without re-deriving either from the retained text.
+            ...(textGrid.splitLineCount === undefined
+              ? {}
+              : { reconstructedFromLogicalLines: true, splitLineCount: textGrid.splitLineCount }),
           }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),
     },

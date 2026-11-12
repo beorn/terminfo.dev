@@ -27,6 +27,8 @@ import {
 } from "./darwin-terminal-text.ts"
 import { ScrollbackReadingUnavailable } from "@terminfo/probe-defs"
 
+const ascii = (length: number, character = "x"): string => character.repeat(length)
+
 const reply = (overrides: Partial<OsascriptReply>): OsascriptReply => ({
   stdout: "",
   stderr: "",
@@ -722,7 +724,8 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     })
     expect(read).toEqual({
       status: "refused",
-      reason: "iTerm2 returned 0 rows where the measured screen has 1",
+      reason:
+        "iTerm2 returned 0 rows where the measured screen has 1, and its 1 logical lines are 11 rows where the measured screen has 1",
       diagnostic: {
         tty: "/dev/ttys007",
         appCols: 3,
@@ -735,6 +738,82 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
       },
     })
     expect(JSON.stringify(read)).not.toContain("raw-screen-text-no-reader-may-see")
+  })
+
+  // 30729 AC3b: Terminal.app's contents() returns LOGICAL lines, so a 30-row screen can report 29.
+  // Where every line is a whole number of rows and they add up to the measured screen, the rows are
+  // rebuilt through the one splitter; the reply's text still never reaches the record.
+  it("rebuilds a short screen from logical lines that wrapped, instead of refusing it", () => {
+    const read = readTerminalTextSnapshot({
+      app: "terminal-app",
+      tty: "/dev/ttys003",
+      cols: 120,
+      rows: 2,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "Terminal.app returned 1 rows where the measured screen has 2",
+            diagnostic: {
+              contents: `${ascii(120, "a")}${ascii(120, "b")}\n`,
+              tty: "/dev/ttys003",
+              appCols: 120,
+              appRows: 2,
+              splitRows: 2,
+              terminatorRemoved: true,
+              rowsAfterPop: 1,
+              lineLengths: [240],
+            },
+          }),
+        }),
+    })
+    expect(read).toEqual({
+      status: "read",
+      app: "terminal-app",
+      cells: {
+        cols: 120,
+        rows: 2,
+        text: [ascii(120, "a"), ascii(120, "b")],
+        paddedRows: [],
+        droppedLines: 0,
+        splitLineCount: 1,
+      },
+    })
+    expect(JSON.stringify(read)).not.toContain(ascii(240, "a"))
+  })
+
+  it("keeps the short-screen refusal, with the split's own reason, where a line cannot be split", () => {
+    const read = readTerminalTextSnapshot({
+      app: "terminal-app",
+      tty: "/dev/ttys003",
+      cols: 120,
+      rows: 2,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "Terminal.app returned 1 rows where the measured screen has 2",
+            diagnostic: {
+              contents: `${ascii(121)}\n`,
+              tty: "/dev/ttys003",
+              appCols: 120,
+              appRows: 2,
+              splitRows: 2,
+              terminatorRemoved: true,
+              rowsAfterPop: 1,
+              lineLengths: [121],
+            },
+          }),
+        }),
+    })
+    expect(read.status).toBe("refused")
+    if (read.status === "refused") {
+      expect(read.reason).toMatch(
+        /returned 1 rows where the measured screen has 2, and line 1 is 121 cells over 120 columns/u,
+      )
+      expect(read.diagnostic?.lineLengths).toEqual([121])
+    }
+    expect(JSON.stringify(read)).not.toContain(ascii(121))
   })
 
   // A partial record would read as a measured zero, so the whole diagnostic is dropped and the drop
@@ -924,6 +1003,20 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
       status: "read",
       historyLines: ["a", "b", "c", "d", "e"],
       reading: { totalLines: 2 + 4, screenLines: 4 },
+    })
+  })
+
+  // 30729: a wrapped history line is split by the same splitter the screen read uses, so history
+  // lines stay rows for both readers rather than each keeping its own rule.
+  it("splits a wrapped history line with the screen read's own splitter", () => {
+    const model = terminalModel(4, 20)
+    model.write(`${"x".repeat(40)}\r\n`)
+    const read = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
+    // 40 cells on 20 columns fills two of the screen's four rows; the count is still the screen's.
+    expect(read).toEqual({
+      status: "read",
+      historyLines: ["x".repeat(40)],
+      reading: { totalLines: 4, screenLines: 4 },
     })
   })
 

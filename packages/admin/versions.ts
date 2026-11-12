@@ -60,6 +60,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/darwin-capture.ts",
   "packages/terminfo.dev/src/darwin-kernel-exec.ts",
   "packages/terminfo.dev/src/darwin-terminal-text.ts",
+  "packages/terminfo.dev/src/single-cell.ts",
+  "packages/terminfo.dev/src/logical-rows.ts",
   "packages/terminfo.dev/src/iterm2-protocol.ts",
   "packages/terminfo.dev/src/iterm2-api.proto",
   "bun.lock",
