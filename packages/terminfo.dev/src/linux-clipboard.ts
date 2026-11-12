@@ -48,12 +48,23 @@ interface ClipboardReceipt {
 }
 
 export interface ClipboardTraceEvent {
-  kind: "clipboard-read" | "clipboard-write" | "clipboard-restore" | "clipboard-verify" | "clipboard-key"
+  kind:
+    | "clipboard-read"
+    | "clipboard-write"
+    | "clipboard-restore"
+    | "clipboard-verify"
+    | "clipboard-key"
+    | "clipboard-owner-exit"
   at: string
   sha256?: string
   length?: number
   status?: "error"
   helperPid?: number
+  /** clipboard-owner-exit: the helper's exit code and signal, as Node reported them when it exited (33003). */
+  exitCode?: number | null
+  signal?: string | null
+  /** clipboard-owner-exit: false when the helper is not our child, so only its absence was seen, at `at`. */
+  exitObserved?: boolean
   /** clipboard-key: the keysym pressed and released through XTEST. */
   key?: string
   /** clipboard-key: the focused window read back before the press. */
@@ -96,6 +107,72 @@ export interface LinuxClipboardAdapter {
 }
 
 type Trace = (event: ClipboardTraceEvent) => void
+
+/** How a selection helper ended: Node's exit code and signal, and when (33003, @cto 67370e55). */
+export interface ClipboardHelperExit {
+  readonly code: number | null
+  readonly signal: string | null
+  readonly at: string
+}
+
+/** Whether the helper that should be serving a selection's baseline is still running. */
+export type ClipboardOwnerState =
+  | { readonly helperPid: number; readonly alive: true }
+  | { readonly helperPid: number; readonly alive: false; readonly exit?: ClipboardHelperExit }
+
+/**
+ * Which helper serves each selection, and how each of our helpers ended (33003). The receipt's helper serves
+ * until one of our writers acquires the selection; a helper we displaced ourselves is no longer the owner, so
+ * its exit is recorded and never reported. `state` writes one clipboard-owner-exit event per dead owner.
+ */
+export function createClipboardOwnership<S extends string>(
+  initial: Partial<Record<S, number>>,
+  externalAlive: (pid: number) => boolean,
+) {
+  const owners = new Map<S, number>(Object.entries(initial) as [S, number][])
+  const ours = new Set<number>()
+  const exits = new Map<number, ClipboardHelperExit>()
+  const reported = new Set<number>()
+  return {
+    spawned(pid: number): void {
+      ours.add(pid)
+    },
+    exited(pid: number, code: number | null, signal: string | null): void {
+      exits.set(pid, { code, signal, at: new Date().toISOString() })
+    },
+    acquired(selection: S, pid: number): void {
+      owners.set(selection, pid)
+    },
+    state(selection: S, trace: Trace): ClipboardOwnerState | undefined {
+      const helperPid = owners.get(selection)
+      if (helperPid === undefined) return undefined
+      const exit = exits.get(helperPid)
+      if (!exit && (ours.has(helperPid) || externalAlive(helperPid))) return { helperPid, alive: true }
+      if (!reported.has(helperPid)) {
+        reported.add(helperPid)
+        trace({
+          kind: "clipboard-owner-exit",
+          at: exit?.at ?? new Date().toISOString(),
+          helperPid,
+          ...(exit ? { exitCode: exit.code, signal: exit.signal } : { exitObserved: false }),
+        })
+      }
+      return { helperPid, alive: false, ...(exit && { exit }) }
+    },
+  }
+}
+
+function describeOwnerExit(owner: Extract<ClipboardOwnerState, { alive: false }>): string {
+  return owner.exit
+    ? `exited at ${owner.exit.at} (code ${owner.exit.code}, signal ${owner.exit.signal ?? "none"})`
+    : "is gone (not our child, so its exit code and signal are unknown)"
+}
+
+/** The pre-flight's stray read, by digest and length; a zero length says so in words (@cto 67370e55). */
+function describeRead(text: string): string {
+  const length = Buffer.byteLength(text)
+  return `read sha256 ${digest(text)} length ${length}${length === 0 ? ", empty read (no owner or empty owner)" : ""}`
+}
 
 /** /proc/uptime counts centiseconds: a read of t means the clock is in [t, t + 10 ms). */
 const UPTIME_RESOLUTION_MS = 10
@@ -159,6 +236,11 @@ export function createClipboardTransaction(
     writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
     /** X selection fixtures: the real key event the OSC 52 write probes call first (#33145). */
     realKeyEvent?(trace: Trace, verify: () => Promise<void>): Promise<void>
+    /**
+     * The helper that should be serving the baseline (33003). Read by the pre-flight only: inside a callback the
+     * terminal taking the selection is the measurement, so a displaced helper there is expected.
+     */
+    owner?(trace: Trace): ClipboardOwnerState | undefined
   },
   options?: {
     readonly writeDeadlineMs?: number
@@ -178,8 +260,21 @@ export function createClipboardTransaction(
     let muxSnapshot: { readonly tmuxSetClipboard?: string; readonly buffers: readonly string[] } | undefined
     try {
       await verify()
-      if ((await io.readText(trace, "clipboard-read", verify)) !== baseline) {
-        throw new Error("Owned clipboard baseline changed before callback")
+      const owner = io.owner?.(trace)
+      if (owner && !owner.alive) {
+        const read = await io.readText(trace, "clipboard-read", verify).then(describeRead, (error: unknown) => {
+          return `read failed: ${error instanceof Error ? error.message : String(error)}`
+        })
+        throw new Error(
+          `Owned clipboard helper ${owner.helperPid} ${describeOwnerExit(owner)} before callback; ${read}`,
+        )
+      }
+      const read = await io.readText(trace, "clipboard-read", verify)
+      if (read !== baseline) {
+        throw new Error(
+          `Owned clipboard baseline changed before callback: ${describeRead(read)}` +
+            (owner ? `; owner helper ${owner.helperPid} alive` : ""),
+        )
       }
       if (options?.muxState) {
         muxSnapshot = await options.muxState.snapshot()
@@ -242,6 +337,17 @@ function ownedReceipt(path: string): string {
     throw new Error("Clipboard receipt is not an owned non-writable-by-others file")
   }
   return path
+}
+
+/** True only when the kernel has no such process (ENOENT); any other read failure is raised, never read as gone. */
+function processGone(pid: number): boolean {
+  try {
+    readFileSync(`/proc/${pid}/status`, "utf8")
+    return false
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true
+    throw error
+  }
 }
 
 function processExecutable(pid: number): string {
@@ -785,6 +891,10 @@ export async function createLinuxClipboardAdapter(
     throw new Error("Owned PRIMARY selection helper executable differs from receipt")
   }
   const children = new Set<ChildProcess>()
+  const ownership = createClipboardOwnership<Selection>(
+    { clipboard: receipt.selection.helperPid, ...(primaryReceipt && { primary: primaryReceipt.helperPid }) },
+    (pid) => !processGone(pid) && processExecutable(pid) === helperExe,
+  )
   const log = (trace: Trace, kind: ClipboardTraceEvent["kind"], text: string, helperPid?: number) =>
     trace({
       kind,
@@ -837,17 +947,25 @@ export async function createLinuxClipboardAdapter(
       childError = error
     })
     children.add(child)
-    child.once("exit", () => children.delete(child))
-    if (!child.pid) {
+    child.once("exit", (code, signal) => {
+      children.delete(child)
+      if (child.pid) ownership.exited(child.pid, code, signal)
+    })
+    const pid = child.pid
+    if (!pid) {
       trace({ kind, at, status: "error" })
       throw new Error("Owned xclip writer failed to start")
     }
+    ownership.spawned(pid)
     child.stdin.end(text)
-    log(trace, kind, text, child.pid)
+    log(trace, kind, text, pid)
     for (let attempt = 0; attempt < 30; attempt++) {
       if (childError) throw childError
       try {
-        if ((await readText(trace, "clipboard-read", verify, selection)) === text) return
+        if ((await readText(trace, "clipboard-read", verify, selection)) === text) {
+          ownership.acquired(selection, pid)
+          return
+        }
       } catch (error) {
         if (attempt === 29) throw error
       }
@@ -868,6 +986,7 @@ export async function createLinuxClipboardAdapter(
     createClipboardTransaction(primaryBaseline, {
       readText: (trace, kind, verify) => readText(trace, kind, verify, "primary"),
       writeText: (text, trace, kind, verify) => writeText(text, trace, kind, verify, "primary"),
+      owner: (trace) => ownership.state("primary", trace),
     })
   const tmuxTarget = receipt.target?.kind === "mux" && receipt.target.mux === "tmux" ? receipt.target : undefined
   const listTmuxBuffers = async (target: MuxReceiptTarget): Promise<string[]> => {
@@ -888,6 +1007,7 @@ export async function createLinuxClipboardAdapter(
     {
       readText,
       writeText,
+      owner: (trace) => ownership.state("clipboard", trace),
       realKeyEvent: (trace, verify) =>
         pressRealKey(receipt.terminal.windowId, (file, args) => command(file, args, env), xServerTimeMs, trace, verify),
     },
