@@ -1004,7 +1004,9 @@ export async function runProbeBatch(
         imageSubject?.kind === "term" &&
         imageSubject.os === "linux" &&
         ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
-          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10")))
+          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10") ||
+          (imageSubject.id === "ghostty" && imageSubject.version === "1.4.0") ||
+          (imageSubject.id === "alacritty" && imageSubject.version === "0.17.0")))
     const captureEligible =
       pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
     if (capture && captureEligible) {

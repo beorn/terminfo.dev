@@ -1646,14 +1646,15 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
   const capture = ctx.capture
   const input = ctx.input
   const move = input?.injectMove?.bind(input)
-  const readInput = ctx.readInput
   const coordinates = geometry
     ? { x: Math.floor(geometry.textWidth / 2), y: Math.floor(geometry.textHeight / 2) }
     : undefined
+  // The Linux window is about textWidth plus padding wide on a 1920x1080 Xvfb screen
+  // (scripts/linux-container-run.sh), so this point is off the owned window but still on the screen.
+  const outside = geometry ? { x: geometry.textWidth + 400, y: geometry.textHeight + 300 } : undefined
   const controls: {
     mouseModes: Array<{ mode: number; reading: string | null }>
     visibility?: string | null
-    key?: string[] | null
   } = { mouseModes: [] }
   const state = () => ({ frames, geometry, coordinates, controls })
   const pending = (reason: string, invalid = false): ProbeCallbackResult => ({
@@ -1661,8 +1662,8 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
     response: JSON.stringify(state()),
     tests: [{ id: "criterion", status: invalid ? "probe-invalid" : "probe-todo", reason }],
   })
-  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !readInput || !coordinates) {
-    return pending(`${id}: owned pointer pixels, motion, raw key input and measured geometry are required`)
+  if (!capture || ctx.captureKind === "text-cells" || !input || !move || !coordinates || !outside) {
+    return pending(`${id}: owned pointer pixels, motion and measured geometry are required`)
   }
   // DECRQM's unknown means this App does not recognize that mode. Silence cannot establish OFF.
   for (const mode of [9, 1000, 1001, 1002, 1003]) {
@@ -1707,13 +1708,15 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
       )
       if (stable.refusal) return stable.refusal
       baseline = stable.second.pixelsDigest
-      const key = await readInput(/^a$/, 1000, () => input.injectKey("a"))
-      controls.key = key
-      if (key?.[0] !== "a") return pending(`${id}: injected key was not consumed by the owned raw input`, true)
-      const hidden = await shoot("keypress hides pointer")
+      // The control depends on no terminal setting: a pointer outside the owned window leaves its pixels.
+      // Without that change a crosshair no-change proves nothing, so the result stays Open.
+      await move(outside.x, outside.y)
+      const away = await shoot("pointer outside the owned window")
       await position()
       const shown = await shoot("motion restores pointer")
-      if (hidden.pixelsDigest === baseline) return pending(`${id}: keypress did not qualify pointer sensitivity`)
+      if (away.pixelsDigest === baseline) {
+        return pending(`${id}: moving the pointer off the window did not change the capture`)
+      }
       if (shown.pixelsDigest !== baseline) {
         return pending(`${id}: motion did not restore the initial pointer image`, true)
       }
@@ -1745,7 +1748,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
             assertionType: "screenshot",
             kind: supported ? "positive" : "negative",
             expected:
-              "OSC22 crosshair changes the pointer after independent keypress/motion and made-up-name controls, with exact restoration",
+              "OSC22 crosshair changes the pointer after an off-window pointer move and made-up-name controls, with exact restoration",
             observed: JSON.stringify(state()),
           },
         ],

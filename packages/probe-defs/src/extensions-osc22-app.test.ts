@@ -160,50 +160,49 @@ test("an unexpected selected shape is inconclusive rather than a target negative
   expect(input.selected()).toBe("0")
 })
 
-// @failure Pointer images are graded without a baseline before OSC22, independent hide/show,
+// @failure Pointer images are graded without a baseline before OSC22, an off-window pointer control,
 // an inert made-up name, or exact restoration. Logical-query fixtures cannot observe these effects.
 // @level l1
 // @consumer Generic OSC22 App image callback -> existing owned capture/input fixtures.
 function pointerImages(fault = "none") {
+  const faults = new Set(fault.split("+"))
   const { source } = terminal("0", "initial-silent")
-  let shape = fault === "nondefault" ? "override" : "baseline"
-  let hidden = false
+  let shape = faults.has("nondefault") ? "override" : "baseline"
+  let away = false
   const events: string[] = []
   const modes = new Map([9, 25, 1000, 1001, 1002, 1003].map((mode) => [mode, mode === 25]))
+  const textWidth = 640
+  const textHeight = 384
   source.captureKind = "pixels"
   source.captureGeometry = {
     source: "measured by complete raster calibration",
-    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth, textHeight },
   }
   source.queryMode = async (mode) => (modes.get(mode) ? "set" : "reset")
   source.write = (text) => {
     events.push(text)
     const mode = /^\x1b\[\?(\d+)([hl])$/.exec(text)
     if (mode) modes.set(Number(mode[1]), mode[2] === "h")
-    if (text === "\x1b]22;crosshair\x07" && fault !== "target-disabled") shape = "crosshair"
-    if (text === "\x1b]22;xterm\x07" && fault !== "restore-disabled") shape = "baseline"
-    if (text === "\x1b]22;terminfo-unknown-shape\x07" && fault === "unknown-changes") shape = "unexpected"
+    if (text === "\x1b]22;crosshair\x07" && !faults.has("target-disabled")) shape = "crosshair"
+    if (text === "\x1b]22;xterm\x07" && !faults.has("restore-disabled")) shape = "baseline"
+    if (text === "\x1b]22;terminfo-unknown-shape\x07" && faults.has("unknown-changes")) shape = "unexpected"
   }
+  // No raw key input: the off-window control depends on no terminal setting.
   source.input = {
     injectClick: async () => {
       throw new Error("No click belongs to the pointer-image recipe")
     },
-    injectKey: async (key) => {
-      expect(key).toBe("a")
-      events.push("key:a")
-      hidden = fault !== "control-disabled"
+    injectKey: async () => {
+      throw new Error("No key belongs to the pointer-image recipe")
     },
     injectMove: async (x, y) => {
       events.push(`move:${x},${y}`)
-      if (fault !== "motion-disabled") hidden = false
+      if (x >= textWidth || y >= textHeight) away = !faults.has("control-disabled")
+      else if (!faults.has("motion-disabled")) away = false
     },
   }
-  source.readInput = async (_pattern, _timeout, inject) => {
-    await inject?.()
-    return ["a"]
-  }
   source.capture = async ({ role, label }) => {
-    const pixels = hidden ? "hidden" : shape
+    const pixels = away ? "away" : shape
     events.push(`image:${pixels}`)
     const ref = `sha256:${Buffer.from(pixels).toString("hex").padEnd(64, "0")}`
     return { kind: "pixels", role, label, capturedAt: events.length, ref, sourceRef: ref, pixelsDigest: ref }
@@ -211,25 +210,57 @@ function pointerImages(fault = "none") {
   return { source, events, modes }
 }
 
+// 32593: a qualified off-window control lets the crosshair decide both ways, pixel-compared with the baseline.
 test.each([
   { fault: "none", outcome: "supported" },
   { fault: "target-disabled", outcome: "unsupported" },
-])("OSC22 images decide $outcome only after independent controls", async ({ fault, outcome }) => {
+])("OSC22 images decide $outcome only after the off-window control", async ({ fault, outcome }) => {
   const input = pointerImages(fault)
   const result = await definition().term!(input.source)
   expect(result.observation?.outcome).toBe(outcome)
   expect(result.observation?.assertionType).toBe("screenshot")
+  expect(result.assertions?.[0]?.expected).toContain("off-window pointer move")
   expect(result.observation?.frames?.some((frame) => frame.role === "target")).toBe(true)
   expect(input.events.indexOf("image:baseline")).toBeLessThan(
     input.events.findIndex((event) => event.startsWith("\x1b]22;")),
   )
-  expect(input.events).toContain("image:hidden")
+  expect(input.events).toContain("image:away")
   expect(input.events).toContain("\x1b]22;terminfo-unknown-shape\x07")
   expect(input.events).not.toContain("\x1b]22;?__current__\x07")
   expect(input.events.filter((event) => event.startsWith("image:")).at(-1)).toBe("image:baseline")
   expect(input.modes.get(25)).toBe(true)
   for (const mode of [9, 1000, 1001, 1002, 1003]) expect(input.modes.get(mode)).toBe(false)
 })
+
+// 32593: the control's move lands outside the measured text area, between the baseline and the control frame.
+test("the OSC22 image control moves the pointer outside the owned text area", async () => {
+  const input = pointerImages()
+  await definition().term!(input.source)
+  const awayMove = input.events.indexOf("move:1040,684")
+  expect(awayMove).toBeGreaterThan(input.events.indexOf("image:baseline"))
+  expect(input.events[awayMove + 1]).toBe("image:away")
+  expect(input.events.filter((event) => event.startsWith("move:1040,"))).toHaveLength(1)
+})
+
+// 32593: no off-window change means the capture is unqualified, so the result is Open, never Unsupported,
+// even when the crosshair frame also equals the baseline.
+test.each(["control-disabled", "control-disabled+target-disabled"])(
+  "an off-window frame equal to the baseline (%s) stays open",
+  async (fault) => {
+    const input = pointerImages(fault)
+    const result = await definition().term!(input.source)
+    expect(result.tests).toEqual([
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: "extensions.osc22-pointer: moving the pointer off the window did not change the capture",
+      },
+    ])
+    expect(result.observation?.outcome).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(input.events).not.toContain("\x1b]22;crosshair\x07")
+  },
+)
 
 test.each(["unknown-changes", "restore-disabled", "nondefault"])(
   "OSC22 image contradiction %s is invalid and never a grade",
@@ -246,10 +277,11 @@ test.each(["unknown-changes", "restore-disabled", "nondefault"])(
   },
 )
 
+// An unqualified control or a motion that fails to restore the pointer never grades, and restores state.
 test.each(["control-disabled", "motion-disabled"])("OSC22 image control %s cannot decide a grade", async (fault) => {
   const input = pointerImages(fault)
   const result = await definition().term!(input.source)
-  expect(input.events).toContain("key:a")
+  expect(input.events).toContain("move:1040,684")
   if (typeof result.response !== "string") throw new Error("Unqualified pointer images must retain their response")
   const response = JSON.parse(result.response) as { frames: Array<{ label: string }> }
   expect(response.frames.at(-1)?.label).toContain("restored second")
