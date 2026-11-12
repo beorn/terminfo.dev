@@ -961,7 +961,12 @@ function controlTargetMatcher(spec: {
             if (line === controlLine) continue
             if (line === spec.target.line) {
               target = match.index
-              return { commands: { control, target }, start: control, end: match.index + match[0].length, unknown: named(unknown) }
+              return {
+                commands: { control, target },
+                start: control,
+                end: match.index + match[0].length,
+                unknown: named(unknown),
+              }
             }
             unknown.push(line)
           }
