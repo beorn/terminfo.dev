@@ -1837,6 +1837,124 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
+// @failure RIS leaves the next callback using a prior origin, refusal, or overwritten calibration evidence.
+// Initial/finish tests never reset between rows; use the real runner and its existing source observer.
+// @level l1
+// @consumer runProbeBatch -> next native callback and retained calibration traces.
+it.each([
+  { name: "RIS renews geometry", sequence: "\x1bc", initialRefusal: false, renewalRefusal: false },
+  {
+    name: "RIS renewal refuses without stale geometry",
+    sequence: "\x1bc",
+    initialRefusal: false,
+    renewalRefusal: true,
+  },
+  { name: "RIS renews after an initial refusal", sequence: "\x1bc", initialRefusal: true, renewalRefusal: false },
+  {
+    name: "DECSTR preserves the existing calibration",
+    sequence: "\x1b[!p",
+    initialRefusal: false,
+    renewalRefusal: false,
+  },
+])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal }) => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris", "reset.decaln"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const initial = {
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+    source: "measured by complete raster calibration" as const,
+  }
+  const renewed = { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
+  const order: string[] = []
+  const observedWrites: string[] = []
+  const handedSources: TermProbeSource[] = []
+  const resets = sequence === "\x1bc"
+  let preparations = 0
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const [index, definition] of definitions.entries()) {
+      delete definition.termNeedsGeometry
+      definition.termWrites = "query"
+      definition.term = async (source) => {
+        order.push(`callback:${index}`)
+        handedSources.push(source)
+        if (index === 0) source.write(sequence)
+        return {
+          pass: false,
+          tests: [
+            { id: "criterion", status: "probe-todo", reason: "Lifecycle fixture does not measure terminal support" },
+          ],
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      onWrite: (text) => observedWrites.push(text),
+      prepareCapture: async ({ source, featureId, recordCapture }) => {
+        preparations++
+        order.push(`prepare:${preparations}`)
+        expect(source.captureGeometry).toBeUndefined()
+        expect(source.captureGeometryRefusal).toBeUndefined()
+        source.write(`calibration:${preparations}`)
+        recordCapture({
+          frame: { role: "control", ref: `sha256:${String(preparations).repeat(64)}`, capturedAt: preparations },
+          trace: { captureCommand: "fixture-capture" },
+        })
+        expect(featureId).toBe(
+          preparations === 1 ? "collector.captureCalibration" : "collector.captureCalibration.renewal.1",
+        )
+        if (preparations === 1 ? initialRefusal : renewalRefusal) {
+          throw Object.assign(new Error(preparations === 1 ? "initial refused" : "renewal refused"), {
+            name: "CaptureCalibrationRefused",
+          })
+        }
+        source.captureGeometry = preparations === 1 ? initial : renewed
+      },
+      finishCapture: async ({ featureId, recordCapture }) => {
+        order.push("finish")
+        expect(featureId).toBe("collector.textQualification")
+        recordCapture({
+          frame: { role: "control", ref: `sha256:${"f".repeat(64)}`, capturedAt: 3 },
+          trace: { captureCommand: "fixture-finish" },
+        })
+      },
+    })
+    expect(handedSources[1]?.captureGeometry).toEqual(resets ? (renewalRefusal ? undefined : renewed) : initial)
+    expect(handedSources[1]?.captureGeometryRefusal).toBe(resets && renewalRefusal ? "renewal refused" : undefined)
+    expect(order).toEqual(
+      resets
+        ? ["prepare:1", "callback:0", "prepare:2", "callback:1", "finish"]
+        : ["prepare:1", "callback:0", "callback:1", "finish"],
+    )
+    expect(observedWrites.filter((text) => text === sequence)).toEqual([sequence])
+    expect(handedSources[0]?.captureGeometry).toEqual(initialRefusal ? undefined : initial)
+    expect(handedSources[0]?.captureGeometryRefusal).toBe(initialRefusal ? "initial refused" : undefined)
+    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+      writes: ["calibration:1"],
+      ...(initialRefusal ? { refusal: "initial refused" } : {}),
+      captures: [{ frame: { ref: `sha256:${"1".repeat(64)}` } }],
+    })
+    if (resets) {
+      expect(JSON.parse(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]!)).toMatchObject({
+        writes: ["calibration:2"],
+        ...(renewalRefusal ? { refusal: "renewal refused" } : {}),
+        captures: [{ frame: { ref: `sha256:${"2".repeat(64)}` } }],
+      })
+    } else expect(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]).toBeUndefined()
+    expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
+      captures: [{ frame: { ref: `sha256:${"f".repeat(64)}` } }],
+    })
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
 type CapturePreparation = NonNullable<NonNullable<Parameters<typeof runProbeBatch>[0]>["prepareCapture"]>
 
 it.each([undefined, "after-probes"] as const)(
