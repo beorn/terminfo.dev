@@ -154,7 +154,7 @@ describe("macOS input on an owned host", () => {
         'case "$1" in',
         '  windows) printf \'[{"id":33,"x":40,"y":40,"width":700,"height":400}]\\n\' ;;',
         '  front) printf \'frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
-        '  key) printf \'posted=key route=pid front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        '  key) printf \'posted=key route=pid frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
         "esac",
         "",
       ].join("\n"),
@@ -182,11 +182,15 @@ describe("macOS input on an owned host", () => {
       await expect(input.injectClick(1)).rejects.toThrow(/not posted on an owned host/)
       const calls = readFileSync(argv, "utf8").trim().split("\n")
       // Every key names the pid and the run's own window; the refused click never reaches a mouse verb.
-      expect(calls.filter((call) => call.startsWith("key "))).toEqual(["key 4242 33 z", "key 4242 33 a"])
+      // The run's tab tty rides on every key, so the helper proves the selected tab in the same call.
+      expect(calls.filter((call) => call.startsWith("key "))).toEqual([
+        "key 4242 33 z /dev/ttys004",
+        "key 4242 33 a /dev/ttys004",
+      ])
       expect(calls.filter((call) => call.startsWith("mouse"))).toEqual([])
       expect(logged.filter((line) => line.startsWith("posted="))).toEqual([
-        "posted=key route=pid front-window=true key=true pid=4242 window=33",
-        "posted=key route=pid front-window=true key=true pid=4242 window=33",
+        "posted=key route=pid frontmost=true front-window=true key=true pid=4242 window=33",
+        "posted=key route=pid frontmost=true front-window=true key=true pid=4242 window=33",
       ])
       expect(logged).not.toContain('[{"id":33,"x":40,"y":40,"width":700,"height":400}]')
       expect(facts[0]).toMatch(/^darwin input installed \(owned host: keys to pid only\): pid 4242, window 33,/)
@@ -197,31 +201,13 @@ describe("macOS input on an owned host", () => {
 })
 
 describe("macOS input on an owned host: tab and helper", () => {
-  it("posts no key while another tab of the run's window is selected", async () => {
-    const fake = fakeInputMechanism()
-    const selected = ["/dev/ttys004", "/dev/ttys009"]
-    const input = await createDarwinInput(
-      options({
-        mechanism: fake.mechanism,
-        windowId: 33,
-        windowTty: "/dev/ttys004",
-        ownedHost: true,
-        readSelectedTabTty: async (windowId) => {
-          expect(windowId).toBe(33)
-          return `${selected.shift() ?? "/dev/ttys004"}\n`
-        },
-        selfTest: async (inject) => {
-          await inject()
-          return DARWIN_INPUT_SELF_TEST_KEYSYM
-        },
-      }),
+  it("refuses an owned host install without the run's own window id and tab tty", async () => {
+    await expect(createDarwinInput(options({ ownedHost: true, windowId: 33 }))).rejects.toThrow(
+      /owned host needs the run's own window id and tab tty/,
     )
-    await expect(input.injectKey("a")).rejects.toThrow(
-      /selected tab of window 33 is "\/dev\/ttys009", not the run's own tab \/dev\/ttys004/,
+    await expect(createDarwinInput(options({ ownedHost: true, windowTty: "/dev/ttys004" }))).rejects.toThrow(
+      /owned host needs the run's own window id and tab tty/,
     )
-    expect(fake.calls.filter((call) => call.op === "key").map((call) => call.args[0])).toEqual([
-      DARWIN_INPUT_SELF_TEST_KEYSYM,
-    ])
   })
 
   it("builds the helper from source, and refuses a preset helper binary", () => {

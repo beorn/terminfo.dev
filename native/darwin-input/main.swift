@@ -9,10 +9,11 @@
 // this file, on a fleet host or on a person's Mac.
 //
 // Keys are posted to the measured app's pid only (CGEvent.postToPid), never to the HID or session
-// tap, so a synthetic key never reaches another app; inside the app it reaches the key window's
-// selected tab, which the collector checks against the run's own tab before each post on an owned
-// host. Each key post first proves, in the same call, that the run's own window is the app's front
-// layer-0 window AND its key window (@cto
+// tap. What each key post proves, in the same call and immediately before the post: the process (the
+// app is frontmost), the window (the run's own window is the app's front layer-0 window AND its key
+// window) and, when a tab tty is given, the selected tab (Terminal's selected tab of that window has
+// the run's own tty, read by Apple events to Terminal). A key can still reach whatever that tab runs;
+// nothing here proves more than those three facts at post time (@cto 75732b9d,
 // 60e39dfc, 33587: codimac's console has other people's apps open). Mouse and wheel events still use
 // the HID tap; they land by screen position, and the collector never posts them on an owned host. A
 // posting the app ignores is not detectable here: the collector installs this helper only after one
@@ -253,6 +254,11 @@ func serialize(_ rows: [[String: Int]]) -> String {
 /// otherwise a posting lands in another window and its silence would be read as terminal behaviour.
 /// Returns the proof line; refuses by name otherwise.
 func requireKeyWindow(_ pid: pid_t, _ target: Int) -> String {
+    if frontmostPid() != pid {
+        let front = NSWorkspace.shared.frontmostApplication
+        let frontName = front?.bundleIdentifier ?? front?.localizedName ?? "pid \(front?.processIdentifier ?? 0)"
+        fail("pid \(pid) is not the frontmost application at post time; frontmost is \(frontName)")
+    }
     // CGWindowListCopyWindowInfo is front-to-back, so the first layer-0 window this pid owns is
     // the one a keystroke reaches. A posting into any other window is silence, not a reading.
     let front = windowRows(pid).first?["id"]
@@ -281,7 +287,30 @@ func requireKeyWindow(_ pid: pid_t, _ target: Int) -> String {
             "the accessibility layer reports the key window at \(describe(keyFrame)), so a posting would land " +
             "in another window and its silence would be read as terminal behaviour")
     }
-    return "front-window=true key=true pid=\(pid) window=\(target)"
+    return "frontmost=true front-window=true key=true pid=\(pid) window=\(target)"
+}
+
+/// Terminal's selected tab of the run's window must be the run's own tab: the window proof does not
+/// cover tabs, and a key posted while another tab is selected reaches that tab's shell. Read by Apple
+/// events to Terminal only (@cto 615cf90b, 75732b9d); refuses by name on any other answer.
+func requireSelectedTab(_ target: Int, _ tty: String) -> String {
+    let source = "tell application \"Terminal\" to get tty of selected tab of window id \(target)"
+    guard let script = NSAppleScript(source: source) else {
+        fail("the selected-tab query for window \(target) did not compile")
+    }
+    var error: NSDictionary?
+    let result = script.executeAndReturnError(&error)
+    if let error {
+        fail("the selected tab of window \(target) could not be read through Apple events to Terminal: \(error)")
+    }
+    guard let selected = result.stringValue, !selected.isEmpty else {
+        fail("Terminal named no tty for the selected tab of window \(target)")
+    }
+    if selected != tty {
+        fail("the selected tab of window \(target) is \(selected), not the run's own tab \(tty), so the key " +
+            "would reach another tab's shell")
+    }
+    return "tab=\(tty)"
 }
 
 func windowId(_ raw: String, _ verb: String) -> Int {
@@ -308,8 +337,7 @@ case "front":
     let pid = processId(arguments[2])
     activate(pid)
     if arguments.count == 4 {
-        // activate() has just proven the app frontmost; the key-window proof adds the window.
-        out("frontmost=true \(requireKeyWindow(pid, windowId(arguments[3], "front")))")
+        out(requireKeyWindow(pid, windowId(arguments[3], "front")))
     } else {
         out("frontmost=true pid=\(pid)")
     }
@@ -318,15 +346,19 @@ case "windows":
     let pid = processId(arguments[2])
     out(serialize(windowRows(pid)))
 case "key":
-    guard arguments.count == 5 else { fail("usage: darwin-input-helper key <pid> <window-id> <keysym>") }
+    guard arguments.count == 5 || arguments.count == 6 else {
+        fail("usage: darwin-input-helper key <pid> <window-id> <keysym> [tab-tty]")
+    }
     requireTrust()
     let pid = processId(arguments[2])
-    // The key-window proof and the post share one process call, so no other window can take focus
-    // between a separate check and the post.
-    let proof = requireKeyWindow(pid, windowId(arguments[3], "key"))
+    let target = windowId(arguments[3], "key")
     let posted = keysym(arguments[4])
+    // The process, window and tab proofs and the post share one process call, so nothing can take
+    // focus between a separate check and the post.
+    let proof = requireKeyWindow(pid, target)
+    let tab = arguments.count == 6 ? " \(requireSelectedTab(target, arguments[5]))" : ""
     postKey(posted, to: pid)
-    out("posted=key route=pid \(proof) code=\(posted.keyCode) unicode=\(posted.unicode.count)")
+    out("posted=key route=pid \(proof)\(tab) code=\(posted.keyCode) unicode=\(posted.unicode.count)")
 case "mouse":
     guard arguments.count >= 4 else { fail("usage: darwin-input-helper mouse <move|press|release|click> ...") }
     requireTrust()

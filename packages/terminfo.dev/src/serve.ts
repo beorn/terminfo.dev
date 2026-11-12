@@ -69,7 +69,7 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
-import { command, retain } from "./capture-core.ts"
+import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
@@ -77,7 +77,6 @@ import {
   createDarwinInput,
   DARWIN_INPUT_HELPER_ENV,
   ownedHostHelperPath,
-  type DarwinLaunchTarget,
 } from "./darwin-input.ts"
 import {
   createOwnedTerminal,
@@ -843,39 +842,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     /**
-     * The window this run launched, from its own launch receipt in the capture directory. The
-     * adapter targets that window instead of the app's largest one: run 43106790420 named window 33
-     * on /dev/ttys001 while another Terminal window was open, so "largest" can be the wrong window.
-     */
-    const launchedWindowTarget = (): DarwinLaunchTarget | undefined => {
-      if (!captureDirectory) return undefined
-      // The launcher writes the receipt beside its artifact directory, and retired layouts write it
-      // inside it; both are checked, and absence is not a refusal (a run without a launch receipt
-      // keeps the largest-window behaviour).
-      const receipt = [
-        join(dirname(captureDirectory), "terminal-launch.json"),
-        join(captureDirectory, "terminal-launch.json"),
-      ].find((candidate) => existsSync(candidate))
-      if (!receipt) return undefined
-      try {
-        const parsed: unknown = JSON.parse(readFileSync(receipt, "utf8"))
-        const window = (parsed as { terminalWindow?: { windowId?: unknown; tty?: unknown } }).terminalWindow
-        if (!window || typeof window.windowId !== "number" || !Number.isSafeInteger(window.windowId)) return undefined
-        return {
-          windowId: window.windowId,
-          ...(typeof window.tty === "string" ? { windowTty: window.tty } : {}),
-        }
-      } catch (error) {
-        out.write(`input not installed: the launch receipt ${receipt} could not be read (${String(error)})\n`)
-        return undefined
-      }
-    }
-    /**
      * Bind OS-level injection to the owned app window (#33574). A missing helper, a missing
      * Accessibility grant or a key that does not come back through the app's own TTY names the
      * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
      */
-    const installDarwinInput = async (terminal: OwnedTerminal, owned?: { windowId: number; windowTty: string }) => {
+    const installDarwinInput = async (terminal: OwnedTerminal, owned: { windowId: number; windowTty: string }) => {
       const refuse = (reason: string) => {
         inputInstallFact = `refused: ${reason}`
         out.write(`input not installed: ${reason}\n`)
@@ -890,30 +861,23 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       try {
         // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
-        // from the staged source; a hosted runner keeps its job-built helper and refuses when unset.
-        const preset = process.env[DARWIN_INPUT_HELPER_ENV]
-        const helperPath = owned
-          ? ownedHostHelperPath(preset, () =>
-              buildDarwinInputHelper(join(SOURCE_ROOT, "native", "darwin-input", "main.swift")),
-            )
-          : preset
+        // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
+        const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
+          if (!captureDirectory) {
+            throw new Error("macOS input on an owned host builds its helper in the run directory, and this run has none")
+          }
+          return buildDarwinInputHelper(
+            join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
+            join(dirname(captureDirectory), "darwin-input-helper"),
+          )
+        })
         input = await createDarwinInput({
           appPid,
           appName: terminal.hostedAppId ?? kind ?? "macOS app",
           helperPath,
-          // The owner assertion names the run's own window and tab; a hosted run reads its launch receipt.
-          ...(owned ?? launchedWindowTarget()),
-          ...(owned && {
-            ownedHost: true,
-            // Apple events to Terminal only (@cto 615cf90b): the selected tab's tty, read before each key.
-            readSelectedTabTty: async (windowId: number) =>
-              (
-                await command("/usr/bin/osascript", [
-                  "-e",
-                  `tell application "Terminal" to get tty of selected tab of window id ${String(windowId)}`,
-                ])
-              ).toString(),
-          }),
+          // The owner assertion names the run's own window and tab.
+          ...owned,
+          ownedHost: true,
           log: (line) => process.stderr.write(`collector.input ${line}\n`),
           selfTest: async (inject) => {
             // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
@@ -939,7 +903,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      if (kind === "darwinHosted") await installDarwinInput(terminal)
+      // Hosted runners install no input in this head (@cto 75732b9d P2-3): only the owned Terminal.app
+      // arm does, with the owned-host limits.
       // Hosted iTerm2 and Terminal.app use pixels; Kitty keeps its qualified text route.
       // Without retention, still name the missing directory through the existing text adapter.
       const textFirst =

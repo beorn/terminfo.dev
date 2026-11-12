@@ -13,15 +13,14 @@ import { createHash } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 /**
- * These darwinHosted and terminalApp arms run against a fake macOS runtime with no compiled helper
- * and, where the fake names none, no app pid, so the input adapter refuses by name on every
- * collection and says so on stderr - collector.log - exactly as a real run without either does
- * (#33574, 33587). Those lines are claimed facts, not noise: this keeps each arm's stderr assertion
- * loud by naming the only lines it may carry, so any other line still fails.
+ * The owned terminalApp arms run against a fake macOS runtime with no compiled helper and, where the
+ * fake names none, no app pid, so the input adapter refuses by name on every collection and says so
+ * on stderr - collector.log - exactly as a real run without either does (#33574, 33587). Those lines
+ * are claimed facts, not noise: this keeps each arm's stderr assertion loud by naming the only lines
+ * it may carry, so any other line still fails. Hosted arms install no input in this head.
  */
 const INPUT_INSTALL_REFUSALS = new Set([
   "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset and no helper path was given",
-  "collector.inputInstall refused: the verified darwinHosted terminal has no measured app PID",
   "collector.inputInstall refused: the verified terminalApp terminal has no measured app PID",
 ])
 
@@ -1749,6 +1748,8 @@ describe("private finite daemon startup", () => {
           "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset",
         )
       }
+      // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line.
+      if (arm !== "terminalApp") expect(result.stderr).not.toContain("collector.inputInstall")
       if (!retained) {
         expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
         expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)

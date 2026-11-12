@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 
 import type { InputFixture } from "@terminfo/probe-defs"
@@ -12,12 +11,11 @@ export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
 
 /**
  * Compile the helper with the host's own swiftc, for an owned Mac that has no job step to build it
- * (33587), into a fresh private directory removed when the collector exits. A build failure refuses
- * by name with the compiler's own output; nothing is retried.
+ * (33587), into a fresh directory of this run that is kept as evidence (@cto 75732b9d). An existing
+ * directory or a build failure refuses by name with the compiler's own output; nothing is retried.
  */
-export function buildDarwinInputHelper(source: string): string {
-  const outputDirectory = mkdtempSync(join(tmpdir(), "terminfo-darwin-input-"))
-  process.once("exit", () => rmSync(outputDirectory, { recursive: true, force: true }))
+export function buildDarwinInputHelper(source: string, outputDirectory: string): string {
+  mkdirSync(outputDirectory)
   const helper = join(outputDirectory, "darwin-input-helper")
   try {
     execFileSync("/usr/bin/swiftc", ["-O", "-o", helper, source], {
@@ -109,12 +107,6 @@ export interface DarwinInputOptions {
    * run's own TTY only the two fixed self-test keys may be posted (@cto 60e39dfc a, c, d).
    */
   readonly ownedHost?: boolean
-  /**
-   * On an owned host, the tty of the selected tab of window `windowId`: the window proof does not
-   * cover tabs, so each key is posted only while the run's own tab (windowTty) is the selected one
-   * (33587 review P2-2).
-   */
-  readonly readSelectedTabTty?: (windowId: number) => Promise<string>
   /** Test seam: the platform operations, in place of the built helper. */
   readonly mechanism?: InputMechanism
 }
@@ -175,11 +167,7 @@ const SELF_TEST_KEYS: readonly string[] = [DARWIN_INPUT_SELF_TEST_KEYSYM, DARWIN
  * not pid, so they are refused; and a key is posted before delivery is proven only when it is one of
  * the fixed self-test keys, so nothing that could act elsewhere is typed first.
  */
-export function ownedHostMechanism(
-  mechanism: InputMechanism,
-  delivered: () => boolean,
-  beforeKey?: () => Promise<void>,
-): InputMechanism {
+export function ownedHostMechanism(mechanism: InputMechanism, delivered: () => boolean): InputMechanism {
   const pointer = (what: string): never => {
     throw new Error(
       `macOS ${what} is not posted on an owned host: pointer events land by screen position, not by pid, ` +
@@ -200,7 +188,6 @@ export function ownedHostMechanism(
             "posted until one comes back through the run's own TTY (@cto 60e39dfc c)",
         )
       }
-      await beforeKey?.()
       await mechanism.key(keys)
     },
   }
@@ -215,7 +202,7 @@ export function ownedHostMechanism(
 function helperMechanism(
   helperPath: string,
   appPid: number,
-  target: { windowId?: number; windowTty?: string },
+  target: { windowId?: number; windowTty?: string; tabTty?: string },
   log?: (line: string) => void,
 ): InputMechanism {
   const run = async (...args: string[]): Promise<string> => {
@@ -256,9 +243,10 @@ function helperMechanism(
       await run("mouse", "release", String(button))
     },
     async key(keys: string) {
-      // The helper re-proves the key window for this window id in the same call as the post.
+      // The helper re-proves the frontmost app, the key window and (with a tab tty) the selected tab
+      // in the same call as the post.
       const windowId = target.windowId ?? (await ownedFrame()).id
-      await run("key", String(appPid), String(windowId), keys)
+      await run("key", String(appPid), String(windowId), keys, ...(target.tabTty === undefined ? [] : [target.tabTty]))
     },
   }
 }
@@ -270,6 +258,12 @@ function helperMechanism(
  */
 export async function createDarwinInput(options: DarwinInputOptions): Promise<InputFixture> {
   requireAppPid(options.appPid)
+  if (options.ownedHost && (options.windowId === undefined || options.windowTty === undefined)) {
+    throw new Error(
+      "macOS input on an owned host needs the run's own window id and tab tty, so every key can prove the " +
+        "selected tab is the run's (@cto 75732b9d)",
+    )
+  }
   let mechanism = options.mechanism
   if (!mechanism) {
     if (!options.helperPath) {
@@ -289,27 +283,13 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
       {
         ...(options.windowId === undefined ? {} : { windowId: options.windowId }),
         windowTty: options.windowTty,
+        ...(options.ownedHost && options.windowTty !== undefined && { tabTty: options.windowTty }),
       },
       options.log,
     )
   }
   let proven = false
-  if (options.ownedHost) {
-    const { readSelectedTabTty, windowId, windowTty } = options
-    const beforeKey =
-      readSelectedTabTty && windowId !== undefined && windowTty !== undefined
-        ? async () => {
-            const selected = (await readSelectedTabTty(windowId)).trim()
-            if (selected !== windowTty) {
-              throw new Error(
-                `macOS key not posted: the selected tab of window ${windowId} is ${JSON.stringify(selected)}, not the ` +
-                  `run's own tab ${windowTty}, so the key would reach another tab's shell`,
-              )
-            }
-          }
-        : undefined
-    mechanism = ownedHostMechanism(mechanism, () => proven, beforeKey)
-  }
+  if (options.ownedHost) mechanism = ownedHostMechanism(mechanism, () => proven)
   const input = createInjectedInput(mechanism, "CGEvent")
   const delivered = (echoed: string | null): boolean =>
     echoed !== null && echoed.includes(DARWIN_INPUT_SELF_TEST_KEYSYM)
