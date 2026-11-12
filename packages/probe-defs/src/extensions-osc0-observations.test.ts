@@ -158,6 +158,31 @@ test("App OSC 0 with an owned title read still decides supported when the icon r
   expect(title).toBe("incoming App title")
 })
 
+// #30559: "sentinel" also covers bytes the terminal did say ahead of the DA1 answer. A reply the label
+// pattern cannot read is not an answer we may call missing, so that shape keeps the old refusal.
+test("App OSC 0 keeps the refusal when a reply precedes the fence but does not match the label pattern", async () => {
+  let title = "incoming App title"
+  const source = Object.assign(terminal({}), {
+    readTitle: async () => title,
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[2]!
+    },
+    queryWithSentinelOutcome: async () => ({
+      raw: "\x1b]lsome-title-form\x07\x1b[?1;2c",
+      rawBase64: "",
+      match: null,
+      reason: "sentinel" as const,
+      sentinel: { atMs: 1, graceMs: 250 },
+    }),
+  })
+  const result = await termCallback()(source)
+  expect(result.notTested).toBeUndefined()
+  expect(result.note).toBe("no complete OSC 0 target reply: icon label (CSI 20 t): sentinel")
+  expect(result.tests?.[0]?.status).toBe("probe-invalid")
+  expect(title).toBe("incoming App title")
+})
+
 test("OSC 0 declares qualified library state evidence and application query evidence", () => {
   const definition = find()
   expect(definition.termAssertionType).toBe("query_reply")

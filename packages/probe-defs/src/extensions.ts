@@ -7586,7 +7586,13 @@ const extensionDefinitions: ProbeDefinition[] = [
                 const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
                 state.icon = icon.raw
                 const iconLabel = icon.match?.[1] ?? null
-                if (iconLabel === null) {
+                // "sentinel" also covers bytes that arrived ahead of the DA1 answer without matching
+                // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
+                // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
+                // because "got no answer" would be false for it.
+                const silent =
+                  icon.reason === "timeout" || sentinelSilenceResult(icon, "OSC 0 icon-label reply") !== null
+                if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
                   // is not a failure of this probe, so the icon half stays an explicit unknown
