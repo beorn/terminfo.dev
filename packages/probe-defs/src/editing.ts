@@ -20,6 +20,7 @@ import {
   sentinelSilenceResult,
   unmeasuredCellResult,
   completeFramePair,
+  notTestedResult,
 } from "./helpers.ts"
 
 // DECRQCRA's checksum must be arithmetic over the requested cells. An absolute sum is not portable
@@ -758,6 +759,18 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             },
           }
         }
+        // ONE capture of the arm's own inverse control, shared by both branches that need to know
+        // whether this run's pixel reader can see an attribute change at all. Written exactly as the
+        // earlier branch always wrote it, so the control is the same control wherever it is asked for.
+        const captureVisibilityControl = async () => {
+          ctx.write(DECSACE_PAINT + "\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m")
+          return capture({
+            role: "control",
+            label: "editing.decsace: SGR inverse visibility control",
+            cells,
+            pixelGeometry: reported.geometry,
+          })
+        }
         try {
           // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
           // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
@@ -832,14 +845,13 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             })),
           })
           if (cropRefusal) return cropRefusal
+          // The arm's inverse control is captured at most ONCE per run. The all-equal branch below can
+          // fall through to the equal-extents branch when its control is blind, and a second capture
+          // there would add a duplicate control frame to the observation and a duplicate read to the
+          // run. One control, reused, answers both branches.
+          let visibilityControl: Awaited<ReturnType<typeof captureVisibilityControl>> | undefined
           if (measured[0] === measured[1] && measured[0] === measured[2]) {
-            ctx.write(DECSACE_PAINT + "\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m")
-            const visibilityControl = await capture({
-              role: "control",
-              label: "editing.decsace: SGR inverse visibility control",
-              cells,
-              pixelGeometry: reported.geometry,
-            })
+            visibilityControl ??= await captureVisibilityControl()
             const controlRefusal = captureEligibilityRefusal([visibilityControl])
             if (controlRefusal) return controlRefusal
             const controlCropRefusal = cropPositionRefusal({
@@ -868,21 +880,45 @@ const editingProbeDefinitions: ProbeDefinition[] = [
                 { ...evidence, visibilityControl },
               )
             }
-            frames.push(visibilityControl)
           }
           if (measured[1] === measured[2]) {
-            return {
-              pass: false,
+            // One frame for both extents says the extents are indistinguishable HERE, but not WHY. The
+            // arm's own inverse control answers that and is captured AFTER the three frames above, so
+            // it changes none of them: if it moves the cells, this run's pixel reader can see an
+            // attribute change and the finding is about the terminal; if it does not, the capture
+            // cannot see attributes at all and nothing has been measured.
+            visibilityControl ??= await captureVisibilityControl()
+            const controlRefusal = captureEligibilityRefusal([visibilityControl])
+            if (controlRefusal) return controlRefusal
+            const controlCropRefusal = cropPositionRefusal({
+              id: "editing.decsace",
               response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: stream.ref,
-                frames,
-                note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
-              },
+              frames: [...frames, visibilityControl],
+              screenshotRef: visibilityControl.ref,
+              compared: [...allFrames, visibilityControl].map((frame) => ({
+                role: frame.label,
+                rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+              })),
+            })
+            if (controlCropRefusal) return controlCropRefusal
+            if (frameDigests(visibilityControl).cells !== measured[0]) {
+              return {
+                pass: false,
+                response: observed,
+                observation: {
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
+                  assertionType: "screenshot",
+                  screenshotRef: stream.ref,
+                  frames: [...frames, visibilityControl],
+                  note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter. The same-run SGR inverse control is visible, so this run's pixel reader can see an attribute change and the limit is the terminal's.",
+                },
+              }
             }
+            return notTestedResult(
+              "Both DECSACE extent modes left the same frame and the same-run SGR inverse control changed nothing, so this capture cannot see an attribute change; DECSACE is not measured here.",
+              { ...evidence, visibilityControl },
+            )
           }
           // A frame that did not move from the seed has measured no change at all, so an ignored
           // DECCARA and a digest that cannot see attributes are the same evidence.

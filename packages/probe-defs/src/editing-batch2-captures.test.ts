@@ -427,9 +427,15 @@ test.each(["visible", "blind", "text-cells"] as const)(
     }
     const result = await find("editing.decsace").term!(context)
     expect(frameWrites.at(-1)).toBe(`${seed}\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m`)
-    if (control !== "visible") {
+    if (control === "text-cells") {
       expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
       expect(result.notTested).toBeUndefined()
+    } else if (control === "blind") {
+      // @cto 2b0aff32: when this run's own inverse control changed nothing, the capture has measured
+      // nothing, so the cell is NOT MEASURED rather than failed — and it is never filled from source.
+      expect(result.pass).toBe(false)
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+      expect(String(result.notTested?.noObservable)).toMatch(/cannot see an attribute change/u)
     } else {
       expect(result.tests).toEqual([
         {
@@ -449,6 +455,41 @@ test.each(["visible", "blind", "text-cells"] as const)(
     }
   },
 )
+
+// The branch that reports one frame for both extents must say WHICH limit it hit, using the arm's
+// own inverse control instead of leaving a reader to infer it: a visible control proves the capture
+// can see attributes, so the finding is about the terminal; a blind one proves the capture cannot,
+// so nothing is measured here.
+test("editing.decsace attaches the inverse control when both extents leave one frame", async () => {
+  const { context } = decsaceCaptureSource(["decsace-noop"])
+  const result = await find("editing.decsace").term!(context)
+  const frames = (result.observation?.frames ?? []) as ObservationFrame[]
+  expect(frames.map((frame) => frame.label)).toEqual([
+    "editing.decsace: seed stability 2",
+    "editing.decsace: DECSACE 2 rectangle frame",
+    "editing.decsace: DECSACE 0 stream frame",
+    "editing.decsace: SGR inverse visibility control",
+  ])
+  const digests = frames.map((frame) => frame.regionDigest)
+  expect(digests[1]).toBe(digests[2])
+  expect(digests[0]).not.toBe(digests[1])
+  expect(digests[3]).not.toBe(digests[0])
+  expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
+})
+
+test("editing.decsace reports nothing measured when the inverse control is blind too", async () => {
+  const { context, frameWrites, seed } = decsaceCaptureSource(["decsace-noop", "inverse-noop"])
+  const result = await find("editing.decsace").term!(context)
+  expect(result.pass).toBe(false)
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(String(result.notTested?.noObservable)).toMatch(/cannot see an attribute change/u)
+  // This case runs BOTH branches — the all-equal one sees a blind control and falls through to the
+  // equal-extents one — so it is the only row that can catch a second capture of the same control.
+  expect(frameWrites).toHaveLength(5)
+  expect(frameWrites.at(-1)).toBe(`${seed}\x1b[1;1H\x1b[7mabcdefgh\x1b[2;1Hijklmnop\x1b[0m`)
+  const evidence = JSON.parse(String(result.response)) as { visibilityControl?: ObservationFrame }
+  expect(evidence.visibilityControl?.label).toBe("editing.decsace: SGR inverse visibility control")
+})
 
 test("editing.decsace restores the cursor when a capture throws", async () => {
   const { context, writes } = decsaceCaptureSource()
@@ -650,7 +691,10 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
     },
     {
       name: "equal extents",
-      build: counted(() => `sha256:${"f".repeat(64)}`),
+      // Reads 1-2 are the seed pair, 3-4 the two extents and 5 the arm's own inverse control. The
+      // extents must agree with EACH OTHER while the seed differs, or the all-equal no-setup branch
+      // answers first; the control must move, or the row is NOT MEASURED (@cto 2b0aff32).
+      build: counted((reads) => `sha256:${(reads <= 2 ? "a" : reads <= 4 ? "b" : "c").repeat(64)}`),
       outcome: "inconclusive",
       note: "Both DECSACE extent modes left the same frame",
     },
@@ -721,7 +765,8 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   const evidence = JSON.parse(String(result.response)) as { digests: string[] }
   expect(evidence.digests[0]).not.toBe(evidence.digests[1])
   expect(evidence.digests[1]).toBe(evidence.digests[2])
-  expect(frameWrites).toHaveLength(4)
+  // Five captures: the seed pair, the two extents, and the inverse control the finding now carries.
+  expect(frameWrites).toHaveLength(5)
 })
 
 /**
@@ -736,24 +781,32 @@ test("editing.decsace compares measured digests, not retained artifact refs", as
   context.capture = async ({ role, label }) => {
     reads += 1
     // Three DIFFERENT artifact refs over ONE measured screen: the encoded bytes differ, the
-    // measurement does not.
+    // measurement does not. The fifth read is the arm's inverse control, which must move — otherwise
+    // the row is NOT MEASURED and this arm never reaches the ref-versus-digest comparison.
+    const digest = `sha256:${(reads === 5 ? "e" : "f").repeat(64)}`
     return {
       role,
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
-      regionDigest: `sha256:${"f".repeat(64)}`,
-      pixelsDigest: `sha256:${"f".repeat(64)}`,
+      regionDigest: digest,
+      pixelsDigest: digest,
       regionRectangle: DECSACE_RECTANGLE,
     }
   }
   const result = await find("editing.decsace").term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-  })
-  expect(String(result.observation?.note)).toContain("same frame")
+  // One measured screen behind three different refs was never read as a measured difference. Since
+  // the arm's own inverse control is captured here too (@cto 2b0aff32), the row is the declared
+  // no-setup one rather than the old inconclusive-by-name; the point this test pins is unchanged:
+  // differing artifact refs alone never produce a decided outcome.
+  expect(result.observation?.outcome ?? result.pass).toBe(false)
+  expect(result.tests).toEqual([
+    {
+      id: "declared-untestable",
+      status: "untestable",
+      reason: expect.stringMatching(/^Untestable \(no setup\): .*DECCARA/u),
+    },
+  ])
   expect(result.assertions).toBeUndefined()
 })
 
