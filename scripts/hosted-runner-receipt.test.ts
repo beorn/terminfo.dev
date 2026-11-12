@@ -15,6 +15,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { expect, test } from "vitest"
+import { MAC_ALACRITTY_LAUNCH_DEVIATION } from "../packages/run-parser/src/app-launch.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 test("the actual hosted producer self-parses measured bytes and refuses incomplete or changed handoffs", async () => {
@@ -74,6 +75,8 @@ const values = process.env.APP_ID === "iterm2"
   ? { CFBundleShortVersionString: "0.2026.10.14.08.27.01", CFBundleVersion: "0.2026.10.14.08.27.01", CFBundleExecutable: "stable" }
   : process.env.APP_ID === "cmux"
   ? { CFBundleShortVersionString: "0.65.2", CFBundleVersion: "111", CFBundleExecutable: "cmux" }
+  : process.env.APP_ID === "alacritty"
+  ? { CFBundleShortVersionString: "0.17.0", CFBundleVersion: "1", CFBundleExecutable: "alacritty" }
   : { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
 const value = values[process.argv[3]];
 if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
@@ -200,6 +203,46 @@ console.log(value);
       sourceArtifact: {
         path: weztermInstaller,
         sha256: createHash("sha256").update(weztermInstallerBytes).digest("hex"),
+      },
+    })
+    // 33601 (@cto e2ce2090, 5cffb5d6): Mac Alacritty launches with 1 px window padding, the one hosted
+    // Mac route off stock. The receipt carries the padded argv AND says so in launchDeviation; before
+    // this the parser copied only known keys, so a stated deviation could not reach the run record.
+    const alacrittyBundle = join(dir, "Alacritty.app")
+    await mkdir(join(alacrittyBundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(alacrittyBundle, "Contents", "Info.plist"), "fixture Alacritty plist\n")
+    const alacrittyExecutable = join(alacrittyBundle, "Contents", "MacOS", "alacritty")
+    const alacrittyExecutableBytes = "fixture-alacritty-executable\n"
+    await writeFile(alacrittyExecutable, alacrittyExecutableBytes, { mode: 0o755 })
+    const alacrittyInstaller = join(dir, "Alacritty.dmg")
+    const alacrittyInstallerBytes = "fixture-alacritty-installer\n"
+    await writeFile(alacrittyInstaller, alacrittyInstallerBytes)
+    env.APP_ID = "alacritty"
+    env.APP_BUNDLE = alacrittyBundle
+    const alacrittyArgv = [
+      alacrittyExecutable,
+      "-o",
+      "window.padding.x=1",
+      "-o",
+      "window.padding.y=1",
+      "-e",
+      "/bin/bash",
+      "/command",
+    ]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(alacrittyArgv))
+    const alacrittyReceipt = join(dir, "alacritty-host-measured.json")
+    await run("emit", start, alacrittyReceipt)
+    expect(parseDisposableReceipt(await readFile(alacrittyReceipt, "utf8")).appLaunch).toEqual({
+      argv: alacrittyArgv,
+      launchDeviation: MAC_ALACRITTY_LAUNCH_DEVIATION,
+      bundlePath: realpathSync(alacrittyBundle),
+      cfBundleShortVersionString: "0.17.0",
+      cfBundleVersion: "1",
+      executablePath: realpathSync(alacrittyExecutable),
+      executableSha256: createHash("sha256").update(alacrittyExecutableBytes).digest("hex"),
+      sourceArtifact: {
+        path: alacrittyInstaller,
+        sha256: createHash("sha256").update(alacrittyInstallerBytes).digest("hex"),
       },
     })
     // 30211: pinned apps bind the exact retained installer, never another app's valid cask archive.

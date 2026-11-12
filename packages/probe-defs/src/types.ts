@@ -583,6 +583,11 @@ export type AppLaunchReceipt =
        * reveals neither the value nor its reuse. Redaction precedes persistence; environment is never captured.
        */
       argv?: string[]
+      /**
+       * How this launch differs from the app's stock configuration, and why, in one plain sentence
+       * a reader of a published result can see (33601). Absent when the app ran as shipped.
+       */
+      launchDeviation?: string
       executablePath: string
       executableSha256: string
       sourceArtifact: AppSourceArtifact

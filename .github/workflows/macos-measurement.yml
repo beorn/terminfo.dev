@@ -504,7 +504,10 @@ jobs:
               nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
-              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH")
+              # 33601 (@cto e2ce2090, 5cffb5d6): 1 px padding per side keeps the grid off the window edge, which
+              # macOS shades, so pixel calibration measures cells; the grid keeps its cols x rows. The receipt
+              # records this deviation from stock in appLaunch.launchDeviation (app-launch.ts).
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -o window.padding.x=1 -o window.padding.y=1 -e /bin/bash "$COMMAND_PATH")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
               "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
               ;;
