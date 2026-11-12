@@ -715,6 +715,16 @@ test("a hole on an edge but away from a corner still refuses", async () => {
   await expect(run.promise).rejects.toThrow(/non-solid grid/)
 })
 
+// The mask is the solid stage's corner holes grown by one pixel, so a hole touching a fillet only
+// diagonally sits inside that reach. It must still refuse: the mask may only grow from holes the
+// corner staircase check already accepted, never absorb a neighbour into the tolerated region.
+test("a hole one pixel diagonally from a corner fillet is not absorbed by the mask", async () => {
+  const solid = filletCorners(rasterFrame("solid"))
+  solid.rgba.set([0, 0, 0, 255], (3 * 12 + 3) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/holes or separate patches cannot supply geometry/)
+})
+
 test("a leading line beside an already-full first stripe refuses as a fractional pitch", async () => {
   // The line counts in cell 1, so a full first stripe beside it would be one pixel too long.
   const run = calibration({
