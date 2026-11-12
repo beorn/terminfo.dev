@@ -1423,12 +1423,11 @@ export function withUnhandledSgrReport(
           ? `measured: library reported the code unhandled; ${reported.note}`
           : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
     const note = [result.note, reportNote].filter(Boolean).join("; ")
-    return {
-      ...selected,
-      note,
-      ...(selected.observation && { observation: { ...selected.observation, note } }),
-      ...(selected.notTested && { notTested: { ...selected.notTested, noObservable: note } }),
+    if (selected.notTested) {
+      return { ...selected, note, notTested: { ...selected.notTested, noObservable: note } }
     }
+    if (selected.observation) return { ...selected, note, observation: { ...selected.observation, note } }
+    return { ...selected, note }
   }
 }
 
