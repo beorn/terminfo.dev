@@ -41,7 +41,7 @@ export const PLACEHOLDER = /^(.)\1*$/
  * alacritty case adds `-o window.padding.x=1 -o window.padding.y=1`, and the receipt states it here.
  */
 export const MAC_ALACRITTY_LAUNCH_DEVIATION =
-  "window padding 1/1 instead of the stock 0, so the grid sits off the window edge macOS shades and pixel calibration measures cells; the grid keeps its columns and rows"
+  "window padding explicitly set to 1 px on both axes instead of stock 0, to move cells away from the macOS shaded window edge"
 
 /** Matches `alacritty <semver> (<rev>)` from `alacritty --version` stdout. */
 export const ALACRITTY_VERSION_PATTERN =

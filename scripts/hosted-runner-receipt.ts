@@ -556,8 +556,14 @@ async function main(): Promise<void> {
       throw new Error(`Hosted receipt cannot read transformed invocation handoff ${handoff}`, { cause })
     }
     if (!Array.isArray(argv)) throw new Error(`Hosted receipt invocation handoff ${handoff} must contain an array`)
-    // Mac Alacritty is the one route launched off stock (33601); its receipt says so in plain words.
-    const launchDeviation = os === "macOS" && appId === "alacritty" ? MAC_ALACRITTY_LAUNCH_DEVIATION : undefined
+    // Describe the approved GUI override only when this recorded invocation actually carries it.
+    const paddedAlacritty =
+      os === "macOS" &&
+      appId === "alacritty" &&
+      ["-o", "window.padding.x=1", "-o", "window.padding.y=1", "-e"].every(
+        (argument, index) => argv[index + 1] === argument,
+      )
+    const launchDeviation = paddedAlacritty ? MAC_ALACRITTY_LAUNCH_DEVIATION : undefined
     appLaunch = parseAppLaunchReceipt(
       { ...appLaunch, argv, ...(launchDeviation !== undefined && { launchDeviation }) },
       "collector",
