@@ -126,6 +126,38 @@ test.each([false, true])("App OSC 0 reads its title clause and restores it, effe
   expect(title).toBe("incoming App title")
 })
 
+test("App OSC 0 keeps the icon label an explicit unknown when the owned read proves the title and CSI 20 t is silent", async () => {
+  let title = "incoming App title"
+  const source = Object.assign(terminal({}), {
+    readTitle: async () => title,
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[2]!
+    },
+  })
+  const result = await termCallback()(source)
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.note).not.toContain("no complete OSC 0 target reply")
+  expect(result.note).toContain("the owned title read proved OSC 0 sets the window title")
+  expect(result.note).toContain("icon-label query (CSI 20 t) got no answer")
+  expect(result.observation).toBeUndefined()
+  expect(title).toBe("incoming App title")
+})
+
+test("App OSC 0 with an owned title read still decides supported when the icon report answers", async () => {
+  let title = "incoming App title"
+  const source = Object.assign(terminal(exactReplies), {
+    readTitle: async () => title,
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[2]!
+    },
+  })
+  const result = await termCallback()(source)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  expect(title).toBe("incoming App title")
+})
+
 test("OSC 0 declares qualified library state evidence and application query evidence", () => {
   const definition = find()
   expect(definition.termAssertionType).toBe("query_reply")

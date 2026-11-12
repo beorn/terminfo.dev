@@ -7574,16 +7574,28 @@ const extensionDefinitions: ProbeDefinition[] = [
               } else {
                 const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
                 state.icon = icon.raw
-                result = osc0IconTitleResult(
-                  icon.match?.[1] ?? null,
-                  state.title,
-                  { icon: icon.raw, title: state.title },
-                  { icon: icon.reason, title: "owned public title read" },
-                )
-                if (result.assertions) {
-                  result.assertions = result.assertions.map((assertion, index) =>
-                    index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                const iconLabel = icon.match?.[1] ?? null
+                if (iconLabel === null) {
+                  // The owned read has already proved the title clause. A terminal that answers DA1
+                  // yet stays silent on the icon-label report has limited what it will tell us; that
+                  // is not a failure of this probe, so the icon half stays an explicit unknown
+                  // instead of refusing the whole row.
+                  result = notTestedResult(
+                    `Open: the owned title read proved OSC 0 sets the window title, and the icon-label query (CSI 20 t) got no answer (${icon.reason}). With these readings, our test cannot tell whether OSC 0 also set an icon label.`,
+                    state,
                   )
+                } else {
+                  result = osc0IconTitleResult(
+                    iconLabel,
+                    state.title,
+                    { icon: icon.raw, title: state.title },
+                    { icon: icon.reason, title: "owned public title read" },
+                  )
+                  if (result.assertions) {
+                    result.assertions = result.assertions.map((assertion, index) =>
+                      index === 1 ? { ...assertion, assertionType: "buffer_state" as const } : assertion,
+                    )
+                  }
                 }
               }
             }
