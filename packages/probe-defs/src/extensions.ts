@@ -384,14 +384,17 @@ function osc5522AfterSiblings(
   const other = controls.filter((control) => control.outcome === "other").map(({ mode }) => mode)
   // A reporter that answers some modes but not the one under test has not told us anything about
   // 5522: its silence there decides nothing, and calling that a probe fault would blame the wrong
-  // party (@cto c0dbe6ff, shape 2). Same outcome class as the all-silent net above.
+  // party (@cto c0dbe6ff, shape 2). It is not a second declared-Untestable reason beside the
+  // all-silent net above: nothing the protocol could report went missing, the observer did. So this
+  // states what it measured and names the missing observer as PROBE TODO (@cpo/term 2ddb8d2a: keep
+  // existing Untestable reasons, add no new ones), the same class the OSC 0 unknown already uses.
   if (replier === "terminal" && silent.length > 0) {
     const unreadable =
       other.length === 0
         ? ""
-        : `; ${String(other.length)} of ${String(controls.length)} controls neither answered nor were measured silent (timeout or unreadable bytes: ${other.join(", ")}), so they say nothing`
-    return declaredUntestableResult(
-      `Untestable (no way to tell): mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls silent with the fence answered${unreadable}; this terminal's silence on 5522 decides nothing.`,
+        : `; ${String(other.length)} of ${String(controls.length)} controls neither answered nor were measured silent (timeout or unreadable bytes: ${other.join(", ")}) and say nothing`
+    return notTestedResult(
+      `OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered ${answered.length === 0 ? "nothing" : answered.join(", ")}; CSI ? 5522 $ p and ${String(silent.length)} of ${String(controls.length)} controls were a measured silence with the fence answered${unreadable}; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise.`,
       evidence,
     )
   }

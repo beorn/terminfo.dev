@@ -2578,21 +2578,22 @@ describe("Kitty protocol detection", () => {
   const everySiblingSilent =
     "Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes 7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031 all went unanswered, so this terminal has no report to read."
   // @cto c0dbe6ff (shape 2): a reporter that answers some modes and not 5522 has decided nothing
-  // about 5522, so that silence is Untestable through the same route rather than a probe fault.
+  // about 5522, so that silence is not a probe fault. @cpo/term 2ddb8d2a keeps existing Untestable
+  // reasons and adds no new ones: the partial-silence case names the missing observer as PROBE TODO.
   const oneSiblingSilent =
-    "Untestable (no way to tell): mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls silent with the fence answered; this terminal's silence on 5522 decides nothing."
+    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls were a measured silence with the fence answered; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
   // @dev/15 on d35467098: a control that timed out is not an answer, and the note may not say the
   // fence answered for it. The unreadable case is named for what it measured.
   const oneSiblingAnsweredOneTimedOut =
-    "Untestable (no way to tell): mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls silent with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004), so they say nothing; this terminal's silence on 5522 decides nothing."
+    "OSC 5522 was not read back: no probe in this run reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 12 of 14 controls were a measured silence with the fence answered; 1 of 14 controls neither answered nor were measured silent (timeout or unreadable bytes: 2004) and say nothing; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through 5522's read form or the OSC 52 read path, which needs clipboard-read permission this probe does not exercise."
   test.each([
     ["every sibling is silent", { 7: "silent" }, true, "untestable", 14, 0, everySiblingSilent],
-    ["one sibling answers", { 7: "reply" }, true, "untestable", 13, 0, oneSiblingSilent],
+    ["one sibling answers", { 7: "reply" }, true, "probe-todo", 13, 0, oneSiblingSilent],
     [
       "one sibling answers and one control times out",
       { 7: "reply", 2004: "timeout" },
       true,
-      "untestable",
+      "probe-todo",
       12,
       1,
       oneSiblingAnsweredOneTimedOut,
@@ -2629,7 +2630,8 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(result.tests?.[0]?.status).toBe(expected)
+      const status = result.tests?.[0]?.status ?? (result.notTested === undefined ? undefined : "probe-todo")
+      expect(status).toBe(expected)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(queries[0]).toBe("\x1b[?5522$p")
@@ -2639,10 +2641,15 @@ describe("Kitty protocol detection", () => {
         return
       }
       expect(queries[1]).toBe("\x1b[?7$p")
-      if (expected === "untestable") {
+      if (reason !== null) {
         expect(queries).toHaveLength(15)
-        expect(isDeclaredUntestable(result)).toBe(true)
-        expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason }])
+        if (expected === "untestable") {
+          expect(isDeclaredUntestable(result)).toBe(true)
+          expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason }])
+        } else {
+          expect(isDeclaredUntestable(result)).toBe(false)
+          expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: reason })
+        }
         const evidence = JSON.parse(result.response!) as {
           detection: string
           decrpmSiblings: { mode: number; raw: string; outcome: string }[]
