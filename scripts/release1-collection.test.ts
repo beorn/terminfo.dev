@@ -47,6 +47,7 @@ import {
 } from "@terminfo/probe-defs"
 import {
   assertHostedWindowCustody,
+  childExitWords,
   collectPass,
   ownedAppCommand,
   ownedAppRunsDirectory,
@@ -2138,5 +2139,18 @@ describe("assertHostedWindowCustody", () => {
     { route: "hosted-workflow", os: "windows", id: "windows-terminal" },
   ] as const)("leaves $id on $route/$os to its own custody", (context) => {
     expect(() => assertHostedWindowCustody(context, lacking, "run.json")).not.toThrow()
+  })
+})
+
+// 33872: a Linux launcher stood down by SIGTERM was reported as "exited null", which hid who stopped it.
+describe("a collection child's exit words", () => {
+  it("names the signal that ended a child, never its null status", () => {
+    const killed = spawnSync("sh", ["-c", "kill -TERM $$"])
+    expect(killed.status).toBeNull()
+    expect(childExitWords(killed)).toBe("was killed by SIGTERM")
+  })
+
+  it("names the status of a child that exited on its own", () => {
+    expect(childExitWords(spawnSync("sh", ["-c", "exit 3"]))).toBe("exited 3")
   })
 })

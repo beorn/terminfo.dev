@@ -1531,6 +1531,14 @@ function planLines(census: readonly CollectionContext[]): string[] {
 const labelOf = (entry: CollectionContext): string =>
   entry.kind === "lib" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
 
+/** How a child ended, naming the signal when one ended it: a signal leaves status null, and "exited null" hides who stopped it (33872). */
+export function childExitWords(result: {
+  readonly status: number | null
+  readonly signal: NodeJS.Signals | null
+}): string {
+  return result.signal === null ? `exited ${String(result.status)}` : `was killed by ${result.signal}`
+}
+
 function runChild(
   argv: readonly string[],
   label: string,
@@ -1550,7 +1558,7 @@ function runChild(
     })
     const retained = logs ? `; logs retained at ${dirname(logs.stderr)}` : ""
     if (result.error) throw new Error(`${label}: ${result.error.message}${retained}`, { cause: result.error })
-    if (result.status !== 0) throw new Error(`${label} exited ${String(result.status)}${retained}`)
+    if (result.status !== 0) throw new Error(`${label} ${childExitWords(result)}${retained}`)
     return logs ? readFileSync(logs.stdout, "utf8") : ""
   } finally {
     if (stdout !== undefined) closeSync(stdout)
