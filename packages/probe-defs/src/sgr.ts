@@ -37,9 +37,11 @@ import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   COLOUR_CAPTURE,
   UNDERLINE_INDEXED_BRANCH,
+  UNDERLINE_RGB_BRANCH,
   UNDERLINE_INDEXED_PHASES,
   colourCaptureCallbackResult,
   underlineColourIndexedCaptureResult,
+  underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
@@ -905,7 +907,42 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         // The readback writes the sequence before it answers, so the fixture's own geometry refusal
         // has to run ahead of it — a 1x2 terminal must refuse with a zero-byte trace.
         const refusal = sgrPlainFixtureTooSmall(ctx)
-        if (!refusal) return armed(ctx)
+        if (!refusal) {
+          const prior = await armed(ctx)
+          if (
+            "notTested" in prior ||
+            prior.observation?.outcome !== "inconclusive" ||
+            prior.observation.assertionType !== "screenshot"
+          ) {
+            return prior
+          }
+          const captured = await underlineColourRgbCaptureResult(ctx, id)
+          if (!captured) return prior
+          const independent = colourCaptureCallbackResult(id, captured, { mux: ctx.mux })
+          if (independent.observation?.outcome === "unsupported") return independent
+          if (
+            independent.observation?.outcome === "error" ||
+            independent.tests?.some((test) => test.status === "probe-invalid")
+          ) {
+            return independent
+          }
+          // Keep the existing result when controls cannot decide. Retain both runs' evidence and
+          // the specific missing control; a matched or mixed RGB witness never adds Supported.
+          const note = independent.observation?.note ?? independent.tests?.[0]?.reason
+          const explain = (reason?: string) => [reason, note].filter(Boolean).join("; ")
+          return {
+            ...prior,
+            response: JSON.stringify({ prior: prior.response, independent: independent.response }),
+            tests: prior.tests?.map((test) =>
+              test.reason === undefined ? test : { ...test, reason: explain(test.reason) },
+            ),
+            observation: {
+              ...prior.observation,
+              note: explain(prior.observation.note),
+              frames: [...(prior.observation.frames ?? []), ...(independent.observation?.frames ?? [])],
+            },
+          }
+        }
         const [first, ...rest] = refusal.tests
         return {
           ...refusal,
@@ -1826,6 +1863,7 @@ const muxVisualTests = new Map<string, { featureId: string | null; testId: strin
   ["sgr-blink-flat", { featureId: "sgr.blink", testId: "blink" }],
   ["sgr-attribute-same-run", { featureId: null, testId: "attribute" }],
   [UNDERLINE_INDEXED_BRANCH, { featureId: "sgr.underline-color-indexed", testId: "attribute" }],
+  [UNDERLINE_RGB_BRANCH, { featureId: null, testId: "attribute" }],
   ["cursor-shape-same-run", { featureId: "cursor.shape", testId: "review" }],
   ["reset-saved-rendition", { featureId: "reset.sgr", testId: "reset" }],
   ["sgr-reset-saved-rendition", { featureId: "sgr.reset", testId: "criterion" }],
