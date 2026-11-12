@@ -1653,6 +1653,8 @@ it("uses explicit route and OS facts when display-column keys are opaque", () =>
   const opaque = new Map([...subjects.values()].map((entry, index) => [`opaque-column-${index}`, entry]))
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(opaque)
+  // This deliberately small corpus omits other catalog subjects; retain and check its expected warnings.
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
   let analysis: ReturnType<typeof vi.spyOn> | undefined
   try {
@@ -1677,11 +1679,18 @@ it("uses explicit route and OS facts when display-column keys are opaque", () =>
         return columns.every(([name]) => backends.includes(name))
       }),
     ).toBe(true)
+    expect(
+      warning.mock.calls
+        .flat()
+        .every((message) => /^Warning: Terminal '.+' has no stored current runs$/.test(String(message))),
+    ).toBe(true)
+    expect(warning).not.toHaveBeenCalledWith("Warning: Terminal 'kitty' has no stored current runs")
   } finally {
     analysis?.mockRestore()
     probes?.mockRestore()
     targets.mockRestore()
     selection.mockRestore()
+    warning.mockRestore()
   }
 })
 
