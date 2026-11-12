@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { loadFeatures } from "@terminfo/catalog"
-import { rollupTerminalStatuses } from "../docs/data/release-scope.ts"
+import { rollupTerminalStatuses, type TerminalStatusRollup } from "../docs/data/release-scope.ts"
 import {
   RAW_LABEL,
   composeWorkingView,
@@ -33,6 +33,26 @@ import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 import clientProbes, { loadFullProbes } from "../docs/data/probes.data.ts"
+
+/**
+ * A rollup as the hourly tool writes it into `summary.json` (#33600): the six STORED statuses. The site's
+ * `differs-by-context` bucket is derived by the context join and never enters a stored file, so fixtures
+ * that stand in for a written summary project through here; the reader's refusal of that key is tested
+ * below.
+ */
+function storedRollup(rollup: TerminalStatusRollup) {
+  const stored = <T extends Record<string, number>>(counts: T): Omit<T, "differs-by-context"> => {
+    const { "differs-by-context": _derived, ...rest } = counts
+    return rest
+  }
+  return {
+    ...rollup,
+    counts: stored(rollup.counts),
+    families: Object.fromEntries(
+      Object.entries(rollup.families).map(([family, entry]) => [family, { ...entry, counts: stored(entry.counts) }]),
+    ),
+  }
+}
 
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
@@ -124,9 +144,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       missingEngines: [],
       refused: [],
       rollups: {
-        vterm: rollupTerminalStatuses(
-          Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])),
-          catalogIds,
+        vterm: storedRollup(
+          rollupTerminalStatuses(Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])), catalogIds),
         ),
       },
     }
@@ -192,9 +211,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         missingEngines: [],
         refused: [],
         rollups: {
-          [`ghostty/${os}`]: rollupTerminalStatuses(
-            Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
-            catalogIds,
+          [`ghostty/${os}`]: storedRollup(
+            rollupTerminalStatuses(
+              Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
+              catalogIds,
+            ),
           ),
         },
         moved: { since: join(parent, OLD), moves: [] },
@@ -487,9 +508,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       prior.rawReplies["sgr.bold"] = assertion.observed
       writeFileSync(priorPath, JSON.stringify(prior))
       const decoded = loadRawCapture(priorPath, { root, catalogIds })
-      older.summary.rollups.vterm = rollupTerminalStatuses(
-        Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
-        catalogIds,
+      older.summary.rollups.vterm = storedRollup(
+        rollupTerminalStatuses(
+          Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
+          catalogIds,
+        ),
       )
       older.save()
 
@@ -1002,7 +1025,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
       presentEngines: ["kitty"],
       missingEngines: [],
       refused: [],
-      rollups: { kitty: rollupTerminalStatuses({}, []) },
+      rollups: { kitty: storedRollup(rollupTerminalStatuses({}, [])) },
     })
     mkdirSync(join(dir, "headless"))
     const rawRun = join(dir, "headless", "kitty.draft.json")

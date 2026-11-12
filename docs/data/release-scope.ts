@@ -8,7 +8,7 @@ import {
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, scoredFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicProbeResult, PublicFeatureResult, PublicContextSummary } from "./public-results.ts"
-import { DIFFERS_BY_CONTEXT } from "./app-cells.ts"
+import { APP_CELL_STATUSES, DIFFERS_BY_CONTEXT, type AppCellStatus } from "./app-cells.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
 export function publicResultFor(
@@ -21,20 +21,20 @@ export function publicResultFor(
 }
 
 /**
- * The input the shared terminal rollup accepts: every published cell's verdict, read as a stored status.
- * `rollupTerminalStatuses` has no bucket for `differs-by-context` — the accepted boundary at this head
- * (@cto c5ddabf3) — so a rollup over such a cell refuses loudly rather than scoring it Supported or
- * Unsupported, which the criterion forbids (@cto d321729a). Every bar, baseline and page that folds
- * published cells through the rollup reads them through here.
+ * The input the shared terminal rollup accepts: every published cell's verdict, including the derived
+ * `differs-by-context` bucket (@cto c3c2f885). The rollup counts a disagreement in its own bucket: it is
+ * decided, never Supported or Unsupported, and never open. Every bar, baseline and page that folds
+ * published cells through the rollup reads them through here, and a status outside `AppCellStatus`
+ * refuses loudly instead of being folded into a bucket that does not mean it.
  */
 export function rollupInputs(
   app: string,
   summary: Pick<PublicContextSummary, "featureResults">,
-): Array<{ featureId: string; status: FeatureResultStatus; derived?: unknown }> {
+): Array<{ featureId: string; status: AppCellStatus; derived?: unknown }> {
   return Object.values(summary.featureResults).map((result) => {
-    if (result.status === DIFFERS_BY_CONTEXT) {
+    if (!APP_CELL_STATUSES.includes(result.status)) {
       throw new Error(
-        `${app}: ${result.featureId} reads ${DIFFERS_BY_CONTEXT}; the shared terminal rollup has no bucket for it (@cto d321729a), so this bar cannot be drawn`,
+        `${app}: ${result.featureId} has unknown feature status ${JSON.stringify(result.status)}; this bar cannot count it`,
       )
     }
     return { featureId: result.featureId, status: result.status, derived: result.derived }
@@ -85,13 +85,55 @@ export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelatio
   return sources.some((source) => !isStaleRelation(source.suiteRelation))
 }
 
+/**
+ * Every bucket a rollup counts: the six stored statuses plus the derived disagreement bucket
+ * (@cto c3c2f885). A reader that names this type is forced to handle differs; a differs cell is decided,
+ * it is never in the Supported or Unsupported numerator, and it is never open.
+ */
+export type RollupCounts = Record<AppCellStatus, number>
+
+/** The seven buckets at zero, in display order: Supported, Unsupported, Differs by context, then the rest. */
+export function emptyRollupCounts(): RollupCounts {
+  return {
+    supported: 0,
+    unsupported: 0,
+    [DIFFERS_BY_CONTEXT]: 0,
+    untestable: 0,
+    "probe-todo": 0,
+    "probe-invalid": 0,
+    "probe-conflict": 0,
+  }
+}
+
+/**
+ * What one bucket means to a bar. Total over `AppCellStatus`: a new bucket is a compile error here, so no
+ * reader can fold it into "open" or "supported" with a default branch. Differs is decided and is neither a
+ * supported nor an unsupported measurement.
+ */
+const BUCKET_KIND: Readonly<Record<AppCellStatus, "supported" | "unsupported" | "differs" | "untestable" | "open">> = {
+  supported: "supported",
+  unsupported: "unsupported",
+  [DIFFERS_BY_CONTEXT]: "differs",
+  untestable: "untestable",
+  "probe-todo": "open",
+  "probe-invalid": "open",
+  "probe-conflict": "open",
+}
+
+/** Sum the buckets that mean one of `kinds`; every bucket is classified by `BUCKET_KIND`, never defaulted. */
+function sumBuckets(counts: RollupCounts, kinds: ReadonlyArray<(typeof BUCKET_KIND)[AppCellStatus]>): number {
+  let total = 0
+  for (const status of APP_CELL_STATUSES) if (kinds.includes(BUCKET_KIND[status])) total += counts[status]
+  return total
+}
+
 /** Current score and completion fold recorded statuses over exactly the recorded catalogue. */
 export interface CurrentAggregate {
   denominator: number
-  counts: Record<FeatureResultStatus, number>
+  counts: RollupCounts
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019); never a measurement. */
   derived: number
-  idsByState: Record<FeatureResultStatus, string[]>
+  idsByState: Record<AppCellStatus, string[]>
   supported: number
   complete: boolean
 }
@@ -100,7 +142,7 @@ export interface FamilyRollup {
   readonly family: string
   readonly positions: number
   readonly environmentPositions: number
-  readonly counts: Record<FeatureResultStatus, number>
+  readonly counts: RollupCounts
   readonly decided: number
   readonly open: number
   readonly donePct: number
@@ -109,7 +151,7 @@ export interface FamilyRollup {
 export interface TerminalStatusRollup {
   readonly positions: number
   readonly environmentPositions: number
-  readonly counts: Record<FeatureResultStatus, number>
+  readonly counts: RollupCounts
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
   readonly derived: number
   /** Supported plus directly measured Unsupported: derived cells are not measurements. */
@@ -142,32 +184,15 @@ export function rollupTerminalStatuses(
   /** Cells whose Unsupported is derived from a refused parent (#33019); counted, never measured. */
   derivedIds: ReadonlySet<string> = new Set(),
 ): TerminalStatusRollup {
-  const counts: Record<FeatureResultStatus, number> = {
-    supported: 0,
-    unsupported: 0,
-    untestable: 0,
-    "probe-todo": 0,
-    "probe-invalid": 0,
-    "probe-conflict": 0,
-  }
-  const familyAcc = new Map<
-    string,
-    { positions: number; environmentPositions: number; counts: Record<FeatureResultStatus, number> }
-  >()
+  const counts = emptyRollupCounts()
+  const familyAcc = new Map<string, { positions: number; environmentPositions: number; counts: RollupCounts }>()
   const ensureFamily = (family: string) => {
     let entry = familyAcc.get(family)
     if (!entry) {
       entry = {
         positions: 0,
         environmentPositions: 0,
-        counts: {
-          supported: 0,
-          unsupported: 0,
-          untestable: 0,
-          "probe-todo": 0,
-          "probe-invalid": 0,
-          "probe-conflict": 0,
-        },
+        counts: emptyRollupCounts(),
       }
       familyAcc.set(family, entry)
     }
@@ -184,22 +209,24 @@ export function rollupTerminalStatuses(
   const gradedIds = scoredFeatureIds(catalogIds)
   for (const id of gradedIds) {
     const status = Object.hasOwn(statuses, id) ? statuses[id] : undefined
-    if (!status || !FEATURE_RESULT_STATUSES.includes(status as FeatureResultStatus)) {
+    if (!status || !APP_CELL_STATUSES.includes(status as AppCellStatus)) {
       throw new Error(`Invalid stored current status for ${id}`)
     }
-    const probeStatus = status as FeatureResultStatus
-    counts[probeStatus]++
+    const bucket = status as AppCellStatus
+    counts[bucket]++
     const familyEntry = ensureFamily(id.split(".")[0] ?? id)
     familyEntry.positions++
-    familyEntry.counts[probeStatus]++
+    familyEntry.counts[bucket]++
   }
 
   const positions = gradedIds.length
   const environmentPositions = envIds.length
   const derived = gradedIds.filter((id) => derivedIds.has(id) && statuses[id] === "unsupported").length
   const decisive = decisiveCells(counts, derived)
-  const decided = decisive + derived + counts.untestable
-  const open = counts["probe-todo"] + counts["probe-invalid"] + counts["probe-conflict"]
+  // Differs is decided: two contexts measured the cell and disagreed. It is never supported, never
+  // open, and never part of `decisive`, so neither percentage numerator can absorb it.
+  const decided = sumBuckets(counts, ["supported", "unsupported", "differs", "untestable"])
+  const open = sumBuckets(counts, ["open"])
   const donePct = positions === 0 ? 0 : Math.round((100 * decided) / positions)
   const supportedPct = decisive === 0 || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
   const completenessTier: 0 | 1 | 2 | 3 =
@@ -207,8 +234,8 @@ export function rollupTerminalStatuses(
 
   const families: Record<string, FamilyRollup> = {}
   for (const [family, entry] of familyAcc) {
-    const famDecided = entry.counts.supported + entry.counts.unsupported + entry.counts.untestable
-    const famOpen = entry.counts["probe-todo"] + entry.counts["probe-invalid"] + entry.counts["probe-conflict"]
+    const famDecided = sumBuckets(entry.counts, ["supported", "unsupported", "differs", "untestable"])
+    const famOpen = sumBuckets(entry.counts, ["open"])
     families[family] = {
       family,
       positions: entry.positions,
@@ -280,21 +307,20 @@ export function rankOpenProbes(
 }
 
 export function aggregateCurrentResults(
-  results: readonly (Pick<FeatureResult, "featureId" | "status"> & { readonly derived?: unknown })[],
+  results: readonly (Pick<FeatureResult, "featureId"> & {
+    readonly status: AppCellStatus
+    readonly derived?: unknown
+  })[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
     throw new Error("Current aggregate requires a nonempty unique recorded catalogue")
   }
   const statuses: Record<string, string> = {}
-  const idsByState: Record<FeatureResultStatus, string[]> = {
-    supported: [],
-    unsupported: [],
-    untestable: [],
-    "probe-todo": [],
-    "probe-invalid": [],
-    "probe-conflict": [],
-  }
+  const idsByState = Object.fromEntries(APP_CELL_STATUSES.map((status) => [status, [] as string[]])) as Record<
+    AppCellStatus,
+    string[]
+  >
   for (const result of results) {
     statuses[result.featureId] = result.status
   }
@@ -308,7 +334,7 @@ export function aggregateCurrentResults(
   const derivedIds = new Set(results.filter((result) => result.derived !== undefined).map((result) => result.featureId))
   const rollup = rollupTerminalStatuses(statuses, catalogIds, derivedIds)
   for (const id of scoredFeatureIds(catalogIds)) {
-    idsByState[statuses[id] as FeatureResultStatus].push(id)
+    idsByState[statuses[id] as AppCellStatus].push(id)
   }
   return {
     denominator: rollup.positions,
@@ -333,8 +359,21 @@ export type CompletenessTier = Readonly<{
   positions: number
 }>
 
-/** The completeness tier of one library's recorded statuses, keyed by feature id. */
+/**
+ * The completeness tier of one library's recorded statuses, keyed by feature id.
+ *
+ * This is a STORED-status reader — the hourly re-measure writes through it — so the derived
+ * `differs-by-context` bucket is refused here: it is computed by the site's context join and never stored
+ * (@cto c3c2f885 condition 5).
+ */
 export function completenessTierOf(statuses: Readonly<Record<string, string>>): CompletenessTier {
+  for (const [id, status] of Object.entries(statuses)) {
+    if (status === DIFFERS_BY_CONTEXT) {
+      throw new Error(
+        `completenessTierOf reads stored statuses only; ${id} reads ${DIFFERS_BY_CONTEXT}, which the context join derives and never stores`,
+      )
+    }
+  }
   const rollup = rollupTerminalStatuses(statuses)
   return {
     completenessTier: rollup.completenessTier,
@@ -346,7 +385,7 @@ export function completenessTierOf(statuses: Readonly<Record<string, string>>): 
 
 export function currentCoverageSentence(
   aggregate: {
-    readonly counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>
+    readonly counts: ReadableCounts
     readonly derived?: number
   },
   catalogIds?: readonly string[],
@@ -355,7 +394,11 @@ export function currentCoverageSentence(
   const conflict = counts["probe-conflict"] === undefined ? "" : ` · ${counts["probe-conflict"]} PROBE CONFLICT`
   // #33019: the derived share sits right beside the Unsupported count it is part of.
   const derived = aggregate.derived ? ` (of which derived: ${aggregate.derived})` : ""
-  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived} · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
+  // @cto c3c2f885: a bar with a disagreement names it, and a bar with none prints exactly what it printed
+  // before this bucket existed, so today's corpus readouts stay byte-identical.
+  const differsCount = counts[DIFFERS_BY_CONTEXT] ?? 0
+  const differs = differsCount === 0 ? "" : ` · ${differsCount} Differs by context`
+  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived}${differs} · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
   // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
   // that knows the run's catalogue names the environment groups it recorded as ungraded.
   const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
@@ -385,15 +428,24 @@ export function decisiveCells(
 }
 
 /**
+ * The counts a page or a row reads: every stored status, plus the derived disagreement bucket when the
+ * reader was handed a joined bar (@cto c3c2f885). A stored-only aggregate simply has no differs member.
+ */
+export type ReadableCounts = Readonly<
+  Record<ProbeStatus, number> & Partial<Record<"probe-conflict" | typeof DIFFERS_BY_CONTEXT, number>>
+>
+
+/**
  * Whether a run judged nothing at all (#30784): every cell is PROBE TODO, PROBE INVALID or a reviewed
  * Untestable claim. This is the run-level twin of `notMeasuredReadout`, and the ONE predicate every
  * whole-run readout asks, so a page cannot print a measured-looking zero for it.
+ *
+ * A differs cell was measured by two same-suite contexts and they disagreed, so a run whose only decided
+ * cells disagree did judge something: it prints its real percentage, never the not-measured words
+ * (@dev/16's round-2 nit on 33595).
  */
-export function runDecidedNothing(
-  counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
-  derived = 0,
-): boolean {
-  return decisiveCells(counts, derived) === 0
+export function runDecidedNothing(counts: ReadableCounts, derived = 0): boolean {
+  return decisiveCells(counts, derived) === 0 && (counts[DIFFERS_BY_CONTEXT] ?? 0) === 0
 }
 
 /**
@@ -412,11 +464,8 @@ export const NOT_MEASURED_TEXT = "Not measured yet"
  * each page keeps its own decided-row text, byte-identical to what it printed before the fix — the
  * defect is the false "0%", and nothing beside it may move.
  */
-export function notMeasuredReadout(
-  counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>,
-  derived = 0,
-): { text: string; title: string } | undefined {
-  if (decisiveCells(counts, derived) > 0) return undefined
+export function notMeasuredReadout(counts: ReadableCounts, derived = 0): { text: string; title: string } | undefined {
+  if (!runDecidedNothing(counts, derived)) return undefined
   return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts, derived }) }
 }
 

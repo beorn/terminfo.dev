@@ -98,6 +98,20 @@ export function assertDeploymentLimits(dir: string): {
   return { fileCount, fileLimit: maxOutputFiles, fileHeadroom, traceFiles, traceBytes, dataJsonBytes }
 }
 
+/**
+ * A published API document as a STORED shape (#33600): every `counts` object keeps the six stored statuses.
+ * `differs-by-context` is derived by the site's context join and never stored, and the v3 documents are
+ * byte-stable contracts keyed by the original run's sha256, so the derived bucket never reaches one.
+ */
+export const storedDocument = <T>(document: T): T =>
+  JSON.parse(
+    JSON.stringify(document, (key, value: unknown) => {
+      if (key !== "counts" || !value || typeof value !== "object" || Array.isArray(value)) return value
+      const { "differs-by-context": _derived, ...stored } = value as Record<string, number>
+      return stored
+    }),
+  ) as T
+
 // --- Types ---
 
 interface FeatureMeta {
@@ -310,7 +324,7 @@ export function generateApi(
   let serialized = 0
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
-    const bytes = Buffer.from(JSON.stringify(version) + "\n")
+    const bytes = Buffer.from(JSON.stringify(storedDocument(version)) + "\n")
     if (++serialized % 5 === 0) collectGarbage()
     const prior = runDocuments.get(url)
     if (prior && !prior.equals(bytes)) throw new Error(`Conflicting current run document ${url}`)
@@ -370,7 +384,7 @@ export function generateApi(
   mkdirSync(v3Dir, { recursive: true })
   const dataPath = join(v3Dir, "data.json")
   writeEvidence(outDir ?? publicDir, published.documents, runDocuments, resultsDir)
-  writeAsset(dataPath, JSON.stringify(currentData) + "\n")
+  writeAsset(dataPath, JSON.stringify(storedDocument(currentData)) + "\n")
 
   return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }
 }

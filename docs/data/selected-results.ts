@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import {
   aggregateCurrentResults,
+  type RollupCounts,
   classifyResultMethod,
   computeFeatureResults,
   type FeatureResult,
@@ -217,7 +218,8 @@ export interface SelectedContextSummary {
   missingIds: string[]
   contributingRunIds: string[]
   attempts: SelectedContextAttempt[]
-  counts: Record<FeatureResultStatus, number>
+  /** Every rollup bucket, including the derived disagreement bucket (@cto c3c2f885); never Supported. */
+  counts: RollupCounts
   /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
   derivedIds: string[]
   score: { supported: number; all: number }

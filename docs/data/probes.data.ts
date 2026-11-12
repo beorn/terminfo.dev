@@ -23,7 +23,7 @@ import {
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
-import { FEATURE_RESULT_STATUSES, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
+import { type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
@@ -32,6 +32,7 @@ import {
   runDecidedNothing,
   staleCaption,
   type CurrentAggregate,
+  type RollupCounts,
 } from "./release-scope.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -257,17 +258,15 @@ export function loadFullProbes(): ProbeData {
       ),
     )
     // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
-    // bucket here, and a disagreement lands in `differs` instead of Supported or Unsupported.
-    const counts = app
-      ? (Object.fromEntries(
-          FEATURE_RESULT_STATUSES.map((status) => [status, app.counts[status]]),
-        ) as CurrentAggregate["counts"])
-      : selected.counts
+    // bucket here, and a disagreement lands in its own `differs-by-context` bucket instead of Supported or
+    // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets; a stored-only context
+    // has no disagreement, and its reader supplies that bucket at zero.
+    const counts: RollupCounts = app ? { ...app.counts } : selected.counts
     const supported = app ? app.counts.supported : selected.score.supported
     stats[key] = {
       score: { supported, all: selected.score.all },
       counts: { ...counts },
-      differs: app?.counts[DIFFERS_BY_CONTEXT] ?? 0,
+      differs: counts[DIFFERS_BY_CONTEXT],
       derived: selected.derivedIds.length,
       complete: selected.complete,
       // #30784: a run that decided nothing has no percentage to print; every reader shows the

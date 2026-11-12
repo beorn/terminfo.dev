@@ -41,6 +41,9 @@ vi.mock("../docs/data/current-results.ts", () => ({
     } satisfies SelectedProjection,
   }),
   compatibilitySubjects: () => new Map(),
+  // #33600: probes.data reads the same-suite join for every chosen subject; this fixture has no contexts,
+  // so the joined map is empty and every cell falls back to its stored status.
+  joinedAppCells: () => new Map(),
 }))
 
 test.each(["missing", "malformed", "non-object"] as const)(
