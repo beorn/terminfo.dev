@@ -43,6 +43,7 @@ import {
   type TermProbeSource,
   type TerminalQueryOutcome,
   type TextQualification,
+  type TextSnapshotDiagnostic,
   type OuterColourControl,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
@@ -120,6 +121,23 @@ export interface TextFrameCheckpoint {
 }
 
 /**
+ * A text read the terminal refused by name, carrying what the reply stated about it. The message is
+ * the refusal text and nothing else, so every caller that only reads it sees what it always saw; a
+ * caller that records the refusal keeps the diagnostic instead of re-deriving it from the script.
+ */
+export class TextSnapshotRefused extends Error {
+  override name = "TextSnapshotRefused"
+  readonly diagnostic: TextSnapshotDiagnostic | undefined
+  readonly diagnosticDropped: number | undefined
+
+  constructor(message: string, diagnostic: TextSnapshotDiagnostic | undefined, diagnosticDropped: number | undefined) {
+    super(message)
+    this.diagnostic = diagnostic
+    this.diagnosticDropped = diagnosticDropped
+  }
+}
+
+/**
  * One text read, as the frame and trace a checkpoint answers with — everything the collector's text
  * adapter does except the write itself. Pure, so the digests, the compared rectangle and the refusal
  * are testable where no terminal exists.
@@ -142,7 +160,11 @@ export function textCellsFrame(
   capturedAt: number,
 ): { frame: ObservationFrame; trace: Record<string, unknown>; retained: Buffer } {
   if (read.status === "refused") {
-    throw new Error(`${checkpoint.label}: the terminal refused the text snapshot — ${read.reason}`)
+    throw new TextSnapshotRefused(
+      `${checkpoint.label}: the terminal refused the text snapshot — ${read.reason}`,
+      "diagnostic" in read ? read.diagnostic : undefined,
+      "diagnosticDropped" in read ? read.diagnosticDropped : undefined,
+    )
   }
   const rows = "grid" in read ? read.grid.text : read.cells.text
   const attributes = "grid" in read ? read.grid.attributes : undefined

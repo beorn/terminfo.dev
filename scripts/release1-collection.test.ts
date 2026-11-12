@@ -330,6 +330,8 @@ it.each([
     const actualError = "original Linux fixture collector failure"
     const macosContexts = ["ghostty", "cursor", "com.microsoft.VSCode", "cmux", "alacritty", "wezterm"]
     const hostedDrafts = new Map<string, { path: string; bytes: string }>()
+    const SCREEN_SUPPLEMENT_ERROR = "Mux target differs from the verified mux attachment"
+    let screenSupplementDraftPath: string | undefined
     const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
       if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
       const stdio = options?.stdio
@@ -632,6 +634,25 @@ it.each([
       const output = args.at(-1)
       if (typeof output !== "string") throw new Error("expected private Linux output directory")
       const isKitty = args.includes("kitty")
+      if (basename(output) === "screen.truecolor-on") {
+        // 33497: the real failed Screen supplement (run 2026-11-11T11-36-01-969Z) exited 2 after its collector
+        // retained the delegated draft, attempt and prerequisite naming the cause under raw/artifacts.
+        const draft = JSON.parse(
+          readFileSync(join(dirname(dirname(output)), "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
+        ) as RunDraft
+        expect(options?.env?.TERMINFO_CAPTURE_RUN_ID).toBe(draft.runId)
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: ["sgr.fg.truecolor", "sgr.bg.truecolor", "extensions.truecolor"],
+          result: "failed",
+          startedAt: actualStartedAt,
+          error: SCREEN_SUPPLEMENT_ERROR,
+        })
+        draft.rawReplies["collector.prerequisite"] = SCREEN_SUPPLEMENT_ERROR
+        const artifacts = join(output, "fixture-run", "raw", "artifacts")
+        mkdirSync(artifacts, { recursive: true })
+        screenSupplementDraftPath = join(artifacts, `${draft.runId}.draft.json`)
+        writeFileSync(screenSupplementDraftPath, JSON.stringify(draft))
+      }
       if (!isKitty) {
         const raw = join(output, "fixture-run", "raw")
         mkdirSync(raw, { recursive: true })
@@ -1084,7 +1105,18 @@ it.each([
         status: "failed",
         directory: truecolorOutput,
       })
-      expect(pass.errors).toContain(screenRow?.supplements?.[0]?.error)
+      // 33497: the summary keeps the launch failure, the collector's own words once, and the retained draft's path.
+      const supplementRow = screenRow?.supplements?.[0]
+      expect(screenSupplementDraftPath).toBeDefined()
+      expect(supplementRow?.rawRun).toBe(screenSupplementDraftPath)
+      expect(supplementRow?.error).toMatch(/^screen\/linux truecolor-on supplement: .*exited 17; logs retained at /)
+      expect(
+        supplementRow?.error?.endsWith(
+          `; collector recorded: ${SCREEN_SUPPLEMENT_ERROR} (${screenSupplementDraftPath})`,
+        ),
+      ).toBe(true)
+      expect(supplementRow?.error?.split(SCREEN_SUPPLEMENT_ERROR)).toHaveLength(2)
+      expect(pass.errors).toContain(supplementRow?.error)
       for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === id && entry.context.os === "linux",
@@ -1788,6 +1820,34 @@ it.each([
       expect(existsSync(join(raw, "run-receipt.json"))).toBe(false)
       return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
     }
+    if (fault === "matching" && command === "bash" && Array.isArray(args) && args.includes("--mux-profile")) {
+      // 33151: Screen's truecolor-on supplement run as the mux records it: its config, and no permissions.
+      const output = String(args.at(-1))
+      const draft = JSON.parse(
+        readFileSync(join(dirname(dirname(output)), "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
+      ) as RunDraft
+      const muxRun = {
+        ...structuredClone(draft),
+        subject: {
+          ...measuredTarget,
+          kind: "mux",
+          id: "screen",
+          version: "5.0.2",
+          os: "linux",
+          outerTerminal: "kitty",
+          mux: "screen",
+          config: "screen: defscrollback 1000; truecolor on",
+          permissions: null,
+        },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+      }
+      const rawDir = join(output, "fixture-run", "raw")
+      mkdirSync(rawDir, { recursive: true })
+      writeFileSync(join(rawDir, "v3-run.draft.json"), JSON.stringify(muxRun))
+      return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
+    }
     if (
       fault === "source-negative-pending" &&
       command === "bash" &&
@@ -2006,6 +2066,17 @@ it.each([
     }
     if (fault === "matching" || fault === "source-negative-pending") {
       expect(row.status, row.error).toBe("classified")
+      if (fault === "matching") {
+        // 33151: a config supplement on a mux is identified by its recorded config; a mux records no permissions,
+        // so none is required. The earlier rows only drove this supplement to a launcher failure, so they never
+        // reached the identity check that refused Screen's 10:51 PST run ("run records no permissions").
+        const screen = pass.contexts.find(
+          (entry) => entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux",
+        )!
+        const supplement = screen.supplements?.[0]
+        expect(supplement?.status, supplement?.error).toBe("classified")
+        expect(supplement).not.toHaveProperty("permissions")
+      }
       if (fault === "source-negative-pending") {
         // #32038 (@cto a6dbdad3): pre-resolution headless drafts live under first-pass/<engine>.draft.json,
         // and the pass output set holds exactly one draft per measured engine — the file pass.json names.

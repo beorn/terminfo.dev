@@ -412,6 +412,22 @@ describe("current execution projection", () => {
     expect(projection).not.toHaveProperty("current")
   })
 
+  // #33640: the selection file resolves every contributing run through the projection, and a working
+  // run's original is deliberately absent from the public history. The composed row must still name
+  // the measurement it came from instead of refusing the whole write.
+  it("resolves a working run's own original for the selection file", () => {
+    const current = supportedBaseline()
+    const value = raw(todos())
+    const working = parse({ ...value, runId: "working-linux", subject: { ...value.subject, os: "linux" } })
+    const projection = projectResults([current], ids, { currentProbeHash: suite.probeHash, workingRuns: [working] }, [])
+    const workingKey = projectedContextKey(working.subject, 2)
+    const candidate = candidateFromSelected(workingKey, projection.contexts[workingKey]!, {}, projection)
+    expect(candidate?.sources).toMatchObject([
+      { runId: working.runId, measuredAt: working.measuredAt, suiteId: working.suiteId },
+    ])
+    expect(projection.history).not.toHaveProperty(workingKey)
+  })
+
   // CTO R2: the canonical owner must resolve a retained attempt, even without the report's matcher.
   it("resolves a pre-start attempt to its intended working context in the canonical projection", () => {
     const current = supportedBaseline()
@@ -696,6 +712,7 @@ describe("current execution projection", () => {
       "probe-todo": 272,
       "probe-invalid": 1,
       "probe-conflict": 0,
+      "differs-by-context": 0,
     })
     expect(projection.contexts["term:kitty"]?.complete).toBe(false)
   })
@@ -770,6 +787,7 @@ describe("current execution projection", () => {
       "probe-todo": 264,
       "probe-invalid": 0,
       "probe-conflict": 0,
+      "differs-by-context": 0,
     })
     expect(selected?.complete).toBe(false)
   })

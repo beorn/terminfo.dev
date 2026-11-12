@@ -79,6 +79,32 @@ const KITTY = rootOverride("OWNED_APP_TRANSPORT_KITTY_PATH", KITTY_BINARY_PATH)
 const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as const
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
+
+/**
+ * The gitignored dependency-link directories INSIDE the bundle-owned checkout that exist in the code
+ * tree: its own node_modules and each packages/<name>/node_modules. The bundle cannot carry them (git
+ * never tracks node_modules), and under bun's isolated install a package's own dependencies resolve
+ * only through them, never from a hoisted root entry: without them the probe failed at import with
+ * "Cannot find package 'protobufjs'" (33587 run 2). They are the one exception to "nothing copies
+ * over the bundle-owned tree": a checkout never writes an ignored path, so the clean-tree check still
+ * holds, and their links resolve into the declared root node_modules or the link closure.
+ */
+function bundleLinkDirs(): string[] {
+  const base = join(CODE_ROOT, STAGED_FROM_BUNDLE)
+  const packages = join(base, "packages")
+  const candidates = [
+    `${STAGED_FROM_BUNDLE}/node_modules`,
+    ...(existsSync(packages)
+      ? readdirSync(packages)
+          .sort()
+          .map((name) => `${STAGED_FROM_BUNDLE}/packages/${name}/node_modules`)
+      : []),
+  ]
+  return candidates.filter((entry) => {
+    const path = join(CODE_ROOT, entry)
+    return existsSync(path) && lstatSync(path).isDirectory()
+  })
+}
 const STAGE_MARKER = ".owned-app-transport-stage"
 const STAGE_MARKER_VALUE = "owned-app-transport stage v1"
 const CONNECT_TIMEOUT_SECONDS = "15"
@@ -708,12 +734,16 @@ function main(options: Parsed): OwnedAppTransportProof {
   // The local manifest is bound before a single byte is staged: source from git archive, resources
   // from the code tree that will actually be copied.
   const scratch = mkdtempSync(join(tmpdir(), "owned-app-transport-"))
-  // Set once this run has verified or written the stage marker: from then on a failed run still
-  // honours --remove-stage, except after a timeout, when the remote side may still be using it.
+  // Set once this run has CREATED the stage: from then on a failed run still honours
+  // --remove-stage, except after a timeout, when the remote side may still be using it. A stage
+  // that already existed (an earlier run's, marked by this driver) is reused but never removed:
+  // --remove-stage once deleted an earlier run's retained outputs with it (33587 run 2).
   let owned = false
+  let created = false
   try {
     const archived = archiveOf(options, join(scratch, "archive"))
-    const declared = [...RESOURCE_DIRS, ...RESOURCE_FILES]
+    const linkDirs = bundleLinkDirs()
+    const declared = [...RESOURCE_DIRS, ...linkDirs, ...RESOURCE_FILES]
     const scan = manifestScan(CODE_ROOT, declared, "resource manifest mismatch")
     // Roots a link reaches beyond the declared resources ship from tracked extracts only, so the
     // closure is walked over the extracts, never over a working tree's untracked files.
@@ -750,7 +780,7 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     // A stage that already exists must be one this driver made; a stranger's directory is refused,
     // never adopted and never deleted.
-    sshRun(
+    const ownership = sshRun(
       options,
       "stage ownership",
       "stage not owned",
@@ -760,12 +790,19 @@ function main(options: Parsed): OwnedAppTransportProof {
         `    echo ${shq(`stage ${stage} exists without this driver's marker; refusing to adopt or delete it`)} >&2`,
         `    exit 7`,
         `  }`,
+        `  echo existed`,
+        `else`,
+        `  echo created`,
         `fi`,
         `mkdir -p ${shq(`${stage}/runs`)}`,
         `printf '%s\\n' ${shq(STAGE_MARKER_VALUE)} > ${shq(`${stage}/${STAGE_MARKER}`)}`,
       ].join("\n"),
-    )
-    owned = true
+    ).stdout.trim()
+    created = ownership === "created"
+    owned = created
+    if (options.removeStage && !created) {
+      console.error(`owned-app transport: ${stage} existed before this run; --remove-stage keeps it`)
+    }
     rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
     // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
     // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
@@ -793,6 +830,7 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     for (const [from, entry] of [
       ...RESOURCE_DIRS.map((entry) => [CODE_ROOT, entry] as const),
+      ...linkDirs.map((entry) => [CODE_ROOT, entry] as const),
       ...extras.map((entry) => [closure, entry] as const),
     ]) {
       rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
@@ -965,7 +1003,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       fail("receipt mismatch", "the returned receipt differs from the bytes written on the host")
     }
 
-    if (options.removeStage) {
+    if (options.removeStage && created) {
       owned = false
       removeStage(options, stage)
     }

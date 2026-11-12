@@ -22,6 +22,7 @@ For authorized headless work, run the changed probe IDs across the eleven config
 Before Yrd submission, record expected result moves for each of the eleven configured library backends.
 A change gated to one backend and an exact identity needs no collector: the next hourly run proves it. Any other change runs the full collector from the owned dev-repo worktree root with `@in -- bun run --cwd vendor/terminfo.dev probe termless --all`, records the actual per-library diff, and reconciles mismatches before submitting.
 After merge, verify that the next hourly run's per-library diff matches the submitted expectation.
+A definition batch ends with one more step (33109): after its final merge, on main's tree, run `bun scripts/write-suite-manifest.ts` and submit the one `content/suites/<suite>.json` it writes, alone. Without it every App run at main's new suite refuses on the next selection; rerunning is always safe.
 A do-nothing fake never reads Supported; a working fake reads Supported and loses it when only that feature is disabled.
 Read the changed results and retained reasons, obtain one peer review, then deliver through the configured Yrd queue.
 Collection writes and publication are separate; a Git push or site build is not deployment authority.

@@ -6,6 +6,7 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-clipboard-receipts>
  */
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
@@ -13,6 +14,7 @@ import { fileURLToPath } from "node:url"
 import type { ProbeCallbackResult } from "@terminfo/probe-defs"
 import { afterEach, expect, test } from "vitest"
 import {
+  createClipboardOwnership,
   createClipboardTransaction,
   createLinuxClipboardAdapter,
   pressRealKey,
@@ -54,6 +56,7 @@ for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes
 const real = {...fs}
 const fsFault = new Error("fixture filesystem link unavailable")
 let spawns=0
+const servers={}
 let mux, variant, table, socket, muxTarget, reads = 0
 let baselineValue = baseline, primaryValue = primaryBaseline, tmuxBuffers = [], tmuxSetClipboard = "external", tmuxDeleteCalls = []
 const statText = pid => {
@@ -139,9 +142,16 @@ mock.module("node:child_process", () => ({...cp,
   },
   spawn(file,args){
     if(file===exe("xclip") && Array.isArray(args) && args.includes("-i")){
-      const handlers={}
+      // Like a real foreground xclip -i (33003, measured by @dev/luna3): it serves until the next writer of its
+      // selection displaces it (exit 0) or it is killed (SIGTERM).
+      const exits=[]
       const primary=args.includes("primary")
-      const child={pid:500001+spawns++,exitCode:0,signalCode:null,stdin:{once(){},end(text){if(primary)primaryValue=text;else baselineValue=text}},once(ev,cb){handlers[ev]=cb;if(ev==="exit")queueMicrotask(()=>cb(0,null))},kill(){}}
+      const key=primary?"primary":"clipboard"
+      const child={pid:500001+spawns++,exitCode:null,signalCode:null,
+        stdin:{once(){},end(text){if(primary)primaryValue=text;else baselineValue=text;const before=servers[key];servers[key]=child;if(before&&before!==child)queueMicrotask(()=>before.end(0,null))}},
+        once(ev,cb){if(ev==="exit")exits.push(cb)},
+        kill(){queueMicrotask(()=>child.end(null,"SIGTERM"))},
+        end(code,signal){if(child.exitCode!==null||child.signalCode!==null)return;child.exitCode=code;child.signalCode=signal;for(const cb of exits.splice(0))cb(code,signal)}}
       return child
     }
     spawns++;throw new Error("unowned clipboard writer spawned")
@@ -1118,6 +1128,182 @@ test("restoration failure overrides a supported callback result", async () => {
       async () => {},
     ),
   ).rejects.toThrow("Owned clipboard restoration failed: xclip exited")
+})
+
+// 33003 (@cto 67370e55): the tmux pre-flight refused with "baseline changed" while our helper was gone and the read
+// was empty, so the reason could not say which. A dead owner is refused as a dead owner, with its exit, and any stray
+// read carries its digest and length.
+const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+test("the ownership record reports a dead owner once, with its exit, and never a helper we displaced ourselves", () => {
+  const events: ClipboardTraceEvent[] = []
+  const trace = (event: ClipboardTraceEvent) => events.push(event)
+  const external = new Set([90])
+  const ownership = createClipboardOwnership<"clipboard">({ clipboard: 90 }, (pid) => external.has(pid))
+
+  expect(ownership.state("clipboard", trace)).toEqual({ helperPid: 90, alive: true })
+  ownership.spawned(101)
+  ownership.acquired("clipboard", 101)
+  external.delete(90)
+  ownership.spawned(102)
+  ownership.acquired("clipboard", 102)
+  ownership.exited(101, 0, null)
+  expect(ownership.state("clipboard", trace)).toEqual({ helperPid: 102, alive: true })
+  expect(events).toEqual([])
+
+  ownership.exited(102, 0, null)
+  const dead = ownership.state("clipboard", trace)
+  expect(dead).toMatchObject({ helperPid: 102, alive: false, exit: { code: 0, signal: null } })
+  expect(ownership.state("clipboard", trace)).toEqual(dead)
+  expect(events).toEqual([
+    { kind: "clipboard-owner-exit", at: expect.any(String), helperPid: 102, exitCode: 0, signal: null },
+  ])
+
+  const gone = createClipboardOwnership<"clipboard">({ clipboard: 90 }, () => false)
+  expect(gone.state("clipboard", trace)).toEqual({ helperPid: 90, alive: false })
+  expect(events.at(-1)).toEqual({
+    kind: "clipboard-owner-exit",
+    at: expect.any(String),
+    helperPid: 90,
+    exitObserved: false,
+  })
+})
+
+test("a dead owner is refused before the callback with its exit and the stray read's digest and length", async () => {
+  let text = ""
+  let ran = false
+  const events: ClipboardTraceEvent[] = []
+  const transaction = createClipboardTransaction("baseline-nonce", {
+    readText: async (trace, kind = "clipboard-read") => {
+      trace({ kind, at: new Date().toISOString(), length: text.length })
+      return text
+    },
+    writeText: async (value) => {
+      text = value
+    },
+    owner: (trace) => {
+      trace({
+        kind: "clipboard-owner-exit",
+        at: "2026-11-10T08:35:00.000Z",
+        helperPid: 4242,
+        exitCode: 0,
+        signal: null,
+      })
+      return { helperPid: 4242, alive: false, exit: { code: 0, signal: null, at: "2026-11-10T08:35:00.000Z" } }
+    },
+  })
+  const refusal = transaction(
+    async () => {
+      ran = true
+      return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+    },
+    (event) => events.push(event),
+    async () => {},
+  )
+  await expect(refusal).rejects.toThrow(
+    `Owned clipboard helper 4242 exited at 2026-11-10T08:35:00.000Z (code 0, signal none) before callback; ` +
+      `read sha256 ${EMPTY_SHA256} length 0, empty read (no owner or empty owner)`,
+  )
+  expect(ran).toBe(false)
+  expect(text).toBe("baseline-nonce")
+  expect(events.map((event) => event.kind)).toEqual(["clipboard-owner-exit", "clipboard-read", "clipboard-verify"])
+})
+
+// 33003 (@cto 756f05d1): the record is read at the pre-flight only. A terminal that takes the selection inside the
+// callback (our helper exits 0) is the measurement and the restore re-owns; a helper dead before the pre-flight is red.
+test("a helper displaced inside the callback is a measurement, and only a helper dead before the pre-flight is red", async () => {
+  let text = "baseline-nonce"
+  let owner = 100
+  let nextPid = 200
+  const ownership = createClipboardOwnership<"clipboard">({ clipboard: owner }, () => false)
+  ownership.spawned(owner)
+  const events: ClipboardTraceEvent[] = []
+  const trace = (event: ClipboardTraceEvent) => events.push(event)
+  const transaction = createClipboardTransaction("baseline-nonce", {
+    readText: async () => text,
+    // Our writer: it acquires, and the helper it displaced exits 0, as xclip does.
+    writeText: async (value) => {
+      const pid = nextPid++
+      ownership.spawned(pid)
+      text = value
+      ownership.exited(owner, 0, null)
+      ownership.acquired("clipboard", pid)
+      owner = pid
+    },
+    owner: (record) => ownership.state("clipboard", record),
+  })
+  const measured = { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } } as const
+
+  // The terminal takes the selection by OSC 52 inside the callback: our helper exits 0 and nobody re-owns yet.
+  await expect(
+    transaction(
+      async () => {
+        ownership.exited(owner, 0, null)
+        text = "written-by-the-terminal"
+        return measured
+      },
+      trace,
+      async () => {},
+    ),
+  ).resolves.toEqual(measured)
+  expect(text).toBe("baseline-nonce")
+  expect(events).toEqual([])
+
+  // The restore's writer owns the selection now, so the next pre-flight passes.
+  await expect(
+    transaction(
+      async () => measured,
+      trace,
+      async () => {},
+    ),
+  ).resolves.toEqual(measured)
+  expect(events).toEqual([])
+
+  // Our helper dies between transactions: the next pre-flight is red with the dead-owner reason, before the callback.
+  const dead = owner
+  ownership.exited(dead, null, "SIGTERM")
+  let ran = false
+  await expect(
+    transaction(
+      async () => {
+        ran = true
+        return measured
+      },
+      trace,
+      async () => {},
+    ),
+  ).rejects.toThrow(
+    new RegExp(
+      `^Owned clipboard helper ${dead} exited at \\S+ \\(code null, signal SIGTERM\\) before callback; ` +
+        `read sha256 ${createHash("sha256").update("baseline-nonce").digest("hex")} length 14$`,
+    ),
+  )
+  expect(ran).toBe(false)
+  expect(text).toBe("baseline-nonce")
+  expect(events).toEqual([
+    { kind: "clipboard-owner-exit", at: expect.any(String), helperPid: dead, exitCode: null, signal: "SIGTERM" },
+  ])
+})
+
+test("a live owner with a stray read is refused with the read's digest and length", async () => {
+  let text = "foreign"
+  const transaction = createClipboardTransaction("baseline-nonce", {
+    readText: async () => text,
+    writeText: async (value) => {
+      text = value
+    },
+    owner: () => ({ helperPid: 7, alive: true }),
+  })
+  await expect(
+    transaction(
+      async () => ({ pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }),
+      () => {},
+      async () => {},
+    ),
+  ).rejects.toThrow(
+    `Owned clipboard baseline changed before callback: read sha256 ${createHash("sha256").update("foreign").digest("hex")} ` +
+      `length 7; owner helper 7 alive`,
+  )
 })
 
 // #33145 (@cto 70645b74): the press is recorded in the clipboard trace with its X time and the focused window,

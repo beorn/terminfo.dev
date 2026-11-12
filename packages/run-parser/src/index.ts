@@ -44,6 +44,7 @@ import {
   type TextQualification,
   type TextQualificationSpec,
   type TextQualificationShape,
+  type TextSnapshotDiagnostic,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import { parseObservation, parseObservationFrames, validateCurrentAssertions } from "./observations.ts"
@@ -567,6 +568,49 @@ function parseTextQualificationDeclaration(value: unknown, path: string): TextQu
   return parseTextQualificationSpec(value, path)
 }
 
+const TEXT_SNAPSHOT_DIAGNOSTIC_FIELDS = [
+  "appCols",
+  "appRows",
+  "lineLengths",
+  "lineLengthsTruncated",
+  "rowsAfterPop",
+  "splitRows",
+  "terminatorRemoved",
+  "tty",
+].join(",")
+
+/**
+ * What a refused text snapshot's reply stated, in the one record a run may carry. Exactly these
+ * fields, or the run is refused by name: the reply's raw `contents` is deliberately not one of them,
+ * so no reader can be handed a whole screen through a refusal.
+ */
+function parseTextSnapshotDiagnostic(value: unknown, path: string, context: string): TextSnapshotDiagnostic {
+  const count = (field: unknown): boolean => typeof field === "number" && Number.isSafeInteger(field) && field >= 0
+  if (!object(value) || Object.keys(value).sort().join(",") !== TEXT_SNAPSHOT_DIAGNOSTIC_FIELDS) {
+    fail(path, `invalid ${context} diagnostic`)
+  }
+  if (!nonempty(value.tty)) fail(path, `invalid ${context} diagnostic tty`)
+  if (![value.appCols, value.appRows, value.splitRows, value.rowsAfterPop].every(count)) {
+    fail(path, `invalid ${context} diagnostic row counts`)
+  }
+  if (typeof value.terminatorRemoved !== "boolean" || typeof value.lineLengthsTruncated !== "boolean") {
+    fail(path, `invalid ${context} diagnostic flags`)
+  }
+  if (!Array.isArray(value.lineLengths) || !value.lineLengths.every(count)) {
+    fail(path, `invalid ${context} diagnostic line lengths`)
+  }
+  return {
+    tty: value.tty,
+    appCols: value.appCols as number,
+    appRows: value.appRows as number,
+    splitRows: value.splitRows as number,
+    terminatorRemoved: value.terminatorRemoved,
+    rowsAfterPop: value.rowsAfterPop as number,
+    lineLengths: value.lineLengths as number[],
+    lineLengthsTruncated: value.lineLengthsTruncated,
+  }
+}
+
 function parseTextQualification(
   value: unknown,
   path: string,
@@ -593,8 +637,13 @@ function parseTextQualification(
     if (seen.has(shape)) fail(path, `duplicate textQualification shape ${shape}`)
     seen.add(shape)
     const context = `textQualification ${shape}`
-    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason", "ownership"].includes(key))
+    const unknown = Object.keys(entry).find(
+      (key) => !["shape", "frames", "reason", "ownership", "diagnostic", "diagnosticDropped"].includes(key),
+    )
     if (unknown !== undefined) fail(path, `unknown ${context} field ${unknown}`)
+    if (Object.hasOwn(entry, "diagnostic") || Object.hasOwn(entry, "diagnosticDropped")) {
+      if (!Object.hasOwn(entry, "reason")) fail(path, `${context} can carry a diagnostic only with its refusal reason`)
+    }
     if (Object.hasOwn(entry, "frames") && Object.hasOwn(entry, "reason")) {
       fail(path, `${context} cannot carry both frames and reason`)
     }
@@ -628,7 +677,19 @@ function parseTextQualification(
     }
     if (Object.hasOwn(entry, "reason")) {
       if (!nonempty(entry.reason) || !entry.reason.trim()) fail(path, `invalid ${context} reason`)
-      return { shape, reason: entry.reason }
+      const diagnostic = Object.hasOwn(entry, "diagnostic")
+        ? parseTextSnapshotDiagnostic(entry.diagnostic, path, context)
+        : undefined
+      const dropped = Object.hasOwn(entry, "diagnosticDropped") ? entry.diagnosticDropped : undefined
+      if (dropped !== undefined && (typeof dropped !== "number" || !Number.isSafeInteger(dropped) || dropped < 1)) {
+        fail(path, `invalid ${context} diagnosticDropped`)
+      }
+      return {
+        shape,
+        reason: entry.reason,
+        ...(diagnostic !== undefined && { diagnostic }),
+        ...(dropped !== undefined && { diagnosticDropped: dropped }),
+      }
     }
     if (shape === "console-host-ownership") fail(path, `${context} requires ownership or reason`)
     const frames = parseObservationFrames(entry.frames, path, context, [], textSnapshotRefs, undefined, "buffer_state")

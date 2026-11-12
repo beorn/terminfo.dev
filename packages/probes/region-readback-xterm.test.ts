@@ -16,13 +16,13 @@ import * as probeDefs from "@terminfo/probe-defs"
 import type { RegionReadbackRow } from "@terminfo/probe-defs"
 import { expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
-import { mapSnapshotToCells } from "../terminfo.dev/src/darwin-terminal-text.ts"
+import { mapSnapshotToCells, readTerminalTextSnapshot } from "../terminfo.dev/src/darwin-terminal-text.ts"
 import { textCellsFrame } from "../terminfo.dev/src/serve.ts"
 import { collectTextQualification } from "../terminfo.dev/src/text-qualification.ts"
 
 // AC1: the five recipe writes must reach a real parser, including overflow followed by a blank
 // last row. Existing region fixtures never exercise this once-per-run preparation or its restore.
-test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const)(
+test.each(["complete", "shape-refused", "shape-refused-diagnostic", "restore-mode", "restore-grid"] as const)(
   "text qualification retains real parser grids and proves restoration: %s",
   async (fault) => {
     const backend = createXtermBackend()
@@ -47,6 +47,37 @@ test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const
       capture: async (checkpoint) => {
         if (fault === "shape-refused" && checkpoint.label === "text qualification mid-line-gap target") {
           throw new Error("terminal refused this shape")
+        }
+        if (fault === "shape-refused-diagnostic" && checkpoint.label === "text qualification mid-line-gap target") {
+          // The whole production chain in one refusal: a reply stating both its diagnostic and its raw
+          // contents, read by the real parser, refused by the frame, recorded by the qualification.
+          const refused = readTerminalTextSnapshot({
+            app: "iterm2",
+            tty: "/dev/ttys003",
+            cols: 12,
+            rows: 4,
+            run: () => ({
+              stdout: JSON.stringify({
+                status: "refused",
+                reason: "Terminal.app returned 2 rows where the measured screen has 4",
+                diagnostic: {
+                  contents: "raw-screen-text-no-run-may-carry",
+                  tty: "/dev/ttys003",
+                  appCols: 12,
+                  appRows: 4,
+                  splitRows: 3,
+                  terminatorRemoved: true,
+                  rowsAfterPop: 2,
+                  lineLengths: [6, 2],
+                },
+              }),
+              stderr: "",
+              status: 0,
+              signal: null,
+              timedOut: false,
+            }),
+          })
+          return textCellsFrame(checkpoint, refused, ++capturedAt).frame
         }
         // The native JXA read separates visible rows from carried history before strict mapping.
         const history = backend.getLines().map((row) => row.map((cell) => cell.char || " ").join(""))
@@ -79,6 +110,27 @@ test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const
       for (const [index, shape] of qualification.shapes.entries()) {
         if (fault === "shape-refused" && index === 0) {
           expect(shape).toMatchObject({ shape: "mid-line-gap", reason: "terminal refused this shape" })
+          continue
+        }
+        if (fault === "shape-refused-diagnostic" && index === 0) {
+          // The record keeps what the reply stated and nothing it did not: the raw screen text stops
+          // at the parser, so a refused shape cannot carry a screen into the run (30729 AC3b).
+          expect(shape).toMatchObject({
+            shape: "mid-line-gap",
+            reason:
+              "text qualification mid-line-gap target: the terminal refused the text snapshot — Terminal.app returned 2 rows where the measured screen has 4",
+            diagnostic: {
+              tty: "/dev/ttys003",
+              appCols: 12,
+              appRows: 4,
+              splitRows: 3,
+              terminatorRemoved: true,
+              rowsAfterPop: 2,
+              lineLengths: [6, 2],
+              lineLengthsTruncated: false,
+            },
+          })
+          expect(JSON.stringify(shape)).not.toContain("raw-screen-text-no-run-may-carry")
           continue
         }
         const frame = shape.frames?.find(({ role }) => role === "target")

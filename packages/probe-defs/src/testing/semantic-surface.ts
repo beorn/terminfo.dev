@@ -313,11 +313,24 @@ const COLON_UNDERLINE_STYLES: Readonly<Record<number, { readonly mutation: strin
   }
 
 /** Apply colon-delimited SGR subparameters (such as 4:0..4:5 underline styles). */
-function applyColonSgr(attributes: Attributes, raw: string, mutations?: ReadonlySet<string>): Attributes {
+function applyColonSgr(
+  attributes: Attributes,
+  raw: string,
+  mutations?: ReadonlySet<string>,
+  palette?: ReadonlyMap<number, Rgb>,
+): Attributes {
   const parts = raw.split(":").map((part) => (part === "" ? 0 : Number(part)))
   if (parts[0] === 4) {
     const entry = COLON_UNDERLINE_STYLES[parts[1] ?? 1]
     if (entry && !mutations?.has(entry.mutation)) return { ...attributes, underline: entry.style }
+  }
+  const code = parts[0]
+  if (code === 38 || code === 48 || code === 58) {
+    if (parts[1] === 5 && parts.length === 3) return applyIndexedColor(attributes, code, parts[2]!, mutations, palette)
+    const rgb = parts.length === 6 && parts[2] === 0 ? parts.slice(3) : parts.slice(2)
+    if (parts[1] === 2 && rgb.length === 3) {
+      return applyRgbColor(attributes, code, { r: rgb[0]!, g: rgb[1]!, b: rgb[2]! }, mutations)
+    }
   }
   return attributes
 }
@@ -1020,7 +1033,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     for (let i = 0; i < tokens.length; i++) {
       const raw = tokens[i] ?? ""
       if (raw.includes(":")) {
-        attributes = applyColonSgr(attributes, raw, mutations)
+        attributes = applyColonSgr(attributes, raw, mutations, palette)
         continue
       }
       const code = raw === "" ? 0 : Number(raw)

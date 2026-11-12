@@ -10,6 +10,7 @@ import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
 import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
+import { contextLabel } from '../.vitepress/theme/context-label.ts'
 const { params } = useData()
 const p = params.value
 
@@ -28,6 +29,17 @@ const measuredBar = computed(() => {
   return aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)
 })
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
+// @cto c3c2f885 condition 3: the bar names the cells whose same-suite contexts disagreed, and each row
+// below names the two contexts and their grades; a colour alone would not say what disagreed.
+const differsTitle = computed(() => {
+  const selection = selectedRun.value
+  if (!selection || !('featureResults' in selection)) return undefined
+  const rows = Object.values(selection.featureResults).filter(result => result.joined?.status === 'differs-by-context')
+  if (!rows.length) return undefined
+  return 'Differs by context: ' + rows.map(result =>
+    result.featureId + ' — ' + result.joined.from.map(from => contextLabel(from.context) + ' ' + from.status).join(' vs ')
+  ).join('; ')
+})
 const manualEnvironmentCount = computed(() => selectedRun.value ? environmentGroupIds(selectedRun.value.catalogIds).length : 0)
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
@@ -167,6 +179,7 @@ const breadcrumbParent = (() => {
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['differs-by-context']" class="result-share-differs" :title="differsTitle" :style="{ width: `${measuredBar.counts['differs-by-context'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['probe-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['probe-todo'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['probe-invalid']" class="result-share-error" :style="{ width: `${measuredBar.counts['probe-invalid'] / measuredBar.denominator * 100}%` }"></span>
@@ -385,6 +398,7 @@ const breadcrumbParent = (() => {
 .result-share span { display: block; height: 100%; }
 .result-share-supported { background: #10b981; }
 .result-share-unsupported { background: #ef4444; }
+.result-share-differs { background: #6366f1; }
 .result-share-inconclusive { background: #8b5cf6; }
 .result-share-not-tested { background: var(--vp-c-text-3); }
 .result-share-error { background: #a34620; }

@@ -561,19 +561,22 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
   } as unknown as LibProbeSource)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(result.assertions).toBeUndefined()
+  expect(result.observation?.note).toContain("SGR 38;2;255;128;0 (semicolon form)")
+  expect(result.observation?.note).toContain("SGR 38;2;17;97;201 (semicolon form)")
 })
 
 // #30701 (@cto ruling C): a framed fixture whose RGB targets read no color is a measured ignore while
 // the SGR 31/34 controls are distinct. When the controls show no color either there is no same-path control, so the
 // cell is PROBE TODO (#32246), never a source-negative review.
-test("extensions.truecolor grades unexposed RGB targets against the independent controls", () => {
+test("extensions.truecolor qualifies RGB samples and retains their encoding on unresolved paths", () => {
   const definition = callback("extensions.truecolor")
-  const run = (controls: readonly ({ r: number; g: number; b: number } | null)[]) =>
+  type Color = { r: number; g: number; b: number } | null
+  const run = (controls: readonly Color[], targets: readonly Color[] = [null, null]) =>
     definition.lib!({
       feed: () => undefined,
       getCell: (_row: number, col: number) => ({
         char: ["C", "A", "B", "X", "Y"][col] ?? "",
-        fg: [null, ...controls, null, null][col] ?? null,
+        fg: [null, ...controls, ...targets][col] ?? null,
         bg: null,
       }),
     } as unknown as LibProbeSource)
@@ -582,12 +585,35 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
     { r: 0, g: 0, b: 128 },
   ])
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(ignored.observation?.note).toContain("SGR 38;2;255;128;0 (semicolon form)")
+  expect(ignored.observation?.note).toContain("SGR 38;2;17;97;201 (semicolon form)")
   const monochrome = run([null, null])
-  expect(monochrome.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(monochrome.notTested?.reason).toBe("no-semantic-observable")
+  expect(monochrome.notTested?.noObservable).toContain(NO_SAME_PATH_CONTROL)
+  expect(monochrome.notTested?.noObservable).toContain("SGR 38;2;255;128;0 (semicolon form)")
+  expect(monochrome.notTested?.noObservable).toContain("SGR 38;2;17;97;201 (semicolon form)")
   expect(monochrome.criterionBranch).toBeUndefined()
   expect(monochrome.tests).toBeUndefined()
   expect(monochrome.observation).toBeUndefined()
   expect(monochrome.assertions).toBeUndefined()
+  const primary = { r: 255, g: 128, b: 0 }
+  const secondary = { r: 17, g: 97, b: 201 }
+  const red = { r: 128, g: 0, b: 0 }
+  const blue = { r: 0, g: 0, b: 128 }
+  for (const [controls, targets, outcome] of [
+    [[red, blue], [primary, secondary], "supported"],
+    [[red, blue], [red, blue], "unsupported"],
+    [[red, primary], [primary, secondary], "inconclusive"],
+    [[null, blue], [red, blue], "inconclusive"],
+  ] as const) {
+    const result = run(controls, targets)
+    expect(result.observation?.outcome).toBe(outcome)
+    for (const text of [result.note, result.observation?.note]) {
+      expect(text).toContain("SGR 38;2;255;128;0 (semicolon form)")
+      expect(text).toContain("SGR 38;2;17;97;201 (semicolon form)")
+      expect(text).toContain("secondary contrasting library sample")
+    }
+  }
 })
 
 // #33104 (@cto a7fb82cc): the state read decides where the terminal answers one; with a capture the
@@ -604,12 +630,31 @@ test("extensions.truecolor decides from its DECRQSS state read where the termina
   const unsupported = await definition.term!(answering("\x1bP1$r0;38;2;0;0;255m\x1b\\"))
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   const unqualified = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
-  expect(unqualified.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(unqualified.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: `Selected SGR 38;2;255;128;0 (semicolon form); ${NO_SAME_PATH_CONTROL}`,
+  })
   expect(unqualified.observation).toBeUndefined()
-  // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
-  const silent = await definition.term!(replayTermProbeSource(new Map()))
-  expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "probe-todo", reason: expect.any(String) })])
+  // The no-readback path must paint the same primary RGB as the readback path; cursor
+  // success, failure and silence must all retain which encoding this row attempted.
+  for (const col of [null, 2, 7]) {
+    const writes: string[] = []
+    const silent = await definition.term!(
+      replayTermProbeSource(new Map(), {
+        write: (bytes) => writes.push(bytes),
+        queryCursorPosition: async () => (col === null ? null : { row: 1, col }),
+      }),
+    )
+    expect(writes).toContain("\x1b[38;2;255;128;0mX\x1b[0m")
+    expect(writes).not.toContain("\x1b[38;2;255;0;128mX\x1b[0m")
+    expect(silent.observation).toBeUndefined()
+    expect(silent.tests).toMatchObject([expect.objectContaining({ status: "probe-todo" })])
+    for (const text of [silent.note, silent.tests?.[0]?.reason]) {
+      expect(text).toContain("SGR 38;2;255;128;0 (semicolon form)")
+      expect(text).toContain("SGR 38;2;17;97;201 (semicolon form)")
+      expect(text).toContain("secondary contrasting library sample")
+    }
+  }
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {

@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto"
+import { parseObservationFrames, parseRun } from "@terminfo/run-parser"
 import { describe, expect, test } from "vitest"
 import {
   ALL_PROBES,
   ASSERTION_TYPES,
   type LibProbeSource,
+  type ProbeSuiteManifest,
   type TermProbeSource,
   type TerminalQueryOutcome,
 } from "./index.ts"
@@ -15,6 +17,7 @@ import {
   NO_SAME_PATH_CONTROL,
   isDeclaredUntestable,
   isFencedSilence,
+  recordExecutedProbe,
 } from "./helpers.ts"
 import { gradedOutcome } from "./testing/group-harness.ts"
 
@@ -2964,6 +2967,92 @@ describe("Kitty protocol detection", () => {
       reason: "no-response",
       screenshotRef: `sha256:${"a".repeat(64)}`,
     })
+  })
+
+  // A capture after a silent OSC 52 read is a single, inconclusive image. The collector records
+  // the callback's observation as a run, so its wire shape must survive both reader stages.
+  test("OSC 52 no-reply capture survives the run parser", async () => {
+    const featureId = "extensions.osc52-read"
+    const callback = probe(featureId).term
+    if (!callback) throw new Error("OSC 52 read callback is missing")
+    const ref = `sha256:${"a".repeat(64)}`
+    const result = await callback(
+      terminalSource({
+        withClipboardFixture: async (work) =>
+          work({ readText: async () => "baseline", writeText: async () => undefined }),
+        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref }),
+      }),
+    )
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      assertionType: "screenshot",
+      screenshotRef: ref,
+    })
+    const recorded = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-11T12:00:00.000Z" },
+      rawReplyRef: featureId,
+      observation: { ...result.observation!, featureId, rawReplyRef: featureId },
+      assertions: [],
+      tests: result.tests,
+    })
+    const suite = "c".repeat(64)
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: suite,
+      adapterVersion: "3.3.1",
+      generatedAt: "2026-11-11T12:00:00.000Z",
+      catalogIds: [featureId],
+      probes: { term: [featureId], lib: [], mux: [] },
+    }
+    const run = {
+      schemaVersion: 4,
+      source: { kind: "live" },
+      runId: "osc52-no-reply-capture",
+      suiteId: suite,
+      probeHash: suite,
+      sourceRevision: "5".repeat(40),
+      intendedSubject: { kind: "term", id: "kitty" },
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-11-11T12:01:00.000Z",
+      origin: { kind: "collector" },
+      sealedAt: "2026-11-11T12:02:00.000Z",
+      rawReplies: { [featureId]: JSON.stringify({ writes: [], queries: [], events: [] }) },
+      assertions: [],
+      screenshotRefs: [ref],
+      results: [recorded],
+    }
+    const parsed = parseRun(
+      "osc52-no-reply-capture.json",
+      JSON.stringify(run),
+      [featureId],
+      new Map([[suite, manifest]]),
+    )
+    expect(parsed.results?.[0]?.screenshotRef).toBe(ref)
+    expect(
+      parseObservationFrames(
+        parsed.results?.[0]?.frames,
+        "osc52-no-reply-capture.json",
+        featureId,
+        parsed.screenshotRefs,
+        parsed.textSnapshotRefs,
+        parsed.results?.[0]?.screenshotRef,
+        parsed.results?.[0]?.assertionType,
+      ),
+    ).toBeUndefined()
   })
 
   // The detection step (CSI ? u + DA1) is unmutating: an absent protocol returns before any push, so nothing is

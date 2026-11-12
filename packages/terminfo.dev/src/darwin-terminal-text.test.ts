@@ -697,6 +697,104 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     expect(read).toEqual({ status: "refused", reason: "iTerm2 is not frontmost" })
   })
 
+  // 33512: the short-screen refusal is the one a reader has to explain, so its diagnostic is typed
+  // here — and the reply's raw screen text is NOT one of the fields that travels (30729 AC3b).
+  it("carries the reply's diagnostic as a typed record and never its raw contents", () => {
+    const read = readTerminalTextSnapshot({
+      ...base,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "iTerm2 returned 0 rows where the measured screen has 1",
+            diagnostic: {
+              contents: "raw-screen-text-no-reader-may-see",
+              tty: "/dev/ttys007",
+              appCols: 3,
+              appRows: 1,
+              splitRows: 2,
+              terminatorRemoved: true,
+              rowsAfterPop: 0,
+              lineLengths: [3],
+            },
+          }),
+        }),
+    })
+    expect(read).toEqual({
+      status: "refused",
+      reason: "iTerm2 returned 0 rows where the measured screen has 1",
+      diagnostic: {
+        tty: "/dev/ttys007",
+        appCols: 3,
+        appRows: 1,
+        splitRows: 2,
+        terminatorRemoved: true,
+        rowsAfterPop: 0,
+        lineLengths: [3],
+        lineLengthsTruncated: false,
+      },
+    })
+    expect(JSON.stringify(read)).not.toContain("raw-screen-text-no-reader-may-see")
+  })
+
+  // A partial record would read as a measured zero, so the whole diagnostic is dropped and the drop
+  // is counted: a missing field is never filled in.
+  it.each([
+    [
+      "the rows it left after popping the terminator",
+      { tty: "/dev/ttys007", appCols: 3, appRows: 1, splitRows: 2, terminatorRemoved: true, lineLengths: [3] },
+    ],
+    [
+      "a length that is not a count",
+      {
+        tty: "/dev/ttys007",
+        appCols: 3,
+        appRows: 1,
+        splitRows: 2,
+        terminatorRemoved: true,
+        rowsAfterPop: 0,
+        lineLengths: ["3"],
+      },
+    ],
+    [
+      "the terminator flag",
+      { tty: "/dev/ttys007", appCols: 3, appRows: 1, splitRows: 2, rowsAfterPop: 0, lineLengths: [3] },
+    ],
+  ])("drops a diagnostic without %s and counts the drop", (_missing, diagnostic) => {
+    const read = readTerminalTextSnapshot({
+      ...base,
+      run: () => reply({ stdout: JSON.stringify({ status: "refused", reason: "short screen", diagnostic }) }),
+    })
+    expect(read).toEqual({ status: "refused", reason: "short screen", diagnosticDropped: 1 })
+  })
+
+  it("bounds the line lengths it keeps to the measured screen and says it truncated them", () => {
+    const read = readTerminalTextSnapshot({
+      ...base,
+      run: () =>
+        reply({
+          stdout: JSON.stringify({
+            status: "refused",
+            reason: "iTerm2 returned 0 rows where the measured screen has 1",
+            diagnostic: {
+              tty: "/dev/ttys007",
+              appCols: 3,
+              appRows: 1,
+              splitRows: 10,
+              terminatorRemoved: true,
+              rowsAfterPop: 9,
+              lineLengths: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            },
+          }),
+        }),
+    })
+    expect(read.status).toBe("refused")
+    if (read.status === "refused") {
+      expect(read.diagnostic?.lineLengths).toEqual([1, 2, 3, 4, 5])
+      expect(read.diagnostic?.lineLengthsTruncated).toBe(true)
+    }
+  })
+
   it("refuses with the TCC reason when osascript reports the denial on stderr", () => {
     const read = readTerminalTextSnapshot({
       ...base,

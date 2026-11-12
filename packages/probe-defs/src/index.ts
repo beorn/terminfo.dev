@@ -58,6 +58,7 @@ export type {
   TextQualificationOwnership,
   TextQualificationShape,
   TextQualificationSpec,
+  TextSnapshotDiagnostic,
   ProbeSubject,
   ProbeSuiteManifest,
   RunOrigin,

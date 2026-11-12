@@ -1070,80 +1070,59 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   }
 }
 
-/** The approved same-run SGR attribute kind. Other SGR capture callers and text arms stay on
- * their existing paths. Equality is read only over the measured sample, never the cursor. */
-export async function sgrAttributeCaptureResult(
+/** One named phase of a same-run capture: the SGR written before the sample, and the sample. */
+export interface SameRunPhase {
+  name: string
+  sequence: string
+  sample: string
+  /** The capture role; a phase named "target" is the target unless it says otherwise. */
+  role?: "target" | "control"
+}
+
+/** What a same-run capture took, handed to the caller's refusal or decision. */
+export interface SameRunCapture {
+  region: CellRegion
+  pixelGeometry: PixelGeometry | undefined
+  geometrySource: PixelGeometrySource
+  stability: unknown
+  frames: ObservationFrame[]
+  measured: Array<{ name: string; capture: RegionCapture }>
+}
+
+/**
+ * Capture each phase of one sample in one run, after a stability pair, each behind its own paint
+ * witness and witness roundtrip, all cropped from the same rectangle. The caller decides from
+ * `regionDigest` equality between phases only: no tolerance, no similarity. Null when this run has
+ * no owned pixel capture, so the caller's existing path stays in force.
+ */
+export async function captureSameRunPhases(
   ctx: TermProbeSource,
   id: string,
-  sequence: string,
+  sampleCells: number,
+  phases: readonly SameRunPhase[],
+  refuse: (run: SameRunCapture, note: string) => ProbeCallbackResult,
+  decide: (run: SameRunCapture, digest: (name: string) => string) => ProbeCallbackResult,
 ): Promise<ProbeCallbackResult | null> {
-  if (!ctx.capture || ctx.captureKind === "text-cells" || id === "sgr.blink") return null
+  if (!ctx.capture || ctx.captureKind === "text-cells") return null
   const read = collectorRegionRead(ctx)
   if (!read) return null
-  const sample = "AaBb 0123456789 - terminal text"
-  const region = { top: 3, left: 3, bottom: 3, right: 2 + sample.length }
-  const spec = { region, sentinel: SENTINEL, cursorRow: 2, minRows: 3, minCols: 34 }
+  const region = { top: 3, left: 3, bottom: 3, right: 2 + sampleCells }
+  const spec = { region, sentinel: SENTINEL, cursorRow: 2, minRows: 3, minCols: region.right + 1 }
   const reported = await captureRegionGeometry(ctx, id, spec, true)
   if ("pass" in reported) return reported
   const pixelGeometry = reported.geometry
   const witnessCell = { top: 1, left: 1, bottom: 1, right: 1 }
-  const phases = [
-    { name: "plain", sequence: "", sample },
-    { name: "target", sequence, sample },
-    { name: "made-up", sequence: "\x1b[99m", sample },
-    { name: "handled", sequence: id === "sgr.inverse" ? "\x1b[4m" : "\x1b[7m", sample },
-    ...(id !== "sgr.inverse" ? [{ name: "inverse", sequence: "\x1b[7m", sample }] : []),
-    ...((id.startsWith("sgr.underline.") && id !== "sgr.underline.single") ||
-    id === "sgr.overline" ||
-    id === "sgr.strikethrough"
-      ? [{ name: "single underline", sequence: "\x1b[4m", sample }]
-      : []),
-    ...(id === "sgr.hidden" ? [{ name: "blank", sequence: "", sample: " ".repeat(sample.length) }] : []),
-  ]
-  const frames: ObservationFrame[] = []
-  const measured: Array<{ name: string; capture: RegionCapture }> = []
-  let stability: unknown
-  const finish = (
-    status: "supported" | "unsupported" | "probe-todo" | "probe-invalid",
-    note: string,
-  ): ProbeCallbackResult => {
-    const target = measured.find(({ name }) => name === "target")?.capture.frame
-    const decided = status === "supported" || status === "unsupported"
-    const response = JSON.stringify({
-      region,
-      pixelGeometry,
-      geometrySource: reported.source,
-      stability,
-      samples: Object.fromEntries(measured.map(({ name, capture }) => [name, capture.regionDigest])),
-    })
-    return {
-      pass: status === "supported",
-      note,
-      response,
-      criterionBranch: "sgr-attribute-same-run",
-      tests: [{ id: "attribute", status, ...(decided ? { assertionRefs: [0] } : { reason: note }) }],
-      observation: {
-        outcome: decided ? status : "inconclusive",
-        assertionType: "screenshot",
-        ...(decided ? {} : { reason: "insufficient-evidence" as const }),
-        screenshotRef: target?.ref ?? frames.at(-1)?.ref,
-        frames,
-        note,
-      },
-      ...(decided
-        ? {
-            assertions: [
-              {
-                assertionType: "screenshot" as const,
-                kind: status === "supported" ? ("positive" as const) : ("negative" as const),
-                expected: `${id}: same-run plain, made-up and handled controls qualify the attribute`,
-                observed: response,
-              },
-            ],
-          }
-        : {}),
-    }
+  const run: SameRunCapture = {
+    region,
+    pixelGeometry,
+    geometrySource: reported.source,
+    stability: undefined,
+    frames: [],
+    measured: [],
   }
+  const { frames, measured } = run
+  const roleOf = (phase: SameRunPhase) => phase.role ?? (phase.name === "target" ? "target" : "control")
+  const targetName = phases.find((phase) => roleOf(phase) === "target")?.name
   try {
     beginCaptureLifecycle(ctx)
     ctx.write("\x1b[2J\x1b[H")
@@ -1158,8 +1137,8 @@ export async function sgrAttributeCaptureResult(
       () => stableRead(`${id}: capture stability 1`),
       () => stableRead(`${id}: capture stability 2`),
     )
-    stability = pair.stability
-    if (pair.refusal) return finish("probe-todo", pair.refusal.observation?.note ?? `${id}: capture is not stable`)
+    run.stability = pair.stability
+    if (pair.refusal) return refuse(run, pair.refusal.observation?.note ?? `${id}: capture is not stable`)
     // Bind the existing witness to these retained captures. Replaying those
     // captures derives the same nonce; another callback cannot borrow buffered output.
     const nonceBytes = await globalThis.crypto.subtle.digest(
@@ -1189,7 +1168,7 @@ export async function sgrAttributeCaptureResult(
       const glyph = `${witnessGlyph(index)}-${witnessNonce}`
       ctx.write(`\x1b[1;1H${glyph}`)
       const painted = await awaitPaintWitness(options)
-      if (!witnessed(painted)) return finish("probe-todo", painted.observation?.note ?? `${id}: no paint witness`)
+      if (!witnessed(painted)) return refuse(run, painted.observation?.note ?? `${id}: no paint witness`)
       frames.push(baseline.frame, painted.witness.frame)
       // Reuse the existing witness roundtrip: a transient clear cannot impersonate the requested paint.
       for (const [write, expectedDigest] of [
@@ -1199,11 +1178,11 @@ export async function sgrAttributeCaptureResult(
         ctx.write(`\x1b[1;1H${write}`)
         const returned = await awaitPaintWitness({ ...options, expectedDigest })
         if (!witnessed(returned)) {
-          return finish("probe-todo", returned.observation?.note ?? `${id}: no paint witness return`)
+          return refuse(run, returned.observation?.note ?? `${id}: no paint witness return`)
         }
         frames.push(returned.witness.frame)
       }
-      const capture = await read({ role: phase.name === "target" ? "target" : "control", label, region, pixelGeometry })
+      const capture = await read({ role: roleOf(phase), label, region, pixelGeometry })
       if (!capture.regionRectangle) throw new Error(`${label}: pixel capture omitted the measured sample rectangle`)
       frames.push(capture.frame)
       measured.push({ name: phase.name, capture })
@@ -1211,9 +1190,9 @@ export async function sgrAttributeCaptureResult(
     const moved = cropPositionRefusal({
       id,
       compared: measured.map(({ name, capture }) => ({ role: name, rectangle: capture.regionRectangle })),
-      response: JSON.stringify({ stability }),
+      response: JSON.stringify({ stability: run.stability }),
       frames,
-      screenshotRef: measured.find(({ name }) => name === "target")?.capture.frame.ref,
+      screenshotRef: measured.find(({ name }) => name === targetName)?.capture.frame.ref,
     })
     if (moved) return moved
     const digest = (name: string) => {
@@ -1221,31 +1200,109 @@ export async function sgrAttributeCaptureResult(
       if (value === undefined) throw new Error(`${id}: missing same-run ${name} sample`)
       return value
     }
-    const plain = digest("plain")
-    const target = digest("target")
-    // This order is the ruling: bad controls never become a terminal negative.
-    if (digest("made-up") !== plain) {
-      return finish("probe-invalid", `${id}: made-up SGR 99 changed the sample; Test broken`)
-    }
-    if (digest("handled") === plain) {
-      return finish("probe-todo", `${id}: handled control drew nothing; capture is blind`)
-    }
-    if (target === plain) return finish("unsupported", `${id}: drew nothing for this SGR`)
-    if (phases.some(({ name }) => name === "single underline") && target === digest("single underline")) {
-      // A multiplexer negative stays on this branch so the collector's outer command read can
-      // decide it (@cto 429f006d c); finalizeVisualResult keeps it open when that read is absent.
-      return finish("unsupported", `${id}: drawn as single underline`)
-    }
-    if (id !== "sgr.inverse" && target === digest("inverse")) return finish("unsupported", `${id}: drawn as inverse`)
-    if (id === "sgr.hidden") {
-      return target === digest("blank")
-        ? finish("supported", `${id}: target equals the same-cell blank reference`)
-        : finish("probe-invalid", `${id}: hidden changed the sample without matching blank; Test broken`)
-    }
-    return finish("supported", `${id}: target differs from plain, made-up does not`)
+    return decide(run, digest)
   } finally {
     endCaptureLifecycle(ctx)
   }
+}
+
+/** The approved same-run SGR attribute kind. Other SGR capture callers and text arms stay on
+ * their existing paths. Equality is read only over the measured sample, never the cursor. */
+export async function sgrAttributeCaptureResult(
+  ctx: TermProbeSource,
+  id: string,
+  sequence: string,
+): Promise<ProbeCallbackResult | null> {
+  if (id === "sgr.blink") return null
+  const sample = "AaBb 0123456789 - terminal text"
+  const phases = [
+    { name: "plain", sequence: "", sample },
+    { name: "target", sequence, sample },
+    { name: "made-up", sequence: "\x1b[99m", sample },
+    { name: "handled", sequence: id === "sgr.inverse" ? "\x1b[4m" : "\x1b[7m", sample },
+    ...(id !== "sgr.inverse" ? [{ name: "inverse", sequence: "\x1b[7m", sample }] : []),
+    ...((id.startsWith("sgr.underline.") && id !== "sgr.underline.single") ||
+    id === "sgr.overline" ||
+    id === "sgr.strikethrough"
+      ? [{ name: "single underline", sequence: "\x1b[4m", sample }]
+      : []),
+    ...(id === "sgr.hidden" ? [{ name: "blank", sequence: "", sample: " ".repeat(sample.length) }] : []),
+  ]
+  const finish = (
+    run: SameRunCapture,
+    status: "supported" | "unsupported" | "probe-todo" | "probe-invalid",
+    note: string,
+  ): ProbeCallbackResult => {
+    const target = run.measured.find(({ name }) => name === "target")?.capture.frame
+    const decided = status === "supported" || status === "unsupported"
+    const response = JSON.stringify({
+      region: run.region,
+      pixelGeometry: run.pixelGeometry,
+      geometrySource: run.geometrySource,
+      stability: run.stability,
+      samples: Object.fromEntries(run.measured.map(({ name, capture }) => [name, capture.regionDigest])),
+    })
+    return {
+      pass: status === "supported",
+      note,
+      response,
+      criterionBranch: "sgr-attribute-same-run",
+      tests: [{ id: "attribute", status, ...(decided ? { assertionRefs: [0] } : { reason: note }) }],
+      observation: {
+        outcome: decided ? status : "inconclusive",
+        assertionType: "screenshot",
+        ...(decided ? {} : { reason: "insufficient-evidence" as const }),
+        screenshotRef: target?.ref ?? run.frames.at(-1)?.ref,
+        frames: run.frames,
+        note,
+      },
+      ...(decided
+        ? {
+            assertions: [
+              {
+                assertionType: "screenshot" as const,
+                kind: status === "supported" ? ("positive" as const) : ("negative" as const),
+                expected: `${id}: same-run plain, made-up and handled controls qualify the attribute`,
+                observed: response,
+              },
+            ],
+          }
+        : {}),
+    }
+  }
+  return captureSameRunPhases(
+    ctx,
+    id,
+    sample.length,
+    phases,
+    (run, note) => finish(run, "probe-todo", note),
+    (run, digest) => {
+      const plain = digest("plain")
+      const target = digest("target")
+      // This order is the ruling: bad controls never become a terminal negative.
+      if (digest("made-up") !== plain) {
+        return finish(run, "probe-invalid", `${id}: made-up SGR 99 changed the sample; Test broken`)
+      }
+      if (digest("handled") === plain) {
+        return finish(run, "probe-todo", `${id}: handled control drew nothing; capture is blind`)
+      }
+      if (target === plain) return finish(run, "unsupported", `${id}: drew nothing for this SGR`)
+      if (phases.some(({ name }) => name === "single underline") && target === digest("single underline")) {
+        // A multiplexer negative stays on this branch so the collector's outer command read can
+        // decide it (@cto 429f006d c); finalizeVisualResult keeps it open when that read is absent.
+        return finish(run, "unsupported", `${id}: drawn as single underline`)
+      }
+      if (id !== "sgr.inverse" && target === digest("inverse")) {
+        return finish(run, "unsupported", `${id}: drawn as inverse`)
+      }
+      if (id === "sgr.hidden") {
+        return target === digest("blank")
+          ? finish(run, "supported", `${id}: target equals the same-cell blank reference`)
+          : finish(run, "probe-invalid", `${id}: hidden changed the sample without matching blank; Test broken`)
+      }
+      return finish(run, "supported", `${id}: target differs from plain, made-up does not`)
+    },
+  )
 }
 
 /**

@@ -1455,7 +1455,15 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         while (end < sequence.length && !/[@-~]/.test(sequence[end]!)) end += 1
         const final = sequence[end] ?? ""
         const raw = sequence.slice(index + 2, end)
-        const params = raw === "" ? [] : raw.split(";").map((entry) => (entry === "" ? 0 : Number(entry)))
+        const params =
+          raw === ""
+            ? []
+            : raw
+                .split(";")
+                .flatMap((entry) =>
+                  /^(?:38|48|58):/.test(entry) ? entry.split(":").filter((part) => part !== "") : [entry],
+                )
+                .map((entry) => (entry === "" ? 0 : Number(entry)))
         if (final === "m") applySgr(params)
         else if (final === "H") {
           row = params[0] ?? 1

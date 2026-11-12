@@ -413,13 +413,40 @@ export interface TextQualificationOwnership {
   observerRow: string
 }
 
+/** What a refused text snapshot's reply stated about the rows it returned, in the one shape that
+ * travels into a run. Exactly these fields travel: the reply's raw `contents` is not one of them, so
+ * a refused read cannot carry a whole screen into a run record. Every field is optional-nothing: a
+ * reply that states only some of them has no diagnostic at all (the read says how many it dropped). */
+export interface TextSnapshotDiagnostic {
+  readonly tty: string
+  readonly appCols: number
+  readonly appRows: number
+  readonly splitRows: number
+  readonly terminatorRemoved: boolean
+  readonly rowsAfterPop: number
+  /** Each returned line's length in characters, bounded to the measured screen plus a small margin. */
+  readonly lineLengths: readonly number[]
+  /** True when `lineLengths` stopped at that bound, so the lengths past it are not recorded. */
+  readonly lineLengthsTruncated: boolean
+}
+
 export interface TextQualification {
   version: number
   recipe: string
   grid: { rows: number; cols: number }
   shapes: Array<
     | { shape: TextQualificationShape; frames: TextCellsObservationFrame[]; reason?: never; ownership?: never }
-    | { shape: TextQualificationShape; reason: string; frames?: never; ownership?: never }
+    | {
+        shape: TextQualificationShape
+        reason: string
+        frames?: never
+        ownership?: never
+        /** What the refused reply stated, when it stated a diagnostic this read could type. */
+        diagnostic?: TextSnapshotDiagnostic
+        /** How many stated diagnostics this read could not type. Present only when one was dropped,
+         * so a malformed payload is visible in the record instead of reading as "no diagnostic". */
+        diagnosticDropped?: number
+      }
     | { shape: "console-host-ownership"; ownership: TextQualificationOwnership; frames?: never; reason?: never }
   >
 }

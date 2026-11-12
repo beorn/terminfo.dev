@@ -4,7 +4,7 @@
  * `denominator` — D132 B (#30917).
  */
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
-import { aggregateCurrentResults } from "./release-scope.ts"
+import { aggregateCurrentResults, type RollupCounts } from "./release-scope.ts"
 
 /** Current execution score: every frozen graded feature stays in the denominator. */
 export interface ScopeResult {
@@ -12,7 +12,8 @@ export interface ScopeResult {
   catalogRows: number
   denominator: number
   supported: number
-  counts: Record<FeatureResultStatus, number>
+  /** Every rollup bucket, including the derived disagreement bucket (@cto c3c2f885). */
+  counts: RollupCounts
   fraction: string
   pct: number
   complete: boolean
@@ -20,7 +21,7 @@ export interface ScopeResult {
     key: string
     catalogRows: number
     supported: number
-    counts: Record<FeatureResultStatus, number>
+    counts: RollupCounts
     fraction: string
     pct: number
     complete: boolean

@@ -856,7 +856,11 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
     status: "probe-todo",
     reason: "Cursor response does not measure OSC 440 audio playback",
   },
-  "extensions.truecolor": { status: "probe-todo", reason: "No cursor response; RGB color was not measured" },
+  "extensions.truecolor": {
+    status: "probe-todo",
+    reason:
+      "extensions.truecolor: SGR 38;2;255;128;0 (semicolon form); SGR 38;2;17;97;201 (semicolon form) is the secondary contrasting library sample; no cursor response; RGB color was not measured",
+  },
   // Both kitty pixel rows now have a deciding observation; without the terminal's own pixel report
   // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.
   "extensions.kitty-graphics.animation": {

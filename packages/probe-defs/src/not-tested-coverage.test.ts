@@ -188,12 +188,14 @@ const headlessStateFeatures = [
     ["A", "B", "X"],
     "sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
     "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it.",
+    ["58:2::255:0:128", "colon form"],
   ],
   [
     "sgr.underline-color-indexed",
     ["A", "X", "B", "Y"],
-    "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+    "SGR 58 index 1/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
     "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it.",
+    ["58:5:1", "58:5:4", "colon form"],
   ],
   // Seedless SGR59/default-color cases are named TODOs, covered by sgr-contract.test.ts.
   [
@@ -213,18 +215,21 @@ const headlessStateFeatures = [
     ["C", "A", "B", "X", "Y"],
     "sgr.fg.256: indices 67 and 173 match two independently observed canonical RGB cube references",
     "direct RGB fg readback matching the fed value (SGR 38;2 reference cells A and B)",
+    ["38;5;67", "38;5;173", "semicolon form"],
   ],
   [
     "sgr.fg.truecolor",
     ["C", "A", "B", "X", "Y"],
     "sgr.fg.truecolor: two distinct direct-RGB samples are exposed at their exact requested values",
     "independent fg color controls (SGR 31 and 34) distinguishable in the headless readback",
+    ["38;2;255;128;0", "38;2;17;97;201", "semicolon form"],
   ],
   [
     "extensions.truecolor",
     ["C", "A", "B", "X", "Y"],
     "Two distinct direct-RGB foreground samples match their requested values",
     "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
+    ["38;2;255;128;0", "38;2;17;97;201", "semicolon form"],
   ],
   [
     "erase.el-with-attrs",
@@ -248,7 +253,7 @@ const headlessStateFeatures = [
 
 test.each(headlessStateFeatures)(
   "%s distinguishes failed setup from unexposed headless colour/reset/buffer state",
-  (id, chars, expected, reason) => {
+  (id, chars, expected, reason, encoding?: readonly string[]) => {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
     const result = definition.lib({
@@ -288,7 +293,16 @@ test.each(headlessStateFeatures)(
       id === "sgr.selective-reset.italic" || id === "sgr.underline.color" || id === "sgr.underline-color-indexed"
         ? reason
         : NO_SAME_PATH_CONTROL
-    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+    if (encoding === undefined) {
+      expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+    } else {
+      expect(result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: expect.stringContaining(noObservable),
+      })
+      for (const parameter of encoding) expect(result.notTested?.noObservable).toContain(parameter)
+      expect(result.note).toBe(result.notTested?.noObservable)
+    }
     expect(result.criterionBranch).toBeUndefined()
     expect(result.tests).toBeUndefined()
     expect(result.observation).toBeUndefined()

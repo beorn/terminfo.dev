@@ -18,7 +18,7 @@ import {
   type TextQualificationOwnership,
   type TextQualificationRecipe,
 } from "@terminfo/probe-defs"
-import type { TextFrameCheckpoint } from "./serve.ts"
+import { TextSnapshotRefused, type TextFrameCheckpoint } from "./serve.ts"
 
 /** Measure mapping witnesses through the installed adapter before recording the execution test. */
 export async function collectTextQualification({
@@ -86,7 +86,13 @@ export async function collectTextQualification({
         const target = await read("target", `text qualification ${fixture.shape} target`)
         shapes.push({ shape: fixture.shape, frames: [control, target] })
       } catch (cause) {
-        shapes.push({ shape: fixture.shape, reason: cause instanceof Error ? cause.message : String(cause) })
+        const refused = cause instanceof TextSnapshotRefused ? cause : undefined
+        shapes.push({
+          shape: fixture.shape,
+          reason: cause instanceof Error ? cause.message : String(cause),
+          ...(refused?.diagnostic !== undefined && { diagnostic: refused.diagnostic }),
+          ...(refused?.diagnosticDropped !== undefined && { diagnosticDropped: refused.diagnosticDropped }),
+        })
       }
     }
     if ((required as readonly string[]).includes("console-host-ownership")) {

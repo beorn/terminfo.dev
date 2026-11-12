@@ -666,6 +666,43 @@ describe("in-run pixel probe results", () => {
     }
   })
 
+  // 33573: persistence keeps only the frames capture() returned (unified.ts "persistence owns the original captured
+  // values"), so the probe's derived "Plain line" entries never reach disk. The plain digest the assertion cites lives
+  // on each persisted shot as its same-shot controlRegionDigest; hosted Warp run 43089755106 was refused whole on it.
+  const persistedBlinkRun = () => {
+    const run = blinkRun()
+    const result = (run.results as Array<{ frames: ObservationFrame[] }>)[0]!
+    result.frames = result.frames.filter((entry) => !entry.label.startsWith("Plain line,"))
+    return run
+  }
+
+  it("admits a blink result citing its plain digest from the same-shot control crops persistence keeps (33573)", () => {
+    const loaded = parseBlink(persistedBlinkRun())
+    expect(loaded.results![0]?.status).toBe("supported")
+    expect(loaded.results![0]?.frames).toHaveLength(1 + BLINK_SAMPLES)
+    expect(loaded.results![0]?.frames?.some((entry) => entry.label.startsWith("Plain line,"))).toBe(false)
+  })
+
+  it("refuses a result whose only citation is a same-shot control crop: that region was not under test (33573)", () => {
+    const run = persistedBlinkRun()
+    const result = (run.results as Array<{ frames: ObservationFrame[] }>)[0]!
+    const control = result.frames.find((entry) => entry.kind !== "text-cells" && entry.controlRegionDigest)
+    expect(control).toBeDefined()
+    const assertions = run.assertions as Array<Record<string, unknown>>
+    assertions[0]!.observed = JSON.stringify({ plain: [control!.controlRegionDigest] })
+    expect(() => parseBlink(run)).toThrow(/cites only source or whole-frame digests/)
+  })
+
+  it("still refuses a plain digest that no persisted frame carries as its control crop (33573)", () => {
+    const run = persistedBlinkRun()
+    const assertions = run.assertions as Array<Record<string, unknown>>
+    assertions[0]!.observed = JSON.stringify({
+      styled: [digest("blink-on"), digest("blink-off")],
+      plain: [digest("some-other-plain")],
+    })
+    expect(() => parseBlink(run)).toThrow(/cites sha256:[0-9a-f]{64}, which is not the ref or a digest of a frame/)
+  })
+
   it.each([
     { name: "digest without rectangle", control: { controlRegionDigest: digest("plain-region") } },
     {

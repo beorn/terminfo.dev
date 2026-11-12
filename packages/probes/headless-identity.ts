@@ -296,6 +296,17 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
   return { path, sha256: sha256(readFileSync(path)) }
 }
 
+/**
+ * The one command, run from the Termless root, that rebuilds an adapter's native addon and writes its receipt
+ * (termless flake.nix native-tools; ghostty-native's build.sh writes its own). A stale or mismatched receipt names it,
+ * so the refusal says how to cure itself (33579).
+ */
+export function nativeRebuildCommand(packagePath: string): string {
+  return packagePath.endsWith("ghostty-native")
+    ? `bash ${packagePath}/build/build.sh`
+    : `nix shell .#native-tools --command bun run --cwd ${packagePath} build:native`
+}
+
 function sidecarIdentity(
   adapterDirectory: string,
   adapterVersion: string,
@@ -304,6 +315,8 @@ function sidecarIdentity(
 ): HeadlessRuntimeIdentity {
   const loadedBinary = loadedAddon(adapterDirectory)
   const receiptPath = `${loadedBinary.path}.receipt.json`
+  const packagePath = relative(termlessRoot, adapterDirectory)
+  const rebuild = `; rebuild it from the Termless root: ${nativeRebuildCommand(packagePath)}`
   const receipt: unknown = JSON.parse(readFileSync(receiptPath, "utf8"))
   if (
     !record(receipt) ||
@@ -315,12 +328,11 @@ function sidecarIdentity(
     typeof receipt.lockSha256 !== "string" ||
     typeof receipt.nativeTreeOid !== "string"
   ) {
-    throw new Error(`Native addon receipt missing or does not match loaded binary: ${receiptPath}`)
+    throw new Error(`Native addon receipt missing or does not match loaded binary: ${receiptPath}${rebuild}`)
   }
-  const packagePath = relative(termlessRoot, adapterDirectory)
   const currentTreeOid = git(termlessRoot, "rev-parse", `HEAD:${packagePath}/native`)
   if (receipt.nativeTreeOid !== currentTreeOid) {
-    throw new Error(`Native addon receipt source tree differs from current adapter: ${receiptPath}`)
+    throw new Error(`Native addon receipt source tree differs from current adapter: ${receiptPath}${rebuild}`)
   }
   const lockPath = join(
     adapterDirectory,
@@ -328,7 +340,7 @@ function sidecarIdentity(
     packagePath.endsWith("ghostty-native") ? ".ghostty-src/flake.lock" : "Cargo.lock",
   )
   if (receipt.lockSha256 !== sha256(readFileSync(lockPath))) {
-    throw new Error(`Native addon receipt lock differs from current build inputs: ${receiptPath}`)
+    throw new Error(`Native addon receipt lock differs from current build inputs: ${receiptPath}${rebuild}`)
   }
   return {
     kind: "native",
