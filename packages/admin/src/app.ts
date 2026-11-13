@@ -692,7 +692,7 @@ async function probeDaemon(
       : {
           process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
         },
-    ...(ids === undefined ? [] : [ids]),
+    ids,
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
