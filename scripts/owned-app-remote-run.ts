@@ -49,6 +49,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { RUN_ID_PATTERN } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { KITTY_BINARY_PATH } from "../packages/admin/src/kitty-binary.ts"
 import { RESOURCE_EXCLUDES, manifestScan, digestValue, sha256 } from "./owned-app-resource-manifest.ts"
 
@@ -266,7 +267,9 @@ function parseArgs(argv: readonly string[]): Parsed {
   // #34018: the owned route never mints. A missing id is an error by name, because a fresh mint here
   // is exactly the silent substitution that made the composer refuse the run at collection.
   const runId = values["run-id"] ?? usage()
-  if (!/^[0-9a-f]{32}$/.test(runId)) {
+  // #34018: one shape for a run identity, owned where the admin mints and validates it. A second
+  // inline copy here could drift from the composer's and silently admit or refuse a different id.
+  if (!RUN_ID_PATTERN.test(runId)) {
     fail(
       "invalid run id",
       `run id ${JSON.stringify(runId)} is not 32 lowercase hex characters; the transport carries the identity it was given and never mints one`,

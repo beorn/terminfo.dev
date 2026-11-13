@@ -21,6 +21,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  copyFileSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -37,6 +38,7 @@ import * as versions from "../packages/admin/versions.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
@@ -1968,6 +1970,180 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     rmSync(directory, { recursive: true, force: true })
   }
 }, 60_000)
+
+// #34018 R1 (@dev/17 peer REVISE): the composed owned route, driven through the real pass. The host
+// stub consumes the inbound `--run-id` as the identity of the run it hands back — which is what the
+// admin does with `createProbeRun(runId)` — so the only way the assertions below can hold is if the
+// composer's identity really crossed to the host and came back as the run's own identity.
+async function composedOwnedPass(hostRunId?: string) {
+  const directory = mkdtempSync(join(tmpdir(), "composed-owned-"))
+  const shims = join(directory, "shims")
+  const output = join(directory, "output")
+  const witness = join(directory, "inbound-run-id.txt")
+  const producer = join(directory, "producer.json")
+  mkdirSync(shims, { recursive: true })
+  mkdirSync(output, { recursive: true })
+  writeFileSync(
+    join(shims, "bun"),
+    [
+      "#!/bin/sh",
+      'out=""; id=""',
+      "while [ $# -gt 0 ]; do",
+      '  case "$1" in',
+      '    --run-id) shift; id="$1" ;;',
+      '    --output) shift; out="$1" ;;',
+      "  esac",
+      "  shift",
+      "done",
+      '[ -n "$id" ] || { echo "host stub: no --run-id crossed the compose boundary" >&2; exit 9; }',
+      'printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      'write="$id"',
+      '[ -n "$HOST_RUN_ID" ] && write="$HOST_RUN_ID"',
+      'sed \'s/"runId":"[^"]*"/"runId":"\'"$write"\'"/\' "$PRODUCER_RUN" > "$out/terminal-app-current-todo.json"',
+    ].join("\n"),
+    { mode: 0o755 },
+  )
+  const snapshot = versions.probeSuiteSnapshot()
+  const manifest = versions.derivedSuiteManifest(snapshot)
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    encoding: "utf8",
+  }).trim()
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "00000000000000000000000000000000",
+    sourceRevision,
+    manifest: { ...manifest, schemaVersion: 4 },
+    intendedSubject: { kind: "term", id: "terminal-app", os: "macos" },
+  })
+  draft.subject = {
+    kind: "term",
+    id: "terminal-app",
+    version: "2.15",
+    os: "macos",
+    osVersion: "26.6.2",
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.identity = "unverified"
+  draft.origin = { kind: "collector" }
+  draft.measuredAt = "2026-10-06T23:41:34.869Z"
+  writeFileSync(producer, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
+  const environment = {
+    PATH: `${shims}:/usr/bin:/bin`,
+    PRODUCER_RUN: producer,
+    INBOUND_ID_FILE: witness,
+    HOST_RUN_ID: hostRunId ?? "",
+  }
+  const previous = Object.entries(environment).map(([key, value]) => [key, process.env[key]] as const)
+  Object.assign(process.env, environment)
+  // The local owned route starts only on the host that owns the app (@cto 33963 condition 3), so the
+  // pass is driven as it would run on the Mac, without pretending this machine launched the app.
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
+  try {
+    const pass = await collectPass(output, { runner: "local" }, { contexts: ["terminal-app/macos"] })
+    return { pass, witness, manifest, directory }
+  } finally {
+    if (platform) Object.defineProperty(process, "platform", platform)
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
+it("admits the identity the host consumed and places that same App original", async () => {
+  const { pass, witness, manifest, directory } = await composedOwnedPass()
+  try {
+    expect(pass.contexts).toHaveLength(1)
+    const row = pass.contexts[0]!
+    expect(row.error).toBeUndefined()
+    expect(row.status).toBe("classified")
+    expect(row.summary).toBeDefined()
+    const draftPath = join(pass.directory, "term-terminal-app-macos.draft.json")
+    const handed = parseJsonStrict(draftPath, readFileSync(draftPath, "utf8")) as { runId: string }
+    // The identity the host was given, the identity it handed back, and the identity the pass graded
+    // are one run — not a fixture that was minted before the pass and could never disagree.
+    expect(readFileSync(witness, "utf8")).toBe(handed.runId)
+    const original = JSON.parse(readFileSync(row.rawRun!, "utf8")) as { runId: string }
+    expect(original.runId).toBe(handed.runId)
+    const content = mkdtempSync(join(tmpdir(), "composed-content-"))
+    try {
+      copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
+      for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
+      // The place path binds the composed identity and reaches its identity profile: an owned App
+      // original carries no measured identity replies here, so the refusal is that profile, named.
+      // It is never a changed, unsafe or suite-mismatched id — those checks run first and pass.
+      expect(() => placeCollectedRun(row.rawRun!, manifest, content)).toThrow(/identity-replies-mismatch/)
+      // The identity the host produced is one the place path accepts unchanged: a lib run carrying
+      // that exact id places and reloads, so nothing about the composed id is refused downstream.
+      const subject = {
+        kind: "lib" as const,
+        id: "xtermjs",
+        version: "6.0.0",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      }
+      const placedDraft = initializeRunDraft({
+        runId: handed.runId,
+        sourceRevision: "a".repeat(40),
+        manifest: { ...manifest, schemaVersion: 4 },
+        source: { kind: "live" },
+        intendedSubject: subject,
+      })
+      Object.assign(placedDraft, {
+        subject,
+        identity: "verified",
+        measuredAt: "2026-11-13T00:00:00.000Z",
+        origin: { kind: "collector" },
+        runtimeIdentity: {
+          kind: "js",
+          engineVersion: "6.0.0",
+          runtimeFormat: "js",
+          adapterVersion: "0.10.2",
+          termlessRevision: "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
+          resolvedPath: "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+          integrity: {
+            kind: "registry",
+            lockIntegrity:
+              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+          },
+        },
+      })
+      const placedSource = join(content, "placed.json")
+      writeFileSync(placedSource, JSON.stringify(finalizeCollectedDraft(placedDraft as CapturedRunDraft)))
+      const placed = placeCollectedRun(placedSource, { ...manifest, schemaVersion: 4 }, content)
+      expect(basename(placed)).toContain(handed.runId)
+      expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([
+        { runId: handed.runId, sha256: expect.any(String) },
+      ])
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
+
+it("refuses by name when the host hands back an identity it was not given", async () => {
+  const { pass, directory } = await composedOwnedPass("ffffffffffffffffffffffffffffffff")
+  try {
+    const row = pass.contexts[0]!
+    // The pass leaves the row unstarted and names the substitution: the host was given one identity
+    // and handed back another, and the composer refuses rather than grading one run as the other.
+    expect(row.error).toMatch(/terminal-app\/macos: Collector changed logical runId/)
+    expect(pass.complete).toBe(false)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
 
 it("records the host-written transport receipt as evidence and refuses anything else", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))
