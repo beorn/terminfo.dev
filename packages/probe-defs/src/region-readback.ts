@@ -809,6 +809,20 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
 }
 
 /**
+ * The origin is DERIVED from one located box (`originFromSentinel`), so a frame whose origin does not
+ * follow from its own box `a` is a frame whose two halves disagree — the pair would prove a pitch for
+ * a crop nobody mapped from it (@dev/10's non-blocking note b). Exact arithmetic, as in the read.
+ */
+function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
+  const { a } = crop.witness ?? {}
+  if (a === undefined) return false
+  return (
+    crop.origin.x === a.box.x - (a.cell.col - 1) * crop.cell.width &&
+    crop.origin.y === a.box.y - (a.cell.row - 1) * crop.cell.height
+  )
+}
+
+/**
  * The ONE exemption to the same-crop rule (33982, @cto 9af65976). A terminal may repaint its whole
  * text area lower after a reset — Warp moves it 35 rows when a probe sends RIS — and then a row's
  * frames are cropped from two positions that hold the SAME cells. The exemption accepts exactly that
@@ -826,6 +840,7 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
   if (first === undefined || seed.rectangle === undefined) return []
   if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return []
   if (!witnessProvesPitch(first, first)) return []
+  if (!originFollowsFromBoxA(first)) return []
   const moves: GridMove[] = []
   for (const entry of rest) {
     const crop = entry.crop
@@ -844,6 +859,7 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
     if (rectangle.y - seed.rectangle.y !== dy) return []
     if (!insideImage(seed.rectangle, first.image) || !insideImage(rectangle, crop.image)) return []
     if (!witnessProvesPitch(crop, first)) return []
+    if (!originFollowsFromBoxA(crop)) return []
     const rows = dy / first.cell.height
     // A frame that did not move is the ordinary case, not a contradiction: a row whose seed and
     // post-sequence frames stay put while the expected and ignored frames follow a reset reads

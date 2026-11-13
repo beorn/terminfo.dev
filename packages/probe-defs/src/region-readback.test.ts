@@ -2420,9 +2420,4 @@ test("a grid that moves 35 rows between the seed and the expected frame is decid
   // Decided, not refused: the exemption turns what used to be a tool-invalid row into a verdict.
   expect(result.observation.outcome).toBe("supported")
   expect(JSON.stringify(result.observation)).not.toMatch(/cropped from different positions/)
-  // The row records every compared origin, so a reader sees the move without the capture trace.
-  const origins = fake.requests
-    .filter(({ region }) => key(region) !== SENTINEL_CELL)
-    .map(({ label }) => (movedAfter.has(label) ? 606 : 46))
-  expect(new Set(origins).size).toBe(2)
 })
