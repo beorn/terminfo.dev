@@ -339,9 +339,23 @@ func insideWindow(_ point: CGPoint, _ frame: CGRect) -> Bool {
 /// run-level "one run at a time" is custody, not this lock, and is not built here.
 func holdInputLock() {
     let path = "/tmp/darwin-input-helper.input.lock"
-    let descriptor = open(path, O_CREAT | O_RDWR, 0o600)
+    // O_NOFOLLOW: a symlink planted at this fixed path must not redirect the lock (or a later write) to a
+    // file someone else chose. The lock is only ever this file, created 0600 by this user.
+    let descriptor = open(path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
     if descriptor < 0 {
         fail("the input lock \(path) could not be opened, so no posting may be proved atomic; refusing to post")
+    }
+    // Owner-checked (@cto aaeb18ac): a lock file this user does not own could be held open by someone
+    // else's process, which would turn "one posting at a time" into "whoever opened it first".
+    var info = stat()
+    if fstat(descriptor, &info) != 0 {
+        fail("the input lock \(path) could not be inspected, so no posting may be proved atomic; refusing to post")
+    }
+    if info.st_uid != getuid() {
+        fail("the input lock \(path) is owned by uid \(info.st_uid), not this user (\(getuid())); refusing to post through a lock someone else controls")
+    }
+    if info.st_mode & mode_t(S_IFMT) != mode_t(S_IFREG) {
+        fail("the input lock \(path) is not a regular file; refusing to post through it")
     }
     if flock(descriptor, LOCK_EX) != 0 {
         fail("the input lock \(path) could not be taken, so no posting may be proved atomic; refusing to post")
