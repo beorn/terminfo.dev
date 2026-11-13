@@ -538,10 +538,13 @@ export async function runProbeBatch(
     })
     return verdict.ok ? undefined : verdict.probeTodo
   }
+  // Resolves when the live walk passes, rejects with the row's named refusal when it does not. Written without
+  // `async` because the walk is synchronous: the promise is the contract the fixture takes, not a wrapper around
+  // an await, and an async function with nothing to await hides that.
   const ordinaryOpenVerify = ordinaryOpen
-    ? async () => {
+    ? () => {
         const probeTodo = ordinaryOpenLiveRefusal()
-        if (probeTodo) throw new OrdinaryOpenAncestryRefusal(probeTodo)
+        return probeTodo === undefined ? Promise.resolve() : Promise.reject(new OrdinaryOpenAncestryRefusal(probeTodo))
       }
     : undefined
   if (disposable?.appLaunch) {
