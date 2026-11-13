@@ -721,7 +721,13 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
           compared: ["pre-edit seed", "post-sequence target", "expected frame", "ignored-attribute frame"].map(
             (role) => {
               const captured = frame(role)
-              return { role, rectangle: captured?.kind === "text-cells" ? undefined : captured?.regionRectangle }
+              return {
+                role,
+                rectangle: captured?.kind === "text-cells" ? undefined : captured?.regionRectangle,
+                ...(captured?.kind === "text-cells" || captured?.cellCrop === undefined
+                  ? {}
+                  : { crop: captured.cellCrop }),
+              }
             },
           ),
           response: result.response ?? "",
