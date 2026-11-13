@@ -245,13 +245,14 @@ export const assembleOwnedAppOwnerAssertion = (input: OwnedAppLaunchRecordInput)
     value: input.marker.value,
     required: input.windowProof === "marker-title",
   })
-  if (!Number.isInteger(window.ownerPid) || window.ownerPid <= 0) {
+  if (!Number.isInteger(window.ownerPid) || window.ownerPid < 2) {
     throw new Error(
       "the new window " +
         String(window.id) +
         " reports no usable owner pid (" +
         String(window.ownerPid) +
-        "), so the record could not name the process that owns it",
+        "); an owned-Mac app record needs a real owner pid, never 0 or 1, so the record could not name" +
+        " the process that owns it",
     )
   }
   return {

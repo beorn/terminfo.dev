@@ -263,6 +263,15 @@ describe("the launcher's launch record", () => {
     expect(() => assembleOwnedAppOwnerAssertion({ ...valid, after: before })).toThrow(/opened no new window/)
   })
 
+  it("refuses a window whose owner pid is 1 as firmly as the parser does", () => {
+    // The parser refuses ownerPid < 2, so a record built here with pid 1 would assemble and then fail to
+    // parse on the worker. Both ends name the same bound.
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, after: [row(1, 100), row(5, 1)] })).toThrow(/never 0 or 1/)
+    expect(() => parseOwnedAppOwnerAssertion({ ...assembleOwnedAppOwnerAssertion(valid), ownerPid: 1 })).toThrow(
+      /Invalid owned-Mac app owner assertion/,
+    )
+  })
+
   it("refuses when the launch created several windows", () => {
     expect(() => assembleOwnedAppOwnerAssertion({ ...valid, after: [...after, row(6, 201)] })).toThrow(
       /opened 2 windows for one launch/,
