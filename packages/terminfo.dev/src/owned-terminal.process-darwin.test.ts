@@ -221,6 +221,8 @@ function runDarwinArm(scenario: {
   comms?: Record<string, string>
   /** The Terminal ancestor's pid the terminal-app owner must adopt. */
   terminalAppPid?: number
+  /** TERMINFO_TARGET_ID for a run that owns an app's pane, with this run's own WezTerm pane variables. */
+  targetApp?: string
   text?: {
     stdout?: string | number[]
     socket?: string
@@ -253,6 +255,13 @@ function runDarwinArm(scenario: {
       process.env.KITTY_LISTEN_ON = scenario.text.socket ?? socket
       process.env.KITTY_PID = scenario.text.pid ?? String(scenario.ownerPid)
       process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
+    }
+    if (scenario.targetApp) {
+      process.env.TERMINFO_TARGET_ID = scenario.targetApp
+      // A real, readable absolute path, so the executable proof measures bytes and then the CLI's version.
+      process.env.WEZTERM_EXECUTABLE = process.execPath
+      process.env.WEZTERM_PANE = "17"
+      process.env.WEZTERM_UNIX_SOCKET = join(dirname(captureDirectory), "wezterm-" + launchRunId + ".sock")
     }
     const reads = []
     const pasteboardCalls = []
@@ -384,7 +393,13 @@ function runDarwinArm(scenario: {
         console.log("TEXT " + JSON.stringify({ read, reads }))
       } else if (!scenario.batch) {
         const basis = ownedTerminalProcessBasisFor(owner, ${JSON.stringify(captureRunId)}, process.stdout)
-        console.log("GRANTED " + summary.outputBinding.tabTty + (basis ? "" : " no-disposable-basis"))
+        console.log(
+          "GRANTED " + summary.outputBinding.tabTty + (basis ? "" : " no-disposable-basis") +
+            (scenario.targetApp
+              ? " history=" + typeof owner.getScrollback +
+                (summary.wezTermHistory?.unmeasured ? " unmeasured=" + summary.wezTermHistory.unmeasured : "")
+              : ""),
+        )
       } else {
         assert.equal(ownedTerminalVerifiedFor(owner, ${JSON.stringify(captureRunId)}, process.stdout), true)
         if (scenario.batch === "disposed") {
@@ -490,6 +505,31 @@ test("cli-process is granted by the same arm, not by a second proof", () => {
   })
   expect(result.stderr).toBe("")
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
+})
+
+test("an owned WezTerm pane gets a history reader on the process arm; another app's pane does not", () => {
+  const owned = runDarwinArm({
+    provider: "cli-process",
+    workerPid: "self",
+    ownerPid: 4343,
+    marker: { flag: "--probe-run", value: `run-${launchRunId}` },
+    parent: { self: 4343, "4343": 1 },
+    targetApp: "wezterm",
+  })
+  // The CLI's version could not be read in this fixture, and the artifact says so rather than dropping it.
+  expect(owned.stdout).toContain("GRANTED /dev/ttys004 history=function unmeasured=")
+  expect(owned.stdout).toContain("reported no version")
+  expect(owned.stderr).toBe("")
+  const foreign = runDarwinArm({
+    provider: "cli-process",
+    workerPid: "self",
+    ownerPid: 4343,
+    marker: { flag: "--probe-run", value: `run-${launchRunId}` },
+    parent: { self: 4343, "4343": 1 },
+    targetApp: "alacritty",
+  })
+  expect(foreign.stdout.trim()).toBe("GRANTED /dev/ttys004 history=undefined")
+  expect(foreign.stderr).toBe("")
 })
 
 test.each([
