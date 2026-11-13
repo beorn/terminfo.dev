@@ -20,7 +20,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -197,6 +197,12 @@ vi.mock("../docs/data/current-results.ts", async () => {
     "../docs/data/current-results.ts",
   )
   const content = join(import.meta.dirname, "..", "content")
+  // The site reads each run's sourceRevision from this repository's git history (33587), so a
+  // fixture run names a commit that exists here: this checkout's own HEAD (33996).
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: join(import.meta.dirname, ".."),
+    encoding: "utf8",
+  }).trim()
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
@@ -235,7 +241,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
       probeHash: run.probeHash ?? "current",
-      sourceRevision: "a".repeat(40),
+      sourceRevision,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,
