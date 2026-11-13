@@ -5079,38 +5079,61 @@ async function liveClipboardProbe(
     }
     const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
     const outcome = settled.outcome
-    // @cto 2026-11-13: the control answered and the query never did, so the feature is absent in this configuration,
-    // not unknown. Never a zero-byte read graded as "did not write".
+    // @cto 2026-11-13: the control answered and the query never did. What that silence MEANS depends on the
+    // configuration the run measured (@dev/16 peer 18:43: a granting profile is its own case, and the default
+    // decides only default-configuration runs):
+    //  - a read-granting profile (a profile that set read-clipboard and is not deny-read): nothing can hold the
+    //    query behind a prompt, so silence is the feature's absence — unsupported, with the section named;
+    //  - the app's pinned default "ask": a person may be holding the query, and nothing here answers a prompt or
+    //    injects an answer, so the silence grades nothing;
+    //  - pinned "deny"/"absent": silence is the default answer — unsupported;
+    //  - no citation at all: the row names the missing citation instead of guessing.
     if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
-      // @cto 2026-11-13: silence means what the app's PINNED DEFAULT says it means. An "ask" app may be waiting on a
-      // person, and nothing here answers a prompt or injects an answer, so that silence grades nothing. Absent
-      // evidence of the default, the row names that instead of guessing.
+      const granting = fixture.readProfile !== undefined && fixture.readProfile.profile !== "deny-read"
       const posture = fixture.readDefault?.posture
-      if (posture === undefined)
+      if (granting) {
+        const note = `cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
+          profileNote ? ` (${profileNote})` : ""
+        }`
         return {
           pass: false,
-          note: "cursor-position control answered; OSC 52 c returned no reply; default not established",
-          tests: [
+          response: outcome.raw,
+          note,
+          observation: { outcome: "unsupported", assertionType: "query_reply", note },
+          assertions: [
             {
-              id: "criterion",
-              status: "probe-todo",
-              reason:
-                "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)",
+              assertionType: "query_reply" as const,
+              kind: "negative" as const,
+              expected: "OSC 52 c returns the independently written payload",
+              observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
             },
           ],
         }
-      if (posture === "ask")
-        return {
-          pass: false,
-          note: "default asks the user; the prompt was not answered",
-          tests: [
-            {
-              id: "criterion",
-              status: "probe-todo",
-              reason: "default asks the user; the prompt was not answered",
+      }
+      if (posture === undefined || posture === "ask") {
+        const reason =
+          posture === "ask"
+            ? "default asks the user; the prompt was not answered"
+            : "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+        // @dev/16 peer, and @cto's "attach an existing capture, do not add one": a frame the run already takes is kept
+        // next to an undecided row, in case the prompt is visible in it. Nothing here answers the prompt.
+        if (ctx.capture) {
+          const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
+          return {
+            pass: false,
+            note: reason,
+            tests: [{ id: "criterion", status: "probe-todo", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              assertionType: "screenshot",
+              screenshotRef: frame.ref,
+              note: `${reason}; the frame is attached in case a prompt is visible, and this run does not answer one`,
             },
-          ],
+          }
         }
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
       const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
       return {
         pass: false,
