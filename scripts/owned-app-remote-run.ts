@@ -1007,6 +1007,10 @@ function main(options: Parsed): OwnedAppTransportProof {
       // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
       // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
       const rebuildMarker = `${stage}/${STAGE_REBUILD_MARKER}`
+      // The marker names THIS run. An interrupted run (a killed ssh, a died fetch) leaves it behind,
+      // and a later run that finds a readable-but-dirty index must refuse that dirt, not force it
+      // clean on a decision a previous run made (@dev/3 R4).
+      const rebuildToken = randomBytes(16).toString("hex")
       // Decide the index rebuild BEFORE the checkout, and only for a proven index fault: git that
       // cannot run at all (127), a refused config or dubious ownership (128) and a killed process all
       // fail here by name instead of deleting the index, because deleting it makes the next run read
@@ -1034,7 +1038,7 @@ function main(options: Parsed): OwnedAppTransportProof {
           `  git -C ${shq(checkout)} status --porcelain 2>&1 | head -5 | sed 's/^/  /' >&2 || true`,
           `  exit 1`,
           `fi`,
-          `printf '%s\\n' rebuilt > ${shq(rebuildMarker)}`,
+          `printf '%s\\n' ${shq(rebuildToken)} > ${shq(rebuildMarker)}`,
           `printf '%s\\n' "owned-app transport: the staged index is unreadable; the staged projection, including any tracked edits, is replaced from the named revision" >&2`,
           `printf 'rebuilt\\n'`,
         ].join("\n"),
@@ -1051,7 +1055,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         // `fetch` reads the index before `checkout` ever runs (it dies on a corrupt one), so a
         // proven-unreadable index is removed first. The preflight proved git runs and the index
         // alone is what fails, so nothing git could have read is discarded.
-        `if [ -f ${shq(rebuildMarker)} ]; then rm -f ${shq(`${checkout}/.git/index`)}; fi`,
+        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then rm -f ${shq(`${checkout}/.git/index`)}; fi`,
         `mkdir -p ${shq(`${source}/vendor`)}`,
         `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
         `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
@@ -1059,7 +1063,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         // The forcing checkout replaces the projection only when the preflight proved the index
         // unreadable; a readable index keeps its dirty state so the refusal below still fires.
         // The checkout writes a fresh index and, with -f, replaces any tracked edits it finds.
-        `if [ -f ${shq(rebuildMarker)} ]; then`,
+        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then`,
         `  git -C ${shq(checkout)} checkout --detach -f ${shq(options.sourceRevision)}`,
         `else`,
         `  git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,

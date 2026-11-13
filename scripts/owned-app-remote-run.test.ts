@@ -1125,6 +1125,31 @@ describe("default stage", () => {
     expect(existsSync(index)).toBe(true)
   }, 60_000)
 
+  // Requirement: a decision belongs to the run that made it. An interrupted run leaves the rebuild
+  // marker behind, and a later run that finds a READABLE dirty index must refuse that dirt instead of
+  // force-cleaning it on the previous run's decision (@dev/3 R4).
+  it("never rebuilds on a marker an earlier interrupted run left behind", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const checkout = join(stage, "source", "vendor", "terminfo.dev")
+    const marker = join(stage, ".owned-app-transport-rebuild")
+    writeFileSync(marker, "left-behind-by-an-interrupted-run\n")
+    const trackedName = spawnSync("git", ["-C", checkout, "ls-files"], { encoding: "utf8" })
+      .stdout.trim()
+      .split("\n")[0]!
+    const tracked = join(checkout, trackedName)
+    const original = readFileSync(tracked, "utf8")
+    writeFileSync(tracked, `${original}\nlocal edit nobody's revision names\n`)
+
+    const second = run()
+
+    // The readable index keeps its dirt: the run refuses the dirty stage, and the stale marker is gone.
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage dirty tree")
+    expect(existsSync(marker)).toBe(false)
+    expect(readFileSync(tracked, "utf8")).toContain("local edit nobody's revision names")
+  }, 60_000)
+
   // Requirement: a marker that parses as JSON but is not an object must decline by name. JSON null
   // parsed cleanly and then threw on `.version`, skipping the full-restage fallback entirely.
   it("declines the light check by name when the stage's resource marker is JSON null", () => {
