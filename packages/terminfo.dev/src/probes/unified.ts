@@ -307,6 +307,12 @@ export function captureAdapterEligible(
 /** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
 const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
 
+/**
+ * A live ancestry walk that refused mid-probe. Its own type so the ordinary-open fixture wrapper can tell "the
+ * method is gone" (a named probe-todo) from a real adapter failure, which must still propagate as itself.
+ */
+class OrdinaryOpenAncestryRefusal extends Error {}
+
 /** Why this run's recording pasteboard did not admit a clipboard row (#31741). */
 function clipboardGateRefusal(
   clipboard: LinuxClipboardAdapter | undefined,
@@ -535,7 +541,7 @@ export async function runProbeBatch(
   const ordinaryOpenVerify = ordinaryOpen
     ? async () => {
         const probeTodo = ordinaryOpenLiveRefusal()
-        if (probeTodo) throw new Error(probeTodo)
+        if (probeTodo) throw new OrdinaryOpenAncestryRefusal(probeTodo)
       }
     : undefined
   if (disposable?.appLaunch) {
@@ -1006,12 +1012,24 @@ export async function runProbeBatch(
       // @cto 2026-11-13: this adapter was built by the collector's Mac run path from the receipt's own subject, and
       // the gate only admits it. The live ancestry walk in `ordinaryOpenVerify` repeats on every fixture use.
       const ordinaryOpenClipboard = ordinaryOpen.clipboard
-      probeSource.withClipboardFixture = (work) =>
-        ordinaryOpenClipboard.withClipboardFixture(
-          (fixture) => work(fixture),
-          (event) => clipboardEvents.push(event),
-          ordinaryOpenVerify,
-        )
+      probeSource.withClipboardFixture = async (work) => {
+        try {
+          return await ordinaryOpenClipboard.withClipboardFixture(
+            (fixture) => work(fixture),
+            (event) => clipboardEvents.push(event),
+            ordinaryOpenVerify,
+          )
+        } catch (error) {
+          // A walk that passed at the gate and fails inside the fixture keeps the row's named probe-todo wording
+          // (@dev/16 19:42 item 3); any other adapter failure still propagates as itself.
+          if (!(error instanceof OrdinaryOpenAncestryRefusal)) throw error
+          return {
+            pass: false,
+            note: error.message,
+            tests: [{ id: "prerequisite", status: "probe-todo" as const, reason: error.message }],
+          }
+        }
+      }
     } else if (clipboard && verify) {
       // #31741: the run HAS a pasteboard, so the row must not be told it has no fixture — that reason
       // named a thing the same artifact records as present. Say what the gate actually found instead.

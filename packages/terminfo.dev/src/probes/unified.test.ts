@@ -1128,6 +1128,23 @@ it("keeps an OSC 52 row probe-todo when the live ancestry no longer reaches the 
   expect(row?.reason).toContain("read method unavailable here: the live ancestry from pid")
 })
 
+/** Passes the gate's walk, then loses the chain: the fixture-time re-walk must refuse rather than grade. */
+function ancestryFailingAfterFirstWalk(): LiveAncestryReader {
+  let starts = 0
+  return {
+    parent(pid) {
+      if (pid === process.pid) {
+        starts += 1
+        if (starts > 1) return undefined
+        return { pid: 4790, executable: "zsh" }
+      }
+      if (pid === 4790) return { pid: 4711, executable: "iTerm2" }
+      if (pid === 4711) return { pid: 1, executable: "launchd" }
+      return undefined
+    },
+  }
+}
+
 // @cto 2026-11-13 fail-open path 1: the fixture clause must key on an explicit admission, not on "no refusal was
 // computed". A row that does not need ownership must still get no adapter, and a missing bundle id must never pass.
 it("gives no clipboard fixture to an OSC 52 row that does not need ownership when no bundle id is named", async () => {
@@ -1158,6 +1175,38 @@ it("gives no clipboard fixture to an OSC 52 row that does not need ownership whe
   } finally {
     definition.term = originalTerm
     definition.termWrites = originalWrites
+  }
+})
+
+// @dev/16 19:42 item 3: a walk that passes at the gate and fails inside the fixture must stay a named probe-todo,
+// not degrade into an ungraded collector-error.
+it("keeps the named probe-todo when the live walk fails inside the fixture after passing at the gate", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  try {
+    definition.term = async (probeSource) =>
+      probeSource.withClipboardFixture!(async (fixture) => {
+        await fixture.readText()
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      })
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: "com.googlecode.iterm2",
+        readAncestry: ancestryFailingAfterFirstWalk(),
+      },
+    })
+    const row = batch.results.find((result) => result.featureId === "extensions.osc52-read")
+    expect(row).toMatchObject({ status: "probe-todo" })
+    expect(row?.reason).toContain("read method unavailable here")
+    expect(batch.ungradedDiagnostics?.["extensions.osc52-read"]).toBeUndefined()
+  } finally {
+    definition.term = originalTerm
   }
 })
 
