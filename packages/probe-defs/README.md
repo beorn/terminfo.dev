@@ -42,7 +42,7 @@ never a blank row and never a decided outcome. The approved scope is Alacritty, 
 on the four rows `scrollback.accumulate`, `scrollback.total-lines`, `erase.screen.scrollback` and
 `extensions.osc720-scroll-up`; `scrollback.viewport-hold-output` is outside it. A declared-untestable app still
 carries the feature's static rows, OSC 720's geometry row included: `termNeedsGeometry` says what a definition
-needs when it can run, not what one run could measure. The declaration is field-driven and reversible — without
+needs when it can run, not what one run could measure. When that run's geometry is unavailable or conflicting, the row reads the geometry refusal instead of the declaration, like every flagged geometry probe. The declaration is field-driven and reversible — without
 the field every row keeps its existing reader and screenshot behaviour, and an app version that grows a read
 removes it. A missing, failed or unimplemented reader is never a declaration: it stays PROBE TODO.
 
