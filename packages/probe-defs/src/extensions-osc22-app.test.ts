@@ -6,7 +6,8 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { extensionsProbes, OSC22_SILENT_TERMINAL, osc22SilentMultiplexer } from "./extensions.ts"
+import { isDeclaredUntestable } from "./helpers.ts"
+import { extensionsProbes, OSC22_MUX_NO_RECORD, OSC22_SILENT_TERMINAL, osc22SilentMultiplexer } from "./extensions.ts"
 import type { TerminalQueryOutcome, TermProbeSource } from "./types.ts"
 
 type Fault =
@@ -185,25 +186,68 @@ test.each([
       detail: {},
     },
     status: "probe-invalid",
-    reason:
-      "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
+    reason: OSC22_MUX_NO_RECORD + " Outer command record has no forwarding control line: set_title tdv-title-x",
   },
   {
-    name: "not attempted: invalid with the no-record reason",
+    name: "default config, no control possible: declared untestable",
+    read: {
+      status: "unavailable",
+      reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+      titlesForwarded: false,
+      noForwardingControl: true,
+      detail: {},
+    },
+    status: "untestable",
+    reason:
+      "No forwarding control reaches the outer record under the default config, so what the multiplexer sent for OSC 22 was not read.",
+  },
+  {
+    name: "set-titles profile, control missing: invalid",
+    read: {
+      status: "unavailable",
+      reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+      titlesForwarded: true,
+      noForwardingControl: true,
+      detail: {},
+    },
+    status: "probe-invalid",
+    reason: OSC22_MUX_NO_RECORD + " Outer command record has no forwarding control line: set_title tdv-title-x",
+  },
+  {
+    name: "not attempted: invalid with the no-record reason and the reader's own",
     read: { status: "unavailable", reason: "Outer command read not attempted: no verified owned mux terminal" },
     status: "probe-invalid",
-    reason:
-      "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
+    reason: OSC22_MUX_NO_RECORD + " Outer command read not attempted: no verified owned mux terminal",
+  },
+  {
+    // A default tmux config explains a missing control, never a refused plan order: the failure keeps its own reason.
+    name: "default config, plan order refused: invalid with its own reason",
+    read: {
+      status: "unavailable",
+      reason: "Outer OSC 22 trace has no target write before its forwarding control",
+      titlesForwarded: false,
+      detail: {},
+    },
+    status: "probe-invalid",
+    reason: OSC22_MUX_NO_RECORD + " Outer OSC 22 trace has no target write before its forwarding control",
   },
 ] as const)("OSC 22 multiplexer grade: $name", ({ read, status, reason }) => {
   const outer = definition().outerCommands!
   expect(outer.branch).toBe("osc22-mux-outer-command")
   const result = outer.grade(read)
-  expect(result.criterionBranch).toBe("osc22-mux-outer-command")
-  if (status === "unsupported") {
+  if (status !== "untestable") expect(result.criterionBranch).toBe("osc22-mux-outer-command")
+  if (status === "untestable") {
+    // A row the default config cannot measure is declared untestable, the one form the finalizer admits.
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(isDeclaredUntestable(result)).toBe(true)
+    expect(result.tests).toEqual([{ id: "declared-untestable", status: "untestable", reason }])
+    expect(result.observation).toBeUndefined()
+  } else if (status === "unsupported") {
+    // The decided negative asserts on the outer command record, the same `buffer_state` kind every outer-record
+    // grade in this package uses; this arm issues no query, so a query_reply assertion would be a collector stop
+    // (@cto 33920).
     expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state", note: reason })
     expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "buffer_state" })])
-    // The assertion carries the record it was decided from: what was read, which side, and no target line.
     const decided = result.assertions?.[0]
     if (decided === undefined) throw new Error("expected the decided negative assertion")
     expect(JSON.parse(decided.observed)).toEqual({ outerCommands: read })

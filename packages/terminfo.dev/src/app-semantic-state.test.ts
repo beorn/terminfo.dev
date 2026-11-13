@@ -13,6 +13,7 @@ import { join } from "node:path"
 import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
+import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
 import {
   appSemanticDeclarations,
   beginMuxSgrCommandRead,
@@ -744,6 +745,88 @@ test.each([
   },
   20_000,
 )
+
+// #32593 (@dev/15 peer read): whether this run's mux config forwards a title is read from the subject's recorded
+// config, never taken from the caller. A refused plan order and a missing control line are both unavailable reads,
+// and only the second is what a config that forwards no title explains.
+function osc22CallLog(texts: readonly string[]): string {
+  const base = JSON.parse(nativeMuxTrace) as { calls: Record<string, unknown>[] } & Record<string, unknown>
+  return JSON.stringify({ ...base, calls: texts.map((text, id) => ({ ...base.calls[0], id, args: [text] })) })
+}
+
+function osc22Reader(config: string | undefined) {
+  const subject = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux", outerTerminal: "kitty" }
+  const runId = process.env.TERMINFO_RUN_ID!
+  return beginMuxSgrCommandRead({
+    featureId: "extensions.osc22-pointer",
+    subject: config === undefined ? subject : { ...subject, config },
+    proof: {
+      platform: "linux",
+      mux: "tmux",
+      launchRunId: runId,
+      collector: { pid: process.pid, startTicks: "1", ttyRdev: 1 },
+    },
+  })
+}
+
+test.each([
+  ["set-titles profile", TMUX_SET_TITLES_CONFIG, true],
+  ["default config", "/out/mux-empty.conf", false],
+  ["config not recorded", undefined, undefined],
+] as const)("mux title forwarding follows the recorded config: %s", async (_name, config, forwarded) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-title-"))
+  const capture = join(directory, "artifacts")
+  const path = join(directory, "daemon.log")
+  mkdirSync(capture)
+  try {
+    writeFileSync(path, "set_title tmux-own-title\n")
+    const runId = "b".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "tmux")
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    const reader = osc22Reader(config)
+    expect(reader.status).toBe("ready")
+    if (reader.status !== "ready") throw new Error(reader.reason)
+    // The control write alone: the plan refuses the missing target before any record is read.
+    const result = await reader.read(osc22CallLog([`\x1b]2;tdv-title-${"c".repeat(24)}\x1b\\`]))
+    expect(result.status).toBe("unavailable")
+    if (result.status !== "unavailable") throw new Error(result.reason)
+    expect(result.noForwardingControl).toBe(false)
+    expect(result.titlesForwarded).toBe(forwarded)
+  } finally {
+    rmSync(directory, { recursive: true })
+  }
+})
+
+test("only the missing forwarding-control line marks the read as that failure", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-nocontrol-"))
+  const capture = join(directory, "artifacts")
+  const path = join(directory, "daemon.log")
+  mkdirSync(capture)
+  try {
+    writeFileSync(path, "set_title tmux-own-title\n")
+    const runId = "d".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "tmux")
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    const reader = osc22Reader(TMUX_SET_TITLES_CONFIG)
+    if (reader.status !== "ready") throw new Error(reader.reason)
+    const result = await reader.read(
+      osc22CallLog([`\x1b]22;pointer\x1b\\`, `\x1b]2;tdv-title-${"e".repeat(24)}\x1b\\`]),
+    )
+    expect(result.status).toBe("unavailable")
+    if (result.status !== "unavailable") throw new Error(result.reason)
+    expect(result.noForwardingControl).toBe(true)
+    expect(result.titlesForwarded).toBe(true)
+    expect(result.reason).toContain("has no forwarding control line")
+  } finally {
+    rmSync(directory, { recursive: true })
+  }
+}, 20_000)
 
 test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!

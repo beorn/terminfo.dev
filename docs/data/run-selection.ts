@@ -1,5 +1,5 @@
 /** One context selection rule shared by compatibility and full-project readers. */
-import type { FeatureResultStatus, ProbeResult } from "@terminfo/probe-defs"
+import { readCollectorSelection, type FeatureResultStatus, type ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type FeatureResultDisplayState, type SuiteRelation } from "./release-scope.ts"
 import type { SourceHistory } from "./source-history.ts"
 import {
@@ -29,7 +29,18 @@ export interface ContextCandidate {
   terminalId: string
   os: string
   permissions: string | null
-  sources: Array<{ runId: string; measuredAt: string; suiteId: string; suiteRelation: SuiteRelation }>
+  sources: Array<{
+    runId: string
+    measuredAt: string
+    suiteId: string
+    suiteRelation: SuiteRelation
+    /**
+     * This run recorded a probe selection, so it never measured the whole suite. Absent means this
+     * reader held no raw replies to judge (the historical per-version overload); it never means the
+     * run was proven full. Only the composed projection path can see `collector.selection`.
+     */
+    partial?: boolean
+  }>
   /** The canonical context, when this candidate is a composed view. */
   context?: SelectedContextSummary
   cells?: ShareCells
@@ -98,6 +109,7 @@ export function candidateFromSelected(
           measuredAt: original.measuredAt,
           suiteId: original.suiteId,
           suiteRelation: original.suiteRelation,
+          partial: readCollectorSelection(original.rawReplies) !== undefined,
         }
       }),
       context: selected,
@@ -129,6 +141,8 @@ export type RunSelection =
   | "only current"
   | "default profile"
   | "latest original evidence"
+  /** The only candidate standing was a selected run, so the summary covers its selection, not the suite. */
+  | "latest partial selection"
   | "app version, then source ancestry"
 
 /** One run that contributed cells to a candidate context: what the lineage pick orders by. */
@@ -171,22 +185,48 @@ export function pickContextRun<T extends ContextCandidate>(
   if (dated.length === 0) return undefined
   const current = dated.filter(({ candidate }) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : dated
-  const [only] = considered
-  if (considered.length === 1 && only) return { run: only.candidate, selection: "only current" }
-  const defaults = considered.filter(({ candidate }) => candidate.permissions === null)
+  // A run that measured a selection is a real reading of its ids and never a reading of the suite, so a
+  // full run outranks it at equal standing — in the current-suite pool and in the fallback alike. Only
+  // when no full run stands at all may a selected run be the summary, and then the reason says so.
+  const full = considered.filter(({ candidate }) => !carriesPartial(candidate))
+  const partialOnly = full.length === 0
+  const pool = partialOnly ? considered : full
+  const [only] = pool
+  if (pool.length === 1 && only) {
+    return { run: only.candidate, selection: partialOnly ? "latest partial selection" : "only current" }
+  }
+  const defaults = pool.filter(({ candidate }) => candidate.permissions === null)
   const [onlyDefault] = defaults
-  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault.candidate, selection: "default profile" }
-  const [latest] = [...considered].sort(
+  if (defaults.length === 1 && onlyDefault) {
+    return {
+      run: onlyDefault.candidate,
+      selection: partialOnly ? "latest partial selection" : "default profile",
+    }
+  }
+  const [latest] = [...pool].sort(
     (left, right) =>
       right.latest - left.latest ||
       (left.candidate.key < right.candidate.key ? -1 : left.candidate.key > right.candidate.key ? 1 : 0),
   )
-  return latest && { run: latest.candidate, selection: "latest original evidence" }
+  return (
+    latest && {
+      run: latest.candidate,
+      selection: partialOnly ? "latest partial selection" : "latest original evidence",
+    }
+  )
 }
 
 /** The one revision among `revisions` that descends from (or is) every other, or undefined when none does. */
 function descendantOfAll(revisions: readonly string[], history: ContextLineage["history"]): string | undefined {
   return revisions.find((tip) => revisions.every((other) => history.isAncestor(other, tip)))
+}
+
+/**
+ * A candidate holding a run that measured only a selection is a real reading of its ids and never a reading
+ * of the suite. Both picks use this one predicate so neither can present such a run as the whole suite.
+ */
+function carriesPartial(candidate: ContextCandidate): boolean {
+  return candidate.sources.some((source) => source.partial === true)
 }
 
 /**
@@ -200,7 +240,12 @@ function pickByLineage<T extends ContextCandidate>(
   lineage: ContextLineage<T>,
 ): PickedContextRun<T> | undefined {
   const [single] = candidates
-  if (candidates.length === 1 && single) return { run: single, selection: "only current" }
+  if (candidates.length === 1 && single) {
+    return {
+      run: single,
+      selection: carriesPartial(single) ? "latest partial selection" : "only current",
+    }
+  }
   if (candidates.length === 0) return undefined
   const facts = candidates.map((candidate) => {
     const runs = lineage.runs(candidate)
@@ -247,8 +292,17 @@ function pickByLineage<T extends ContextCandidate>(
     )
   }
   const tied = tips.filter((entry) => entry.tip === winner).map((entry) => entry.candidate)
-  const defaults = tied.filter((candidate) => candidate.permissions === null)
+  // Equal standing only: among candidates the version-and-ancestry order cannot separate, a full run wins.
+  const fullTied = tied.filter((candidate) => !carriesPartial(candidate))
+  const pool = fullTied.length > 0 ? fullTied : tied
+  const partialOnly = fullTied.length === 0
+  const defaults = pool.filter((candidate) => candidate.permissions === null)
   const [chosen] =
-    defaults.length === 1 ? defaults : [...tied].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
-  return chosen && { run: chosen, selection: "app version, then source ancestry" }
+    defaults.length === 1 ? defaults : [...pool].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  return (
+    chosen && {
+      run: chosen,
+      selection: partialOnly ? "latest partial selection" : "app version, then source ancestry",
+    }
+  )
 }

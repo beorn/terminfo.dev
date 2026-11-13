@@ -5892,7 +5892,10 @@ const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 /**
  * Through a multiplexer, OSC 22 reads only the outer terminal's command record (@cto 5c25b17f, 1818f9ec):
- * the pane sends an OSC 2 forwarding control carrying this invocation's nonce, then plain OSC 22 pointer.
+ * the pane sends plain OSC 22 pointer, then an OSC 2 forwarding control carrying this invocation's nonce.
+ * The target goes first because a multiplexer forwards a title when it next redraws, never at the instant the
+ * pane writes it (@cto 33919 condition 3): only a control that arrives AFTER the target proves that anything
+ * the multiplexer forwarded before it is already in the record, so a missing target line is a real negative.
  * No made-up name, put-back write or shape query runs on this arm.
  */
 export const OSC22_MUX_OUTER_BRANCH = "osc22-mux-outer-command"
@@ -5908,11 +5911,22 @@ export function osc22MuxSent(outer: string): string {
 }
 export const OSC22_MUX_NO_RECORD =
   "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read."
+/**
+ * The declared untestable reason for a run whose mux config forwards no title (the empty default tmux config):
+ * no forwarding control can appear, so the record can never decide this row there (@cto 33919 condition 2).
+ */
+export const OSC22_MUX_NO_CONTROL_DEFAULT =
+  "No forwarding control reaches the outer record under the default config, so what the multiplexer sent for OSC 22 was not read."
 
-/** Grades only the outer command reading; a missing control or record arrives as `unavailable`. A measured
- * record with the control and no target is the criterion's Unsupported, and it asserts on the outer command
- * record (buffer_state), the kind every outer-record grade in this package uses: this arm writes a control
- * and a target and never asks a query, so query_reply bytes are not its evidence (@cto 33920). */
+/**
+ * Grades only the outer command reading; a missing control or record arrives as `unavailable`. Three outcomes:
+ * the target line means the multiplexer forwarded it (Open); a measured record with the control and no target is
+ * the criterion's Unsupported; an unmeasured record is declared untestable only when this run's config forwards no
+ * title AND a missing forwarding control is why it was unread, and probe-invalid with the reader's own reason
+ * otherwise. The decided negative asserts on the outer command record
+ * (`buffer_state`, the kind every outer-record grade in this package uses), never on query bytes this arm
+ * never asks for (@cto 33920).
+ */
 export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
   const state = { outerCommands: read }
   const open = (status: "probe-todo" | "probe-invalid", reason: string): ProbeCallbackResult => ({
@@ -5921,12 +5935,17 @@ export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
     criterionBranch: OSC22_MUX_OUTER_BRANCH,
     tests: [{ id: "outer-command-record", status, reason }],
   })
-  if (read.status !== "measured") return open("probe-invalid", OSC22_MUX_NO_RECORD)
+  if (read.status !== "measured") {
+    if (read.titlesForwarded === false && read.noForwardingControl === true) {
+      return declaredUntestableResult(OSC22_MUX_NO_CONTROL_DEFAULT, state)
+    }
+    return open("probe-invalid", OSC22_MUX_NO_RECORD + " " + read.reason)
+  }
   if (read.targetSent) return open("probe-todo", osc22MuxSent(`${read.outer.app} ${read.outer.version}`))
   return {
     ...parserStateResult(
       false,
-      `outer command record carries the forwarding control and ${read.target}`,
+      `the outer terminal's command record shows the forwarding control arriving after the target write and no ${read.target} line`,
       state,
       OSC22_MUX_NOT_SENT,
     ),
@@ -8737,8 +8756,10 @@ const extensionDefinitions: ProbeDefinition[] = [
       async (ctx) => {
         if (ctx.mux !== undefined) {
           const controlWrite = osc22MuxControlWrite(randomUUID().replaceAll("-", "").slice(0, 24))
-          ctx.write(controlWrite)
+          // Target first, control second: the control's arrival after it is what makes a missing target line mean
+          // the multiplexer did not forward the target (@cto 33919 condition 3, 33920 condition 2).
           ctx.write(OSC22_MUX_TARGET_WRITE)
+          ctx.write(controlWrite)
           // The collector's outer command read grades this branch; without it the cell stays open.
           return {
             ...notTestedResult(osc22SilentMultiplexer(ctx.mux), { controlWrite, targetWrite: OSC22_MUX_TARGET_WRITE }),

@@ -306,4 +306,30 @@ describe("the site's primary pick and join are independent of run arrival order"
       /Contexts hosted \(3{40}\), owned \(2{40}\) measured app version 2\.15 from unrelated source revisions/,
     )
   })
+
+  // @failure A selected run could become the site's primary and the row would read as the whole suite,
+  // because the lineage pick ordered by version and ancestry only.
+  // @level l2 @consumer the site's per-(app, OS) primary pick, which never names a partial reading.
+  it("never lets a selected run stand for the suite when a full run ties with it", () => {
+    const partial = (key: string): ContextCandidate => {
+      const built = candidate(key, "2026-11-12T00:00:00Z")
+      return { ...built, sources: built.sources.map((source) => ({ ...source, partial: true })) }
+    }
+    // Both measure the same version from the same source tip, so only the partial flag separates them, and
+    // the key order would otherwise put the selected run first.
+    const sameTip: Partial<Record<string, LineageRun[]>> = {
+      aaa: [{ runId: "aaa-run", version: "2.15", sourceRevision: REV_NEW }],
+      zzz: [{ runId: "zzz-run", version: "2.15", sourceRevision: REV_NEW }],
+    }
+    const lineageForTip = { runs: (c: ContextCandidate) => sameTip[c.key] ?? [], history }
+    expect(pickContextRun([partial("aaa"), candidate("zzz", "2026-11-11T00:00:00Z")], lineageForTip)).toMatchObject({
+      run: { key: "zzz" },
+      selection: "app version, then source ancestry",
+    })
+    // When the selected run is the only one standing, the reason says so instead of claiming the suite.
+    expect(pickContextRun([partial("aaa")], lineageForTip)).toMatchObject({
+      run: { key: "aaa" },
+      selection: "latest partial selection",
+    })
+  })
 })

@@ -177,6 +177,26 @@ it("retains the stored iTerm2 1005 measurement and names its declaration collisi
       name: "DeclaredUntestableCollision",
       message: expect.stringMatching(/declared.untestable.*collision/i),
     })
+    // The finished collector uses these same raw replies; its reader must expose the warning
+    // without turning the retained historical measurement into a collector failure.
+    const captured = asRun(batch)
+    // Replay the real trace with the real query assertions; the callback stub sends no live query.
+    const trace = stored.rawReplies[id]
+    if (trace === undefined) throw new Error("Stored iTerm2 1005 fixture lost its query trace")
+    captured.rawReplies = { ...captured.rawReplies, [id]: trace }
+    const parsed = parseRun(
+      "pointer-collision-roundtrip.json",
+      JSON.stringify(captured),
+      [id],
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain("DeclaredUntestableCollision")
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain(id)
+    expect(parsed.results?.find((entry) => entry.featureId === id)).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      reason: row.reason,
+    })
     expect(readFileSync(url, "utf8")).toBe(bytes)
   } finally {
     definition.term = original.term
