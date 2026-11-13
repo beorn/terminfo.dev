@@ -1135,6 +1135,23 @@ it("carries the owned collector's no-pane-read declaration into every history ro
   }
 })
 
+// @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding
+//   that this run could not establish the grid its row needs (@cto 34005 ruling: the refusal wins).
+// @level l1
+// @consumer App batch geometry check -> declared-untestable row precedence.
+it("lets the geometry refusal win over the no-pane-read declaration when geometry is unavailable", async () => {
+  verifiedBatchFixture()
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc720-scroll-up"],
+    subject: { kind: "term", id: "cursor", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(noGeometry), scrollbackUnavailable: "no pane read on this app" },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc720-scroll-up")
+  expect(row?.status).toBe("probe-todo")
+  expect(row?.reason).toMatch(/^Grant geometry unavailable: /u)
+  expect(row?.tests?.map((item) => item.id)).toEqual(["geometry"])
+})
+
 // @failure The native focus recorder loses an enable-time report before it attaches stdin.
 // The mode-only fixtures emit during focusRoundTrip, after the listener is already attached.
 // @level l1
