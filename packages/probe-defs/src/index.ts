@@ -133,6 +133,7 @@ export {
   DEFAULT_TIMEOUT_MS,
   originFromSentinel,
   witnessCellFor,
+  sentinelCellsInFrame,
   witnessCellsFor,
   sentinelBlockRefusal,
   CELL_EDGE_TOLERANCE_PX,

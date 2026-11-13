@@ -588,6 +588,88 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
   avoid.length === 0 ? "" : ` or the probe's own output ${spelledRegions(avoid)}`
 
 /**
+ * The TWO cells one read may paint the sentinel on, chosen from the frame taken immediately BEFORE
+ * that paint (33981 second pass, @cto 2026-11-13, @dev/15's 19-row diagnosis).
+ *
+ * The first pass chose cells geometrically: clear of the digested regions, but never looking at what
+ * was already on the screen. On a probe whose evidence fills the grid the pair landed on that
+ * evidence, and clearing it erased the probe's own drawing (modes.xtsave/xtrestore, sgr.blink), or
+ * no legal cell existed at all within the eight neighbours tried and the read refused before the
+ * target was sent (erase.screen.above, reset.decaln, modes.decsscls, scrollback.viewport-hold).
+ *
+ * So the choice reads the frame: a cell is eligible only when every pixel in it is the SAME colour as
+ * the frame's modal (background) colour, which is the one state this read can restore by writing a
+ * blank with the attributes it found — nothing the probe drew is ever covered. Eligible cells must
+ * still be outside every digested region and outside the probe's declared avoid footprint, and the
+ * second must differ from the first in BOTH row and column so one stray patch can never satisfy the
+ * pair.
+ *
+ * `reading` is where cell 1,1 sits in the frame, in pixels. A frame too short to hold the whole grid
+ * at that origin cannot be used to choose cells, and says so rather than guessing.
+ */
+export function sentinelCellsInFrame(input: {
+  rgba: Uint8Array
+  width: number
+  height: number
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  grid: { rows: number; cols: number }
+  regions: readonly CaptureCells[]
+  avoid?: readonly CaptureCells[]
+}): { a: { row: number; col: number }; b: { row: number; col: number } } {
+  const { rgba, width, height, reading, cell, grid } = input
+  const avoid = input.avoid ?? []
+  const pixels = (x: number, y: number): number => {
+    const offset = (y * width + x) * 4
+    return (rgba[offset] ?? 0) << 16 | (rgba[offset + 1] ?? 0) << 8 | (rgba[offset + 2] ?? 0)
+  }
+  const counts = new Map<number, number>()
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const packed = pixels(x, y)
+      counts.set(packed, (counts.get(packed) ?? 0) + 1)
+    }
+  }
+  let background = 0
+  let backgroundCount = -1
+  for (const [packed, count] of counts) {
+    if (count > backgroundCount || (count === backgroundCount && packed < background)) {
+      background = packed
+      backgroundCount = count
+    }
+  }
+  const digested = (row: number, col: number): boolean =>
+    [...input.regions, ...avoid].some(
+      (region) => row >= region.top && row <= region.bottom && col >= region.left && col <= region.right,
+    )
+  /** Every pixel of this cell is the frame's background, so a blank restore puts it back as found. */
+  const blank = (row: number, col: number): boolean => {
+    const left = reading.x + (col - 1) * cell.width
+    const top = reading.y + (row - 1) * cell.height
+    if (left < 0 || top < 0 || left + cell.width > width || top + cell.height > height) return false
+    for (let y = top; y < top + cell.height; y++) {
+      for (let x = left; x < left + cell.width; x++) if (pixels(x, y) !== background) return false
+    }
+    return true
+  }
+  const eligible: { row: number; col: number }[] = []
+  for (let row = 1; row <= grid.rows; row++) {
+    for (let col = 1; col <= grid.cols; col++) {
+      if (digested(row, col) || !blank(row, col)) continue
+      eligible.push({ row, col })
+    }
+  }
+  const spelled = eligible.slice(0, 6).map((cellAt) => `${cellAt.row},${cellAt.col}`).join(" ")
+  const refusal = (why: string): string =>
+    `${why}: ${eligible.length} blank cell(s) outside ${spelledRegions(input.regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry the sentinel${eligible.length === 0 ? "" : ` — ${spelled}${eligible.length > 6 ? " …" : ""}`}, so this frame's crop cannot be anchored`
+  const a = eligible[0]
+  if (a === undefined) throw new Error(refusal("no blank cell exists"))
+  const b = eligible.find((cellAt) => cellAt.row !== a.row && cellAt.col !== a.col)
+  if (b === undefined) throw new Error(refusal("no second blank cell shares neither the first's row nor its column"))
+  return { a, b }
+}
+
+/**
  * The TWO cells one read paints calibration's sentinel on (33981, @cto): the pair has to differ in
  * BOTH row and column, so one stray sentinel-coloured patch, a horizontal run of them, or a full-line
  * repaint can never satisfy it. The first cell is the one `witnessCellFor` chooses, which keeps
