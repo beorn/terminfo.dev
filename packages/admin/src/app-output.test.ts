@@ -257,7 +257,7 @@ describe("kitty owned launch", () => {
         provider: "kitty",
         ownerPid: 900,
         executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-        marker: { flag: "--instance-group", value: "terminfo-private-run" },
+        basis: { kind: "marker", marker: { flag: "--instance-group", value: "terminfo-private-run" } },
         tty: "/dev/ttys004",
       }),
     })
