@@ -1489,7 +1489,9 @@ it("starts an owned-app row locally with the probe argv it always ran", () => {
 })
 
 it("forwards an explicit probe selection through the app route on both runners", () => {
-  const selected = selectAppProbes().expected.slice(0, 2).map((probe) => probe.id)
+  const selected = selectAppProbes()
+    .expected.slice(0, 2)
+    .map((probe) => probe.id)
   const local = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision, selected)
   expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
   const remote = ownedAppCommand(
