@@ -20,6 +20,7 @@ import {
   cmuxHistoryIdentity,
   cmuxMarkerProof,
   cmuxNonceProof,
+  observeCmuxConfig,
   ownedCmuxHistoryExecutable,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
@@ -77,10 +78,12 @@ test("the executable proof hashes this run's CLI and records an unreported versi
   // The CLI's own first line, verbatim: an identity field is never a rewritten version.
   expect(measured?.historyExecutable?.version).toBe("cmux 0.65.2")
 
-  // A CLI that answers no version still proves which binary read the pane; the version stays null rather
-  // than borrowing one from a release note.
+  // A CLI that answers no version leaves the identity unmeasured with its own reason: the WezTerm contract,
+  // never a version borrowed from a release note and never a null passed off as one.
   child.spawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "unknown flag" })
-  expect(cmuxHistoryIdentity(executable)?.historyExecutable?.version).toBeNull()
+  const unmeasured = cmuxHistoryIdentity(executable)
+  expect(unmeasured?.historyExecutable).toBeUndefined()
+  expect(unmeasured?.historyExecutableUnmeasured).toContain("reported no version")
   expect(cmuxHistoryIdentity(undefined)).toBeUndefined()
 })
 
@@ -156,8 +159,8 @@ test("the reader grades the nonce arm and still reports retained lines", () => {
     executable,
     rows: 50,
     ownership: { kind: "nonce", nonce },
-    configSha256AtLaunch: configSha256,
-    readConfigSha256: () => configSha256,
+    configAtLaunch: { read: "present" as const, sha256: configSha256 },
+    observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
     spawn: () => ({ status: 0, stdout: `CMUX-${nonce}-BEGIN\nINSIDE-1\nINSIDE-2`, stderr: "" }),
     processCount: () => 0,
   })
@@ -166,17 +169,41 @@ test("the reader grades the nonce arm and still reports retained lines", () => {
   expect(read.status === "read" && (JSON.parse(read.receipt) as { ownership: string }).ownership).toBe("nonce")
 })
 
-test("the socket guard is proved by the config hash the run recorded at launch", () => {
-  expect(cmuxConfigGuard({ sha256AtLaunch: configSha256, sha256AfterRun: configSha256 }).status).toBe("unchanged")
-  const changed = cmuxConfigGuard({ sha256AtLaunch: configSha256, sha256AfterRun: "0".repeat(64) })
+test("the socket guard is proved by what the run observed at launch and after", () => {
+  const present = { read: "present" as const, sha256: configSha256 }
+  expect(cmuxConfigGuard({ atLaunch: present, afterRun: present })).toEqual({ status: "unchanged", observed: "present" })
+  // A fresh runner may have no file at all: absent on both sides is an honest "nothing changed", and the
+  // receipt says absent rather than claiming cmuxOnly was verified.
+  const absent = { read: "absent" as const }
+  expect(cmuxConfigGuard({ atLaunch: absent, afterRun: absent })).toEqual({ status: "unchanged", observed: "absent" })
+  const changed = cmuxConfigGuard({ atLaunch: present, afterRun: { read: "present", sha256: "0".repeat(64) } })
   expect(changed.status === "refused" && changed.refusal).toBe("cmux-config-hash-changed")
-  // An unrecorded or unreadable hash leaves cmuxOnly unproven, so it refuses instead of assuming the default.
+  const appeared = cmuxConfigGuard({ atLaunch: absent, afterRun: present })
+  expect(appeared.status === "refused" && appeared.refusal).toBe("cmux-config-hash-changed")
+  // Unrecorded or unreadable leaves the guard unproven, never assumed.
   for (const guard of [
-    cmuxConfigGuard({ sha256AtLaunch: undefined, sha256AfterRun: configSha256 }),
-    cmuxConfigGuard({ sha256AtLaunch: configSha256, sha256AfterRun: undefined }),
+    cmuxConfigGuard({ atLaunch: undefined, afterRun: present }),
+    cmuxConfigGuard({ atLaunch: present, afterRun: undefined }),
+    cmuxConfigGuard({ atLaunch: { read: "unreadable", reason: "EACCES" }, afterRun: present }),
   ]) {
     expect(guard.status === "refused" && guard.refusal).toBe("cmux-config-hash-changed")
   }
+})
+
+test("the config observation separates absent from unreadable", () => {
+  const missing = Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" })
+  files.readFileSync.mockImplementation(() => {
+    throw missing
+  })
+  expect(observeCmuxConfig("/Users/runner/.config/cmux/cmux.json")).toEqual({ read: "absent" })
+  files.readFileSync.mockImplementation(() => {
+    throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })
+  })
+  expect(observeCmuxConfig("/Users/runner/.config/cmux/cmux.json").read).toBe("unreadable")
+  files.readFileSync.mockReturnValue(Buffer.from("{}"))
+  const present = observeCmuxConfig("/Users/runner/.config/cmux/cmux.json")
+  expect(present.read).toBe("present")
+  expect(present.read === "present" && present.sha256).toHaveLength(64)
 })
 
 test("the reader names the surface it reads and returns retained lines, not the viewport", () => {
@@ -186,8 +213,8 @@ test("the reader names the surface it reads and returns retained lines, not the 
     surface: "surface:1000070000",
     rows: 50,
     ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
-    configSha256AtLaunch: configSha256,
-    readConfigSha256: () => configSha256,
+    configAtLaunch: { read: "present" as const, sha256: configSha256 },
+    observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
     spawn: (args) => {
       calls.push([...args])
       return { status: 0, stdout: transcriptOf(12), stderr: "" }
@@ -208,17 +235,17 @@ test("the reader refuses when a cmux process outlives the run or the guard moved
     executable,
     rows: 50,
     ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
-    configSha256AtLaunch: configSha256,
+    configAtLaunch: { read: "present" as const, sha256: configSha256 },
     spawn: () => ({ status: 0, stdout: transcriptOf(12), stderr: "" }),
   }
-  const left = readOwnedCmuxHistory({ ...base, readConfigSha256: () => configSha256, processCount: () => 1 })
+  const left = readOwnedCmuxHistory({ ...base, observeConfig: () => ({ read: "present" as const, sha256: configSha256 }), processCount: () => 1 })
   expect(left.status === "refused" && left.refusal).toBe("cmux-process-left")
-  const moved = readOwnedCmuxHistory({ ...base, readConfigSha256: () => "f".repeat(64), processCount: () => 0 })
+  const moved = readOwnedCmuxHistory({ ...base, observeConfig: () => ({ read: "present" as const, sha256: "f".repeat(64) }), processCount: () => 0 })
   expect(moved.status === "refused" && moved.refusal).toBe("cmux-config-hash-changed")
   const failed = readOwnedCmuxHistory({
     ...base,
     spawn: () => ({ status: 1, stdout: "", stderr: "Access denied - only processes started inside cmux can connect" }),
-    readConfigSha256: () => configSha256,
+    observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
     processCount: () => 0,
   })
   expect(failed.status === "refused" && failed.refusal).toBe("cmux-surface-not-owned")

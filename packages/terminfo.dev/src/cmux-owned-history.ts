@@ -9,13 +9,18 @@
  * cmux process outlives the run. Every refusal is named and none of them is a grade.
  */
 import { createHash } from "node:crypto"
-import { readFileSync, statSync } from "node:fs"
-import { isAbsolute } from "node:path"
+import { readFileSync } from "node:fs"
+import { isAbsolute, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import type { TerminalScrollbackReading } from "../../probe-defs/src/types.ts"
 
 /** The app bundle's own CLI. cmux is macOS-only, so there is no second install this run could mean. */
 export const CMUX_HISTORY_EXECUTABLE = "/Applications/cmux.app/Contents/MacOS/cmux"
+
+/** Where cmux keeps the socket guard on this account. */
+export function cmuxConfigPath(home: string): string {
+  return join(home, ".config", "cmux", "cmux.json")
+}
 
 /** The six refusals of the cmux arm (@cto af8608c3 condition 2). Each is a probe failure, never a grade. */
 export type CmuxRefusal =
@@ -55,14 +60,14 @@ export function ownedCmuxHistoryExecutable(input: {
 export type CmuxExecutableProof = Readonly<{
   path: string
   sha256: string
-  /** The version this CLI reports, or null when it reports none. Never a version borrowed from a release. */
-  version: string | null
+  /** The version the app reports about itself. Never a version borrowed from a release note. */
+  version: string
 }>
 
 /**
- * Pin the CLI the run reads through: its path, its bytes and, when the app answers one, its version. The
- * hash alone already says which binary read the pane, so an app that answers no version is recorded as
- * `version: null` instead of turning a readable pane into an unmeasured identity.
+ * Pin the CLI the run reads through: its path, its bytes and the version the app reports about itself. The
+ * WezTerm contract (@cto af8608c3): a reader with no version behind it is an unmeasured identity that names
+ * its reason, never a version invented from the bundle and never a null passed off as one.
  */
 export function cmuxExecutableProof(
   executable: string,
@@ -70,31 +75,32 @@ export function cmuxExecutableProof(
   | { readonly status: "measured"; readonly proof: CmuxExecutableProof }
   | { readonly status: "unmeasured"; readonly reason: string } {
   try {
-    if (!statSync(executable).isFile()) {
-      return {
-        status: "unmeasured",
-        reason: `cmux CLI ${JSON.stringify(executable)} is not a regular file`,
-      }
-    }
     const sha256 = createHash("sha256").update(readFileSync(executable)).digest("hex")
     const result = spawnSync(executable, ["--version"], { encoding: "utf8", timeout: 5000 })
     const reported =
       result.status === 0 && typeof result.stdout === "string" ? (result.stdout.split("\n")[0] ?? "").trim() : ""
-    return {
-      status: "measured",
-      proof: {
-        path: executable,
-        sha256,
-        version:
-          result.error === undefined && result.signal == null && result.status === 0 && reported !== ""
-            ? reported
-            : null,
-      },
+    if (result.error !== undefined || result.signal != null || result.status !== 0 || reported === "") {
+      return {
+        status: "unmeasured",
+        reason:
+          "cmux CLI " +
+          JSON.stringify(executable) +
+          " reported no version (sha256 " +
+          sha256 +
+          "; exit " +
+          String(result.status) +
+          ")",
+      }
     }
+    return { status: "measured", proof: { path: executable, sha256, version: reported } }
   } catch (error) {
     return {
       status: "unmeasured",
-      reason: `cmux CLI ${JSON.stringify(executable)} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      reason:
+        "cmux CLI " +
+        JSON.stringify(executable) +
+        " could not be read: " +
+        (error instanceof Error ? error.message : String(error)),
     }
   }
 }
@@ -228,31 +234,47 @@ export function cmuxNonceProof(input: {
 }
 
 /**
- * The socket guard is proved, not assumed: the run records the config file's hash at launch and this check
- * requires the same hash after the run. An unrecorded or unreadable hash leaves `cmuxOnly` unproven, which
- * is a refusal — never a silent default.
+ * The socket guard, as the run can actually observe it. `cmuxOnly` is the app's own rule; what the run must
+ * prove is that the rule did not move under it, and a fresh runner may have no config file at all. Absent at
+ * launch and absent after is an honest observation ("no file to change"); one side absent and the other
+ * present is a change; an unreadable file or an unrecorded launch leaves the guard unproven and refuses.
  */
+export type CmuxConfigObservation =
+  | Readonly<{ read: "present"; sha256: string }>
+  | Readonly<{ read: "absent" }>
+  | Readonly<{ read: "unreadable"; reason: string }>
+
+export function observeCmuxConfig(path: string): CmuxConfigObservation {
+  try {
+    return { read: "present", sha256: createHash("sha256").update(readFileSync(path)).digest("hex") }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT") return { read: "absent" }
+    return {
+      read: "unreadable",
+      reason: `cmux config ${JSON.stringify(path)} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+}
+
 export function cmuxConfigGuard(input: {
-  readonly sha256AtLaunch: string | undefined
-  readonly sha256AfterRun: string | undefined
-}): { readonly status: "unchanged" } | CmuxRefused {
-  const launch = input.sha256AtLaunch?.trim() ?? ""
-  const after = input.sha256AfterRun?.trim() ?? ""
-  if (launch === "" || after === "") {
-    return {
-      status: "refused",
-      refusal: "cmux-config-hash-changed",
-      reason: `cmux config hash is ${launch === "" ? "unrecorded at launch" : "unreadable after the run"}, so cmuxOnly is unproven`,
-    }
+  readonly atLaunch: CmuxConfigObservation | undefined
+  readonly afterRun: CmuxConfigObservation | undefined
+}): { readonly status: "unchanged"; readonly observed: "present" | "absent" } | CmuxRefused {
+  const refuse = (reason: string): CmuxRefused => ({ status: "refused", refusal: "cmux-config-hash-changed", reason })
+  const launch = input.atLaunch
+  const after = input.afterRun
+  if (launch === undefined) return refuse("cmux config was not observed at launch, so cmuxOnly is unproven")
+  if (after === undefined) return refuse("cmux config was not observed after the run, so cmuxOnly is unproven")
+  if (launch.read === "unreadable") return refuse(launch.reason)
+  if (after.read === "unreadable") return refuse(after.reason)
+  if (launch.read !== after.read) {
+    return refuse(`cmux config went from ${launch.read} at launch to ${after.read} after the run`)
   }
-  if (launch !== after) {
-    return {
-      status: "refused",
-      refusal: "cmux-config-hash-changed",
-      reason: `cmux config changed during the run: ${launch} became ${after}`,
-    }
+  if (launch.read === "present" && after.read === "present" && launch.sha256 !== after.sha256) {
+    return refuse(`cmux config changed during the run: ${launch.sha256} became ${after.sha256}`)
   }
-  return { status: "unchanged" }
+  return { status: "unchanged", observed: launch.read }
 }
 
 export type OwnedCmuxRead =
@@ -283,8 +305,8 @@ export function readOwnedCmuxHistory(options: {
   readonly surface?: string | undefined
   readonly rows: number
   readonly ownership: CmuxOwnership
-  readonly configSha256AtLaunch: string | undefined
-  readonly readConfigSha256: () => string | undefined
+  readonly configAtLaunch: CmuxConfigObservation | undefined
+  readonly observeConfig: () => CmuxConfigObservation
   readonly spawn?: (args: readonly string[]) => CommandOutcome
   readonly processCount?: () => number
 }): OwnedCmuxRead {
@@ -323,10 +345,7 @@ export function readOwnedCmuxHistory(options: {
         })
       : cmuxNonceProof({ transcript: stdout, nonce: options.ownership.nonce })
   if (proof.status === "refused") return proof
-  const guard = cmuxConfigGuard({
-    sha256AtLaunch: options.configSha256AtLaunch,
-    sha256AfterRun: options.readConfigSha256(),
-  })
+  const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
   const remaining = options.processCount?.() ?? 0
   if (remaining > 0) {
@@ -347,7 +366,12 @@ export function readOwnedCmuxHistory(options: {
       extras: proof.extras,
       totalLines,
       screenLines: options.rows,
-      configSha256: options.configSha256AtLaunch ?? null,
+      config:
+        options.configAtLaunch === undefined
+          ? "unrecorded"
+          : options.configAtLaunch.read === "present"
+            ? { read: "present", sha256: options.configAtLaunch.sha256 }
+            : { read: options.configAtLaunch.read },
     }),
   }
 }

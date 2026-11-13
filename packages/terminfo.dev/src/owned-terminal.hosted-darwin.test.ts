@@ -764,3 +764,75 @@ test.each([
 ])("owned app id resolves in one place: %j", (input, expected) => {
   expect(resolveOwnedAppId(input)).toBe(expected)
 })
+
+// The cmux arm through the real owner: the receipt names the app, the collector runs inside its surface, and
+// a changed ancestor must refuse by pid before any cmux read (@cto plan GO af8608c3, nonce arm ba9e117fd).
+test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by name first", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    let appPid = 4242
+    const cmuxCalls = []
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    const realReadFileSync = fs.readFileSync
+    mock.module("node:fs", () => ({
+      ...fs,
+      fstatSync: () => device,
+      statSync: () => device,
+      readFileSync: (path) => (String(path) === executable ? Buffer.from("cmux-binary") : realReadFileSync(path)),
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawn: () => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        return child
+      },
+      spawnSync: (file, args) => {
+        if (String(file).includes("cmux")) cmuxCalls.push(String(file) + " " + args.join(" "))
+        return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    assert.equal(owner.hostedAppId, "cmux")
+    assert.equal(owner.appPid, 4242)
+    assert.equal(typeof owner.getScrollback, "function")
+    assert.equal(owner.historyReadsThroughCli, true)
+    assert.equal(owner.historyExecutable?.path, executable)
+    assert.equal(owner.historyExecutable?.version, "cmux 0.65.2")
+    const atGrant = cmuxCalls.length
+    appPid = 5555
+    const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.equal(error?.message, "Hosted cmux ancestor is now pid 5555, not pid 4242 measured at launch")
+    assert.equal(cmuxCalls.length, atGrant, "no cmux read may follow the refusal")
+    await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
