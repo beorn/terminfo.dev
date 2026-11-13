@@ -181,7 +181,9 @@ it("retains the stored iTerm2 1005 measurement and names its declaration collisi
     // without turning the retained historical measurement into a collector failure.
     const captured = asRun(batch)
     // Replay the real trace with the real query assertions; the callback stub sends no live query.
-    captured.rawReplies = { ...captured.rawReplies, [id]: stored.rawReplies[id] }
+    const trace = stored.rawReplies[id]
+    if (trace === undefined) throw new Error("Stored iTerm2 1005 fixture lost its query trace")
+    captured.rawReplies = { ...captured.rawReplies, [id]: trace }
     const parsed = parseRun(
       "pointer-collision-roundtrip.json",
       JSON.stringify(captured),
