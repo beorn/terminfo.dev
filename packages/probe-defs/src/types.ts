@@ -1280,6 +1280,8 @@ export interface ClipboardFixture {
    * from the app's own documentation — a run then names that, never a guess.
    */
   readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  /** This tree's citation is for another app version: the row names both, and no default is applied. */
+  readonly readDefaultRefusal?: string
   /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
   readonly disposableSession?: boolean
   /** Verified tmux server `set-clipboard` option read before the callback (#32164). */
