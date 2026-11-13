@@ -789,7 +789,11 @@ export async function runProbeBatch(
             measuredVersion: subject.version,
             expectedBundleId: ordinaryOpen.expectedBundleId,
           })
-          if (!admission.admit) return admission
+          // One shape for every refusal: the receipt's own gate returns `admit`, and handing that arm back
+          // unmapped made `admitted` unreadable to both consumers below (root typecheck, 2026-11-13).
+          if (!admission.admit) {
+            return { admitted: false as const, refusal: admission.refusal, unprovable: admission.unprovable }
+          }
           const liveRefusal = ordinaryOpenLiveRefusal()
           return liveRefusal === undefined
             ? { admitted: true as const }
