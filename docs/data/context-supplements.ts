@@ -98,7 +98,7 @@ export const TRUECOLOR_ON: ContextSupplement = {
  * terminal only with it on (off by default in 3.8), and the OSC 22 mux arm needs that forwarding control to decide
  * whether tmux forwarded the target. The default tmux context keeps its empty config and reads the row as untestable
  * there; this run is the one that can decide it, and a decided row belongs to "tmux with set-titles on", never plain
- * tmux. One option only: no passthrough option, which would measure a different thing.
+ * tmux. Set-titles and its title string only: no passthrough option, which would measure a different thing.
  */
 export const SET_TITLES_ON: ContextSupplement = {
   name: "set-titles-on",
@@ -106,6 +106,7 @@ export const SET_TITLES_ON: ContextSupplement = {
   featureIds: ["extensions.osc22-pointer"],
   qualifier: "with tmux set-titles on",
   config: { tmux: TMUX_SET_TITLES_CONFIG },
+  notesDecided: true,
   silentIgnore: [],
   notInForce: "set-titles on by config, not proved in force",
   declaredDefaults: { tmux: "by default: set-titles off (tmux 3.8 default)" },

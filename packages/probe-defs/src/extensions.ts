@@ -5921,8 +5921,9 @@ export const OSC22_MUX_NO_CONTROL_DEFAULT =
 /**
  * Grades only the outer command reading; a missing control or record arrives as `unavailable`. Three outcomes:
  * the target line means the multiplexer forwarded it (Open); a measured record with the control and no target is
- * the criterion's Unsupported; an unmeasured record is declared untestable when this run's config forwards no
- * title, and probe-invalid by name otherwise. The decided negative asserts on the outer command record
+ * the criterion's Unsupported; an unmeasured record is declared untestable only when this run's config forwards no
+ * title AND a missing forwarding control is why it was unread, and probe-invalid with the reader's own reason
+ * otherwise. The decided negative asserts on the outer command record
  * (`buffer_state`, the kind every outer-record grade in this package uses), never on query bytes this arm
  * never asks for (@cto 33920).
  */
@@ -5934,10 +5935,12 @@ export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
     criterionBranch: OSC22_MUX_OUTER_BRANCH,
     tests: [{ id: "outer-command-record", status, reason }],
   })
-  if (read.status !== "measured" && read.titlesForwarded === false) {
-    return open("probe-todo", OSC22_MUX_NO_CONTROL_DEFAULT)
+  if (read.status !== "measured") {
+    if (read.titlesForwarded === false && read.noForwardingControl === true) {
+      return declaredUntestableResult(OSC22_MUX_NO_CONTROL_DEFAULT, state)
+    }
+    return open("probe-invalid", OSC22_MUX_NO_RECORD + " " + read.reason)
   }
-  if (read.status !== "measured") return open("probe-invalid", OSC22_MUX_NO_RECORD)
   if (read.targetSent) return open("probe-todo", osc22MuxSent(`${read.outer.app} ${read.outer.version}`))
   return {
     ...parserStateResult(

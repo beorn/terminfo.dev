@@ -930,6 +930,13 @@ const sgrPaintMatcher: OuterCommandMatcher = {
 }
 
 /**
+ * The outer record was read and carried no forwarding-control line. That is the one read failure a config that
+ * forwards no title explains, so the grade can tell it apart from a refused plan order, an unreadable call log or
+ * an unqualified reader, which each keep their own reason (#32593, @dev/15 peer read).
+ */
+class NoForwardingControl extends Error {}
+
+/**
  * One target line, then a forwarding control carrying the invocation's nonce that closes its window, as whole
  * record lines. The callback writes the target FIRST and the control second (@cto 33919 condition 3): a multiplexer
  * forwards a title when it next redraws, never at the instant the pane writes it, so everything it forwarded before
@@ -994,7 +1001,7 @@ function controlTargetMatcher(spec: {
         decide(scan) {
           const seen = scan.commands as { control?: number; target?: number; targetAfterControl?: number }
           if (seen.control === undefined) {
-            throw new Error(`Outer command record has no forwarding control line: ${controlLine}`)
+            throw new NoForwardingControl(`Outer command record has no forwarding control line: ${controlLine}`)
           }
           // A target forwarded in another form (terminator, parameter, name) is not "did not send"
           // (@cto 18d11184). The command word is the declared target line's tokens before its value.
@@ -1256,6 +1263,7 @@ export function beginMuxSgrCommandRead(input: {
             status: "unavailable" as const,
             reason: error instanceof Error ? error.message : String(error),
             titlesForwarded,
+            noForwardingControl: error instanceof NoForwardingControl,
             detail,
           }
         }
@@ -1266,6 +1274,7 @@ export function beginMuxSgrCommandRead(input: {
       status: "unavailable" as const,
       reason: error instanceof Error ? error.message : String(error),
       titlesForwarded: muxForwardsTitle(input.subject.id, input.subject.config),
+      noForwardingControl: error instanceof NoForwardingControl,
     }
   }
 }

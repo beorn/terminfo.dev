@@ -394,7 +394,7 @@ mux_profile_config() {
         echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
         return 2
       fi
-      printf '%s\n' 'tmux: set-titles on'
+      printf '%s\n' 'tmux: set-titles on; set-titles-string "#T"'
       ;;
     *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
   esac
@@ -411,10 +411,12 @@ screen_config_content() {
 
 # The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919): the default profile's file stays
 # empty, and set-titles is the profile's one documented option, so tmux forwards a pane title to the outer terminal.
+# set-titles-string "#T" keeps that forwarded title the pane title itself, nonce included, rather than tmux's default
+# "#S:#I:#W - ..." wrapper.
 # The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
 # accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
 tmux_config_content() {
-  if [[ "$1" == set-titles ]]; then printf 'set-titles on\n'; fi
+  if [[ "$1" == set-titles ]]; then printf 'set-titles on\nset-titles-string "#T"\n'; fi
 }
 
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,

@@ -1297,6 +1297,8 @@ export type OuterCommandRead =
        * probe-invalid (@cto 33919 condition 2). Absent when the reader cannot tell.
        */
       titlesForwarded?: boolean
+      /** The record was read and carried no forwarding-control line; only a config that forwards no title explains it. */
+      noForwardingControl?: boolean
       detail?: object
     }
 
