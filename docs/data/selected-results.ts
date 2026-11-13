@@ -1235,7 +1235,8 @@ export function loadSelectedResults(
       textSnapshots,
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
-      log: (line) => console.log(line),
+      // Diagnostics go to stderr: callers such as the VitePress config loader print JSON on stdout.
+      log: (line) => console.error(line),
       reopened: loadReopenedCells(contentDir, features),
       declared: loadDeclaredUntestable(contentDir),
     },
