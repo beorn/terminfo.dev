@@ -415,6 +415,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
 
     // A2: no compat aliases on TerminalStatusRollup.
     expect(Object.keys(rollup).sort()).toEqual([
+      "byReview",
       "completenessTier",
       "counts",
       "decided",
