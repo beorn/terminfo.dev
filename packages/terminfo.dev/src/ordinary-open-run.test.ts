@@ -4,7 +4,11 @@
  *   trace, or leak something about the person using it.
  * @level l1
  * @consumer the ordinary-open producer in serve.ts (@cto 2026-11-13 PLAN GO d82ef4d0).
- * @testonly a receipt fixture and an injected Darwin command: no Mac and no person's pasteboard are needed.
+ * @testonly none
+ * @reach fs-walk <fixture-only: receipts this test writes under its own mkdtempSync root>
+ *
+ * A receipt fixture and an injected Darwin command stand in for the host: no Mac and no person's pasteboard are
+ * needed, and the ancestry walk is driven through its seam rather than against a live process.
  */
 import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
