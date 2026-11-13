@@ -9,7 +9,14 @@ import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { handleApp, launchPreparedCli, prepareCliLaunch, stopLaunchedApp, type AppLaunch } from "./app.ts"
+import {
+  assertOwnedWindowAssertion,
+  handleApp,
+  launchPreparedCli,
+  prepareCliLaunch,
+  stopLaunchedApp,
+  type AppLaunch,
+} from "./app.ts"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -237,6 +244,22 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
   }
 })
 
+test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
+  expect(() =>
+    assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, {
+      proc: null,
+      identityPath: "/private/run/owner-tty.txt",
+      iterm2: { tty: "/dev/ttys009", beforeWindowIds: [1] },
+    } as AppLaunch),
+  ).not.toThrow()
+})
+
+test("the owned-window admission refuses a launch carrying no proof, by the same sentence", () => {
+  expect(() => assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, { proc: null } as AppLaunch)).toThrow(
+    "iTerm2 has no owned-window assertion; refusing to collect a run this probe cannot prove it launched",
+  )
+})
+
 test("Kitty text collection owns a run-local socket and removes it with its one window", async () => {
   vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
   vi.mocked(parseKittyIdentity).mockReturnValue({
@@ -276,6 +299,7 @@ test("Kitty text collection owns a run-local socket and removes it with its one 
   expect(requestDaemonProbe).toHaveBeenCalledWith(
     registration,
     expect.objectContaining({ process: expect.objectContaining({ provider: "kitty", ownerPid: 777 }) }),
+    undefined,
   )
   expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(expect.objectContaining({ provider: "kitty", windowId: 7 }))
   expect(removeProbeRun).toHaveBeenCalledWith({
@@ -283,6 +307,38 @@ test("Kitty text collection owns a run-local socket and removes it with its one 
     directory: "/private/run",
     scriptPath: "/private/run/serve.sh",
   })
+})
+
+test("a selected probe list reaches the daemon as its exact ids", async () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(parseKittyIdentity).mockReturnValue({
+    windowId: 7,
+    kittyPid: 777,
+    tty: "/dev/ttys009",
+    term: "xterm-kitty",
+  })
+  await handleApp("kitty", { probeIds: ["cursor.mode", "kitty.graphics-protocol"] })
+  expect(requestDaemonProbe).toHaveBeenCalledWith(
+    registration,
+    expect.objectContaining({ process: expect.objectContaining({ provider: "kitty" }) }),
+    ["cursor.mode", "kitty.graphics-protocol"],
+  )
+})
+
+test("an omitted selection sends no ids to the daemon", async () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(parseKittyIdentity).mockReturnValue({
+    windowId: 7,
+    kittyPid: 777,
+    tty: "/dev/ttys009",
+    term: "xterm-kitty",
+  })
+  await handleApp("kitty", {})
+  expect(requestDaemonProbe).toHaveBeenCalledWith(
+    registration,
+    expect.objectContaining({ process: expect.objectContaining({ provider: "kitty" }) }),
+    undefined,
+  )
 })
 
 test("an owned iTerm2 launch is collected on its sole-instance proof, then closed by its recorded pid", async () => {
@@ -311,20 +367,24 @@ test("an owned iTerm2 launch is collected on its sole-instance proof, then close
   expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
   expect(resolveIterm2Window).toHaveBeenCalledWith(launch, "/dev/ttys009")
   expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(owned, 555)
-  expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-    process: {
-      asserter: "terminfo-admin",
-      launchRunId: "private-run",
-      workerPid: 555,
-      provider: "iterm2",
-      ownerPid: 900,
-      executablePath: launch.executablePath,
-      basis: { kind: "sole-instance", preflightAbsent: true },
-      tty: "/dev/ttys009",
-      windowId: 41,
-      intendedVersion: "2.15",
+  expect(requestDaemonProbe).toHaveBeenCalledWith(
+    registration,
+    {
+      process: {
+        asserter: "terminfo-admin",
+        launchRunId: "private-run",
+        workerPid: 555,
+        provider: "iterm2",
+        ownerPid: 900,
+        executablePath: launch.executablePath,
+        basis: { kind: "sole-instance", preflightAbsent: true },
+        tty: "/dev/ttys009",
+        windowId: 41,
+        intendedVersion: "2.15",
+      },
     },
-  })
+    undefined,
+  )
   expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(owned)
   // The one Apple event is the launch; no osascript close follows it.
   expect(vi.mocked(execFileSync).mock.calls.some(([file]) => file === "osascript")).toBe(false)
@@ -378,19 +438,23 @@ describe("WezTerm cli-process arm", () => {
       tty: "/dev/ttys009",
     })
     expect(recordedOwnerTty).toHaveBeenCalledWith("/dev/ttys009\n")
-    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-      process: {
-        asserter: "terminfo-admin",
-        launchRunId: "private-run",
-        workerPid: 555,
-        provider: "cli-process",
-        ownerPid: 777,
-        executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
-        basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" } },
-        tty: "/dev/ttys009",
-        intendedVersion: "2.15",
+    expect(requestDaemonProbe).toHaveBeenCalledWith(
+      registration,
+      {
+        process: {
+          asserter: "terminfo-admin",
+          launchRunId: "private-run",
+          workerPid: 555,
+          provider: "cli-process",
+          ownerPid: 777,
+          executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+          basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" } },
+          tty: "/dev/ttys009",
+          intendedVersion: "2.15",
+        },
       },
-    })
+      undefined,
+    )
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
   })
 
@@ -458,19 +522,23 @@ describe("Ghostty cli-process arm", () => {
       marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
       tty: "/dev/ttys009",
     })
-    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-      process: {
-        asserter: "terminfo-admin",
-        launchRunId: "private-run",
-        workerPid: 555,
-        provider: "cli-process",
-        ownerPid: 777,
-        executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-        basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" } },
-        tty: "/dev/ttys009",
-        intendedVersion: "2.15",
+    expect(requestDaemonProbe).toHaveBeenCalledWith(
+      registration,
+      {
+        process: {
+          asserter: "terminfo-admin",
+          launchRunId: "private-run",
+          workerPid: 555,
+          provider: "cli-process",
+          ownerPid: 777,
+          executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+          basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" } },
+          tty: "/dev/ttys009",
+          intendedVersion: "2.15",
+        },
       },
-    })
+      undefined,
+    )
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
     // D4.6: the owner launch record is measured once and retained as the reply a mux proof cites.
     const retained = vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0] as { rawReplies?: Record<string, string> }
@@ -819,13 +887,17 @@ exports.activate = async (context) => {
     })
     expect(terminal.show).toHaveBeenCalledOnce()
     expect(subscriptions).toEqual([terminal])
-    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-      process: expect.objectContaining({
-        ownerPid: 778,
-        executablePath: ownedWindow.executablePath,
-        basis: { kind: "marker", marker: ownedWindow.marker },
-      }),
-    })
+    expect(requestDaemonProbe).toHaveBeenCalledWith(
+      registration,
+      {
+        process: expect.objectContaining({
+          ownerPid: 778,
+          executablePath: ownedWindow.executablePath,
+          basis: { kind: "marker", marker: ownedWindow.marker },
+        }),
+      },
+      undefined,
+    )
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
   },
 )
@@ -836,16 +908,20 @@ describe("Terminal.app app collection", () => {
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "terminal-app")
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(window, 555, "2.15")
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
-    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-      terminalApp: {
-        asserter: "terminfo-admin",
-        launchRunId: "private-run",
-        workerPid: 555,
-        windowId: 14,
-        tabTty: "/dev/ttys003",
-        intendedVersion: "2.15",
+    expect(requestDaemonProbe).toHaveBeenCalledWith(
+      registration,
+      {
+        terminalApp: {
+          asserter: "terminfo-admin",
+          launchRunId: "private-run",
+          workerPid: 555,
+          windowId: 14,
+          tabTty: "/dev/ttys003",
+          intendedVersion: "2.15",
+        },
       },
-    })
+      undefined,
+    )
     const requestOrder = vi.mocked(requestDaemonProbe).mock.invocationCallOrder[0]!
     expect(vi.mocked(captureTerminalAppReceipt).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)
     expect(vi.mocked(assertOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)

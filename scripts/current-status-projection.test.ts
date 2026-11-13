@@ -20,7 +20,7 @@ import {
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
-import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -225,6 +225,30 @@ it.each([
     states: {},
   }
   expect(() => pickContextRun([candidate])).toThrow(/invalid-evidence-context/)
+})
+
+// @failure A run that measured a selection (--probe-ids) is picked as a context's summary while a full run
+// stands, so the site shows a mostly-todo terminal as if the partial had covered the whole suite.
+// @level l2 @consumer run-selection pickContextRun and its site/projection callers.
+it("ranks a full run above a selected run, and names the partial summary when none is full", () => {
+  const candidate = (key: string, measuredAt: string, partial: boolean): HistoricalContextCandidate => ({
+    key,
+    kind: "term",
+    terminalId: "kitty",
+    os: "macos",
+    permissions: null,
+    states: {},
+    cells: {},
+    sources: [{ runId: key, measuredAt, suiteId: suite.probeHash, suiteRelation: "tree", partial }],
+  })
+  const full = candidate("kitty/full", "2026-11-12T00:00:00Z", false)
+  const partial = candidate("kitty/partial", "2026-11-13T00:00:00Z", true)
+  expect(pickContextRun([partial, full])).toMatchObject({ run: { key: "kitty/full" } })
+  expect(pickContextRun([full, partial])).toMatchObject({ run: { key: "kitty/full" } })
+  expect(pickContextRun([partial])).toMatchObject({
+    run: { key: "kitty/partial" },
+    selection: "latest partial selection",
+  })
 })
 
 // Current selection reads the stored five statuses and frozen denominator

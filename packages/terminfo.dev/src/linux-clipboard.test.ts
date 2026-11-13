@@ -1137,32 +1137,32 @@ test("restoration failure overrides a supported callback result", async () => {
 // read carries its digest and length.
 const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-test("the ownership record reports a dead owner once, with its exit, and never a helper we displaced ourselves", () => {
+test("the ownership record reports a dead owner once, with its exit, and never a helper we displaced ourselves", async () => {
   const events: ClipboardTraceEvent[] = []
   const trace = (event: ClipboardTraceEvent) => events.push(event)
   const external = new Set([90])
   const ownership = createClipboardOwnership<"clipboard">({ clipboard: 90 }, (pid) => external.has(pid))
 
-  expect(ownership.state("clipboard", trace)).toEqual({ helperPid: 90, alive: true })
-  ownership.spawned(101)
+  expect(await ownership.state("clipboard", trace)).toEqual({ helperPid: 90, alive: true })
+  ownership.spawned(101, "clipboard")
   ownership.acquired("clipboard", 101)
   external.delete(90)
-  ownership.spawned(102)
+  ownership.spawned(102, "clipboard")
   ownership.acquired("clipboard", 102)
   ownership.exited(101, 0, null)
-  expect(ownership.state("clipboard", trace)).toEqual({ helperPid: 102, alive: true })
+  expect(await ownership.state("clipboard", trace)).toEqual({ helperPid: 102, alive: true })
   expect(events).toEqual([])
 
   ownership.exited(102, 0, null)
-  const dead = ownership.state("clipboard", trace)
+  const dead = await ownership.state("clipboard", trace)
   expect(dead).toMatchObject({ helperPid: 102, alive: false, exit: { code: 0, signal: null } })
-  expect(ownership.state("clipboard", trace)).toEqual(dead)
+  expect(await ownership.state("clipboard", trace)).toEqual(dead)
   expect(events).toEqual([
     { kind: "clipboard-owner-exit", at: expect.any(String), helperPid: 102, exitCode: 0, signal: null },
   ])
 
   const gone = createClipboardOwnership<"clipboard">({ clipboard: 90 }, () => false)
-  expect(gone.state("clipboard", trace)).toEqual({ helperPid: 90, alive: false })
+  expect(await gone.state("clipboard", trace)).toEqual({ helperPid: 90, alive: false })
   expect(events.at(-1)).toEqual({
     kind: "clipboard-owner-exit",
     at: expect.any(String),
@@ -1183,7 +1183,7 @@ test("a dead owner is refused before the callback with its exit and the stray re
     writeText: async (value) => {
       text = value
     },
-    owner: (trace) => {
+    owner: async (trace) => {
       trace({
         kind: "clipboard-owner-exit",
         at: "2026-11-10T08:35:00.000Z",
@@ -1204,7 +1204,7 @@ test("a dead owner is refused before the callback with its exit and the stray re
   )
   await expect(refusal).rejects.toThrow(
     `Owned clipboard helper 4242 exited at 2026-11-10T08:35:00.000Z (code 0, signal none) before callback; ` +
-      `read sha256 ${EMPTY_SHA256} length 0, empty read (no owner or empty owner)`,
+      `taker not read; read sha256 ${EMPTY_SHA256} length 0, empty read (no owner or empty owner)`,
   )
   expect(ran).toBe(false)
   expect(text).toBe("baseline-nonce")
@@ -1218,7 +1218,7 @@ test("a helper displaced inside the callback is a measurement, and only a helper
   let owner = 100
   let nextPid = 200
   const ownership = createClipboardOwnership<"clipboard">({ clipboard: owner }, () => false)
-  ownership.spawned(owner)
+  ownership.spawned(owner, "clipboard")
   const events: ClipboardTraceEvent[] = []
   const trace = (event: ClipboardTraceEvent) => events.push(event)
   const transaction = createClipboardTransaction("baseline-nonce", {
@@ -1226,7 +1226,7 @@ test("a helper displaced inside the callback is a measurement, and only a helper
     // Our writer: it acquires, and the helper it displaced exits 0, as xclip does.
     writeText: async (value) => {
       const pid = nextPid++
-      ownership.spawned(pid)
+      ownership.spawned(pid, "clipboard")
       text = value
       ownership.exited(owner, 0, null)
       ownership.acquired("clipboard", pid)
@@ -1277,7 +1277,7 @@ test("a helper displaced inside the callback is a measurement, and only a helper
   ).rejects.toThrow(
     new RegExp(
       `^Owned clipboard helper ${dead} exited at \\S+ \\(code null, signal SIGTERM\\) before callback; ` +
-        `read sha256 ${createHash("sha256").update("baseline-nonce").digest("hex")} length 14$`,
+        `taker not read; read sha256 ${createHash("sha256").update("baseline-nonce").digest("hex")} length 14$`,
     ),
   )
   expect(ran).toBe(false)
@@ -1294,7 +1294,7 @@ test("a live owner with a stray read is refused with the read's digest and lengt
     writeText: async (value) => {
       text = value
     },
-    owner: () => ({ helperPid: 7, alive: true }),
+    owner: async () => ({ helperPid: 7, alive: true }),
   })
   await expect(
     transaction(
@@ -1394,4 +1394,180 @@ test("the transaction offers the real key event only when its io has one, on the
     async () => {},
   )
   expect(events).toEqual([{ kind: "clipboard-key", at: "t", key: "shift" }])
+})
+
+// 33693 (@cto 379b191a): the tmux run's restore writer lost CLIPBOARD between transactions to the outer terminal,
+// and the pre-flight refused without naming who took it. The owner's exit now reads the taker; the pre-flight
+// re-owns once only for a clean displacement by a read client that is not ours, and the result row says so.
+// @failure osc52-clipboard stayed probe-invalid on kitty+tmux because a taker outside the fixture was never read.
+// @level l1
+// @consumer createClipboardTransaction pre-flight through the Linux adapter
+// @testonly none
+const KITTY_TAKER = {
+  read: true,
+  at: "2026-11-12T07:18:09.180Z",
+  window: "0x600005",
+  clientWindows: ["0x60000d"],
+  takerClass: '"kitty", "kitty"',
+  takerPid: 77,
+} as const
+
+test("the owner's exit reads the taker only when no writer of ours is claiming, and says whether it could be ours", async () => {
+  const reads: string[] = []
+  const ownership = createClipboardOwnership<"clipboard">(
+    { clipboard: 90 },
+    () => false,
+    async (selection) => {
+      reads.push(selection)
+      return KITTY_TAKER
+    },
+  )
+  ownership.spawned(101, "clipboard")
+  ownership.acquired("clipboard", 101)
+  // Our next writer claims first: its predecessor's exit is ours displacing ours, so nothing is read.
+  ownership.spawned(102, "clipboard")
+  ownership.exited(101, 0, null)
+  ownership.acquired("clipboard", 102)
+  expect(reads).toEqual([])
+  // Nothing of ours is claiming when 102 exits: the taker is read at that instant and cannot be ours.
+  ownership.exited(102, 0, null)
+  expect(reads).toEqual(["clipboard"])
+  const events: ClipboardTraceEvent[] = []
+  expect(await ownership.state("clipboard", (event) => events.push(event))).toMatchObject({
+    helperPid: 102,
+    alive: false,
+    taker: KITTY_TAKER,
+    takerOurs: false,
+  })
+  expect(events).toEqual([
+    expect.objectContaining({
+      kind: "clipboard-owner-exit",
+      helperPid: 102,
+      exitCode: 0,
+      taker: KITTY_TAKER,
+      takerOurs: false,
+    }),
+  ])
+
+  // A live writer of ours on that selection could be the taker, so the read cannot clear it.
+  const busy = createClipboardOwnership<"clipboard">(
+    { clipboard: 90 },
+    () => false,
+    async () => KITTY_TAKER,
+  )
+  busy.spawned(201, "clipboard")
+  busy.acquired("clipboard", 201)
+  busy.spawned(202, "clipboard")
+  busy.acquired("clipboard", 202)
+  busy.exited(202, 0, null)
+  expect(await busy.state("clipboard", () => {})).toMatchObject({ helperPid: 202, alive: false, takerOurs: true })
+})
+
+function reownFixture(
+  owner: Awaited<ReturnType<NonNullable<Parameters<typeof createClipboardTransaction>[1]["owner"]>>>,
+) {
+  const state = { text: "", writes: [] as string[], ran: false }
+  const events: ClipboardTraceEvent[] = []
+  const transaction = createClipboardTransaction("baseline-nonce", {
+    readText: async (trace, kind = "clipboard-read") => {
+      trace({ kind, at: new Date().toISOString(), length: state.text.length })
+      return state.text
+    },
+    writeText: async (value, trace, kind) => {
+      state.writes.push(kind)
+      trace({ kind, at: new Date().toISOString(), length: value.length })
+      state.text = value
+    },
+    owner: async () => owner,
+  })
+  const run = (observation = true) =>
+    transaction(
+      async (): Promise<ProbeCallbackResult> => {
+        state.ran = true
+        return observation
+          ? { pass: true, observation: { outcome: "supported", assertionType: "query_reply", note: "measured" } }
+          : { pass: true, note: "measured", tests: [{ id: "fixture", status: "probe-todo", reason: "fixture" }] }
+      },
+      (event) => events.push(event),
+      async () => {},
+    )
+  return { state, events, run }
+}
+
+const displaced = {
+  helperPid: 2014,
+  alive: false,
+  exit: { code: 0, signal: null, at: "2026-11-12T07:18:09.172Z" },
+  taker: KITTY_TAKER,
+  takerOurs: false,
+} as const
+
+test("a clean displacement by a read client that is not ours re-owns once, and the result row says it recovered", async () => {
+  const fixture = reownFixture(displaced)
+  const result = await fixture.run()
+  expect(fixture.state.ran).toBe(true)
+  expect(fixture.state.writes).toEqual(["clipboard-reown", "clipboard-restore"])
+  expect(fixture.events.map((event) => event.kind)).toEqual([
+    "clipboard-reown",
+    "clipboard-read",
+    "clipboard-restore",
+    "clipboard-verify",
+  ])
+  const said =
+    "pre-flight re-owned the clipboard baseline: helper 2014 exited at 2026-11-12T07:18:09.172Z (code 0, signal none); " +
+    'taker window 0x600005 (class "kitty", "kitty", pid 77)'
+  expect(result).toEqual({
+    pass: true,
+    observation: { outcome: "supported", assertionType: "query_reply", note: `measured; ${said}` },
+  })
+  const unobserved = reownFixture(displaced)
+  expect(await unobserved.run(false)).toEqual({
+    pass: true,
+    note: `measured; ${said}`,
+    tests: [{ id: "fixture", status: "probe-todo", reason: "fixture" }],
+  })
+})
+
+test("any other exit, an unread taker or a taker that could be ours refuses before the callback, never re-owns", async () => {
+  for (const [owner, said] of [
+    [{ ...displaced, exit: { code: 143, signal: null, at: "2026-11-12T07:18:09.172Z" } }, "(code 143, signal none)"],
+    [
+      { ...displaced, taker: { read: false, at: "t", reason: "taker child signal SIGSEGV" }, takerOurs: undefined },
+      "taker not read (taker child signal SIGSEGV)",
+    ],
+    [{ ...displaced, takerOurs: true }, "which could be a helper of ours"],
+  ] as const) {
+    const fixture = reownFixture(owner)
+    await expect(fixture.run()).rejects.toThrow(said)
+    expect(fixture.state.ran).toBe(false)
+    expect(fixture.state.writes).toEqual(["clipboard-restore"])
+  }
+})
+
+test("a re-own whose re-read differs refuses, naming the one re-own", async () => {
+  let text = ""
+  let writes = 0
+  const transaction = createClipboardTransaction("baseline-nonce", {
+    readText: async () => text,
+    // The re-own writes the baseline, but something takes the selection again before the re-read.
+    writeText: async (value) => {
+      writes++
+      text = writes === 1 ? "taken-again" : value
+    },
+    owner: async () => displaced,
+  })
+  let ran = false
+  await expect(
+    transaction(
+      async () => {
+        ran = true
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      },
+      () => {},
+      async () => {},
+    ),
+  ).rejects.toThrow(
+    /^Owned clipboard baseline changed before callback after its one re-own: read sha256 \w+ length 11$/,
+  )
+  expect(ran).toBe(false)
 })

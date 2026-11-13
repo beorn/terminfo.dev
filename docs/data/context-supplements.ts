@@ -11,7 +11,7 @@
 
 import type { ProbeSubject } from "@terminfo/probe-defs"
 import type { LoadedRun } from "@terminfo/run-parser"
-import { SCREEN_TRUECOLOR_CONFIG } from "../../packages/terminfo.dev/src/disposable-receipt.ts"
+import { SCREEN_TRUECOLOR_CONFIG, TMUX_SET_TITLES_CONFIG } from "../../packages/terminfo.dev/src/disposable-receipt.ts"
 
 /**
  * The config a default mux run records: the launcher's `--arg muxConfig` (scripts/linux-container-run.sh). The
@@ -20,6 +20,8 @@ import { SCREEN_TRUECOLOR_CONFIG } from "../../packages/terminfo.dev/src/disposa
 export const MUX_DEFAULT_CONFIG = "/out/mux-empty.conf"
 /** The config a Screen `--mux-profile truecolor` run records; its one home is the receipt check that verifies it. */
 export { SCREEN_TRUECOLOR_CONFIG }
+/** The config a tmux `--mux-profile set-titles` run records; its one home is the receipt check that verifies it. */
+export { TMUX_SET_TITLES_CONFIG }
 
 export interface ContextSupplement {
   /** The supplement's name in the pass, its output directory and its cell marker. */
@@ -91,7 +93,26 @@ export const TRUECOLOR_ON: ContextSupplement = {
   declaredDefaults: { screen: "by default: truecolor off (screen truecolor default off, 5.0.2)" },
 }
 
-/** The supplements each Linux row runs after its default launch, by context id: Apps and the Screen mux row. */
+/**
+ * tmux with its documented `set-titles on` option (#32593, @cto 33919). tmux forwards a pane's title to the outer
+ * terminal only with it on (off by default in 3.8), and the OSC 22 mux arm needs that forwarding control to decide
+ * whether tmux forwarded the target. The default tmux context keeps its empty config and reads the row as untestable
+ * there; this run is the one that can decide it, and a decided row belongs to "tmux with set-titles on", never plain
+ * tmux. Set-titles and its title string only: no passthrough option, which would measure a different thing.
+ */
+export const SET_TITLES_ON: ContextSupplement = {
+  name: "set-titles-on",
+  launcherArgs: ["--clipboard-profile", "default", "--mux-profile", "set-titles"],
+  featureIds: ["extensions.osc22-pointer"],
+  qualifier: "with tmux set-titles on",
+  config: { tmux: TMUX_SET_TITLES_CONFIG },
+  notesDecided: true,
+  silentIgnore: [],
+  notInForce: "set-titles on by config, not proved in force",
+  declaredDefaults: { tmux: "by default: set-titles off (tmux 3.8 default)" },
+}
+
+/** The supplements each Linux row runs after its default launch, by context id: Apps and the two mux rows. */
 export const LINUX_SUPPLEMENTS: Readonly<Record<string, readonly ContextSupplement[]>> = {
   kitty: [READ_ALLOWED],
   ghostty: [READ_ALLOWED],
@@ -99,6 +120,7 @@ export const LINUX_SUPPLEMENTS: Readonly<Record<string, readonly ContextSuppleme
   xterm: [READ_ALLOWED],
   wezterm: [READ_ALLOWED],
   screen: [TRUECOLOR_ON],
+  tmux: [SET_TITLES_ON],
 }
 
 /** Each supplement is named by exactly one recorded field; both or neither is refused when this module loads. */

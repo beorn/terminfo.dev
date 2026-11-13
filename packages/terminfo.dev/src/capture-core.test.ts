@@ -10,7 +10,15 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { command, finishCapture, locateColour, retain } from "./capture-core.ts"
+import { originFromSentinel, sentinelBlockRefusal, witnessCellFor } from "@terminfo/probe-defs"
+import {
+  command,
+  finishCapture,
+  locateColour,
+  retain,
+  type CapturedFrame,
+  type OriginResolver,
+} from "./capture-core.ts"
 
 const directories: string[] = []
 afterEach(() => {
@@ -163,6 +171,96 @@ test("a capture request with locate answers located; one without it is the previ
   expect(rest).toEqual(plain.frame)
   const absent = await finishCapture({ ...input, checkpoint: { ...checkpoint, locate: { rgb: [1, 2, 3] } } })
   expect(absent.frame.located).toBeNull()
+})
+
+/**
+ * The same 12x8 window drawn with its text area at `origin`: the probe's cells carry a pattern that
+ * depends only on where a pixel sits inside its cell, and calibration's sentinel is one solid block
+ * on `witness`. Nothing else is painted, so the only difference between two frames is where the
+ * window put the same drawing.
+ */
+function drawnWindow(
+  origin: { x: number; y: number },
+  witness: { row: number; col: number },
+  cells: { top: number; left: number; bottom: number; right: number },
+  sentinel: readonly [number, number, number],
+): CapturedFrame {
+  const width = 12
+  const height = 8
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 255
+  const paint = (x: number, y: number, colour: readonly number[]) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return
+    rgba.set(colour, (y * width + x) * 4)
+  }
+  for (let row = cells.top; row <= cells.bottom; row += 1) {
+    for (let col = cells.left; col <= cells.right; col += 1) {
+      for (let dy = 0; dy < 2; dy += 1) {
+        for (let dx = 0; dx < 2; dx += 1) {
+          paint(origin.x + (col - 1) * 2 + dx, origin.y + (row - 1) * 2 + dy, [
+            (row * 40 + dy * 7) % 256,
+            (col * 50 + dx * 11) % 256,
+            90,
+            255,
+          ])
+        }
+      }
+    }
+  }
+  for (let dy = 0; dy < 2; dy += 1) {
+    for (let dx = 0; dx < 2; dx += 1) {
+      paint(origin.x + (witness.col - 1) * 2 + dx, origin.y + (witness.row - 1) * 2 + dy, [...sentinel, 255])
+    }
+  }
+  return { width, height, rgba }
+}
+
+test("a moved window digests the same cells, because the crop follows the sentinel the read paints (33000)", async () => {
+  const sentinel = [255, 136, 255] as const
+  const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
+  const cells = { top: 1, left: 1, bottom: 2, right: 2 }
+  const witness = witnessCellFor([cells], { rows: 4, cols: 6 })
+  expect(witness).toEqual({ row: 3, col: 1 })
+  const calibrated = { origin: { x: 0, y: 0 }, basis: "complete raster calibration" }
+  // The fix under test: the crop is taken from where the sentinel actually landed in THIS frame,
+  // with the same one-cell block test the post-hoc layout check uses.
+  const anchoredOnSentinel: OriginResolver = ({ frame, pixelGeometry: measured }) => {
+    const located = locateColour(frame, sentinel)
+    if (located === null) throw new Error("calibration's sentinel is nowhere in the frame this read digests")
+    const size = { width: measured.cellWidth, height: measured.cellHeight }
+    const refusal = sentinelBlockRefusal(located, size)
+    if (refusal) throw new Error(`calibration's sentinel is not one cell block: ${refusal}`)
+    return { origin: originFromSentinel(located, witness, size), basis: "sentinel re-located on this frame (33000)" }
+  }
+  const read = (drawnAt: { x: number; y: number }, origin: typeof calibrated | OriginResolver) =>
+    finishCapture({
+      directory: directory(),
+      onRetained: () => {},
+      source: { bytes: PNG_STUB, format: "png", width: 12, height: 8, capturedAt: 1 },
+      png: PNG_STUB,
+      decoded: drawnWindow(drawnAt, witness, cells, sentinel),
+      origin,
+      trace: {},
+      checkpoint: { featureId: "moved-window", role: "target" as const, label: "cells 1,1-2,2", cells, pixelGeometry },
+    })
+
+  const settled = await read({ x: 0, y: 0 }, calibrated)
+  const unmoved = await read({ x: 0, y: 0 }, anchoredOnSentinel)
+  // The window moved one cell right and down between calibration and this read — Warp's command
+  // header does exactly this to the rows calibration measured.
+  const moved = { x: 2, y: 2 }
+  const relocated = await read(moved, anchoredOnSentinel)
+  const staleAfterMove = await read(moved, calibrated)
+
+  // Before the fix, the same probe cells digest different bytes once the window moved.
+  expect(staleAfterMove.frame.regionRectangle).toEqual({ x: 0, y: 0, width: 4, height: 4 })
+  expect(staleAfterMove.frame.regionDigest).not.toBe(settled.frame.regionDigest)
+  // After it, the rectangle follows the window and the bytes behind it are the same bytes.
+  expect(relocated.frame.regionRectangle).toEqual({ x: 2, y: 2, width: 4, height: 4 })
+  expect(relocated.frame.regionDigest).toBe(settled.frame.regionDigest)
+  // A genuine no-change still reads as no change: the held-out check this must not break.
+  expect(unmoved.frame.regionRectangle).toEqual(settled.frame.regionRectangle)
+  expect(unmoved.frame.regionDigest).toBe(settled.frame.regionDigest)
 })
 
 test.each([
