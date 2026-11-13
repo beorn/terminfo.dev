@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { isAbsolute } from "node:path"
+import type { OwnedAppOwnerAssertion } from "./owned-terminal.ts"
 
 /**
  * The owned-Mac app arm's REQUIRED proofs, one app at a time (#34012, @cto 47b187f6 + 9f889378).
@@ -171,6 +173,99 @@ export function oneNewWindowForLaunch(
     )
   }
   return only
+}
+
+/** Everything the launcher knows once it has spawned the app: the two censuses around the spawn, the
+ * window proof its table entry requires, and the facts only the launcher can read (its own pid, the run's
+ * tty, the app's realpath executable, the version it intended). */
+export interface OwnedAppLaunchRecordInput {
+  readonly appId: string
+  readonly launchRunId: string
+  readonly workerPid: number
+  readonly before: readonly unknown[]
+  readonly after: readonly unknown[]
+  /** The proof the app's table entry requires; the launcher reads it from ownedAppProofSpec first. */
+  readonly windowProof: OwnedAppWindowProof
+  readonly executablePath: string
+  readonly marker: { readonly flag: string; readonly value: string }
+  readonly tty: string
+  readonly intendedVersion: string
+}
+
+const singleToken = (value: unknown): value is string => typeof value === "string" && /^\S+$/.test(value)
+
+/**
+ * The record the launcher writes after the spawn, assembled from the ONE window the census diff attributed
+ * to this launch. Pure: no I/O, no clock, no process or window-server read — the caller supplies the
+ * censuses and the live facts, so every refusal below is decidable from its arguments alone.
+ *
+ * Refusals are launches that must not produce a record at all: a marker that does not name this run, a
+ * tty that is not one token, an executable that is not absolute, a version nobody measured, or a diff that
+ * found zero or several windows. The table gate is separate (ownedAppProofSpec) because the launcher
+ * applies it BEFORE spawning, so an app with no entry is refused by name before it can open a window.
+ */
+export const assembleOwnedAppOwnerAssertion = (input: OwnedAppLaunchRecordInput): OwnedAppOwnerAssertion => {
+  if (typeof input.launchRunId !== "string" || !/^[0-9a-f]{32}$/.test(input.launchRunId)) {
+    throw new Error("an owned-Mac app launch record needs the run id as 32 lowercase hex characters")
+  }
+  if (typeof input.appId !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(input.appId)) {
+    throw new Error(
+      "an owned-Mac app launch record needs an app id of lowercase letters, digits, dot, dash or underscore",
+    )
+  }
+  if (!Number.isInteger(input.workerPid) || input.workerPid <= 0) {
+    throw new Error("an owned-Mac app launch record needs the launcher's own pid; got " + String(input.workerPid))
+  }
+  if (!singleToken(input.marker.flag) || !singleToken(input.marker.value)) {
+    throw new Error("an owned-Mac app launch record needs a marker flag and value that are single tokens")
+  }
+  if (!input.marker.value.includes(input.launchRunId)) {
+    throw new Error(
+      "the launch marker " +
+        input.marker.value +
+        " does not carry this run's id " +
+        input.launchRunId +
+        ", so no live process could be proved to belong to this launch",
+    )
+  }
+  if (!isAbsolute(input.executablePath)) {
+    throw new Error(
+      "the owned-Mac app record needs the app's absolute executable path; got " + String(input.executablePath),
+    )
+  }
+  if (typeof input.tty !== "string" || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(input.tty)) {
+    throw new Error("an owned-Mac app launch record needs the run's own tty, named as /dev/tty<name>")
+  }
+  if (typeof input.intendedVersion !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}$/.test(input.intendedVersion)) {
+    throw new Error(
+      "an owned-Mac app launch record needs the version this run intended to measure as one version token",
+    )
+  }
+  const window = oneNewWindowForLaunch(input.before, input.after, {
+    value: input.marker.value,
+    required: input.windowProof === "marker-title",
+  })
+  if (!Number.isInteger(window.ownerPid) || window.ownerPid <= 0) {
+    throw new Error(
+      "the new window " +
+        String(window.id) +
+        " reports no usable owner pid (" +
+        String(window.ownerPid) +
+        "), so the record could not name the process that owns it",
+    )
+  }
+  return {
+    asserter: "terminfo-admin",
+    launchRunId: input.launchRunId,
+    workerPid: input.workerPid,
+    appId: input.appId,
+    ownerPid: window.ownerPid,
+    windowId: window.id,
+    executablePath: input.executablePath,
+    marker: { flag: input.marker.flag, value: input.marker.value },
+    tty: input.tty,
+    intendedVersion: input.intendedVersion,
+  }
 }
 
 export interface TitleEchoOptions {

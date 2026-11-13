@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import { parseOwnedAppOwnerAssertion } from "./owned-terminal.ts"
 import {
   OWNED_APP_PROOF_TABLE,
   launchCensusWindows,
@@ -12,6 +13,7 @@ import {
   oneNewWindowForLaunch,
   ownedAppProofSpec,
   proveTtyByTitleEcho,
+  assembleOwnedAppOwnerAssertion,
 } from "./darwin-owned-app.ts"
 
 const row = (id: number, ownerPid: number, extra: Record<string, unknown> = {}) => ({
@@ -205,5 +207,77 @@ describe("the title echo proves the run's own tty is drawn in the claimed window
     ).toThrow(/did not carry this run's echo in 3 attempts \(last title seen: none, the census withheld it\)/)
     expect(waits).toBe(3)
     expect(restored).toBe(1)
+  })
+})
+
+describe("the launcher's launch record", () => {
+  const before = [row(1, 100)]
+  const after = [row(1, 100), row(5, 200)]
+  const valid = {
+    appId: "ghostty",
+    launchRunId: "0123456789abcdef0123456789abcdef",
+    workerPid: 4242,
+    before,
+    after,
+    windowProof: "census-diff" as const,
+    executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    marker: { flag: "--config-file", value: "/tmp/ghostty-0123456789abcdef0123456789abcdef" },
+    tty: "/dev/ttys004",
+    intendedVersion: "1.2.3",
+  }
+
+  it("names the one window the diff attributed to this launch", () => {
+    const record = assembleOwnedAppOwnerAssertion(valid)
+    expect(record).toEqual({
+      asserter: "terminfo-admin",
+      launchRunId: "0123456789abcdef0123456789abcdef",
+      workerPid: 4242,
+      appId: "ghostty",
+      ownerPid: 200,
+      windowId: 5,
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      marker: { flag: "--config-file", value: "/tmp/ghostty-0123456789abcdef0123456789abcdef" },
+      tty: "/dev/ttys004",
+      intendedVersion: "1.2.3",
+    })
+    expect(parseOwnedAppOwnerAssertion(record)).toEqual(record)
+  })
+
+  it("refuses a marker that does not carry this run's id", () => {
+    expect(() =>
+      assembleOwnedAppOwnerAssertion({ ...valid, marker: { ...valid.marker, value: "/tmp/other" } }),
+    ).toThrow(/does not carry this run's id/)
+  })
+
+  it("refuses an executable that is not absolute", () => {
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, executablePath: "Ghostty.app/ghostty" })).toThrow(
+      /absolute executable path/,
+    )
+  })
+
+  it("refuses a tty that is not one token", () => {
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, tty: "/dev/ttys 004" })).toThrow(/named as \/dev\/tty/)
+  })
+
+  it("refuses when the launch created no window", () => {
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, after: before })).toThrow(/opened no new window/)
+  })
+
+  it("refuses when the launch created several windows", () => {
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, after: [...after, row(6, 201)] })).toThrow(
+      /opened 2 windows for one launch/,
+    )
+  })
+
+  it("refuses a marker-title app whose new window does not carry the marker", () => {
+    expect(() => assembleOwnedAppOwnerAssertion({ ...valid, windowProof: "marker-title" })).toThrow(
+      /opened no new window for launch marker/,
+    )
+    const titled = assembleOwnedAppOwnerAssertion({
+      ...valid,
+      windowProof: "marker-title",
+      after: [row(1, 100), row(5, 200, { name: "ghostty /tmp/ghostty-0123456789abcdef0123456789abcdef" })],
+    })
+    expect(titled.windowId).toBe(5)
   })
 })
