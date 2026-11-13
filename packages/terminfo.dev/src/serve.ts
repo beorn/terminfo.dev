@@ -1278,7 +1278,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       : undefined
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
-    const historyExecutable = ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
+    // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched
+    // shell's bytes cannot explain a count the terminal's own CLI produced.
+    const historyExecutable =
+      ownedTerminal?.historyExecutable ?? ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
     const hasHistoryExecutable = Boolean(
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
     )

@@ -85,6 +85,11 @@ import {
   readWindowsTerminalText,
 } from "./windows-terminal-text.ts"
 import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
+import {
+  ownedWezTermExecutableProof,
+  ownedWezTermHistoryExecutable,
+  readOwnedWezTermHistory,
+} from "./wezterm-owned-history.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
 
@@ -324,6 +329,12 @@ export interface OwnedTerminal {
   readonly clipboard?: LinuxClipboardAdapter
   /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
   readonly muxAttachmentProof?: MuxAttachmentProof
+  /**
+   * The CLI this run reads its own history THROUGH, with the bytes and version it reported (31741).
+   * Present only where the arm reads history through a separate program, so the artifact's history
+   * identity names the program that produced the count instead of the launched shell.
+   */
+  readonly historyExecutable?: { readonly path: string; readonly sha256: string; readonly version: string }
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
@@ -478,6 +489,7 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
+
 const HOSTED_DARWIN_COMMS = new Set([
   "Terminal",
   "iTerm2",
@@ -1169,6 +1181,8 @@ export async function createOwnedTerminal(options: {
   let terminalAppPid: number | undefined
   let processOwnerBasis: string | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
+  /** The owned-process arm's own proof, re-run before a later history read (31741). */
+  let processOwnerRecheck: (() => void) | undefined
   let preflightIdentity: { pid: number; startedAtEpochSeconds: number; launchRunId: string } | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
@@ -1232,11 +1246,18 @@ export async function createOwnedTerminal(options: {
     if (darwinMux) darwinAttachment = readDarwinMuxAttachment(darwinMux, assertion, captureRunId)
     // The one process proof, not a second reading of ps/argv/ancestry: the same function the admin
     // calls, with the daemon (this worker) as the process that must descend from the owner.
-    assertOwnedProcess(
-      { ownerPid: assertion.ownerPid, executablePath: assertion.executablePath, basis, tty: assertion.tty },
-      darwinAttachment ? darwinAttachment.attachedClient.pid : process.pid,
-      assertion.provider,
-    )
+    const ownedProcess = {
+      ownerPid: assertion.ownerPid,
+      executablePath: assertion.executablePath,
+      basis,
+      tty: assertion.tty,
+    }
+    const ownerDaemonPid = darwinAttachment ? darwinAttachment.attachedClient.pid : process.pid
+    assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
+    // A history read that happens later re-runs this same proof rather than trusting the grant: the
+    // pid may be reused and the marker may be gone, and a reading must not outlive the ownership it
+    // claims (31741).
+    processOwnerRecheck = () => assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
     processOwnerBasis = disposableBasis
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
@@ -1426,28 +1447,77 @@ export async function createOwnedTerminal(options: {
             return terminalAppHistory()
           }
         : undefined
+    // An owned WezTerm pane answers history on the owned-process arm too: that arm has no pasteboard
+    // adapter, so its live proof is the same assertOwnedProcess the grant ran, re-run at each read.
+    // Read at CALL time, never bound here: the adapter's assertOwned is a live field, and a copy taken at
+    // construction would answer a check the run has since replaced.
+    const processOwnerCheck = processOwnerRecheck
+    const wezTermOwnerCheck =
+      appClipboard !== undefined
+        ? () => appClipboard.assertOwned()
+        : processOwnerCheck === undefined
+          ? undefined
+          : () => Promise.resolve(processOwnerCheck())
+    const ownedWezTermCli = ownedWezTermHistoryExecutable({
+      platform: binding.platform,
+      ownsWezTermPane: ownedAppId === "wezterm" && wezTermOwnerCheck !== undefined,
+      ...(linux === undefined ? {} : { linuxExecutablePath: linux.executable.path }),
+      environment: process.env,
+    })
+    // The CLI proof is the macOS answer to "which WezTerm produced this count" (31741): it hashes the
+    // bundle's own CLI and reads the version that CLI reports. Linux already names its writer and reader
+    // as one install beside the owned binary, so the proof adds nothing there.
+    const ownedWezTermProof =
+      ownedWezTermCli === undefined || binding.platform !== "darwin"
+        ? undefined
+        : ownedWezTermExecutableProof(ownedWezTermCli)
+    const ownedWezTermHistory =
+      wezTermOwnerCheck !== undefined && ownedWezTermCli !== undefined
+        ? async (): Promise<TerminalScrollbackReading> => {
+            await wezTermOwnerCheck()
+            const geometry = await readBoundGeometry(binding, windowsKernel)
+            if (geometry.status !== "measured") {
+              throw new Error(`Owned WezTerm history needs a measured grid: ${geometry.diagnostic}`)
+            }
+            const pane = process.env.WEZTERM_PANE
+            const socket = process.env.WEZTERM_UNIX_SOCKET
+            const read =
+              binding.platform === "darwin"
+                ? readOwnedWezTermHistory({
+                    executable: ownedWezTermCli,
+                    pane,
+                    socket,
+                    ...(binding.tabTty === undefined ? {} : { tty: binding.tabTty }),
+                    rows: geometry.rows,
+                  })
+                : (() => {
+                    const rows = readWindowsWezTermRows({
+                      executable: ownedWezTermCli,
+                      pane,
+                      socket,
+                      cols: geometry.cols,
+                      rows: geometry.rows,
+                      startLine: -2147483648,
+                    })
+                    return rows.status === "refused"
+                      ? rows
+                      : {
+                          status: "read" as const,
+                          totalLines: rows.rows.length,
+                          screenLines: geometry.rows,
+                          receipt: rows.receipt,
+                        }
+                  })()
+            await wezTermOwnerCheck()
+            if (read.status === "refused") throw new Error(read.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines }
+          }
+        : undefined
     const readScrollback =
       clipboard?.getScrollback?.bind(clipboard) ??
-      (linux && appClipboard
+      (linux && appClipboard && ownedAppId !== "wezterm"
         ? async () => {
             await appClipboard.assertOwned()
-            if (ownedAppId === "wezterm") {
-              const geometry = await readBoundGeometry(binding, windowsKernel)
-              if (geometry.status !== "measured") {
-                throw new Error(`Owned WezTerm history needs a measured grid: ${geometry.diagnostic}`)
-              }
-              const read = readWindowsWezTermRows({
-                executable: join(dirname(linux.executable.path), "wezterm"),
-                pane: process.env.WEZTERM_PANE,
-                socket: process.env.WEZTERM_UNIX_SOCKET,
-                cols: geometry.cols,
-                rows: geometry.rows,
-                startLine: -2147483648,
-              })
-              await appClipboard.assertOwned()
-              if (read.status === "refused") throw new Error(read.reason)
-              return { totalLines: read.rows.length, screenLines: geometry.rows }
-            }
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
@@ -1461,6 +1531,7 @@ export async function createOwnedTerminal(options: {
             return { totalLines: read.totalLines, screenLines: read.screenLines }
           }
         : undefined) ??
+      ownedWezTermHistory ??
       readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
@@ -1469,6 +1540,13 @@ export async function createOwnedTerminal(options: {
       outputBinding: binding,
       geometryAtGrant,
       ...(muxAttachmentProof && { muxAttachment: muxAttachmentProof }),
+      ...(ownedWezTermCli !== undefined && {
+        // The count's own provenance, including the reason when the version could not be read.
+        wezTermHistory:
+          ownedWezTermProof?.status === "measured"
+            ? { executable: ownedWezTermCli, proof: ownedWezTermProof.proof }
+            : { executable: ownedWezTermCli, unmeasured: ownedWezTermProof?.reason },
+      }),
       ...(preflightIdentity && { preflightIdentity }),
       ...(terminalApp && {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
@@ -1543,6 +1621,7 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(clipboard && { clipboard }),
+      ...(ownedWezTermProof?.status === "measured" && { historyExecutable: ownedWezTermProof.proof }),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
