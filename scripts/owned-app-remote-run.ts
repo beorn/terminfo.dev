@@ -19,7 +19,7 @@
  *
  * Steps, each refusing by name:
  *   host unreachable | host key mismatch | bundle missing objects | stage source mismatch |
- *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent |
+ *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent | bun version mismatch |
  *   kitty absent | output collision | rsync incomplete | receipt mismatch |
  *   invalid stage | stage not owned | stage removal failed | invalid context | invalid argv |
  *   owned-app probe failed | link closure exceeds N passes | timeout | invalid timeout
@@ -30,7 +30,7 @@
  * the bundle can carry — a working tree's ignored files are not staged and so cannot be compared.
  */
 import { spawnSync } from "node:child_process"
-import { createHash, randomBytes } from "node:crypto"
+import { randomBytes } from "node:crypto"
 import {
   existsSync,
   openSync,
@@ -41,17 +41,16 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  readlinkSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { KITTY_BINARY_PATH } from "../packages/admin/src/kitty-binary.ts"
+import { RESOURCE_EXCLUDES, manifestScan, digestValue, sha256 } from "./owned-app-resource-manifest.ts"
 
 /** Production roots. The two environment names exist so this file's own tests can point at an
  * owned fixture tree. They are honoured only when VITEST=true, which the test runner sets, and a
@@ -79,8 +78,6 @@ const KITTY = rootOverride("OWNED_APP_TRANSPORT_KITTY_PATH", KITTY_BINARY_PATH)
 const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as const
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
-// Mutable caches are neither runtime resources nor part of the transported witness.
-const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".vitest-cache", ".cache"])
 
 /** Written by a run that passed the FULL comparison, and the only thing a light run trusts its
  * node_modules trees through. It names the lock the trees were installed from and the digest they
@@ -170,10 +167,6 @@ function fail(name: string, detail: string): never {
   throw new Error(`${name}: ${detail}`)
 }
 
-function sha256(bytes: Buffer | string): string {
-  return createHash("sha256").update(bytes).digest("hex")
-}
-
 /** Minutes of a millisecond limit, printed without trailing zeros. */
 function minutesOf(milliseconds: number): string {
   return (milliseconds / 60_000).toFixed(2).replace(/\.?0+$/, "")
@@ -187,86 +180,6 @@ function shq(value: string): string {
  * literal quote, and a backslash is literal. shq's `'\''` would end rsync's quote instead. */
 function rsyncWord(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
-}
-
-/** Canonical manifest lines: sorted `path<TAB>kind:value`. The same canonical text is produced from
- * the remote recompute, so equal digests mean equal bytes. */
-function manifestScan(
-  root: string,
-  entries: readonly string[],
-  missing: string,
-  also: readonly string[] = [],
-): { lines: string[]; linkTargets: string[] } {
-  const lines: string[] = []
-  // Staged-relative paths every link depends on: each hop's own lexical target AND the final real
-  // target, so a chain a -> bridge/pkg -> ag/pkg stages bridge as well as ag.
-  const linkTargets: string[] = []
-  // Containment is decided on PHYSICAL roots, the same on both sides: a root under a symlinked
-  // ancestor (macOS /tmp -> /private/tmp) would otherwise read its own targets as escapes. `also`
-  // names further roots holding the same staged tree (the closure reaches declared resources
-  // through the code root); each maps onto the same staged-relative paths.
-  const physical = [root, ...also].map((path) => realpathSync(path))
-  const stagedPath = (path: string): string | undefined => {
-    for (const base of physical) {
-      if (path === base) return ""
-      if (path.startsWith(`${base}${sep}`)) return relativePath(base, path).split(sep).join("/")
-    }
-    return undefined
-  }
-  const walk = (path: string): void => {
-    let info
-    try {
-      info = lstatSync(path)
-    } catch {
-      fail(missing, `declared resource ${JSON.stringify(path.slice(root.length + 1))} is absent`)
-    }
-    const relative = path.slice(root.length + 1)
-    if (info.isSymbolicLink()) {
-      const target = readlinkSync(path)
-      // A link's text is what the stage will hold, and the host resolves it from a different
-      // location. An absolute target would resolve against the HOST's filesystem, so identical
-      // text and identical staged bytes could still read a file this run never measured.
-      if (isAbsolute(target)) {
-        fail("broken staged symlink", `${relative} -> ${target} is absolute and cannot be relocated into the stage`)
-      }
-      const resolved = resolve(dirname(path), target)
-      // The hop's own text must stay inside the tree, or the host resolves it outside the stage.
-      const hop =
-        resolved === root ? "" : resolved.startsWith(`${root}${sep}`) ? resolved.slice(root.length + 1) : undefined
-      if (hop === undefined) fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
-      let real: string
-      try {
-        real = realpathSync(resolved)
-      } catch {
-        fail("broken staged symlink", `${relative} -> ${target} does not resolve`)
-      }
-      // The real path follows every intermediate link, so a chain that leaves the tree and comes
-      // back — or leaves it for good — is refused on the bytes, not on the lexical text.
-      const staged = stagedPath(real)
-      if (staged === undefined) {
-        fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
-      }
-      linkTargets.push(hop, staged)
-      lines.push(`${relative}\tsymlink:${target}\tresolved:${staged}`)
-      return
-    }
-    if (info.isDirectory()) {
-      for (const child of readdirSync(path).sort()) {
-        if (RESOURCE_EXCLUDES.has(child)) continue
-        walk(join(path, child))
-      }
-      return
-    }
-    if (!info.isFile()) fail(missing, `${relative} is neither a file, a directory nor a symlink`)
-    lines.push(`${relative}\tsha256:${sha256(readFileSync(path))}`)
-  }
-  if (entries.length === 0) {
-    walk(root)
-  } else {
-    for (const entry of entries) walk(join(root, entry))
-  }
-  lines.sort()
-  return { lines, linkTargets }
 }
 
 /** Every directory a resolving link reaches must ALSO be staged, or the staged tree holds a link
@@ -292,42 +205,6 @@ function extraRootsFor(targets: readonly string[], declared: readonly string[]):
     extras.add(candidate)
   }
   return [...extras].sort()
-}
-
-function digestValue(lines: readonly string[]): { sha256: string; files: number } {
-  return { sha256: sha256(lines.join("\n")), files: lines.length }
-}
-
-/** Rebuild the same canonical text from the remote file/symlink listing. */
-function canonicalRemote(
-  files: readonly string[],
-  links: readonly string[],
-): { sha256: string; files: number; lines: string[] } {
-  const lines = files.map((line) => {
-    const match = /^([a-f0-9]{64})[ \t]+\*?\.?\/(.+)$/.exec(line.trim())
-    const [, hash, path] = match ?? []
-    if (hash === undefined || path === undefined) {
-      fail("resource manifest mismatch", `remote listing line is not a sha256 file record: ${JSON.stringify(line)}`)
-    }
-    return `${path.replace(/\\/g, "/")}\tsha256:${hash}`
-  })
-  for (const line of links) {
-    const [rawPath, target, state, resolved] = line.split("\t")
-    if (rawPath === undefined || target === undefined || state === undefined || resolved === undefined) {
-      fail("resource manifest mismatch", `remote symlink line is malformed: ${JSON.stringify(line)}`)
-    }
-    const relative = rawPath.replace(/^\.\//, "")
-    // A link the host cannot resolve, or resolves outside the staged tree, is a staged tree that
-    // differs from the one measured locally even when the target text is byte-identical: refusal,
-    // never a manifest match. The resolved path is compared too, so an escape by any other route
-    // cannot ride on matching link text.
-    if (state !== "ok") {
-      fail("broken staged symlink", `${relative} -> ${target} resolves ${state} in the stage (${resolved})`)
-    }
-    lines.push(`${relative}\tsymlink:${target}\tresolved:${resolved}`)
-  }
-  lines.sort()
-  return { ...digestValue(lines), lines }
 }
 
 /** The first line the two manifests disagree on, so a mismatch says WHICH byte differed. */
@@ -1098,39 +975,26 @@ function main(options: Parsed): OwnedAppTransportProof {
       rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`)
     }
 
-    const resourcePrune = [...RESOURCE_EXCLUDES].map((name) => "-name " + shq(name) + " -prune").join(" -o ")
-    // A light run lists exactly what it hashed: the staged tree minus the node_modules the marker
-    // already accounts for. The listing and the local manifest cover the same paths or not at all.
-    const listed = light ? checked.map((entry) => shq(`./${entry}`)).join(" ") : "."
-    const files = sshRun(
-      options,
-      "remote file listing",
-      "resource manifest mismatch",
-      `cd ${shq(source)} && find ${listed} \\( ${resourcePrune} \\) -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256`,
-    ).stdout
-    const links = sshRun(
-      options,
-      "remote symlink listing",
-      "broken staged symlink",
-      [
-        // The physical root, never the logical $PWD: under a symlinked ancestor (macOS /tmp) realpath
-        // answers physically, so a logical root would read every valid link as an escape.
-        `cd ${shq(source)} && R=$(pwd -P) && export R &&`,
-        `find ${listed} \\( ${resourcePrune} \\) -o -type l -exec sh -c '`,
-        `  target=$(readlink "$1")`,
-        `  if [ ! -e "$1" ]; then printf "%s\\t%s\\tdangling\\t%s\\n" "$1" "$target" "-"; exit 0; fi`,
-        `  real=$(realpath "$1")`,
-        `  case "$real" in`,
-        `    "$R") printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "" ;;`,
-        `    "$R"/*) printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "\${real#"$R"/}" ;;`,
-        `    *) printf "%s\\t%s\\tescaped\\t%s\\n" "$1" "$target" "$real" ;;`,
-        `  esac`,
-        `' _ {} \\;`,
-      ].join("\n"),
-    ).stdout
-    // The link listing is never trimmed: a link to the stage root ends its line with an empty
-    // resolved field, and a trim would strip that tab and misread the line as malformed.
-    const remote = canonicalRemote(files.trim().split("\n").filter(Boolean), links.split("\n").filter(Boolean))
+    const bun = sshRun(options, "bun lookup", "bun absent", "command -v bun").stdout.trim()
+    if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
+    const bunVersion = sshRun(options, "bun --version", "bun version mismatch", `${shq(bun)} --version`).stdout.trim()
+    if (bunVersion !== process.versions.bun) {
+      fail("bun version mismatch", `local Bun ${process.versions.bun} != staged Bun ${JSON.stringify(bunVersion)}; the resource checker requires the same runtime`)
+    }
+    // Execute trusted LOCAL checker bytes, never a module from the tree being witnessed.
+    // Both sides use the same fs/path/crypto walk; no child process is spawned for a file or link.
+    const checker = readFileSync(new URL("./owned-app-resource-manifest.ts", import.meta.url), "utf8")
+    const invocation = `\nconsole.log(JSON.stringify(manifestScan(${JSON.stringify(source)}, ${JSON.stringify(light ? checked : [])}, "resource manifest mismatch").lines))`
+    const witnessed = sshRun(options, "remote resource witness", "resource manifest mismatch",
+      `${shq(bun)} --eval ${shq(checker + invocation)}`).stdout
+    let remoteLines: unknown
+    try { remoteLines = JSON.parse(witnessed) } catch {
+      fail("resource manifest mismatch", `remote witness returned invalid JSON: ${JSON.stringify(witnessed)}`)
+    }
+    if (!Array.isArray(remoteLines) || !remoteLines.every((line): line is string => typeof line === "string")) {
+      fail("resource manifest mismatch", "remote witness did not return canonical manifest lines")
+    }
+    const remote = { ...digestValue(remoteLines), lines: remoteLines }
     if (remote.sha256 !== local.sha256) {
       fail(
         "resource manifest mismatch",
@@ -1157,8 +1021,6 @@ function main(options: Parsed): OwnedAppTransportProof {
       )
     }
 
-    const bun = sshRun(options, "bun lookup", "bun absent", "command -v bun").stdout.trim()
-    if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
     const kitty = sshRun(
       options,
       "kitty lookup",
@@ -1238,7 +1100,6 @@ function main(options: Parsed): OwnedAppTransportProof {
       fail("receipt mismatch", "the host identity sampler produced no ratified identity field")
     }
 
-    const bunVersion = sshRun(options, "bun --version", "receipt mismatch", `${shq(bun)} --version`).stdout.trim()
     const kittyVersion = sshRun(
       options,
       "kitty --version",

@@ -218,6 +218,7 @@ function fixture(): void {
     join(shims, "bun"),
     [
       "#!/bin/sh",
+      'if [ "$1" = "--version" ] || [ "$1" = "--eval" ]; then exec "$REAL_BUN" "$@"; fi',
       'case "$*" in',
       '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
@@ -703,11 +704,14 @@ describe("owned-app ssh transport", () => {
     expect(result.stderr).toContain("broken staged symlink")
   }, 60_000)
 
-  it("refuses a host with no bun", () => {
-    rmSync(join(shims, "bun"))
+  it.each(["absent", "wrong version"])("refuses a host whose bun is %s", (runtime) => {
+    // The shared witness runs only under the matching Bun runtime, before any probe starts.
+    if (runtime === "absent") rmSync(join(shims, "bun"))
+    else executable(join(shims, "bun"), "#!/bin/sh\necho 0.0.0\n")
     const result = run()
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain("bun absent")
+    expect(result.stderr).toContain(runtime === "absent" ? "bun absent" : "bun version mismatch")
+    expect(existsSync(join(output, "transport"))).toBe(false)
   }, 60_000)
 
   it("refuses an argv that does not name the bun runtime token", () => {
