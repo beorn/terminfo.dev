@@ -31,6 +31,21 @@ The seven assertion types classify the deciding observation: `query_reply` reads
 
 The owned App source may supply `getScrollback`, as an async `TerminalScrollbackReading` (total lines, optional screen rows and top-relative viewport offset; unreported fields are absent), and an optional `resetScrollback` hook returning `TerminalScrollbackReset` (`{ status: "reset", capacity }`) when the owned multiplexer can empty its window history back to the run's configured capacity after the baseline clear fence and before the baseline read; `appHistory` retains `historyReset` in evidence and refuses with `owned history reset left N lines` when post-reset baseline history is non-zero. Its history callbacks use rows from run geometry and require an unchanged no-overflow count and a changed overflow count before applying the existing history criteria. Without a complete owned reading, the existing named observation gaps remain.
 
+A collector that has measured that its subject app exposes no permitted read of its own pane declares that
+absence instead of leaving the row open: it sets `scrollbackUnavailable` to a named reason (today exactly
+`no pane read on this app`, @cto 20b9ffed), carries it on `OwnedTerminal.scrollbackUnavailable`, the verified
+batch handoff copies it onto the `TermProbeSource` it hands each callback, and the four app callbacks
+(`appHistory` behind `scrollback.accumulate` and `scrollback.total-lines`,
+`erase.screen.scrollback`'s app path and `extensions.osc720-scroll-up`) return it as `declaredUntestableResult` — a row
+whose single declared-Untestable test carries that reason and whose branch is the headless observable review,
+never a blank row and never a decided outcome. The approved scope is Alacritty, Visual Studio Code and Cursor
+on the four rows `scrollback.accumulate`, `scrollback.total-lines`, `erase.screen.scrollback` and
+`extensions.osc720-scroll-up`; `scrollback.viewport-hold-output` is outside it. A declared-untestable app still
+carries the feature's static rows, OSC 720's geometry row included: `termNeedsGeometry` says what a definition
+needs when it can run, not what one run could measure. The declaration is field-driven and reversible — without
+the field every row keeps its existing reader and screenshot behaviour, and an app version that grows a read
+removes it. A missing, failed or unimplemented reader is never a declaration: it stays PROBE TODO.
+
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
