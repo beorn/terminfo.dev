@@ -23,5 +23,6 @@ export const APP_BUNDLE_IDS = {
 
 /** The bundle id for `id`, or undefined when the table has no row — never a fallback string. */
 export function appBundleId(id: string): string | undefined {
-  return (APP_BUNDLE_IDS as Record<string, string>)[id]
+  // A bare index would answer the inherited "toString" with a function; Object.hasOwn says what this means.
+  return Object.hasOwn(APP_BUNDLE_IDS, id) ? (APP_BUNDLE_IDS as Record<string, string>)[id] : undefined
 }

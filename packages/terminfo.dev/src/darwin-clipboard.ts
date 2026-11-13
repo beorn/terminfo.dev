@@ -173,14 +173,27 @@ export async function createDarwinClipboardAdapter(input: {
     ? async (work, trace, verify) => {
         await input.assertOwned()
         // Types only, and before the first write: a clipboard holding an image or styled text would come back as
-        // plain text, which is "left changed" without ever saying so.
-        const unrestorable = unrestorablePasteboardTypes(
-          parsePasteboardTypes(await run("/usr/bin/osascript", ["-e", "clipboard info"])),
-        )
-        if (unrestorable.length > 0) {
+        // plain text, which is "left changed" without ever saying so. A person can still copy an image between this
+        // check and the first write; that window is accepted for this slice and closed by the all-types save/restore
+        // slice (@cto 2026-11-13, carry 1).
+        let typeList: string
+        try {
+          typeList = await run("/usr/bin/osascript", ["-e", "clipboard info"])
+        } catch (error) {
+          // A Mac that will not answer is not a terminal that failed: these three rows say why they could not read.
           const reason =
-            "the person's clipboard holds content this probe cannot restore " +
-            `(${unrestorable.join(", ")}), so nothing was written`
+            "read method unavailable here: the person's pasteboard type list cannot be read " +
+            `(${error instanceof Error ? error.message : String(error)}), so nothing was written`
+          return { pass: false, note: reason, tests: [{ id: "prerequisite", status: "probe-todo" as const, reason }] }
+        }
+        const unrestorable = unrestorablePasteboardTypes(parsePasteboardTypes(typeList))
+        if (unrestorable.length > 0) {
+          // The TYPE NAMES never leave this function: a concealed-type marker or an app-specific type says what the
+          // person just copied and from where, and this note is published (@cto 2026-11-13). A count is all a
+          // diagnostic needs, and no name may reach the trace either.
+          const reason =
+            "the person's clipboard holds content this probe cannot restore, so nothing was written " +
+            `(${String(unrestorable.length)} non-text ${unrestorable.length === 1 ? "type" : "types"})`
           return { pass: false, note: reason, tests: [{ id: "prerequisite", status: "probe-todo" as const, reason }] }
         }
         return transaction(work, trace, verify)

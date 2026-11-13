@@ -1226,18 +1226,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   measuredTerminal.version,
                   draft.rawReplies,
                 )
+                const beforeProbesVersion = declaredAppVersion(beforeProbes, process.env.TERMINFO_TARGET_VERSION)
                 ordinaryOpen = await resolveOrdinaryOpenRun({
                   receiptPath: ordinaryOpenReceipt,
                   runId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
                   subject: {
                     id: measuredTerminal.name,
                     os: terminal.os,
-                    // @dev/16 12:22 R2: declaredAppVersion answers "unknown", never undefined, so map it here —
-                    // otherwise the "no measured version" refusal could never fire on this path.
-                    version:
-                      beforeProbes === "unknown"
-                        ? undefined
-                        : declaredAppVersion(beforeProbes, process.env.TERMINFO_TARGET_VERSION),
+                    // @dev/16 12:26: the declaration is applied FIRST, so a declared target still binds; only an
+                    // answer that is still "unknown" after it becomes the no-measured-version refusal.
+                    version: beforeProbesVersion === "unknown" ? undefined : beforeProbesVersion,
                   },
                 })
               }
