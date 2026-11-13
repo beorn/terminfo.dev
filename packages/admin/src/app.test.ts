@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import {
@@ -40,6 +40,7 @@ import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./curso
 import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { placeCollectedRun } from "../corpus-placement.ts"
+import * as collectedRun from "./collected-run.ts"
 
 vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () => ({ manifest: {} }) }))
@@ -47,6 +48,8 @@ vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () =
 vi.mock("node:fs", () => ({
   closeSync: vi.fn(),
   existsSync: vi.fn(() => true),
+  lstatSync: vi.fn(() => ({})),
+  realpathSync: vi.fn((path: string) => path),
   mkdirSync: vi.fn(),
   openSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
@@ -399,6 +402,139 @@ describe("WezTerm cli-process arm", () => {
     executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
     marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
   }
+
+  // 34076: the hand operation must use the real app lifetime without entering collection.
+  // Existing tests exercise collection, so none detects a diagnostic accidentally grading a run.
+  test("hand-read retains one own-pane snapshot and closes its fresh fixture without collecting", async () => {
+    vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    vi.mocked(readFileSync).mockImplementation((path) =>
+      String(path).endsWith("wezterm-hand-binding.txt")
+        ? "private-run\n/private/run/wezterm.sock\n4\n"
+        : "/dev/ttys009\n",
+    )
+    const stdout = '[{"pane_id":4,"cwd":"file:///private/app-reported"}]\n'
+    const previous = vi.mocked(spawnSync).getMockImplementation()!
+    vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("list")) {
+        return { pid: 8, status: 0, signal: null, stdout, stderr: "", output: [null, stdout, ""] }
+      }
+      return previous(file, args, options)
+    })
+
+    const retain = vi.spyOn(collectedRun, "retainCollectedRun").mockReturnValue("/private/unwanted-collection.json")
+    try {
+      await handleApp("wezterm", { handRead: true, output: "/private/hand" })
+
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(requestDaemonProbe).not.toHaveBeenCalled()
+      expect(retain).not.toHaveBeenCalled()
+      expect(readRetainedDaemonProbeResponse).not.toHaveBeenCalled()
+      expect(placeCollectedRun).not.toHaveBeenCalled()
+      const reads = vi.mocked(spawnSync).mock.calls.filter((call) => call[1]?.includes("list"))
+      expect(reads).toHaveLength(1)
+      expect(reads[0]?.[0]).toBe("/Applications/WezTerm.app/Contents/MacOS/wezterm")
+      expect(reads[0]?.[1]).toEqual([
+        "--config-file",
+        "/private/run/wezterm-private-run.lua",
+        "cli",
+        "--no-auto-start",
+        "list",
+        "--format",
+        "json",
+      ])
+      expect(reads[0]?.[2]?.env?.WEZTERM_UNIX_SOCKET).toBe("/private/run/wezterm.sock")
+      expect(reads[0]?.[2]?.env?.WEZTERM_PANE).toBe("4")
+      expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledExactlyOnceWith(ownedWindow)
+      const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
+      expect(saved).toBeDefined()
+      const diagnostic = JSON.parse(String(saved![1]))
+      expect(diagnostic).toMatchObject({
+        primaryFailure: null,
+        read: { stdout, pane: { pane_id: 4, cwd: "file:///private/app-reported" } },
+        cleanup: { errors: [] },
+      })
+      expect(diagnostic).not.toHaveProperty("results")
+      expect(JSON.stringify(diagnostic)).not.toContain('"featureId"')
+      expect(JSON.stringify(diagnostic)).not.toContain('"grade"')
+    } finally {
+      retain.mockRestore()
+    }
+  })
+
+  test("hand-read refuses another app before creating a fixture", async () => {
+    await expect(handleApp("ghostty", { handRead: true, output: "/private/hand" })).rejects.toThrow(/WezTerm/)
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  // Each row breaks a different boundary of the one hand operation. The old collection
+  // journeys cannot detect a wrong socket/pane or a lost primary error in this mode.
+  test.each<{
+    name: string
+    binding?: string
+    stdout?: string
+    status?: number
+    cleanupFailure?: boolean
+    ownerFailure?: boolean
+    message: RegExp
+  }>([
+    { name: "missing socket", binding: "private-run\n\n4\n", message: /launch binding/ },
+    { name: "stale run", binding: "other-run\n/private/run/wezterm.sock\n4\n", message: /launch binding/ },
+    { name: "foreign pane", stdout: '[{"pane_id":9,"cwd":"file:///foreign"}]', message: /0 candidates/ },
+    { name: "ambiguous pane", stdout: '[{"pane_id":4,"cwd":"a"},{"pane_id":4,"cwd":"b"}]', message: /2 candidates/ },
+    { name: "malformed JSON", stdout: "not-json", message: /invalid JSON/ },
+    { name: "CLI failure", status: 2, message: /exit 2/ },
+    { name: "read and close failure", status: 2, cleanupFailure: true, message: /exit 2/ },
+    { name: "unresolved owner", ownerFailure: true, message: /ambiguous owner/ },
+  ])("hand-read preserves $name and only closes an acquired owner", async (fault) => {
+    vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
+    vi.mocked(readFileSync).mockImplementation((path) =>
+      String(path).endsWith("wezterm-hand-binding.txt")
+        ? (fault.binding ?? "private-run\n/private/run/wezterm.sock\n4\n")
+        : "/dev/ttys009\n",
+    )
+    if (fault.ownerFailure) {
+      vi.mocked(resolveOwnedProcessByMarker).mockImplementation(() => {
+        throw new Error("ambiguous owner")
+      })
+    } else vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    if (fault.cleanupFailure) {
+      vi.mocked(closeOwnedTerminalWindow).mockImplementation(() => {
+        throw new Error("close failed")
+      })
+    }
+    const previous = vi.mocked(spawnSync).getMockImplementation()!
+    vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("list")) {
+        const stdout = fault.stdout ?? '[{"pane_id":4,"cwd":"file:///private/own"}]'
+        return {
+          pid: 8,
+          status: fault.status ?? 0,
+          signal: null,
+          stdout,
+          stderr: "diagnostic stderr",
+          output: [null, stdout, "diagnostic stderr"],
+        }
+      }
+      return previous(file, args, options)
+    })
+    await expect(handleApp("wezterm", { handRead: true, output: "/private/hand" })).rejects.toThrow(fault.message)
+    expect(requestDaemonProbe).not.toHaveBeenCalled()
+    expect(placeCollectedRun).not.toHaveBeenCalled()
+    expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(fault.ownerFailure ? 0 : 1)
+    const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
+    expect(saved).toBeDefined()
+    const diagnostic: unknown = JSON.parse(String(saved![1]))
+    expect(diagnostic).toMatchObject({ primaryFailure: expect.stringMatching(fault.message) })
+    expect(diagnostic).toMatchObject({
+      cleanup: {
+        errors: fault.cleanupFailure || fault.ownerFailure ? expect.arrayContaining([expect.any(String)]) : [],
+      },
+    })
+  })
 
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
