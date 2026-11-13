@@ -502,7 +502,7 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("does not stage or witness mutable test caches", () => {
-    const caches = [".vitest", ".cache"]
+    const caches = [".vitest", ".cache", ".vitest-cache"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
       mkdirSync(directory, { recursive: true })

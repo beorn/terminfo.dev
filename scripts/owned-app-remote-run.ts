@@ -80,7 +80,7 @@ const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as c
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
 // Mutable caches are neither runtime resources nor part of the transported witness.
-const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".cache"])
+const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".vitest-cache", ".cache"])
 
 /**
  * The gitignored dependency-link directories INSIDE the bundle-owned checkout that exist in the code
