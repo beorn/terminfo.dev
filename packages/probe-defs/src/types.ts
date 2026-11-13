@@ -365,6 +365,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * named no colour, or when the arm could not decode its frame; undefined is never read as null.
    */
   located?: CaptureLocated | null
+  /**
+   * What this frame measured about the grid its rectangle was mapped from (33982). Present exactly
+   * when the frame carries a `regionRectangle`, which the arm maps from that origin. A comparison
+   * that needs a proved grid move reads it here; a frame without it refuses as before.
+   */
+  cellCrop?: PixelCellCrop
 }
 
 /**
@@ -381,6 +387,7 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   controlRegionDigest?: never
   controlRegionRectangle?: never
   located?: never
+  cellCrop?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -493,6 +500,47 @@ export interface CapturePixelGeometry {
   cellHeight: number
   textWidth: number
   textHeight: number
+}
+
+/**
+ * What one pixel frame measured about the grid its region rectangle was mapped from (33982). Carried
+ * beside `regionRectangle` so a later frame's crop that differs from the first by WHOLE ROWS reads as
+ * the grid moving — Warp repaints its text area 35 rows lower after a reset — instead of as two
+ * frames cropped from unrelated positions. Absent on a hand-built frame, and a comparison over such
+ * frames refuses exactly as it did before this field existed.
+ */
+export interface PixelCellCrop {
+  /** The text-area origin this frame's rectangle was mapped from, in the captured image's pixels. */
+  origin: { x: number; y: number }
+  /**
+   * How the origin was measured, as a short settled name, and the arm's own prose beside it. Two
+   * frames are compared only when the NAME agrees: a calibrated origin and a sentinel-derived one are
+   * different measurements, and treating them as one would count one measurement twice (33982, @cto).
+   */
+  basis?: string
+  basisDetail?: string
+  /** The measured surface the text area sits on, when the arm names one. */
+  surface?: CaptureRectangle
+  /** The cell pitch the rectangle was mapped at. */
+  cell: { width: number; height: number }
+  /**
+   * The measured text-area grid, in cells. A move that comes with a resize refuses: the same rows at
+   * a different column count is a different screen, not the same screen further down.
+   */
+  grid?: { columns: number; rows: number }
+  /** The captured image's own size, so a moved rectangle is checked against pixels that exist. */
+  image: { width: number; height: number }
+  /**
+   * The sentinel pair this frame located: the two painted cells and the boxes they actually changed.
+   * The origin is derived from ONE of these boxes, so "the origins differ by N rows" alone is that
+   * one measurement restated. The PAIR is the independent half: its two boxes must sit exactly one
+   * cell pitch apart per row and column their cells differ by, which is what proves this frame's cell
+   * size and that the origin it implies lands on the grid the read asked for.
+   */
+  witness?: {
+    a: { cell: { row: number; col: number }; box: { x: number; y: number } }
+    b: { cell: { row: number; col: number }; box: { x: number; y: number } }
+  }
 }
 
 /**
