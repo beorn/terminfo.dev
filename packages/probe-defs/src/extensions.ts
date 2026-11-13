@@ -42,6 +42,7 @@ import {
   completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  auditedKittyIdentity,
   sameFrame,
   sameRgb as sameRgbCells,
   fencedSilenceResult,
@@ -190,15 +191,7 @@ export function hasAuditedOscInterfaceAbsence(
               auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
-    return (
-      ctx.backendName === "kitty" &&
-      identity.engineVersion === "0.49.2" &&
-      identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
-      identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      (auditedAdapterSources(identity, "kittyH4") ||
-        auditedAdapterSources(identity, "kittyPixel") ||
-        auditedAdapterSources(identity, "kittyF8c227b9"))
-    )
+    return ctx.backendName === "kitty" && auditedKittyIdentity(identity)
   }
   if (cohort === "wezterm-d2") {
     return (
@@ -10107,10 +10100,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 }
               : vt100Audited
                 ? vt100Target
-                : ctx.backendName === "kitty" &&
-                    identity?.kind === "native" &&
-                    identity.engineVersion === "0.49.2" &&
-                    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                : ctx.backendName === "kitty" && auditedKittyIdentity(identity)
                   ? kittyTarget
                   : undefined
       if (!target) return lib(ctx)
