@@ -2875,6 +2875,17 @@ export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: s
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
 }
 
+/**
+ * Whether a query's silence was measured: a wait that ran out with nothing on the wire, or the DA1 fence
+ * came back with nothing that matched it. A timeout that still carried bytes is not silence, and neither
+ * are bytes the pattern could not read — both are an answer we failed to read, and the caller keeps
+ * treating those as its own defect (#30559).
+ */
+export function measuredSilence(outcome: TerminalQueryOutcome, expected: string): boolean {
+  const timedOutEmpty = outcome.reason === "timeout" && outcome.raw === ""
+  return timedOutEmpty || sentinelSilenceResult(outcome, expected) !== null
+}
+
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
 

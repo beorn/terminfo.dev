@@ -404,12 +404,15 @@ it.each([
           attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
         })
   const stored = record(result)
+  // #34012 slice 3 (@cto 1676cf8a Q3): on the term arm the OSC 0 target queries are the read-back instrument,
+  // so a measured silence is an open row that still carries its attempt evidence, not a reply failure.
+  const measuredSilenceOsc0Term = kind === "term" && id === "extensions.osc0-icon-title" && !rawOverride
   if (!expectedReplyFailure) {
     expect(result).toBe(callback)
     expect(stored).toEqual(record(callback))
     return
   }
-  expect(stored.status).toBe("probe-invalid")
+  expect(stored.status).toBe(measuredSilenceOsc0Term ? "probe-todo" : "probe-invalid")
   for (const entry of captures) {
     expect(stored.reason).toContain(
       `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
