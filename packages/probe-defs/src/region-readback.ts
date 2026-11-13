@@ -491,6 +491,26 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * Whether a located sentinel is one solid cell block of the expected size. The ONE spelling of that
+ * test: the post-hoc layout check and the per-read origin derivation must agree, or a frame one of
+ * them accepts is a frame the other refuses. Returns the clause, or undefined when it fits.
+ */
+export function sentinelBlockRefusal(
+  located: { box: { width: number; height: number }; pixels: number },
+  cell: { width: number; height: number },
+): string | undefined {
+  const fits = (size: number, expected: number) => size <= expected && size >= expected - 2 * CELL_EDGE_TOLERANCE_PX
+  if (
+    located.pixels !== located.box.width * located.box.height ||
+    !fits(located.box.width, cell.width) ||
+    !fits(located.box.height, cell.height)
+  ) {
+    return `${located.pixels} px in a ${located.box.width}x${located.box.height} box, against a ${cell.width}x${cell.height} cell`
+  }
+  return undefined
+}
+
+/**
  * The text-area origin a located sentinel implies (33000): the cell the check painted and the cell
  * size give the grid back, so a crop taken from THAT frame lands on the cells the run asked for even
  * when the window moved after calibration. Exact arithmetic only — no fitted correction, no tolerance

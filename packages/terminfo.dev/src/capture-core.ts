@@ -258,7 +258,7 @@ export interface NamedTextOrigin {
   visible?: { width: number; height: number }
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
-type OriginResolver = (input: {
+export type OriginResolver = (input: {
   frame: CapturedFrame
   pixelGeometry: NonNullable<Checkpoint["pixelGeometry"]>
 }) => NamedTextOrigin | Promise<NamedTextOrigin>
