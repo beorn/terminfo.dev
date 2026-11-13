@@ -45,6 +45,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/linux-screen-text.ts",
   "packages/terminfo.dev/src/linux-kitty-text.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
+  "packages/terminfo.dev/src/wezterm-owned-history.ts",
   "packages/terminfo.dev/src/terminal-child-environment.ts",
   "packages/terminfo.dev/src/app-semantic-state.ts",
   "packages/terminfo.dev/src/owned-process.ts",
