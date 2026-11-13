@@ -66,6 +66,11 @@ export function launchIterm2Window(scriptPath: string, executablePath: string): 
     if (typeof id !== "number") throw new Error(`Darwin window census row lacks an id: ${JSON.stringify(row)}`)
     return [id]
   })
+  // lstart has whole-second resolution. Launch only once the clock is past the preflight's second, so
+  // a process this launch starts has a start second strictly greater than it (@cto 11983ea0, condition 2).
+  const launchNotBeforeMs = (preflightAtEpochSeconds + 1) * 1000
+  const waitMs = launchNotBeforeMs - Date.now()
+  if (waitMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs)
   const script = `tell application "iTerm"
   set w to (create window with default profile command ${JSON.stringify(scriptPath)})
   return ((id of w) as string) & linefeed & ((tty of current session of w) as string)
@@ -76,7 +81,7 @@ end tell`
 
 /**
  * After the daemon registers: the Apple event's TTY must be the TTY the run script recorded; exactly one
- * iTerm2 of this account runs and it started no earlier than the preflight read (lstart has whole-second
+ * iTerm2 of this account runs and its start second is strictly later than the preflight read's second (lstart has whole-second
  * resolution); and exactly one layer-0 CG window owned by it is new. Every other shape refuses by name;
  * nothing picks one of several (@cto 11983ea0, condition 2).
  */
@@ -94,9 +99,9 @@ export function resolveIterm2Window(launch: Iterm2Launch, recordedTty: string): 
       `iTerm2 launch: expected exactly one ${launch.executablePath} process for this account after launch; found ${processes.length} (pids ${processes.map((row) => row.pid).join(", ") || "none"})`,
     )
   }
-  if (owner.startedAtEpochSeconds < launch.preflightAtEpochSeconds) {
+  if (owner.startedAtEpochSeconds <= launch.preflightAtEpochSeconds) {
     throw new Error(
-      `iTerm2 launch: pid ${owner.pid} started at ${owner.startedAtEpochSeconds}, before the preflight read at ${launch.preflightAtEpochSeconds}; it is not this run's instance`,
+      `iTerm2 launch: pid ${owner.pid} started at second ${owner.startedAtEpochSeconds}, not after the preflight read's second ${launch.preflightAtEpochSeconds}; whole-second start times cannot order it after the preflight, so it is not proven this run's instance`,
     )
   }
   const rows = readDarwinWindowRows()

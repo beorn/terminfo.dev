@@ -26,6 +26,8 @@ const window = (id: number, ownerPid: number, extra: Record<string, unknown> = {
   ...extra,
 })
 
+const appleEventAtMs: number[] = []
+
 interface Host {
   processes: Array<{ pid: number; second: number; comm?: string }>
   windows: unknown[]
@@ -34,6 +36,7 @@ interface Host {
 
 function fakeHost(host: Host): string[][] {
   const appleEvents: string[][] = []
+  appleEventAtMs.length = 0
   vi.mocked(spawnSync).mockImplementation(((command: string, args: readonly string[]) => {
     const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" })
     if (command === "/bin/ps" && args.includes("-U")) {
@@ -47,6 +50,7 @@ function fakeHost(host: Host): string[][] {
     }
     if (command === "/usr/bin/osascript" && args.includes("JavaScript")) return ok(JSON.stringify(host.windows))
     if (command === "osascript") {
+      appleEventAtMs.push(Date.now())
       appleEvents.push([...args])
       return ok(host.reply ?? "")
     }
@@ -102,6 +106,8 @@ describe("the one launch Apple event", () => {
     expect(appleEvents[0]?.[1]).toContain('create window with default profile command "/private/run/serve.sh"')
     expect(appleEvents[0]?.[1]).toContain("tty of current session of w")
     expect(launch).toMatchObject({ beforeWindowIds: [10, 11], appleScriptWindowId: 3, tty: "/dev/ttys007" })
+    // The launch waits out the preflight's second, so the started process's lstart is strictly later.
+    expect(appleEventAtMs[0]).toBeGreaterThanOrEqual((launch.preflightAtEpochSeconds + 1) * 1000)
   })
 })
 
@@ -139,7 +145,12 @@ describe("resolving the owned window after the daemon registers", () => {
   test("refuses one iTerm2 that predates the preflight read", () => {
     fakeHost({ processes: [{ pid: 900, second: 0 }], windows: [window(41, 900)] })
     const late = { ...launched, preflightAtEpochSeconds: preflightAt + 1 }
-    expect(() => resolveIterm2Window(late, "/dev/ttys007")).toThrow(/before the preflight read/)
+    expect(() => resolveIterm2Window(late, "/dev/ttys007")).toThrow(/not after the preflight read's second/)
+  })
+
+  test("refuses one iTerm2 whose start second equals the preflight read's second", () => {
+    fakeHost({ processes: [{ pid: 900, second: 0 }], windows: [window(41, 900)] })
+    expect(() => resolveIterm2Window(launched, "/dev/ttys007")).toThrow(/not after the preflight read's second/)
   })
 
   test.each([
