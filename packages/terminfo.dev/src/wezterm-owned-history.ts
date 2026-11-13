@@ -10,7 +10,7 @@
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { dirname, isAbsolute, join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
 
 /**
@@ -35,10 +35,20 @@ export function ownedWezTermHistoryExecutable(input: {
   if (input.platform === "darwin") {
     const declared = input.environment?.WEZTERM_EXECUTABLE
     return declared !== undefined && declared.trim() !== "" && isAbsolute(declared)
-      ? declared
+      ? wezTermCliBesideExecutable(declared)
       : "/Applications/WezTerm.app/Contents/MacOS/wezterm"
   }
   return undefined
+}
+
+/**
+ * WezTerm sets WEZTERM_EXECUTABLE to the program it started, which on macOS is the GUI binary
+ * (`…/MacOS/wezterm-gui`) — and that binary has no `cli` subcommand, so a read through it would refuse on
+ * every pane. The CLI sits beside it as `wezterm`, the same sibling rule Linux already uses (31741,
+ * @dev/18 peer read).
+ */
+function wezTermCliBesideExecutable(declared: string): string {
+  return basename(declared) === "wezterm-gui" ? join(dirname(declared), "wezterm") : declared
 }
 
 /** What a finished command answers, for the evidence line of a refusal. */
@@ -185,7 +195,10 @@ export function readOwnedWezTermHistory(options: OwnedWezTermPaneOptions): Owned
     options.socket === undefined ||
     options.socket.trim() === "" ||
     options.pane === undefined ||
-    !/^[1-9]\d*$/u.test(options.pane)
+    // WezTerm numbers panes from 0, and 0 is the pane a single-window run owns (measured on codimac
+    // 2026-11-12: `wezterm cli get-text --pane-id 0` read the run's own marker block). Refusing 0 refused
+    // the ordinary case; @dev/18's peer read, 31741.
+    !/^\d+$/u.test(options.pane)
   ) {
     return {
       status: "refused",

@@ -335,6 +335,8 @@ export interface OwnedTerminal {
    * identity names the program that produced the count instead of the launched shell.
    */
   readonly historyExecutable?: { readonly path: string; readonly sha256: string; readonly version: string }
+  /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
+  readonly historyReadsThroughCli?: true
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
@@ -1622,6 +1624,10 @@ export async function createOwnedTerminal(options: {
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(clipboard && { clipboard }),
       ...(ownedWezTermProof?.status === "measured" && { historyExecutable: ownedWezTermProof.proof }),
+      // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
+      // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
+      ...(wezTermOwnerCheck !== undefined &&
+        ownedWezTermCli !== undefined && { historyReadsThroughCli: true as const }),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")

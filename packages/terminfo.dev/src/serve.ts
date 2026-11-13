@@ -1279,17 +1279,28 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
     // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched
-    // shell's bytes cannot explain a count the terminal's own CLI produced.
+    // shell's bytes cannot explain a count the terminal's own CLI produced — and when that CLI's proof was
+    // not measured, naming the shell's binary instead would be the silent substitution this comment
+    // forbids (@dev/18 peer read). A CLI arm therefore reports unmeasured rather than borrowing.
     const historyExecutable =
-      ownedTerminal?.historyExecutable ?? ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
+      ownedTerminal?.historyReadsThroughCli === true
+        ? ownedTerminal.historyExecutable
+        : (ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable)
     const hasHistoryExecutable = Boolean(
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
     )
+    // One reason, chosen once: an unproven CLI arm says so in its own words instead of reading like an arm
+    // that simply never needed a binary.
+    const historyIdentityReason = hasHistoryExecutable
+      ? undefined
+      : ownedTerminal?.historyReadsThroughCli === true
+        ? "owned scrollback CLI proof unmeasured: this arm reads through the terminal's own CLI, and no other binary explains its count"
+        : "owned scrollback binary path, sha256 and version unavailable"
     if (historyIdentity) {
       batch.rawReplies["collector.historyIdentityCheck"] = JSON.stringify({
         ...historyIdentity,
         ...(historyExecutable && { executable: historyExecutable }),
-        ...(!hasHistoryExecutable && { reason: "owned scrollback binary path, sha256 and version unavailable" }),
+        ...(historyIdentityReason !== undefined && { reason: historyIdentityReason }),
       })
     }
     const captured: CapturedRunDraft = {

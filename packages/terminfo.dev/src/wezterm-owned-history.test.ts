@@ -64,6 +64,18 @@ test("macOS takes the child's absolute CLI, and never a relative or empty declar
   }
 })
 
+// @dev/18 peer read: WEZTERM_EXECUTABLE is the GUI binary on macOS, and wezterm-gui has no `cli`
+// subcommand, so a read through it would refuse on every pane. The CLI sits beside it.
+test("macOS resolves the sibling CLI when the declaration names the GUI binary", () => {
+  expect(
+    ownedWezTermHistoryExecutable({
+      platform: "darwin",
+      ownsWezTermPane: true,
+      environment: { WEZTERM_EXECUTABLE: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui" },
+    }),
+  ).toBe("/Applications/WezTerm.app/Contents/MacOS/wezterm")
+})
+
 test("the evidence pins the CLI's bytes and the version the app itself reports", () => {
   files.readFileSync.mockReturnValue(Buffer.from("owned wezterm cli"))
   child.spawnSync.mockReturnValue({ status: 0, stdout: "wezterm 20240203-110809-5046fc22\n", stderr: "" })
@@ -100,7 +112,6 @@ test("a read without this run's socket or a numeric pane never spawns the CLI", 
     { executable, socket: undefined, pane, rows: 24 },
     { executable, socket: "  ", pane, rows: 24 },
     { executable, socket, pane: undefined, rows: 24 },
-    { executable, socket, pane: "0", rows: 24 },
     { executable, socket, pane: "all", rows: 24 },
   ]) {
     expect(readOwnedWezTermHistory(options)).toEqual({
@@ -109,6 +120,21 @@ test("a read without this run's socket or a numeric pane never spawns the CLI", 
     })
   }
   expect(child.spawnSync).not.toHaveBeenCalled()
+})
+
+// WezTerm numbers panes from 0 and 0 is the single-window case (measured on codimac 2026-11-12: the read
+// of `--pane-id 0` returned the run's own marker block). The old refusal of 0 refused the ordinary run.
+test("pane 0 is a pane like any other and reads through --pane-id 0", () => {
+  child.spawnSync.mockImplementation((_file: string, args: readonly string[]) => {
+    if (args.includes("list")) return panes([{ pane_id: 0, tty_name: "/dev/ttys002" }])
+    return { status: 0, stdout: Buffer.from("a\n\n" + "row\n".repeat(24)), stderr: Buffer.alloc(0) }
+  })
+  const read = readOwnedWezTermHistory({ executable, socket, pane: "0", tty: "ttys002", rows: 24 })
+  expect(read.status).toBe("read")
+  expect(child.spawnSync.mock.calls[1]!.slice(0, 2)).toEqual([
+    executable,
+    ["cli", "--no-auto-start", "get-text", "--pane-id", "0", "--start-line", "-2147483648", "--end-line", "23"],
+  ])
 })
 
 test("a pane missing from this run's own socket list is refused by name", () => {
