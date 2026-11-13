@@ -30,6 +30,7 @@ import type {
   SelectedProjection,
   SelectedVersion,
   SelectedContextSummary,
+  ProjectionRun,
 } from "../docs/data/selected-results.ts"
 import type { LoadedRun } from "@terminfo/run-parser"
 import { aggregateCurrentResults, rollupInputs } from "../docs/data/release-scope.ts"
@@ -306,8 +307,11 @@ function originalRun(
 }
 
 // Re-enter the production composer after a fixture changes an original subject/run.
-function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] = []): SelectedProjection {
-  const runs = new Map(
+function recompose(
+  projection: SelectedProjection,
+  extra: readonly (LoadedRun | ProjectionRun)[] = [],
+): SelectedProjection {
+  const runs = new Map<string, LoadedRun | ProjectionRun>(
     Object.values(projection.contexts).flatMap((context) =>
       Object.values(context.cells).map((cell) => [cell.run.runId, cell.run] as const),
     ),
@@ -317,18 +321,11 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
     if (runs.has(version.runId)) continue
     runs.set(version.runId, {
       ...version,
-      schemaVersion: 4,
-      source: { kind: "live" },
       path: "/fixture/" + version.runId + ".json",
-      suiteComplete: true,
-      suiteProbeCount: version.catalogIds.length,
-      assertions: [],
-      observations: [],
+      assertions: version.readRaw().assertions,
+      attempt: undefined,
       screenshotRefs: [],
       textSnapshotRefs: [],
-      notTested: [],
-      ungradedDiagnostics: {},
-      legacy: false,
     })
   }
   for (const run of extra) runs.set(run.runId, run)
@@ -340,6 +337,12 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   )
 }
 
+function cloneFixtureRun(run: ProjectionRun): ProjectionRun {
+  const { readRaw, ...facts } = run
+  const raw = structuredClone(readRaw())
+  return { ...structuredClone(facts), readRaw: () => raw }
+}
+
 function addFixtureSubject(
   projection: SelectedProjection,
   kind: CurrentSelectedVersion["subject"]["kind"],
@@ -347,7 +350,7 @@ function addFixtureSubject(
 ) {
   const base = Object.values(projection.contexts).flatMap((context) => Object.values(context.cells))[0]?.run
   if (!base) throw new Error("Missing original run for subject fixture")
-  const run = structuredClone(base)
+  const run = cloneFixtureRun(base)
   run.subject = { ...run.subject, kind, id }
   run.runId = `${base.runId}-${kind}-${id}`
   run.sha256 = createHash("sha256").update(run.runId).digest("hex")
@@ -971,8 +974,9 @@ describe("selected-run consumer parity", () => {
       current.suiteId = probeHash()
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-      current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
-      current.assertions = [
+      const raw = current.readRaw()
+      raw.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
+      raw.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
       const targets = new Map([
@@ -1594,7 +1598,7 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
 it("does not name a subject with no current run on the site", () => {
   // A subject absent from the selected projection gets no row or run data. The paired positive
   // control proves that a retained current run for the same named subject is named.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
@@ -1635,7 +1639,7 @@ it("does not name a subject with no current run on the site", () => {
     }
     // Non-vacuity control: when the same named subject IS current, the site does name it. Without
     // this, "absent" could mean the fixture never reaches the resolver at all.
-    const promoted = structuredClone(projection)
+    const promoted = recompose(projection)
     addFixtureSubject(promoted, "lib", "ghostty-native")
     selection.mockReturnValue({ projection: promoted })
     const controlData = loadFullProbes()
@@ -1652,11 +1656,11 @@ it("does not name a subject with no current run on the site", () => {
 it("uses explicit route and OS facts when display-column keys are opaque", () => {
   // #33854, CTO condition 1: renaming a display column must not rename the released URL or hide an OS.
   // The older route tests used app IDs as column keys, so parsing or reusing the key looked correct.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const original = requiredContext(projection, "term", "kitty")
   const source = Object.values(original.cells)[0]?.run
   if (!source) throw new Error("Missing original app fixture")
-  const linux = structuredClone(source)
+  const linux = cloneFixtureRun(source)
   linux.subject = { ...linux.subject, os: "linux" }
   linux.runId += "-linux-os-column"
   linux.sha256 = createHash("sha256").update(linux.runId).digest("hex")
@@ -1709,9 +1713,9 @@ it("uses explicit route and OS facts when display-column keys are opaque", () =>
 it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   // Guard 28047, rebuilt on the same current-row fixture the other parity tests use: two current
   // targets whose catalog names map to one slug must fail the build loudly, naming both rows.
-  // The loader memoizes on globalThis, so the rows below are written into a clone and cannot outlive
+  // The fixture loader above builds fresh runs on every call, so these rows cannot outlive
   // mockRestore into a later test.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const as = (_contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) =>
     addFixtureSubject(projection, kind, id)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })

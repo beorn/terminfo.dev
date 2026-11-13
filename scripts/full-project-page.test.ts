@@ -17,9 +17,8 @@ import * as publicResults from "../docs/data/public-results.ts"
 import * as fullProject from "../docs/data/full-project.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
 import * as versions from "../packages/admin/versions.ts"
-import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeResult } from "@terminfo/probe-defs"
-import type { SelectedContextSummary, CurrentSelectedVersion } from "../docs/data/selected-results.ts"
+import type { SelectedContextSummary, CurrentSelectedVersion, ProjectionRun } from "../docs/data/selected-results.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 
 const root = join(import.meta.dirname, "..")
@@ -157,7 +156,7 @@ describe("stored results without membership eligibility", () => {
           loadedBinary: { sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2" },
         },
         results,
-      } as unknown as LoadedRun
+      } as unknown as ProjectionRun
       const cells = Object.fromEntries(
         results.map((result) => [
           result.featureId,
