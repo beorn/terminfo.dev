@@ -1069,7 +1069,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         darwinHosted: { receiptPath: hostedReceipt },
         appSemanticCapture: async (featureId, phase) => {
           if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
-          return nativeAppCapture({ featureId, role: "witness", label: `Native App ${phase}` })
+          return nativeAppCapture({
+            featureId,
+            role: phase === "target" ? "target" : "control",
+            label: `Native App ${phase}`,
+          })
         },
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")

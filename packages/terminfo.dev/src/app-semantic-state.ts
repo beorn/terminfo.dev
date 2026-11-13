@@ -1648,7 +1648,33 @@ export async function readAppSemanticState(
     if (input.mux !== (env.TERMINFO_MUX_KIND || undefined)) {
       throw new Error("App semantic reader mux identity differs from its owned attachment")
     }
-    if (input.editor !== undefined) return await readNativeEditorState({ ...input, editor: input.editor })
+    if (input.editor !== undefined) {
+      try {
+        return await readNativeEditorState({ ...input, editor: input.editor })
+      } catch (error) {
+        // Setup can fail before sampling starts (for example, activation never completed).
+        // The caller already verified its owner; retain that window on this failure too.
+        const reason = error instanceof Error ? error.message : String(error)
+        try {
+          const observation = await input.editor.capture(input.featureId, "failed-read")
+          return {
+            status: "invalid",
+            reason,
+            detail: {
+              nativeFailure: reason,
+              nativeObservations: [],
+              captures: [{ phase: "failed-read", observation }],
+            },
+          }
+        } catch (captureError) {
+          return {
+            status: "invalid",
+            reason: `${reason}; native editor evidence capture failed: ${String(captureError)}`,
+            detail: { nativeFailure: reason, captureFailure: String(captureError) },
+          }
+        }
+      }
+    }
     if (input.featureId === "extensions.osc0-icon-title" || input.featureId === "extensions.osc1-icon") {
       const fixture = input.withIconNameFixture
       const readTitle = input.readTitle

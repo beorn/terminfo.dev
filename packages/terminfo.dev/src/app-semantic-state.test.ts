@@ -31,6 +31,11 @@ import {
 } from "./app-semantic-state.ts"
 
 const weztermCli = vi.hoisted(() => vi.fn())
+const editorNonce = vi.hoisted(() => vi.fn<() => string | undefined>())
+vi.mock("node:crypto", async (original) => {
+  const actual = await original<typeof import("node:crypto")>()
+  return { ...actual, randomUUID: () => editorNonce() ?? actual.randomUUID() }
+})
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), spawnSync: weztermCli }))
 vi.mock("./linux-capture.ts", async (original) => ({
   ...(await original<typeof import("./linux-capture.ts")>()),
@@ -38,6 +43,7 @@ vi.mock("./linux-capture.ts", async (original) => ({
 }))
 
 afterEach(() => {
+  editorNonce.mockReset()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
@@ -47,6 +53,8 @@ afterEach(() => {
 test.each([
   "native",
   "shell-ancestor",
+  "pre-planted",
+  "activation-missing",
   "owned-target-no-env",
   "owned-target-conflicting-env",
   "wrong-activation",
@@ -96,6 +104,14 @@ test.each([
   vi.stubEnv("TERMINFO_MUX_KIND", "")
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
   vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+  // CTO condition: an existing reply cannot satisfy even a correctly correlated request.
+  const plantedNonce = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+  const plantedPath = join(replyDirectory, plantedNonce + ".json")
+  if (mode === "pre-planted") {
+    writeFileSync(plantedPath, "pre-existing reply sentinel", { flag: "wx" })
+    editorNonce.mockReturnValueOnce(plantedNonce)
+  }
+  if (mode === "activation-missing") rmSync(join(directory, "editor-activation.json"))
   // Only the external-API fixture writes replies; production must write only requests.
   const producer = setInterval(() => {
     if (!existsSync(requestPath)) return
@@ -164,6 +180,20 @@ test.each([
         }
       },
     })
+    if (mode === "activation-missing") {
+      expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("editor-activation.json") })
+      expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+      expect(writes).toEqual([])
+      return
+    }
+    if (mode === "pre-planted") {
+      expect(reading).toMatchObject({ status: "invalid", reason: "Native editor reply was present before its request" })
+      expect(existsSync(requestPath)).toBe(false)
+      expect(readFileSync(plantedPath, "utf8")).toBe("pre-existing reply sentinel")
+      expect(writes).toEqual([])
+      expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+      return
+    }
     if (mode !== "native" && mode !== "shell-ancestor" && !mode.startsWith("owned-target-")) {
       expect(reading.status).toBe(
         mode === "api-absent" || mode === "pid-absent" || mode === "unchanged-target" ? "unavailable" : "invalid",
