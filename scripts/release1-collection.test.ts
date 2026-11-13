@@ -1846,6 +1846,8 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     "bun",
     [
       "#!/bin/sh",
+      // The resource witness runs as `bun --eval` on the remote (774639a6f): it is real work, so the real Bun runs it.
+      'if [ "$1" = "--eval" ]; then exec "$REAL_BUN" "$@"; fi',
       'case "$*" in',
       "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
       "  --version) echo '1.2.3' ;;",
@@ -1900,6 +1902,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
         PRODUCER_RUN: producerRun,
         REAL_RSYNC: "/usr/bin/rsync",
+        REAL_BUN: process.execPath,
       },
     })
     expect(result.status, result.stderr).toBe(0)
