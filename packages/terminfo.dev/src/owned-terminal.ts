@@ -459,14 +459,14 @@ export type HostedDarwinApp = {
 export type AncestryRow = {
   pid: number
   ppid: number
-  /** argv0 as the kernel prints it. Screen's backend shows `SCREEN` here; the executed path is below. */
+  /** argv0 as ps prints it, kept separate from measured kernel executable identity. */
   comm: string
   uid?: number
   startedAtEpochSeconds?: number
   ttyRdev?: number | null
   command?: string
-  /** The kernel's executed path for this pid, or null when neither reader answered (#30518 Screen arm).
-   * Absent off Darwin, where there is no such read; never guessed from `comm`. */
+  /** The kernel's executed path for a Darwin mux walk, or null when neither reader answered.
+   * Absent when the walk does not request kernel identity; never guessed from `comm`. */
   kernelExecutable?: string | null
   kernelExecutableReader?: "proc_pidpath" | "KERN_PROCARGS2" | null
   kernelExecutableError?: string | null
@@ -642,7 +642,7 @@ export function formatHostedDarwinAncestry(rows: AncestryRow[]): string {
     .join(" <- ")
 }
 
-function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] {
+function readProcessAncestry(startPid: number, stopPid?: number, kernelIdentity = false): AncestryRow[] {
   const rows: AncestryRow[] = []
   const seen = new Set<number>()
   let pid = startPid
@@ -687,9 +687,9 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
       throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
     }
     const row: AncestryRow = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
-    if (process.platform === "darwin") {
-      // #30518: the kernel path travels with every row, and an unanswered read stays a recorded
-      // fact — the Screen arm refuses by name instead of falling back to the argv0 in `comm`.
+    if (kernelIdentity && process.platform === "darwin") {
+      // The tmux attachment needs kernel identity as well as argv0. Measure inside the same birth check;
+      // ordinary app/preflight ancestry does not consume this mux-specific evidence.
       const kernel = kernelExecPath(row.pid)
       row.kernelExecutable = kernel.path
       row.kernelExecutableReader = kernel.reader
@@ -745,10 +745,10 @@ function readDarwinMuxAttachment(
 ): DarwinMuxAttachmentProof {
   const { subject, outerApp } = input
   const mux = subject.id
-  if (subject.kind !== "mux" || (mux !== "screen" && mux !== "tmux") || subject.mux !== mux || !subject.config) {
+  if (subject.kind !== "mux" || mux !== "tmux" || subject.mux !== mux || !subject.config) {
     throw new Error("Darwin mux target has no measured mux/configuration")
   }
-  const rows = readProcessAncestry(process.pid, assertion.ownerPid)
+  const rows = readProcessAncestry(process.pid, assertion.ownerPid, true)
   const chain = rows.map((row) => {
     if (row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined) {
       throw new Error(`Darwin pid ${row.pid} lacks measured birth, UID or TTY`)
@@ -769,111 +769,94 @@ function readDarwinMuxAttachment(
   const collector = chain[0],
     shell = chain.at(-3),
     owner = chain.at(-1)
-  const server = chain[mux === "screen" ? 2 : 1]
+  const server = chain[1]
   if (!collector || !shell || !owner || !server?.kernelExecutable) {
     throw new Error("Darwin mux ancestry lacks named roles")
   }
   const binary = server.kernelExecutable
-  const run = (args: string[], screenRead = false) => {
+  const run = (args: string[]) => {
     const result = spawnSync(binary, args, {
       encoding: "utf8",
       timeout: 1000,
       maxBuffer: 4096,
       env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     })
-    if (result.error || result.signal || (result.status !== 0 && !(screenRead && result.status === 1))) {
+    if (result.error || result.signal || result.status !== 0) {
       throw new Error(`Darwin mux ${binary} ${args.join(" ")} failed: ${JSON.stringify(result)}`)
     }
     return { stdout: String(result.stdout), stderr: String(result.stderr) }
   }
-  let client: DarwinMuxAttachmentProof["chain"][number] | undefined = mux === "screen" ? chain[3] : undefined
-  const argv = rows[mux === "screen" ? 3 : 1]?.command?.split(/\s+/) ?? []
-  if (
-    /\s/.test(subject.config) ||
-    !argvCarriesMarker(argv, { flag: mux === "screen" ? "-c" : "-f", value: subject.config })
-  ) {
+  const argv = rows[1]?.command?.split(/\s+/) ?? []
+  if (/\s/.test(subject.config) || !argvCarriesMarker(argv, { flag: "-f", value: subject.config })) {
     throw new Error("Darwin mux live argv differs from its explicit configuration")
   }
   const named = argv.indexOf("-S")
   const selected = named >= 0 && argv.lastIndexOf("-S") === named ? argv[named + 1] : undefined
   if (!selected) throw new Error("Darwin mux live argv names no unique socket/session")
-  let socketPath: string, session: string
-  if (mux === "screen") {
-    session = selected
-    const listing = run(["-ls", session], true).stdout.replaceAll("\r", "")
-    const attached = listing.split("\n").filter((line) => line.trim() === `${server.pid}.${session}\t(Attached)`)
-    const directory = /^1 Socket in (\/[^\n]+)\.$/m.exec(listing)?.[1]
-    if (attached.length !== 1 || !directory || !client) {
-      throw new Error("Darwin Screen listing lacks its measured attached server/session")
-    }
-    socketPath = join(directory, `${server.pid}.${session}`)
-  } else {
-    socketPath = selected
-    if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
-    const listed = run([
-      "-S",
-      socketPath,
-      "list-clients",
-      "-F",
-      "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const fields = listed[0]?.split("\t")
-    if (listed.length !== 1 || !fields || fields.length !== 4) {
-      throw new Error("Darwin tmux has no unique measured attached client")
-    }
-    const [clientPid, clientTty, sessionId, sessionName] = fields
-    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
-      throw new Error("Darwin tmux attached-client fields are missing or malformed")
-    }
-    const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid)
-    const row = clientRows[0]
-    if (
-      !row ||
-      row.uid === undefined ||
-      row.startedAtEpochSeconds === undefined ||
-      row.ttyRdev === undefined ||
-      clientRows[1]?.pid !== shell.pid ||
-      row.kernelExecutable !== binary
-    ) {
-      throw new Error("Darwin tmux client is not the measured outer shell child")
-    }
-    if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
-      throw new Error("Darwin tmux listed client TTY differs from the measured client")
-    }
-    client = {
-      ...row,
-      startedAtEpochSeconds: row.startedAtEpochSeconds,
-      ttyRdev: row.ttyRdev,
-      executablePath: row.comm,
-      uid: row.uid,
-    }
-    session = sessionName
-    const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
-    const panes = run([
-      "-S",
-      socketPath,
-      "list-panes",
-      "-a",
-      "-F",
-      "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const pane = panes
-      .map((line) => line.split("\t"))
-      .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
-    if (serverPid !== String(server.pid) || pane.length !== 1) {
-      throw new Error("Darwin tmux socket/session does not join the measured collector/server")
-    }
-    const paneTty = pane[0]?.[3]
-    if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
-      throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
-    }
+  const socketPath = selected
+  if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
+  const listed = run([
+    "-S",
+    socketPath,
+    "list-clients",
+    "-F",
+    "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const fields = listed[0]?.split("\t")
+  if (listed.length !== 1 || !fields || fields.length !== 4) {
+    throw new Error("Darwin tmux has no unique measured attached client")
+  }
+  const [clientPid, clientTty, sessionId, sessionName] = fields
+  if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
+    throw new Error("Darwin tmux attached-client fields are missing or malformed")
+  }
+  const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid, true)
+  const row = clientRows[0]
+  if (
+    !row ||
+    row.uid === undefined ||
+    row.startedAtEpochSeconds === undefined ||
+    row.ttyRdev === undefined ||
+    clientRows[1]?.pid !== shell.pid ||
+    row.kernelExecutable !== binary
+  ) {
+    throw new Error("Darwin tmux client is not the measured outer shell child")
+  }
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
+    throw new Error("Darwin tmux listed client TTY differs from the measured client")
+  }
+  const client = {
+    ...row,
+    startedAtEpochSeconds: row.startedAtEpochSeconds,
+    ttyRdev: row.ttyRdev,
+    executablePath: row.comm,
+    uid: row.uid,
+  }
+  const session = sessionName
+  const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
+  const panes = run([
+    "-S",
+    socketPath,
+    "list-panes",
+    "-a",
+    "-F",
+    "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const pane = panes
+    .map((line) => line.split("\t"))
+    .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
+  if (serverPid !== String(server.pid) || pane.length !== 1) {
+    throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+  }
+  const paneTty = pane[0]?.[3]
+  if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
+    throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
   }
   if (!statSync(socketPath).isSocket()) throw new Error(`Darwin mux socket ${socketPath} is not a socket`)
-  if (!client) throw new Error("Darwin mux has no measured attached client")
   const rawPreflight = outerApp.rawReplies["collector.preflightIdentity"]
   const launch = outerApp.rawReplies["collector.outerLaunch"]
   if (!rawPreflight || !launch) throw new Error("Darwin mux lacks retained preflight identity or outer launch bytes")
@@ -889,10 +872,10 @@ function readDarwinMuxAttachment(
     timeout: 1000,
     maxBuffer: 256,
   }).trim()
-  const version = run([mux === "screen" ? "-v" : "-V"], mux === "screen")
+  const version = run(["-V"])
   const versionText = version.stdout + version.stderr
-  const tokens = mux === "tmux" ? measuredVersionTokens(versionText) : []
-  if (mux === "tmux" && tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
+  const tokens = measuredVersionTokens(versionText)
+  if (tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
   const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex")
   const proof = parseMuxAttachmentProof({
     platform: "darwin",
@@ -914,7 +897,7 @@ function readDarwinMuxAttachment(
     executable: {
       path: binary,
       sha256: digest(readFileSync(binary)),
-      version: mux === "screen" ? versionText : tokens[0],
+      version: tokens[0],
     },
     config: { path: subject.config, sha256: digest(readFileSync(subject.config)) },
     socketPath,

@@ -27,9 +27,8 @@ const directories: string[] = []
 // The tmux fixture explicitly marks synthetic kernel answers: r13b predates that reader. Neither
 // source check qualifies a native Mac capture or proves the historical binary bytes.
 test.each([
-  ["screen", "valid"],
-  ["screen", "changed-birth"],
-  ["screen", "missing-tty"],
+  // The retired live Screen arm must never mint a fresh ownership proof; retained records have their parser tests.
+  ["screen", "removed"],
   ["tmux", "valid"],
   ["tmux", "changed-birth"],
   ["tmux", "missing-tty"],
@@ -159,7 +158,9 @@ test.each([
     { cwd: packageRoot, encoding: "utf8", timeout: 20000 },
   )
   expect(result.status, result.stderr).toBe(0)
-  if (fault === "valid" || fault === "preflight") expect(result.stdout.trim(), result.stderr).toBe("PROOF")
+  if (fault === "removed") {
+    expect(result.stdout.trim()).toBe("ERROR Darwin mux target has no measured mux/configuration")
+  } else if (fault === "valid" || fault === "preflight") expect(result.stdout.trim(), result.stderr).toBe("PROOF")
   else if (fault === "wrong-client-tty") {
     expect(result.stdout).toContain("ERROR Darwin tmux listed client TTY differs from the measured client")
   } else if (fault === "wrong-pane-tty") {
