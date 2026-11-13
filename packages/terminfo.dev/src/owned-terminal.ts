@@ -1379,6 +1379,7 @@ export async function createOwnedTerminal(options: {
         appId: HOSTED_DARWIN_EXECUTABLE.Terminal!.id,
         titleRead: "none",
         titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
+        ownedHost: true,
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
         },
