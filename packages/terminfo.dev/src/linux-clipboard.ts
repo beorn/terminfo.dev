@@ -858,21 +858,23 @@ export const CLIPBOARD_READ_DEFAULTS: Readonly<
   },
 }
 
-/** The argv tokens that set each terminal's clipboard read control, flag and value together. */
 /**
  * The read setting a run's profile ACTUALLY applied, as `assertClipboardProfile` verifies against the live argv:
  * allow = the app's read-allowed args; deny-read = write-clipboard only. A record names this, so a deny-read reading
  * cannot be printed as if it had granted reads (@dev/16 peer).
  */
+export const CLIPBOARD_DENY_READ_ARGS: readonly string[] = ["-o", "clipboard_control=write-clipboard"]
+
 export function clipboardReadProfile(
   app: ClipboardApp,
   profile: "default" | "allow" | "deny-read",
 ): { readonly profile: string; readonly setting: string } | undefined {
   if (profile === "default") return undefined
-  const applied = profile === "deny-read" ? ["-o", "clipboard_control=write-clipboard"] : CLIPBOARD_ALLOW_ARGS[app]
+  const applied = profile === "deny-read" ? CLIPBOARD_DENY_READ_ARGS : CLIPBOARD_ALLOW_ARGS[app]
   return applied.length > 0 ? { profile, setting: `${app} ${applied.join(" ")}` } : undefined
 }
 
+/** The argv tokens that set each terminal's clipboard read control, flag and value together. */
 function clipboardControls(app: ClipboardApp, options: string[]): string[] {
   const valueOf = (flags: string[], value: (part: string) => boolean) =>
     options.flatMap((part, index) => {
@@ -910,7 +912,7 @@ export function assertClipboardProfile(app: ClipboardApp, profile: ClipboardRece
   const expected = {
     default: [],
     allow: CLIPBOARD_ALLOW_ARGS[app],
-    "deny-read": ["-o", "clipboard_control=write-clipboard"],
+    "deny-read": CLIPBOARD_DENY_READ_ARGS,
   }[profile]
   if (JSON.stringify(clipboardControls(app, options)) !== JSON.stringify(expected)) {
     throw new Error(`Owned ${app} argv clipboard control differs from ${profile} receipt`)
