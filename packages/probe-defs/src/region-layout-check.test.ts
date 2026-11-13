@@ -9,7 +9,7 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes } from "./editing.ts"
-import { awaitPaintWitness, layoutSinceCalibration, type RegionCapture } from "./region-readback.ts"
+import { awaitPaintWitness, layoutSinceCalibration, originFromSentinel, type RegionCapture } from "./region-readback.ts"
 import type { CaptureLocated, CaptureRequest, ObservationFrame, TermProbeSource } from "./types.ts"
 
 const CELL = { width: 8, height: 16 }
@@ -110,6 +110,21 @@ async function sameCellsNote(located: Located | ((paintedCell: string) => Locate
   const result = await probe.term!(source.context)
   return { result, note: String(result.observation?.note), ...source }
 }
+
+test("a sentinel located on this frame gives the exact origin its crop must use (33000)", () => {
+  // The window sits five rows (80 px) lower than calibration: the sentinel painted at 3,1 is found there,
+  // so the origin the crop needs is the found box minus the two rows above it, not calibration's origin.
+  const located = blockAt(WARP_SHIFT)
+  expect(originFromSentinel(located, { row: 3, col: 1 }, CELL)).toEqual({ x: ORIGIN.x, y: ORIGIN.y + WARP_SHIFT })
+  // An unmoved window reproduces calibration's own origin, which is what keeps a no-change verdict honest.
+  expect(originFromSentinel(blockAt(0), { row: 3, col: 1 }, CELL)).toEqual(ORIGIN)
+  // A cell other than the first proves the grid term: painting at 3,2 implies the same origin.
+  const atThreeTwo = { box: crop({ top: 3, left: 2, bottom: 3, right: 2 }), pixels: CELL.width * CELL.height }
+  expect(originFromSentinel(atThreeTwo, { row: 3, col: 2 }, CELL)).toEqual(ORIGIN)
+  // Exact arithmetic: one pixel of movement stays one pixel. No rounding, no fitted correction.
+  const nudged = { box: { ...located.box, x: located.box.x + 1 }, pixels: located.pixels }
+  expect(originFromSentinel(nudged, { row: 3, col: 1 }, CELL)).toEqual({ x: ORIGIN.x + 1, y: ORIGIN.y + WARP_SHIFT })
+})
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {
   const { result, note, writes, locates } = await sameCellsNote(blockAt(WARP_SHIFT))

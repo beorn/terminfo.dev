@@ -491,6 +491,24 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * The text-area origin a located sentinel implies (33000): the cell the check painted and the cell
+ * size give the grid back, so a crop taken from THAT frame lands on the cells the run asked for even
+ * when the window moved after calibration. Exact arithmetic only — no fitted correction, no tolerance
+ * band; a frame one pixel off yields an origin one pixel off, which is what lets the caller refuse
+ * rather than paper over a real move.
+ */
+export function originFromSentinel(
+  located: { box: { x: number; y: number } },
+  cell: { row: number; col: number },
+  cellSize: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: located.box.x - (cell.col - 1) * cellSize.width,
+    y: located.box.y - (cell.row - 1) * cellSize.height,
+  }
+}
+
+/**
  * Where calibration's sentinel paint lands now at `cell`, asked only after a probe's own reads ended
  * undecided (33000). Warp's normal screen is a command block whose header can cover the rows
  * calibration measured, so a crop at the calibrated cell reads the header instead of the probe.
