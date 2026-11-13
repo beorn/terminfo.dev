@@ -9,7 +9,13 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes } from "./editing.ts"
-import { awaitPaintWitness, layoutSinceCalibration, originFromSentinel, type RegionCapture } from "./region-readback.ts"
+import {
+  awaitPaintWitness,
+  layoutSinceCalibration,
+  originFromSentinel,
+  witnessCellFor,
+  type RegionCapture,
+} from "./region-readback.ts"
 import type { CaptureLocated, CaptureRequest, ObservationFrame, TermProbeSource } from "./types.ts"
 
 const CELL = { width: 8, height: 16 }
@@ -124,6 +130,28 @@ test("a sentinel located on this frame gives the exact origin its crop must use 
   // Exact arithmetic: one pixel of movement stays one pixel. No rounding, no fitted correction.
   const nudged = { box: { ...located.box, x: located.box.x + 1 }, pixels: located.pixels }
   expect(originFromSentinel(nudged, { row: 3, col: 1 }, CELL)).toEqual({ x: ORIGIN.x + 1, y: ORIGIN.y + WARP_SHIFT })
+})
+
+test("the sentinel cell is one clear of every digested region, and a crowded grid refuses by name (33000)", () => {
+  const grid = { rows: 24, cols: 80 }
+  // The usual case: the cell directly above the compared region's first cell.
+  expect(witnessCellFor([{ top: 3, left: 1, bottom: 5, right: 10 }], grid)).toEqual({ row: 2, col: 1 })
+  // A region against the top row cannot use the cell above it, so the cell below wins instead.
+  expect(witnessCellFor([{ top: 1, left: 1, bottom: 4, right: 10 }], grid)).toEqual({ row: 5, col: 1 })
+  // The control region is digested from the same frame, so it is not a candidate either.
+  expect(
+    witnessCellFor(
+      [
+        { top: 3, left: 1, bottom: 5, right: 10 },
+        { top: 2, left: 1, bottom: 2, right: 80 },
+      ],
+      grid,
+    ),
+  ).toEqual({ row: 6, col: 1 })
+  // Every candidate taken: the read refuses rather than cropping from an unanchored frame.
+  expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 24, right: 80 }], grid)).toThrow(
+    /No cell outside the digested region 1,1-24,80 in the 24x80 grid can carry calibration's sentinel/,
+  )
 })
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {

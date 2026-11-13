@@ -509,6 +509,40 @@ export function originFromSentinel(
 }
 
 /**
+ * The cell a read paints calibration's sentinel on so its origin can be derived from the very frame
+ * it reads (33000). One cell clear of every region that frame digests, inside the grid, preferring
+ * the cell directly above the compared region's first cell — the same place the region would have
+ * started had it not been pushed down. A frame with no such cell refuses by name: a crop nobody can
+ * anchor is not a reading.
+ */
+export function witnessCellFor(
+  regions: readonly CaptureCells[],
+  grid: { rows: number; cols: number },
+): { row: number; col: number } {
+  const [first] = regions
+  if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
+  const digested = (cell: { row: number; col: number }): boolean =>
+    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right)
+  const visible = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  const candidates = [
+    { row: first.top - 1, col: first.left },
+    { row: first.top - 1, col: first.right + 1 },
+    { row: first.bottom + 1, col: first.left },
+    { row: first.top, col: first.left - 1 },
+    { row: first.top, col: first.right + 1 },
+  ]
+  const found = candidates.find((cell) => visible(cell) && !digested(cell))
+  if (!found) {
+    const spelled = regions.map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`).join(" and ")
+    throw new Error(
+      `No cell outside the digested region ${spelled} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
+    )
+  }
+  return found
+}
+
+/**
  * Where calibration's sentinel paint lands now at `cell`, asked only after a probe's own reads ended
  * undecided (33000). Warp's normal screen is a command block whose header can cover the rows
  * calibration measured, so a crop at the calibrated cell reads the header instead of the probe.
