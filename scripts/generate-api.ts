@@ -26,7 +26,12 @@ import {
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { collectGarbage, compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import {
+  classifyProjectionSetups,
+  collectGarbage,
+  compatibilitySubjects,
+  loadCurrentResults,
+} from "../docs/data/current-results.ts"
 import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
@@ -296,6 +301,9 @@ export function generateApi(
   const { projection } = loadCurrentResults(resultsDir)
   const reviewed = compatibilitySubjects(projection, resultsDir)
   const published = publicResults(projection, reviewed)
+  // One classification, shared with the preview: a context is its app group's newest setup or strictly behind it, and
+  // a context with no evidence is named rather than left to read as current (@cto 026fd6fd rules 1-4).
+  const setups = classifyProjectionSetups(projection)
   // The internal preview's hourly raw view: read beside the accepted projection, never folded into it, so every
   // accepted field below is byte-identical with or without it, and an unset variable emits no `working` key at all.
   const working = options.working === undefined ? siteWorkingRun() : options.working
@@ -374,6 +382,7 @@ export function generateApi(
     versions: currentGroups(published.projection.versions),
     history: currentGroups(published.projection.history),
     exclusions: published.projection.exclusions,
+    undecidableSetups: setups.undecidable,
     ...(workingView && {
       working: {
         ...workingView,

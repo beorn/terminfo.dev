@@ -9,7 +9,20 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { buildFullProjectRows } from "../docs/data/full-project.ts"
+import { buildFullProjectRows as buildRows } from "../docs/data/full-project.ts"
+/**
+ * Every fixture here measures ONE context per app, so each is its app group's newest setup by construction; the setup
+ * classifier's own order is tested in context-setup.test.ts against real revision shapes.
+ */
+const buildFullProjectRows = (
+  args: Parameters<typeof buildRows>[0] | Record<string, unknown>,
+): ReturnType<typeof buildRows> => {
+  const candidates = (args as { candidates?: readonly ContextCandidate[] }).candidates ?? []
+  return buildRows({
+    ...(args as Parameters<typeof buildRows>[0]),
+    standings: new Map(candidates.map((entry) => [entry.key, "current" as const])),
+  })
+}
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import type { ContextCandidate } from "../docs/data/run-selection.ts"
 import type { CensusContext } from "../docs/data/full-census.ts"
@@ -276,6 +289,30 @@ describe("full-scope rows", () => {
       collected: false,
       cause: "engine has current runs on linux, macos; one headless context cannot choose an operating system",
     })
+  })
+
+  it("leaves an older setup's own rows and tally exactly as measured, and moves only the totals", () => {
+    const candidateOne = candidate({ kind: "term", terminalId: "kitty", os: "linux" })
+    const build = (standing: "current" | "older setup") =>
+      buildRows({
+        census: [app],
+        catalogIds,
+        candidates: [candidateOne],
+        requiredSuiteId: suite,
+        standings: new Map([[candidateOne.key, standing]]),
+      })
+    const asCurrent = build("current")
+    const asOlder = build("older setup")
+    const currentRow = asCurrent.contexts[0]
+    const olderRow = asOlder.contexts[0]
+    if (!currentRow?.collected || !olderRow?.collected) throw new Error("expected collected rows")
+    expect(olderRow.standing).toBe("older setup")
+    expect(olderRow.result).toEqual(currentRow.result)
+    expect(olderRow.observations).toEqual(currentRow.observations)
+    expect(asCurrent.recordedPositions).toBe(olderRow.result.catalogRows)
+    expect(asCurrent.olderPositions).toBe(0)
+    expect(asOlder.recordedPositions).toBe(0)
+    expect(asOlder.olderPositions).toBe(olderRow.result.catalogRows)
   })
 
   it("keeps reviewed Untestable in the full denominator and can finish with no supported capabilities", () => {

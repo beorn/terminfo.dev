@@ -75,7 +75,7 @@ This page reads composed contexts with original stored sources on the required s
 
 - **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} term features** plus **{{ data.environmentGroups }} environment groups** (manual by design).
 - Required suite: <code>{{ data.suiteId }}</code>.
-- **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit feature positions.
+- **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit feature positions over current setups. Older setups are listed separately with their own {{ data.olderPositions }} positions and reach no total here.
 - Score is **Supported / all {{ data.gradedRows }} term features**; the {{ data.environmentGroups }} environment groups are never in the denominator. Unsupported and Untestable remain in the denominator.
 - Completion requires **zero PROBE TODO, zero PROBE INVALID and zero PROBE CONFLICT among the term features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
 - No stored current runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
