@@ -301,6 +301,8 @@ export interface SelectedContextSummary {
   counts: RollupCounts
   /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
   derivedIds: string[]
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
+  byReview: number
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -1008,6 +1010,7 @@ function composeContextSummaries(
       attempts,
       counts: aggregate.counts,
       derivedIds,
+      byReview: aggregate.byReview,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
       ...(outerAbsentRefusals.length > 0 && { outerAbsentRefusals }),

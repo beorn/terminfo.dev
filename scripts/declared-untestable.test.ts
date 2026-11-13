@@ -25,6 +25,7 @@ import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
+import { baselineStat, subjectStats } from "../docs/data/probes.data.ts"
 
 const MARKS = "extensions.osc133-marks"
 const BLINK = "sgr.blink"
@@ -173,6 +174,25 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
         "the terminal exposes its marks to a script, or a probe reads them from the screen",
     )
     expect(JSON.stringify(cell)).not.toMatch(/@|b0d3cd4e|unsupported/i)
+  })
+
+  // Peer REVISE (@dev/17): the OS table and the baseline page read these two stats builders, then the coverage line.
+  it("the OS and baseline stats carry the by-review count into the coverage line they print", () => {
+    const published = (declared: DeclaredUntestableCell[]) =>
+      publicResults(project([first], declared), new Map()).projection.contexts["term:alacritty"]!
+    const declaredContext = published([marksRow()])
+    expect(declaredContext.byReview).toBe(1)
+    const os = subjectStats(declaredContext, undefined)
+    expect(os.byReview).toBe(1)
+    expect(currentCoverageSentence(os)).toContain("1 Untestable (1 by review)")
+    const baseline = baselineStat("alacritty", declaredContext, [MARKS, BLINK])
+    expect(baseline.byReview).toBe(1)
+    expect(currentCoverageSentence(baseline)).toContain("1 Untestable (1 by review)")
+    // A feature group without the declared cell counts none by review.
+    expect(baselineStat("alacritty", declaredContext, [BLINK]).byReview).toBe(0)
+    const plain = published([])
+    expect(subjectStats(plain, undefined).byReview).toBe(0)
+    expect(currentCoverageSentence(subjectStats(plain, undefined))).not.toContain("by review")
   })
 
   it("a probe result beats a declaration: a measured, reopened or missing cell throws naming the row to remove", () => {
