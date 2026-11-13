@@ -458,3 +458,94 @@ export async function finishCapture(input: {
     trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }
 }
+
+/**
+ * Where one exact colour sits in the pixels that CHANGED between two frames of the same window (33981).
+ *
+ * The sentinel this read paints is located by what changed, never by the colour alone: a probe that
+ * paints the same colour itself, or a previous read's restore still rendering, is a fact the
+ * difference keeps out of the answer instead of a case rule (33981, @cto 41cd2559). `ignoredPixels`
+ * counts the changed pixels that do NOT carry the colour — cursor blink, a clock, a late render — so
+ * a noisy terminal is visible in the evidence rather than filtered away.
+ *
+ * Changed pixels carrying the colour come back as SEPARATE regions, one per connected patch, in
+ * reading order: two cells painted the sentinel colour are two boxes the caller can name and refuse,
+ * never one bounding box spanning the space between them.
+ */
+export function locateChangedColour(
+  before: CapturedFrame,
+  after: CapturedFrame,
+  rgb: readonly [number, number, number],
+): { regions: CaptureLocated[]; ignoredPixels: number } {
+  if (before.width !== after.width || before.height !== after.height) {
+    throw new Error(
+      `Frame difference needs two frames of one window; got ${before.width}x${before.height} and ${after.width}x${after.height}`,
+    )
+  }
+  if (!rgb.every((channel) => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255)) {
+    throw new Error(`Frame difference needs an integer RGB colour 0..255; got ${JSON.stringify(rgb)}`)
+  }
+  const { width, height } = after
+  const carries = new Uint8Array(width * height)
+  let ignoredPixels = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4
+      const changed =
+        before.rgba[offset] !== after.rgba[offset] ||
+        before.rgba[offset + 1] !== after.rgba[offset + 1] ||
+        before.rgba[offset + 2] !== after.rgba[offset + 2]
+      if (!changed) continue
+      if (after.rgba[offset] !== rgb[0] || after.rgba[offset + 1] !== rgb[1] || after.rgba[offset + 2] !== rgb[2]) {
+        ignoredPixels++
+        continue
+      }
+      carries[y * width + x] = 1
+    }
+  }
+  const regions: CaptureLocated[] = []
+  const stack = new Int32Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const seed = y * width + x
+      if (carries[seed] !== 1) continue
+      let left = x
+      let right = x
+      let top = y
+      let bottom = y
+      let pixels = 0
+      let depth = 0
+      stack[depth++] = seed
+      carries[seed] = 2
+      while (depth > 0) {
+        depth -= 1
+        const at = stack[depth] as number
+        const px = at % width
+        const py = (at - px) / width
+        pixels++
+        if (px < left) left = px
+        if (px > right) right = px
+        if (py < top) top = py
+        if (py > bottom) bottom = py
+        if (px > 0 && carries[at - 1] === 1) {
+          carries[at - 1] = 2
+          stack[depth++] = at - 1
+        }
+        if (px + 1 < width && carries[at + 1] === 1) {
+          carries[at + 1] = 2
+          stack[depth++] = at + 1
+        }
+        if (py > 0 && carries[at - width] === 1) {
+          carries[at - width] = 2
+          stack[depth++] = at - width
+        }
+        if (py + 1 < height && carries[at + width] === 1) {
+          carries[at + width] = 2
+          stack[depth++] = at + width
+        }
+      }
+      regions.push({ box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels })
+    }
+  }
+  return { regions, ignoredPixels }
+}
