@@ -174,6 +174,19 @@ export function ordinaryOpenRecord(run: OrdinaryOpenRun, probePid: number = proc
 }
 
 /**
+ * One proof per run (@cto 2026-11-13, F3). An owned terminal and an ordinary-open receipt answer the same question
+ * — whose window is this — by different machines, and a run that claims both would OR two proofs into one artifact.
+ * Kept here, not inline in serve.ts, so the refusal has a test in an environment where serve.test.ts does not run.
+ */
+export function assertOneProofPerRun(receiptSet: boolean, ownedTerminalKind: string | undefined): void {
+  if (!receiptSet || ownedTerminalKind === undefined) return
+  throw new Error(
+    `${ORDINARY_OPEN_RECEIPT_ENV} is set on a run that owns its terminal (${ownedTerminalKind}): an owned run and ` +
+      "an ordinary-open receipt are different proofs; set exactly one",
+  )
+}
+
+/**
  * The rows must publish the version the receipt bound (@dev/16 12:22 R1). START binds what the run knows before its
  * first probe; the subject publishes what the probes measured, and the two are not always the same string — so a run
  * whose rows would disagree with its receipt refuses instead of publishing rows about another build.

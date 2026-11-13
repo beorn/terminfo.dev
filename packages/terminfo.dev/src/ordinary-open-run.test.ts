@@ -17,6 +17,7 @@ import { ORDINARY_OPEN_RECEIPT_KIND, type LiveAncestryReader } from "./ordinary-
 import {
   DISPOSABLE_RECEIPT_ENV,
   ORDINARY_OPEN_RECEIPT_ENV,
+  assertOneProofPerRun,
   assertOrdinaryOpenVersionBound,
   ordinaryOpenReceiptPath,
   ordinaryOpenRecord,
@@ -340,4 +341,14 @@ test("the rows must publish the version the receipt bound", async () => {
     /publishes app version 3.5.15, and the ordinary-open receipt bound 3.5.14/,
   )
   expect(() => assertOrdinaryOpenVersionBound(resolved, undefined)).toThrow(/publishes app version \(none\)/)
+})
+
+test("an owned terminal and an ordinary-open receipt never share a run", () => {
+  expect(() => assertOneProofPerRun(false, "process")).not.toThrow()
+  expect(() => assertOneProofPerRun(false, undefined)).not.toThrow()
+  expect(() => assertOneProofPerRun(true, undefined)).not.toThrow()
+  expect(() => assertOneProofPerRun(true, "process")).toThrow(
+    /TERMINFO_ORDINARY_OPEN_RECEIPT is set on a run that owns its terminal \(process\)/,
+  )
+  expect(() => assertOneProofPerRun(true, "windowsHosted")).toThrow(/owns its terminal \(windowsHosted\)/)
 })

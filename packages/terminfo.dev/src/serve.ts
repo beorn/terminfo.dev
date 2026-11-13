@@ -75,7 +75,7 @@ import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
 import {
-  ORDINARY_OPEN_RECEIPT_ENV,
+  assertOneProofPerRun,
   assertOrdinaryOpenVersionBound,
   ordinaryOpenReceiptPath,
   ordinaryOpenRecord,
@@ -1212,12 +1212,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // A person's own window (@cto 2026-11-13 PLAN GO, F3): one proof per run, so an owned terminal and an
               // ordinary-open receipt refuse together instead of OR-ing two ownership claims into one artifact.
               const ordinaryOpenReceipt = ordinaryOpenReceiptPath()
-              if (ordinaryOpenReceipt !== undefined && ownedTerminal) {
-                throw new Error(
-                  `${ORDINARY_OPEN_RECEIPT_ENV} is set on a run that owns its terminal (${kind}): an owned run and ` +
-                    "an ordinary-open receipt are different proofs; set exactly one",
-                )
-              }
+              assertOneProofPerRun(ordinaryOpenReceipt !== undefined, ownedTerminal ? kind : undefined)
               if (ordinaryOpenReceipt !== undefined) {
                 // The version bound here is what the run knows before its first probe; the subject below publishes
                 // what the probes measured, and `assertOrdinaryOpenVersionBound` refuses if the two disagree.
