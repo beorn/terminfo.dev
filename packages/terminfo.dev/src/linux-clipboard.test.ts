@@ -522,6 +522,7 @@ let kittyRefused = false, kittyReads = 0
 let weztermRefused = false, weztermReads = 0
 let cwdActive = false, cwd = "file:///Users/private-person/secret-project", cwdText = ""
 let cwdLost = false, loseCwdOwnerAfterWrite = false, cwdWrites = 0
+let weztermCliVersion = "0-unstable-2026-10-10"
 let xpropReads = 0, iconFault = null, failIconCleanup = false
 let nativeTitle = "native original title"
 let iconProperties = {
@@ -586,7 +587,7 @@ try {
   mock.module("node:child_process", () => ({ ...realChildProcess,
     spawnSync(file, args, options) {
       if (file === join(dir, "wezterm")) {
-        if (args[0] === "--version") return { status: 0, stdout: "wezterm 0-unstable-2026-10-10", stderr: "" }
+        if (args[0] === "--version") return { status: 0, stdout: "wezterm " + weztermCliVersion, stderr: "" }
         weztermReads++
         if (cwdActive) {
           assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
@@ -836,6 +837,8 @@ try {
     // Reader-only tests miss registration: this real owner fixture must reach the WezTerm callback
     // despite foreign KITTY_* variables and preserve physical blank history rows without an offset.
     process.env.TERMINFO_TARGET_ID = "wezterm"
+    process.env.TERMINFO_RUN_ID = launch
+    process.env.TERMINFO_TARGET_VERSION = "0-unstable-2026-10-10"
     process.env.WEZTERM_UNIX_SOCKET = join(dir, "wezterm.sock")
     process.env.WEZTERM_PANE = "17"
     const weztermOwner = await factory(process.stdout, "1".repeat(32))
@@ -902,6 +905,22 @@ try {
       assert.equal(cwd, cwdInitial, "restore must keep the exact initial public URI")
       assert.equal(cwdWrites, 4)
       assert.equal(JSON.stringify(reading).includes("private-person"), false)
+      // An owned process alone cannot widen the reviewed version or borrow the launch's identity.
+      for (const [reported, launched] of [["unreviewed-version", "0-unstable-2026-10-10"], ["0-unstable-2026-10-10", "unreviewed-version"]]) {
+        weztermCliVersion = reported
+        process.env.TERMINFO_TARGET_VERSION = launched
+        const wrongVersion = await factory(process.stdout, "4".repeat(32))
+        const before = weztermReads
+        const refused = await wrongVersion.readAppSemanticState("extensions.osc7-cwd", () => {
+          throw new Error("unreviewed CWD used the publishable writer")
+        })
+        assert.equal(refused.status, "invalid", JSON.stringify(refused))
+        assert.equal(weztermReads, before, "unreviewed or mismatched versions must issue no pane command")
+        assert.equal(cwdWrites, 4)
+        await wrongVersion.dispose()
+      }
+      weztermCliVersion = "0-unstable-2026-10-10"
+      process.env.TERMINFO_TARGET_VERSION = weztermCliVersion
       loseCwdOwnerAfterWrite = true
       const before = weztermReads
       await assert.rejects(weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {

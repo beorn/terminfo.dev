@@ -307,6 +307,34 @@ test("WezTerm CWD keeps its initial home URI private while the registered callba
   }
 })
 
+// Failed first reads still publish a private evidence reference; its artifact must exist and name
+// the actual failure without exposing host paths in the public result or issuing any stimulus.
+test("WezTerm CWD retains an initial owned-read failure privately before any write", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-first-read-"))
+  const diagnostic = "owned pane missing cwd at file:///Users/private-person/secret-project"
+  try {
+    const reading = await readWezTermCwd({
+      runId: "a".repeat(32),
+      captureDirectory: directory,
+      write() {
+        throw new Error("stimulus before initial directory")
+      },
+      readPane: async () => {
+        throw new Error(diagnostic)
+      },
+      readText: async () => {
+        throw new Error("text read before initial directory")
+      },
+    })
+    expect(reading.status).toBe("invalid")
+    expect(JSON.stringify(reading)).not.toContain("private-person")
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(diagnostic)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // A positive callback cannot detect an inert command taking effect or an unqualified CWD read.
 // These controls must remain unresolved, including a terminal that ignores only the target.
 test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected", "serialized-control"])(

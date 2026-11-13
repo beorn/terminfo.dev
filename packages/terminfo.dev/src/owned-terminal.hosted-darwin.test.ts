@@ -260,7 +260,20 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
 
 // The pure CWD fixture cannot prove the hosted owner installs the port, brackets CLI calls, or keeps
 // restoration off the publishable writer. Exercise the actual owner with only OS actions supplied.
-test.each([false, true])("hosted WezTerm CWD uses its owned private port; owner loss=%s", (loseOwner) => {
+test.each([
+  "steady",
+  "lost-owner",
+  "unreviewed-version",
+  "foreign-version",
+  "foreign-run",
+  "mux-environment",
+  "missing-cwd",
+  "duplicate-pane",
+  "unsafe-uri",
+  "wrong-pane",
+  "malformed-json",
+])("hosted WezTerm CWD uses its owned private port; mode=%s", (mode) => {
+  const loseOwner = mode === "lost-owner"
   const directory = mkdtempSync(join(tmpdir(), "terminfo-owned-cwd-"))
   directories.push(directory)
   const script = `
@@ -275,6 +288,9 @@ test.each([false, true])("hosted WezTerm CWD uses its owned private port; owner 
     const socket = "/private/owned/wezterm.sock"
     process.env.WEZTERM_PANE = "0"
     process.env.WEZTERM_UNIX_SOCKET = socket
+    process.env.TERMINFO_RUN_ID = ${JSON.stringify((mode === "foreign-run" ? "c" : "b").repeat(32))}
+    process.env.TERMINFO_TARGET_VERSION = ${JSON.stringify(mode === "foreign-version" ? "unreviewed-version" : "20240203-110809-5046fc22")}
+    process.env.TERMINFO_MUX_KIND = ${JSON.stringify(mode === "mux-environment" ? "tmux" : "")}
     process.env.TERMINFO_CAPTURE_DIRECTORY = ${JSON.stringify(directory)}
     let appPid = 4242, cwd = "file:///Users/private-person/secret-project", text = "", writes = 0, reads = 0
     const initial = cwd
@@ -309,9 +325,13 @@ test.each([false, true])("hosted WezTerm CWD uses its owned private port; owner 
       spawnSync: (file, args) => {
         if (String(file).endsWith("lsof")) return { status: 0, stdout: "n" + socket + "\\n", stderr: "" }
         assert.equal(String(file), cli)
-        if (args[0] === "--version") return { status: 0, stdout: "wezterm 20240203-110809-5046fc22", stderr: "" }
+        if (args[0] === "--version") return { status: 0, stdout: ${JSON.stringify(mode === "unreviewed-version" ? "wezterm unreviewed-version" : "wezterm 20240203-110809-5046fc22")}, stderr: "" }
         reads++
-        if (args.includes("list")) return { status: 0, stdout: JSON.stringify([{ pane_id: 0, tty_name: "/dev/ttys004", cwd }]), stderr: "" }
+        if (args.includes("list")) {
+          const row = { pane_id: ${mode === "wrong-pane" ? 9 : 0}, tty_name: "/dev/ttys004",
+            cwd: ${mode === "missing-cwd" ? "undefined" : mode === "unsafe-uri" ? '"file:///unsafe\\x07directory"' : "cwd"} }
+          return { status: 0, stdout: ${mode === "malformed-json" ? '"not JSON"' : `JSON.stringify([row${mode === "duplicate-pane" ? ", row" : ""}])`}, stderr: "" }
+        }
         assert.ok(args.includes("get-text"))
         return { status: 0, stdout: Buffer.from(text + "\\n".repeat(24)), stderr: Buffer.alloc(0) }
       }
@@ -333,7 +353,11 @@ test.each([false, true])("hosted WezTerm CWD uses its owned private port; owner 
     assert.equal(typeof owner.readAppSemanticState, "function", "hosted owner must install the CWD reader")
     const result = await owner.readAppSemanticState("extensions.osc7-cwd", () => { throw new Error("public writer leaked restoration") })
       .then((value) => value, (error) => ({ status: "run-error", reason: error.message }))
-    if (${loseOwner}) {
+    if (${mode !== "steady" && mode !== "lost-owner"}) {
+      assert.equal(result.status, "invalid", JSON.stringify(result))
+      assert.equal(writes, 0, "an unqualified reader must not mutate the pane")
+      assert.equal(reads, ${["unreviewed-version", "foreign-version", "foreign-run", "mux-environment"].includes(mode) ? 0 : 1})
+    } else if (${loseOwner}) {
       assert.notEqual(result.status, "measured")
       assert.match(result.reason, /ownership|restoration|ancestor/i)
       assert.equal(reads, 1, "no CLI command follows ownership loss")

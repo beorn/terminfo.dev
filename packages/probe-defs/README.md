@@ -65,10 +65,14 @@ refusal can establish only Unsupported, takes precedence over a no-setup fallbac
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
 WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
+The measured CLI version and launch version must match the reviewed Linux
+`0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
 Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
 and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
 restoration of the initial URI. The private capture retains the initial/restored values and feed/text
 trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
+An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
+is published only after the write succeeds, and retention failure is a named collector error.
 The restoration writer bypasses the publishable call log. Failed restoration throws through the
 collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
 neither process-CWD inference nor URI normalization supplies an answer.

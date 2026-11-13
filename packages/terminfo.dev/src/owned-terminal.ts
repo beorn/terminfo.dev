@@ -1998,6 +1998,20 @@ export async function createOwnedTerminal(options: {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
           }
           if (ownedAppId === "wezterm" && featureId === "extensions.osc7-cwd") {
+            const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
+            const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
+            if (
+              cliVersion !== reviewedVersion ||
+              process.env.TERMINFO_TARGET_VERSION !== reviewedVersion ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              muxAttachmentProof !== undefined ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "WezTerm OSC7 has no reviewed CLI version bound to this App launch",
+              }
+            }
             const socket = process.env.WEZTERM_UNIX_SOCKET
             const pane = process.env.WEZTERM_PANE
             const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY

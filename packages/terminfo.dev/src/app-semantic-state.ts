@@ -1349,19 +1349,26 @@ export async function readWezTermCwd(input: {
   const phases: object[] = []
   const privateRecord: { initial?: string; restored?: string; phases: object[] } = { phases }
   const detail: {
-    privateEvidence: string
+    privateEvidence?: string
     initialProtocolPresence: string
     initialSha256?: string
     restoredSha256?: string
     restoredEqual?: boolean
-  } = { privateEvidence: artifact, initialProtocolPresence: "unreported" }
-  const retain = () =>
-    writeFileSync(join(input.captureDirectory, artifact), JSON.stringify(privateRecord), { mode: 0o600 })
+  } = { initialProtocolPresence: "unreported" }
+  const retain = () => {
+    try {
+      writeFileSync(join(input.captureDirectory, artifact), JSON.stringify(privateRecord), { mode: 0o600 })
+      detail.privateEvidence = artifact
+    } catch (error) {
+      throw new Error("WezTerm OSC7 private evidence retention failed", { cause: error })
+    }
+  }
   const digest = (value: string) => createHash("sha256").update(value).digest("hex")
   const control = `file:///terminfo-control-${nonce}`
   const target = `file:///terminfo-target-${nonce}`
   let initial: string | undefined
   let mutated = false
+  let privateReady = false
   let serial = 0
   let phase = "setup"
   const sample = async (name: string, uri: string, command: "7" | "77") => {
@@ -1377,6 +1384,8 @@ export async function readWezTermCwd(input: {
     if (!/^[0-9a-f]{32}$/.test(input.runId) || !isAbsolute(input.captureDirectory)) {
       throw new Error("WezTerm OSC7 has no owned run/private capture directory")
     }
+    privateReady = true
+    retain()
     for (const path of [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]) {
       try {
         statSync(path)
@@ -1386,6 +1395,7 @@ export async function readWezTermCwd(input: {
       }
       throw new Error("WezTerm OSC7 control paths are not fresh nonexistent paths")
     }
+    phase = "initial owned directory"
     initial = await input.readPane()
     privateRecord.initial = initial
     if (
@@ -1448,7 +1458,7 @@ export async function readWezTermCwd(input: {
         throw new Error("WezTerm OSC7 restoration failed: the pane's reported directory was left changed")
       }
     }
-    if (initial !== undefined && isAbsolute(input.captureDirectory)) retain()
+    if (privateReady) retain()
   }
 }
 
