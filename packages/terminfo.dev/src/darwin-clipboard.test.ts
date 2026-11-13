@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import type { ProbeCallbackResult } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipboard.ts"
@@ -297,4 +298,162 @@ test("the shared-machine and disposable facts cannot be claimed together", async
       run: async () => "",
     }),
   ).rejects.toThrow(/disposableHost and ownedHost/)
+})
+
+// @cto 2026-11-13: adding the ordinary-open digest mode must not move a single byte of what the two existing
+// configurations publish. `record` still names the sha256 and the length of foreign text; `omit` still names only
+// the length, because an owned host's pasteboard text is shared with everything else on that machine.
+test("the two existing foreign-read digest modes publish exactly what they published before", async () => {
+  const foreign = "0123456789ab"
+  const expected = {
+    record: `Owned clipboard baseline changed before callback: read sha256 ${createHash("sha256").update(foreign).digest("hex")} length 12`,
+    omit: "Owned clipboard baseline changed before callback: read length 12",
+  } as const
+  for (const mode of ["record", "omit"] as const) {
+    let reads = 0
+    let copied: string | undefined
+    const run: DarwinCommand = async (file, _args, stdin) => {
+      if (file.endsWith("pbpaste")) {
+        reads += 1
+        // The pre-flight read sees foreign text; everything before and after it sees the baseline.
+        if (reads === (mode === "record" ? 2 : 1)) return `${foreign}\n`
+        return `${copied ?? "hosted baseline"}\n`
+      }
+      if (file.endsWith("pbcopy")) {
+        copied = stdin ?? ""
+        return ""
+      }
+      throw new Error(`unexpected ${file}`)
+    }
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "iTerm2",
+      appId: "iterm2",
+      titleRead: "none",
+      ...(mode === "omit" ? { ownedHost: true } : {}),
+      assertOwned: async () => {},
+      run,
+    })
+    await expect(
+      adapter.withClipboardFixture(
+        async () => ({ pass: true }) as ProbeCallbackResult,
+        () => {},
+        async () => {},
+      ),
+    ).rejects.toThrow(expected[mode])
+    await adapter.dispose()
+  }
+})
+
+// @cto 2026-11-13 F2: pbpaste/pbcopy is a TEXT round trip. A clipboard holding an image, a file or styled text comes
+// back as plain text or not at all, so the run would report a restore it did not perform. The type list is read
+// before anything is written, and a list carrying more than plain text refuses the rows instead.
+test("a person's clipboard with more than plain text refuses the rows, writes nothing, and names no type", async () => {
+  const cases = [
+    { types: "«class utf8», 12, «class RTF », 40, string, 12", names: ["«class RTF »", "RTF"] },
+    { types: "«class PNGf», 4096, «class TIFF», 9000", names: ["«class PNGf»", "«class TIFF»", "PNG", "TIFF"] },
+    { types: "«class furl», 30", names: ["«class furl»", "furl"] },
+  ]
+  for (const { types, names } of cases) {
+    const writes: string[] = []
+    const traces: unknown[] = []
+    const run: DarwinCommand = async (file, _args, stdin) => {
+      if (file.endsWith("pbpaste")) return "baseline\n"
+      if (file.endsWith("osascript")) return types
+      if (file.endsWith("pbcopy")) {
+        writes.push(stdin ?? "")
+        return ""
+      }
+      throw new Error(`unexpected ${file}`)
+    }
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "iTerm2",
+      appId: "iterm2",
+      titleRead: "none",
+      personClipboard: { foreignReadDigest: "absent" },
+      assertOwned: async () => {},
+      run,
+    })
+    const result = await adapter.withClipboardFixture(
+      async () => ({ pass: true }) as ProbeCallbackResult,
+      (event) => traces.push(event),
+      async () => {},
+    )
+    const refusal = result as { pass: boolean; note?: string; tests?: ReadonlyArray<{ status?: string }> }
+    expect(refusal.pass).toBe(false)
+    expect(refusal.note).toContain("the person's clipboard holds content this probe cannot restore")
+    expect(refusal.note).toContain("so nothing was written")
+    expect(refusal.tests?.[0]?.status).toBe("probe-todo")
+    expect(writes).toEqual([])
+    // @cto 2026-11-13: a type name says what the person copied and where from, and a size is a length. Neither may
+    // appear in the published note or in the trace.
+    const published = JSON.stringify({ note: refusal.note, traces })
+    for (const name of names) expect(published).not.toContain(name)
+    expect(published).not.toContain("4096")
+    expect(published).not.toContain("9000")
+  }
+})
+
+test("a person-route type read that fails is a named probe-todo, not a throw out of the fixture", async () => {
+  const writes: string[] = []
+  const run: DarwinCommand = async (file, _args, stdin) => {
+    if (file.endsWith("pbpaste")) return "baseline\n"
+    if (file.endsWith("osascript")) throw new Error("osascript is not allowed assistive access")
+    if (file.endsWith("pbcopy")) {
+      writes.push(stdin ?? "")
+      return ""
+    }
+    throw new Error(`unexpected ${file}`)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "iTerm2",
+    appId: "iterm2",
+    titleRead: "none",
+    personClipboard: { foreignReadDigest: "absent" },
+    assertOwned: async () => {},
+    run,
+  })
+  const result = await adapter.withClipboardFixture(
+    async () => ({ pass: true }) as ProbeCallbackResult,
+    () => {},
+    async () => {},
+  )
+  const refusal = result as { pass: boolean; note?: string; tests?: ReadonlyArray<{ status?: string }> }
+  expect(refusal.pass).toBe(false)
+  expect(refusal.note).toContain("read method unavailable here")
+  expect(refusal.note).toContain("pasteboard type list cannot be read")
+  expect(refusal.tests?.[0]?.status).toBe("probe-todo")
+  expect(writes).toEqual([])
+})
+
+test("a person's clipboard that is plain text, or empty, proceeds and is put back", async () => {
+  for (const types of ["«class utf8», 12, string, 12", ""]) {
+    let pasteboard = "person baseline"
+    const run: DarwinCommand = async (file, _args, stdin) => {
+      if (file.endsWith("pbpaste")) return `${pasteboard}\n`
+      if (file.endsWith("osascript")) return types
+      if (file.endsWith("pbcopy")) {
+        pasteboard = stdin ?? ""
+        return ""
+      }
+      throw new Error(`unexpected ${file}`)
+    }
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "iTerm2",
+      appId: "iterm2",
+      titleRead: "none",
+      personClipboard: { foreignReadDigest: "absent" },
+      assertOwned: async () => {},
+      run,
+    })
+    const result = await adapter.withClipboardFixture(
+      async (fixture) => {
+        await fixture.writeText("probe value")
+        return { pass: true } as ProbeCallbackResult
+      },
+      () => {},
+      async () => {},
+    )
+    expect(result.pass).toBe(true)
+    expect(pasteboard).toBe("person baseline")
+  }
 })
