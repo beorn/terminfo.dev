@@ -432,3 +432,27 @@ test("a sentinel pair that never appears refuses at the read's deadline and stil
   expect(captures).toBe(1)
   expect(painted.writes).toEqual([PAINT, CLEAR])
 })
+
+// 34015, @dev/10 residual: the clause has to reach the basis this read RETURNS, not just the pure
+// function's return. One pixel knocked out of the second witness box is exactly the case a rendered
+// cell produces — an anti-aliased corner or the read's own restored pixel — and it must anchor here
+// and say so, rather than refusing or anchoring silently.
+test("a witness box one pixel short of its area anchors the read and says so in the basis it returns (34015)", async () => {
+  const drawnAt = { x: 2, y: 2 }
+  const frame = windowAt(drawnAt)
+  // Back to the probe's own pattern in b's bottom-right pixel: 3 of the box's 4 pixels carry the colour.
+  const boxX = drawnAt.x + (pair.b.col - 1) * 2
+  const boxY = drawnAt.y + (pair.b.row - 1) * 2
+  frame.rgba.set([1, 2, 90, 255], ((boxY + 1) * 16 + (boxX + 1)) * 4)
+  const origin = await readThroughSentinel({
+    source: source().source,
+    prePaint: async () => before(drawnAt),
+    capture: async (resolve) => resolve({ frame, pixelGeometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    deadline: Date.now() + 1_000,
+  })
+  expect(origin.origin).toEqual(drawnAt)
+  expect(origin.basis).toContain("sentinel box accepted short of its area (3 of 4 px)")
+})

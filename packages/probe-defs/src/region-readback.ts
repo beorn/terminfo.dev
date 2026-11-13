@@ -499,6 +499,17 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 export const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * How many pixels a correctly sized sentinel box may be SHORT of its area (34015). A rendered cell is
+ * not a filled rectangle: an anti-aliased corner or the read's own restored pixel leaves a couple of
+ * pixels inside a box that is otherwise exactly the cell. The number is the same slack the edges
+ * already get, named ONCE so the size test and the fill test cannot drift apart. It is used as BOTH
+ * an edge length (how far a box may sit short on one axis) and a pixel count (how far its fill may
+ * sit short of width x height) — the same "one blended line" quantity measured two ways, which is
+ * only coherent because the constant is that one line's size.
+ */
+export const SENTINEL_BOX_SLACK_PX = 2 * CELL_EDGE_TOLERANCE_PX
+
+/**
  * Whether a located sentinel is one solid cell block of the expected size. The ONE spelling of that
  * test: the post-hoc layout check and the per-read origin derivation must agree, or a frame one of
  * them accepts is a frame the other refuses. Returns the clause, or undefined when it fits.
@@ -507,15 +518,46 @@ export function sentinelBlockRefusal(
   located: { box: { width: number; height: number }; pixels: number },
   cell: { width: number; height: number },
 ): string | undefined {
-  const fits = (size: number, expected: number) => size <= expected && size >= expected - 2 * CELL_EDGE_TOLERANCE_PX
+  const fits = (size: number, expected: number) => size <= expected && size >= expected - SENTINEL_BOX_SLACK_PX
+  const area = located.box.width * located.box.height
   if (
-    located.pixels !== located.box.width * located.box.height ||
+    located.pixels > area ||
+    located.pixels < area - SENTINEL_BOX_SLACK_PX ||
     !fits(located.box.width, cell.width) ||
     !fits(located.box.height, cell.height)
   ) {
     return `${located.pixels} px in a ${located.box.width}x${located.box.height} box, against a ${cell.width}x${cell.height} cell`
   }
   return undefined
+}
+
+/**
+ * The pixels a correctly sized sentinel box is short of its area, when it is short at all (34015). An
+ * accepted box that leaned on the slack says so on the row, so a reader can count how many reads did
+ * rather than infer it from a silence; a box that fills its area returns undefined.
+ */
+export function sentinelBoxDeficit(located: {
+  box: { width: number; height: number }
+  pixels: number
+}): { pixels: number; area: number; short: number } | undefined {
+  const area = located.box.width * located.box.height
+  const short = area - located.pixels
+  return short > 0 ? { pixels: located.pixels, area, short } : undefined
+}
+
+/**
+ * What a read says when a box it ACCEPTED was short of its area (34015): the pixel count and the area
+ * of every such box, in the read's own basis, which travels on the frame — so a reader can count how
+ * many reads leaned on the slack instead of inferring it from a silence. Empty when every box fills.
+ */
+export function sentinelFillClause(
+  boxes: ReadonlyArray<{ box: { width: number; height: number }; pixels: number }>,
+): string {
+  const short = boxes
+    .map((entry) => sentinelBoxDeficit(entry))
+    .filter((entry): entry is { pixels: number; area: number; short: number } => entry !== undefined)
+    .map((entry) => `${entry.pixels} of ${entry.area} px`)
+  return short.length === 0 ? "" : `; sentinel box accepted short of its area (${short.join(", ")})`
 }
 
 /**
@@ -779,8 +821,10 @@ export async function layoutSinceCalibration(check: {
     return `probe text not in view: calibration's sentinel painted at ${where} is nowhere in the window within ${timeoutMs} ms`
   }
   const { box, pixels } = located
-  const fits = (size: number, cellSize: number) => size <= cellSize && size >= cellSize - 2 * CELL_EDGE_TOLERANCE_PX
-  if (pixels !== box.width * box.height || !fits(box.width, crop.width) || !fits(box.height, crop.height)) {
+  // The ONE spelling of the block test (its own comment says so): the post-hoc layout check and the
+  // per-read derivation must agree, or a frame one accepts is a frame the other refuses (@dev/10).
+  const blockRefusal = sentinelBlockRefusal({ box, pixels }, crop)
+  if (blockRefusal !== undefined) {
     return `sentinel found but not as one cell block: ${pixels} px in a ${box.width}x${box.height} box at ${box.x},${box.y}, against a ${crop.width}x${crop.height} cell painted at ${where}`
   }
   if (
