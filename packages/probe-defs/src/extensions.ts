@@ -6097,7 +6097,12 @@ const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
  */
 const OSC22_CONTROL_QUERY = "\x1b[6n"
 const OSC22_CONTROL_REPLY = /^\x1b\[\d+;\d+R$/u
-/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+/**
+ * A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). Kept as the
+ * one written home of this sentence: 15 stored probe records already carry it as their
+ * extensions.osc22-pointer reason (15 of the 189 records under content/, parsed 2026-11-13; each writes it
+ * twice, as the row's reason and its criterion's). No code reads this export by name.
+ */
 export const OSC22_SILENT_TERMINAL =
   "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
 /** Control answered, shape query silent: this app offers no read method for the shape here (@cto 91ec1211). */
