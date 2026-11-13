@@ -101,6 +101,25 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
     "packages/xtermjs/src/backend.ts": "72dc827b2026af7736de722f7ff986a04f3fe883",
   },
+  // These four backends were rebuilt at Termless 74b5c9c8 (#33939): each now declares
+  // adapter-sources, osc-metadata and paste-encoding, and reply-delivery is gone. The cohorts above
+  // stay declared so a run recorded before that pin still binds one.
+  xtermjsAt74b5c9c8: {
+    "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
+    "packages/xtermjs/src/backend.ts": "82aac9a4eba3e3c013c587081853d0ddff4828db",
+  },
+  vt100At74b5c9c8: {
+    "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+    "packages/vt100/src/backend.ts": "0368b2926f6bb8007a610a0a0e19f4f0cd86030e",
+  },
+  vt220At74b5c9c8: {
+    "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+    "packages/vt220/src/backend.ts": "1bbbbc6f44f99171bddd08d0a0731199be84684e",
+  },
+  vtermAt74b5c9c8: {
+    "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+    "packages/vterm/src/backend.ts": "57f73e60c2a52c16147a6000b7c823be66afbd95",
+  },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
     // Historical cohort retained for existing API/reply and source-review consumers.

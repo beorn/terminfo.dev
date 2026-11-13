@@ -48,6 +48,7 @@ import {
   type InputFixture,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
+import { readThroughSentinel } from "./sentinel-read.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import {
@@ -756,6 +757,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
+      /** The source whose next read anchors its crop on the sentinel it paints (33000). */
+      let pixelSource: TermProbeSource | undefined
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
@@ -763,16 +766,33 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         textCapture = false
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
-          const origin = assertCalibratedCaptureGeometry(textOrigin, checkpoint, platform)
-          if (!origin) {
+          const calibrated = assertCalibratedCaptureGeometry(textOrigin, checkpoint, platform)
+          if (!calibrated) {
             const result = await adapter.captureRaw(checkpoint)
             return result.result
           }
-          return adapter.capture(checkpoint, origin)
+          const sentinel = calibrated.sentinel
+          const regions = [checkpoint.cells, checkpoint.controlCells].filter(
+            (region): region is CaptureCells => region !== undefined,
+          )
+          const source = pixelSource
+          if (sentinel === undefined || source === undefined || regions.length === 0) {
+            return adapter.capture(checkpoint, calibrated)
+          }
+          // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
+          return readThroughSentinel({
+            source,
+            capture: (resolve) => adapter.capture(checkpoint, resolve),
+            label: checkpoint.label,
+            sentinel,
+            regions,
+            deadline: Date.now() + DEFAULT_TIMEOUT_MS,
+          })
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           textOrigin = undefined
           calibrationError = undefined
+          pixelSource = probeSource
           probeSource.captureGeometry = undefined
           probeSource.captureGeometryRefusal = undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
