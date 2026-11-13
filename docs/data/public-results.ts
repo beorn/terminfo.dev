@@ -227,13 +227,17 @@ export interface PublicFeatureGradeSource {
  * grades applied. `from` names the contexts behind each cell so a page can apply rule 4; a cell whose
  * grade came from a joined context carries that context's evidence rather than the primary's.
  */
-function composeJoinedSummary(
+export function composeJoinedSummary(
   primary: PublicContextSummary,
   app: JoinedApp,
   contexts: Record<string, PublicContextSummary>,
 ): PublicContextSummary {
   if (app.contexts.length < 2) return primary
   const featureResults = { ...primary.featureResults }
+  // A cell that carries another context's evidence names that context's run, so the summary carries its
+  // receipt too: a reader resolves every cell as `sources[cell.origin.runId]` (docs/api.md, 33979).
+  // `contributingRunIds` stays the primary's: a page matches its analysis entry on exactly that list.
+  const sources = { ...primary.sources }
   for (const [featureId, cell] of Object.entries(app.cells)) {
     const own = primary.featureResults[featureId]
     if (!own) continue
@@ -243,6 +247,13 @@ function composeJoinedSummary(
     const primaryDecided = cell.from.some((grade) => grade.context === primary.contextKey)
     const source = primaryDecided ? undefined : cell.from.find((grade) => grade.context !== primary.contextKey)
     const other = source ? contexts[source.context]?.featureResults[featureId] : undefined
+    if (source && other && !(other.origin.runId in sources)) {
+      const receipt = contexts[source.context]?.sources[other.origin.runId]
+      if (!receipt) {
+        throw new Error(`Joined context ${source.context} lacks source ${other.origin.runId} for ${featureId}`)
+      }
+      sources[other.origin.runId] = receipt
+    }
     featureResults[featureId] = {
       ...(other ?? own),
       status: cell.status,
@@ -257,6 +268,7 @@ function composeJoinedSummary(
   return {
     ...primary,
     featureResults,
+    sources,
     contexts: app.contexts,
     counts: { ...app.counts },
     score: { supported: app.counts.supported, all: primary.score.all },
