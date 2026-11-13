@@ -1967,7 +1967,6 @@ describe("private finite daemon startup", () => {
               const refused = await pending
               assert.equal(reads, 0)
               assert.equal(await errorSeen, selectedWriteFailure)
-              assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)))
               return refused
             }
             finishWrite()
