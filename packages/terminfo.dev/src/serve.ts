@@ -802,6 +802,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             label: checkpoint.label,
             sentinel,
             regions,
+            ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })
         }
