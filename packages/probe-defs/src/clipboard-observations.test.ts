@@ -1470,6 +1470,23 @@ describe("OSC 52 read leg control and profile naming", () => {
     expect(result.observation?.outcome).not.toBe("unsupported")
   })
 
+  test("a read-granting profile grades silence unsupported even with no pinned default, and names the profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "allow", setting: "ghostty --clipboard-read=allow" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toContain("allow: ghostty --clipboard-read=allow")
+  })
+
   test("an unpinned default grades the same silence as probe-todo naming the missing citation", async () => {
     const result = await readCallback()(
       termSource({
