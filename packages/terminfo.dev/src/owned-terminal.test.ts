@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { parseOwnedAppOwnerAssertion, parseTerminalAppOwner } from "./owned-terminal.ts"
+import { createOwnedTerminal, parseOwnedAppOwnerAssertion, parseTerminalAppOwner } from "./owned-terminal.ts"
 
 const valid = {
   asserter: "terminfo-admin",
@@ -69,4 +69,38 @@ test("owned-Mac app owner assertion has one strict authenticated-request shape",
   ]) {
     expect(() => parseOwnedAppOwnerAssertion(assertion)).toThrow(/Invalid owned-Mac app owner assertion/)
   }
+})
+
+test("the owned-terminal grant refuses two owner claims, including ownedApp", async () => {
+  const run = "c".repeat(32)
+  await expect(
+    createOwnedTerminal({
+      captureRunId: run,
+      out: process.stdout,
+      expectedLaunchRunId: run,
+      ownedApp: {
+        asserter: "terminfo-admin",
+        launchRunId: run,
+        workerPid: process.pid,
+        appId: "ghostty",
+        ownerPid: 4242,
+        windowId: 77,
+        executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        marker: { flag: "--owned-mac-run", value: run },
+        tty: "/dev/ttys004",
+        intendedVersion: "1.2.3",
+      },
+      process: {
+        asserter: "terminfo-admin",
+        launchRunId: run,
+        workerPid: process.pid,
+        provider: "cli-process",
+        ownerPid: 4242,
+        executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        basis: { kind: "marker", marker: { flag: "--owned-mac-run", value: run } },
+        tty: "/dev/ttys004",
+        intendedVersion: "1.2.3",
+      },
+    }),
+  ).rejects.toThrow(/exactly one platform receipt/)
 })

@@ -833,7 +833,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(chromeBand ? { chromeBand } : {}),
               collectorLaunched:
                 kind === "darwinHosted" ||
-                (isDarwinClaimKind(kind) && process.platform === "darwin") ||
+                // NOT terminalApp: that arm's value is unchanged by this head. The collector launches the
+                // owned app and the process arm; Terminal.app is asserted, not launched, here (@cto fa402ac27).
+                ((kind === "process" || kind === "ownedApp") && process.platform === "darwin") ||
                 (process.platform === "linux" && kind === "linux"),
               captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
             })

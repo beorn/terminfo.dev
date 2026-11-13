@@ -343,11 +343,14 @@ export function assertOwnedAppOwner(
  * compare the proof entry's bundleId against.
  */
 export function readBundleIdForExecutable(executablePath: string): string {
-  const at = executablePath.indexOf(".app/")
+  // The pid match runs on the realpath (findOwnerPids), so the bundle read must too: a symlinked or
+  // relative claim path would otherwise describe a different file than the one whose pid was proved.
+  const real = realpathSync(executablePath)
+  const at = real.indexOf(".app/")
   if (at < 0) {
-    throw new Error(`owned-app owner assertion: ${executablePath} is not inside a .app bundle`)
+    throw new Error(`owned-app owner assertion: ${real} is not inside a .app bundle`)
   }
-  const plist = `${executablePath.slice(0, at + ".app".length)}/Contents/Info.plist`
+  const plist = `${real.slice(0, at + ".app".length)}/Contents/Info.plist`
   const result = spawnSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", plist], { encoding: "utf8" })
   const bundleId = (result.stdout ?? "").trim()
   if (result.status !== 0 || bundleId === "") {
