@@ -188,7 +188,12 @@ export interface GeometryCorroboration {
   cols?: number
 }
 
-function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
+/**
+ * The one app-selection rule: ids resolve against the catalogue or the run refuses by name. Exported so a
+ * caller that is about to stage source onto another host can apply the SAME rule before it copies anything
+ * (@cto 737a99e3 condition 2: same error text, never a second validator).
+ */
+export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
   const resolved = resolveProbeIds(ids ?? expected.map((probe) => probe.id))
   if (resolved.result === "invalid") {
@@ -1253,6 +1258,7 @@ export async function runProbeBatch(
           name: "DeclaredUntestableCollision",
           message: `Declared-untestable collision for ${probe.id}: ${declaration}; ${refusedClaimEvidence(result)} is retained and the declaration is refused`,
         }
+        batch.rawReplies[`${probe.id}.declarationCollision`] = JSON.stringify(batch.ungradedDiagnostics[probe.id])
       } else if (declaration && unresolved) {
         const response = result.response
         result = {
