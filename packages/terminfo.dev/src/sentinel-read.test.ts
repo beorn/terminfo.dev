@@ -198,7 +198,7 @@ test("a lone sentinel-coloured patch cannot stand in for the pair, and refuses b
     }),
   ).rejects.toThrow(
     new RegExp(
-      `^cells 1,1-2,2: other change during this read at ${WHERE}: 1 disconnected regions changed between the frames it compared — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
+      `^cells 1,1-2,2: other change during this read at ${WHERE}: one disconnected region changed between the frames it compared — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
     ),
   )
   // Both cells are still restored.
@@ -562,4 +562,142 @@ test("a paint that covered more than one cell stops the read and restores what i
     }),
   ).rejects.toBeInstanceOf(SentinelPaintWiderThanCell)
   expect(painted.writes).toEqual([paintOf(picked, CURSOR), clearOf(picked, CURSOR)])
+})
+
+// @dev/15's peer read of a887dda73: a terminal that really draws U+2588 wide widens BOTH cells, and
+// the diagonal pair the chooser prefers then touches — the lower block's first pixel sits directly
+// under the upper block's last — so the difference yields ONE region. Judging the region COUNT first
+// read that as "other change", retried to the deadline, and never threw the wide refusal, so the
+// sentinel was never retired for the run. Every wide region is the evidence, and it is available
+// before the count means anything.
+test("a real wide U+2588, widening both painted cells, is refused before the count can misname it (33981)", async () => {
+  const blank: CapturedFrame = { width: 16, height: 12, rgba: new Uint8Array(16 * 12 * 4).fill(255) }
+  const picked = sentinelCellsInFrame({
+    ...blank,
+    reading: { x: 0, y: 0 },
+    cell: { width: 2, height: 2 },
+    grid,
+    regions: [cells],
+  })
+  const { a, b } = picked
+  const frame: CapturedFrame = { ...blank, rgba: Uint8Array.from(blank.rgba) }
+  for (const cell of [a, b]) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 4; dx += 1) {
+        frame.rgba.set([...sentinel.rgb, 255], ((cell.row - 1) * 2 + dy) * 16 * 4 + ((cell.col - 1) * 2 + dx) * 4)
+      }
+    }
+  }
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => blank,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toBeInstanceOf(SentinelPaintWiderThanCell)
+  // One paint and one clear: the refusal is reached on the first attempt, not after retrying.
+  expect(painted.writes).toEqual([paintOf(picked, CURSOR), clearOf(picked, CURSOR)])
+})
+
+// @dev/15's second finding on a887dda73, non-blocking then and guarded here: a space written in
+// current attributes is visible under reverse video on a screen that was not drawn reversed, so a
+// retry's clear can leave its evidence behind. Retrying would then paint a second visible pair
+// beside the first. The residue is measurable before the second paint, so the read refuses by name
+// instead of scattering pairs across the probe's screen.
+test("a retry whose clear did not take refuses instead of painting a second pair (33981)", async () => {
+  const painted = source()
+  let prepaint = 0
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => {
+        prepaint += 1
+        // The first frame is the window before any paint; the retry's frame still shows the pair,
+        // which is exactly what a clear that did not take looks like.
+        return prepaint === 1 ? before({ x: 0, y: 0 }) : windowAt({ x: 0, y: 0 })
+      },
+      // The first capture shows no paint at all, so the read retries, as it would on a slow terminal.
+      capture: async (resolve) => resolve({ frame: before({ x: 0, y: 0 }), pixelGeometry }),
+      label: WHERE,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      cursorPosition: cursorAt,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(/clear of this read's paint did not take/)
+  // The refusal throws out of the retry, and the read's contract still clears once more on the way
+  // out, so the residue is written back before the error reaches the caller.
+  expect(painted.writes).toEqual([PAINT, CLEAR, CLEAR])
+})
+
+// @dev/15's blocking finding on 52da0fd43: the 33000 path exists because a frame can render one
+// capture late, and the paint before the clear does exactly that. A guard that judged the first
+// post-clear frame refused a read that anchored fine before it existed. The residue is now waited
+// out: only one that persists to the deadline refuses.
+test("a clear that renders one capture late is waited out, not refused (33981, 33000)", async () => {
+  const painted = source()
+  let prepaint = 0
+  let capturecalls = 0
+  const read = await readThroughSentinel({
+    source: painted.source,
+    prePaint: async () => {
+      prepaint += 1
+      // The second pre-paint frame is the late one: it still shows the pair after the clear.
+      return prepaint === 2 ? windowAt({ x: 0, y: 0 }) : before({ x: 0, y: 0 })
+    },
+    capture: async (resolve) => {
+      capturecalls += 1
+      // The first capture shows no paint at all, so the read retries; the second shows the pair.
+      return resolve({
+        frame: capturecalls === 1 ? before({ x: 0, y: 0 }) : windowAt({ x: 0, y: 0 }),
+        pixelGeometry,
+      })
+    },
+    label: WHERE,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    cursorPosition: cursorAt,
+    deadline: Date.now() + 1_000,
+  })
+  expect(read.origin).toEqual({ x: 0, y: 0 })
+  expect(painted.writes).toEqual([PAINT, CLEAR, PAINT, CLEAR])
+})
+
+// @dev/15's third finding: the wide verdict retires the sentinel for the whole run, so it must rest
+// on a region that reaches a cell this read painted. A wide change elsewhere in the window is a
+// reason to retry — and, at the deadline, a named refusal — never a reason to stop anchoring.
+test("a wide change away from the painted cells stays on the retry path (33981)", async () => {
+  const blank: CapturedFrame = { width: 16, height: 12, rgba: new Uint8Array(16 * 12 * 4).fill(255) }
+  const elsewhere: CapturedFrame = { ...blank, rgba: Uint8Array.from(blank.rgba) }
+  for (let dy = 0; dy < 2; dy += 1) {
+    for (let dx = 0; dx < 8; dx += 1) {
+      elsewhere.rgba.set([...sentinel.rgb, 255], (10 + dy) * 16 * 4 + dx * 4)
+    }
+  }
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => blank,
+      capture: async (resolve) => resolve({ frame: elsewhere, pixelGeometry }),
+      label: WHERE,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      cursorPosition: cursorAt,
+      deadline: Date.now() + 400,
+    }),
+  ).rejects.toThrow(/one disconnected region changed/)
+  // It retried to the deadline — repainting the pair over and over — and never took the wide exit,
+  // which is the whole point: the sentinel stays usable for the rest of the run.
+  expect(painted.writes.length).toBeGreaterThan(2)
 })

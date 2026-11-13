@@ -747,6 +747,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
      */
     let inputInstallFact: string | undefined
+    /**
+     * Why this run stopped anchoring its reads on the painted sentinel, when that happened: the wide
+     * refusal's own message, recorded so the artifact says why every later read took a plain crop
+     * instead of leaving a silent fallback behind (@dev/15 peer read of 52da0fd43).
+     */
+    let sentinelFallbackFact: string | undefined
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
@@ -830,6 +836,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           } catch (error) {
             if (!(error instanceof SentinelPaintWiderThanCell)) throw error
             sentinelUnusable = true
+            sentinelFallbackFact = error.message
             return adapter.capture(checkpoint, calibrated)
           }
         }
@@ -1271,6 +1278,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
               if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
+              if (sentinelFallbackFact) result.rawReplies["collector.sentinelFallback"] = sentinelFallbackFact
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)

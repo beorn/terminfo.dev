@@ -151,8 +151,25 @@ export async function readThroughSentinel<T>(input: {
       .join("; ")
     return regions.length > 8 ? `${spelled}; and ${regions.length - 8} more` : spelled
   }
+  /**
+   * Where a cell sits in these frames, from the witnessed text origin this read was handed. The wide
+   * refusal and the clear's proof both need it before any geometry has been resolved from the picture.
+   */
+  const cellRect = (cell: { row: number; col: number }) => ({
+    x: input.reading.x + (cell.col - 1) * input.cell.width,
+    y: input.reading.y + (cell.row - 1) * input.cell.height,
+    width: input.cell.width,
+    height: input.cell.height,
+  })
+  const overlaps = (
+    one: { x: number; y: number; width: number; height: number },
+    two: { x: number; y: number; width: number; height: number },
+  ) =>
+    one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height
   let before = await input.prePaint()
   chosen = choose(before)
+  /** The pair the previous attempt painted, so a retry can prove that its clear took. */
+  let painted: { a: { row: number; col: number }; b: { row: number; col: number } } | undefined
   const resolve: OriginResolver = ({ frame, pixelGeometry }) => {
     const { a, b } = pair()
     const { regions } = locateChanged(before, frame)
@@ -165,20 +182,51 @@ export async function readThroughSentinel<T>(input: {
     const slack = 2 * CELL_EDGE_TOLERANCE_PX
     const wrong = (reason: string) =>
       new SentinelNotOnFrame(`${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}`)
+    /**
+     * A terminal that draws U+2588 double-width widens BOTH painted cells, and a diagonal pair then
+     * touches: the lower block's first pixel sits directly under the upper block's last, so the flood
+     * fill answers ONE region. Counting first would read that as "other change" and spin to the
+     * deadline, never reaching the wide refusal and never retiring the sentinel for the run
+     * (@dev/15 peer read of a887dda73). Every changed region wider than a cell is the evidence that
+     * the glyph is drawn wide, and that is testable before the count means anything.
+     */
+    const isWide = (region: { box: { width: number; height: number } }) =>
+      region.box.width > size.width + CELL_EDGE_TOLERANCE_PX || region.box.height > size.height + CELL_EDGE_TOLERANCE_PX
+    /**
+     * The wide verdict retires the sentinel for the whole run, so it may only be drawn from a region
+     * that reaches one of the cells this read painted: an unrelated wide change in the window is a
+     * reason to retry, not a reason to give up anchoring (@dev/15 peer read of 52da0fd43).
+     */
+    const atPaintedCell = (region: { box: { x: number; y: number; width: number; height: number } }) =>
+      overlaps(region.box, cellRect(a)) || overlaps(region.box, cellRect(b))
+    if (regions.length <= 2 && regions.every(isWide) && regions.every(atPaintedCell)) {
+      const widest = regions.reduce((grown, region) =>
+        region.box.width * region.box.height > grown.box.width * grown.box.height ? region : grown,
+      )
+      throw new SentinelPaintWiderThanCell(
+        `${input.label}: every region that changed is wider than one cell — ${
+          regions.length === 1
+            ? `one changed region, ${widest.pixels} px in a ${widest.box.width}x${widest.box.height} box at ${widest.box.x},${widest.box.y}`
+            : `both changed regions, the larger ${widest.pixels} px in a ${widest.box.width}x${widest.box.height} box at ${widest.box.x},${widest.box.y}`
+        } against a ${size.width}x${size.height} cell. Either the terminal drew U+2588 across two columns, or this frame changed over a wide area rather than at the pair; both make the pair unusable as an anchor, so this run stops anchoring its reads on the sentinel`,
+      )
+    }
     if (regions.length !== 2) {
       throw new SentinelNotOnFrame(
-        `${input.label}: other change during this read at ${where()}: ${regions.length} disconnected regions changed between the frames it compared — ${named(regions)} — where the two painted cells need exactly two`,
+        `${input.label}: other change during this read at ${where()}: ${
+          regions.length === 0
+            ? "no region changed"
+            : regions.length === 1
+              ? "one disconnected region changed"
+              : `${regions.length} disconnected regions changed`
+        } between the frames it compared — ${named(regions)} — where the two painted cells need exactly two`,
       )
     }
     const [first, second] = regions as [
       { box: { x: number; y: number; width: number; height: number }; pixels: number },
       { box: { x: number; y: number; width: number; height: number }; pixels: number },
     ]
-    const wide = [first, second].find(
-      (region) =>
-        region.box.width > size.width + CELL_EDGE_TOLERANCE_PX ||
-        region.box.height > size.height + CELL_EDGE_TOLERANCE_PX,
-    )
+    const wide = [first, second].find((region) => isWide(region) && atPaintedCell(region))
     if (wide) {
       throw new SentinelPaintWiderThanCell(
         `${input.label}: the sentinel paint is wider than one cell — ${wide.pixels} px in a ${wide.box.width}x${wide.box.height} box at ${wide.box.x},${wide.box.y} against a ${size.width}x${size.height} cell — so this run stops anchoring its reads on the sentinel`,
@@ -242,7 +290,21 @@ export async function readThroughSentinel<T>(input: {
       `${input.label}: the cursor position this read must put back was not reported — no reply, or no parsable reply, to CSI 6n within the read deadline — so its crop cannot be anchored without moving the probe's cursor`,
     )
   }
+  /**
+   * A retry's clear can FAIL to restore the cells it painted: a space written in current attributes
+   * is visible under reverse video on a screen that was not drawn reversed, so the retry would paint
+   * a second visible pair beside the first and scatter them across the probe's screen. The evidence
+   * is the difference at the pair the previous attempt painted, between the frame before that paint
+   * and the frame after its clear (@dev/15 peer read of a887dda73).
+   */
+  const residueAfterClear = (stale: CapturedFrame, cleared: CapturedFrame) => {
+    if (painted === undefined) return undefined
+    const { regions } = locateChanged(stale, cleared)
+    const rects = [cellRect(painted.a), cellRect(painted.b)]
+    return regions.find((region) => rects.some((rect) => overlaps(region.box, rect)))
+  }
   paintCells(cursor)
+  painted = pair()
   try {
     for (;;) {
       try {
@@ -255,9 +317,24 @@ export async function readThroughSentinel<T>(input: {
         // Restart the read (33981, @dev/10): clear this read's paint, so the fresh frame below is
         // truly a frame BEFORE the paint, then repaint and capture again.
         clearCells(cursor)
-        before = await input.prePaint()
+        let cleared = await input.prePaint()
+        for (;;) {
+          const residue = residueAfterClear(before, cleared)
+          if (residue === undefined) break
+          // One post-clear frame is not proof: on the 33000 path a frame can render one capture late,
+          // exactly as the paint before it did, so the clear is re-taken until the deadline and only a
+          // residue that PERSISTS refuses the read (@dev/15 peer read of 52da0fd43).
+          if (Date.now() >= input.deadline) {
+            throw new SentinelNotOnFrame(
+              `${input.label}: the clear of this read's paint did not take — ${residue.pixels} px in a ${residue.box.width}x${residue.box.height} box at ${residue.box.x},${residue.box.y} still differ at ${where()} between the frame before that paint and every frame after its clear until this read's deadline, so retrying would scatter a second visible pair across the probe's screen`,
+            )
+          }
+          cleared = await input.prePaint()
+        }
+        before = cleared
         chosen = choose(before)
         paintCells(cursor)
+        painted = pair()
       }
     }
   } finally {
