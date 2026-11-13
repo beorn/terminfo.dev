@@ -296,7 +296,7 @@ const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-past
 
 /** Why this run's recording pasteboard did not admit a clipboard row (#31741). */
 function clipboardGateRefusal(
-  clipboard: LinuxClipboardAdapter,
+  clipboard: LinuxClipboardAdapter | undefined,
   subject: { kind: "term" | "lib" | "mux"; id: string; os: string } | undefined,
 ): string {
   if (!clipboard) return "this run records no clipboard fixture"
