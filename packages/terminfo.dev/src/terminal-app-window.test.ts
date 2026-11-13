@@ -10,6 +10,7 @@ import { realpathSync } from "node:fs"
 import { describe, expect, test, vi } from "vitest"
 import {
   assertOwnedTerminalWindow,
+  assertOwnedAppOwner,
   closeOwnedTerminalWindow,
   parseKittyIdentity,
   recordedOwnerTty,
@@ -543,5 +544,116 @@ describe("iTerm2 sole-instance ownership", () => {
     } finally {
       kill.mockRestore()
     }
+  })
+})
+
+describe("an owned-Mac app claim is re-proved live, never trusted", () => {
+  const runId = "0123456789abcdef0123456789abcdef"
+  const proof = {
+    bundleId: "example.app",
+    windowProof: "census-diff" as const,
+    ttyProof: { kind: "title-echo" as const },
+  }
+  const claim = (over: Record<string, unknown> = {}) => ({
+    asserter: "terminfo-admin" as const,
+    launchRunId: runId,
+    workerPid: process.pid,
+    appId: "ghostty",
+    ownerPid: 4242,
+    windowId: 77,
+    executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    marker: { flag: "--owned-mac-run", value: runId },
+    tty: "/dev/ttys004",
+    intendedVersion: "1.2.3",
+    ...over,
+  })
+  const censusRow = (id: number, ownerPid: number) => ({
+    id,
+    ownerPid,
+    layer: 0,
+    onscreen: true,
+    namePresent: true,
+    name: "a window",
+    bounds: { x: 0, y: 0, width: 100, height: 100 },
+    alpha: 1,
+  })
+  const probes = (pids: readonly number[], rows: readonly unknown[]) => ({
+    proofSpec: () => proof,
+    findOwnerPids: () => pids,
+    readWindowRows: () => rows,
+  })
+
+  const withRunEnv = (body: () => void) => {
+    const previous = process.env.TERMINFO_RUN_ID
+    process.env.TERMINFO_RUN_ID = runId
+    try {
+      body()
+    } finally {
+      if (previous === undefined) delete process.env.TERMINFO_RUN_ID
+      else process.env.TERMINFO_RUN_ID = previous
+    }
+  }
+
+  test("passes only when exactly the recorded pid carries the marker and owns the recorded window", () => {
+    withRunEnv(() => {
+      assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 4242)]))
+    })
+  })
+
+  test("refuses an app with no required-proof entry before it reads anything live", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          proofSpec: () => {
+            throw new Error('no required-proof entry for the owned-Mac app "ghostty"')
+          },
+          findOwnerPids: () => {
+            throw new Error("the proof must refuse before any process is read")
+          },
+          readWindowRows: () => {
+            throw new Error("the proof must refuse before any census is read")
+          },
+        }),
+      ).toThrow(/no required-proof entry/)
+    })
+  })
+
+  test("refuses a claim from another run, from another worker pid, or with no run in the environment", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim({ launchRunId: "f".repeat(32) }), runId, probes([4242], []))).toThrow(
+        /differs from this worker launch run or PID/,
+      )
+      expect(() => assertOwnedAppOwner(claim({ workerPid: process.pid + 1 }), runId, probes([4242], []))).toThrow(
+        /differs from this worker launch run or PID/,
+      )
+      const previous = process.env.TERMINFO_RUN_ID
+      delete process.env.TERMINFO_RUN_ID
+      try {
+        expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], []))).toThrow(
+          /differs from this worker launch run or PID/,
+        )
+      } finally {
+        process.env.TERMINFO_RUN_ID = previous
+      }
+    })
+  })
+
+  test("refuses when the launched pid is gone, ambiguous, or replaced by a different marker holder", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([], [censusRow(77, 4242)]))).toThrow(
+        /no live process runs .* carrying the launched marker/,
+      )
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242, 4243], []))).toThrow(
+        /2 live processes carry the launched marker/,
+      )
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([9999], []))).toThrow(/belongs to pid 9999/)
+    })
+  })
+
+  test("refuses when the census does not show that window owned by that pid", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 8888)]))).toThrow()
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(78, 4242)]))).toThrow()
+    })
   })
 })

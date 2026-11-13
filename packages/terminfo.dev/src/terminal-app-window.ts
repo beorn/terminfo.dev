@@ -4,12 +4,15 @@ import { realpathSync } from "node:fs"
 import { basename } from "node:path"
 import { CENSUS, censusDarwinWindows } from "./darwin-capture.ts"
 import { parseLstart } from "./disposable-receipt.ts"
+import type { OwnedAppProofSpec } from "./darwin-owned-app.ts"
+import type { OwnedAppOwnerAssertion } from "./owned-terminal.ts"
 import {
   argvCarriesMarker,
   assertOwnedProcess,
   markerText,
   processCommand,
   processExecutable,
+  requireOwnWorker,
   run,
   tty,
   type OwnedProcess,
@@ -261,6 +264,53 @@ function assertIterm2Window(window: Iterm2Window, daemonPid: number): void {
     )
   }
   censusDarwinWindows(readDarwinWindowRows(), window.ownerPid, window.windowId)
+}
+
+/** The live readers the owned-app claim is re-proved against; production passes the real ones. */
+export interface OwnedAppProbes {
+  /** `ownedAppProofSpec` in production: the app's required proofs, or a refusal that names the app. */
+  readonly proofSpec: (appId: unknown) => OwnedAppProofSpec
+  readonly findOwnerPids: (executablePath: string, marker: ProcessMarker) => readonly number[]
+  readonly readWindowRows: () => unknown
+}
+
+/**
+ * The worker's own re-proof of an owned-Mac app launch (#34012, @cto 9f889378). The admin's record names
+ * an expectation and nothing here is trusted from it: the app must have a required-proof entry, the claim
+ * must be this worker's run, exactly ONE live pid may run that executable with that marker and it must be
+ * the recorded one, and the census must show the recorded window owned by that pid.
+ *
+ * `assertOwnedProcess` is deliberately NOT used: it requires the owner to descend from the daemon, and an
+ * app the launcher spawned is a child of launchd, so that check would refuse a correct launch.
+ */
+export function assertOwnedAppOwner(
+  owner: OwnedAppOwnerAssertion,
+  expectedLaunchRunId: string,
+  probes: OwnedAppProbes,
+): void {
+  probes.proofSpec(owner.appId)
+  requireOwnWorker(owner, expectedLaunchRunId, "owned-app")
+  const pids = probes.findOwnerPids(owner.executablePath, owner.marker)
+  if (pids.length === 0) {
+    throw new Error(
+      `owned-app owner assertion: no live process runs ${owner.executablePath} carrying the launched ` +
+        `marker ${markerText(owner.marker)}, so pid ${owner.ownerPid} is gone or was replaced`,
+    )
+  }
+  if (pids.length > 1) {
+    throw new Error(
+      `owned-app owner assertion: ${String(pids.length)} live processes carry the launched marker ` +
+        `${markerText(owner.marker)} (${pids.join(", ")}); one run owns one process, so none is used`,
+    )
+  }
+  const only = pids[0]
+  if (only !== owner.ownerPid) {
+    throw new Error(
+      `owned-app owner assertion: the launched marker ${markerText(owner.marker)} belongs to pid ${String(only)}, ` +
+        `not the recorded ${owner.ownerPid}`,
+    )
+  }
+  censusDarwinWindows(probes.readWindowRows(), owner.ownerPid, owner.windowId)
 }
 
 /** Every live pid that runs `executablePath` and carries the marker as an exact argv token. */
