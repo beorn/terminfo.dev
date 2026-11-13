@@ -20,7 +20,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -197,6 +197,12 @@ vi.mock("../docs/data/current-results.ts", async () => {
     "../docs/data/current-results.ts",
   )
   const content = join(import.meta.dirname, "..", "content")
+  // The site reads each run's sourceRevision from this repository's git history (33587), so a
+  // fixture run names a commit that exists here: this checkout's own HEAD (33996).
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: join(import.meta.dirname, ".."),
+    encoding: "utf8",
+  }).trim()
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
@@ -235,7 +241,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
       probeHash: run.probeHash ?? "current",
-      sourceRevision: "a".repeat(40),
+      sourceRevision,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,
@@ -498,8 +504,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(keys(v3.history),[]);
         assert.ok(Object.values(analyses).every(entry=>!entry.sources?.length));
       }
-      for (const [key,{selected,routeKey}] of compatibility) {
-        assert.deepEqual(matrix.stats[key].score,selected.score);
+      for (const [key,{selected,routeKey,contextKey}] of compatibility) {
+        // Each consumer shows the number for ITS subject (@cto 921916bc, d321729a rule 5). Per app: the site
+        // matrix and the page header show the joined summary's count. Per context: the API shows that
+        // context's own count, which compatibilitySubjects selected. With one context the two are the same.
+        const app = site.selectedByBackend[key].selected;
+        assert.deepEqual(matrix.stats[key].score,app.score);
+        assert.deepEqual(v3.contexts[contextKey].score,selected.score);
+        if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
@@ -510,8 +522,8 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         // A shared route retains its legacy primary params; its other OS columns read the
         // same matrix checked above. They must not create duplicate public routes.
         if (page.params.backendId===key) {
-          assert.equal(page.params.total,String(selected.score.all));
-          assert.equal(page.params.yes,String(selected.score.supported));
+          assert.equal(page.params.total,String(app.score.all));
+          assert.equal(page.params.yes,String(app.score.supported));
         }
       }
       if (!v3.contextCount) {

@@ -488,7 +488,7 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 }
 
 /** Calibration's own cell tolerance: one blended pixel line may sit at each edge of a painted cell. */
-const CELL_EDGE_TOLERANCE_PX = 1
+export const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
  * Whether a located sentinel is one solid cell block of the expected size. The ONE spelling of that
@@ -542,7 +542,10 @@ export function witnessCellFor(
   const [first] = regions
   if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
   const digested = (cell: { row: number; col: number }): boolean =>
-    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right)
+    regions.some(
+      (region) =>
+        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
+    )
   const visible = (cell: { row: number; col: number }): boolean =>
     cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
   // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
@@ -555,12 +558,62 @@ export function witnessCellFor(
   ]
   const found = candidates.find((cell) => visible(cell) && !digested(cell))
   if (!found) {
-    const spelled = regions.map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`).join(" and ")
+    const spelled = regions
+      .map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`)
+      .join(" and ")
     throw new Error(
       `No cell outside the digested region ${spelled} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
     )
   }
   return found
+}
+
+/**
+ * The TWO cells one read paints calibration's sentinel on (33981, @cto): the pair has to differ in
+ * BOTH row and column, so one stray sentinel-coloured patch, a horizontal run of them, or a full-line
+ * repaint can never satisfy it. The first cell is the one `witnessCellFor` chooses, which keeps
+ * 33000's preference and its named refusal; the second is the nearest cell clear of every digested
+ * region that differs from the first in both axes, preferring another row than the first so a wide
+ * character straddling the region's edge is never split. A grid with no such second cell — a
+ * one-row or one-column viewport — refuses by name rather than degrading to a single cell.
+ */
+export function witnessCellsFor(
+  regions: readonly CaptureCells[],
+  grid: { rows: number; cols: number },
+): { a: { row: number; col: number }; b: { row: number; col: number } } {
+  const a = witnessCellFor(regions, grid)
+  const digested = (cell: { row: number; col: number }): boolean =>
+    regions.some(
+      (region) =>
+        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
+    )
+  const visible = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  const candidates = [
+    { row: a.row - 1, col: a.col + 1 },
+    { row: a.row - 1, col: a.col - 1 },
+    { row: a.row + 1, col: a.col + 1 },
+    { row: a.row + 1, col: a.col - 1 },
+    { row: a.row - 2, col: a.col + 1 },
+    { row: a.row - 2, col: a.col - 1 },
+    { row: a.row + 2, col: a.col + 1 },
+    { row: a.row + 2, col: a.col - 1 },
+  ]
+  // A cell on a digested region's OWN ROW is excluded even when its column is clear: a wide character
+  // straddling the region's edge is erased whole by the restore, which would change the very frame
+  // this read digests (@dev/10 peer read).
+  const onRegionRow = (cell: { row: number; col: number }): boolean =>
+    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
+  const found = candidates.find((cell) => visible(cell) && !digested(cell) && !onRegionRow(cell))
+  if (!found) {
+    const spelled = regions
+      .map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`)
+      .join(" and ")
+    throw new Error(
+      `No second cell clear of the digested region ${spelled} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column, so this frame's crop cannot be anchored by a sentinel pair`,
+    )
+  }
+  return { a, b: found }
 }
 
 /**

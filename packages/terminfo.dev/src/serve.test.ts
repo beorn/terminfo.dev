@@ -65,7 +65,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,hasBinary=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    let suppliedTarget=target,hasAttachment=true,hasBinary=true,historyThroughCli=false,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -82,6 +82,9 @@ it.each(["tmux", "screen", "darwin-screen"])(
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
       return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
+        // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
+        // binary's proof; this flag models that arm with no measured CLI proof.
+        ...(historyThroughCli?{historyReadsThroughCli:true}:{}),
         ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
@@ -128,6 +131,12 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.equal(unverified.identity,"unverified")
     assert.match(JSON.parse(unverified.rawReplies["collector.historyIdentityCheck"]).reason,/binary path, sha256 and version unavailable/)
     hasBinary=true
+    historyThroughCli=true
+    const cliArm=await collect()
+    const cliCheck=JSON.parse(cliArm.rawReplies["collector.historyIdentityCheck"])
+    assert.equal(cliCheck.executable,undefined,"a CLI arm never names the mux or provenance binary")
+    assert.match(cliCheck.reason,/CLI proof unmeasured/)
+    historyThroughCli=false
     assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)

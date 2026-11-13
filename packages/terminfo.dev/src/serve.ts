@@ -759,6 +759,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       let calibrationError: Error | undefined
       /** The source whose next read anchors its crop on the sentinel it paints (33000). */
       let pixelSource: TermProbeSource | undefined
+      /** Records every raw frame this route takes outside a read (calibration, 33981 pre-paint) in the artifact. */
+      let frameRecord: ((result: Awaited<ReturnType<ProbeCapture>>) => void) | undefined
+      /**
+       * The one way this route takes a frame it does not digest: same adapter, same window, same
+       * timeout, and recorded so the artifact can account for it. Calibration uses it to confirm
+       * geometry; each sentinel read uses it for the frame taken BEFORE its paint (33981).
+       */
+      const captureRawFrame = async (featureId: string, label: string, deadline: number) => {
+        const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
+        frameRecord?.(result.result)
+        return result.decoded
+      }
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
@@ -780,8 +792,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             return adapter.capture(checkpoint, calibrated)
           }
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
+          // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
+          // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
           return readThroughSentinel({
             source,
+            prePaint: () =>
+              captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
             capture: (resolve) => adapter.capture(checkpoint, resolve),
             label: checkpoint.label,
             sentinel,
@@ -793,6 +809,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           textOrigin = undefined
           calibrationError = undefined
           pixelSource = probeSource
+          frameRecord = recordCapture
           probeSource.captureGeometry = undefined
           probeSource.captureGeometryRefusal = undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
@@ -807,11 +824,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 kind === "darwinHosted" ||
                 (kind === "process" && process.platform === "darwin") ||
                 (process.platform === "linux" && kind === "linux"),
-              captureRaw: async (label, deadline) => {
-                const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
-                recordCapture(result.result)
-                return result.decoded
-              },
+              captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
             })
             probeSource.captureGeometry = {
               geometry: textOrigin.pixelGeometry,
@@ -1298,15 +1311,30 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       : undefined
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
-    const historyExecutable = ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable
+    // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched
+    // shell's bytes cannot explain a count the terminal's own CLI produced — and when that CLI's proof was
+    // not measured, naming the shell's binary instead would be the silent substitution this comment
+    // forbids (@dev/18 peer read). A CLI arm therefore reports unmeasured rather than borrowing.
+    const historyExecutable =
+      ownedTerminal?.historyReadsThroughCli === true
+        ? ownedTerminal.historyExecutable
+        : (ownedTerminal?.muxAttachmentProof?.executable ?? provenance?.executable)
     const hasHistoryExecutable = Boolean(
       historyExecutable?.path && /^[a-f0-9]{64}$/u.test(historyExecutable.sha256) && historyExecutable.version,
     )
+    // One reason, chosen once: an unproven CLI arm says so in its own words instead of reading like an arm
+    // that simply never needed a binary.
+    const historyIdentityReason = hasHistoryExecutable
+      ? undefined
+      : ownedTerminal?.historyReadsThroughCli === true
+        ? (ownedTerminal.historyExecutableUnmeasured ??
+          "owned scrollback CLI proof unmeasured: this arm reads through the terminal's own CLI, and no other binary explains its count")
+        : "owned scrollback binary path, sha256 and version unavailable"
     if (historyIdentity) {
       batch.rawReplies["collector.historyIdentityCheck"] = JSON.stringify({
         ...historyIdentity,
         ...(historyExecutable && { executable: historyExecutable }),
-        ...(!hasHistoryExecutable && { reason: "owned scrollback binary path, sha256 and version unavailable" }),
+        ...(historyIdentityReason !== undefined && { reason: historyIdentityReason }),
       })
     }
     const captured: CapturedRunDraft = {
