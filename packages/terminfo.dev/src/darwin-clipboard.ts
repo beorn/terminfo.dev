@@ -77,6 +77,12 @@ export async function createDarwinClipboardAdapter(input: {
    * pasteboard that silently accepts nothing would grade every row as "did not write".
    */
   disposableHost?: { readonly receiptKind: "github-hosted-runner" }
+  /**
+   * The pasteboard belongs to the person using the app (ordinary open, @cto 2026-11-13). Marking a run
+   * this way REQUIRES the digest mode by type, so a future caller cannot silently publish a fingerprint
+   * or a length of someone's clipboard: only "read present" / "read empty" survive.
+   */
+  personClipboard?: { readonly foreignReadDigest: "absent" }
 }): Promise<LinuxClipboardAdapter> {
   const run = input.run ?? runDarwinCommand
   if (input.ownedHost && input.disposableHost) {
@@ -84,7 +90,15 @@ export async function createDarwinClipboardAdapter(input: {
       "Darwin pasteboard adapter: disposableHost and ownedHost cannot both be claimed; shared and disposable are different machines",
     )
   }
+  if (input.personClipboard && (input.ownedHost || input.disposableHost)) {
+    throw new Error(
+      "Darwin pasteboard adapter: a person's pasteboard is neither an owned host nor a disposable runner; claim only one",
+    )
+  }
   const sentinelRoute = input.ownedHost === true || input.disposableHost !== undefined
+  // A person's pasteboard publishes neither its digest nor its length (@cto 2026-11-13), and the trace is a
+  // retained file like any other: on this route the events carry which operation happened and when, nothing else.
+  const personMode = input.personClipboard !== undefined
   const disposable = input.disposableHost
   const sentinel = "terminfo owned pasteboard " + randomUUID()
   if (sentinelRoute) {
@@ -99,17 +113,27 @@ export async function createDarwinClipboardAdapter(input: {
         await input.assertOwned()
         await verify()
         const text = pasteboardText(await run("/usr/bin/pbpaste", []))
-        trace({ kind, at: new Date().toISOString(), length: text.length })
+        trace(
+          personMode
+            ? { kind, at: new Date().toISOString() }
+            : { kind, at: new Date().toISOString(), length: text.length },
+        )
         return text
       },
       async writeText(text, trace, kind, verify) {
         await input.assertOwned()
         await verify()
         await run("/usr/bin/pbcopy", [], text)
-        trace({ kind, at: new Date().toISOString(), length: text.length })
+        trace(
+          personMode
+            ? { kind, at: new Date().toISOString() }
+            : { kind, at: new Date().toISOString(), length: text.length },
+        )
       },
     },
-    sentinelRoute ? { foreignReadDigest: "omit" } : undefined,
+    {
+      foreignReadDigest: input.personClipboard?.foreignReadDigest ?? (sentinelRoute ? "omit" : "record"),
+    },
   )
   // @dev/8 R1: the sentinel readback belongs INSIDE the fixture, where a failure refuses the probes
   // that need the pasteboard and leaves the rest of the run standing. Thrown at construction it

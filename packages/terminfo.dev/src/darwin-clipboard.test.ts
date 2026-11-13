@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import type { ProbeCallbackResult } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipboard.ts"
@@ -297,4 +298,48 @@ test("the shared-machine and disposable facts cannot be claimed together", async
       run: async () => "",
     }),
   ).rejects.toThrow(/disposableHost and ownedHost/)
+})
+
+// @cto 2026-11-13: adding the ordinary-open digest mode must not move a single byte of what the two existing
+// configurations publish. `record` still names the sha256 and the length of foreign text; `omit` still names only
+// the length, because an owned host's pasteboard text is shared with everything else on that machine.
+test("the two existing foreign-read digest modes publish exactly what they published before", async () => {
+  const foreign = "0123456789ab"
+  const expected = {
+    record: `Owned clipboard baseline changed before callback: read sha256 ${createHash("sha256").update(foreign).digest("hex")} length 12`,
+    omit: "Owned clipboard baseline changed before callback: read length 12",
+  } as const
+  for (const mode of ["record", "omit"] as const) {
+    let reads = 0
+    let copied: string | undefined
+    const run: DarwinCommand = async (file, _args, stdin) => {
+      if (file.endsWith("pbpaste")) {
+        reads += 1
+        // The pre-flight read sees foreign text; everything before and after it sees the baseline.
+        if (reads === (mode === "record" ? 2 : 1)) return `${foreign}\n`
+        return `${copied ?? "hosted baseline"}\n`
+      }
+      if (file.endsWith("pbcopy")) {
+        copied = stdin ?? ""
+        return ""
+      }
+      throw new Error(`unexpected ${file}`)
+    }
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "iTerm2",
+      appId: "iterm2",
+      titleRead: "none",
+      ...(mode === "omit" ? { ownedHost: true } : {}),
+      assertOwned: async () => {},
+      run,
+    })
+    await expect(
+      adapter.withClipboardFixture(
+        async () => ({ pass: true }) as ProbeCallbackResult,
+        () => {},
+        async () => {},
+      ),
+    ).rejects.toThrow(expected[mode])
+    await adapter.dispose()
+  }
 })

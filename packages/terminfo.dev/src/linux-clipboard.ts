@@ -338,8 +338,12 @@ export function createClipboardTransaction(
      * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
      * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
      * those runs record the read's length and never its digest. Linux and hosted runs keep it.
+     *
+     * `"absent"` is the ordinary-open case (@cto 2026-11-13): the pasteboard belongs to the person
+     * using the app, so neither its digest NOR its length may be published — only whether a value was
+     * present at all.
      */
-    readonly foreignReadDigest?: "record" | "omit"
+    readonly foreignReadDigest?: "record" | "omit" | "absent"
     readonly muxState?: {
       snapshot(): Promise<{ readonly tmuxSetClipboard?: string; readonly buffers: readonly string[] }>
       restore(before: readonly string[]): Promise<void>
@@ -348,6 +352,9 @@ export function createClipboardTransaction(
 ): LinuxClipboardAdapter["withClipboardFixture"] {
   let busy = false
   const described = (text: string): string => {
+    if (options?.foreignReadDigest === "absent") {
+      return text === "" ? "read empty (no owner or empty owner)" : "read present"
+    }
     if (options?.foreignReadDigest !== "omit") return describeRead(text)
     const length = Buffer.byteLength(text)
     return `read length ${length}${length === 0 ? ", empty read (no owner or empty owner)" : ""}`
@@ -421,8 +428,13 @@ export function createClipboardTransaction(
           await options.muxState.restore(muxSnapshot.buffers)
         }
       } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
         failure = new Error(
-          `Owned clipboard restoration failed: ${error instanceof Error ? error.message : String(error)}`,
+          options?.foreignReadDigest === "absent"
+            ? // The person's clipboard is not ours to leave changed (@cto 2026-11-13): name whose clipboard it is,
+              // not just that a restore failed, so the one line reads as the warning it is.
+              `The person's clipboard was left changed: restoration failed: ${detail}`
+            : `Owned clipboard restoration failed: ${detail}`,
         )
       }
       busy = false
