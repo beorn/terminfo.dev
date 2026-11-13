@@ -433,6 +433,7 @@ function muxScrollbackResult(
  */
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+  if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
     return {
       pass: false,

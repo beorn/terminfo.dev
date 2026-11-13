@@ -1425,6 +1425,14 @@ export interface TermProbeSource {
    * field, which is what makes the declaration reversible.
    */
   scrollbackUnavailable?: string
+  /**
+   * Present when this arm cannot reach an owned read the app may well expose — a missing prerequisite on the
+   * collector's side, not a measured absence of a read (8c084f05, A0). The history rows return it as their
+   * PROBE TODO reason, so the row names what is missing instead of silently falling back to a screenshot arm.
+   * Distinct from `scrollbackUnavailable`: that one declares the app unreadable and is reversible by app
+   * version; this one says the arm, not the app, is the obstacle.
+   */
+  scrollbackProbeTodo?: string
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,

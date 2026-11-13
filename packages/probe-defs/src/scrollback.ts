@@ -806,6 +806,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+        if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, false)
         const capture = ctx.capture
         if (capture) {
@@ -922,6 +923,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+        if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, true)
         const capture = ctx.capture
         if (capture) {

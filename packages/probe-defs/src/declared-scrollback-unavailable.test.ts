@@ -11,6 +11,7 @@ import { scrollbackProbes } from "./scrollback.ts"
 import { eraseProbes } from "./erase.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { HEADLESS_OBSERVABLE_REVIEW, DECLARED_UNTESTABLE_TEST } from "./helpers.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import type { ProbeDefinition, TermProbeSource } from "./types.ts"
 
 /** @cto 20b9ffed's reason text, verbatim: the same string the collector sets on the source. */
@@ -105,5 +106,30 @@ test("the declaration covers exactly the approved rows, and each keeps its stati
     expect(result?.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
     expect(result?.tests, id).toEqual([{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason: NO_PANE_READ }])
     expect(result?.note, id).toBe(NO_PANE_READ)
+  }
+})
+
+/**
+ * @failure An arm that cannot reach an owned read reports the generic "not readable from the screen" todo, so a
+ *   missing socket or pane id on this run is indistinguishable from the app exposing no read — and a reader that
+ *   was never built looks like a screenshot that failed (8c084f05, A0).
+ * @level l1
+ * @consumer The four history rows on the hosted Darwin arm, when the pane published no socket or pane id.
+ * @testonly none
+ */
+test("an arm-side missing prerequisite is the row's own PROBE TODO reason, never a declaration", async () => {
+  const reason = "hosted WezTerm pane published no socket"
+  for (const id of ROWS) {
+    const result = await definition(id).term?.(source({ scrollbackProbeTodo: reason }))
+    const folded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-11-13T10:38:00.000Z" },
+      assertions: [],
+      ...(result?.notTested ? { coverage: { featureId: id, rawReplyRef: id, ...result.notTested } } : {}),
+    })
+    expect(folded.status, id).toBe("probe-todo")
+    expect(folded.reason, id).toContain(reason)
+    const declared = result?.tests?.some((entry) => entry.id === DECLARED_UNTESTABLE_TEST) ?? false
+    expect(declared, `${id} must not declare the app unreadable when only this arm is blind`).toBe(false)
   }
 })

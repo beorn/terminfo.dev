@@ -46,6 +46,15 @@ needs when it can run, not what one run could measure. When that run's geometry 
 the field every row keeps its existing reader and screenshot behaviour, and an app version that grows a read
 removes it. A missing, failed or unimplemented reader is never a declaration: it stays PROBE TODO.
 
+An arm that cannot reach a read the app does expose names its own missing prerequisite instead:
+`scrollbackProbeTodo` on the probe source (copied from `OwnedTerminal.scrollbackProbeTodo`) makes the same
+four history rows PROBE TODO carrying that text verbatim — today `hosted WezTerm pane published no socket`,
+`hosted WezTerm pane published no pane id` and `hosted WezTerm pane has no measured tty to match` on the
+hosted Darwin arm, whose receipt records the socket and pane-id presence as two booleans and never their
+values (@cto 8c084f05). It is deliberately not the declaration above: that one says the app exposes no read
+and is removed by a later app version; this one says this run could not reach the read and is removed by a
+later arm. Neither is ever inferred from a failed screenshot.
+
 The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;

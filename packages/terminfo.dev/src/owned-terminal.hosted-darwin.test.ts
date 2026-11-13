@@ -16,6 +16,7 @@ import {
   formatHostedDarwinAncestry,
   hostedDarwinAppFromExecutablePath,
   requireHostedDarwinAppAncestor,
+  resolveOwnedAppId,
 } from "./owned-terminal.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -89,6 +90,83 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.readCells, "function")
     assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+    await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// Condition 1 of @cto 8c084f05, through the real owner: a hosted WezTerm whose ancestor is a different
+// process at read time must refuse by pid before any WezTerm CLI read, not merely match the app's name.
+test("a hosted WezTerm ancestor that changed pid refuses the read by name and reads nothing", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    process.env.WEZTERM_PANE = "0"
+    process.env.WEZTERM_UNIX_SOCKET = "/private/tmp/term-31741/wezterm.sock"
+    let appPid = 4242
+    const wezTermCalls = []
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawn: (file) => {
+        const tool = String(file)
+        if (tool.endsWith("pbpaste") || tool.endsWith("pbcopy") || tool.endsWith("osascript")) {
+          const child = new EventEmitter()
+          child.stdout = new EventEmitter()
+          child.stderr = new EventEmitter()
+          child.kill = () => true
+          child.stdin = {
+            end() {
+              queueMicrotask(() => {
+                child.stdout.emit("data", Buffer.from("\\n"))
+                child.emit("close", 0)
+              })
+            },
+          }
+          return child
+        }
+        wezTermCalls.push(tool)
+        throw new Error("geometry unavailable in this fixture")
+      },
+      spawnSync: (file, args) => {
+        if (String(file).includes("wezterm")) wezTermCalls.push(String(file) + " " + args.join(" "))
+        return { status: 0, stdout: "", stderr: "" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    assert.equal(owner.hostedAppId, "wezterm")
+    assert.equal(owner.appPid, 4242)
+    assert.equal(typeof owner.getScrollback, "function")
+    const atGrant = wezTermCalls.length
+    appPid = 5555
+    const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.equal(error?.message, "Hosted WezTerm ancestor is now pid 5555, not pid 4242 measured at grant")
+    assert.equal(wezTermCalls.length, atGrant, "no WezTerm CLI read may follow the refusal")
     await owner.dispose()
   `
   const result = spawnSync(process.execPath, ["-e", script], {
@@ -672,4 +750,17 @@ test("only Alacritty, VS Code and Cursor declare no pane read, with @cto's exact
   for (const path of measured) {
     expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBeUndefined()
   }
+})
+
+// 8c084f05: the hosted arm's app id comes from the receipt, never from a launcher-typed variable that could
+// disagree with it; the Linux arm keeps the launcher's value because it has no receipt to prove one.
+test.each([
+  [{ platform: "darwin", hostedAppId: "wezterm", launcherAppId: undefined }, "wezterm"],
+  [{ platform: "darwin", hostedAppId: "wezterm", launcherAppId: "kitty" }, "wezterm"],
+  [{ platform: "darwin", hostedAppId: undefined, launcherAppId: "wezterm" }, "wezterm"],
+  [{ platform: "linux", hostedAppId: undefined, launcherAppId: "wezterm" }, "wezterm"],
+  [{ platform: "linux", hostedAppId: "wezterm", launcherAppId: "kitty" }, "kitty"],
+  [{ platform: "darwin", hostedAppId: undefined, launcherAppId: undefined }, undefined],
+])("owned app id resolves in one place: %j", (input, expected) => {
+  expect(resolveOwnedAppId(input)).toBe(expected)
 })
