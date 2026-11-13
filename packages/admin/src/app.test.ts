@@ -821,72 +821,9 @@ test.each([
     }
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
-    const terminalJson =
-      '{"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["-p","/private/run/serve.sh"],"cwd":"/private/run"}'
-    const vscodeFixture = `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
-};
-`
-    const cursorFixture = `const vscode = require("vscode");
-exports.activate = async (context) => {
-  await vscode.commands.executeCommand("workbench.action.closePanel");
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
-};
-`
-    expect(script?.[1]).toBe(prefix === "cursor" ? cursorFixture : vscodeFixture)
-    const terminal = { show: vi.fn(), dispose: vi.fn() }
-    const createTerminal = vi.fn(() => terminal)
-    const commands: string[] = []
-    const executeCommand = vi.fn(async (command: string) => {
-      commands.push(command)
-    })
-    const exported: { activate?: (context: { subscriptions: unknown[] }) => void | Promise<void> } = {}
-    runInNewContext(String(script?.[1]), {
-      exports: exported,
-      require: (id: string) => {
-        if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-        return { commands: { executeCommand }, window: { createTerminal } }
-      },
-    })
-    const subscriptions: unknown[] = []
-    expect(typeof exported.activate).toBe("function")
-    await exported.activate!({ subscriptions })
-    if (prefix === "cursor") {
-      expect(commands).toEqual(["workbench.action.closePanel", "workbench.action.toggleMaximizedPanel"])
-      expect(executeCommand.mock.invocationCallOrder[1]).toBeLessThan(createTerminal.mock.invocationCallOrder[0]!)
-      const rejectedCreate = vi.fn(() => terminal)
-      const rejected: { activate?: (context: { subscriptions: unknown[] }) => Promise<void> } = {}
-      runInNewContext(String(script?.[1]), {
-        exports: rejected,
-        require: (id: string) => {
-          if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-          return {
-            commands: {
-              executeCommand: async () => {
-                throw new Error("panel command failed")
-              },
-            },
-            window: { createTerminal: rejectedCreate },
-          }
-        },
-      })
-      await expect(rejected.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
-      expect(rejectedCreate).not.toHaveBeenCalled()
-    }
-    expect(createTerminal).toHaveBeenCalledWith({
-      name: "terminfo-private-run",
-      shellPath: "/bin/bash",
-      shellArgs: ["-p", "/private/run/serve.sh"],
-      cwd: "/private/run",
-    })
-    expect(terminal.show).toHaveBeenCalledOnce()
-    expect(subscriptions).toEqual([terminal])
+    // The emitted extension's actual activation and native reads are exercised below.
+    // Keep this launch test on arguments/private config/owner forwarding, not exact source text.
+    expect(script?.[1]).toEqual(expect.any(String))
     expect(requestDaemonProbe).toHaveBeenCalledWith(
       registration,
       {
@@ -1118,3 +1055,174 @@ describe("cli-process stop when the owner was never resolved", () => {
     }
   })
 })
+
+// Requirement: the emitted extension, not a fake reader, samples its exact native Terminal
+// afresh for each phase and still answers when a watcher notification is missed.
+// Existing launch tests only create/show a Terminal; they never request or retain an API read.
+test.each(["vscode", "cursor"] as const)(
+  "%s fixture retains activation-bound fresh native observations with interval delivery",
+  async (prefix) => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { randomUUID } = await import("node:crypto")
+    const directory = fs.mkdtempSync(join(tmpdir(), "terminfo-editor-observation-"))
+    const subscriptions: Array<{ dispose: () => void }> = []
+    const intervals: Array<() => unknown> = []
+    const watcher = {
+      onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    }
+    let rejectPanel = false
+    const executeCommand = vi.fn(async () => {
+      if (rejectPanel) throw new Error("panel command failed")
+    })
+    let nativeReads = 0
+    let nativeCwd: string | undefined = "file:///native/first"
+    const nativeTerminal = {
+      name: "native terminal name",
+      processId: Promise.resolve(4321),
+      get shellIntegration() {
+        nativeReads++
+        return nativeCwd === undefined
+          ? undefined
+          : {
+              cwd: {
+                scheme: "file",
+                authority: "",
+                path: new URL(nativeCwd).pathname,
+                query: "",
+                fragment: "",
+                toString: () => nativeCwd,
+              },
+            }
+      },
+      show: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const createTerminal = vi.fn(() => nativeTerminal)
+    try {
+      prepareCliLaunch(prefix === "vscode" ? "com.microsoft.VSCode" : prefix, {
+        id: "private-run",
+        directory,
+        scriptPath: join(directory, "serve.sh"),
+      })
+      const emitted = vi
+        .mocked(writeFileSync)
+        .mock.calls.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+      expect(emitted?.[1]).toEqual(expect.any(String))
+      const exported: { activate?: (context: { subscriptions: typeof subscriptions }) => unknown } = {}
+      runInNewContext(String(emitted?.[1]), {
+        exports: exported,
+        process: { pid: process.pid },
+        setInterval: (callback: () => unknown) => {
+          intervals.push(callback)
+          return 1
+        },
+        clearInterval: vi.fn(),
+        setTimeout,
+        clearTimeout,
+        require: (id: string) => {
+          if (id === "node:fs") return fs
+          if (id === "node:path") return { join }
+          if (id === "node:crypto") return { randomUUID }
+          if (id !== "vscode") throw new Error(`Unexpected emitted fixture import: ${id}`)
+          return {
+            version: "native-version",
+            env: { appName: `Native ${prefix}` },
+            RelativePattern: class {
+              constructor(
+                readonly base: string,
+                readonly pattern: string,
+              ) {}
+            },
+            workspace: { createFileSystemWatcher: vi.fn(() => watcher) },
+            commands: { executeCommand },
+            window: {
+              createTerminal,
+              onDidCloseTerminal: vi.fn(() => ({ dispose: vi.fn() })),
+              onDidChangeTerminalShellIntegration: vi.fn(() => ({ dispose: vi.fn() })),
+            },
+          }
+        },
+      })
+      await exported.activate!({ subscriptions })
+      expect(createTerminal).toHaveBeenCalledWith({
+        name: "terminfo-private-run",
+        shellPath: "/bin/bash",
+        shellArgs: ["-p", join(directory, "serve.sh")],
+        cwd: directory,
+      })
+      expect(nativeTerminal.show).toHaveBeenCalledOnce()
+      expect(subscriptions.some((value) => value === nativeTerminal)).toBe(true)
+      if (prefix === "cursor") {
+        expect(executeCommand.mock.calls).toEqual([
+          ["workbench.action.closePanel"],
+          ["workbench.action.toggleMaximizedPanel"],
+        ])
+        expect(executeCommand.mock.invocationCallOrder[1]).toBeLessThan(createTerminal.mock.invocationCallOrder[0]!)
+      } else expect(executeCommand).not.toHaveBeenCalled()
+      const activationPath = join(directory, "editor-activation.json")
+      expect(fs.existsSync(activationPath), "generated extension must retain its own activation before requests").toBe(
+        true,
+      )
+      const activation = JSON.parse(fs.readFileSync(activationPath, "utf8"))
+      expect(activation).toMatchObject({
+        runId: "private-run",
+        extensionPid: process.pid,
+        app: { name: `Native ${prefix}`, version: "native-version" },
+      })
+      expect(activation.activationNonce).toEqual(expect.any(String))
+      expect(intervals).toHaveLength(1)
+      const replies = []
+      const nativeReadsBeforeRequests = nativeReads
+      for (const [index, cwd] of ["file:///native/first", "file:///native/first", undefined].entries()) {
+        nativeCwd = cwd
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-p",
+          phase: `phase-${index}`,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + 5000,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        // Deliberately deliver no watcher event. The production interval must evaluate native state.
+        await intervals[0]!()
+        const replyPath = join(activation.replyDirectory, `${request.nonce}.json`)
+        await vi.waitFor(() => expect(fs.existsSync(replyPath)).toBe(true))
+        const reply = JSON.parse(fs.readFileSync(replyPath, "utf8"))
+        expect(reply).toMatchObject({
+          ...request,
+          activationNonce: activation.activationNonce,
+          extensionPid: process.pid,
+          delivery: "interval",
+          app: activation.app,
+          terminal: { name: "native terminal name", processId: { present: true, value: 4321 } },
+        })
+        expect(reply.evaluatedAt).toBeGreaterThanOrEqual(request.requestedAt)
+        expect(reply.sequence).toBe(index + 1)
+        if (cwd === undefined) {
+          expect(reply.terminal.shellIntegrationCwd).toMatchObject({ present: false, reason: expect.any(String) })
+          expect(reply.terminal.shellIntegrationCwd).not.toHaveProperty("value")
+        } else {
+          expect(reply.terminal.shellIntegrationCwd).toMatchObject({ present: true, value: cwd })
+        }
+        replies.push(reply)
+      }
+      expect(nativeReads - nativeReadsBeforeRequests).toBe(3)
+      expect(replies[0].terminal).toEqual(replies[1].terminal)
+      expect(replies[0].sequence).not.toBe(replies[1].sequence)
+      if (prefix === "cursor") {
+        rejectPanel = true
+        await expect(exported.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
+        expect(createTerminal).toHaveBeenCalledOnce()
+      }
+    } finally {
+      for (const disposable of subscriptions.reverse()) disposable.dispose()
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
