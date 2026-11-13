@@ -344,6 +344,13 @@ export interface OwnedTerminal {
   readonly historyExecutableUnmeasured?: string
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
+  /**
+   * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
+   * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
+   * where the history rows read it as their declared Untestable reason. Absent where the app has a read;
+   * a later app version that grows one removes the entry.
+   */
+  readonly scrollbackUnavailable?: string
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
@@ -430,6 +437,13 @@ export type HostedDarwinApp = {
   titleUnavailable?: string
   /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
   captureChromeBand?: CaptureChromeBand
+  /**
+   * This app was measured and exposes no permitted read of its own pane (#31741, @cto 20b9ffed). The
+   * history rows return it as their declared Untestable reason instead of falling back to a screenshot
+   * arm that cannot read retained history, and instead of "the first route tried failed". Absent where
+   * the app has a read; a later app version that grows one removes the entry.
+   */
+  scrollbackUnavailable?: string
 }
 export type AncestryRow = {
   pid: number
@@ -449,13 +463,31 @@ export type AncestryRow = {
   kernelExecutableAttempts?: { reader: string; result: number | string | null; error: string | null }[]
 }
 
+/** @cto 20b9ffed verbatim: the reason text these apps' history rows declare, so one string names the absence. */
+const NO_PANE_READ = "no pane read on this app"
+
+/** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
+const TERMINAL_APP_HOSTED: HostedDarwinApp = { id: "terminal-app", comm: "Terminal", titleRead: "system-events" }
+
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
-  Terminal: { id: "terminal-app", comm: "Terminal", titleRead: "system-events" },
+  Terminal: TERMINAL_APP_HOSTED,
   // The System Events permission dialog hangs a hosted iTerm2 collector (#33017).
   iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none" },
+  // Ghostty's own scrollback-file action is an acceptable read under @cto a1663f9d's five conditions, so the
+  // absence here is Alacritty/Code/Cursor only.
   ghostty: { id: "ghostty", comm: "ghostty", titleRead: "system-events" },
-  alacritty: { id: "alacritty", comm: "alacritty", titleRead: "system-events" },
-  Alacritty: { id: "alacritty", comm: "alacritty", titleRead: "system-events" },
+  alacritty: {
+    id: "alacritty",
+    comm: "alacritty",
+    titleRead: "system-events",
+    scrollbackUnavailable: NO_PANE_READ,
+  },
+  Alacritty: {
+    id: "alacritty",
+    comm: "alacritty",
+    titleRead: "system-events",
+    scrollbackUnavailable: NO_PANE_READ,
+  },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
   // 33821 run 43325922491: the run wrote its own marker title and the window server still reported
@@ -465,6 +497,7 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
+    scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
       "Hosted Darwin title read unavailable for Cursor: the window server reports the app's own window title (\"[Extension Development Host] Cursor\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: other-title)",
   },
@@ -474,6 +507,7 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     id: "com.microsoft.VSCode",
     comm: "Code",
     titleRead: "none",
+    scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
       "Hosted Darwin title read unavailable for com.microsoft.VSCode: the window server reports the app's own window title (\"[Extension Development Host] Visual Studio Code\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: read-failed with that name observed)",
   },
@@ -1395,9 +1429,10 @@ export async function createOwnedTerminal(options: {
         appId: hostedApp.id,
         titleRead: hostedApp.titleRead,
         ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
-        assertOwned: async () => {
-          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
-        },
+        assertOwned: () =>
+          process.platform === "darwin"
+            ? Promise.resolve()
+            : Promise.reject(new Error("Darwin pasteboard read left Darwin")),
       })
     }
     if (!clipboard && binding.platform === "darwin" && terminalApp) {
@@ -1410,8 +1445,8 @@ export async function createOwnedTerminal(options: {
       // is a fixture for the subject the run measures. Without this the artifact records no
       // clipboard fixture at all and the OSC 52 rows cannot say anything but "no fixture".
       clipboard = await createDarwinClipboardAdapter({
-        appComm: HOSTED_DARWIN_EXECUTABLE.Terminal!.comm,
-        appId: HOSTED_DARWIN_EXECUTABLE.Terminal!.id,
+        appComm: TERMINAL_APP_HOSTED.comm,
+        appId: TERMINAL_APP_HOSTED.id,
         titleRead: "none",
         titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
         ownedHost: true,
@@ -1642,6 +1677,7 @@ export async function createOwnedTerminal(options: {
       ...(appPid !== undefined && { appPid }),
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
+      ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
       ...(clipboard && { clipboard }),
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
