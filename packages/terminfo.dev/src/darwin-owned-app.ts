@@ -86,7 +86,12 @@ export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
       throw new Error("the owned-Mac app launch census contains a non-object row")
     }
     const value = row as Record<string, unknown>
-    if (typeof value.id !== "number" || typeof value.ownerPid !== "number" || value.layer !== 0) continue
+    // A row that is an object but lacks the identity keys is not one of ours to skip: the census script
+    // always emits them, so a missing one means this is not that script's output and nothing here is read.
+    if (typeof value.id !== "number" || typeof value.ownerPid !== "number" || typeof value.layer !== "number") {
+      throw new Error(`the owned-Mac app launch census row lacks id, owner or layer: ${JSON.stringify(value)}`)
+    }
+    if (value.layer !== 0) continue
     if (value.onscreen === false) continue
     out.push({
       id: value.id,

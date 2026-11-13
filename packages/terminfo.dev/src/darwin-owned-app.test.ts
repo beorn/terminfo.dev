@@ -42,7 +42,6 @@ describe("the launched window is the one the census did not have before", () => 
       row(2, 111, { layer: 1 }),
       row(3, 111, { onscreen: false }),
       row(4, 111, { namePresent: false, name: undefined }),
-      { id: 5, ownerPid: 111 },
     ]
     expect(launchCensusWindows(rows)).toEqual([
       { id: 1, ownerPid: 111, name: "window 1" },
@@ -52,7 +51,9 @@ describe("the launched window is the one the census did not have before", () => 
 
   it("refuses a census that is not a window list", () => {
     expect(() => launchCensusWindows({})).toThrow(/must be a window list/)
-    expect(() => launchCensusWindows([{ id: 1 }])).toThrow(/non-object row|window list/)
+    expect(() => launchCensusWindows([42])).toThrow(/non-object row/)
+    // The census script always emits id, ownerPid and layer, so a row without them is not its output.
+    expect(() => launchCensusWindows([{ id: 1 }])).toThrow(/lacks id, owner or layer/)
   })
 
   it("never claims a window that was there before the launch", () => {
