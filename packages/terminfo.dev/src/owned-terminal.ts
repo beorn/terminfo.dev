@@ -1361,11 +1361,17 @@ export async function createOwnedTerminal(options: {
         },
       )
     } else if (darwinHosted && hostedApp) {
+      // #30724 (@cto 41cd2559 condition 1 and 2): the hosted arm is the same implementation as the
+      // owned-host sentinel path, told apart only by the disposable fact this branch already proved
+      // - the receipt above is a github-hosted-runner or this run never got here. A fresh runner's
+      // pasteboard starts empty, so without the sentinel a negative grade has nothing to compare
+      // against. Restore of earlier contents stays off: a single-use machine has none to restore.
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
         appId: hostedApp.id,
         titleRead: hostedApp.titleRead,
         ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
+        disposableHost: { receiptKind: "github-hosted-runner" },
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
         },

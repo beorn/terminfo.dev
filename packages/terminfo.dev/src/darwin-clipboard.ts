@@ -68,15 +68,31 @@ export async function createDarwinClipboardAdapter(input: {
    * mean reading them.
    */
   ownedHost?: boolean
+  /**
+   * The disposable-host fact (#30724, @cto 41cd2559): the receipt this run was admitted on names a
+   * github-hosted-runner, so the machine runs this one job and its pasteboard holds nothing worth
+   * preserving. The arm therefore takes the SAME sentinel path as an owned host - never reading
+   * foreign contents, restoring nothing - and adds what a shared machine refuses: the sentinel is
+   * read back before any grade, and a read that is not it refuses by name. Without that readback a
+   * pasteboard that silently accepts nothing would grade every row as "did not write".
+   */
+  disposableHost?: { readonly receiptKind: "github-hosted-runner" }
 }): Promise<LinuxClipboardAdapter> {
   const run = input.run ?? runDarwinCommand
+  if (input.ownedHost && input.disposableHost) {
+    throw new Error(
+      "Darwin pasteboard adapter: disposableHost and ownedHost cannot both be claimed; shared and disposable are different machines",
+    )
+  }
+  const sentinelRoute = input.ownedHost === true || input.disposableHost !== undefined
+  const disposable = input.disposableHost
   const sentinel = "terminfo owned pasteboard " + randomUUID()
-  if (input.ownedHost) {
+  if (sentinelRoute) {
     await input.assertOwned()
     await run("/usr/bin/pbcopy", [], sentinel)
   }
-  const baseline = input.ownedHost ? sentinel : pasteboardText(await run("/usr/bin/pbpaste", []))
-  const withClipboardFixture = createClipboardTransaction(
+  const baseline = sentinelRoute ? sentinel : pasteboardText(await run("/usr/bin/pbpaste", []))
+  const transaction = createClipboardTransaction(
     baseline,
     {
       async readText(trace, kind, verify) {
@@ -93,15 +109,36 @@ export async function createDarwinClipboardAdapter(input: {
         trace({ kind, at: new Date().toISOString(), length: text.length })
       },
     },
-    input.ownedHost ? { foreignReadDigest: "omit" } : undefined,
+    sentinelRoute ? { foreignReadDigest: "omit" } : undefined,
   )
+  // @dev/8 R1: the sentinel readback belongs INSIDE the fixture, where a failure refuses the probes
+  // that need the pasteboard and leaves the rest of the run standing. Thrown at construction it
+  // would kill all 273 rows over one feature's fixture, which is what unified.ts:653 forbids.
+  const withClipboardFixture: LinuxClipboardAdapter["withClipboardFixture"] =
+    disposable === undefined
+      ? transaction
+      : async (work, trace, verify) => {
+          await input.assertOwned()
+          const roundtrip = pasteboardText(await run("/usr/bin/pbpaste", []))
+          if (roundtrip !== sentinel) {
+            const reason =
+              `Disposable pasteboard sentinel self-roundtrip failed on a ${disposable.receiptKind}: wrote a ` +
+              `${Buffer.byteLength(sentinel)}-byte sentinel and read back ${Buffer.byteLength(roundtrip)} bytes ` +
+              `that are not it, so no clipboard grade under this configuration can be trusted`
+            return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-invalid" as const, reason }] }
+          }
+          return transaction(work, trace, verify)
+        }
   return {
     profile: "default",
     pasteboard: "darwin",
     pasteboardApp: input.appId,
     config: null,
     permissions: "clipboard: read=allow,write=allow",
-    summary: (input.ownedHost ? "darwin owned" : "darwin hosted") + " pasteboard for " + input.appComm,
+    summary:
+      (input.ownedHost ? "darwin owned" : input.disposableHost ? "darwin disposable" : "darwin hosted") +
+      " pasteboard for " +
+      input.appComm,
     assertOwned: input.assertOwned,
     async readTitle() {
       await input.assertOwned()
@@ -117,7 +154,7 @@ export async function createDarwinClipboardAdapter(input: {
     },
     withClipboardFixture,
     async dispose() {
-      if (!input.ownedHost) return
+      if (!sentinelRoute) return
       // Emptying is a write to the machine's pasteboard like any other, so it needs the same proof
       // (@dev/3 R2 at 2fe85988d106b). A run whose window is gone is not entitled to empty it, and a
       // value we can no longer vouch for is the lesser harm; cleanup never throws, so the skip is

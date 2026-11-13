@@ -43,6 +43,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
     const executable = app === "iterm2" ? "/Applications/iTerm.app/Contents/MacOS/iTerm2"
       : "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
     Object.defineProperty(process, "platform", { value: "darwin" })
+    let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
@@ -56,12 +57,22 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
           : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
       },
       spawn: (file) => {
-        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+        const tool = String(file)
+        if (tool.endsWith("pbpaste") || tool.endsWith("pbcopy") || tool.endsWith("osascript")) {
           const child = new EventEmitter()
           child.stdout = new EventEmitter()
           child.stderr = new EventEmitter()
           child.kill = () => true
-          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          child.stdin = {
+            end(text) {
+              if (tool.endsWith("pbcopy")) pasteboard = String(text ?? "")
+              const reply = tool.endsWith("pbcopy") ? "" : tool.endsWith("pbpaste") ? pasteboard + "\\n" : "\\n"
+              queueMicrotask(() => {
+                child.stdout.emit("data", Buffer.from(reply))
+                child.emit("close", 0)
+              })
+            },
+          }
           return child
         }
         throw new Error("geometry unavailable in this adapter-selection fixture")
@@ -103,6 +114,7 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
     const directory = ${JSON.stringify(directory)}
     process.env.TERMINFO_CAPTURE_DIRECTORY = directory
     Object.defineProperty(process, "platform", { value: "darwin" })
+    let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
       openSync: (path, ...args) => path === "/dev/fd/1" ? 900 : fs.openSync(path, ...args),
@@ -131,12 +143,22 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
         throw new Error("The physical iTerm arm must not use logical JXA contents")
       },
       spawn: (file) => {
-        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+        const tool = String(file)
+        if (tool.endsWith("pbpaste") || tool.endsWith("pbcopy") || tool.endsWith("osascript")) {
           const child = new EventEmitter()
           child.stdout = new EventEmitter()
           child.stderr = new EventEmitter()
           child.kill = () => true
-          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          child.stdin = {
+            end(text) {
+              if (tool.endsWith("pbcopy")) pasteboard = String(text ?? "")
+              const reply = tool.endsWith("pbcopy") ? "" : tool.endsWith("pbpaste") ? pasteboard + "\\n" : "\\n"
+              queueMicrotask(() => {
+                child.stdout.emit("data", Buffer.from(reply))
+                child.emit("close", 0)
+              })
+            },
+          }
           return child
         }
         const child = new EventEmitter()
@@ -198,6 +220,7 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
     const directory = ${JSON.stringify(directory)}
     process.env.TERMINFO_CAPTURE_DIRECTORY = directory
     Object.defineProperty(process, "platform", { value: "darwin" })
+    let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
       openSync: (path, ...args) => path === "/dev/fd/1" ? 900 : fs.openSync(path, ...args),
@@ -224,12 +247,22 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
         return { stdout, stderr: "", status: 0, signal: null }
       },
       spawn: (file) => {
-        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy") || String(file).endsWith("osascript")) {
+        const tool = String(file)
+        if (tool.endsWith("pbpaste") || tool.endsWith("pbcopy") || tool.endsWith("osascript")) {
           const child = new EventEmitter()
           child.stdout = new EventEmitter()
           child.stderr = new EventEmitter()
           child.kill = () => true
-          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          child.stdin = {
+            end(text) {
+              if (tool.endsWith("pbcopy")) pasteboard = String(text ?? "")
+              const reply = tool.endsWith("pbcopy") ? "" : tool.endsWith("pbpaste") ? pasteboard + "\\n" : "\\n"
+              queueMicrotask(() => {
+                child.stdout.emit("data", Buffer.from(reply))
+                child.emit("close", 0)
+              })
+            },
+          }
           return child
         }
         const child = new EventEmitter()
@@ -537,4 +570,74 @@ test("darwinHosted alone on Linux refuses by platform, not as a missing arm", as
       darwinHosted: { receiptPath },
     }),
   ).rejects.toThrow(/Owned Darwin hosted terminal requires Darwin/)
+})
+
+// @dev/8 R2 on 30724: the three hosted fixtures prove the sentinel path works WHEN SELECTED, not
+// that the hosted arm selects it. This test asserts the violation directly: the hosted arm passes
+// the disposable fact and no shared-machine claim, and the Terminal.app arm the reverse. Removing
+// `disposableHost` from owned-terminal.ts fails here and nowhere else.
+test("the hosted arm passes the disposable fact and the Terminal.app arm the shared-machine one", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawn: (file) => {
+        if (String(file).endsWith("pbpaste") || String(file).endsWith("pbcopy")) {
+          const child = new EventEmitter()
+          child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true
+          child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+          return child
+        }
+        throw new Error("geometry unavailable in this dispatch fixture")
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const inputs = []
+    mock.module("./packages/terminfo.dev/src/darwin-clipboard.ts", () => ({
+      runDarwinCommand: async () => "",
+      createDarwinClipboardAdapter: async (input) => {
+        inputs.push({ ownedHost: input.ownedHost, disposableHost: input.disposableHost, appId: input.appId })
+        return { profile: "default", pasteboard: "darwin", pasteboardApp: input.appId, config: null,
+          permissions: "clipboard: read=allow,write=allow", summary: "dispatch fixture",
+          assertOwned: async () => {}, readTitle: async () => "", dispose: async () => {},
+          withClipboardFixture: async (work) => work({ baseline: "sentinel", readText: async () => "sentinel", writeText: async () => {} }) }
+      }
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const ids = { captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32) }
+    process.env.TERMINFO_RUN_ID = ids.expectedLaunchRunId
+    const hosted = await createOwnedTerminal({ ...ids, out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    assert.deepEqual(inputs.at(-1), { ownedHost: undefined, disposableHost: { receiptKind: "github-hosted-runner" }, appId: "iterm2" })
+    await hosted.dispose()
+    const owned = await createOwnedTerminal({ ...ids, out: process.stdout,
+      terminalApp: { asserter: "terminfo-admin", launchRunId: ids.expectedLaunchRunId, workerPid: process.pid, windowId: 4242, tabTty: "/dev/ttys004", intendedVersion: "3.4.5" } })
+    assert.equal(inputs.at(-1).ownedHost, true)
+    assert.equal(inputs.at(-1).disposableHost, undefined)
+    await owned.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
 })

@@ -201,3 +201,100 @@ test("a measured title refusal is thrown verbatim and never spawns a reader", as
   await expect(adapter.readTitle()).rejects.toThrow(titleUnavailable)
   expect(readers).toEqual([])
 })
+
+// #30724 (@cto 41cd2559 condition 3): a fresh hosted runner's pasteboard is EMPTY, so a negative
+// grade has no non-empty baseline to compare against and "unsupported" can never be reached. The
+// disposable arm takes the owned-host sentinel path - it still never reads foreign contents, since
+// there are none to preserve - and proves the sentinel comes back before any grade runs.
+test("a disposable hosted pasteboard writes a random sentinel and proves it round-trips before any grade", async () => {
+  let pasteboard = ""
+  const calls: string[] = []
+  const run: DarwinCommand = async (file, _args, stdin) => {
+    if (file.endsWith("pbpaste")) {
+      calls.push("pbpaste")
+      return pasteboard + "\n"
+    }
+    if (file.endsWith("pbcopy")) {
+      calls.push("pbcopy:" + (stdin ?? ""))
+      pasteboard = stdin ?? ""
+      return ""
+    }
+    throw new Error("unexpected " + file)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "iTerm2",
+    appId: "iterm2",
+    titleRead: "none",
+    disposableHost: { receiptKind: "github-hosted-runner" },
+    assertOwned: async () => {},
+    run,
+  })
+  const sentinel = pasteboard
+  expect(sentinel).toMatch(/^terminfo owned pasteboard /)
+  // Construction writes the sentinel and reads nothing; the readback is the fixture's own first act.
+  expect(calls.filter((call) => call === "pbpaste")).toHaveLength(0)
+  const result = await adapter.withClipboardFixture(
+    async (fixture) => {
+      expect(fixture.baseline).toBe(sentinel)
+      return { pass: true, note: "grade ran" } as ProbeCallbackResult
+    },
+    () => {},
+    async () => {},
+  )
+  expect(result.pass).toBe(true)
+  expect(calls.filter((call) => call === "pbpaste").length).toBeGreaterThan(0)
+  // A second run on a second runner never reuses the sentinel.
+  const second = await createDarwinClipboardAdapter({
+    appComm: "iTerm2",
+    appId: "iterm2",
+    titleRead: "none",
+    disposableHost: { receiptKind: "github-hosted-runner" },
+    assertOwned: async () => {},
+    run,
+  })
+  expect(pasteboard).not.toBe(sentinel)
+  await second.dispose()
+})
+
+test("a disposable pasteboard whose sentinel does not come back refuses the clipboard rows and nothing else", async () => {
+  const run: DarwinCommand = async (file) => {
+    if (file.endsWith("pbcopy")) return ""
+    if (file.endsWith("pbpaste")) return "text this run never wrote\n"
+    throw new Error("unexpected " + file)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "iTerm2",
+    appId: "iterm2",
+    titleRead: "none",
+    disposableHost: { receiptKind: "github-hosted-runner" },
+    assertOwned: async () => {},
+    run,
+  })
+  const result = await adapter.withClipboardFixture(
+    async () => ({ pass: true, note: "this grade must never run" }) as ProbeCallbackResult,
+    () => {},
+    async () => {},
+  )
+  expect(result.pass).toBe(false)
+  expect(result.tests).toEqual([
+    {
+      id: "criterion",
+      status: "probe-invalid",
+      reason: expect.stringContaining("sentinel self-roundtrip failed"),
+    },
+  ])
+})
+
+test("the shared-machine and disposable facts cannot be claimed together", async () => {
+  await expect(
+    createDarwinClipboardAdapter({
+      appComm: "Terminal",
+      appId: "terminal-app",
+      titleRead: "none",
+      ownedHost: true,
+      disposableHost: { receiptKind: "github-hosted-runner" },
+      assertOwned: async () => {},
+      run: async () => "",
+    }),
+  ).rejects.toThrow(/disposableHost and ownedHost/)
+})
