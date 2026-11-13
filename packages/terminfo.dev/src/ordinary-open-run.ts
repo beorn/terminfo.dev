@@ -132,15 +132,17 @@ export async function resolveOrdinaryOpenRun(input: {
     ownedHost: false,
     // The person's own pasteboard: neither its digest nor its length may be published (@cto 2026-11-13).
     personClipboard: { foreignReadDigest: "absent" },
-    // Re-walked on every pasteboard read and write; no cached pass (@cto 2026-11-13).
-    assertOwned: async () => {
+    // Re-walked on every pasteboard read and write; no cached pass (@cto 2026-11-13). The walk is synchronous, so
+    // the promise is spelled out rather than implied by `async`: what the adapter gets is a rejected promise naming
+    // the row's refusal, and nothing here waits on anything.
+    assertOwned: () => {
       const verdict = checkOrdinaryOpenLiveAncestry({
         receipt,
         expectedBundleId,
         probePid: input.probePid ?? process.pid,
         ...(input.readAncestry && { reader: input.readAncestry }),
       })
-      if (!verdict.ok) throw new Error(verdict.probeTodo)
+      return verdict.ok ? Promise.resolve() : Promise.reject(new Error(verdict.probeTodo))
     },
     ...(input.run === undefined ? {} : { run: input.run }),
   })
