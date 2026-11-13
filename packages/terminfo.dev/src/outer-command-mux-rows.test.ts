@@ -133,6 +133,17 @@ test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps t
   expect(screenWrites).toEqual([])
   expect(screenResult.criterionBranch).toBeUndefined()
 
+  const directWrites: string[] = []
+  const directResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    write: (text: string) => void directWrites.push(text),
+  } as unknown as TermProbeSource)
+  expect(seen).toEqual(["screen", undefined])
+  expect(directWrites).toEqual([])
+  expect(directResult.criterionBranch).toBeUndefined()
+
   const tmuxWrites: string[] = []
   const tmuxResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
     kind: "live",
@@ -141,7 +152,7 @@ test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps t
     mux: "tmux",
     write: (text: string) => void tmuxWrites.push(text),
   } as unknown as TermProbeSource)
-  expect(seen).toEqual(["screen"])
+  expect(seen).toEqual(["screen", undefined])
   expect(tmuxWrites).toEqual([row.write, "\u001b[c"])
   expect(tmuxResult.criterionBranch).toBe(row.branch)
 })
