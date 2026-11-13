@@ -376,13 +376,18 @@ export function callbackReading(result: ProbeCallbackResult | undefined): ProbeC
 }
 
 /**
- * A restore the fixture could not complete is added to the failure already propagating, so a probe that threw
- * still reports why the surface was left dirty. Neither fact replaces the other: the error keeps its type and
- * its own message, and the cleanup rides behind it.
+ * The failure a probe is already propagating, carrying one more fact: the restore the fixture could not
+ * complete. An Error is returned as the same object, so its type, identity and message survive and only the
+ * detail is appended; anything else thrown is wrapped, because a primitive or plain object cannot carry the
+ * detail at all. The caller throws the result from `finally` — assigning it to a local would leave the
+ * original value propagating and silently drop the detail (that is why a wrapper only works when thrown).
  */
 export function withCleanupDetail(failure: unknown, cleanup: string): unknown {
-  if (failure instanceof Error && !failure.message.includes(cleanup)) failure.message = `${failure.message}; ${cleanup}`
-  return failure
+  if (failure instanceof Error) {
+    if (!failure.message.includes(cleanup)) failure.message = `${failure.message}; ${cleanup}`
+    return failure
+  }
+  return new Error(`${String(failure)}; ${cleanup}`)
 }
 
 /** Add completed producer evidence only where the callback explicitly requested it. */
@@ -2886,12 +2891,14 @@ export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: s
 }
 
 /**
- * Whether a query's silence was measured: the wait ran out, or the DA1 fence came back with nothing that
- * matched it. Bytes the pattern could not read are not silence — they are an answer we failed to read, and
- * the caller keeps treating those as its own defect (#30559).
+ * Whether a query's silence was measured: a wait that ran out with nothing on the wire, or the DA1 fence
+ * came back with nothing that matched it. A timeout that still carried bytes is not silence, and neither
+ * are bytes the pattern could not read — both are an answer we failed to read, and the caller keeps
+ * treating those as its own defect (#30559).
  */
 export function measuredSilence(outcome: TerminalQueryOutcome, expected: string): boolean {
-  return outcome.reason === "timeout" || sentinelSilenceResult(outcome, expected) !== null
+  const timedOutEmpty = outcome.reason === "timeout" && outcome.raw === ""
+  return timedOutEmpty || sentinelSilenceResult(outcome, expected) !== null
 }
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */

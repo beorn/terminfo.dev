@@ -4481,8 +4481,9 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    const empty = silence !== null || (outcome.reason === "timeout" && outcome.raw === "")
+    const expected = "OSC 52 c query returns the exact written nonce"
+    const silence = sentinelSilenceResult(outcome, expected)
+    const empty = measuredSilence(outcome, expected)
     const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
     if (handoff) return handoff
     return withClipboardControlNote(
@@ -5380,6 +5381,12 @@ const OSC0_TITLE_QUERY = "\x1b[21t"
 const OSC0_ICON_REPLY = /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/
 const OSC0_TITLE_REPLY = /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/
 
+/**
+ * The OSC 0 icon and window-title clauses share one result builder, and each `silence` field is positional:
+ * `silence.icon` grades the icon-label query (CSI 20 t) and `silence.title` grades the window-title query
+ * (CSI 21 t). They are never interchangeable — an icon/title swap here would report an unreadable reply as a
+ * measured silence and open a row that our own instrument failed.
+ */
 function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
@@ -7676,10 +7683,12 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
           if (state.restored !== before) {
-            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+            // either. `result` is undefined here only because the try threw; a plain return added inside that try
+            // would leave neither, so this branch names that invariant instead of assuming it.
             const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
             if (result) result = cleanupReading(result, cleanup)
-            else failure = withCleanupDetail(failure, cleanup)
+            else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
           }
         }
         return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -7868,8 +7877,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
                 // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
                 // because "got no answer" would be false for it.
-                const silent =
-                  measuredSilence(icon, "OSC 0 icon-label reply")
+                const silent = measuredSilence(icon, "OSC 0 icon-label reply")
                 if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
@@ -7902,10 +7910,12 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
               const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
-              else failure = withCleanupDetail(failure, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -8083,10 +8093,12 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
               const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
-              else failure = withCleanupDetail(failure, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }

@@ -443,3 +443,23 @@ test("unreadable bytes on the silent clause stay our failure even when the other
   expect(result.tests).toMatchObject([{ status: "probe-invalid" }])
   expect(result.criterionBranch).toBeUndefined()
 })
+
+// #34012 slice 5: the wait ran out, but something arrived that the pattern could not read. That is an answer
+// we failed to read, so the row must stay probe-invalid — the same rule the headless clipboard read applies
+// when it treats only a timeout with nothing on the wire as silence.
+test("a timeout that still carried unreadable bytes stays our failure, not a measured silence", async () => {
+  const source = Object.assign(terminal({}), {
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) =>
+      sequence === ICON_QUERY
+        ? { raw: "\x1b]Lsome-unreadable-form\x07", rawBase64: "", match: null, reason: "timeout" as const }
+        : {
+            raw: `\x1b]l${PAYLOAD}\x07`,
+            rawBase64: "",
+            match: pattern.exec(`\x1b]l${PAYLOAD}\x07`),
+            reason: "reply" as const,
+          },
+  })
+  const result = await termCallback()(source)
+  expect(result.tests).toMatchObject([{ status: "probe-invalid" }])
+  expect(result.criterionBranch).toBeUndefined()
+})
