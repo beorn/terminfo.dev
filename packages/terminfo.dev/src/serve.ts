@@ -24,10 +24,6 @@ import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import {
   assertCalibratedCaptureGeometry,
-  CALIBRATION_SOLID_PAINT,
-  originFromSentinel,
-  witnessCellFor,
-  sentinelBlockRefusal,
   type CaptureCells,
   type ObservationFrame,
   DEFAULT_TIMEOUT_MS,
@@ -52,6 +48,7 @@ import {
   type InputFixture,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
+import { readThroughSentinel } from "./sentinel-read.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import {
@@ -74,7 +71,7 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
-import { locateColour, retain } from "./capture-core.ts"
+import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
@@ -782,38 +779,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           if (sentinel === undefined || source === undefined || regions.length === 0) {
             return adapter.capture(checkpoint, calibrated)
           }
-          // 33000: a crop taken at calibration's origin reads the wrong cells the moment the window
-          // moves, and Warp's command header does exactly that. So this read paints calibration's
-          // sentinel one cell clear of everything it digests, locates it in the SAME frame it
-          // digests, and derives the origin from where it actually landed. A frame whose sentinel is
-          // missing or is not one cell block refuses by name: it never falls back to the stale origin.
-          const cell = witnessCellFor(regions, { rows: source.rows, cols: source.cols })
-          const at = `\x1b[${cell.row};${cell.col}H`
-          const where = `cell ${cell.row},${cell.col}`
-          source.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`)
-          try {
-            return await adapter.capture(checkpoint, ({ frame, pixelGeometry }) => {
-              const located = locateColour(frame, sentinel.rgb)
-              if (located === null) {
-                throw new Error(
-                  `${checkpoint.label}: calibration's sentinel painted at ${where} is nowhere in the frame this read digests, so its crop cannot be anchored`,
-                )
-              }
-              const size = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
-              const blockRefusal = sentinelBlockRefusal(located, size)
-              if (blockRefusal) {
-                throw new Error(
-                  `${checkpoint.label}: calibration's sentinel painted at ${where} is not one cell block: ${blockRefusal} at ${located.box.x},${located.box.y}`,
-                )
-              }
-              return {
-                origin: originFromSentinel(located, cell, size),
-                basis: `sentinel re-located on this frame at ${where} (33000)`,
-              }
-            })
-          } finally {
-            source.write(`\x1b7${at}\x1b[0m \x1b8`)
-          }
+          // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
+          return readThroughSentinel({
+            source,
+            capture: (resolve) => adapter.capture(checkpoint, resolve),
+            label: checkpoint.label,
+            sentinel,
+            regions,
+          })
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           textOrigin = undefined
