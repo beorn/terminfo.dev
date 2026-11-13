@@ -136,6 +136,8 @@ export {
   witnessCellsFor,
   sentinelBlockRefusal,
   CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
+  sentinelBoxDeficit,
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,

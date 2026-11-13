@@ -1,8 +1,9 @@
 import {
   CALIBRATION_SOLID_PAINT,
   originFromSentinel,
-  CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
   sentinelBlockRefusal,
+  sentinelBoxDeficit,
   witnessCellsFor,
   type CalibrationSentinel,
   type CaptureCells,
@@ -126,7 +127,7 @@ export async function readThroughSentinel<T>(input: {
     // axis and move its origin by the same, so "the same size" and "the offset the cells imply" are
     // both read with that tolerance — never with the box size in place of the cell PITCH, which a
     // blended edge would break on every read (@dev/10 peer read).
-    const slack = 2 * CELL_EDGE_TOLERANCE_PX
+    const slack = SENTINEL_BOX_SLACK_PX
     if (
       Math.abs(first.box.width - second.box.width) > slack ||
       Math.abs(first.box.height - second.box.height) > slack
