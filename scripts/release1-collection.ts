@@ -400,7 +400,7 @@ export function ownedAppCommand(
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
 ): { argv: string[]; label: string } {
-  const probe = ["bun", "packages/admin/src/index.ts", "probe", "term", context.id]
+  const probe = ["bun", "packages/admin/src/index.ts", "probe", "app", context.id]
   if (transport.runner === "local") {
     return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
   }
