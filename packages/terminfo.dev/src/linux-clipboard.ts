@@ -338,6 +338,8 @@ export function createClipboardTransaction(
     readonly readProfile?: { readonly profile: string; readonly setting: string }
     /** @cto 2026-11-13: the app's pinned default for a clipboard read, so a silent read grades what it means. */
     readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+    /** The citation this tree holds is for another version: name both, never grade from the other version's. */
+    readonly readDefaultRefusal?: string
     /**
      * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
      * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
@@ -407,6 +409,7 @@ export function createClipboardTransaction(
         baseline,
         ...(options?.readProfile && { readProfile: options.readProfile }),
         ...(options?.readDefault && { readDefault: options.readDefault }),
+        ...(options?.readDefaultRefusal && { readDefaultRefusal: options.readDefaultRefusal }),
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
         ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
@@ -838,24 +841,56 @@ export const CLIPBOARD_ALLOW_ARGS: Readonly<Record<ClipboardApp, readonly string
  * source rather than reusing another version's citation.
  */
 export const CLIPBOARD_READ_DEFAULTS: Readonly<
-  Partial<Record<ClipboardApp, { readonly posture: "ask" | "deny" | "absent"; readonly source: string }>>
+  Partial<
+    Record<
+      ClipboardApp,
+      { readonly posture: "ask" | "deny" | "absent"; readonly version: string; readonly source: string }
+    >
+  >
 > = {
   kitty: {
     posture: "ask",
+    version: "0.49.2",
     source:
       "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
       "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
   },
   ghostty: {
     posture: "ask",
+    version: "1.4.0",
     source: 'ghostty v1.4.0 src/config/Config.zig:2458: "clipboard-read": ClipboardAccess = .ask',
   },
   alacritty: {
     posture: "deny",
+    version: "0.17.0",
     source:
       "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
       '"only copy sequence is accepted"',
   },
+}
+
+/**
+ * The default a run may use: its OWN version's citation or nothing (@cto 2026-11-13 — a citation from another version
+ * must never grade a run, and "deny" is the case where that writes a wrong negative). A run whose version has no
+ * citation gets a refusal naming both versions, so the row says which citation was missing, not that none exists.
+ */
+export function clipboardReadDefault(
+  app: ClipboardApp,
+  profile: "default" | "allow" | "deny-read",
+  measuredVersion: string | undefined,
+): {
+  readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  readDefaultRefusal?: string
+} {
+  if (profile !== "default") return {}
+  const cited = CLIPBOARD_READ_DEFAULTS[app]
+  if (!cited) return {}
+  if (cited.version === measuredVersion) return { readDefault: { posture: cited.posture, source: cited.source } }
+  return {
+    readDefaultRefusal: `default not established: this tree cites ${app} ${cited.version}, this run measured ${
+      measuredVersion ?? "(no version recorded)"
+    }`,
+  }
 }
 
 /**
@@ -1185,6 +1220,9 @@ export async function createLinuxClipboardAdapter(
       .filter((line) => line.length > 0)
   }
   const readProfile = clipboardReadProfile(app, receipt.profile)
+  // The launcher has already compared TERMINFO_TARGET_VERSION with the app's own version reply at this point
+  // (linux-container-run.sh:721), so this is the version the run measured, not one asserted here.
+  const readDefaultChoice = clipboardReadDefault(app, receipt.profile, process.env.TERMINFO_TARGET_VERSION)
   const withClipboardFixture = createClipboardTransaction(
     baseline,
     {
@@ -1198,8 +1236,7 @@ export async function createLinuxClipboardAdapter(
       // @cto 2026-11-13: a profile reading names its profile and its exact setting; a default-configuration reading
       // names nothing, and that absence is what tells the two apart downstream.
       ...(readProfile && { readProfile }),
-      ...(receipt.profile === "default" &&
-        CLIPBOARD_READ_DEFAULTS[app] && { readDefault: CLIPBOARD_READ_DEFAULTS[app] }),
+      ...readDefaultChoice,
       ...(tmuxTarget && {
         muxState: {
           async snapshot() {

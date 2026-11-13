@@ -1500,6 +1500,25 @@ describe("OSC 52 read leg control and profile naming", () => {
     })
   })
 
+  test("a version refusal names both versions and never grades unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefaultRefusal: "default not established: this tree cites kitty 0.49.2, this run measured 0.49.1",
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("this tree cites kitty 0.49.2, this run measured 0.49.1"),
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
   test("a deny-read profile grades its own configured refusal, naming write-clipboard only", async () => {
     const result = await readCallback()(
       termSource({

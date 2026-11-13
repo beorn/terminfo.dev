@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
 import {
   assertClipboardProfile,
+  clipboardReadDefault,
   clipboardReadProfile,
   CLIPBOARD_ALLOW_ARGS,
   type ClipboardApp,
@@ -96,4 +97,24 @@ test("a deny-read profile names write-clipboard only, and allow names the app's 
   })
   expect(clipboardReadProfile("wezterm", "allow")).toBeUndefined()
   expect(clipboardReadProfile("kitty", "default")).toBeUndefined()
+})
+
+// @cto 2026-11-13: a cited default belongs to the version it was read from. Handing kitty's 0.49.2 citation to a
+// 0.49.1 run grades the wrong binary, and on alacritty's "deny" citation that writes a wrong negative — so a
+// mismatched run gets no default and a refusal naming both versions instead.
+test("a cited default reaches only a run that measured its version; a mismatch names both and grades nothing", () => {
+  expect(clipboardReadDefault("kitty", "default", "0.49.2")).toEqual({
+    readDefault: { posture: "ask", source: expect.stringContaining("kitty v0.49.2") },
+  })
+  expect(clipboardReadDefault("kitty", "default", "0.49.1")).toEqual({
+    readDefaultRefusal: "default not established: this tree cites kitty 0.49.2, this run measured 0.49.1",
+  })
+  expect(clipboardReadDefault("alacritty", "default", "0.16.1").readDefault).toBeUndefined()
+  expect(clipboardReadDefault("alacritty", "default", "0.16.1").readDefaultRefusal).toContain(
+    "this tree cites alacritty 0.17.0, this run measured 0.16.1",
+  )
+  expect(clipboardReadDefault("ghostty", "default", undefined).readDefaultRefusal).toContain("(no version recorded)")
+  expect(clipboardReadDefault("kitty", "allow", "0.49.2")).toEqual({})
+  expect(clipboardReadDefault("kitty", "deny-read", "0.49.2")).toEqual({})
+  expect(clipboardReadDefault("xterm", "default", "411")).toEqual({})
 })

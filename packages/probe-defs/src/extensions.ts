@@ -5110,10 +5110,18 @@ async function liveClipboardProbe(
         }
       }
       if (posture === undefined || posture === "ask") {
-        const reason =
-          posture === "ask"
-            ? "default asks the user; the prompt was not answered"
-            : "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+        // @cto 2026-11-13: a citation from another version never grades this run — for a "deny" citation that would
+        // write a wrong negative — so the adapter refuses it and the row names BOTH versions instead of claiming no
+        // citation exists.
+        let reason: string
+        if (posture === "ask") {
+          reason = "default asks the user; the prompt was not answered"
+        } else if (fixture.readDefaultRefusal !== undefined) {
+          reason = `cursor-position control answered; OSC 52 c returned no reply; ${fixture.readDefaultRefusal}`
+        } else {
+          reason =
+            "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+        }
         // @dev/16 peer, and @cto's "attach an existing capture, do not add one": a frame the run already takes is kept
         // next to an undecided row, in case the prompt is visible in it. Nothing here answers the prompt.
         if (ctx.capture) {
