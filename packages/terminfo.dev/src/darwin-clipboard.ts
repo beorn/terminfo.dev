@@ -76,21 +76,25 @@ export async function createDarwinClipboardAdapter(input: {
     await run("/usr/bin/pbcopy", [], sentinel)
   }
   const baseline = input.ownedHost ? sentinel : pasteboardText(await run("/usr/bin/pbpaste", []))
-  const withClipboardFixture = createClipboardTransaction(baseline, {
-    async readText(trace, kind, verify) {
-      await input.assertOwned()
-      await verify()
-      const text = pasteboardText(await run("/usr/bin/pbpaste", []))
-      trace({ kind, at: new Date().toISOString(), length: text.length })
-      return text
+  const withClipboardFixture = createClipboardTransaction(
+    baseline,
+    {
+      async readText(trace, kind, verify) {
+        await input.assertOwned()
+        await verify()
+        const text = pasteboardText(await run("/usr/bin/pbpaste", []))
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+        return text
+      },
+      async writeText(text, trace, kind, verify) {
+        await input.assertOwned()
+        await verify()
+        await run("/usr/bin/pbcopy", [], text)
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+      },
     },
-    async writeText(text, trace, kind, verify) {
-      await input.assertOwned()
-      await verify()
-      await run("/usr/bin/pbcopy", [], text)
-      trace({ kind, at: new Date().toISOString(), length: text.length })
-    },
-  })
+    input.ownedHost ? { foreignReadDigest: "omit" } : undefined,
+  )
   return {
     profile: "default",
     pasteboard: "darwin",

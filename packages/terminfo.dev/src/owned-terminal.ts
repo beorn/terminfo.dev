@@ -72,6 +72,7 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
+import { assertOwnedTerminalWindow } from "./terminal-app-window.ts"
 import {
   assertOwnedProcess,
   runScopedMarker,
@@ -1371,6 +1372,11 @@ export async function createOwnedTerminal(options: {
       })
     }
     if (!clipboard && binding.platform === "darwin" && terminalApp) {
+      // @cto 1c7e19df and @dev/3's REVISE: condition 4 is about the machine's SHARED pasteboard, so
+      // the platform alone is not ownership. The first pbcopy in the adapter below must be preceded
+      // by the admin's own window assert, run here with this worker's pid: the window and tab the
+      // launch recorded must still be the run's, or nothing touches the shared pasteboard at all.
+      const ownedShell = parseTerminalAppOwner(terminalApp)
       // 31741's follow-on: the owned Terminal.app window is the app this run owns, so its pasteboard
       // is a fixture for the subject the run measures. Without this the artifact records no
       // clipboard fixture at all and the OSC 52 rows cannot say anything but "no fixture".
@@ -1382,6 +1388,10 @@ export async function createOwnedTerminal(options: {
         ownedHost: true,
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
+          assertOwnedTerminalWindow(
+            { provider: "terminal-app", windowId: ownedShell.windowId, tty: ownedShell.tabTty },
+            process.pid,
+          )
         },
       })
     }

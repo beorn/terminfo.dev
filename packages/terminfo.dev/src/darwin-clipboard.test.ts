@@ -84,6 +84,44 @@ test("an owned-host pasteboard is never read: the run writes its own sentinel fi
   expect(pasteboard).toBe("")
 })
 
+// @cto 1c7e19df on the owned host: foreign text can be a password or a one-time code, and the
+// sha256 of a short value is a guessable fingerprint. The diagnostic keeps the length and drops it.
+test("an owned host records the length of foreign text, never its digest", async () => {
+  let pasteboard = ""
+  const run: DarwinCommand = async (file, _args, stdin) => {
+    if (file.endsWith("pbcopy")) {
+      pasteboard = stdin ?? ""
+      return ""
+    }
+    if (file.endsWith("pbpaste")) return pasteboard + "\n"
+    throw new Error("unexpected " + file)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "Terminal",
+    appId: "terminal-app",
+    titleRead: "none",
+    ownedHost: true,
+    assertOwned: async () => {},
+    run,
+  })
+  // Something else on the shared machine copies between our sentinel and the callback.
+  pasteboard = "FOREIGN SECRET"
+  const failure = await adapter
+    .withClipboardFixture(
+      async () => ({ pass: true, note: "never reached" }) as ProbeCallbackResult,
+      () => {},
+      async () => {},
+    )
+    .then(
+      () => "",
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    )
+  expect(failure).toMatch(/baseline changed/)
+  expect(failure).toMatch(/read length 14/)
+  expect(failure).not.toMatch(/sha256/)
+  expect(failure).not.toMatch(/[a-f0-9]{32}/)
+})
+
 test("a system-events declaration reads the window name and does not depend on the app id", async () => {
   const scripts: string[] = []
   const run: DarwinCommand = async (file, args) => {
