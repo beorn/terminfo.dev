@@ -536,10 +536,93 @@ export function originFromSentinel(
 }
 
 /**
+ * The cells a search may use, in the ONE order every caller agrees on (34040). Nearest first by
+ * Chebyshev distance (the larger of |dRow| and |dCol|), then by row offset ascending, then by column
+ * offset ascending — so the same grid and the same digested regions always yield the same cell on
+ * every arm and every re-run. A fixed list of a handful of cells came first (33981) and refused reads
+ * whose free cell was three rows away, which is why the search is written down here rather than left
+ * as a list at each call site.
+ */
+function* cellsNearestFirst(
+  anchor: { row: number; col: number },
+  grid: { rows: number; cols: number },
+  accepted: (cell: { row: number; col: number }) => boolean,
+): Generator<{ row: number; col: number }> {
+  const limit = Math.max(grid.rows, grid.cols)
+  for (let radius = 1; radius <= limit; radius += 1) {
+    for (let dRow = -radius; dRow <= radius; dRow += 1) {
+      for (let dCol = -radius; dCol <= radius; dCol += 1) {
+        if (Math.max(Math.abs(dRow), Math.abs(dCol)) !== radius) continue
+        const cell = { row: anchor.row + dRow, col: anchor.col + dCol }
+        if (accepted(cell)) yield cell
+      }
+    }
+  }
+}
+
+const cleared = (
+  grid: { rows: number; cols: number },
+  digestedCells: (cell: { row: number; col: number }) => boolean,
+): ((cell: { row: number; col: number }) => boolean) => {
+  const visible = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  return (cell: { row: number; col: number }) => visible(cell) && !digestedCells(cell)
+}
+
+/**
+ * The rows and the columns a digested footprint actually leaves usable for a sentinel cell — not
+ * "columns no rectangle touches", which is a different and much stricter question: a region that
+ * spans the screen's width still leaves every column free on the one row below it (34040). A row is
+ * usable only when no footprint uses it at all (a cell on a digested region's own row can split a
+ * wide character at its edge, @dev/10). A column is usable when at least one usable row has a cell
+ * on it outside every rectangle.
+ */
+function clearExtent(
+  footprint: readonly CaptureCells[],
+  grid: { rows: number; cols: number },
+): { rows: number[]; cols: number[] } {
+  const rows: number[] = []
+  for (let row = 1; row <= grid.rows; row += 1) {
+    if (!footprint.some((region) => row >= region.top && row <= region.bottom)) rows.push(row)
+  }
+  const covers = (row: number, col: number): boolean =>
+    footprint.some((region) => row >= region.top && row <= region.bottom && col >= region.left && col <= region.right)
+  const cols: number[] = []
+  for (let col = 1; col <= grid.cols; col += 1) {
+    if (rows.some((row) => !covers(row, col))) cols.push(col)
+  }
+  return { rows, cols }
+}
+
+const spelledLimit = (
+  clear: { rows: number[]; cols: number[] },
+  grid: { rows: number; cols: number },
+  need: "a cell" | "a second cell",
+): string => {
+  if (clear.rows.length === 0) {
+    return `every row of this ${grid.rows}x${grid.cols} screen is inside a digested region, so no row is left for ${need}`
+  }
+  if (clear.cols.length === 0) {
+    return `every column of this ${grid.rows}x${grid.cols} screen is inside a digested region, so no column is left for ${need}`
+  }
+  if (clear.rows.length === 1) {
+    return `the compared region leaves one clear row, ${clear.rows[0]}, on this ${grid.rows}x${grid.cols} screen, so ${need} cannot sit on another row and the row cannot be graded here`
+  }
+  if (clear.cols.length === 1) {
+    return `the compared region leaves one clear column, ${clear.cols[0]}, on this ${grid.rows}x${grid.cols} screen, so ${need} cannot sit on another column and the row cannot be graded here`
+  }
+  return `no ${need} outside the digested regions is left in the ${grid.rows}x${grid.cols} grid that the pair rule accepts`
+}
+
+/**
  * The cell a read paints calibration's sentinel on so its origin can be derived from the very frame
- * it reads (33000). One cell clear of every region that frame digests, inside the grid, preferring
- * the cell directly above the compared region's first cell — the same place the region would have
- * started had it not been pushed down. A frame with no such cell refuses by name: a crop nobody can
+ * it reads (33000). One cell on a row no digested region uses — a neighbouring cell on the region's
+ * own row can split a wide character straddling its edge and the terminal erases the whole glyph,
+ * which would change the frame this read digests (@dev/10 peer read) — and inside the grid, preferring
+ * the cell directly above the compared region's first cell, the same place the region would have
+ * started had it not been pushed down. When those places are taken the nearest cell the search of
+ * `cellsNearestFirst` accepts wins (34040): a free cell three rows below is a cell, not a reason to
+ * refuse. A frame with no such cell refuses and names the screen's own limit: a crop nobody can
  * anchor is not a reading.
  */
 export function witnessCellFor(
@@ -549,36 +632,37 @@ export function witnessCellFor(
 ): { row: number; col: number } {
   const [first] = regions
   if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
+  const footprint = [...regions, ...avoid]
   const digested = (cell: { row: number; col: number }): boolean =>
-    [...regions, ...avoid].some(
+    footprint.some(
       (region) =>
         cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
     )
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
-  // split a wide character straddling the region's edge, and the terminal erases the whole glyph,
-  // which would change the very frame this read digests (@dev/10 peer read).
+  const onFootprintRow = (cell: { row: number; col: number }): boolean =>
+    footprint.some((region) => cell.row >= region.top && cell.row <= region.bottom)
   // The probe's own output (an inline image, 33985) may cover the rows around the compared region:
-  // the same three places, taken again just outside that footprint, keep the sentinel visible.
+  // the same places, taken again just outside that footprint, keep the sentinel visible.
   const band = avoid.filter((region) => region.bottom >= first.top && region.top <= first.bottom)
   const top = Math.min(first.top, ...band.map((region) => region.top))
   const bottom = Math.max(first.bottom, ...band.map((region) => region.bottom))
-  const candidates = [
-    { row: first.top - 1, col: first.left },
-    { row: first.top - 1, col: first.right + 1 },
-    { row: first.bottom + 1, col: first.left },
+  const accepts = cleared(grid, digested)
+  const preferred = [
     { row: top - 1, col: first.left },
     { row: top - 1, col: first.right + 1 },
     { row: bottom + 1, col: first.left },
   ]
-  const found = candidates.find((cell) => visible(cell) && !digested(cell))
-  if (!found) {
-    throw new Error(
-      `No cell outside the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
-    )
+  const found = preferred.find((cell) => accepts(cell) && !onFootprintRow(cell))
+  if (found) return found
+  for (const cell of cellsNearestFirst(
+    { row: top, col: first.left },
+    grid,
+    (candidate) => accepts(candidate) && !onFootprintRow(candidate),
+  )) {
+    return cell
   }
-  return found
+  throw new Error(
+    `No cell outside the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel: ${spelledLimit(clearExtent(footprint, grid), grid, "a cell")}, so this frame's crop cannot be anchored`,
+  )
 }
 
 const spelledRegions = (regions: readonly CaptureCells[]): string =>
@@ -593,8 +677,9 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
  * repaint can never satisfy it. The first cell is the one `witnessCellFor` chooses, which keeps
  * 33000's preference and its named refusal; the second is the nearest cell clear of every digested
  * region that differs from the first in both axes, preferring another row than the first so a wide
- * character straddling the region's edge is never split. A grid with no such second cell — a
- * one-row or one-column viewport — refuses by name rather than degrading to a single cell.
+ * character straddling the region's edge is never split. "Nearest" is the search of
+ * `cellsNearestFirst`, the same order on every arm and every re-run (34040). A grid with no such
+ * second cell refuses and names the limit: one clear row (or column), or none.
  */
 export function witnessCellsFor(
   regions: readonly CaptureCells[],
@@ -602,14 +687,20 @@ export function witnessCellsFor(
   avoid: readonly CaptureCells[] = [],
 ): { a: { row: number; col: number }; b: { row: number; col: number } } {
   const a = witnessCellFor(regions, grid, avoid)
+  const footprint = [...regions, ...avoid]
   const digested = (cell: { row: number; col: number }): boolean =>
-    [...regions, ...avoid].some(
+    footprint.some(
       (region) =>
         cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
     )
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  const candidates = [
+  const onRegionRow = (cell: { row: number; col: number }): boolean =>
+    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
+  const apart = (cell: { row: number; col: number }): boolean => cell.row !== a.row && cell.col !== a.col
+  const accepts = cleared(grid, digested)
+  const usable = (cell: { row: number; col: number }): boolean => accepts(cell) && !onRegionRow(cell) && apart(cell)
+  // Closest first, and another ROW before another row's far column: the +/-1 column, +/-1 and +/-2 row
+  // cells keep 33981's original preference, then the search takes over.
+  const preferred = [
     { row: a.row - 1, col: a.col + 1 },
     { row: a.row - 1, col: a.col - 1 },
     { row: a.row + 1, col: a.col + 1 },
@@ -619,18 +710,14 @@ export function witnessCellsFor(
     { row: a.row + 2, col: a.col + 1 },
     { row: a.row + 2, col: a.col - 1 },
   ]
-  // A cell on a digested region's OWN ROW is excluded even when its column is clear: a wide character
-  // straddling the region's edge is erased whole by the restore, which would change the very frame
-  // this read digests (@dev/10 peer read).
-  const onRegionRow = (cell: { row: number; col: number }): boolean =>
-    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
-  const found = candidates.find((cell) => visible(cell) && !digested(cell) && !onRegionRow(cell))
-  if (!found) {
-    throw new Error(
-      `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column, so this frame's crop cannot be anchored by a sentinel pair`,
-    )
+  const found = preferred.find((cell) => usable(cell))
+  if (found) return { a, b: found }
+  for (const cell of cellsNearestFirst(a, grid, usable)) {
+    return { a, b: cell }
   }
-  return { a, b: found }
+  throw new Error(
+    `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column: ${spelledLimit(clearExtent(footprint, grid), grid, "a second cell")}, so this frame's crop cannot be anchored by a sentinel pair`,
+  )
 }
 
 /**

@@ -153,9 +153,11 @@ test("the sentinel cell is one clear of every digested region, and a crowded gri
     /No cell outside the digested region 1,1-24,80 in the 24x80 grid can carry calibration's sentinel/,
   )
   // No same-row candidate is offered (@dev/10 peer read): a neighbouring cell on the region's own
-  // row can split a wide glyph straddling its edge and change the frame being digested. So a region
-  // that starts on row 1 and runs to the last row has nowhere to put the sentinel.
-  expect(() =>
+  // row can split a wide glyph straddling its edge and change the frame being digested.
+  // 34040: the last row of the screen is clear, so it IS a candidate — the old fixed list of three
+  // cells refused a frame whose only free row sat three rows below the region, which is the read
+  // this row then could never anchor. The search finds it, and the row is not a region row.
+  expect(
     witnessCellFor(
       [
         { top: 1, left: 1, bottom: 22, right: 10 },
@@ -163,7 +165,11 @@ test("the sentinel cell is one clear of every digested region, and a crowded gri
       ],
       grid,
     ),
-  ).toThrow(/No cell outside the digested region/)
+  ).toEqual({ row: 24, col: 1 })
+  // A footprint that really does use every row still refuses, and now says why in plain words.
+  expect(() =>
+    witnessCellFor([{ top: 1, left: 1, bottom: 22, right: 10 }], { rows: 22, cols: 80 }),
+  ).toThrow(/every row of this 22x80 screen is inside a digested region/)
 })
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {
