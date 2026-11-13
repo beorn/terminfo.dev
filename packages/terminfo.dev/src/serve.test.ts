@@ -75,12 +75,12 @@ it.each(["tmux", "screen", "darwin-screen"])(
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts",()=>({...owned,createOwnedTerminal:async options=>{
       if(preflightOnly){
         assert.equal(options.darwinPreflight,true)
-        return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
+        return {geometryAtGrant:{status:"measured",rows:24,cols:80},appPid:4242,summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
       }
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
         // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
         // binary's proof; this flag models that arm with no measured CLI proof.
@@ -88,6 +88,10 @@ it.each(["tmux", "screen", "darwin-screen"])(
         ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
+    if(darwin)mock.module("./packages/terminfo.dev/src/darwin-capture.ts",()=>({createDarwinCapture:async()=>({
+      capture:async()=>{throw new Error("Subject-join fixture requests no pixels")},
+      captureRaw:async()=>{throw new Error("Subject-join fixture requests no pixels")}
+    })}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
       assert.equal(options.subject.kind,preflightOnly?"term":"mux");assert.equal(options.subject.id,preflightOnly?"kitty":mux)
       // Native SGR attribution needs these facts during callbacks, before the final run subject exists.
@@ -1139,7 +1143,7 @@ describe("private finite daemon startup", () => {
       // Compare the same retained facts while excluding the intentionally different refusal reason and wall-clock times.
       const withoutNote = (run) => JSON.parse(JSON.stringify(run.results, (key, value) => ["reason", "startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.deepEqual(withoutNote(refused), withoutNote(bare))
-      const noAdapter = (run) => run.results.filter((o) => /no owned capture adapter is installed in this run/.test(o.reason ?? ""))
+      const noAdapter = (run) => run.results.filter((o) => /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/.test(o.reason ?? ""))
       const named = refused.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
       assert.equal(named.length, noAdapter(bare).length)
       assert.equal(noAdapter(refused).length, 0)
@@ -1697,7 +1701,8 @@ describe("private finite daemon startup", () => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
           if (!retained && arm !== "windowsHosted") {
-            await assert.rejects(capture({ role: "witness", label: "missing retention" }), /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/)
+            assert.equal(capture, undefined)
+            assert.match(options.captureGeometryRefusal, /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/)
             assert.equal(reads, 0, "Missing pixel retention must not select text")
           }
           if (route === "pixels") {
@@ -1757,7 +1762,7 @@ describe("private finite daemon startup", () => {
         assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
       } else assert.equal(run.rawReplies["collector.windowDisposal"], undefined)
-      assert.equal(typeof capture, retained || arm !== "windowsHosted" ? "function" : "undefined")
+      assert.equal(typeof capture, retained ? "function" : "undefined")
       assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
       assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")

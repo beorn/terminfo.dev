@@ -741,6 +741,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
+    let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
      * What happened when the Darwin input adapter was installed, so the run record carries it:
@@ -972,11 +973,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
       if (!captureDirectory) {
-        capture = async () => {
-          throw new Error(
-            `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`,
-          )
-        }
+        captureInstallationRefusal = `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`
         return
       }
       const appPid = terminal.appPid
@@ -1227,6 +1224,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                         sessionBus,
                       ),
                 ...(capture && { capture }),
+                ...(captureInstallationRefusal && { captureGeometryRefusal: captureInstallationRefusal }),
                 ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
