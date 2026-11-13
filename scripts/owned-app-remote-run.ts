@@ -128,6 +128,8 @@ function bundleLinkDirs(): string[] {
 }
 const STAGE_MARKER = ".owned-app-transport-stage"
 const STAGE_MARKER_VALUE = "owned-app-transport stage v1"
+/** Written only when the staged index is proven unreadable; the checkout step reads it. */
+const STAGE_REBUILD_MARKER = ".owned-app-transport-rebuild"
 const CONNECT_TIMEOUT_SECONDS = "15"
 /** Default limits. Both are parameters so a test can drive a small one and prove the refusal. */
 const DEFAULT_SSH_TIMEOUT_MS = 15 * 60_000
@@ -563,6 +565,9 @@ function hostKeyOf(verboseStderr: string): { algorithm: string; fingerprint: str
   return { algorithm: match[1], fingerprint: match[2] }
 }
 
+/** The light check's exit witness: a `git status` that could not run must never read as clean. */
+const LIGHT_STATUS_WITNESS = "__terminfo_git_status_exit="
+
 /** What a light run checks before it may skip the node_modules hashing: the stage's resource
  * marker still names the lock this machine holds, and the staged checkout still holds the named
  * revision's own tree. Every failure is a reason to restage fully, never a silent shorter check. */
@@ -586,6 +591,14 @@ function readLightStage(
     return {
       ok: false,
       reason: `the stage's resource marker is not JSON (${JSON.stringify(raw.trim().slice(0, 80))})`,
+    }
+  }
+  // JSON parses `null` and every scalar, and reading `.version` off those throws instead of taking
+  // the named full-restage fallback. Only an object can hold a marker.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      reason: `the stage's resource marker is not a JSON object (${JSON.stringify(raw.trim().slice(0, 80))})`,
     }
   }
   const marker = parsed as Partial<ResourceMarker>
@@ -621,12 +634,38 @@ function readLightStage(
     "stage source mismatch",
     `git -C ${shq(checkout)} rev-parse ${shq("HEAD^{tree}")} || true`,
   ).stdout.trim()
-  const status = sshRun(
+  // The exit witness is part of the answer, never a decoration: a status that could not RUN (an
+  // unreadable index, a locked ref store) exits non-zero with empty stdout, and empty stdout read as
+  // "clean" would trust a checkout whose dirt was never observed.
+  const statusProbe = sshRun(
     options,
     "staged source clean",
     "stage source mismatch",
-    `git -C ${shq(checkout)} status --porcelain || true`,
-  ).stdout.trim()
+    `git -C ${shq(checkout)} status --porcelain; printf '\\n${LIGHT_STATUS_WITNESS}%s\\n' "$?"`,
+  )
+  const witness = new RegExp(`(?:^|\\n)${LIGHT_STATUS_WITNESS}(\\d+)\\s*$`).exec(statusProbe.stdout)
+  if (witness === null) {
+    return {
+      ok: false,
+      reason: "the staged checkout's dirty state could not be read (the probe answered no exit code)",
+    }
+  }
+  const statusExit = Number(witness[1])
+  if (statusExit !== 0) {
+    // git's own words, not ssh's: the first stderr line of the whole call can be a login-shell or
+    // connection notice, so a line that names itself as git's failure wins, and the last line is the
+    // fallback because a shell wrapper's noise comes before the command that failed (@dev/15 R3 nit).
+    const stderrLines = statusProbe.stderr
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+    const detail = stderrLines.find((line) => /^(fatal|error):/.test(line)) ?? stderrLines.at(-1) ?? ""
+    return {
+      ok: false,
+      reason: `the staged checkout's dirty state could not be read (git status exited ${String(statusExit)}${detail === "" ? "" : `: ${detail.slice(0, 120)}`})`,
+    }
+  }
+  const status = statusProbe.stdout.slice(0, witness.index).trim()
   if (head !== options.sourceRevision) {
     return {
       ok: false,
@@ -872,6 +911,10 @@ function main(options: Parsed): OwnedAppTransportProof {
   // --remove-stage once deleted an earlier run's retained outputs with it (33587 run 2).
   let owned = false
   let created = false
+  // Named when the preflight proved the staged index unreadable and the stage was rebuilt from the
+  // named revision. It travels into the receipt because a rebuild replaces whatever edits the stage
+  // held, and a proof that omits it cannot say the projection was replaced.
+  let stageRebuild: string | null = null
   try {
     // A light run's two trusts are read before any hashing: the stage's resource marker, which
     // names the lock its node_modules trees were installed from, and the local lock's own bytes.
@@ -963,20 +1006,72 @@ function main(options: Parsed): OwnedAppTransportProof {
       rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
       // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
       // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
-      sshRun(
+      const rebuildMarker = `${stage}/${STAGE_REBUILD_MARKER}`
+      // The marker names THIS run. An interrupted run (a killed ssh, a died fetch) leaves it behind,
+      // and a later run that finds a readable-but-dirty index must refuse that dirt, not force it
+      // clean on a decision a previous run made (@dev/3 R4).
+      const rebuildToken = randomBytes(16).toString("hex")
+      // Decide the index rebuild BEFORE the checkout, and only for a proven index fault: git that
+      // cannot run at all (127), a refused config or dubious ownership (128) and a killed process all
+      // fail here by name instead of deleting the index, because deleting it makes the next run read
+      // a tree it cannot describe ("untracked working tree files would be overwritten") with no way
+      // back. `ls-files -s` is the read that proves the index itself is what failed (@dev/15 R3).
+      // The preflight answers one of `fresh`, `kept` or `rebuilt`, and it refuses by name anything
+      // that is not an index fault. A rebuild is not free — the forcing checkout replaces the staged
+      // projection, tracked edits included — so the answer is printed, kept, and carried into the
+      // receipt rather than happening quietly (@dev/15 R3).
+      const stagePreflight = sshRun(
         options,
-        "stage checkout",
-        "stage source mismatch",
+        "stage index preflight",
+        "stage git unusable",
         [
           `set -e`,
-          `mkdir -p ${shq(`${source}/vendor`)}`,
-          `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
-          `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
-          `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
-          `git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
-          `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
+          `if [ ! -d ${shq(`${checkout}/.git`)} ]; then printf 'fresh\\n'; exit 0; fi`,
+          `if git -C ${shq(checkout)} status --porcelain >/dev/null 2>&1; then printf 'kept\\n'; exit 0; fi`,
+          `if ! git -C ${shq(checkout)} --version >/dev/null 2>&1 || ! git -C ${shq(checkout)} config --list >/dev/null 2>&1; then`,
+          `  printf '%s\\n' "git cannot run in the staged checkout, so this is not an index fault:" >&2`,
+          `  git -C ${shq(checkout)} status --porcelain 2>&1 | head -5 | sed 's/^/  /' >&2 || true`,
+          `  exit 1`,
+          `fi`,
+          `if git -C ${shq(checkout)} ls-files -s >/dev/null 2>&1; then`,
+          `  printf '%s\\n' "git status failed while the index reads, so this is not an index fault:" >&2`,
+          `  git -C ${shq(checkout)} status --porcelain 2>&1 | head -5 | sed 's/^/  /' >&2 || true`,
+          `  exit 1`,
+          `fi`,
+          `printf '%s\\n' ${shq(rebuildToken)} > ${shq(rebuildMarker)}`,
+          `printf '%s\\n' "owned-app transport: the staged index is unreadable; the staged projection, including any tracked edits, is replaced from the named revision" >&2`,
+          `printf 'rebuilt\\n'`,
         ].join("\n"),
       )
+      // The rebuild's own words are on the host's stderr, which sshRun keeps rather than prints; a
+      // rebuild the operator never sees is the silent fallback this revise exists to remove.
+      if (stagePreflight.stdout.trim() === "rebuilt") {
+        stageRebuild = "index unreadable"
+        const note = stagePreflight.stderr.trim()
+        if (note !== "") console.error(note)
+      }
+      const checkoutScript = [
+        `set -e`,
+        // `fetch` reads the index before `checkout` ever runs (it dies on a corrupt one), so a
+        // proven-unreadable index is removed first. The preflight proved git runs and the index
+        // alone is what fails, so nothing git could have read is discarded.
+        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then rm -f ${shq(`${checkout}/.git/index`)}; fi`,
+        `mkdir -p ${shq(`${source}/vendor`)}`,
+        `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
+        `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
+        `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
+        // The forcing checkout replaces the projection only when the preflight proved the index
+        // unreadable; a readable index keeps its dirty state so the refusal below still fires.
+        // The checkout writes a fresh index and, with -f, replaces any tracked edits it finds.
+        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then`,
+        `  git -C ${shq(checkout)} checkout --detach -f ${shq(options.sourceRevision)}`,
+        `else`,
+        `  git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
+        `fi`,
+        `rm -f ${shq(rebuildMarker)}`,
+        `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
+      ].join("\n")
+      sshRun(options, "stage checkout", "stage source mismatch", checkoutScript)
       const dirty = sshRun(
         options,
         "clean-tree check",
@@ -1169,6 +1264,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       resourceFiles: light && trusted ? trusted.files : local.files,
       resourceManifestBasis: light ? "stage marker from an earlier full run" : "this run",
       ...(light ? { lightManifestSha256: local.sha256, lightResourceFiles: local.files } : {}),
+      ...(stageRebuild === null ? {} : { stageRebuild }),
       stage: { directory: stage, marker: STAGE_MARKER_VALUE },
       output: { directory: remoteOutput, files: outputs },
     }
@@ -1205,6 +1301,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       receiptSha256,
       remoteOutput,
       check: light ? "light" : "full",
+      ...(stageRebuild === null ? {} : { stageRebuild }),
     }
   } catch (error) {
     if (options.removeStage && owned && !isTimeout(error)) {

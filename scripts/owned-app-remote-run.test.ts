@@ -1084,4 +1084,83 @@ describe("default stage", () => {
     expect(second.stderr).toContain("restaging fully")
     expect(proof(second).check).toBe("full")
   }, 60_000)
+
+  // Requirement: a `git status` that could not RUN is not a clean checkout. Before the exit witness,
+  // `|| true` turned git's exit 128 into empty stdout, and empty stdout read as clean.
+  it("declines the light check when the staged checkout's dirty state cannot be read", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(proof(first).check).toBe("full")
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    expect(existsSync(index)).toBe(true)
+    writeFileSync(index, "short")
+    const second = run({}, ["--check", "light"], undefined, "kitty-unreadable")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    // Pinned to the exit-128 branch, not the shared prefix: the no-exit-code branch says so instead.
+    expect(second.stderr).toMatch(/dirty state could not be read \(git status exited 128: fatal: \.git\/index/)
+    expect(second.stderr).toContain("restaging fully")
+    // The rebuild is named where the operator can read it, and the proof says the projection moved.
+    expect(second.stderr).toContain(
+      "the staged index is unreadable; the staged projection, including any tracked edits, is replaced",
+    )
+    expect(proof(second).check).toBe("full")
+    expect(proof(second).stageRebuild).toBe("index unreadable")
+  }, 60_000)
+
+  // Requirement: only a PROVEN index fault may rebuild the stage. A git that cannot read its own
+  // config refuses by name and leaves the index alone — deleting it there made the next run read a
+  // tree it could not describe, and only a hand repair could bring the stage back (@dev/15 R3).
+  it("refuses by name when git cannot read its config in the staged checkout, and keeps the index", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    const config = join(stage, "source", "vendor", "terminfo.dev", ".git", "config")
+    chmodSync(config, 0o000)
+    const second = run({}, [], undefined, "kitty-refused-config")
+    chmodSync(config, 0o644)
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage git unusable")
+    expect(second.stderr).toContain("git cannot run in the staged checkout, so this is not an index fault")
+    expect(existsSync(index)).toBe(true)
+  }, 60_000)
+
+  // Requirement: a decision belongs to the run that made it. An interrupted run leaves the rebuild
+  // marker behind, and a later run that finds a READABLE dirty index must refuse that dirt instead of
+  // force-cleaning it on the previous run's decision (@dev/3 R4).
+  it("never rebuilds on a marker an earlier interrupted run left behind", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const checkout = join(stage, "source", "vendor", "terminfo.dev")
+    const marker = join(stage, ".owned-app-transport-rebuild")
+    writeFileSync(marker, "left-behind-by-an-interrupted-run\n")
+    const trackedName = spawnSync("git", ["-C", checkout, "ls-files"], { encoding: "utf8" })
+      .stdout.trim()
+      .split("\n")[0]!
+    const tracked = join(checkout, trackedName)
+    const original = readFileSync(tracked, "utf8")
+    writeFileSync(tracked, `${original}\nlocal edit nobody's revision names\n`)
+
+    const second = run()
+
+    // The readable index keeps its dirt: the run refuses the dirty stage, and the stale marker is gone.
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage dirty tree")
+    expect(existsSync(marker)).toBe(false)
+    expect(readFileSync(tracked, "utf8")).toContain("local edit nobody's revision names")
+  }, 60_000)
+
+  // Requirement: a marker that parses as JSON but is not an object must decline by name. JSON null
+  // parsed cleanly and then threw on `.version`, skipping the full-restage fallback entirely.
+  it("declines the light check by name when the stage's resource marker is JSON null", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    writeFileSync(join(stage, ".owned-app-transport-resources"), "null\n")
+    const second = run({}, ["--check", "light"], undefined, "kitty-null-marker")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toContain("not a JSON object")
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
 })
