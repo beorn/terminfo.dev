@@ -575,6 +575,7 @@ test("darwinHosted alone on Linux refuses by platform, not as a missing arm", as
   ).rejects.toThrow(/Owned Darwin hosted terminal requires Darwin/)
 })
 
+// @dev/8 R2 on 30724: the three hosted fixtures prove the sentinel path works WHEN SELECTED, not
 // that the hosted arm selects it. This test asserts the violation directly: the hosted arm passes
 // the disposable fact and no shared-machine claim, and the Terminal.app arm the reverse. Removing
 // `disposableHost` from owned-terminal.ts fails here and nowhere else.
