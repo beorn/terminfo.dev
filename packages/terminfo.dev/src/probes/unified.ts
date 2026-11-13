@@ -1253,6 +1253,7 @@ export async function runProbeBatch(
           name: "DeclaredUntestableCollision",
           message: `Declared-untestable collision for ${probe.id}: ${declaration}; ${refusedClaimEvidence(result)} is retained and the declaration is refused`,
         }
+        batch.rawReplies[`${probe.id}.declarationCollision`] = JSON.stringify(batch.ungradedDiagnostics[probe.id])
       } else if (declaration && unresolved) {
         const response = result.response
         result = {
