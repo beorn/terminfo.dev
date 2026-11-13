@@ -16,6 +16,7 @@ import {
   formatHostedDarwinAncestry,
   hostedDarwinAppFromExecutablePath,
   requireHostedDarwinAppAncestor,
+  resolveOwnedAppId,
 } from "./owned-terminal.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -672,4 +673,17 @@ test("only Alacritty, VS Code and Cursor declare no pane read, with @cto's exact
   for (const path of measured) {
     expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBeUndefined()
   }
+})
+
+// 8c084f05: the hosted arm's app id comes from the receipt, never from a launcher-typed variable that could
+// disagree with it; the Linux arm keeps the launcher's value because it has no receipt to prove one.
+test.each([
+  [{ platform: "darwin", hostedAppId: "wezterm", launcherAppId: undefined }, "wezterm"],
+  [{ platform: "darwin", hostedAppId: "wezterm", launcherAppId: "kitty" }, "wezterm"],
+  [{ platform: "darwin", hostedAppId: undefined, launcherAppId: "wezterm" }, "wezterm"],
+  [{ platform: "linux", hostedAppId: undefined, launcherAppId: "wezterm" }, "wezterm"],
+  [{ platform: "linux", hostedAppId: "wezterm", launcherAppId: "kitty" }, "kitty"],
+  [{ platform: "darwin", hostedAppId: undefined, launcherAppId: undefined }, undefined],
+])("owned app id resolves in one place: %j", (input, expected) => {
+  expect(resolveOwnedAppId(input)).toBe(expected)
 })

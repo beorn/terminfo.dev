@@ -15,9 +15,11 @@ vi.mock("node:fs", async (importOriginal) => ({
   readFileSync: files.readFileSync,
 }))
 import {
+  hostedWezTermPrerequisites,
   ownedWezTermExecutableProof,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
+  socketHeldByPid,
 } from "./wezterm-owned-history.ts"
 
 const executable = "/Applications/WezTerm.app/Contents/MacOS/wezterm"
@@ -200,4 +202,60 @@ test("a failed get-text keeps the command's bytes in the refusal", () => {
   const read = readOwnedWezTermHistory({ executable, socket, pane, tty: "/dev/ttys004", rows: 24 })
   expect(read.status === "refused" && read.reason).toMatch(/WezTerm owned get-text unavailable/)
   expect(read.status === "refused" && read.reason).toContain(Buffer.from("partial").toString("base64"))
+})
+
+// 8c084f05: the hosted Darwin arm may only attempt an owned read when the pane published a socket, a pane id,
+// and a measured tty. Each absence is named, so the history row says which one is missing instead of falling
+// back to the screenshot path — and none of the three is a declaration about the app.
+test.each([
+  [
+    { socketPresent: false, paneIdPresent: true, measuredTty: "/dev/ttys004" },
+    "hosted WezTerm pane published no socket",
+  ],
+  [
+    { socketPresent: true, paneIdPresent: false, measuredTty: "/dev/ttys004" },
+    "hosted WezTerm pane published no pane id",
+  ],
+  [
+    { socketPresent: true, paneIdPresent: true, measuredTty: undefined },
+    "hosted WezTerm pane has no measured tty to match",
+  ],
+  [{ socketPresent: true, paneIdPresent: true, measuredTty: "  " }, "hosted WezTerm pane has no measured tty to match"],
+  [{ socketPresent: true, paneIdPresent: true, measuredTty: "/dev/ttys004" }, undefined],
+])("hosted WezTerm prerequisites: %j names %s", (input, expected) => {
+  expect(hostedWezTermPrerequisites(input)).toBe(expected)
+})
+
+// Condition 2, re-checked before every read: the socket must be one the measured app process itself holds.
+test("a socket the measured app process holds passes, with a receipt naming the pid", () => {
+  child.spawnSync.mockReturnValue({
+    status: 0,
+    stdout: `p2623\nf12\nn/private/tmp/term/other.sock\nn${socket}\n`,
+    stderr: "",
+  })
+  const held = socketHeldByPid({ socketPath: socket, pid: 2623, executable: "/usr/sbin/lsof" })
+  expect(held.status).toBe("held")
+  expect(held.status === "held" && JSON.parse(held.receipt)).toMatchObject({ socket, pid: 2623, heldSockets: 2 })
+  expect(child.spawnSync.mock.calls.at(-1)!.slice(0, 2)).toEqual(["/usr/sbin/lsof", ["-a", "-U", "-p", "2623", "-Fn"]])
+})
+
+test("a socket another process holds refuses by name and lists what the pid holds", () => {
+  child.spawnSync.mockReturnValue({ status: 0, stdout: "p900\nn/private/tmp/term/other.sock\n", stderr: "" })
+  const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
+  expect(held.status).toBe("refused")
+  expect(held.status === "refused" && held.reason).toMatch(/is not held by the measured app process 2623/)
+  expect(held.status === "refused" && held.reason).toContain("/private/tmp/term/other.sock")
+})
+
+test("a pid that holds no unix socket refuses rather than passing on an empty list", () => {
+  child.spawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" })
+  const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
+  expect(held.status === "refused" && held.reason).toMatch(/is not held by the measured app process 2623/)
+})
+
+test("an unreadable lsof refuses and keeps the command's own evidence", () => {
+  child.spawnSync.mockReturnValue({ status: 2, stdout: null, stderr: "lsof: permission denied" })
+  const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
+  expect(held.status === "refused" && held.reason).toMatch(/socket ownership could not be read/)
+  expect(held.status === "refused" && held.reason).toContain("lsof: permission denied")
 })

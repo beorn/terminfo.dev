@@ -806,6 +806,10 @@ export async function runProbeBatch(
       // and declared nothing (0/12 in the peer's faithful replay, @dev/3 REVISE at b48438b96).
       const unavailableReason = options.ownedTerminal?.scrollbackUnavailable
       if (unavailableReason) probeSource.scrollbackUnavailable = unavailableReason
+      // The arm's own missing prerequisite, kept distinct from the declaration above: the rows say what this
+      // run could not reach instead of quietly using the screenshot path (8c084f05, A0).
+      const probeTodoReason = options.ownedTerminal?.scrollbackProbeTodo
+      if (probeTodoReason) probeSource.scrollbackProbeTodo = probeTodoReason
     }
     if (ownsTerminal && (options.subject?.kind === "term" || options.subject?.kind === "mux")) {
       // 32569: a mux child reads the same marker path; the reading names the mux, since a present value there may

@@ -87,8 +87,10 @@ import {
 } from "./windows-terminal-text.ts"
 import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
 import {
+  hostedWezTermPrerequisites,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
+  socketHeldByPid,
   wezTermHistoryIdentity,
 } from "./wezterm-owned-history.ts"
 
@@ -351,6 +353,14 @@ export interface OwnedTerminal {
    * a later app version that grows one removes the entry.
    */
   readonly scrollbackUnavailable?: string
+  /**
+   * Why this arm cannot reach an owned read the app may well expose — a PROBE TODO reason, never the
+   * declaration above (8c084f05). The history rows say "hosted WezTerm pane published no socket" instead of
+   * falling back to a screenshot arm that cannot read retained history, and no grade follows from it.
+   */
+  readonly scrollbackProbeTodo?: string
+  /** Presence only, never the values: whether this run's pane published what an owned read needs (A0). */
+  readonly wezTermPaneEnvironment?: { readonly socket: boolean; readonly paneId: boolean }
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
@@ -465,6 +475,20 @@ export type AncestryRow = {
 
 /** @cto 20b9ffed verbatim: the reason text these apps' history rows declare, so one string names the absence. */
 const NO_PANE_READ = "no pane read on this app"
+
+/**
+ * The app this run's terminal is, resolved in ONE place (@cto 8c084f05). On the hosted Darwin arm the receipt
+ * already proved the app from the launched executable and the measured ancestry, so the launcher's
+ * TERMINFO_TARGET_ID must not be a second source for that fact; the Linux arm has no such receipt and keeps the
+ * launcher's value, unchanged. `hostedAppId` is only ever set by a hosted Darwin receipt.
+ */
+export function resolveOwnedAppId(input: {
+  readonly platform: string
+  readonly hostedAppId: string | undefined
+  readonly launcherAppId: string | undefined
+}): string | undefined {
+  return input.platform === "darwin" && input.hostedAppId !== undefined ? input.hostedAppId : input.launcherAppId
+}
 
 /** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
 const TERMINAL_APP_HOSTED: HostedDarwinApp = { id: "terminal-app", comm: "Terminal", titleRead: "system-events" }
@@ -1217,6 +1241,8 @@ export async function createOwnedTerminal(options: {
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
+  /** The receipt's own executable path, kept for the per-read ancestry re-check (8c084f05). */
+  let hostedAppExecutablePath: string | undefined
   let hostedWindowsApp: HostedWindowsApp | undefined
   let windowsWezTermExecutable: string | undefined
   let hostedAncestor: AncestryRow | undefined
@@ -1328,6 +1354,7 @@ export async function createOwnedTerminal(options: {
       throw new Error("Hosted Darwin github-hosted-runner receipt names no appLaunch executable")
     }
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
+    hostedAppExecutablePath = executablePath
     binding = darwinHostedOutput(out)
     const ancestry = readProcessAncestry(process.pid)
     // Prints before the app check, so a refusal by requireHostedDarwinAppAncestor still leaves the
@@ -1472,9 +1499,36 @@ export async function createOwnedTerminal(options: {
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.
-    const ownedAppId = process.env.TERMINFO_TARGET_ID
+    //
+    // The app id is resolved in ONE place (@cto 8c084f05): the hosted Darwin arm's receipt already proved it from
+    // the launched executable and the measured ancestry, so a launcher-typed variable must not be a second source
+    // for a fact the receipt carries; the Linux arm has no such receipt and keeps the launcher's value unchanged.
+    const launcherAppId = process.env.TERMINFO_TARGET_ID
+    const ownedAppId = resolveOwnedAppId({
+      platform: binding.platform,
+      hostedAppId: hostedApp?.id,
+      launcherAppId,
+    })
+    // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the
+    // launcher variable exactly as before: it is a Linux-arm ownership proof and never a Darwin one (8c084f05).
     const appClipboard =
-      !muxAttachmentProof && (ownedAppId === "kitty" || ownedAppId === "wezterm") ? clipboard : undefined
+      !muxAttachmentProof && (launcherAppId === "kitty" || launcherAppId === "wezterm") ? clipboard : undefined
+    // Presence only, never the values (A0, folded into this change by 8c084f05's addendum): the receipt records
+    // whether the pane published the two things an owned read needs, which decides whether a reader can exist.
+    const wezTermPaneEnvironment = {
+      socket: (process.env.WEZTERM_UNIX_SOCKET ?? "").trim() !== "",
+      paneId: (process.env.WEZTERM_PANE ?? "").trim() !== "",
+    }
+    // Why an owned WezTerm read cannot exist on this arm, in the history row's own words. This is a PROBE TODO
+    // reason, never a declaration: the app may well expose a read; this arm has no way to reach it.
+    const wezTermOwnedReadProbeTodo =
+      binding.platform === "darwin" && darwinHosted !== undefined && ownedAppId === "wezterm"
+        ? hostedWezTermPrerequisites({
+            socketPresent: wezTermPaneEnvironment.socket,
+            paneIdPresent: wezTermPaneEnvironment.paneId,
+            measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+          })
+        : undefined
     const kittySocket = process.env.KITTY_LISTEN_ON
     const kittyWindow = process.env.KITTY_WINDOW_ID
     const resetScrollback = clipboard?.resetScrollback?.bind(clipboard)
@@ -1511,12 +1565,47 @@ export async function createOwnedTerminal(options: {
     // Read at CALL time, never bound here: the adapter's assertOwned is a live field, and a copy taken at
     // construction would answer a check the run has since replaced.
     const processOwnerCheck = processOwnerRecheck
+    // The hosted Darwin arm's ownership proof: all three, re-checked before EVERY read, because a reading of a
+    // second WezTerm or a recycled pane is not this run's history (@cto 8c084f05).
+    const hostedWezTermOwnerCheck =
+      binding.platform === "darwin" &&
+      darwinHosted !== undefined &&
+      ownedAppId === "wezterm" &&
+      wezTermOwnedReadProbeTodo === undefined
+        ? async (): Promise<void> => {
+            if (hostedApp === undefined) throw new Error("Hosted WezTerm read has no receipt app")
+            // 1. the ancestor this run measured is still the same process, by pid, not by name.
+            const ancestor = requireHostedDarwinAppAncestor(
+              hostedApp.comm,
+              readProcessAncestry(process.pid),
+              hostedAppExecutablePath,
+            )
+            if (hostedAncestor === undefined || ancestor.pid !== hostedAncestor.pid) {
+              throw new Error(
+                `Hosted WezTerm ancestor is now pid ${ancestor.pid}, not pid ${hostedAncestor?.pid ?? "none"} measured at grant`,
+              )
+            }
+            // 2. the socket the CLI will use belongs to that process.
+            const socket = process.env.WEZTERM_UNIX_SOCKET
+            if (socket === undefined || socket.trim() === "") {
+              throw new Error("hosted WezTerm pane published no socket")
+            }
+            const held = socketHeldByPid({ socketPath: socket, pid: ancestor.pid })
+            if (held.status === "refused") throw new Error(held.reason)
+            // 3. the pane read is this collector's pane: the reader refuses unless the listed pane's tty is the
+            //    measured one, and there is nothing to match when this arm measured no tty.
+            if (binding.platform !== "darwin" || binding.tabTty === undefined) {
+              throw new Error("hosted WezTerm pane has no measured tty to match")
+            }
+          }
+        : undefined
     const wezTermOwnerCheck =
-      appClipboard !== undefined
+      hostedWezTermOwnerCheck ??
+      (appClipboard !== undefined
         ? () => appClipboard.assertOwned()
         : processOwnerCheck === undefined
           ? undefined
-          : () => Promise.resolve(processOwnerCheck())
+          : () => Promise.resolve(processOwnerCheck()))
     const ownedWezTermCli = ownedWezTermHistoryExecutable({
       platform: binding.platform,
       ownsWezTermPane: ownedAppId === "wezterm" && wezTermOwnerCheck !== undefined,
@@ -1639,6 +1728,9 @@ export async function createOwnedTerminal(options: {
           pid1Comm: hostedPid1Comm,
         },
       }),
+      // Presence booleans only: a reader that needs a socket records whether the pane published one, so a
+      // missing route is a named fact in the artifact rather than an inference from an empty result (A0).
+      ...(ownedAppId === "wezterm" && { wezTermPaneEnvironment }),
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid ?? terminalAppPid
@@ -1684,6 +1776,8 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
+      ...(wezTermOwnedReadProbeTodo && { scrollbackProbeTodo: wezTermOwnedReadProbeTodo }),
+      ...(ownedAppId === "wezterm" && { wezTermPaneEnvironment }),
       ...(clipboard && { clipboard }),
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).

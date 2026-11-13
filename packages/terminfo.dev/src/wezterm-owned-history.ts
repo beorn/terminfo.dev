@@ -143,12 +143,78 @@ export type WezTermHistoryIdentity = Readonly<{
   readonly historyExecutableUnmeasured?: string
 }>
 
+/**
+ * What the hosted Darwin arm must be handed before it may even attempt an owned WezTerm read: the pane's own
+ * socket, the pane id, and a measured tty to match the listed pane against (8c084f05). Each absence is a named
+ * PROBE TODO reason — the app may well expose a read; this arm has no way to reach it — never a declaration.
+ * Pure, so the three names cannot drift from the arm that reports them.
+ */
+export function hostedWezTermPrerequisites(input: {
+  readonly socketPresent: boolean
+  readonly paneIdPresent: boolean
+  readonly measuredTty: string | undefined
+}): string | undefined {
+  if (!input.socketPresent) return "hosted WezTerm pane published no socket"
+  if (!input.paneIdPresent) return "hosted WezTerm pane published no pane id"
+  if (input.measuredTty === undefined || input.measuredTty.trim() === "") {
+    return "hosted WezTerm pane has no measured tty to match"
+  }
+  return undefined
+}
+
 export function wezTermHistoryIdentity(executable: string | undefined): WezTermHistoryIdentity | undefined {
   if (executable === undefined) return undefined
   const proof = ownedWezTermExecutableProof(executable)
   return proof.status === "measured"
     ? { historyExecutable: proof.proof, historyReadsThroughCli: true }
     : { historyReadsThroughCli: true, historyExecutableUnmeasured: proof.reason }
+}
+
+/**
+ * Condition 2 of @cto 8c084f05: the socket the CLI talks to must belong to the process this run measured as
+ * the app's ancestor. A name match is not ownership — a second WezTerm answering on the same machine would be
+ * a reading of someone else's history — so the pid's own open unix sockets are listed and the path must be in
+ * that list. An unreadable list is a refusal too: no proof, no read.
+ */
+export function socketHeldByPid(input: {
+  readonly socketPath: string
+  readonly pid: number
+  /** The lister this run chose; a test fixture passes its own, production takes the system lsof. */
+  readonly executable?: string
+}): { readonly status: "held"; readonly receipt: string } | { readonly status: "refused"; readonly reason: string } {
+  const executable = input.executable ?? "/usr/sbin/lsof"
+  const args = ["-a", "-U", "-p", String(input.pid), "-Fn"]
+  const result = spawnSync(executable, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    timeout: 5000,
+  })
+  // lsof exits 1 when it matched nothing, which is a reading ("this pid holds no unix socket"), not a failure.
+  const listedNothing = result.status === 1 && (result.stdout ?? "") === "" && result.error === undefined
+  if (!listedNothing && (result.error || result.signal || result.status !== 0 || typeof result.stdout !== "string")) {
+    return {
+      status: "refused",
+      reason: `WezTerm socket ownership could not be read: ${failure(executable, args, result)}`,
+    }
+  }
+  const paths =
+    typeof result.stdout === "string"
+      ? result.stdout
+          .split("\n")
+          .filter((line) => line.startsWith("n"))
+          .map((line) => line.slice(1))
+      : []
+  if (!paths.includes(input.socketPath)) {
+    return {
+      status: "refused",
+      reason: `WezTerm socket ${JSON.stringify(input.socketPath)} is not held by the measured app process ${input.pid}; it holds ${JSON.stringify(paths)}`,
+    }
+  }
+  return {
+    status: "held",
+    receipt: JSON.stringify({ executable, args, socket: input.socketPath, pid: input.pid, heldSockets: paths.length }),
+  }
 }
 
 /** The pane list this run's own socket answers, reduced to what the cross-check needs. */
