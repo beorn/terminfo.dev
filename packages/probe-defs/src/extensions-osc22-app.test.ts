@@ -248,6 +248,9 @@ test.each([
     // (@cto 33920).
     expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state", note: reason })
     expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "buffer_state" })])
+    const decided = result.assertions?.[0]
+    if (decided === undefined) throw new Error("expected the decided negative assertion")
+    expect(JSON.parse(decided.observed)).toEqual({ outerCommands: read })
     expect(result.tests).toBeUndefined()
   } else {
     expect(result.observation).toBeUndefined()
