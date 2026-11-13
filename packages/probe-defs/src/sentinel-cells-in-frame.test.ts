@@ -100,17 +100,24 @@ test("refuses when the only blank cells share a row, since the pair must differ 
 // the other half the background colour, so "every pixel is background" alone would choose the blank
 // half and the restore would erase the glyph whole — @dev/10's rule. The cell a wide glyph could
 // straddle into is never eligible, however blank it looks.
+//
+// The fixture must actually reach that cell: rows 1-2 are inked edge to edge, so the row-major
+// search cannot answer above row 3, and every cell left of the region's right edge at 3,11 is
+// excluded by the region. The chooser's first eligible cell is therefore 3,12 on a rule-less
+// chooser (red on 9b4df8d9) and 3,13 with the neighbour rule in place.
 test("never uses the blank half of a wide glyph as a sentinel cell", () => {
   const wide = { grid: { rows: 8, cols: 24 }, cell: { width: 4, height: 6 } }
   const regions = [{ top: 3, left: 1, bottom: 5, right: 11 }]
+  const filledRows = Array.from({ length: 2 }, (_, row) =>
+    Array.from({ length: wide.grid.cols }, (_, col) => ({ row: row + 1, col: col + 1 })),
+  ).flat()
   const glyph = [{ row: 3, col: 11, leftHalf: true }]
-  const { a, b } = sentinelCellsInFrame({
-    ...frame({ ...wide, ink: glyph }),
+  const { a } = sentinelCellsInFrame({
+    ...frame({ ...wide, ink: [...filledRows, ...glyph] }),
     reading: { x: 0, y: 0 },
     ...wide,
     regions,
   })
-  for (const chosen of [a, b]) {
-    expect(chosen, "the cell beside inked text can be a wide glyph's blank half").not.toEqual({ row: 3, col: 12 })
-  }
+  expect(a, "the cell beside inked text can be a wide glyph's blank half").not.toEqual({ row: 3, col: 12 })
+  expect(a).toEqual({ row: 3, col: 13 })
 })
