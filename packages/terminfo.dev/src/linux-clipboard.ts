@@ -71,6 +71,8 @@ export interface ClipboardTraceEvent {
   taker?: SelectionTakerRead
   /** clipboard-owner-exit: the taker was read and no helper of ours could be it, so the pre-flight may re-own once. */
   takerOurs?: boolean
+  /** clipboard-owner-exit: true only when the taker's pid and its client's window are this run's outer terminal. */
+  takerOuterTerminal?: boolean
   /** clipboard-key: the keysym pressed and released through XTEST. */
   key?: string
   /** clipboard-key: the focused window read back before the press. */
@@ -139,6 +141,8 @@ export type ClipboardOwnerState =
       readonly taker?: SelectionTakerRead
       /** True only when the taker was read and could be a helper of ours; re-own needs false. */
       readonly takerOurs?: boolean
+      /** True only when the taker is proven to be this run's outer terminal (33968); re-own needs true. */
+      readonly takerOuterTerminal?: boolean
     }
 
 /**
@@ -149,11 +153,15 @@ export type ClipboardOwnerState =
  * When the owner exits and no writer of ours is claiming its selection, `readTaker` names who holds the selection
  * at that instant (33693, @cto 379b191a); a non-child owner's exit is seen only at `state`, so its taker is read
  * then. `takerOurs` is false only when the taker was read and no helper of ours could be it.
+ *
+ * `outerTerminal` is this run's outer terminal from the receipt (33968, @cto e387bb82): `takerOuterTerminal` is
+ * true only when the taker's _NET_WM_PID is its pid and the taker's X client owns its window.
  */
 export function createClipboardOwnership<S extends string>(
   initial: Partial<Record<S, number>>,
   externalAlive: (pid: number) => boolean,
   readTaker?: (selection: S) => Promise<SelectionTakerRead>,
+  outerTerminal?: { readonly pid: number; readonly windowId: string },
 ) {
   const owners = new Map<S, number>(Object.entries(initial) as [S, number][])
   const ours = new Set<number>()
@@ -196,7 +204,16 @@ export function createClipboardOwnership<S extends string>(
       if (readTaker && !exit && !takers.has(helperPid)) takers.set(helperPid, readTaker(selection))
       const taker = await takers.get(helperPid)
       const takerOurs = taker?.read ? couldBeOurs(selection, helperPid, taker) : undefined
-      const known = { ...(taker && { taker }), ...(takerOurs !== undefined && { takerOurs }) }
+      const takerOuterTerminal =
+        taker?.read && outerTerminal
+          ? taker.takerPid === outerTerminal.pid &&
+            taker.clientWindows.some((window) => BigInt(window) === BigInt(outerTerminal.windowId))
+          : undefined
+      const known = {
+        ...(taker && { taker }),
+        ...(takerOurs !== undefined && { takerOurs }),
+        ...(takerOuterTerminal !== undefined && { takerOuterTerminal }),
+      }
       if (!reported.has(helperPid)) {
         reported.add(helperPid)
         trace({
@@ -225,7 +242,9 @@ function describeTaker(owner: Extract<ClipboardOwnerState, { alive: false }>): s
   const name = taker.takerClass ? `class ${taker.takerClass}` : "no WM_CLASS on its client's windows"
   return (
     `taker window ${taker.window} (${name}${taker.takerPid === undefined ? "" : `, pid ${taker.takerPid}`})` +
-    (owner.takerOurs ? ", which could be a helper of ours" : "")
+    (owner.takerOurs ? ", which could be a helper of ours" : "") +
+    (owner.takerOuterTerminal === true ? ", this run's outer terminal" : "") +
+    (owner.takerOuterTerminal === false ? ", not this run's outer terminal" : "")
   )
 }
 
@@ -344,9 +363,16 @@ export function createClipboardTransaction(
       await verify()
       const owner = await io.owner?.(trace)
       if (owner && !owner.alive) {
-        // Re-own once, only for a clean displacement by a client that was read and is not ours (@cto 327a65e8,
-        // 379b191a). Any other exit, an unread taker or a taker that could be ours refuses as before.
-        if (owner.exit?.code !== 0 || owner.taker?.read !== true || owner.takerOurs !== false) {
+        // Re-own once, only when the taker was read, cannot be ours and is proven to be this run's outer terminal,
+        // after a clean exit or a non-child helper's unobserved one (@cto 379b191a, e387bb82). A crashed helper, an
+        // unread taker, a taker that could be ours and any other client refuse as before.
+        const exitClean = owner.exit === undefined || owner.exit.code === 0
+        if (
+          !exitClean ||
+          owner.taker?.read !== true ||
+          owner.takerOurs !== false ||
+          owner.takerOuterTerminal !== true
+        ) {
           const read = await io.readText(trace, "clipboard-read", verify).then(described, (error: unknown) => {
             return `read failed: ${error instanceof Error ? error.message : String(error)}`
           })
@@ -999,6 +1025,7 @@ export async function createLinuxClipboardAdapter(
       typeof libX11 === "string"
         ? readSelectionTaker(selection, libX11, takerIo)
         : Promise.resolve({ read: false, at: new Date().toISOString(), reason: libX11.message }),
+    { pid: receipt.terminal.pid, windowId: receipt.terminal.windowId },
   )
   const log = (trace: Trace, kind: ClipboardTraceEvent["kind"], text: string, helperPid?: number) =>
     trace({

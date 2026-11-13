@@ -1500,6 +1500,7 @@ const displaced = {
   exit: { code: 0, signal: null, at: "2026-11-12T07:18:09.172Z" },
   taker: KITTY_TAKER,
   takerOurs: false,
+  takerOuterTerminal: true,
 } as const
 
 test("a clean displacement by a read client that is not ours re-owns once, and the result row says it recovered", async () => {
@@ -1515,7 +1516,7 @@ test("a clean displacement by a read client that is not ours re-owns once, and t
   ])
   const said =
     "pre-flight re-owned the clipboard baseline: helper 2014 exited at 2026-11-12T07:18:09.172Z (code 0, signal none); " +
-    'taker window 0x600005 (class "kitty", "kitty", pid 77)'
+    'taker window 0x600005 (class "kitty", "kitty", pid 77), this run\'s outer terminal'
   expect(result).toEqual({
     pass: true,
     observation: { outcome: "supported", assertionType: "query_reply", note: `measured; ${said}` },
@@ -1536,6 +1537,8 @@ test("any other exit, an unread taker or a taker that could be ours refuses befo
       "taker not read (taker child signal SIGSEGV)",
     ],
     [{ ...displaced, takerOurs: true }, "which could be a helper of ours"],
+    [{ ...displaced, takerOuterTerminal: false }, "not this run's outer terminal"],
+    [{ ...displaced, takerOuterTerminal: undefined }, "taker window 0x600005"],
   ] as const) {
     const fixture = reownFixture(owner)
     await expect(fixture.run()).rejects.toThrow(said)
@@ -1570,4 +1573,63 @@ test("a re-own whose re-read differs refuses, naming the one re-own", async () =
     /^Owned clipboard baseline changed before callback after its one re-own: read sha256 \w+ length 11$/,
   )
   expect(ran).toBe(false)
+})
+
+// 33968 (@cto e387bb82): tmux 3.8's default mouse-on copy bindings send the outer terminal an OSC 52 during the
+// mouse probes, so the outer terminal takes CLIPBOARD from a helper that, in a subset run, is not our child. The one
+// repair widens: re-own only when the taker is proven to be this run's own outer terminal, whatever the helper was.
+// @failure osc52-clipboard went probe-invalid on a kitty+tmux subset run: helper not our child, taker the outer kitty.
+// @level l1
+// @consumer createClipboardTransaction pre-flight through the Linux adapter
+// @testonly none
+test("the owner's taker is this run's outer terminal only when its pid and its client's window are the receipt's", async () => {
+  const outer = { pid: 77, windowId: String(0x60000d) }
+  const read = (taker: typeof KITTY_TAKER | Record<string, unknown>) => {
+    const ownership = createClipboardOwnership<"clipboard">(
+      { clipboard: 90 },
+      () => false,
+      async () => taker as never,
+      outer,
+    )
+    return ownership.state("clipboard", () => {})
+  }
+  expect(await read(KITTY_TAKER)).toMatchObject({ helperPid: 90, takerOurs: false, takerOuterTerminal: true })
+  expect(await read({ ...KITTY_TAKER, takerPid: 78 })).toMatchObject({ takerOuterTerminal: false })
+  expect(await read({ ...KITTY_TAKER, clientWindows: ["0x700001"] })).toMatchObject({ takerOuterTerminal: false })
+  const { takerPid: _pid, ...withoutPid } = KITTY_TAKER
+  expect(await read(withoutPid)).toMatchObject({ takerOuterTerminal: false })
+  const unproven = createClipboardOwnership<"clipboard">(
+    { clipboard: 90 },
+    () => false,
+    async () => KITTY_TAKER,
+  )
+  expect(await unproven.state("clipboard", () => {})).not.toHaveProperty("takerOuterTerminal")
+})
+
+test("a helper that is not our child, taken by this run's outer terminal, is re-owned and the row says from whom", async () => {
+  const { exit: _exit, ...notOurChild } = displaced
+  const fixture = reownFixture(notOurChild)
+  const result = await fixture.run()
+  expect(fixture.state.ran).toBe(true)
+  expect(fixture.state.writes).toEqual(["clipboard-reown", "clipboard-restore"])
+  expect(result).toEqual({
+    pass: true,
+    observation: {
+      outcome: "supported",
+      assertionType: "query_reply",
+      note:
+        "measured; pre-flight re-owned the clipboard baseline: helper 2014 is gone (not our child, so its exit code " +
+        'and signal are unknown); taker window 0x600005 (class "kitty", "kitty", pid 77), this run\'s outer terminal',
+    },
+  })
+})
+
+test("a helper that is not our child, taken by any other client, refuses before the callback by name", async () => {
+  const { exit: _exit, ...notOurChild } = displaced
+  const fixture = reownFixture({ ...notOurChild, takerOuterTerminal: false })
+  await expect(fixture.run()).rejects.toThrow(
+    /^Owned clipboard helper 2014 is gone \(not our child, so its exit code and signal are unknown\) before callback; taker window 0x600005 \(class "kitty", "kitty", pid 77\), not this run's outer terminal; read sha256 \w+ length 0/,
+  )
+  expect(fixture.state.ran).toBe(false)
+  expect(fixture.state.writes).toEqual(["clipboard-restore"])
 })
