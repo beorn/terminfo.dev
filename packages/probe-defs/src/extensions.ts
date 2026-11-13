@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
-import { MUX_OUTER_ROWS, withMuxOuterRows } from "./mux-outer-rows.ts"
+import { MUX_OUTER_ROWS, muxTitleControlNonce, muxTitleControlWrite, withMuxOuterRows } from "./mux-outer-rows.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -5977,9 +5977,8 @@ const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
  */
 export const OSC22_MUX_OUTER_BRANCH = "osc22-mux-outer-command"
 export const OSC22_MUX_TARGET_WRITE = "\x1b]22;pointer\x1b\\"
-export function osc22MuxControlWrite(nonce: string): string {
-  return `\x1b]2;tdv-title-${nonce}\x1b\\`
-}
+/** One implementation, shared with the mux outer-record rows (mux-outer-rows.ts): never a second nonce path. */
+export const osc22MuxControlWrite = muxTitleControlWrite
 /** @cpo/term 10077051 reasons (1)-(3), verbatim. */
 export const OSC22_MUX_NOT_SENT =
   "The multiplexer did not send OSC 22 to the outer terminal; its forwarding control arrived, so the path was open."
@@ -8844,7 +8843,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         if (ctx.mux !== undefined) {
-          const controlWrite = osc22MuxControlWrite(randomUUID().replaceAll("-", "").slice(0, 24))
+          const controlWrite = osc22MuxControlWrite(muxTitleControlNonce())
           // Target first, control second: the control's arrival after it is what makes a missing target line mean
           // the multiplexer did not forward the target (@cto 33919 condition 3, 33920 condition 2).
           ctx.write(OSC22_MUX_TARGET_WRITE)
