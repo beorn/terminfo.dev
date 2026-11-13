@@ -1233,6 +1233,41 @@ test.each(["vscode", "cursor"] as const)(
       if (first === undefined || second === undefined) throw new Error("Fixture did not return two native replies")
       expect(first.terminal).toEqual(second.terminal)
       expect(first.sequence).not.toBe(second.sequence)
+      // A PTY fence does not order delivery to the extension API. A phase requesting a
+      // known state must wait for its actual native value, retaining intermediate reads.
+      nativeCwd = "file:///native/before-delivery"
+      const delayed = {
+        runId: "private-run",
+        featureId: "extensions.osc633-p",
+        phase: "delayed-native-delivery",
+        activationNonce: activation.activationNonce,
+        nonce: randomUUID(),
+        requestedAt: Date.now(),
+        deadline: Date.now() + 5000,
+        expectedCwd: "file:///native/after-delivery",
+      }
+      fs.writeFileSync(activation.requestPath, JSON.stringify(delayed))
+      await intervals[0]!()
+      const delayedPath = join(activation.replyDirectory, `${delayed.nonce}.json`)
+      expect(fs.existsSync(delayedPath), "a stale API value must not complete a known-state request").toBe(false)
+      nativeCwd = delayed.expectedCwd
+      await intervals[0]!()
+      await vi.waitFor(() => expect(fs.existsSync(delayedPath)).toBe(true))
+      expect(JSON.parse(fs.readFileSync(delayedPath, "utf8"))).toMatchObject({
+        nonce: delayed.nonce,
+        phase: delayed.phase,
+        terminal: { shellIntegrationCwd: { present: true, value: delayed.expectedCwd } },
+      })
+      const evaluations = fs
+        .readFileSync(join(directory, "editor-evaluations.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { nonce: string; terminal: { shellIntegrationCwd: { value: string } } })
+        .filter((value) => value.nonce === delayed.nonce)
+      expect(evaluations.map((value) => value.terminal.shellIntegrationCwd.value)).toEqual([
+        "file:///native/before-delivery",
+        delayed.expectedCwd,
+      ])
       if (prefix === "cursor") {
         rejectPanel = true
         await expect(exported.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")

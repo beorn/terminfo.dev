@@ -33,16 +33,34 @@ const ids = {
 
 // The app mapping/ancestry tests cannot see which read the real owner selects for a hosted app.
 // Exercise the real owner; only OS reads are fixtures, not its adapter-selection decision.
-test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (app) => {
-  const script = `
+test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
+  "hosted %s selects its own native read",
+  (app) => {
+    const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { EventEmitter } from "node:events"
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const app = ${JSON.stringify(app)}
-    const executable = app === "iterm2" ? "/Applications/iTerm.app/Contents/MacOS/iTerm2"
-      : "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
+    const executable = {
+      iterm2: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+      "terminal-app": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+      cursor: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "com.microsoft.VSCode": "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    }[app]
+    const editor = app === "cursor" || app === "com.microsoft.VSCode"
+    let appPid = 4242
+    const nativeReads = [], captures = []
+    const semantic = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    mock.module("./packages/terminfo.dev/src/app-semantic-state.ts", () => ({ ...semantic,
+      readAppSemanticState: async (input) => {
+        nativeReads.push(input)
+        await input.editor.assertProcess(process.pid)
+        await input.editor.capture(input.featureId, "target")
+        return { status: "unavailable", reason: "Native API boundary fixture" }
+      },
+    }))
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
@@ -54,8 +72,8 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
         const pid = Number(args[args.indexOf("-p") + 1])
         if (args.includes("tty=")) return "ttys004"
         if (!args.includes("pid=")) return "/sbin/launchd"
-        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
-          : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
+        return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
       },
       spawn: (file) => {
         const tool = String(file)
@@ -84,21 +102,37 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    process.env.TERMINFO_TARGET_ID = "foreign-launcher-value"
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
-      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" },
+      appSemanticCapture: async (featureId, phase) => { captures.push({ featureId, phase }); return { retained: true } } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
-    assert.equal(typeof owner.readCells, "function")
-    assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+    if (editor) {
+      assert.equal(typeof owner.readAppSemanticState, "function", "editor owner must install its native API reader")
+      const result = await owner.readAppSemanticState("extensions.osc633-p", () => {})
+      assert.equal(result.reason, "Native API boundary fixture")
+      assert.equal(nativeReads.length, 1)
+      assert.equal(nativeReads[0].editor.appId, app, "receipt, not launcher environment, selects the native reader")
+      assert.deepEqual(captures, [{ featureId: "extensions.osc633-p", phase: "target" }])
+      await assert.rejects(nativeReads[0].editor.assertProcess(999999), /ancestor|owned|pid/i)
+      appPid = 5555
+      await assert.rejects(owner.readAppSemanticState("extensions.osc633-p", () => {}), /5555|4242/)
+      assert.equal(nativeReads.length, 1, "a changed App must refuse before native API evaluation")
+    } else {
+      assert.equal(typeof owner.readCells, "function")
+      assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+    }
     await owner.dispose()
   `
-  const result = spawnSync(process.execPath, ["-e", script], {
-    cwd: join(import.meta.dirname, "../../.."),
-    encoding: "utf8",
-    timeout: 20_000,
-  })
-  expect(result.status, result.stderr).toBe(0)
-})
+    const result = spawnSync(process.execPath, ["-e", script], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      timeout: 20_000,
+    })
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
 
 // Condition 1 of @cto 8c084f05, through the real owner: a hosted WezTerm whose ancestor is a different
 // process at read time must refuse by pid before any WezTerm CLI read, not merely match the app's name.

@@ -176,6 +176,7 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
   let busy = false;
   let sequence = 0;
   let lastRequest;
+  let lastEvaluation;
   const errors = join(directory, "editor-reader-errors.jsonl");
   const observe = async (delivery) => {
     if (closed || busy || !terminal) return;
@@ -191,6 +192,7 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
       if (request.runId !== runId || request.activationNonce !== activationNonce ||
           typeof request.nonce !== "string" || !/^[a-f0-9-]{36}$/.test(request.nonce) ||
           typeof request.featureId !== "string" || typeof request.phase !== "string" ||
+          (request.expectedCwd !== undefined && typeof request.expectedCwd !== "string") ||
           !Number.isFinite(request.requestedAt) || !Number.isFinite(request.deadline) ||
           request.deadline <= request.requestedAt) {
         throw new Error("Editor request has invalid activation/run/phase/nonce/deadline binding");
@@ -223,10 +225,20 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
                 scheme: cwd.scheme, authority: cwd.authority, path: cwd.path, query: cwd.query, fragment: cwd.fragment } },
         },
       };
+      lastEvaluation = reply;
+      fs.appendFileSync(join(directory, "editor-evaluations.jsonl"), JSON.stringify(reply) + "\\n", { mode: 0o600 });
+      if (request.expectedCwd !== undefined &&
+          (!reply.terminal.shellIntegrationCwd.present || reply.terminal.shellIntegrationCwd.value !== request.expectedCwd)) {
+        // The existing deadline-bounded interval or API event will evaluate the native object again.
+        // An unchanged cached value must not complete a known-state phase.
+        lastRequest = undefined;
+        return;
+      }
       publish(join(replyDirectory, request.nonce + ".json"), reply);
     } catch (error) {
       fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid,
-        at: Date.now(), delivery, request, status: "failed", reason: error.message || String(error) }) + "\\n",
+        at: Date.now(), delivery, request, status: "failed", reason: error.message || String(error),
+        ...(lastEvaluation && lastEvaluation.nonce === request?.nonce ? { lastEvaluation } : {}) }) + "\\n",
         { mode: 0o600 });
     } finally {
       clearTimeout(timer);
