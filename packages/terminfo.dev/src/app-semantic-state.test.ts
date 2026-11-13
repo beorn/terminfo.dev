@@ -307,6 +307,58 @@ test("WezTerm CWD keeps its initial home URI private while the registered callba
   }
 })
 
+// A positive callback cannot detect an inert command taking effect or an unqualified CWD read.
+// These controls must remain unresolved, including a terminal that ignores only the target.
+test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected", "serialized-control"])(
+  "WezTerm CWD rejects the %s control instead of deciding support",
+  async (mode) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-controls-"))
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    vi.useFakeTimers()
+    try {
+      const pending = readWezTermCwd({
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\](7|77);([^\x07]*)\x07/.exec(bytes)
+          if (!command) throw new Error("No OSC CWD stimulus")
+          const [, code, uri] = command
+          if (code === "77") {
+            if (mode === "inert-applied") cwd = uri!
+            return
+          }
+          if (uri === initial) {
+            cwd = initial
+            return
+          }
+          if (mode === "disabled") return
+          if (uri!.includes("terminfo-target-")) {
+            if (mode === "target-unchanged") return
+            if (mode === "target-unexpected") {
+              cwd = "file:///unexpected-directory"
+              return
+            }
+          }
+          cwd = mode === "serialized-control" ? uri + "/" : uri!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const reading = await pending
+      expect(reading.status).toBe("invalid")
+      expect(JSON.stringify(reading)).not.toContain(initial)
+      expect(cwd).toBe(initial)
+    } finally {
+      vi.useRealTimers()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([

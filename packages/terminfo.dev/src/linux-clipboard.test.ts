@@ -520,6 +520,8 @@ const mode = process.env.TERMINFO_OWNED_TTY_CHILD
 // The existing PTY owner fixture exercises the collector callback, unlike the direct CLI-reader tests.
 let kittyRefused = false, kittyReads = 0
 let weztermRefused = false, weztermReads = 0
+let cwdActive = false, cwd = "file:///Users/private-person/secret-project", cwdText = ""
+let cwdLost = false, loseCwdOwnerAfterWrite = false, cwdWrites = 0
 let xpropReads = 0, iconFault = null, failIconCleanup = false
 let nativeTitle = "native original title"
 let iconProperties = {
@@ -545,6 +547,8 @@ try {
   realFs.writeFileSync(baselinePath, baseline, { mode: 0o600 })
   realFs.writeFileSync(helperExecutable, "owned-xclip-binary", { mode: 0o600 })
   realFs.writeFileSync(kittyExecutable, "owned-kitty-binary", { mode: 0o600 })
+  realFs.writeFileSync(join(dir, "wezterm"), "owned-wezterm-cli", { mode: 0o600 })
+  realFs.mkdirSync(join(dir, "artifacts"))
   realFs.writeFileSync(receiptPath, JSON.stringify({
     schemaVersion: 1, runId: launch, profile: "default",
     display: { name: ":22", number: 22, displayFdPath, xvfbPid: 419422 },
@@ -582,7 +586,14 @@ try {
   mock.module("node:child_process", () => ({ ...realChildProcess,
     spawnSync(file, args, options) {
       if (file === join(dir, "wezterm")) {
+        if (args[0] === "--version") return { status: 0, stdout: "wezterm 0-unstable-2026-10-10", stderr: "" }
         weztermReads++
+        if (cwdActive) {
+          assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
+          if (args.includes("list")) return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
+          assert.ok(args.includes("get-text"))
+          return { status: 0, stdout: Buffer.from(cwdText + "\n".repeat(24)), stderr: Buffer.alloc(0) }
+        }
         assert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
         assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
         assert.equal(options.env.WEZTERM_PANE, "17")
@@ -861,6 +872,50 @@ try {
       assert.equal(weztermReads - before, boundary === 1 ? 0 : 1)
     }
     weztermOwner.clipboard.assertOwned = weztermAssert
+    // The direct history fixture misses CWD's private writer and checks between writes and reads.
+    // Keep the real Linux grant and PTY; supply only the native OSC effect and CLI directory/text.
+    assert.equal(typeof weztermOwner.readAppSemanticState, "function")
+    const cwdInitial = cwd
+    const cwdTtyWrite = process.stdout.write
+    cwdActive = true
+    weztermOwner.clipboard.assertOwned = async () => {
+      if (cwdLost) throw new Error("owned Linux WezTerm attachment lost after CWD write")
+      await weztermAssert()
+    }
+    process.stdout.write = function(chunk, ...args) {
+      const bytes = String(chunk)
+      if (/\x1b\](?:7|77);/.test(bytes)) {
+        cwdWrites++
+        cwdText = bytes
+        const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+        if (command) cwd = command[1]
+        if (loseCwdOwnerAfterWrite) cwdLost = true
+        return true
+      }
+      return cwdTtyWrite.call(this, chunk, ...args)
+    }
+    try {
+      const reading = await weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {
+        throw new Error("CWD used the publishable writer")
+      })
+      assert.equal(reading.status, "measured", JSON.stringify(reading))
+      assert.equal(cwd, cwdInitial, "restore must keep the exact initial public URI")
+      assert.equal(cwdWrites, 4)
+      assert.equal(JSON.stringify(reading).includes("private-person"), false)
+      loseCwdOwnerAfterWrite = true
+      const before = weztermReads
+      await assert.rejects(weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {
+        throw new Error("CWD used the publishable writer")
+      }), /restoration failed: the pane's reported directory was left changed/)
+      assert.equal(weztermReads - before, 1, "after ownership loss no CLI read may follow the initial list")
+      assert.equal(cwdWrites, 5, "after ownership loss no restoration write may reach the pane")
+    } finally {
+      cwdActive = false
+      cwdLost = false
+      loseCwdOwnerAfterWrite = false
+      process.stdout.write = cwdTtyWrite
+      weztermOwner.clipboard.assertOwned = weztermAssert
+    }
     await weztermOwner.dispose()
     process.env.TERMINFO_TARGET_ID = "kitty"
     assert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],

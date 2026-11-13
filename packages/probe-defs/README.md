@@ -55,7 +55,7 @@ values (@cto 8c084f05). It is deliberately not the declaration above: that one s
 and is removed by a later app version; this one says this run could not reach the read and is removed by a
 later arm. Neither is ever inferred from a failed screenshot.
 
-The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+The owned App collector supplies an optional semantic-state reader. Linux's exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
 a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
@@ -64,6 +64,14 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
+Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
+and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
+restoration of the initial URI. The private capture retains the initial/restored values and feed/text
+trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
+The restoration writer bypasses the publishable call log. Failed restoration throws through the
+collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
+neither process-CWD inference nor URI normalization supplies an answer.
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
