@@ -122,17 +122,25 @@ test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps t
   }
   const definition = withMuxOuterRows(MUX_OUTER_ROWS)({ id, term: original } as never)
   const screenWrites: string[] = []
-  const screenResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)(
-    { kind: "live", cols: 80, rows: 24, mux: "screen", write: (text: string) => void screenWrites.push(text) } as unknown as TermProbeSource,
-  )
+  const screenResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    mux: "screen",
+    write: (text: string) => void screenWrites.push(text),
+  } as unknown as TermProbeSource)
   expect(seen).toEqual(["screen"])
   expect(screenWrites).toEqual([])
   expect(screenResult.criterionBranch).toBeUndefined()
 
   const tmuxWrites: string[] = []
-  const tmuxResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)(
-    { kind: "live", cols: 80, rows: 24, mux: "tmux", write: (text: string) => void tmuxWrites.push(text) } as unknown as TermProbeSource,
-  )
+  const tmuxResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    mux: "tmux",
+    write: (text: string) => void tmuxWrites.push(text),
+  } as unknown as TermProbeSource)
   expect(seen).toEqual(["screen"])
   expect(tmuxWrites).toEqual([row.write, "\u001b[c"])
   expect(tmuxResult.criterionBranch).toBe(row.branch)
@@ -152,7 +160,10 @@ test("editing.decrqcra keeps its bytes, has no reader, and stays open by name on
 
 test("editing.decrqcra keeps its own callback on Screen", async () => {
   const seen: Array<string | undefined> = []
-  const definition = withMuxOuterUnreadableRow("editing.decrqcra", "\u001b[1;1;1;1;1;5*y")({
+  const definition = withMuxOuterUnreadableRow(
+    "editing.decrqcra",
+    "\u001b[1;1;1;1;1;5*y",
+  )({
     id: "editing.decrqcra",
     term: async (ctx: TermProbeSource) => {
       seen.push(ctx.mux)
