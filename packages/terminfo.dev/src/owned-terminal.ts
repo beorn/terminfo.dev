@@ -2,6 +2,7 @@ import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_pr
 import { createHash } from "node:crypto"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
+import { homedir } from "node:os"
 import { dirname, isAbsolute, join, win32 } from "node:path"
 import type {
   DarwinMuxAttachmentProof,
@@ -32,6 +33,14 @@ import {
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
+import { ownedHistoryReceipt } from "./owned-history-receipt.ts"
+import {
+  cmuxConfigPath,
+  cmuxHistoryIdentity,
+  observeCmuxConfig,
+  ownedCmuxHistoryExecutable,
+  readOwnedCmuxHistory,
+} from "./cmux-owned-history.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   ScrollbackReadingUnavailable,
@@ -347,6 +356,17 @@ export interface OwnedTerminal {
   readonly historyExecutableUnmeasured?: string
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
+  /**
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant,
+   * the grant receipt or the failure that replaced it, and the last read's receipt. `lastRead` is a
+   * getter, so a record built after the probes sees the latest read rather than the grant (@cto 81073ae1).
+   */
+  readonly cmuxHistory?: {
+    readonly executable: string
+    readonly surface: string | null
+    readonly grantProof: string
+    readonly lastRead: string | null
+  }
   /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
    * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
@@ -1641,18 +1661,137 @@ export async function createOwnedTerminal(options: {
                       rows: geometry.rows,
                       startLine: -2147483648,
                     })
-                    return rows.status === "refused"
-                      ? rows
-                      : {
-                          status: "read" as const,
-                          totalLines: rows.rows.length,
-                          screenLines: geometry.rows,
-                          receipt: rows.receipt,
-                        }
+                    if (rows.status === "refused") return rows
+                    // Windows has no pane list and no tty to compare, so the record names the pane and the
+                    // socket's presence and leaves the two tty fields absent rather than guessing one.
+                    const identity = ownedHistoryReceipt({
+                      surface: "wezterm",
+                      pane,
+                      socketPresent: socket !== undefined && socket.trim() !== "",
+                      executable: ownedWezTermCli,
+                    })
+                    if (identity.status === "refused") return { status: "refused" as const, reason: identity.reason }
+                    return {
+                      status: "read" as const,
+                      totalLines: rows.rows.length,
+                      screenLines: geometry.rows,
+                      receipt: identity.receipt,
+                    }
                   })()
             await wezTermOwnerCheck()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
+          }
+        : undefined
+    // A cmux surface answers history through its own CLI, and the collector runs INSIDE that surface: the
+    // hosted launch writes the initial-command key and opens the app, which is the only caller cmuxOnly
+    // admits (@cto plan GO af8608c3, corrected in f6cc9bb8). Ownership is the receipt's app plus the nonce
+    // line the run writes into the surface it is running in: a read of any other surface cannot carry it.
+    const hostedCmuxOwnerCheck =
+      binding.platform === "darwin" && darwinHosted !== undefined && ownedAppId === "cmux"
+        ? (): Promise<void> => {
+            if (hostedApp === undefined) return Promise.reject(new Error("Hosted cmux read has no receipt app"))
+            const ancestorPid = requireHostedDarwinAppAncestor(
+              hostedApp.comm,
+              readProcessAncestry(process.pid),
+              hostedAppExecutablePath,
+            ).pid
+            return hostedAncestor?.pid !== undefined && ancestorPid !== hostedAncestor.pid
+              ? Promise.reject(
+                  new Error(
+                    "Hosted cmux ancestor is now pid " +
+                      ancestorPid +
+                      ", not pid " +
+                      hostedAncestor.pid +
+                      " measured at launch",
+                  ),
+                )
+              : Promise.resolve()
+          }
+        : undefined
+    const ownedCmuxCli = ownedCmuxHistoryExecutable({
+      platform: binding.platform,
+      ownsCmuxSurface: hostedCmuxOwnerCheck !== undefined,
+      ...(hostedAppExecutablePath === undefined ? {} : { declaredExecutable: hostedAppExecutablePath }),
+    })
+    const ownedCmuxIdentity = ownedCmuxCli === undefined ? undefined : cmuxHistoryIdentity(ownedCmuxCli)
+    const cmuxConfigAtLaunch = ownedCmuxCli === undefined ? undefined : observeCmuxConfig(cmuxConfigPath(homedir()))
+    // Ownership is proved ONCE here, before the probe writes anything: the nonce line goes into the surface
+    // this process is running in and a read that carries it exactly once is this run's own history. Every
+    // later read names that surface and writes nothing, so the instrument never moves what it measures
+    // (@cto REVISE F1 at 9ae6fad2459). A proof that never reads back leaves every read refusing by name.
+    let cmuxSurface: string | undefined
+    let cmuxGrantReceipt: string | undefined
+    let cmuxGrantFailure: string | undefined
+    let cmuxLastReceipt: string | undefined
+    if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
+      const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
+      if (published === "") {
+        // Without a published id every later read would have to let the CLI pick "whatever surface is
+        // current", which is the unnamed read this arm must never make: a second surface in the same
+        // instance could then answer for ours (@dev/1 peer read 2026-11-13). Refuse at grant instead.
+        cmuxGrantFailure =
+          "cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired"
+      } else {
+        cmuxSurface = published
+        out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const proof = readOwnedCmuxHistory({
+            executable: ownedCmuxCli,
+            surface: published,
+            ownership: { kind: "nonce", nonce: captureRunId },
+            configAtLaunch: cmuxConfigAtLaunch,
+            observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+          })
+          if (proof.status === "read") {
+            cmuxGrantReceipt = proof.receipt
+            cmuxLastReceipt = proof.receipt
+            break
+          }
+          if (proof.refusal !== "cmux-surface-not-owned") {
+            cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
+            break
+          }
+          // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
+          await new Promise((resolve) => {
+            setTimeout(resolve, 250)
+          })
+        }
+        if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
+          cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
+        }
+      }
+    }
+    const ownedCmuxHistory =
+      hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined
+        ? async (): Promise<TerminalScrollbackReading> => {
+            await hostedCmuxOwnerCheck()
+            if (cmuxGrantFailure !== undefined) throw new ScrollbackReadingUnavailable(cmuxGrantFailure)
+            const geometry = await readBoundGeometry(binding, windowsKernel)
+            if (geometry.status !== "measured") {
+              throw new ScrollbackReadingUnavailable("Owned cmux history needs a measured grid: " + geometry.diagnostic)
+            }
+            const read = readOwnedCmuxHistory({
+              executable: ownedCmuxCli,
+              ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+              rows: geometry.rows,
+              ownership: { kind: "surface" },
+              configAtLaunch: cmuxConfigAtLaunch,
+              observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+            })
+            if (read.status === "refused") {
+              throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
+            }
+            cmuxLastReceipt = read.receipt
+            // cmux's own command receipt stays in the grant; the count carries the surface by id, and its
+            // surface id is the pane this run proved at grant.
+            const identity = ownedHistoryReceipt({
+              surface: "cmux",
+              pane: cmuxSurface,
+              executable: ownedCmuxCli,
+            })
+            if (identity.status === "refused") throw new ScrollbackReadingUnavailable(identity.reason)
+            return { ...read.reading, receipt: identity.receipt }
           }
         : undefined
     const readScrollback =
@@ -1663,17 +1802,22 @@ export async function createOwnedTerminal(options: {
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
-            const read = readLinuxKittyScrollback({
-              kitten: join(dirname(linux.executable.path), "kitten"),
-              socket: kittySocket,
-              window: kittyWindow,
-            })
+            const kitten = join(dirname(linux.executable.path), "kitten")
+            const read = readLinuxKittyScrollback({ kitten, socket: kittySocket, window: kittyWindow })
             await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            const identity = ownedHistoryReceipt({
+              surface: "kitty",
+              pane: kittyWindow,
+              socketPresent: kittySocket.trim() !== "",
+              executable: kitten,
+            })
+            if (identity.status === "refused") throw new Error(identity.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: identity.receipt }
           }
         : undefined) ??
       ownedWezTermHistory ??
+      ownedCmuxHistory ??
       readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
@@ -1778,6 +1922,19 @@ export async function createOwnedTerminal(options: {
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
       ...(wezTermOwnerCheck === undefined ? undefined : ownedWezTermIdentity),
+      ...(hostedCmuxOwnerCheck === undefined ? undefined : ownedCmuxIdentity),
+      ...(ownedCmuxCli !== undefined && {
+        cmuxHistory: {
+          executable: ownedCmuxCli,
+          surface: cmuxSurface ?? null,
+          grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
+          // A getter, not a captured value: this object is built once at owner creation, so a snapshot
+          // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
+          get lastRead(): string | null {
+            return cmuxLastReceipt ?? null
+          },
+        },
+      }),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")

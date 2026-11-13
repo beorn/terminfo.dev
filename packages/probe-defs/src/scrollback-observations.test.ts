@@ -2342,3 +2342,58 @@ test("app viewport returns to bottom when its first upward click moves then thro
   expect(app.activity().downs).toBeGreaterThan(0)
   expect(app.activity().top).toBe(app.activity().bottom)
 })
+
+/**
+ * @failure The two owned-history scrollback rows read a count through the owned reader and drop its identity
+ *   receipt, so the row shows which program ran but not which pane was read (@cto 41fcd747).
+ * @level l1
+ * @consumer scrollback.accumulate and scrollback.total-lines through the public asynchronous source.
+ * @testonly none
+ */
+test("both owned-history scrollback rows carry the reader's pane receipt into their evidence", async () => {
+  const identity = JSON.stringify({
+    surface: "wezterm",
+    pane: "17",
+    listedTty: "ttys004",
+    measuredTty: "ttys004",
+    ttyMatch: true,
+    socketPresent: true,
+    executable: "wezterm",
+  })
+  for (const id of ["scrollback.accumulate", "scrollback.total-lines"] as const) {
+    const probe = scrollbackProbes.find((item) => item.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+    let reads = 0
+    const totals = [24, 24, 44]
+    const source: TermProbeSource = {
+      kind: "live",
+      rows: 24,
+      cols: 80,
+      write() {},
+      queryCursorPosition: async () => ({ row: 24, col: 1 }),
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+      getScrollback: async () => {
+        const totalLines = totals[Math.min(reads, totals.length - 1)] ?? 24
+        reads += 1
+        return { viewportOffset: 0, totalLines, screenLines: 24, receipt: identity }
+      },
+    }
+    const result = (await probe.term(source)) as ProbeCallbackResult
+    expect(result.observation?.outcome, id).toBe("supported")
+    expect(reads, id).toBe(3)
+    // Baseline, control and the overflow read each carry it, so the row names the pane for every count.
+    const observed = JSON.parse(String(result.assertions?.[0]?.observed ?? "{}")) as {
+      baseline?: { receipt?: string }
+      control?: { receipt?: string }
+      scroll?: { receipt?: string }
+    }
+    expect(observed.baseline?.receipt, id).toBe(identity)
+    expect(observed.control?.receipt, id).toBe(identity)
+    expect(observed.scroll?.receipt, id).toBe(identity)
+  }
+})
