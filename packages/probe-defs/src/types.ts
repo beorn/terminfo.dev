@@ -1339,8 +1339,10 @@ export type TerminalScrollbackReading = Readonly<{
   /** Maximum retained scrollback history lines, when known by the reader. */
   capacity?: number
   /**
-   * The reader's own identity receipt, when it produces one: which pane or surface this count came from.
-   * A count without it says which program ran, not which pane was read (@cto 238ed303).
+   * The reader's own identity receipt, when it produces one: which pane or surface this count came from,
+   * its listed tty, this run's measured tty and whether the two match, whether a socket was named, and the
+   * reader's executable — each by name or basename, never a path. A count without it says which program
+   * ran, not which pane was read (@cto 238ed303, 41fcd747).
    */
   receipt?: string
 }>
