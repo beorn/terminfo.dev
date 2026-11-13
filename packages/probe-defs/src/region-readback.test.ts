@@ -15,6 +15,7 @@ import {
   captureRegionReadbackDecision,
   captureRegionGeometry,
   captureRegionCallbackResult,
+  colourOnlyAttempts,
   queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
@@ -26,6 +27,7 @@ import type {
   CaptureCells,
   CapturePixelGeometry,
   CaptureRectangle,
+  CaptureRenderingAxes,
   MeasuredProbeCallbackResult,
   ObservationFrame,
   PixelObservationFrame,
@@ -109,6 +111,12 @@ function ownedWindow(options: {
    * hand-built read; the collector-backed reader always carries one with the region digest.
    */
   cropFor?: (label: string) => CaptureRectangle | undefined
+  /**
+   * The rendering axes and coverage each read reports for its own crop, keyed by that read's own
+   * label. Absent models a capture adapter that records digests only, which is every frame written
+   * before osc104.
+   */
+  renderingFor?: (label: string) => CaptureRenderingAxes | undefined
 }): Fake {
   const sentinelAnswers = options.sentinelAnswers ?? true
   let screen = options.regionDigest([])
@@ -172,6 +180,8 @@ function ownedWindow(options: {
     if (options.pixelMetadata) {
       Object.assign(frame, { kind: "pixels", regionDigest: capture.regionDigest, pixelsDigest: capture.pixelsDigest })
     }
+    const rendering = options.renderingFor?.(label)
+    if (rendering) capture.rendering = rendering
     return capture
   }
   return { ctx, read, writes, timeline, requests }
@@ -275,6 +285,231 @@ test("an edit that is a third distinct frame is inconclusive, stating the observ
   expect(result.observation.note).toContain("compared frames: seed, expected")
   expect(result.observation.note).not.toContain("matched none of the compared frames")
   expect(result.observation.note).not.toContain("simply")
+})
+
+// osc104 (@cto plan GO, then coverage rule ±2 with floors): a pair whose target frame is the
+// expected frame's own background and glyph coverage in a different INK COLOUR is a MEASURED colour
+// result — graded negative, with both raw colours named — instead of the "a third distinct frame"
+// refusal. Every guard below refuses exactly as before.
+const coverage = (values: number[]) => Uint8Array.from(values)
+// 16 ink pixels rising through every level, the shape a glyph edge makes.
+const glyph = coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 255])
+const axes = (
+  inkColour: string,
+  options: { coverage?: Uint8Array; background?: string; inkCount?: number; contrast?: number } = {},
+) => ({
+  background: options.background ?? "#050505",
+  inkColour,
+  inkCount: options.inkCount ?? glyph.length,
+  contrast: options.contrast ?? 191,
+  coverage: options.coverage ?? glyph,
+})
+
+test("the expected coverage in a different ink colour is graded unsupported and names both colours", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("pre-edit seed")
+        ? axes("#616161")
+        : label.endsWith("post-sequence target")
+          ? axes("#123456")
+          : label.endsWith("expected frame")
+            ? axes("#c1e3fe")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.observation.note).toContain("same geometry in a different ink colour")
+  expect(result.observation.note).toContain("#123456")
+  expect(result.observation.note).toContain("#c1e3fe")
+  expect(result.observation.note).toContain("#616161")
+  expect(result.observation.note).toContain("paints a third colour")
+  expect(result.observation.note).toContain("within 0 of 255")
+  expect(result.observation.note).not.toContain("third distinct frame")
+})
+
+test("a target that paints the seed's own colour is named as no change, not as a third colour", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target") || label.endsWith("pre-edit seed")
+        ? axes("#616161")
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.observation.note).toContain("paints the seed's own colour")
+  expect(result.observation.note).toContain("changed nothing in this region")
+})
+
+test("one or two levels of coverage rounding still fire, three levels refuse", async () => {
+  const fire = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", {
+            coverage: coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 253]),
+          })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const fired = await decide(fire)
+  expect(fired.observation.outcome).toBe("unsupported")
+  expect(fired.observation.note).toContain("within 2 of 255")
+
+  const refuse = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", {
+            coverage: coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 252]),
+          })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const refused = await decide(refuse)
+  expect(refused.observation.outcome).toBe("inconclusive")
+  expect(refused.observation.note).toContain("a third distinct frame")
+})
+
+test("a one-cell layout shift keeps today's third-distinct-frame refusal", async () => {
+  const shifted = coverage([0, 255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8])
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", { coverage: shifted })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.note).toContain("a third distinct frame")
+  expect(result.observation.note).not.toContain("same geometry in a different ink colour")
+})
+
+test("a low-contrast or nearly empty frame refuses, so rounding noise never reads as agreement", async () => {
+  for (const weak of [{ contrast: 20 }, { inkCount: 4 }]) {
+    const fake = ownedWindow({
+      repaintAfterPolls: 1,
+      regionDigest: painter({ applied: "other" }),
+      pixelMetadata: true,
+      renderingFor: (label) =>
+        label.endsWith("post-sequence target")
+          ? axes("#123456", weak)
+          : label.endsWith("expected frame")
+            ? axes("#c1e3fe")
+            : label.endsWith("pre-edit seed")
+              ? axes("#616161")
+              : undefined,
+    })
+    const result = await decide(fake)
+    expect(result.observation.outcome, JSON.stringify(weak)).toBe("inconclusive")
+    expect(result.observation.note).toContain("a third distinct frame")
+  }
+})
+
+test("a different background keeps today's third-distinct-frame refusal", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", { background: "#101010" })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.note).toContain("a third distinct frame")
+})
+
+const attempt = (afterInk: string, expectedInk = "#c1e3fe", suffix = "") => [
+  {
+    kind: "pixels" as const,
+    role: "control" as const,
+    label: "extensions.osc104" + suffix + ": pre-edit seed",
+    ref: "sha256:" + suffix + "seed",
+    capturedAt: 0,
+    rendering: axes("#616161"),
+  },
+  {
+    kind: "pixels" as const,
+    role: "target" as const,
+    label: "extensions.osc104" + suffix + ": post-sequence target",
+    ref: "sha256:" + suffix + "after",
+    capturedAt: 1,
+    rendering: axes(afterInk),
+  },
+  {
+    kind: "pixels" as const,
+    role: "control" as const,
+    label: "extensions.osc104" + suffix + ": expected frame",
+    ref: "sha256:" + suffix + "expected",
+    capturedAt: 2,
+    rendering: axes(expectedInk),
+  },
+]
+
+test("two attempts that both fire keep the grade and name both after colours", () => {
+  const frames = [...attempt("#616161", "#c1e3fe", "-a"), ...attempt("#123456", "#c1e3fe", "-b")]
+  const verdict = colourOnlyAttempts("extensions.osc104-reset-palette", frames as never)
+  expect(verdict).toBeDefined()
+  expect(verdict && "rounds" in verdict ? verdict.rounds : 0).toBe(2)
+  const note = verdict && "note" in verdict ? verdict.note : ""
+  expect(note).toContain("after colour differed between attempts")
+  expect(note).toContain("#616161")
+  expect(note).toContain("#123456")
+  expect(note).toContain("no-effect")
+  expect(note).toContain("third-colour")
+  expect(note).toContain("not published as the terminal's behaviour")
+})
+
+test("an attempt that matches the expected ink refuses with a named attempts-disagree reason", () => {
+  const frames = [...attempt("#123456", "#c1e3fe", "-a"), ...attempt("#c1e3fe", "#c1e3fe", "-b")]
+  const verdict = colourOnlyAttempts("extensions.osc104-reset-palette", frames as never)
+  expect(verdict && "disagreement" in verdict ? verdict.disagreement : "").toContain("attempts disagree")
+})
+
+test("one attempt alone decides nothing extra: the reader's own verdict stands", () => {
+  expect(colourOnlyAttempts("extensions.osc104-reset-palette", attempt("#123456") as never)).toBeUndefined()
+})
+
+test("a match still grades supported when the frames carry rendering axes", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    pixelMetadata: true,
+    renderingFor: (label) => (label.endsWith("post-sequence target") ? axes("#c1e3fe") : undefined),
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
+  expect(result.assertions?.[0]?.kind).toBe("positive")
 })
 
 // 28752: a row whose expected frame is written PLAINLY assumes the run decodes plain UTF-8. The
