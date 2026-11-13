@@ -398,6 +398,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
         const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
         if (result) result = cleanupReading(result, cleanup)
         else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+        else throw withCleanupDetail(new Error("cleanup ran with neither a reading nor a propagating failure"), cleanup)
       }
     }
   }
