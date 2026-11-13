@@ -66,6 +66,12 @@ import {
   type OwnedTerminal,
 } from "../owned-terminal.ts"
 import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
+import {
+  checkOrdinaryOpenLiveAncestry,
+  ordinaryOpenAdmission,
+  type LiveAncestryReader,
+  type OrdinaryOpenReceipt,
+} from "../ordinary-open-receipt.ts"
 import { beginMuxSgrCommandRead, hasOuterCommandMatcher } from "../app-semantic-state.ts"
 
 /**
@@ -408,6 +414,19 @@ export async function runProbeBatch(
       resizeWindow?(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
     }
     ownedTerminal?: OwnedTerminal
+    /**
+     * An app a person opened normally (@cto 2026-11-13): the receipt that names it and the adapter the Mac run
+     * path built from the receipt's own subject. This grants NOTHING beyond the three OSC 52 rows — it is never
+     * OR'd into `authorizedToWrite` — and every probe it might cover has to pass a LIVE ancestry walk first.
+     */
+    ordinaryOpen?: {
+      readonly receipt: OrdinaryOpenReceipt
+      readonly clipboard: NonNullable<OwnedTerminal["clipboard"]>
+      /** The bundle id the one Mac app registry names for the subject; without it the receipt binds to no app. */
+      readonly expectedBundleId: string | undefined
+      /** Overridable only so a test can drive the walk; production reads the real parent chain. */
+      readonly readAncestry?: LiveAncestryReader
+    }
     /** Sees every probe write before it is sent: an owned reader that must know what was drawn. */
     onWrite?: (text: string) => void
     captureRunId?: string
@@ -497,6 +516,29 @@ export async function runProbeBatch(
     bindReceiptToRun(disposable, options.subject, "collector.disposableOwnership")
   }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
+  // Ordinary-open (@cto 2026-11-13): a person launched the app themselves and a receipt names the live process
+  // chain that reached it. This is NOT ownership and never enters `authorizedToWrite`; it grants only the three
+  // OSC 52 rows, and each of those still has to pass a LIVE ancestry walk at the moment it runs.
+  const ordinaryOpen = options.ordinaryOpen
+  const ordinaryOpenLiveRefusal = (): string | undefined => {
+    if (!ordinaryOpen) return undefined
+    // Admission already refuses a receipt with no registry bundle id; the walk needs that id to compare against.
+    const expectedBundleId = ordinaryOpen.expectedBundleId
+    if (expectedBundleId === undefined) return undefined
+    const verdict = checkOrdinaryOpenLiveAncestry({
+      receipt: ordinaryOpen.receipt,
+      expectedBundleId,
+      probePid: process.pid,
+      ...(ordinaryOpen.readAncestry && { reader: ordinaryOpen.readAncestry }),
+    })
+    return verdict.ok ? undefined : verdict.probeTodo
+  }
+  const ordinaryOpenVerify = ordinaryOpen
+    ? async () => {
+        const probeTodo = ordinaryOpenLiveRefusal()
+        if (probeTodo) throw new Error(probeTodo)
+      }
+    : undefined
   if (disposable?.appLaunch) {
     batch.appLaunch = disposable.appLaunch
     if (disposable.appLaunch.argv === undefined) {
@@ -718,13 +760,34 @@ export async function runProbeBatch(
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    // A row the ordinary-open receipt does not admit is refused BY NAME: on such a run the receipt is the only grant
+    // on offer, and staying silent would tell the row it needs ownership without saying what was actually presented.
+    const ordinaryOpenRefusal =
+      ordinaryOpen && needsOwnership
+        ? (() => {
+            const subject = options.subject
+            if (!subject) {
+              return "an ordinary-open receipt binds an app by name, and this run names no subject"
+            }
+            const admission = ordinaryOpenAdmission({
+              receipt: ordinaryOpen.receipt,
+              probeId: probe.id,
+              subject,
+              measuredVersion: subject.version,
+              expectedBundleId: ordinaryOpen.expectedBundleId,
+            })
+            return admission.admit ? ordinaryOpenLiveRefusal() : admission.refusal
+          })()
+        : undefined
     const refusedBecause = !needsOwnership
       ? undefined
-      : !authorizedToWrite
-        ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
-        : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
-          ? "no verified disposable-ownership receipt was presented"
-          : undefined
+      : ordinaryOpen !== undefined && !authorizedToWrite
+        ? ordinaryOpenRefusal
+        : !authorizedToWrite
+          ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
+          : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
+            ? "no verified disposable-ownership receipt was presented"
+            : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -928,6 +991,16 @@ export async function runProbeBatch(
             }),
           (event) => clipboardEvents.push(event),
           verify,
+        )
+    } else if (ordinaryOpen && ordinaryOpenVerify && ordinaryOpenRefusal === undefined) {
+      // @cto 2026-11-13: this adapter was built by the collector's Mac run path from the receipt's own subject, and
+      // the gate only admits it. The live ancestry walk in `ordinaryOpenVerify` repeats on every fixture use.
+      const ordinaryOpenClipboard = ordinaryOpen.clipboard
+      probeSource.withClipboardFixture = (work) =>
+        ordinaryOpenClipboard.withClipboardFixture(
+          (fixture) => work(fixture),
+          (event) => clipboardEvents.push(event),
+          ordinaryOpenVerify,
         )
     } else if (clipboard && verify) {
       // #31741: the run HAS a pasteboard, so the row must not be told it has no fixture — that reason
