@@ -1585,7 +1585,12 @@ test("a re-own whose re-read differs refuses, naming the one re-own", async () =
 test("the owner's taker is this run's outer terminal only when its pid and its client's window are the receipt's", async () => {
   const outer = { pid: 77, windowId: String(0x60000d) }
   const read = (taker: typeof KITTY_TAKER | Record<string, unknown>) => {
-    const ownership = createClipboardOwnership<"clipboard">({ clipboard: 90 }, () => false, async () => taker as never, outer)
+    const ownership = createClipboardOwnership<"clipboard">(
+      { clipboard: 90 },
+      () => false,
+      async () => taker as never,
+      outer,
+    )
     return ownership.state("clipboard", () => {})
   }
   expect(await read(KITTY_TAKER)).toMatchObject({ helperPid: 90, takerOurs: false, takerOuterTerminal: true })
@@ -1593,7 +1598,11 @@ test("the owner's taker is this run's outer terminal only when its pid and its c
   expect(await read({ ...KITTY_TAKER, clientWindows: ["0x700001"] })).toMatchObject({ takerOuterTerminal: false })
   const { takerPid: _pid, ...withoutPid } = KITTY_TAKER
   expect(await read(withoutPid)).toMatchObject({ takerOuterTerminal: false })
-  const unproven = createClipboardOwnership<"clipboard">({ clipboard: 90 }, () => false, async () => KITTY_TAKER)
+  const unproven = createClipboardOwnership<"clipboard">(
+    { clipboard: 90 },
+    () => false,
+    async () => KITTY_TAKER,
+  )
   expect(await unproven.state("clipboard", () => {})).not.toHaveProperty("takerOuterTerminal")
 })
 
