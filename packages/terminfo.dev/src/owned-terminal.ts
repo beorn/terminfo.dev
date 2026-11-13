@@ -1370,8 +1370,25 @@ export async function createOwnedTerminal(options: {
         },
       })
     }
+    if (!clipboard && binding.platform === "darwin" && terminalApp) {
+      // 31741's follow-on: the owned Terminal.app window is the app this run owns, so its pasteboard
+      // is a fixture for the subject the run measures. Without this the artifact records no
+      // clipboard fixture at all and the OSC 52 rows cannot say anything but "no fixture".
+      clipboard = await createDarwinClipboardAdapter({
+        appComm: HOSTED_DARWIN_EXECUTABLE.Terminal!.comm,
+        appId: HOSTED_DARWIN_EXECUTABLE.Terminal!.id,
+        titleRead: "none",
+        titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
+        ownedHost: true,
+        assertOwned: async () => {
+          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
+        },
+      })
+    }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
-    const readTitle = clipboard?.readTitle.bind(clipboard)
+    // An owned Terminal.app window reads its title through the tab's JXA reader, never through a
+    // pasteboard adapter: that adapter's title path spawns System Events, which is the 33821 bug.
+    const readTitle = terminalApp ? undefined : clipboard?.readTitle.bind(clipboard)
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.

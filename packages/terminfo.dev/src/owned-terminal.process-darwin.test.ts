@@ -303,6 +303,22 @@ function runDarwinArm(scenario: {
         stderr: "",
       }),
       spawn: (command, args) => {
+        // #31741 follow-on: an owned Terminal.app window now carries its own pasteboard fixture, so
+        // construction reads the pasteboard once. Nothing here writes the real one.
+        if (command === "/usr/bin/pbpaste" || command === "/usr/bin/pbcopy") {
+          const pasteboard = new EventEmitter()
+          Object.assign(pasteboard, {
+            stdout: new EventEmitter(),
+            stderr: new EventEmitter(),
+            stdin: { end: () => undefined },
+            kill: () => true,
+          })
+          queueMicrotask(() => {
+            if (command === "/usr/bin/pbpaste") (pasteboard.stdout as EventEmitter).emit("data", Buffer.from(""))
+            pasteboard.emit("close", 0)
+          })
+          return pasteboard
+        }
         if (!scenario.text) throw new Error("stty is not run in this fixture")
         assert.equal(command, "/bin/stty")
         assert.deepEqual(args, ["size"])
