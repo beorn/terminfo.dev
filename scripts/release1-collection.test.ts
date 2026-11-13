@@ -22,6 +22,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
   writeSync,
@@ -685,7 +686,9 @@ it.each([
                         ? { contexts: ["alacritty/linux"], ids: [] }
                         : undefined
       // Requirement: private release collection leaves corpus bytes untouched. The old admission
-      // mocks could miss a direct corpus write, so compare the actual placement directories.
+      // mocks could miss a direct corpus write, so compare the actual placement directories. The witness is
+      // each file's size, inode and change time: any write, replace or rename moves ctime, which nothing can set
+      // back. Hashing the bytes read the whole placed corpus twice (24k files, ~1.2 GB) and timed out (33989).
       const corpusSnapshot = () =>
         ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"]
           .flatMap((dir) =>
@@ -693,7 +696,8 @@ it.each([
               .filter((entry) => entry.isFile())
               .map((entry) => {
                 const path = join(entry.parentPath, entry.name)
-                return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
+                const { size, ino, ctimeNs } = statSync(path, { bigint: true })
+                return [relative(CONTENT, path), `${String(size)}:${String(ino)}:${String(ctimeNs)}`]
               }),
           )
           .sort((a, b) => a[0]!.localeCompare(b[0]!))

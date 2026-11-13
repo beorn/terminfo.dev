@@ -87,9 +87,9 @@ import {
 } from "./windows-terminal-text.ts"
 import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
 import {
-  ownedWezTermExecutableProof,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
+  wezTermHistoryIdentity,
 } from "./wezterm-owned-history.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
@@ -336,6 +336,12 @@ export interface OwnedTerminal {
    * identity names the program that produced the count instead of the launched shell.
    */
   readonly historyExecutable?: { readonly path: string; readonly sha256: string; readonly version: string }
+  /**
+   * Why this arm's CLI proof could not be measured. Present only beside `historyReadsThroughCli`: the reader
+   * refuses to borrow another binary's proof, so an unmeasured arm must say so in its own words rather than
+   * record an identity check with no executable (@cto REVISE at f1b0a7ffe).
+   */
+  readonly historyExecutableUnmeasured?: string
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
@@ -1511,13 +1517,11 @@ export async function createOwnedTerminal(options: {
       ...(linux === undefined ? {} : { linuxExecutablePath: linux.executable.path }),
       environment: process.env,
     })
-    // The CLI proof is the macOS answer to "which WezTerm produced this count" (31741): it hashes the
-    // bundle's own CLI and reads the version that CLI reports. Linux already names its writer and reader
-    // as one install beside the owned binary, so the proof adds nothing there.
-    const ownedWezTermProof =
-      ownedWezTermCli === undefined || binding.platform !== "darwin"
-        ? undefined
-        : ownedWezTermExecutableProof(ownedWezTermCli)
+    // The CLI proof answers "which WezTerm produced this count" (31741): it hashes the bundle's own CLI and
+    // reads the version that CLI reports. It runs on EVERY platform, not only macOS: the reader refuses to
+    // borrow another binary's proof, so a Linux arm that skipped the proof would record an identity check with
+    // no executable at all (@cto REVISE at f1b0a7ffe).
+    const ownedWezTermIdentity = wezTermHistoryIdentity(ownedWezTermCli)
     const ownedWezTermHistory =
       wezTermOwnerCheck !== undefined && ownedWezTermCli !== undefined
         ? async (): Promise<TerminalScrollbackReading> => {
@@ -1590,9 +1594,15 @@ export async function createOwnedTerminal(options: {
       ...(ownedWezTermCli !== undefined && {
         // The count's own provenance, including the reason when the version could not be read.
         wezTermHistory:
-          ownedWezTermProof?.status === "measured"
-            ? { executable: ownedWezTermCli, proof: ownedWezTermProof.proof }
-            : { executable: ownedWezTermCli, unmeasured: ownedWezTermProof?.reason },
+          ownedWezTermIdentity?.historyExecutable === undefined
+            ? {
+                executable: ownedWezTermCli,
+                // Never an `unmeasured` with no reason: an absent proof is a bug in this file, said out loud.
+                unmeasured:
+                  ownedWezTermIdentity?.historyExecutableUnmeasured ??
+                  `WezTerm CLI ${JSON.stringify(ownedWezTermCli)} proof was never attempted`,
+              }
+            : { executable: ownedWezTermCli, proof: ownedWezTermIdentity.historyExecutable },
       }),
       ...(preflightIdentity && { preflightIdentity }),
       ...(terminalApp && {
@@ -1669,11 +1679,9 @@ export async function createOwnedTerminal(options: {
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
       ...(clipboard && { clipboard }),
-      ...(ownedWezTermProof?.status === "measured" && { historyExecutable: ownedWezTermProof.proof }),
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
-      ...(wezTermOwnerCheck !== undefined &&
-        ownedWezTermCli !== undefined && { historyReadsThroughCli: true as const }),
+      ...(wezTermOwnerCheck === undefined ? undefined : ownedWezTermIdentity),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
