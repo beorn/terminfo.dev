@@ -362,7 +362,8 @@ export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject
   return admitted.get(contextKey(subject)) ?? projectedContextKey(subject, 2)
 }
 
-const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
+/** The one app-version order: the projection's baseline choice and the site's context pick both use it. */
+export const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 interface SupplementInput {
   run: LoadedRun

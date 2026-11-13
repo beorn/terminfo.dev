@@ -1,7 +1,9 @@
 /** One context selection rule shared by compatibility and full-project readers. */
 import type { FeatureResultStatus, ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type FeatureResultDisplayState, type SuiteRelation } from "./release-scope.ts"
+import type { SourceHistory } from "./source-history.ts"
 import {
+  versionCompare,
   originalRunFor,
   type SelectedVersion,
   type CurrentSelectedVersion,
@@ -123,7 +125,28 @@ export function candidateFromSelected(
 }
 
 /** How the summary context was chosen, printed beside the row. */
-export type RunSelection = "only current" | "default profile" | "latest original evidence"
+export type RunSelection =
+  | "only current"
+  | "default profile"
+  | "latest original evidence"
+  | "app version, then source ancestry"
+
+/** One run that contributed cells to a candidate context: what the lineage pick orders by. */
+export interface LineageRun {
+  runId: string
+  version: string | null
+  sourceRevision: string | null
+}
+
+/**
+ * The run-order-independent pick (33587, @cto d805d1af): the site's per-(app, OS) primary is the candidate with the
+ * highest app version, then the descendant source revision. Wall-clock time and arrival order never choose.
+ */
+export interface ContextLineage<T extends ContextCandidate = ContextCandidate> {
+  /** Every run that contributed cells to `candidate`. */
+  runs: (candidate: T) => readonly LineageRun[]
+  history: Pick<SourceHistory, "isAncestor">
+}
 
 export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { run: T; selection: RunSelection }
 
@@ -131,8 +154,15 @@ export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { 
  * Prefer current-suite evidence, then a unique permissions-free profile. Remaining ties use the newest
  * contributing original measurement, then the stable context key. Attempts never refresh evidence.
  * This chooses a summary only; the projection retains every context and its original cells.
+ *
+ * With `lineage` (the site's per-(app, OS) primary, whose observation a row the join refuses shows), the pick
+ * is `pickByLineage` instead: app version, then source-revision ancestry, never newest evidence.
  */
-export function pickContextRun<T extends ContextCandidate>(candidates: readonly T[]): PickedContextRun<T> | undefined {
+export function pickContextRun<T extends ContextCandidate>(
+  candidates: readonly T[],
+  lineage?: ContextLineage<T>,
+): PickedContextRun<T> | undefined {
+  if (lineage) return pickByLineage(candidates, lineage)
   const dated = candidates.map((candidate) => {
     const latest = Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
     if (!Number.isFinite(latest)) throw new Error(`Context ${candidate.key} has no finite original evidence time`)
@@ -152,4 +182,73 @@ export function pickContextRun<T extends ContextCandidate>(candidates: readonly 
       (left.candidate.key < right.candidate.key ? -1 : left.candidate.key > right.candidate.key ? 1 : 0),
   )
   return latest && { run: latest.candidate, selection: "latest original evidence" }
+}
+
+/** The one revision among `revisions` that descends from (or is) every other, or undefined when none does. */
+function descendantOfAll(revisions: readonly string[], history: ContextLineage["history"]): string | undefined {
+  return revisions.find((tip) => revisions.every((other) => history.isAncestor(other, tip)))
+}
+
+/**
+ * Highest app version (`versionCompare`, the projection's own order), then the context whose source revision
+ * descends from every other's. A context's revision is the tip of its contributing runs at that version, which must
+ * themselves form one line. Unrelated revisions refuse by name; equal tips fall to a unique permissions-free
+ * profile, then the stable context key.
+ */
+function pickByLineage<T extends ContextCandidate>(
+  candidates: readonly T[],
+  lineage: ContextLineage<T>,
+): PickedContextRun<T> | undefined {
+  const [single] = candidates
+  if (candidates.length === 1 && single) return { run: single, selection: "only current" }
+  if (candidates.length === 0) return undefined
+  const facts = candidates.map((candidate) => {
+    const runs = lineage.runs(candidate)
+    if (runs.length === 0) throw new Error(`Context ${candidate.key} has no contributing run to pick by`)
+    for (const run of runs) {
+      if (run.version === null) throw new Error(`Context ${candidate.key} run ${run.runId} records no app version`)
+    }
+    const version = runs
+      .map((run) => run.version as string)
+      .sort((left, right) => versionCompare(right, left))[0] as string
+    return { candidate, version, runs: runs.filter((run) => run.version === version) }
+  })
+  const top = facts.map((fact) => fact.version).sort((left, right) => versionCompare(right, left))[0]
+  const tips = facts
+    .filter((fact) => fact.version === top)
+    .map((fact) => {
+      const revisions = [
+        ...new Set(
+          fact.runs.map((run) => {
+            if (run.sourceRevision === null) {
+              throw new Error(`Context ${fact.candidate.key} run ${run.runId} records no source revision`)
+            }
+            return run.sourceRevision
+          }),
+        ),
+      ]
+      const tip = descendantOfAll(revisions, lineage.history)
+      if (tip === undefined) {
+        throw new Error(
+          `Context ${fact.candidate.key} holds runs of app version ${fact.version} from unrelated source revisions ` +
+            `${revisions.join(", ")}; the pick refuses`,
+        )
+      }
+      return { candidate: fact.candidate, tip }
+    })
+  const winner = descendantOfAll(
+    tips.map((entry) => entry.tip),
+    lineage.history,
+  )
+  if (winner === undefined) {
+    throw new Error(
+      `Contexts ${tips.map((entry) => `${entry.candidate.key} (${entry.tip})`).join(", ")} measured app version ${top} ` +
+        `from unrelated source revisions; the pick refuses`,
+    )
+  }
+  const tied = tips.filter((entry) => entry.tip === winner).map((entry) => entry.candidate)
+  const defaults = tied.filter((candidate) => candidate.permissions === null)
+  const [chosen] =
+    defaults.length === 1 ? defaults : [...tied].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  return chosen && { run: chosen, selection: "app version, then source ancestry" }
 }
