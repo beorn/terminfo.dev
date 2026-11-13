@@ -19,6 +19,8 @@ const pinnedCohorts = {
   vt100: "vt100At74b5c9c8",
   vt220: "vt220At74b5c9c8",
   vterm: "vtermAt74b5c9c8",
+  // A termless bump that changed these blobs once dropped nine kitty rows to probe-todo unnoticed (34051).
+  kitty: "kittyAt3da7fd0",
 } as const satisfies Record<string, keyof typeof ADAPTER_SOURCE_AUDITS>
 
 function blobOid(checkout: string, path: string): string {

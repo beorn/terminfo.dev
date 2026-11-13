@@ -628,6 +628,30 @@ describe("H-4 exact host-effect declarations", () => {
       },
     ],
   } satisfies HeadlessRuntimeIdentity
+  // Run 2026-11-13T21-49-03Z at termless 3da7fd0e: the re-patched binary with the 34034 bridge (34051).
+  const kittyAt3da7fd0Identity = {
+    ...kittyIdentity,
+    termlessRevision: "3da7fd0efaade8268c8940ae93e92fc2f74bf58e",
+    loadedBinary: {
+      path: "/nix/store/kitty/bin/kitty",
+      sha256: "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83",
+    },
+    provenance: {
+      ...kittyIdentity.provenance,
+      sha256: "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83",
+    },
+    adapterSources: [
+      { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
+      { path: "packages/kitty/src/backend.ts", blobOid: "f8c227b927b805a3415efcc64968577848115033" },
+      { path: "packages/kitty/build/bridge.py", blobOid: "94e5f97e5933625355b5c988721027f684f9f204" },
+      { path: "packages/kitty/build/layout.c", blobOid: "f58c0e943ad60daf20d54360184e039e16ff3826" },
+      { path: "packages/kitty/build/native-mode-layout.json", blobOid: "37594baca0cbd3ebf847478a47db999d937506ba" },
+      {
+        path: "packages/kitty/build/native-mode-layout.receipt.json",
+        blobOid: "189dd4fdd9780f841756928e237490f75dfbb947",
+      },
+    ],
+  } satisfies HeadlessRuntimeIdentity
   const ids = [
     "extensions.osc176-app-id",
     "extensions.osc3008-context",
@@ -648,6 +672,12 @@ describe("H-4 exact host-effect declarations", () => {
     [
       "kitty",
       kittyF8c227b9Identity,
+      ["extensions.osc3008-context"],
+      /hands.*(text|payload).*bridge.*(not keep|drops)/i,
+    ],
+    [
+      "kitty",
+      kittyAt3da7fd0Identity,
       ["extensions.osc3008-context"],
       /hands.*(text|payload).*bridge.*(not keep|drops)/i,
     ],
@@ -675,6 +705,18 @@ describe("H-4 exact host-effect declarations", () => {
                   runtimeIdentity === ghosttyIdentity
                     ? ghosttyR3Identity.adapterSources
                     : ghosttyIdentity.adapterSources,
+              },
+            ]
+          : []),
+        // A binary is audited only with its own adapter cohort: the re-patched binary never borrows an older one.
+        ...(backendName === "kitty"
+          ? [
+              {
+                ...runtimeIdentity,
+                adapterSources:
+                  runtimeIdentity === kittyAt3da7fd0Identity
+                    ? kittyF8c227b9Identity.adapterSources
+                    : kittyAt3da7fd0Identity.adapterSources,
               },
             ]
           : []),
@@ -717,6 +759,8 @@ describe("H-4 exact host-effect declarations", () => {
     ["kitty", kittyF8c227b9Identity, "input.kitty-click-events", /Window/],
     ["kitty", kittyIdentity, "modes.application-keypad", /DECKPAM\/DECKPNM only in the GUI/],
     ["kitty", kittyF8c227b9Identity, "modes.application-keypad", /DECKPAM\/DECKPNM only in the GUI/],
+    ["kitty", kittyAt3da7fd0Identity, "input.kitty-click-events", /Window/],
+    ["kitty", kittyAt3da7fd0Identity, "modes.application-keypad", /DECKPAM\/DECKPNM only in the GUI/],
     ["ghostty-native", ghosttyIdentity, "input.kitty-click-events", /Surface/],
     ["ghostty-native", ghosttyR3Identity, "input.kitty-click-events", /Surface/],
     ["ghostty-native", ghosttyR372efIdentity, "input.kitty-click-events", /Surface/],

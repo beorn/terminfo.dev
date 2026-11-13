@@ -85,6 +85,19 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
   },
+  // termless 3da7fd0e (34051), read against kittyF8c227b9: index.ts, backend.ts and layout.c unchanged. bridge.py
+  // (473d25a3..94e5f97e, 34034, @cto read at 3da7fd0) only replaces the hand-typed native module sha with the
+  // build's kitty-native-identity.json, matched to the reviewed archive hash. native-mode-layout.json renames one
+  // field, nativeModuleSha256 -> reviewedArchiveHash. The receipt changes toolchain lines only (gcc 15.2.0 -> 16.2.0,
+  // python 3.14.3 -> 3.14.10, recipe and flake.lock sha256): same source commit b2cb8712, same headers and layout.c.
+  kittyAt3da7fd0: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "94e5f97e5933625355b5c988721027f684f9f204",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "37594baca0cbd3ebf847478a47db999d937506ba",
+    "packages/kitty/build/native-mode-layout.receipt.json": "189dd4fdd9780f841756928e237490f75dfbb947",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",

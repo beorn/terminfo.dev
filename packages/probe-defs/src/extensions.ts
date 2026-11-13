@@ -193,11 +193,15 @@ export function hasAuditedOscInterfaceAbsence(
     return (
       ctx.backendName === "kitty" &&
       identity.engineVersion === "0.49.2" &&
-      identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
       identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      (auditedAdapterSources(identity, "kittyH4") ||
-        auditedAdapterSources(identity, "kittyPixel") ||
-        auditedAdapterSources(identity, "kittyF8c227b9"))
+      ((identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
+        (auditedAdapterSources(identity, "kittyH4") ||
+          auditedAdapterSources(identity, "kittyPixel") ||
+          auditedAdapterSources(identity, "kittyF8c227b9"))) ||
+        // The nixpkgs bump (termless eb72844f) re-patched the loader only: .text, .rodata and .data hash equal to
+        // bb65c2d5's, the same reviewed archive sha256-1XNhi5Ee… (34051).
+        (identity.loadedBinary.sha256 === "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83" &&
+          auditedAdapterSources(identity, "kittyAt3da7fd0")))
     )
   }
   if (cohort === "wezterm-d2") {
@@ -10110,7 +10114,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 : ctx.backendName === "kitty" &&
                     identity?.kind === "native" &&
                     identity.engineVersion === "0.49.2" &&
-                    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                    (identity.loadedBinary.sha256 ===
+                      "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" ||
+                      identity.loadedBinary.sha256 ===
+                        "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83")
                   ? kittyTarget
                   : undefined
       if (!target) return lib(ctx)
