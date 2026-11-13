@@ -85,6 +85,17 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
   },
+  // termless 1738b811 (vs 343c2e5d): layout.json moves only nativeModuleSha256 and the receipt only its build
+  // record (sha256, recipe and flake-lock hashes, gcc 16.2.0, python 3.14.10); offsets, widths and adapter code
+  // are unchanged (@cto bef7054c condition 4).
+  kitty1738b811: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "b131e26069edf2129b4ff70aa2ce88c154dea811",
+    "packages/kitty/build/native-mode-layout.receipt.json": "3e2dfd878a701eba5430a31948bc26a372ebdcfc",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
@@ -253,6 +264,23 @@ export function auditedAdapterSources(
   return (
     sources?.length === expected.length &&
     expected.every(([path, blobOid]) => sources.some((source) => source.path === path && source.blobOid === blobOid))
+  )
+}
+
+/**
+ * The audited kitty 0.49.2 library: the engine version, the upstream commit the run read from the loaded binary
+ * (KITTY_VCS_REV), and an audited adapter cohort. kitty-official is upstream's prebuilt archive with only
+ * interpreter and runpath fixups, so its binary bytes move with every derivation edit while the engine does not;
+ * the binary sha stays in the record and decides nothing (@cto bef7054c, the vt100-rust shape of 90d6183a).
+ */
+export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]): boolean {
+  return (
+    identity?.kind === "native" &&
+    identity.engineVersion === "0.49.2" &&
+    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
+    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811"] as const).some((cohort) =>
+      auditedAdapterSources(identity, cohort),
+    )
   )
 }
 
