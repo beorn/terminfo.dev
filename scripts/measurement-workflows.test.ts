@@ -1359,7 +1359,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
     "editor-request.json",
     "editor-evaluations.jsonl",
     "editor-reader-errors.jsonl",
-    "cursor-profile/User/settings.json",
+    "cursor-" + run.id + "/User/settings.json",
   ]) {
     expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/" + path)
   }
@@ -1367,7 +1367,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
     files: Array<{ path: string; sha256: string }>
   }
   expect(files.files).toContainEqual({
-    path: "cursor-profile/User/settings.json",
+    path: "cursor-" + run.id + "/User/settings.json",
     sha256: createHash("sha256").update(JSON.stringify(retained)).digest("hex"),
   })
   expect(closed).toEqual([window])
