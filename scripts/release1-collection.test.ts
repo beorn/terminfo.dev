@@ -1535,6 +1535,24 @@ it("refuses an unknown selected id locally, with the daemon's own sentence, befo
   ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
 })
 
+// 33954: the rename to canonical run vocabulary changed this argv to `probe term`, a subcommand the
+// admin CLI never had, and the assertion above cemented it: every owned-app row died on the host with
+// "unknown command 'term'" while the suite stayed green. The argv is only correct if the CLI it names
+// registers that subcommand, so this reads the CLI's own command list instead of trusting the name.
+it("names a probe subcommand the admin CLI registers", () => {
+  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const probe = command.argv.indexOf("probe")
+  const subcommand = command.argv[probe + 1]
+  expect(subcommand).toBeDefined()
+  const help = spawnSync(process.execPath, ["packages/admin/src/index.ts", "probe", "--help"], {
+    cwd: dirname(CONTENT),
+    encoding: "utf8",
+  })
+  expect(help.stdout).toContain("Commands:")
+  const registered = [...help.stdout.matchAll(/^\s{2}([a-z][a-z-]*)\s/gm)].map((match) => match[1])
+  expect(registered).toContain(subcommand)
+})
+
 it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
   const command = ownedAppCommand(
     ownedAppContext,
