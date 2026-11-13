@@ -174,7 +174,12 @@ describe("33982 witness pair, both sides", () => {
   it("refuses a pair recorded the other way round (b above a where its cells say below)", () => {
     const compared = [
       frame("seed", firstOrigin),
-      frame("expected", movedOrigin, {}, { a: { x: movedOrigin.x + 16, y: movedOrigin.y + cell.height }, b: { x: movedOrigin.x, y: movedOrigin.y } }),
+      frame(
+        "expected",
+        movedOrigin,
+        {},
+        { a: { x: movedOrigin.x + 16, y: movedOrigin.y + cell.height }, b: { x: movedOrigin.x, y: movedOrigin.y } },
+      ),
     ]
     expect(gridMoveExemption(compared)).toEqual([])
     expect(refusal(compared)).not.toBeNull()

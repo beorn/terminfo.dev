@@ -2072,11 +2072,18 @@ export async function captureRegionReadbackDecision(
         { role: "the seed frame", rectangle: cropRectangles[0], ...cropMeasurementAt(0) },
         { role: "the post-sequence frame", rectangle: cropRectangles[1], ...cropMeasurementAt(1) },
         { role: "the expected frame", rectangle: cropRectangles[2], ...cropMeasurementAt(2) },
-        ...(spec.ignored === undefined ? [] : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3], ...cropMeasurementAt(3) }]),
+        ...(spec.ignored === undefined
+          ? []
+          : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3], ...cropMeasurementAt(3) }]),
         ...(spec.setupReference === undefined
           ? []
-          : [{ role: "the independent setup reference", rectangle: cropRectangles[referenceIndex],
-            ...cropMeasurementAt(referenceIndex) }]),
+          : [
+              {
+                role: "the independent setup reference",
+                rectangle: cropRectangles[referenceIndex],
+                ...cropMeasurementAt(referenceIndex),
+              },
+            ]),
         ...(spec.noAttribute === undefined
           ? []
           : [
