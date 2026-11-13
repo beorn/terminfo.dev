@@ -52,7 +52,7 @@ type AppSemanticCapability = {
 
 const declarations: readonly AppSemanticCapability[] = [
   // Remove when either route rule changes: hosted pointer helper installed or owned-host rule changes.
-  // These exact App routes are untestable under the current rules, not feature negatives (CTO2aabe241).
+  // These exact App routes are untestable under the current rules, not feature negatives (CTO2aabe241/fd05a5f1).
   ...[
     { id: "ghostty", version: "1.4.0" },
     { id: "alacritty", version: "0.17.0" },
@@ -60,6 +60,8 @@ const declarations: readonly AppSemanticCapability[] = [
     { id: "cursor", version: "3.25.9" },
     { id: "com.microsoft.VSCode", version: "1.142.0" },
     { id: "cmux", version: "0.65.2" },
+    { id: "terminal-app", version: "2.15" },
+    { id: "iterm2", version: "3.6.11" },
   ].flatMap((subject) =>
     ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"].map((featureId) => ({
       ...subject,
