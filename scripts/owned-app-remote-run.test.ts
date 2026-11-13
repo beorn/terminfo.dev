@@ -490,17 +490,30 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(stage, "source", "vendor", "terminfo.dev", "README.md"), "utf8")).toBe("second revision\n")
   }, 60_000)
 
-  it("refreshes a persistent stage at the same sha: every resource is sent again, so host drift is replaced or deleted", () => {
-    expect(run().status).toBe(0)
-    const staged = join(stage, "source", "vendor", "silvery")
-    writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
-    writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
-    const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
-    expect(again.status, again.stderr).toBe(0)
-    expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
-    expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
-    expect(existsSync(join(staged, "stray.ts"))).toBe(false)
-  }, 60_000)
+  it.each(["contents", "removed closure root"] as const)(
+    "refreshes a persistent stage at the same sha (%s), preserving earlier output",
+    (change) => {
+      expect(run().status).toBe(0)
+      const firstOutput = join(stage, "runs", `${revision.slice(0, 12)}-kitty`, "kitty-1.0-macos-run1.json")
+      const firstBytes = readFileSync(firstOutput)
+      const staged = join(stage, "source", "vendor", "silvery")
+      if (change === "contents") {
+        writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
+        writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
+      } else {
+        // 33797: deleting inside current roots cannot retire a former link-closure root.
+        rmSync(join(code, "node_modules", "@terminfo", "extra"))
+      }
+      const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
+      expect(again.status, again.stderr).toBe(0)
+      expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
+      expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
+      expect(existsSync(join(staged, "stray.ts"))).toBe(false)
+      if (change === "removed closure root") expect(existsSync(join(stage, "source", "extra"))).toBe(false)
+      expect(readFileSync(firstOutput)).toEqual(firstBytes)
+    },
+    60_000,
+  )
 
   it("does not stage or witness mutable test caches", () => {
     // 33797: the witness must not spawn readlink once per staged link. Count actual tool calls
