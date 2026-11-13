@@ -96,6 +96,20 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "b131e26069edf2129b4ff70aa2ce88c154dea811",
     "packages/kitty/build/native-mode-layout.receipt.json": "3e2dfd878a701eba5430a31948bc26a372ebdcfc",
   },
+  // termless 3da7fd0e (34034, 34051), read against kitty1738b811: index.ts, backend.ts and layout.c unchanged.
+  // bridge.py (473d25a3..94e5f97e, @cto read at 3da7fd0e) only replaces the hand-typed native module sha with the
+  // build's kitty-native-identity.json, matched to the reviewed archive hash. native-mode-layout.json renames one field,
+  // nativeModuleSha256 -> reviewedArchiveHash. The receipt moves its embedded copy of that field, the layout's sha256,
+  // and recipeSha256 (layout.nix changed in 34034); compiler, python and flake-lock lines are 1738b811's. Same source
+  // commit b2cb8712, same headers.
+  kitty3da7fd0e: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "94e5f97e5933625355b5c988721027f684f9f204",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "37594baca0cbd3ebf847478a47db999d937506ba",
+    "packages/kitty/build/native-mode-layout.receipt.json": "189dd4fdd9780f841756928e237490f75dfbb947",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
@@ -278,7 +292,7 @@ export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]
     identity?.kind === "native" &&
     identity.engineVersion === "0.49.2" &&
     identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811"] as const).some((cohort) =>
+    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811", "kitty3da7fd0e"] as const).some((cohort) =>
       auditedAdapterSources(identity, cohort),
     )
   )
