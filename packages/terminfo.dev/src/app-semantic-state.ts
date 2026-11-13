@@ -1342,6 +1342,8 @@ export async function readAppSemanticState(input: {
   mux?: "tmux" | "screen"
   readTitle?: LinuxClipboardAdapter["readTitle"]
   withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
+  /** Private port supplied only by the verified owner; the checkpoint fences the same pane's writes. */
+  readCwd?: (checkpoint?: { row: number; marker: string }) => Promise<{ uri: string; detail: object }>
 }): Promise<AppSemanticReading> {
   const detail: { commands: Array<{ argv: string[]; stdout: string }>; phases: object[]; identity?: object } = {
     commands: [],
@@ -1421,6 +1423,87 @@ export async function readAppSemanticState(input: {
     }
     const osc = (body: string) => `\x1b]${body}\x07`
     const nonce = randomUUID().slice(0, 8)
+    const readCwdPhases = async <T extends { cwd: string }>(
+      initial: T,
+      sample: (number: number, feed: string) => Promise<T>,
+      restore: () => Promise<void>,
+      expectedValue: (value: string) => string = (value) => value,
+    ): Promise<AppSemanticReading> => {
+      const controlPath = `file://localhost/terminfo-control-${nonce}`
+      const isOsc7 = input.featureId === "extensions.osc7-cwd"
+      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
+      try {
+        if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
+          throw new Error("tmux OSC7 control and target paths must be fresh")
+        }
+        const unknown = await sample(1, osc(isOsc7 ? `77;${targetPath}` : "133;Z"))
+        const unknownReading = {
+          before: isOsc7 ? initial.cwd : JSON.stringify(initial),
+          after: isOsc7 ? unknown.cwd : JSON.stringify(unknown),
+        }
+        const handled = await sample(2, osc(`7;${controlPath}`))
+        const target = await sample(3, osc(isOsc7 ? `7;${targetPath}` : `633;P;Cwd=${targetPath}`))
+        if (isOsc7 && target.cwd === handled.cwd) {
+          return {
+            status: "invalid",
+            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
+            detail,
+          }
+        }
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          unknown: unknownReading,
+          handled: { before: initial.cwd, after: handled.cwd, expected: expectedValue(controlPath) },
+          target: { before: handled.cwd, after: target.cwd, expected: expectedValue(targetPath) },
+          detail,
+        }
+      } finally {
+        await restore()
+      }
+    }
+    const ownedCwd = input.readCwd
+    if (ownedCwd) {
+      if (
+        input.mux ||
+        appId !== "wezterm" ||
+        env.TERMINFO_TARGET_VERSION !== "20240203-110809-5046fc22" ||
+        input.featureId !== "extensions.osc633-p"
+      ) {
+        return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
+      }
+      const pathValue = (value: string) => (value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value)
+      const get = async (checkpoint?: { row: number; marker: string }) => {
+        const read = await ownedCwd(checkpoint)
+        const uri = new URL(read.uri)
+        if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
+        const reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
+        detail.phases.push({ ...(checkpoint && { checkpoint }), reading, receipt: read.detail })
+        return reading
+      }
+      const initial = await get()
+      const processCwd = process.cwd()
+      const freshPaths = [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
+      if (freshPaths.includes(processCwd) || freshPaths.includes(initial.cwd)) {
+        throw new Error("Owned cwd control/target must differ from process and baseline cwd")
+      }
+      detail.identity = { executable: input.executable, runId: input.runId, processCwd }
+      let serial = 0
+      const sample = async (number: number, feed: string) => {
+        const marker = `Q-${nonce}-${serial++}`
+        input.write(`\x1b[${number};1H${feed}${marker}`)
+        const reading = await get({ row: number, marker })
+        const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
+        if (reading.host !== expectedHost) {
+          throw new Error(`Owned cwd host mismatch: expected ${expectedHost}, read ${reading.host}; ${reading.rawUri}`)
+        }
+        return reading
+      }
+      return await readCwdPhases(initial, sample, async () => {
+        detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+      }, pathValue)
+    }
     const mux = input.mux === "tmux"
     let pane: string | undefined
     let tmux: ((...args: string[]) => string) | undefined
@@ -1748,44 +1831,14 @@ export async function readAppSemanticState(input: {
       if (!initial.cwd) {
         detail.phases.push({ note: "tmux's pane_path cannot tell an unset path from an empty one" })
       }
-      const controlPath = `file://localhost/terminfo-control-${nonce}`
-      const isOsc7 = row.featureId === "extensions.osc7-cwd"
-      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
-      try {
-        if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
-          throw new Error("tmux OSC7 control and target paths must be fresh")
-        }
-        const unknown = await sample(1, osc(isOsc7 ? `77;${targetPath}` : "133;Z"))
-        const unknownReading = {
-          before: isOsc7 ? initial.cwd : JSON.stringify(initial),
-          after: isOsc7 ? unknown.cwd : JSON.stringify(unknown),
-        }
-        const handled = await sample(2, osc(`7;${controlPath}`))
-        const target = await sample(3, osc(isOsc7 ? `7;${targetPath}` : `633;P;Cwd=${targetPath}`))
-        if (isOsc7 && target.cwd === handled.cwd) {
-          return {
-            status: "invalid",
-            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
-            detail,
-          }
-        }
-        return {
-          status: "measured",
-          reader: "state",
-          runId: input.runId,
-          unknown: unknownReading,
-          handled: { before: initial.cwd, after: handled.cwd, expected: controlPath },
-          target: { before: handled.cwd, after: target.cwd, expected: targetPath },
-          detail,
-        }
-      } finally {
+      return await readCwdPhases(initial, sample, async () => {
         input.write(osc(`7;${initial.cwd}`))
         await until(
           () => format()[1],
           (value) => value === initial.cwd,
           "tmux pane_path restoration",
         )
-      }
+      })
     }
     const unknown = await sample(1, osc("133;Z"))
     const unknownReading = { before: JSON.stringify(initial), after: JSON.stringify(unknown) }
