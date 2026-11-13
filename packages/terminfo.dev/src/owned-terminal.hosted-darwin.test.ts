@@ -377,6 +377,9 @@ test.each([
       const nativeReads = retained.map(artifact => JSON.parse(fs.readFileSync(artifact.path, "utf8")))
       assert.ok(nativeReads.some(read => read.args?.includes("list") && typeof read.stdout === "string" && read.stdout.includes(initial)), "private pane-list argv/stdout must survive")
       assert.ok(nativeReads.some(read => read.args?.includes("get-text") && typeof read.stdoutBase64 === "string"), "private get-text argv/stdout must survive")
+      assert.ok(nativeReads.some(read => read.initial === initial && read.restored === initial && Array.isArray(read.phases)
+        && read.phases.some(phase => typeof phase.feed === "string")), "private CWD phase/feed record must reach the collector manifest")
+      assert.ok(retained.some(artifact => artifact.path.endsWith("/" + result.detail.privateEvidence)), "published private reference must name a manifest artifact")
     }
     await owner.dispose()
     process.stdout.write = realWrite

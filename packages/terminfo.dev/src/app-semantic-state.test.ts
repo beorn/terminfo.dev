@@ -241,6 +241,7 @@ test("shared WezTerm OSC7 observes two fresh directory values and restores the l
   source.readAppSemanticState = () =>
     readWezTermCwd({
       write: privateWrite,
+      onRetained: () => {},
       runId,
       captureDirectory: directory,
       readText: async () => text,
@@ -276,6 +277,7 @@ test("WezTerm CWD keeps its initial home URI private while the registered callba
     const source = replayTermProbeSource(new Map())
     source.readAppSemanticState = async () => {
       reading = await readWezTermCwd({
+        onRetained: () => {},
         runId: "a".repeat(32),
         captureDirectory: directory,
         write(bytes) {
@@ -314,6 +316,7 @@ test("WezTerm CWD retains an initial owned-read failure privately before any wri
   const diagnostic = "owned pane missing cwd at file:///Users/private-person/secret-project"
   try {
     const reading = await readWezTermCwd({
+      onRetained: () => {},
       runId: "a".repeat(32),
       captureDirectory: directory,
       write() {
@@ -347,6 +350,7 @@ test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected",
     vi.useFakeTimers()
     try {
       const pending = readWezTermCwd({
+        onRetained: () => {},
         runId: "a".repeat(32),
         captureDirectory: directory,
         write(bytes) {

@@ -4064,6 +4064,7 @@ it.each([false, true])(
     let cwd = initial
     let text = ""
     const privateWrites: string[] = []
+    const retainedPhases: Array<{ path: string; sha256: string }> = []
     const captured: { reading?: AppSemanticReading } = {}
     const id = "extensions.osc7-cwd"
     const batch = await runProbeBatch({
@@ -4073,6 +4074,7 @@ it.each([false, true])(
         async readAppSemanticState(featureId, _publishableWrite) {
           expect(featureId).toBe(id)
           captured.reading = await readWezTermCwd({
+            onRetained: (artifact) => retainedPhases.push(artifact),
             runId: "a".repeat(32),
             captureDirectory: directory,
             write(bytes) {
@@ -4093,6 +4095,11 @@ it.each([false, true])(
     expect(published).not.toContain("private-person")
     expect(privateWrites).toHaveLength(4)
     expect(privateWrites.at(-1)).toContain(initial)
+    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8"))
+    expect(phaseRecord.initial).toBe(initial)
+    expect(phaseRecord.phases).toContainEqual(
+      expect.objectContaining({ name: "restoration", feed: expect.stringContaining(initial) }),
+    )
     const row = batch.results.find((result) => result.featureId === id)
     if (failRestore) {
       expect(batch.rawReplies[id]).toBeDefined()
@@ -4100,6 +4107,9 @@ it.each([false, true])(
       expect(row?.status).not.toBe("supported")
       expect(batch.suiteComplete).toBe(false)
       expect(JSON.stringify(batch.ungradedDiagnostics[id])).toContain("pane's reported directory was left changed")
+      expect(phaseRecord.phases).toContainEqual(
+        expect.objectContaining({ name: "restoration", error: expect.any(String) }),
+      )
     } else {
       expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
       expect(cwd).toBe(initial)
@@ -4109,6 +4119,7 @@ it.each([false, true])(
       if (reading?.status !== "measured") throw new Error("No measured CWD reading")
       const detail = reading.detail as { privateEvidence: string; restoredEqual: boolean }
       expect(detail.restoredEqual).toBe(true)
+      expect(retainedPhases.some((artifact) => basename(artifact.path) === detail.privateEvidence)).toBe(true)
       expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
     }
   },

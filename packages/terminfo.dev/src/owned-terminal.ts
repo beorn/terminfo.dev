@@ -2050,6 +2050,7 @@ export async function createOwnedTerminal(options: {
             const reading = await readWezTermCwd({
               runId: expectedLaunchRunId,
               captureDirectory,
+              onRetained,
               async write(text) {
                 await check()
                 out.write(text)

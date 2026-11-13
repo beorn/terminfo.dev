@@ -1,5 +1,5 @@
 import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
-import { dirname, isAbsolute, join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
@@ -14,6 +14,7 @@ import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
+import { retain as retainCaptureArtifact } from "./capture-core.ts"
 
 // Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
@@ -1340,12 +1341,12 @@ async function untilAppSemanticRead(
 export async function readWezTermCwd(input: {
   runId: string
   captureDirectory: string
+  onRetained: Parameters<typeof retainCaptureArtifact>[3]
   write: (text: string) => void | Promise<void>
   readPane: () => Promise<string>
   readText: () => Promise<string>
 }): Promise<AppSemanticReading> {
   const nonce = randomUUID().slice(0, 8)
-  const artifact = `wezterm-osc7-${nonce}.json`
   const phases: object[] = []
   const privateRecord: { initial?: string; restored?: string; phases: object[] } = { phases }
   const detail: {
@@ -1357,8 +1358,10 @@ export async function readWezTermCwd(input: {
   } = { initialProtocolPresence: "unreported" }
   const retain = () => {
     try {
-      writeFileSync(join(input.captureDirectory, artifact), JSON.stringify(privateRecord), { mode: 0o600 })
-      detail.privateEvidence = artifact
+      retainCaptureArtifact(input.captureDirectory, Buffer.from(JSON.stringify(privateRecord)), "json", (artifact) => {
+        detail.privateEvidence = basename(artifact.path)
+        input.onRetained(artifact)
+      })
     } catch (error) {
       throw new Error("WezTerm OSC7 private evidence retention failed", { cause: error })
     }
