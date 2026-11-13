@@ -472,8 +472,13 @@ export default defineConfig({
     const params = pageData.params as Record<string, string> | undefined
     if (params) {
       if (rel.startsWith("compare/")) {
-        pageData.title = `${params.termALabel} ${params.termAVersion} vs ${params.termBLabel} ${params.termBVersion} \u2014 Selected Terminal Observations`
-        if (params.comparableScope !== "true") {
+        const multipleSystems = (JSON.parse(params.osBackends ?? "[]") as string[]).length > 2
+        pageData.title = multipleSystems
+          ? `${params.pairTitle} \u2014 Selected Terminal Observations`
+          : `${params.termALabel} ${params.termAVersion} vs ${params.termBLabel} ${params.termBVersion} \u2014 Selected Terminal Observations`
+        if (multipleSystems) {
+          pageData.description = `${params.pairTitle}: selected terminal observations for each operating system, with pairwise differences only where recorded contexts, suites and methods match.`
+        } else if (params.comparableScope !== "true") {
           pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}) have different or incomplete recorded contexts; inspect their selected observations without a pairwise support claim.`
         } else if (params.jointConclusive === "0") {
           pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): no shared features have a recorded Supported or Unsupported result from the same method.`
@@ -484,6 +489,9 @@ export default defineConfig({
         if (params.historical === "true") {
           pageData.title = `${params.backendName} (${params.year}) \u2014 Historical Terminal`
           pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
+        } else if ((JSON.parse(params.osBackends ?? "[]") as string[]).length > 1) {
+          pageData.title = `${params.terminalName} \u2014 Terminal Feature Support`
+          pageData.description = `${params.terminalName} terminal emulator feature support for each operating system. ${params.backendDescription}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
           // #30784 (@cto S1 on a41752fe): a run that decided nothing has no percentage and no

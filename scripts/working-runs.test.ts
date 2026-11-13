@@ -235,7 +235,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       expect(apps.some((context) => context.contextKey.includes('"macos"'))).toBe(true)
       // A newly placed Mac corpus may supply a reviewed peer; it must never attach the Linux context.
       const mac = apps.find((context) => context.contextKey.includes('"macos"'))!
-      if (mac.reviewedContextKey !== null) expect(mac.reviewedContextKey).toContain('"macos"')
+      expect(mac.reviewedContextKey).not.toBeNull()
+      expect(
+        loadCurrentResults(join(root, "content")).projection.contexts[mac.reviewedContextKey!]?.subject,
+      ).toMatchObject({ kind: "term", id: "ghostty", os: "macos" })
       expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
         runId: linux.original.runId,
         measuredAt: linux.original.measuredAt,
@@ -843,9 +846,9 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
       versions: { "lib:fixture": [stored] },
       history: { "lib:fixture": [stored] },
     } as unknown as Parameters<typeof composeWorkingView>[0]
-    const reviewed = new Map([["fixture", { contextKey: "lib:fixture", selected }]]) as unknown as Parameters<
-      typeof composeWorkingView
-    >[1]
+    const reviewed = new Map([
+      ["fixture", { routeKey: "fixture", os: "linux", contextKey: "lib:fixture", selected }],
+    ]) as unknown as Parameters<typeof composeWorkingView>[1]
     const working = {
       id: OLD,
       dir: "/unused",

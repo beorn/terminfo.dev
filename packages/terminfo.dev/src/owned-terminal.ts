@@ -401,6 +401,13 @@ export type HostedDarwinApp = {
   comm: string
   /** Window-title method for this subject. The Darwin reader follows this and names no app. */
   titleRead: "system-events" | "none"
+  /**
+   * The measured reason this app's title cannot be read on a hosted runner (33821). Set only where a run
+   * measured the window server's name and the reading did not certify the run's own title — the name was
+   * the app's own title, or the read did not finish inside the cap. The hosted collector then refuses by
+   * name instead of spending a 5 s System Events timeout per row.
+   */
+  titleUnavailable?: string
   /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
   captureChromeBand?: CaptureChromeBand
 }
@@ -431,8 +438,25 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Alacritty: { id: "alacritty", comm: "alacritty", titleRead: "system-events" },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
-  Cursor: { id: "cursor", comm: "Cursor", titleRead: "system-events" },
-  Code: { id: "com.microsoft.VSCode", comm: "Code", titleRead: "system-events" },
+  // 33821 run 43325922491: the run wrote its own marker title and the window server still reported
+  // "[Extension Development Host] Cursor" (other-title). The name is the app's window title, so this
+  // instrument cannot observe the run's title and says so.
+  Cursor: {
+    id: "cursor",
+    comm: "Cursor",
+    titleRead: "none",
+    titleUnavailable:
+      "Hosted Darwin title read unavailable for Cursor: the window server reports the app's own window title (\"[Extension Development Host] Cursor\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: other-title)",
+  },
+  // 33821 run 43325922491: observed "[Extension Development Host] Visual Studio Code"; the final poll
+  // was killed at the 2 s census cap, so the row records read-failed with that name observed.
+  Code: {
+    id: "com.microsoft.VSCode",
+    comm: "Code",
+    titleRead: "none",
+    titleUnavailable:
+      "Hosted Darwin title read unavailable for com.microsoft.VSCode: the window server reports the app's own window title (\"[Extension Development Host] Visual Studio Code\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: read-failed with that name observed)",
+  },
   // Warp's title bar shows an "Update Warp" pill ~3 s after launch (797 px at y 6-29 on run 42861023633; grid from
   // y 46), so calibration excuses y 0-39 there and records the count (33056, @cto f15dec92).
   stable: {
@@ -441,7 +465,17 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     titleRead: "system-events",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   },
-  cmux: { id: "cmux", comm: "cmux", titleRead: "system-events" },
+  // 33821 run 43327254711: the 2 s window-name measurement did not finish (osascript SIGKILL at 2003 ms) and
+  // its last observation was "Terminal", the pre-marker name. Every raster-capture census of the same window
+  // (id 36, pid 2751, /Applications/cmux.app) after the marker write did record this run's title, through
+  // 23:17:27.999Z — so the receipt shows a capped read, not an app that can never expose its title.
+  cmux: {
+    id: "cmux",
+    comm: "cmux",
+    titleRead: "none",
+    titleUnavailable:
+      'Hosted Darwin title read unavailable for cmux: the 2 s window-name measurement did not finish (osascript killed at 2003 ms) and its last observation was "Terminal", the pre-marker name; raster-capture censuses of the same cmux window (pid 2751) after the marker write did record this run\'s title, so the bounded read is what failed, not the app (33821 calibration run 43327254711: read-failed)',
+  },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
 const HOSTED_DARWIN_COMMS = new Set([
@@ -1329,6 +1363,7 @@ export async function createOwnedTerminal(options: {
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
         titleRead: hostedApp.titleRead,
+        ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
         },

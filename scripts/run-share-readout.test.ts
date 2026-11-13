@@ -79,15 +79,36 @@ describe("#30784 whole-run readout", () => {
         config.transformPageData(pageData, {})
         return pageData.description
       }
+      const multi = (relativePath, params) => {
+        const pageData = { relativePath, frontmatter: {}, params }
+        config.transformPageData(pageData, {})
+        return { title: pageData.title, description: pageData.description }
+      }
       console.log(JSON.stringify({
         undecided: describe("", "0", "273"),
         zero: describe("0", "0", "273"),
         mixed: describe("13", "36", "273"),
+        app: multi("terminals/app-alacritty.md", {
+          backendName: "Alacritty (Linux)", terminalName: "Alacritty",
+          osBackends: '["alacritty","alacritty@macos"]',
+          pct: "55", yes: "144", total: "264", backendDescription: "GPU terminal.",
+        }),
+        compare: multi("compare/app-alacritty-vs-ghostty.md", {
+          termALabel: "Alacritty (Linux)", termBLabel: "Ghostty (Linux)",
+          pairTitle: "Alacritty vs Ghostty",
+          osBackends: '["alacritty","ghostty","alacritty@macos","ghostty@macos"]',
+        }),
       }))
     `
     const observed = JSON.parse(
       execFileSync("bun", ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 30_000 }),
-    ) as { undecided: string; zero: string; mixed: string }
+    ) as {
+      undecided: string
+      zero: string
+      mixed: string
+      app: { title: string; description: string }
+      compare: { title: string; description: string }
+    }
 
     expect(observed.undecided).toBe(
       "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
@@ -103,5 +124,11 @@ describe("#30784 whole-run readout", () => {
     expect(observed.mixed).toBe(
       "Windows Terminal terminal emulator feature support: 13% (36/273 features). Microsoft's terminal.",
     )
+    // A shared app route must not advertise only its legacy OS or that OS's score.
+    expect(observed.app.title).toBe("Alacritty — Terminal Feature Support")
+    expect(observed.app.description).toContain("each operating system")
+    expect(observed.app.description).not.toContain("55%")
+    expect(observed.compare.title).toBe("Alacritty vs Ghostty — Selected Terminal Observations")
+    expect(observed.compare.description).toContain("each operating system")
   }, 40_000)
 })

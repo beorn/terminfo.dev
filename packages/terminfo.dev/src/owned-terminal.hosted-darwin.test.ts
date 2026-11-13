@@ -248,8 +248,11 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
     const labels = ["text qualification soft-wrap target", "text qualification prior-scrollback control"]
     try {
       for (const label of [...labels, "another checkpoint"]) {
-        assert.deepEqual(await owner.readCells({ label, directory, onRetained: (artifact) => retained.push(artifact) }),
-          { status: "refused", reason: "Terminal.app returned 24 rows where the measured screen has 25" })
+        // 30729 (4b48cfd7e): the refusal names the wrapped line and carries the split diagnostic.
+        const refusal = await owner.readCells({ label, directory, onRetained: (artifact) => retained.push(artifact) })
+        assert.deepEqual({ status: refusal.status, reason: refusal.reason },
+          { status: "refused", reason: "Terminal.app returned 24 rows where the measured screen has 25, and line 1 is 82 cells over 80 columns, which is not a whole number of rows, so its row boundary is unknown" })
+        assert.deepEqual(refusal.diagnostic.lineLengths, [82, ...Array(23).fill(1)])
       }
       const envelopes = retained.filter(artifact => artifact.path.endsWith(".json"))
       const frames = retained.filter(artifact => artifact.path.endsWith(".bin"))
@@ -311,12 +314,14 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
     id: "cursor",
     comm: "Cursor",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"[Extension Development Host] Cursor"'),
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Visual Studio Code.app/Contents/MacOS/Code")).toEqual({
     id: "com.microsoft.VSCode",
     comm: "Code",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"[Extension Development Host] Visual Studio Code"'),
   })
   // 33056: Warp alone declares a chrome band; every other row's exact match proves the default is none.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
@@ -328,7 +333,8 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",
     comm: "cmux",
-    titleRead: "system-events",
+    titleRead: "none",
+    titleUnavailable: expect.stringContaining('"Terminal"'),
   })
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",

@@ -438,7 +438,7 @@ export function composeWorkingView(
   const bySubject = new Map<string, CurrentResult>()
   for (const entry of reviewed.values()) {
     if (!entry.selected.subject) throw new Error(`Reviewed context ${entry.contextKey} has no physical subject`)
-    bySubject.set(`${entry.selected.subject.kind}:${entry.selected.subject.id}`, entry)
+    bySubject.set(JSON.stringify([entry.selected.subject.kind, entry.selected.subject.id, entry.os]), entry)
   }
   const seen = new Set<string>()
   const contexts = working.runs.map((run): WorkingContext => {
@@ -448,7 +448,7 @@ export function composeWorkingView(
     const contextKey = workingSubjectKey(admitted, run.subject)
     if (seen.has(contextKey)) throw new Error(`Hourly run ${working.id} carries two runs for ${contextKey}`)
     seen.add(contextKey)
-    const candidate = bySubject.get(`${run.subject.kind}:${run.subject.id}`)
+    const candidate = bySubject.get(JSON.stringify([run.subject.kind, run.subject.id, run.subject.os ?? null]))
     const review =
       run.subject.kind === "lib" || candidate?.selected.subject?.os === run.subject.os ? candidate : undefined
     const suiteId = run.probeHash

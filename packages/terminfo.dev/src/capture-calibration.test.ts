@@ -18,74 +18,6 @@ function modeOutcome(status: string): TerminalQueryOutcome {
   return { reason: "reply", match: [raw, status], raw, rawBase64: Buffer.from(raw).toString("base64") }
 }
 
-test.each(["timeout", "query I/O", "diagnostic I/O"] as const)(
-  "cursor-mode %s stays fatal before mutation",
-  async (fault) => {
-    const failure = new Error("Cursor mode input/output failed")
-    const write = vi.fn()
-    const captureRaw = vi.fn()
-    const ctx = {
-      rows: 4,
-      cols: 4,
-      write,
-      queryWithSentinelOutcome: async () => {
-        if (fault === "query I/O") throw failure
-        if (fault === "diagnostic I/O") {
-          return { reason: "sentinel", match: null, raw: "\x1b[?62c", rawBase64: "G1s/NjJj" }
-        }
-        return { reason: "timeout", match: null, raw: "", rawBase64: "" }
-      },
-      queryOutcome: async () => {
-        throw failure
-      },
-    } as unknown as TermProbeSource
-    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
-    if (fault !== "timeout") await expect(result).rejects.toBe(failure)
-    else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
-    expect(write).not.toHaveBeenCalled()
-    expect(captureRaw).not.toHaveBeenCalled()
-  },
-)
-
-// A terminal can answer DA1 while declining DECRQM. That is an intrinsic missing
-// observable, unlike a dead exchange; neither case permits calibration mutations.
-test.each([
-  ["unknown", "reply", "0"],
-  ["permanently visible", "reply", "3"],
-  ["permanently hidden", "reply", "4"],
-  ["sentinel only", "sentinel", undefined],
-] as const)("calibration names a gap before mutation for %s cursor mode", async (_label, reason, status) => {
-  const raw = status === undefined ? "\x1b[?1;2c" : `\x1b[?25;${status}$y`
-  const outcome: TerminalQueryOutcome = {
-    reason,
-    match: status === undefined ? null : [raw, status],
-    raw,
-    rawBase64: Buffer.from(raw).toString("base64"),
-  }
-  const write = vi.fn()
-  const captureRaw = vi.fn()
-  const ctx = {
-    rows: 4,
-    cols: 4,
-    write,
-    queryMode: async () => "unknown",
-    queryWithSentinelOutcome: async () => outcome,
-    queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
-  } as unknown as TermProbeSource
-  await expect(
-    calibrateCaptureOrigin({
-      ctx,
-      pixelGeometry: geometry,
-      timeoutMs: 100,
-      captureRaw,
-    }),
-  ).rejects.toMatchObject({
-    name: "CaptureCalibrationRefused",
-    message: expect.stringMatching(/cursor visibility/),
-  })
-  expect(write).not.toHaveBeenCalled()
-  expect(captureRaw).not.toHaveBeenCalled()
-})
 function frame(size = 12): CapturedFrame {
   const rgba = new Uint8Array(size * size * 4)
   for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
@@ -242,9 +174,6 @@ function calibration(
     cols?: number
     frames?: Partial<Record<Stage, CapturedFrame[]>>
     beforeCapture?: (label: string, writes: readonly string[]) => void
-    restoredVisibility?: "set" | "reset"
-    visibility?: "set" | "reset"
-    visibilityReport?: TerminalQueryOutcome
     collectorLaunched?: boolean
     chromeBand?: CaptureChromeBand
   } = {},
@@ -258,6 +187,8 @@ function calibration(
   }
   const reads = new Map<Stage, number>()
   const writes: string[] = []
+  // The recorded answers a terminal that declines DECRQM gives: a sentinel that is not a cursor report.
+  const queries: string[] = []
   const budgets: Array<{ label: string; deadline: number }> = []
   let now = 0
   const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
@@ -266,11 +197,19 @@ function calibration(
       rows: options.rows ?? 4,
       cols: options.cols ?? 4,
       write: (text: string) => writes.push(text),
-      queryMode: async () =>
-        options.visibilityReport ? "unknown" : (options.restoredVisibility ?? options.visibility ?? "reset"),
-      queryWithSentinelOutcome: async () =>
-        options.visibilityReport ?? modeOutcome(options.visibility === "set" ? "1" : "2"),
-      queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+      queryMode: async (mode: number) => {
+        queries.push(`mode ${String(mode)}`)
+        return "unknown"
+      },
+      queryWithSentinelOutcome: async (sequence: string) => {
+        queries.push(sequence)
+        const raw = "\x1b[?1;2c"
+        return { reason: "sentinel", match: null, raw, rawBase64: Buffer.from(raw).toString("base64") }
+      },
+      queryOutcome: async (sequence: string) => {
+        queries.push(sequence)
+        return { reason: "timeout", match: null, raw: "", rawBase64: "" }
+      },
     } as unknown as TermProbeSource,
     pixelGeometry: options.geometry,
     collectorLaunched: options.collectorLaunched,
@@ -288,7 +227,7 @@ function calibration(
       return scripted ? scripted[Math.min(count, scripted.length - 1)]! : defaults[stage]
     },
   }).finally(() => clock.mockRestore())
-  return { promise, writes, reads, budgets }
+  return { promise, writes, reads, budgets, queries }
 }
 
 test.each([
@@ -308,7 +247,6 @@ test.each([
     const clears: Array<string | undefined> = []
     const run = calibration({
       collectorLaunched,
-      visibility: "reset",
       rows,
       cols,
       frames: {
@@ -333,12 +271,12 @@ test.each([
     const erase = collectorLaunched
       ? Array.from({ length: rows }, (_unused, index) => `\x1b[${index + 1};1H\x1b[2K`).join("") + "\x1b[H"
       : "\x1b[2J\x1b[H"
-    expect(clears).toEqual([`\x1b[?25l\x1b[0m${erase}`, `\x1b[0m${erase}`])
+    expect(clears).toEqual([erase, `\x1b[0m${erase}`])
+    expect(run.writes.slice(0, 2)).toEqual(["\x1b[0m", "\x1b[?25l"])
     if (collectorLaunched) {
-      expect(run.writes[0]).toBe("\x1b[?25h")
       expect(run.writes.filter((text) => /\x1b\[[23]J/.test(text))).toEqual([])
     }
-    expect(run.writes.at(-1)).toBe(collectorLaunched ? "\x1b[?25h" : "\x1b[?25l")
+    expect(run.writes.at(-1)).toBe("\x1b[?25h")
     expect(run.reads.get("restore grid paint")).toBe(2)
   },
 )
@@ -347,34 +285,9 @@ test("owned visible-row cleanup runs in finally after an unobserved paint", asyn
   const run = calibration({ collectorLaunched: true, frames: { "solid grid paint": [blank] } })
   await expect(run.promise).rejects.toMatchObject({ name: "CaptureCalibrationRefused" })
   const erase = "\x1b[1;1H\x1b[2K\x1b[2;1H\x1b[2K\x1b[3;1H\x1b[2K\x1b[4;1H\x1b[2K\x1b[H"
-  expect(run.writes[1]).toBe(`\x1b[?25l\x1b[0m${erase}`)
+  expect(run.writes[2]).toBe(erase)
   expect(run.writes.at(-2)).toBe(`\x1b[0m${erase}`)
   expect(run.writes.at(-1)).toBe("\x1b[?25h")
-})
-
-// Owned disposable sessions set a state explicitly, independent of any prior report.
-test.each(["sentinel", "zero"] as const)("owned calibration establishes visibility despite %s", async (reply) => {
-  const raw = "\x1b[?1;2c"
-  const run = calibration({
-    collectorLaunched: true,
-    visibilityReport:
-      reply === "zero"
-        ? modeOutcome("0")
-        : {
-            reason: "sentinel",
-            match: null,
-            raw,
-            rawBase64: Buffer.from(raw).toString("base64"),
-          },
-  })
-  await expect(run.promise).resolves.toMatchObject({
-    pixelGeometry: geometry,
-    basis: expect.stringContaining(
-      "owned disposable session cursor explicitly set before calibration and restored set",
-    ),
-  })
-  expect(run.writes.at(-1)).toBe("\x1b[?25h")
-  expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
 test("consecutive full frames confirm across the former disjoint-pair boundary", async () => {
@@ -401,8 +314,8 @@ test("complete witnessed raster establishes every edge without dividing padded w
     expect(run.reads.get(stage)).toBe(2)
   }
   expect(run.writes.join("")).toContain("\x1b[4;1H")
-  expect(run.writes.at(-1)).toContain("?25l")
-  expect(run.writes.at(-2)).toContain("\x1b[0m\x1b[2J\x1b[H")
+  expect(run.writes.at(-2)).toBe("\x1b[0m\x1b[2J\x1b[H")
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
   expect(run.writes.at(-1)).not.toContain("48;2")
   expect(run.reads.get("before grid paint")).toBe(2)
   for (const stage of ["solid grid paint", "column edge paint", "row edge paint", "restore grid paint"] as Stage[]) {
@@ -501,7 +414,7 @@ test("a pre-existing witness cannot be used as the requested paint", async () =>
 test("the normalized blank is confirmed twice before the first calibration paint", async () => {
   const run = calibration({
     beforeCapture: (label, writes) => {
-      if (label.includes("before grid paint")) expect(writes).toEqual(["\x1b[?25l\x1b[0m\x1b[2J\x1b[H"])
+      if (label.includes("before grid paint")) expect(writes).toEqual(["\x1b[0m", "\x1b[?25l", "\x1b[2J\x1b[H"])
     },
   })
   await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
@@ -537,7 +450,7 @@ test("capture failure stays primary when starting-blank restoration cannot be pr
   expect(error.errors[1].message).toMatch(/^Secondary restoration unverified after DarwinCaptureCommandFailed/)
   expect(error.errors[1].message).not.toContain("Starting blank was never confirmed")
   expect(writes.at(-2)).toContain("\x1b[0m\x1b[2J\x1b[H")
-  expect(writes.at(-1)).toBe("\x1b[?25l")
+  expect(writes.at(-1)).toBe("\x1b[?25h")
 })
 
 test("an initial partial write with unprovable restoration is a fatal run failure", async () => {
@@ -573,28 +486,31 @@ test("an unseen solid paint is a named refusal after the blank restore is freshl
   expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
-test("a cursor mode left changed makes restoration fail", async () => {
-  await expect(calibration({ restoredVisibility: "set" }).promise).rejects.toMatchObject({
-    name: "CaptureRestoreFailed",
-    message: expect.stringMatching(/cursor visibility/),
+// Option A (@cto 2026-11-12): the cursor is hidden for the whole transaction and restored set, the shared
+// lifecycle's promise, without a prior-mode query — Terminal.app never answers DECRQM ?25$p, so asking cost
+// every one of its 80 calibration cells. A cursor the user had hidden comes back visible, as after every
+// other pixel arm.
+test("the cursor is hidden through both blank witnesses and restored set last", async () => {
+  const run = calibration({
+    collectorLaunched: false,
+    beforeCapture: (_label, writes) => {
+      expect(writes.join("")).toContain("\x1b[?25l")
+      expect(writes.join("")).not.toContain("\x1b[?25h")
+    },
   })
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+  expect(run.writes.join("")).not.toContain("\x1b[?25l\x1b[?25l")
 })
 
-test.each(["set", "reset"] as const)(
-  "a reported %s cursor is hidden through both blank witnesses and restored last",
-  async (visibility) => {
-    const run = calibration({
-      visibility,
-      collectorLaunched: false,
-      beforeCapture: (_label, writes) => {
-        expect(writes.join("")).toContain("\x1b[?25l")
-        expect(writes.join("")).not.toContain("\x1b[?25h")
-      },
-    })
-    await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
-    expect(run.writes.at(-1)).toBe(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
-  },
-)
+// @dev/14 R2: the stub answers with the recorded non-report, so the path this change removes is reproduced
+// rather than assumed. Against the previous production it ended in CaptureCalibrationRefused ("unreported
+// mode") and calibrated nothing — the red is demonstrated in the change's own receipt, not claimed here.
+test("a terminal that never reports its cursor mode calibrates, and is never queried", async () => {
+  const run = calibration({})
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.queries).toEqual([])
+})
 
 test.each([
   "adapter I/O",

@@ -1,11 +1,17 @@
 /**
  * One app's cells, joined from the contexts that measured the same release.
  *
- * The site chooses ONE primary context per app exactly as it always has (`pickContextRun` in
+ * The site chooses ONE primary context per app and OS (`pickContextRun` in
  * run-selection.ts). A second context joins that primary only when it measured the same app version
  * with the same probe suite: those are the only contexts whose answers can be compared. A context on
  * another suite or another app version is history — it is shown where history is shown and never
- * changes a grade, an undecided label or a count (@cto d321729a, criterion c88ab98d).
+ * changes a grade, an undecided label or a count (criterion c88ab98d, @cto c5ddabf3).
+ *
+ * Wherever the site lists apps (tables, counts, percentages, app pages), the unit is (app, OS).
+ * An app measured on multiple OSes has a column per OS, labelled with the OS; single-OS labels stay
+ * unchanged. Released app URLs stay unchanged. The legacy key's OS order is Linux, macOS, Windows,
+ * other OS lexical, missing OS last; measurement dates never choose that key's OS (@cto ad37642d).
+ * Newest-observation macOS selection is the separate follow-up #33587, not this same-suite join.
  *
  * Inside the join (@cto 4eef35ea): a decided grade in any joined context decides the cell; two
  * disagreeing decided grades read `differs-by-context` and name each context's grade; when no joined

@@ -20,6 +20,10 @@ import { scoredFeatureIds } from "@terminfo/probe-defs"
 import { loadTerminals } from "@terminfo/catalog"
 
 export interface CurrentResult {
+  /** Released app route identity; display-column keys are opaque to consumers. */
+  routeKey: string
+  /** Recorded OS of this column, independent of its display-column key. */
+  os: string | null
   contextKey: string
   selected: SelectedContextSummary
 }
@@ -164,42 +168,55 @@ export function loadCurrentResults(
 }
 
 /**
- * Select a deterministic summary per kind:id while retaining every projected context. */
+ * Select one primary per (kind, id, OS), retaining every projected context. The released key belongs
+ * to the first measured OS in a fixed order: Linux, macOS, Windows, other OS lexical, missing OS last.
+ * A newer measurement on another machine never changes which OS owns that key (@cto ad37642d).
+ * Additional columns carry the same explicit routeKey; their keys are never parsed downstream.
+ */
 export function compatibilitySubjects(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
   const catalog = loadCatalogKeys(contentDir)
   type SubjectResult = CurrentResult
-  const groups = new Map<string, SubjectResult[]>()
+  const groups = new Map<string, Map<string | null, SubjectResult[]>>()
   for (const [contextKey, selected] of Object.entries(projection.contexts)) {
     if (selected.contributingRunIds.length === 0) continue
     if (!selected.subject) throw new Error(`Context ${contextKey} has evidence without physical subject facts`)
-    const subjectKey = `${selected.subject.kind}:${selected.subject.id}`
-    const group = groups.get(subjectKey) ?? []
-    group.push({ contextKey, selected })
-    groups.set(subjectKey, group)
+    const routeKey = compatibilityKey(selected.subject.kind, selected.subject.id, catalog)
+    const os = selected.subject.os ?? null
+    const systems = groups.get(routeKey) ?? new Map<string | null, SubjectResult[]>()
+    const group = systems.get(os) ?? []
+    group.push({ routeKey, os, contextKey, selected })
+    systems.set(os, group)
+    groups.set(routeKey, systems)
   }
   const bySubject = new Map<string, SubjectResult>()
-  for (const [subjectKey, group] of groups) {
-    // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
-    const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
-    const picked = pickContextRun(
-      group.flatMap((entry) => {
-        const candidate = candidateFromSelected(
-          entry.contextKey,
-          entry.selected,
-          statesFor(projection, entry.contextKey),
-          projection,
-        )
-        return candidate ? [candidate] : []
-      }),
-    )
-    if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
-    // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
-    const chosen = byKey.get(picked.run.key)
-    if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${subjectKey} current contexts`)
-    if (!chosen.selected.subject) throw new Error(`Selected context ${picked.run.key} has no physical subject`)
-    const key = compatibilityKey(chosen.selected.subject.kind, chosen.selected.subject.id, catalog)
-    if (bySubject.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
-    bySubject.set(key, chosen)
+  const osOrder = (os: string | null): number =>
+    os === "linux" ? 0 : os === "macos" ? 1 : os === "windows" ? 2 : os === null ? 4 : 3
+  for (const [routeKey, systems] of groups) {
+    const ordered = [...systems].sort(([a], [b]) => osOrder(a) - osOrder(b) || (a ?? "").localeCompare(b ?? ""))
+    for (const [index, [os, group]] of ordered.entries()) {
+      const subjectKey = JSON.stringify([routeKey, os])
+      // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
+      const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
+      const picked = pickContextRun(
+        group.flatMap((entry) => {
+          const candidate = candidateFromSelected(
+            entry.contextKey,
+            entry.selected,
+            statesFor(projection, entry.contextKey),
+            projection,
+          )
+          return candidate ? [candidate] : []
+        }),
+      )
+      if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
+      // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
+      const chosen = byKey.get(picked.run.key)
+      if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${subjectKey} current contexts`)
+      if (!chosen.selected.subject) throw new Error(`Selected context ${picked.run.key} has no physical subject`)
+      const key = index === 0 ? routeKey : `${routeKey}@${os}`
+      if (bySubject.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
+      bySubject.set(key, chosen)
+    }
   }
   return bySubject
 }
@@ -236,7 +253,7 @@ export function joinedAppCells(
   for (const summary of Object.values(projection.contexts)) {
     if (summary.contributingRunIds.length === 0) continue
     if (!summary.subject) throw new Error(`Context ${summary.contextKey} has evidence without physical subject facts`)
-    const subjectKey = `${summary.subject.kind}:${summary.subject.id}`
+    const subjectKey = JSON.stringify([summary.subject.kind, summary.subject.id, summary.subject.os ?? null])
     const group = bySubject.get(subjectKey) ?? []
     group.push(summary)
     bySubject.set(subjectKey, group)
@@ -246,7 +263,7 @@ export function joinedAppCells(
     const primary = projection.contexts[result.contextKey]
     if (!primary) throw new Error(`Selected context ${result.contextKey} for ${key} is absent from the projection`)
     if (!primary.subject) throw new Error(`Selected context ${result.contextKey} has no physical subject`)
-    const subjectKey = `${primary.subject.kind}:${primary.subject.id}`
+    const subjectKey = JSON.stringify([primary.subject.kind, primary.subject.id, primary.subject.os ?? null])
     const others = (bySubject.get(subjectKey) ?? []).filter((summary) => summary.contextKey !== primary.contextKey)
     joined.set(
       key,

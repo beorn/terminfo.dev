@@ -1,6 +1,6 @@
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadTerminals as loadTerminalCatalog, type TerminalRecord } from "@terminfo/catalog"
+import { loadTerminals as loadTerminalCatalog, subjectLabel, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 
@@ -37,122 +37,144 @@ export default {
   paths() {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
+    const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
+    const routeGroups = new Map<string, { primary: (typeof data.backends)[number]; columns: typeof data.backends }>()
+    for (const backend of data.backends) {
+      const current = data.selectedByBackend[backend.name]
+      if (!current || !data.stats[backend.name]) {
+        throw new Error(`Missing site statistics for selected terminal ${backend.name}`)
+      }
+      const routeKey = current.routeKey
+      const group = routeGroups.get(routeKey)
+      if (group) {
+        group.columns.push(backend)
+        if (backend.name === routeKey) group.primary = backend
+      } else routeGroups.set(routeKey, { primary: backend, columns: [backend] })
+    }
 
     // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
     // target can neither be listed nor have its run data serialized into a page bundle.
-    const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
-      const meta = data.meta[b.name] ?? {}
-      const stats = data.stats[b.name]
-      if (data.selectedByBackend[b.name] && !stats) {
-        throw new Error(`Missing site statistics for selected terminal ${b.name}`)
-      }
-      const slug = terminalSlug(b.name, data.meta)
+    const pages: Array<{ params: Record<string, string> }> = [...routeGroups].map(
+      ([routeKey, { primary: b, columns }]) => {
+        const meta = data.meta[b.name] ?? {}
+        const stats = data.stats[b.name]
+        const slug = terminalSlug(b.name, data.meta)
 
-      // Build feature results grouped by category
-      const categories: Array<{
-        name: string
-        label: string
-        features: Array<{
-          id: string
-          slug: string
-          category: string
+        // Build feature results grouped by category
+        const categories: Array<{
           name: string
-          result: string
-          note: string
-          tags: string[]
-          specUrl: string
-        }>
-      }> = []
+          label: string
+          features: Array<{
+            id: string
+            slug: string
+            category: string
+            name: string
+            result: string
+            note: string
+            tags: string[]
+            specUrl: string
+          }>
+        }> = []
 
-      for (const [cat, features] of Object.entries(data.categories)) {
-        const catFeatures = features.map((f) => {
-          const result = data.results[b.name]?.[f.id] ?? "unknown"
-          const note = data.notes[b.name]?.[f.id] ?? ""
-          const desc = data.featureDescriptions[f.id]
-          return {
-            id: f.id,
-            slug: featureSlug(f.id),
-            category: f.category,
-            name: desc?.name ?? f.name,
-            result,
-            note,
-            tags: desc?.tags ?? [],
-            specUrl: desc?.url ?? "",
-          }
-        })
-        categories.push({
-          name: cat,
-          label: catLabel(cat),
-          features: catFeatures,
-        })
-      }
+        for (const [cat, features] of Object.entries(data.categories)) {
+          const catFeatures = features.map((f) => {
+            const result = data.results[b.name]?.[f.id] ?? "unknown"
+            const note = data.notes[b.name]?.[f.id] ?? ""
+            const desc = data.featureDescriptions[f.id]
+            return {
+              id: f.id,
+              slug: featureSlug(f.id),
+              category: f.category,
+              name: desc?.name ?? f.name,
+              result,
+              note,
+              tags: desc?.tags ?? [],
+              specUrl: desc?.url ?? "",
+            }
+          })
+          categories.push({
+            name: cat,
+            label: catLabel(cat),
+            features: catFeatures,
+          })
+        }
 
-      const terminal = meta.terminal ?? {}
+        const terminal = meta.terminal ?? {}
 
-      const selected = data.selectedByBackend[b.name]?.selected
-      if (selected && !selected.subject) {
-        throw new Error(`Selected context ${selected.contextKey} lacks a physical subject`)
-      }
-      // A parser and its app may share a slug; match original contributors, never a representative hash.
-      const sourceIds = selected?.contributingRunIds.slice().sort()
-      const a = selected
-        ? Object.entries(allAnalysis).find(
-            ([key, entry]) =>
-              key.startsWith("terminals/") &&
-              JSON.stringify(entry.sources?.map((source) => source.runId).sort()) === JSON.stringify(sourceIds),
-          )?.[1]
-        : allAnalysis["terminals/" + slug]
-      if (selected && selected.score.all > 0 && !a) {
-        throw new Error(`Missing terminal analysis for ${b.name} context ${selected.contextKey}`)
-      }
+        const selected = data.selectedByBackend[b.name]?.selected
+        if (selected && !selected.subject) {
+          throw new Error(`Selected context ${selected.contextKey} lacks a physical subject`)
+        }
+        // A parser and its app may share a slug; match original contributors, never a representative hash.
+        const sourceIds = selected?.contributingRunIds.slice().sort()
+        const a = selected
+          ? Object.entries(allAnalysis).find(
+              ([key, entry]) =>
+                key.startsWith("terminals/") &&
+                JSON.stringify(entry.sources?.map((source) => source.runId).sort()) === JSON.stringify(sourceIds),
+            )?.[1]
+          : allAnalysis["terminals/" + slug]
+        if (selected && selected.score.all > 0 && !a) {
+          throw new Error(`Missing terminal analysis for ${b.name} context ${selected.contextKey}`)
+        }
 
-      // Load all version results for this backend
-      const versions = versionsForBackend(data, b.name)
-      const otherRuns = selected
-        ? Object.values(data.selected.history)
-            .flat()
-            .filter((run) => run.subject.id === selected.subject?.id && run.subject.kind === selected.subject?.kind)
-        : []
+        // Load all version results for this backend
+        const versions = versionsForBackend(data, b.name)
+        const otherRuns = selected
+          ? Object.values(data.selected.history)
+              .flat()
+              .filter((run) => run.subject.id === selected.subject?.id && run.subject.kind === selected.subject?.kind)
+          : []
 
-      return {
-        params: {
-          id: slug,
-          backendId: b.name,
-          backendName: meta.label ?? b.name,
-          backendDescription: meta.description ?? "",
-          backendUrl: meta.url ?? "",
-          backendUpstream: meta.upstream ?? "",
-          backendType: meta.type ?? "",
-          backendCaveat: meta.caveat ?? "",
-          // Terminal app info (separate from backend)
-          terminalName: meta.label ?? terminal.name ?? b.name,
-          terminalDescription: meta.description ?? terminal.description ?? "",
-          terminalBody: linkifyContentExcluding(meta.body ?? terminal.body ?? "", new Set([`/terminals/${slug}`])),
-          terminalUrl: meta.url ?? terminal.url ?? "",
-          terminalRepo: meta.repo ?? terminal.repo ?? "",
-          terminalAuthor: terminal.author ?? "",
-          version: b.versions.join(", "),
-          engine: b.engine,
-          total: stats ? String(stats.score.all) : "",
-          yes: stats ? String(stats.score.supported) : "",
-          no: stats ? String(stats.counts.unsupported) : "",
-          partial: "0",
-          pct: stats?.pct == null ? "" : String(stats.pct),
-          categories: JSON.stringify(categories),
-          versions: JSON.stringify(versions),
-          otherRuns: JSON.stringify(otherRuns),
-          analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
-          analysisDate:
-            a?.sources?.map((source) => `${source.runId}: ${source.measuredAt}`).join("; ") ?? a?.date ?? "",
-          analysisChanges: a?.changes ?? "",
-          historical: "false",
-          terminalType: "term",
-        },
-      }
-    })
+        return {
+          params: {
+            id: slug,
+            backendId: b.name,
+            routeKey,
+            osBackends: JSON.stringify(columns.map((column) => column.name)),
+            backendName: meta.label ?? b.name,
+            backendDescription: meta.description ?? "",
+            backendUrl: meta.url ?? "",
+            backendUpstream: meta.upstream ?? "",
+            backendType: meta.type ?? "",
+            backendCaveat: meta.caveat ?? "",
+            // Terminal app info (separate from backend)
+            terminalName:
+              columns.length > 1 && selected?.subject
+                ? subjectLabel(
+                    terminalsData,
+                    selected.subject.id,
+                    selected.subject.kind,
+                    terminalsData[selected.subject.id]?.label,
+                  )
+                : (meta.label ?? terminal.name ?? b.name),
+            terminalDescription: meta.description ?? terminal.description ?? "",
+            terminalBody: linkifyContentExcluding(meta.body ?? terminal.body ?? "", new Set([`/terminals/${slug}`])),
+            terminalUrl: meta.url ?? terminal.url ?? "",
+            terminalRepo: meta.repo ?? terminal.repo ?? "",
+            terminalAuthor: terminal.author ?? "",
+            version: b.versions.join(", "),
+            engine: b.engine,
+            total: stats ? String(stats.score.all) : "",
+            yes: stats ? String(stats.score.supported) : "",
+            no: stats ? String(stats.counts.unsupported) : "",
+            partial: "0",
+            pct: stats?.pct == null ? "" : String(stats.pct),
+            categories: JSON.stringify(categories),
+            versions: JSON.stringify(versions),
+            otherRuns: JSON.stringify(otherRuns),
+            analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
+            analysisDate:
+              a?.sources?.map((source) => `${source.runId}: ${source.measuredAt}`).join("; ") ?? a?.date ?? "",
+            analysisChanges: a?.changes ?? "",
+            historical: "false",
+            terminalType: "term",
+          },
+        }
+      },
+    )
 
     // The terminal catalog for historical terminals and terminal type classification.
-    const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {
