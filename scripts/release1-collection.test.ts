@@ -47,8 +47,10 @@ import {
 } from "@terminfo/probe-defs"
 import {
   assertHostedWindowCustody,
+  assertOwnedTransportApplies,
   childExitWords,
   collectPass,
+  collectionRoutes,
   ownedAppCommand,
   ownedAppRunsDirectory,
   readOwnedAppTransportProof,
@@ -1503,6 +1505,32 @@ it("names a probe subcommand the admin CLI registers", () => {
   expect(help.stdout).toContain("Commands:")
   const registered = [...help.stdout.matchAll(/^\s{2}([a-z][a-z-]*)\s/gm)].map((match) => match[1])
   expect(registered).toContain(subcommand)
+})
+
+// 33963 (@cto A): a Mac app whose owned arm proves window ownership routes to the owned route only,
+// and the owned transport is used or refused, never accepted for rows it cannot start.
+it("routes an owned app away from the hosted matrix, and refuses a transport for routed contexts", () => {
+  const apps = ["terminal-app", "iterm2", "ghostty", "warp", "cursor", "com.microsoft.VSCode", "cmux", "alacritty", "wezterm"]
+  const expected = apps.map((terminalId) => ({ terminalId, os: "macos" as const, kind: "term" as const }))
+  const routeOf = (contexts: readonly CollectionContext[], id: string): string | null | undefined =>
+    contexts.find((context) => context.id === id)?.route
+
+  const withEntry = collectionRoutes(expected, new Set(["terminal-app"]))
+  expect(routeOf(withEntry, "terminal-app")).toBe("local-owned-app")
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app")) {
+    expect(routeOf(withEntry, id)).toBe("hosted-workflow")
+  }
+
+  const withEmptySet = collectionRoutes(expected, new Set<string>())
+  for (const id of apps) expect(routeOf(withEmptySet, id)).toBe("hosted-workflow")
+
+  const ownedOnly = withEntry.filter((context) => context.id === "terminal-app")
+  expect(() => assertOwnedTransportApplies(ownedOnly, "ssh:codi@codimac")).not.toThrow()
+  expect(() => assertOwnedTransportApplies(withEmptySet, "ssh:codi@codimac")).toThrow(
+    /do not route there: terminal-app\/macos, iterm2\/macos/,
+  )
+  expect(() => assertOwnedTransportApplies(withEntry, "ssh:codi@codimac")).toThrow(/iterm2\/macos/)
+  expect(() => assertOwnedTransportApplies(withEmptySet, "local")).not.toThrow()
 })
 
 it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {

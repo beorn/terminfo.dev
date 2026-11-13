@@ -164,10 +164,15 @@ const engineRow = (id: string): CollectionContext => ({
 /**
  * macOS apps the admin launches and owns on this host. kitty is not one of them: its owned codimac
  * run was unadmitted for the missing capture adapter, and @cto then recorded it as not measurable on
- * the hosted runner (see UNMEASURABLE_MAC_APPS). The route stays live for a codimac-only app that
- * the hosted runner cannot run and that qualifies.
+ * the hosted runner (see UNMEASURABLE_MAC_APPS).
+ *
+ * An app enters this set only when its owned arm proves the window is ours before every touch, and
+ * then with its own entry and its own after-merge read (@cto 33963 condition, verdict 2026-11-12).
+ * Terminal.app is the first and only entry: the window check that precedes every clipboard read,
+ * write and clear is that proof (terminfo 7814de87, @cto 77adaf80). iTerm2 and Warp need the same
+ * proof in their own arms before they can be added.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>(["terminal-app"])
 
 /**
  * A macOS row with a measured reason it cannot be collected at all, kept as a named fact instead of
@@ -216,7 +221,10 @@ function hostedAppRows(os: "macos" | "windows"): Array<{ id: string; [key: strin
   return rows as Array<{ id: string; [key: string]: unknown }>
 }
 
-function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {
+export function collectionRoutes(
+  expected: readonly CensusContext[],
+  ownedMacApps: ReadonlySet<string> = LOCAL_OWNED_MAC_APPS,
+): CollectionContext[] {
   const hosted = {
     macos: new Set(hostedAppRows("macos").map((row) => row.id)),
     windows: new Set(hostedAppRows("windows").map((row) => row.id)),
@@ -260,8 +268,10 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
         sourceRun: fact.runId,
         uncollectable: fact.reason,
       })
-    } else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
-    else if (os === "macos" && LOCAL_OWNED_MAC_APPS.has(id)) contexts.push(localOwnedAppRow(id))
+    // Owned membership wins over the hosted matrix: a context whose arm can prove ownership is sent to
+    // that route only, never to both (@cto 33963 condition 1).
+    } else if (os === "macos" && ownedMacApps.has(id)) contexts.push(localOwnedAppRow(id))
+    else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
     else if (os === "windows" && hosted.windows.has(id)) {
       contexts.push({
         id,
@@ -394,6 +404,26 @@ export interface OwnedAppTransportOptions {
 
 /** The one owned-app argv both runners start from; the ssh runner hands the probe to the transport
  * driver, which runs exactly these arguments on the host. */
+function contextNameOf(context: CollectionContext): string {
+  return context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
+}
+
+/**
+ * An owned-app transport names where owned rows start. A selection holding no owned row would have the
+ * flag silently ignored, and a mixed selection would have it ignored for every routed row, so both are
+ * refused by name: the flag is used or refused, never accepted and ignored (@cto 33963 condition 3).
+ */
+export function assertOwnedTransportApplies(contexts: readonly CollectionContext[], runner: string): void {
+  if (runner === "local") return
+  const unowned = contexts.filter((context) => context.route !== "local-owned-app")
+  if (unowned.length === 0) return
+  throw new Error(
+    `--owned-app-transport ${runner} starts owned-app rows on a host, but these selected contexts do not route there: ` +
+      `${unowned.map(contextNameOf).join(", ")}. Select only owned contexts, or omit the transport flag; ` +
+      `it is refused rather than accepted and ignored.`,
+  )
+}
+
 export function ownedAppCommand(
   context: CollectionContext,
   output: string,
@@ -566,14 +596,13 @@ export async function collectPass(
         }
       : context,
   )
-  const contextName = (context: CollectionContext): string =>
-    context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
-  const requestedContexts = selection?.contexts ?? declared.map(contextName)
+  const requestedContexts = selection?.contexts ?? declared.map(contextNameOf)
   for (const context of requestedContexts) {
     if (!canonical.some((row) => row.context === context)) throw new Error(`Unknown collection context ${context}`)
   }
-  const selectedContexts = declared.filter((context) => requestedContexts.includes(contextName(context)))
+  const selectedContexts = declared.filter((context) => requestedContexts.includes(contextNameOf(context)))
   const census = selectedContexts
+  assertOwnedTransportApplies(census, ownedApp.runner)
   const pass: CollectionPass = {
     directory,
     probeHash: snapshot.probeHash,
@@ -582,7 +611,7 @@ export async function collectPass(
     catalogIds,
     ...(selection && {
       selection: {
-        contexts: selectedContexts.map(contextName),
+        contexts: selectedContexts.map(contextNameOf),
         ...(probeIds === undefined ? {} : { ids: probeIds }),
       },
     }),
