@@ -170,11 +170,13 @@ const engineRow = (id: string): CollectionContext => ({
  *
  * An app enters this set only when its owned arm proves the window is ours before every touch, and
  * then with its own entry and its own after-merge read (@cto 33963 condition, verdict 2026-11-12).
- * Terminal.app is the first and only entry: the window check that precedes every clipboard read,
- * write and clear is that proof (terminfo 7814de87, @cto 77adaf80). iTerm2 and Warp need the same
- * proof in their own arms before they can be added.
+ * Terminal.app checks its owned window before clipboard reads, writes and clears (7814de87,
+ * @cto 77adaf80). iTerm2 checks its owned process/window before each request (614e7982,
+ * @cto after-merge f44b2171); its owned arm supplies no clipboard fixture or hosted API-text reader.
+ * Those observations remain unmeasured, without inheriting historical hosted results. Warp still
+ * needs its own admitted proof before it can enter this set.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>(["terminal-app"])
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>(["terminal-app", "iterm2"])
 
 /**
  * A macOS row with a measured reason it cannot be collected at all, kept as a named fact instead of
