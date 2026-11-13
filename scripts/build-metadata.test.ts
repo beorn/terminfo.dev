@@ -239,8 +239,9 @@ describe("website sidebar metadata", () => {
         home: pageCategories("./docs/index.md", "sortedCategories"),
         features: pageCategories("./docs/features.md", "activeCategories") }));
     `
+    // The child loads the vitepress config and every probe: 17.9 s alone at load 20, so 20 s left no margin.
     const observed = JSON.parse(
-      execFileSync(process.execPath, ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 20_000 }),
+      execFileSync(process.execPath, ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 90_000 }),
     ) as { expected: string[]; nav: string[]; sidebar: string[]; home: string[]; features: string[] }
     expect(observed).toEqual({
       expected: observed.expected,
@@ -249,7 +250,7 @@ describe("website sidebar metadata", () => {
       home: observed.expected,
       features: observed.expected,
     })
-  }, 25_000)
+  }, 120_000)
 
   it.each([
     ["features", "features.json"],

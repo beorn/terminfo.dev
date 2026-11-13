@@ -320,7 +320,7 @@ test.each([null, 0] as const)("App auto-wrap uses controlled effects after DECRP
   const inert = await definition.term(replayTermProbeSource(stored))
   expect(inert.observation?.outcome).not.toBe("supported")
   expect(inert.observation?.outcome).not.toBe("unsupported")
-  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termWrites).toBeUndefined()
 })
@@ -379,7 +379,7 @@ test.each([null, 0] as const)("App alternate-screen entry uses controlled effect
     expect(surface.getMode("altScreen")).toBe(false)
   }
   const missing = await definition.term(replayTermProbeSource(stored))
-  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termNeedsGeometry).toBe(true)
   expect(definition.termWrites).toBeUndefined()
@@ -421,7 +421,7 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
     if (mutation === "missing-up") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working DECCKM").toBe(mutation ? "unsupported" : "supported")
       expect(result.assertions).toEqual(
@@ -489,7 +489,7 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
     expect(surface.getMode("applicationCursor")).toBe(false)
   }
   const inert = await definition.term(replayTermProbeSource(stored))
-  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termWrites).toBeUndefined()
 })
@@ -534,7 +534,7 @@ test.each([null, 0] as const)("App all-motion mouse uses controlled effects afte
     if (mutation === "reset-reports" || mutation === "missing-a") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working 1003").toBe(mutation ? "unsupported" : "supported")
     }
@@ -615,7 +615,7 @@ test.each([null, 0] as const)("App mouse tracking uses controlled effects after 
     } else {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     }
     expect(surface.getMode("mouseTracking")).toBe(false)
     expect(surface.getMode("sgrMouse")).toBe(false)
@@ -669,7 +669,7 @@ test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRP
     if (mutation === "missing-click" || mutation === "missing-a" || mutation === "reset-sgr") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       const negative = mutation === "mouse-1006-noop"
       expect(result.observation?.outcome, mutation ?? "working 1006").toBe(negative ? "unsupported" : "supported")
@@ -1207,7 +1207,7 @@ test.each([null, 0] as const)("App DECCOLM reads controlled size replies after D
     if (mutation === "reset-noop" || mutation === "missing-size") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working width change").toBe(
         mutation ? "unsupported" : "supported",
@@ -1316,7 +1316,7 @@ test.each([null, 0] as const)("App DECCOLM reads controlled width frames after D
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
   }
   const missing = await definition.term(replayTermProbeSource(stored))
-  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsGeometry).toBe(true)
 })
 
@@ -1816,7 +1816,7 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toMatchObject([
-        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned width frame") }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("owned width frame") }),
       ])
       if (ps === 0) expect(result.tests?.[0]?.reason).toContain("Ps 0")
     } else if (ps === 4) {

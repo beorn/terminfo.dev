@@ -8,6 +8,7 @@ import {
   notTestedResult,
   parserStateResult,
   replyFailure,
+  methodUnavailable,
   probe,
   queryDecrpm,
   reviewResult,
@@ -340,7 +341,7 @@ export const resetProbes: ProbeDefinition[] = [
             const enabled = await readUp()
             if (control !== "\x1b[Aa" || enabled !== "\x1bOAa") {
               return {
-                ...replyFailure(
+                ...methodUnavailable(
                   "Soft-reset setup did not read distinct normal/application Up encodings with plain-a delivery controls",
                 ),
                 response: JSON.stringify({ before, control, enabled }),
@@ -351,7 +352,7 @@ export const resetProbes: ProbeDefinition[] = [
             const response = JSON.stringify({ before, control, enabled, after })
             if (after !== "\x1b[Aa" && after !== "\x1bOAa") {
               return {
-                ...replyFailure(
+                ...methodUnavailable(
                   "Soft-reset target did not read an Up encoding followed by its plain-a delivery control",
                 ),
                 response,

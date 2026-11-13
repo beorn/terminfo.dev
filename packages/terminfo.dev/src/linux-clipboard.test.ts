@@ -756,8 +756,20 @@ try {
     assert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
     assert.equal(adapter.resetScrollback, undefined, "App target must not expose Screen history reset")
     const history = await adapter.getScrollback()
-    assert.deepEqual(history, { totalLines: 44, screenLines: 24 })
+    const { receipt, ...counts } = history
+    assert.deepEqual(counts, { totalLines: 44, screenLines: 24 })
     assert.equal("viewportOffset" in history, false)
+    // The count's identity record names the pane and the socket's presence, and no host path (@cto 41fcd747).
+    assert.deepEqual(JSON.parse(receipt ?? "null"), {
+      surface: "kitty",
+      pane: "42",
+      listedTty: null,
+      measuredTty: null,
+      ttyMatch: null,
+      socketPresent: true,
+      executable: "kitten",
+    })
+    assert.equal(/[\\/]/u.test(receipt ?? ""), false)
     kittyRefused = true
     await assert.rejects(adapter.getScrollback(), /Kitty all get-text unavailable: .*"status":2/)
     kittyRefused = false
@@ -818,7 +830,18 @@ try {
     const weztermOwner = await factory(process.stdout, "1".repeat(32))
     assert.equal(typeof weztermOwner.getScrollback, "function", "owned Linux WezTerm history callback is missing")
     assert.equal(weztermOwner.resetScrollback, undefined)
-    assert.deepEqual(await weztermOwner.getScrollback(), { totalLines: 27, screenLines: 24 })
+    const { receipt: wezTermReceipt, ...wezTermCounts } = await weztermOwner.getScrollback()
+    assert.deepEqual(wezTermCounts, { totalLines: 27, screenLines: 24 })
+    // Linux WezTerm lists no pane tty and measures none, so the record says so instead of claiming a match.
+    assert.deepEqual(JSON.parse(wezTermReceipt ?? "null"), {
+      surface: "wezterm",
+      pane: "17",
+      listedTty: null,
+      measuredTty: null,
+      ttyMatch: null,
+      socketPresent: true,
+      executable: "wezterm",
+    })
     assert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
     weztermRefused = true
     await assert.rejects(weztermOwner.getScrollback(), error =>

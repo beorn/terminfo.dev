@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
-import { MUX_OUTER_ROWS, withMuxOuterRows } from "./mux-outer-rows.ts"
+import { MUX_OUTER_ROWS, muxTitleControlNonce, muxTitleControlWrite, withMuxOuterRows } from "./mux-outer-rows.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -35,18 +35,24 @@ import {
   sentinelAnswer,
   replyFrame,
   replyFailure,
+  methodUnavailable,
   cancelReplyFailure,
+  cleanupReading,
+  callbackReading,
+  withCleanupDetail,
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
   completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  auditedKittyIdentity,
   sameFrame,
   sameRgb as sameRgbCells,
   fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
+  measuredSilence,
   sgrCaptureTooSmall,
   tooSmall,
   unmeasuredCellResult,
@@ -190,15 +196,7 @@ export function hasAuditedOscInterfaceAbsence(
               auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
-    return (
-      ctx.backendName === "kitty" &&
-      identity.engineVersion === "0.49.2" &&
-      identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
-      identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      (auditedAdapterSources(identity, "kittyH4") ||
-        auditedAdapterSources(identity, "kittyPixel") ||
-        auditedAdapterSources(identity, "kittyF8c227b9"))
-    )
+    return ctx.backendName === "kitty" && auditedKittyIdentity(identity)
   }
   if (cohort === "wezterm-d2") {
     return (
@@ -1550,7 +1548,11 @@ async function cursorColorSetupAppCapture(
     const state = { initial: fallback.response, cursor, stability: pair.stability, frames }
     const cropped = cropPositionRefusal({
       id,
-      compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: frames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(state),
       frames,
       screenshotRef: target.frame.ref,
@@ -1595,7 +1597,11 @@ async function cursorColorSetupAppCapture(
     const comparedFrames = [...frames, ...resetReads.map((entry) => entry.frame)]
     const resetCropped = cropPositionRefusal({
       id,
-      compared: comparedFrames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: comparedFrames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(afterReset),
       frames: comparedFrames,
       screenshotRef: target.frame.ref,
@@ -4476,8 +4482,9 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    const empty = silence !== null || (outcome.reason === "timeout" && outcome.raw === "")
+    const expected = "OSC 52 c query returns the exact written nonce"
+    const silence = sentinelSilenceResult(outcome, expected)
+    const empty = measuredSilence(outcome, expected)
     const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
     if (handoff) return handoff
     return withClipboardControlNote(
@@ -5288,7 +5295,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const resetAgain = await readPaste(false)
       if (reset !== nonce || resetAgain !== nonce || (report !== nonce && report !== `\x1b[200~${nonce}\x1b[201~`)) {
         return {
-          ...replyFailure("Paste framing lacks exact raw reset controls or a complete target nonce"),
+          ...methodUnavailable("Paste framing lacks exact raw reset controls or a complete target nonce"),
           response: JSON.stringify({ reset, report, resetAgain }),
         }
       }
@@ -5375,6 +5382,12 @@ const OSC0_TITLE_QUERY = "\x1b[21t"
 const OSC0_ICON_REPLY = /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/
 const OSC0_TITLE_REPLY = /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/
 
+/**
+ * The OSC 0 icon and window-title clauses share one result builder, and each `silence` field is positional:
+ * `silence.icon` grades the icon-label query (CSI 20 t) and `silence.title` grades the window-title query
+ * (CSI 21 t). They are never interchangeable — an icon/title swap here would report an unreadable reply as a
+ * measured silence and open a row that our own instrument failed.
+ */
 function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
@@ -5383,6 +5396,7 @@ function osc0IconTitleResult(
     "icon" | "title",
     TerminalQueryOutcome["reason"] | "feedCapture boundary" | "owned public title read"
   >,
+  silence: { icon: boolean; title: boolean },
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
@@ -5391,6 +5405,16 @@ function osc0IconTitleResult(
       ...(windowTitle === null ? [`window title (CSI 21 t): ${reasons.title}`] : []),
     ]
     const note = `no complete OSC 0 target reply: ${missing.join("; ")}`
+    const unread = (iconLabel === null && !silence.icon) || (windowTitle === null && !silence.title)
+    if (!unread) {
+      // The target queries are this surface's read-back instrument, so a measured silence says we could not
+      // read the label, not that OSC 0 failed (@cto 1676cf8a Q3). The clause we did read stays in `response`.
+      return {
+        ...methodUnavailable(note),
+        response,
+        criterionBranch: "app-query-instrument",
+      }
+    }
     return {
       response,
       note,
@@ -5976,9 +6000,8 @@ const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
  */
 export const OSC22_MUX_OUTER_BRANCH = "osc22-mux-outer-command"
 export const OSC22_MUX_TARGET_WRITE = "\x1b]22;pointer\x1b\\"
-export function osc22MuxControlWrite(nonce: string): string {
-  return `\x1b]2;tdv-title-${nonce}\x1b\\`
-}
+/** One implementation, shared with the mux outer-record rows (mux-outer-rows.ts): never a second nonce path. */
+export const osc22MuxControlWrite = muxTitleControlWrite
 /** @cpo/term 10077051 reasons (1)-(3), verbatim. */
 export const OSC22_MUX_NOT_SENT =
   "The multiplexer did not send OSC 22 to the outer terminal; its forwarding control arrived, so the path was open."
@@ -6382,8 +6405,20 @@ const extensionDefinitions: ProbeDefinition[] = [
             const moved = cropPositionRefusal({
               id,
               compared: [
-                { role: "isolated character", rectangle: control.frame.regionRectangle },
-                { role: sample.phase, rectangle: sample.frame.regionRectangle },
+                {
+                  role: "isolated character",
+                  rectangle: control.frame.regionRectangle,
+                  ...(control.frame.kind === "text-cells" || control.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: control.frame.cellCrop }),
+                },
+                {
+                  role: sample.phase,
+                  rectangle: sample.frame.regionRectangle,
+                  ...(sample.frame.kind === "text-cells" || sample.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: sample.frame.cellCrop }),
+                },
               ],
               response: JSON.stringify({ samples }),
               frames,
@@ -7622,7 +7657,8 @@ const extensionDefinitions: ProbeDefinition[] = [
         ]
         const readings: string[] = []
         const state = { before, values, readings, negative: "", restored: "" }
-        let result: ProbeCallbackResult
+        let result: ProbeCallbackResult | undefined
+        let failure: unknown
         try {
           for (const value of values) {
             ctx.write(`\x1b]2;${value}\x07`)
@@ -7652,12 +7688,28 @@ const extensionDefinitions: ProbeDefinition[] = [
                   ],
                 }
           if (!controls) result.criterionBranch = "app-title-control"
+        } catch (error) {
+          failure = error
+          throw error
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
-          if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+          if (state.restored !== before) {
+            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+            // either. `result` is undefined here only because the try threw; a plain return added inside that try
+            // would leave neither, so this branch names that invariant instead of assuming it.
+            const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+            if (result) result = cleanupReading(result, cleanup)
+            else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+            else {
+              throw withCleanupDetail(
+                new Error("cleanup ran with neither a reading nor a propagating failure"),
+                cleanup,
+              )
+            }
+          }
         }
-        return { ...result, response: JSON.stringify(state) }
+        return { ...callbackReading(result), response: JSON.stringify(state) }
       },
       "buffer_state",
     ),
@@ -7689,7 +7741,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             ) {
               return {
                 response: JSON.stringify({ before, controls, firstTitleControl, controlled }),
-                ...replyFailure("OSC 0 independent icon/title controls were not both read back"),
+                ...methodUnavailable("OSC 0 independent icon/title controls were not both read back"),
               }
             }
             ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
@@ -7792,6 +7844,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
               title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
             },
+            {
+              icon: iconOutcome ? measuredSilence(iconOutcome, "OSC 0 icon name") : false,
+              title: titleOutcome ? measuredSilence(titleOutcome, "OSC 0 window title") : false,
+            },
           )
           const response = JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason })
           if (controlled && result.observation) {
@@ -7815,14 +7871,15 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controls = ["terminfo-osc0-control-A", "terminfo-osc0-control-B"]
           const readings: string[] = []
           const state = { before, controls, readings, title: "", icon: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
+          let failure: unknown
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
               readings.push(await read())
             }
             if (readings[0] !== controls[0] || readings[1] !== controls[1]) {
-              result = replyFailure("Owned title reader failed the OSC 0 title-clause controls")
+              result = methodUnavailable("Owned title reader failed the OSC 0 title-clause controls")
             } else {
               ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
               state.title = await read()
@@ -7838,8 +7895,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
                 // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
                 // because "got no answer" would be false for it.
-                const silent =
-                  icon.reason === "timeout" || sentinelSilenceResult(icon, "OSC 0 icon-label reply") !== null
+                const silent = measuredSilence(icon, "OSC 0 icon-label reply")
                 if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
@@ -7855,6 +7911,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                     state.title,
                     { icon: icon.raw, title: state.title },
                     { icon: icon.reason, title: "owned public title read" },
+                    { icon: silent, title: false },
                   )
                   if (result.assertions) {
                     result.assertions = result.assertions.map((assertion, index) =>
@@ -7864,12 +7921,28 @@ const extensionDefinitions: ProbeDefinition[] = [
                 }
               }
             }
+          } catch (error) {
+            failure = error
+            throw error
           } finally {
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
+              const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+              else {
+                throw withCleanupDetail(
+                  new Error("cleanup ran with neither a reading nor a propagating failure"),
+                  cleanup,
+                )
+              }
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
@@ -7879,6 +7952,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           title.match?.[1] ?? null,
           { icon: icon.raw, title: title.raw },
           { icon: icon.reason, title: title.reason },
+          {
+            icon: measuredSilence(icon, "OSC 0 icon-label reply"),
+            title: measuredSilence(title, "OSC 0 window-title reply"),
+          },
         )
       },
       "query_reply",
@@ -7993,7 +8070,8 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controlReadings: string[] = []
           const readings: string[] = []
           const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
+          let failure: unknown
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -8031,13 +8109,29 @@ const extensionDefinitions: ProbeDefinition[] = [
                       ? parserStateResult(false, OSC7_TITLE_EXPECTED, state)
                       : notTestedResult(OSC7_TITLE_ABSENT_OPEN, state)
             }
+          } catch (error) {
+            failure = error
+            throw error
           } finally {
             ctx.write("\x1b]7;\x07")
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`OSC 7 title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
+              const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+              else {
+                throw withCleanupDetail(
+                  new Error("cleanup ran with neither a reading nor a propagating failure"),
+                  cleanup,
+                )
+              }
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         const note = "No working-directory metadata readback for OSC 7"
         return {
@@ -8831,7 +8925,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         if (ctx.mux !== undefined) {
-          const controlWrite = osc22MuxControlWrite(randomUUID().replaceAll("-", "").slice(0, 24))
+          const controlWrite = osc22MuxControlWrite(muxTitleControlNonce())
           // Target first, control second: the control's arrival after it is what makes a missing target line mean
           // the multiplexer did not forward the target (@cto 33919 condition 3, 33920 condition 2).
           ctx.write(OSC22_MUX_TARGET_WRITE)
@@ -10087,10 +10181,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 }
               : vt100Audited
                 ? vt100Target
-                : ctx.backendName === "kitty" &&
-                    identity?.kind === "native" &&
-                    identity.engineVersion === "0.49.2" &&
-                    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                : ctx.backendName === "kitty" && auditedKittyIdentity(identity)
                   ? kittyTarget
                   : undefined
       if (!target) return lib(ctx)

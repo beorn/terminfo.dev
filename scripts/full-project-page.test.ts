@@ -167,6 +167,7 @@ describe("stored results without membership eligibility", () => {
       contexts[contextKey] = {
         contextKey,
         derivedIds: [],
+        byReview: 0,
         subject: run.subject,
         cells,
         contributingRunIds: [run.runId],

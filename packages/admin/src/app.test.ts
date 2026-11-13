@@ -470,6 +470,57 @@ describe("WezTerm cli-process arm", () => {
       JSON.stringify({ argvAbsentReason: "not Developer ID", codesignDetailsRaw: "Identifier=fixture" }),
     )
   })
+
+  // #34018 R2 (@dev/17 peer REVISE): the handoff and collision boundary, on the App owner's own
+  // suite. A handed identity is one run's name, so it is checked for a live registration first and
+  // then reaches the run construction unchanged; a selection that would have to reuse it, or a run
+  // already registered under it, refuses before anything is launched or written.
+  test("a handed run id is checked for a live daemon and reaches the run construction unchanged", async () => {
+    const handed = "0123456789abcdef0123456789abcdef"
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    // A handed id is free (the single no-wait check passes) and the later launch wait still finds
+    // the daemon it started, which is the only difference a handed id makes before launch.
+    vi.mocked(findOwnedDaemon).mockImplementation(async (_id, _dir, _app, timeout) =>
+      timeout === 0 ? null : ({ filepath: "/private/registration", registration } as never),
+    )
+    vi.mocked(createProbeRun).mockReturnValueOnce({
+      id: handed,
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+    await handleApp("wezterm", { runId: handed })
+    expect(findOwnedDaemon).toHaveBeenNthCalledWith(1, handed, expect.any(String), "wezterm", 0)
+    expect(createProbeRun).toHaveBeenCalledWith(handed)
+    // Direct local use keeps minting: no id handed in means no collision check and no id passed on.
+    vi.mocked(createProbeRun).mockClear()
+    vi.mocked(findOwnedDaemon).mockClear()
+    await handleApp("wezterm", {})
+    expect(createProbeRun).toHaveBeenCalledWith(undefined)
+    expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "wezterm")
+    expect(vi.mocked(findOwnedDaemon).mock.calls.some((call) => call[3] === 0)).toBe(false)
+  })
+
+  test("refuses a handed id already registered by a live daemon, before any launch or write", async () => {
+    const handed = "fedcba9876543210fedcba9876543210"
+    vi.mocked(findOwnedDaemon).mockResolvedValueOnce({ filepath: "/private/registration", registration })
+    await expect(handleApp("wezterm", { runId: handed })).rejects.toThrow(
+      `run id ${handed} is already registered by a live daemon`,
+    )
+    expect(findOwnedDaemon).toHaveBeenCalledWith(handed, expect.any(String), "wezterm", 0)
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+    expect(writeFileSync).not.toHaveBeenCalled()
+  })
+
+  test("refuses a handed id across a multi-app selection before any run starts", async () => {
+    const handed = "00112233445566778899aabbccddeeff"
+    await expect(handleApp(undefined, { all: true, runId: handed })).rejects.toThrow(
+      /--run-id names one run and \d+ apps would run/,
+    )
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+  })
 })
 
 describe("Ghostty cli-process arm", () => {
@@ -797,6 +848,7 @@ test.each([
     if (prefix === "vscode") {
       expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
       expect(JSON.parse(String(settings?.[1]))).toEqual({
+        "update.mode": "none",
         "chat.disableAIFeatures": true,
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,

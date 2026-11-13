@@ -11,6 +11,7 @@ import {
   type BigIntStats,
 } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
+import { homedir } from "node:os"
 import { dirname, isAbsolute, join, win32 } from "node:path"
 import type {
   DarwinMuxAttachmentProof,
@@ -41,6 +42,14 @@ import {
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
+import { ownedHistoryReceipt } from "./owned-history-receipt.ts"
+import {
+  cmuxConfigPath,
+  cmuxHistoryIdentity,
+  observeCmuxConfig,
+  ownedCmuxHistoryExecutable,
+  readOwnedCmuxHistory,
+} from "./cmux-owned-history.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   ScrollbackReadingUnavailable,
@@ -361,6 +370,17 @@ export interface OwnedTerminal {
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant,
+   * the grant receipt or the failure that replaced it, and the last read's receipt. `lastRead` is a
+   * getter, so a record built after the probes sees the latest read rather than the grant (@cto 81073ae1).
+   */
+  readonly cmuxHistory?: {
+    readonly executable: string
+    readonly surface: string | null
+    readonly grantProof: string
+    readonly lastRead: string | null
+  }
+  /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
    * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
    * where the history rows read it as their declared Untestable reason. Absent where the app has a read;
@@ -473,14 +493,14 @@ export type HostedDarwinApp = {
 export type AncestryRow = {
   pid: number
   ppid: number
-  /** argv0 as the kernel prints it. Screen's backend shows `SCREEN` here; the executed path is below. */
+  /** argv0 as ps prints it, kept separate from measured kernel executable identity. */
   comm: string
   uid?: number
   startedAtEpochSeconds?: number
   ttyRdev?: number | null
   command?: string
-  /** The kernel's executed path for this pid, or null when neither reader answered (#30518 Screen arm).
-   * Absent off Darwin, where there is no such read; never guessed from `comm`. */
+  /** The kernel's executed path for a Darwin mux walk, or null when neither reader answered.
+   * Absent when the walk does not request kernel identity; never guessed from `comm`. */
   kernelExecutable?: string | null
   kernelExecutableReader?: "proc_pidpath" | "KERN_PROCARGS2" | null
   kernelExecutableError?: string | null
@@ -661,7 +681,7 @@ export function formatHostedDarwinAncestry(rows: AncestryRow[]): string {
     .join(" <- ")
 }
 
-function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] {
+function readProcessAncestry(startPid: number, stopPid?: number, kernelIdentity = false): AncestryRow[] {
   const rows: AncestryRow[] = []
   const seen = new Set<number>()
   let pid = startPid
@@ -706,9 +726,9 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
       throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
     }
     const row: AncestryRow = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
-    if (process.platform === "darwin") {
-      // #30518: the kernel path travels with every row, and an unanswered read stays a recorded
-      // fact — the Screen arm refuses by name instead of falling back to the argv0 in `comm`.
+    if (kernelIdentity && process.platform === "darwin") {
+      // Tmux attachment and hosted ancestry evidence both need kernel paths, never argv0 as a substitute.
+      // The measured mux walk keeps this read inside its existing birth check.
       const kernel = kernelExecPath(row.pid)
       row.kernelExecutable = kernel.path
       row.kernelExecutableReader = kernel.reader
@@ -764,10 +784,10 @@ function readDarwinMuxAttachment(
 ): DarwinMuxAttachmentProof {
   const { subject, outerApp } = input
   const mux = subject.id
-  if (subject.kind !== "mux" || (mux !== "screen" && mux !== "tmux") || subject.mux !== mux || !subject.config) {
+  if (subject.kind !== "mux" || mux !== "tmux" || subject.mux !== mux || !subject.config) {
     throw new Error("Darwin mux target has no measured mux/configuration")
   }
-  const rows = readProcessAncestry(process.pid, assertion.ownerPid)
+  const rows = readProcessAncestry(process.pid, assertion.ownerPid, true)
   const chain = rows.map((row) => {
     if (row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined) {
       throw new Error(`Darwin pid ${row.pid} lacks measured birth, UID or TTY`)
@@ -788,111 +808,94 @@ function readDarwinMuxAttachment(
   const collector = chain[0],
     shell = chain.at(-3),
     owner = chain.at(-1)
-  const server = chain[mux === "screen" ? 2 : 1]
+  const server = chain[1]
   if (!collector || !shell || !owner || !server?.kernelExecutable) {
     throw new Error("Darwin mux ancestry lacks named roles")
   }
   const binary = server.kernelExecutable
-  const run = (args: string[], screenRead = false) => {
+  const run = (args: string[]) => {
     const result = spawnSync(binary, args, {
       encoding: "utf8",
       timeout: 1000,
       maxBuffer: 4096,
       env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     })
-    if (result.error || result.signal || (result.status !== 0 && !(screenRead && result.status === 1))) {
+    if (result.error || result.signal || result.status !== 0) {
       throw new Error(`Darwin mux ${binary} ${args.join(" ")} failed: ${JSON.stringify(result)}`)
     }
     return { stdout: String(result.stdout), stderr: String(result.stderr) }
   }
-  let client: DarwinMuxAttachmentProof["chain"][number] | undefined = mux === "screen" ? chain[3] : undefined
-  const argv = rows[mux === "screen" ? 3 : 1]?.command?.split(/\s+/) ?? []
-  if (
-    /\s/.test(subject.config) ||
-    !argvCarriesMarker(argv, { flag: mux === "screen" ? "-c" : "-f", value: subject.config })
-  ) {
+  const argv = rows[1]?.command?.split(/\s+/) ?? []
+  if (/\s/.test(subject.config) || !argvCarriesMarker(argv, { flag: "-f", value: subject.config })) {
     throw new Error("Darwin mux live argv differs from its explicit configuration")
   }
   const named = argv.indexOf("-S")
   const selected = named >= 0 && argv.lastIndexOf("-S") === named ? argv[named + 1] : undefined
   if (!selected) throw new Error("Darwin mux live argv names no unique socket/session")
-  let socketPath: string, session: string
-  if (mux === "screen") {
-    session = selected
-    const listing = run(["-ls", session], true).stdout.replaceAll("\r", "")
-    const attached = listing.split("\n").filter((line) => line.trim() === `${server.pid}.${session}\t(Attached)`)
-    const directory = /^1 Socket in (\/[^\n]+)\.$/m.exec(listing)?.[1]
-    if (attached.length !== 1 || !directory || !client) {
-      throw new Error("Darwin Screen listing lacks its measured attached server/session")
-    }
-    socketPath = join(directory, `${server.pid}.${session}`)
-  } else {
-    socketPath = selected
-    if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
-    const listed = run([
-      "-S",
-      socketPath,
-      "list-clients",
-      "-F",
-      "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const fields = listed[0]?.split("\t")
-    if (listed.length !== 1 || !fields || fields.length !== 4) {
-      throw new Error("Darwin tmux has no unique measured attached client")
-    }
-    const [clientPid, clientTty, sessionId, sessionName] = fields
-    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
-      throw new Error("Darwin tmux attached-client fields are missing or malformed")
-    }
-    const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid)
-    const row = clientRows[0]
-    if (
-      !row ||
-      row.uid === undefined ||
-      row.startedAtEpochSeconds === undefined ||
-      row.ttyRdev === undefined ||
-      clientRows[1]?.pid !== shell.pid ||
-      row.kernelExecutable !== binary
-    ) {
-      throw new Error("Darwin tmux client is not the measured outer shell child")
-    }
-    if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
-      throw new Error("Darwin tmux listed client TTY differs from the measured client")
-    }
-    client = {
-      ...row,
-      startedAtEpochSeconds: row.startedAtEpochSeconds,
-      ttyRdev: row.ttyRdev,
-      executablePath: row.comm,
-      uid: row.uid,
-    }
-    session = sessionName
-    const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
-    const panes = run([
-      "-S",
-      socketPath,
-      "list-panes",
-      "-a",
-      "-F",
-      "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const pane = panes
-      .map((line) => line.split("\t"))
-      .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
-    if (serverPid !== String(server.pid) || pane.length !== 1) {
-      throw new Error("Darwin tmux socket/session does not join the measured collector/server")
-    }
-    const paneTty = pane[0]?.[3]
-    if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
-      throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
-    }
+  const socketPath = selected
+  if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
+  const listed = run([
+    "-S",
+    socketPath,
+    "list-clients",
+    "-F",
+    "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const fields = listed[0]?.split("\t")
+  if (listed.length !== 1 || !fields || fields.length !== 4) {
+    throw new Error("Darwin tmux has no unique measured attached client")
+  }
+  const [clientPid, clientTty, sessionId, sessionName] = fields
+  if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
+    throw new Error("Darwin tmux attached-client fields are missing or malformed")
+  }
+  const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid, true)
+  const row = clientRows[0]
+  if (
+    !row ||
+    row.uid === undefined ||
+    row.startedAtEpochSeconds === undefined ||
+    row.ttyRdev === undefined ||
+    clientRows[1]?.pid !== shell.pid ||
+    row.kernelExecutable !== binary
+  ) {
+    throw new Error("Darwin tmux client is not the measured outer shell child")
+  }
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
+    throw new Error("Darwin tmux listed client TTY differs from the measured client")
+  }
+  const client = {
+    ...row,
+    startedAtEpochSeconds: row.startedAtEpochSeconds,
+    ttyRdev: row.ttyRdev,
+    executablePath: row.comm,
+    uid: row.uid,
+  }
+  const session = sessionName
+  const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
+  const panes = run([
+    "-S",
+    socketPath,
+    "list-panes",
+    "-a",
+    "-F",
+    "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const pane = panes
+    .map((line) => line.split("\t"))
+    .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
+  if (serverPid !== String(server.pid) || pane.length !== 1) {
+    throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+  }
+  const paneTty = pane[0]?.[3]
+  if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
+    throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
   }
   if (!statSync(socketPath).isSocket()) throw new Error(`Darwin mux socket ${socketPath} is not a socket`)
-  if (!client) throw new Error("Darwin mux has no measured attached client")
   const rawPreflight = outerApp.rawReplies["collector.preflightIdentity"]
   const launch = outerApp.rawReplies["collector.outerLaunch"]
   if (!rawPreflight || !launch) throw new Error("Darwin mux lacks retained preflight identity or outer launch bytes")
@@ -908,10 +911,10 @@ function readDarwinMuxAttachment(
     timeout: 1000,
     maxBuffer: 256,
   }).trim()
-  const version = run([mux === "screen" ? "-v" : "-V"], mux === "screen")
+  const version = run(["-V"])
   const versionText = version.stdout + version.stderr
-  const tokens = mux === "tmux" ? measuredVersionTokens(versionText) : []
-  if (mux === "tmux" && tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
+  const tokens = measuredVersionTokens(versionText)
+  if (tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
   const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex")
   const proof = parseMuxAttachmentProof({
     platform: "darwin",
@@ -933,7 +936,7 @@ function readDarwinMuxAttachment(
     executable: {
       path: binary,
       sha256: digest(readFileSync(binary)),
-      version: mux === "screen" ? versionText : tokens[0],
+      version: tokens[0],
     },
     config: { path: subject.config, sha256: digest(readFileSync(subject.config)) },
     socketPath,
@@ -1379,7 +1382,7 @@ export async function createOwnedTerminal(options: {
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
     hostedAppExecutablePath = executablePath
     binding = darwinHostedOutput(out)
-    const ancestry = readProcessAncestry(process.pid)
+    const ancestry = readProcessAncestry(process.pid, undefined, true)
     // Prints before the app check, so a refusal by requireHostedDarwinAppAncestor still leaves the
     // measured chain in the artifact; the binding itself runs earlier, on darwinHostedOutput.
     process.stderr.write(`Hosted Darwin measured process ancestry: ${formatHostedDarwinAncestry(ancestry)}\n`)
@@ -1606,7 +1609,7 @@ export async function createOwnedTerminal(options: {
               readAncestorPid: () =>
                 requireHostedDarwinAppAncestor(
                   hostedApp.comm,
-                  readProcessAncestry(process.pid),
+                  readProcessAncestry(process.pid, undefined, true),
                   hostedAppExecutablePath,
                 ).pid,
               measuredPid: hostedAncestor?.pid,
@@ -1663,18 +1666,137 @@ export async function createOwnedTerminal(options: {
                       rows: geometry.rows,
                       startLine: -2147483648,
                     })
-                    return rows.status === "refused"
-                      ? rows
-                      : {
-                          status: "read" as const,
-                          totalLines: rows.rows.length,
-                          screenLines: geometry.rows,
-                          receipt: rows.receipt,
-                        }
+                    if (rows.status === "refused") return rows
+                    // Windows has no pane list and no tty to compare, so the record names the pane and the
+                    // socket's presence and leaves the two tty fields absent rather than guessing one.
+                    const identity = ownedHistoryReceipt({
+                      surface: "wezterm",
+                      pane,
+                      socketPresent: socket !== undefined && socket.trim() !== "",
+                      executable: ownedWezTermCli,
+                    })
+                    if (identity.status === "refused") return { status: "refused" as const, reason: identity.reason }
+                    return {
+                      status: "read" as const,
+                      totalLines: rows.rows.length,
+                      screenLines: geometry.rows,
+                      receipt: identity.receipt,
+                    }
                   })()
             await wezTermOwnerCheck()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
+          }
+        : undefined
+    // A cmux surface answers history through its own CLI, and the collector runs INSIDE that surface: the
+    // hosted launch writes the initial-command key and opens the app, which is the only caller cmuxOnly
+    // admits (@cto plan GO af8608c3, corrected in f6cc9bb8). Ownership is the receipt's app plus the nonce
+    // line the run writes into the surface it is running in: a read of any other surface cannot carry it.
+    const hostedCmuxOwnerCheck =
+      binding.platform === "darwin" && darwinHosted !== undefined && ownedAppId === "cmux"
+        ? (): Promise<void> => {
+            if (hostedApp === undefined) return Promise.reject(new Error("Hosted cmux read has no receipt app"))
+            const ancestorPid = requireHostedDarwinAppAncestor(
+              hostedApp.comm,
+              readProcessAncestry(process.pid),
+              hostedAppExecutablePath,
+            ).pid
+            return hostedAncestor?.pid !== undefined && ancestorPid !== hostedAncestor.pid
+              ? Promise.reject(
+                  new Error(
+                    "Hosted cmux ancestor is now pid " +
+                      ancestorPid +
+                      ", not pid " +
+                      hostedAncestor.pid +
+                      " measured at launch",
+                  ),
+                )
+              : Promise.resolve()
+          }
+        : undefined
+    const ownedCmuxCli = ownedCmuxHistoryExecutable({
+      platform: binding.platform,
+      ownsCmuxSurface: hostedCmuxOwnerCheck !== undefined,
+      ...(hostedAppExecutablePath === undefined ? {} : { declaredExecutable: hostedAppExecutablePath }),
+    })
+    const ownedCmuxIdentity = ownedCmuxCli === undefined ? undefined : cmuxHistoryIdentity(ownedCmuxCli)
+    const cmuxConfigAtLaunch = ownedCmuxCli === undefined ? undefined : observeCmuxConfig(cmuxConfigPath(homedir()))
+    // Ownership is proved ONCE here, before the probe writes anything: the nonce line goes into the surface
+    // this process is running in and a read that carries it exactly once is this run's own history. Every
+    // later read names that surface and writes nothing, so the instrument never moves what it measures
+    // (@cto REVISE F1 at 9ae6fad2459). A proof that never reads back leaves every read refusing by name.
+    let cmuxSurface: string | undefined
+    let cmuxGrantReceipt: string | undefined
+    let cmuxGrantFailure: string | undefined
+    let cmuxLastReceipt: string | undefined
+    if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
+      const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
+      if (published === "") {
+        // Without a published id every later read would have to let the CLI pick "whatever surface is
+        // current", which is the unnamed read this arm must never make: a second surface in the same
+        // instance could then answer for ours (@dev/1 peer read 2026-11-13). Refuse at grant instead.
+        cmuxGrantFailure =
+          "cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired"
+      } else {
+        cmuxSurface = published
+        out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const proof = readOwnedCmuxHistory({
+            executable: ownedCmuxCli,
+            surface: published,
+            ownership: { kind: "nonce", nonce: captureRunId },
+            configAtLaunch: cmuxConfigAtLaunch,
+            observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+          })
+          if (proof.status === "read") {
+            cmuxGrantReceipt = proof.receipt
+            cmuxLastReceipt = proof.receipt
+            break
+          }
+          if (proof.refusal !== "cmux-surface-not-owned") {
+            cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
+            break
+          }
+          // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
+          await new Promise((resolve) => {
+            setTimeout(resolve, 250)
+          })
+        }
+        if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
+          cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
+        }
+      }
+    }
+    const ownedCmuxHistory =
+      hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined
+        ? async (): Promise<TerminalScrollbackReading> => {
+            await hostedCmuxOwnerCheck()
+            if (cmuxGrantFailure !== undefined) throw new ScrollbackReadingUnavailable(cmuxGrantFailure)
+            const geometry = await readBoundGeometry(binding, windowsKernel)
+            if (geometry.status !== "measured") {
+              throw new ScrollbackReadingUnavailable("Owned cmux history needs a measured grid: " + geometry.diagnostic)
+            }
+            const read = readOwnedCmuxHistory({
+              executable: ownedCmuxCli,
+              ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+              rows: geometry.rows,
+              ownership: { kind: "surface" },
+              configAtLaunch: cmuxConfigAtLaunch,
+              observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+            })
+            if (read.status === "refused") {
+              throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
+            }
+            cmuxLastReceipt = read.receipt
+            // cmux's own command receipt stays in the grant; the count carries the surface by id, and its
+            // surface id is the pane this run proved at grant.
+            const identity = ownedHistoryReceipt({
+              surface: "cmux",
+              pane: cmuxSurface,
+              executable: ownedCmuxCli,
+            })
+            if (identity.status === "refused") throw new ScrollbackReadingUnavailable(identity.reason)
+            return { ...read.reading, receipt: identity.receipt }
           }
         : undefined
     const readScrollback =
@@ -1685,17 +1807,22 @@ export async function createOwnedTerminal(options: {
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
-            const read = readLinuxKittyScrollback({
-              kitten: join(dirname(linux.executable.path), "kitten"),
-              socket: kittySocket,
-              window: kittyWindow,
-            })
+            const kitten = join(dirname(linux.executable.path), "kitten")
+            const read = readLinuxKittyScrollback({ kitten, socket: kittySocket, window: kittyWindow })
             await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            const identity = ownedHistoryReceipt({
+              surface: "kitty",
+              pane: kittyWindow,
+              socketPresent: kittySocket.trim() !== "",
+              executable: kitten,
+            })
+            if (identity.status === "refused") throw new Error(identity.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: identity.receipt }
           }
         : undefined) ??
       ownedWezTermHistory ??
+      ownedCmuxHistory ??
       readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
@@ -1806,6 +1933,19 @@ export async function createOwnedTerminal(options: {
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
       ...(wezTermOwnerCheck === undefined ? undefined : ownedWezTermIdentity),
+      ...(hostedCmuxOwnerCheck === undefined ? undefined : ownedCmuxIdentity),
+      ...(ownedCmuxCli !== undefined && {
+        cmuxHistory: {
+          executable: ownedCmuxCli,
+          surface: cmuxSurface ?? null,
+          grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
+          // A getter, not a captured value: this object is built once at owner creation, so a snapshot
+          // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
+          get lastRead(): string | null {
+            return cmuxLastReceipt ?? null
+          },
+        },
+      }),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")

@@ -112,6 +112,37 @@ test.each([false, true])("App OSC 2 measures and restores its owned title, disab
   expect(library.getTitle()).toBe(before)
 })
 
+test("App OSC 2 adds a failed restore to the error its own read already raised", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw new Error("injected title read error")
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  await expect(definition.term!(source)).rejects.toThrow(/injected title read error; Owned title restoration mismatch/)
+})
+
+// #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+test("App OSC 2 keeps its decided reading when the owned title cleanup does not restore", async () => {
+  const library = semanticSurfaceSource([])
+  const before = library.getTitle()
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const result = await definition.term!({
+    write: (text: string) => library.feed(text),
+    // The last read is the owned-title restore; it answers a title this surface never shows.
+    readTitle: async () => (++reads === 7 ? "leaked-title" : library.getTitle()),
+  } as unknown as TermProbeSource)
+  expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+  expect(result.note).toMatch(/Owned title restoration mismatch/)
+  expect(result.tests?.some((one) => one.status === "probe-invalid")).toBeFalsy()
+  expect(library.getTitle()).toBe(before)
+})
+
 test("App OSC 2 does not call an unexpected changed title Unsupported", async () => {
   let title = "incoming App title"
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
@@ -158,36 +189,39 @@ test.each([
     readTitle: async () => explicitTitle || cwd,
     ...(behavior.endsWith("-decides") && { readTitleAbsenceDecides: true }),
   } as unknown as TermProbeSource)
-  if (behavior === "bad-restore") await expect(operation).rejects.toThrow(/restor/i)
-  else {
-    const result = await operation
-    if (behavior === "working") {
-      expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
-    } else if (behavior === "no-cwd-decides") {
-      expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "unsupported" })
-    } else if (behavior === "no-cwd") {
-      // The deciding path is withheld: the row keeps its raw state and a true sentence, not a grade.
-      expect(result.observation).toBeUndefined()
-      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
-      expect(result.note).toMatch(/carried neither OSC 7 path, and the title is the only surface/)
-    } else if (behavior === "bad-control") {
-      // A route whose title cannot be held stays open with the control it failed named.
-      expect(result.observation).toBeUndefined()
-      expect(result.criterionBranch).toBe("app-title-control")
-      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
-      expect(result.note).toMatch(/did not hold the OSC 2 control titles/)
-    } else if (behavior === "bad-control-decides") {
-      // Where the title decides (Ghostty), a failed control is still our reader breaking.
-      expect(result.observation).toBeUndefined()
-      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
-      expect(result.note).toMatch(/failed its handled OSC 2 controls/)
-    } else {
-      expect(result.observation).toBeUndefined()
-      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
-    }
-    expect(explicitTitle).toBe("incoming App title")
-    expect(cwd).toBe("")
+  const result = await operation
+  if (behavior === "bad-restore") {
+    // #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+    expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+    expect(result.note).toMatch(/OSC 7 title restoration mismatch/)
+    expect(result.tests?.some((one) => one.status === "probe-invalid")).toBeFalsy()
+  } else if (behavior === "working") {
+    expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "supported" })
+  } else if (behavior === "no-cwd-decides") {
+    expect(result.observation).toMatchObject({ assertionType: "buffer_state", outcome: "unsupported" })
+  } else if (behavior === "no-cwd") {
+    // The deciding path is withheld: the row keeps its raw state and a true sentence, not a grade.
+    expect(result.observation).toBeUndefined()
+    expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.note).toMatch(/carried neither OSC 7 path, and the title is the only surface/)
+  } else if (behavior === "bad-control") {
+    // A route whose title cannot be held stays open with the control it failed named.
+    expect(result.observation).toBeUndefined()
+    expect(result.criterionBranch).toBe("app-title-control")
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
+    expect(result.note).toMatch(/did not hold the OSC 2 control titles/)
+  } else if (behavior === "bad-control-decides") {
+    // Where the title decides (Ghostty), a failed control is still our reader breaking.
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+    expect(result.note).toMatch(/failed its handled OSC 2 controls/)
+  } else {
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
   }
+  if (behavior === "bad-restore") expect(explicitTitle).toBe("")
+  else expect(explicitTitle).toBe("incoming App title")
+  expect(cwd).toBe("")
 })
 
 // #32451: Kitty's absent B needs its working A reader, while the lifecycle requires A/C/D
@@ -1763,4 +1797,46 @@ test.each([
       for (const criterion of result.tests) expect(criterion.status, id).toBe(expected)
     }
   }
+})
+
+// #34012: `rejects.toThrow(regex)` passes a wrapper too, so identity was asserted in prose only.
+test("App OSC 2 keeps the error's type when a failed restore rides on it", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw new Error("injected title read error")
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  const thrown: unknown = await definition.term!(source).then(
+    () => new Error("the probe answered instead of throwing"),
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).name).toBe("Error")
+  expect((thrown as Error).message).toMatch(/injected title read error; Owned title restoration mismatch/)
+})
+
+// #34012: a throwable that is not an Error is wrapped, not returned untouched — otherwise the restore
+// detail is dropped with no trace, which is the exact fact this slice exists to keep.
+test("App OSC 2 wraps a non-Error throwable so the restore detail survives", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw { toString: () => "injected title read failure" }
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  const thrown: unknown = await definition.term!(source).then(
+    () => new Error("the probe answered instead of throwing"),
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).message).toMatch(/^injected title read failure; Owned title restoration mismatch/)
 })

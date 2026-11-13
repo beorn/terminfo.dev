@@ -666,7 +666,10 @@ describe("H-4 exact host-effect declarations", () => {
       expect(fold(id, result)).toMatchObject({ status: "untestable", reason: expect.stringMatching(reason) })
       expect(result.observation).toBeUndefined()
       for (const changed of [
-        { ...runtimeIdentity, loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: "0".repeat(64) } },
+        // kitty's engine is its upstream commit, not its binary bytes (@cto bef7054c); Ghostty's audit still keys on the binary.
+        backendName === "kitty"
+          ? { ...runtimeIdentity, provenance: { ...runtimeIdentity.provenance, sourceCommit: "0".repeat(40) } }
+          : { ...runtimeIdentity, loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: "0".repeat(64) } },
         ...(backendName === "ghostty-native"
           ? [
               {

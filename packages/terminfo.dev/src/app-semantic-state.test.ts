@@ -284,6 +284,39 @@ test("reader capability rows do not become declarations or lend their identity t
   ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
+  const macAlacritty = { ...alacritty, os: "macos" }
+  for (const featureId of [
+    "extensions.osc-633-vscode",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ]) {
+    expect(appSemanticDeclarations(macAlacritty)[featureId]).toMatch(
+      /^Untestable \(no way\):.*configuration, not the terminal's parsed feature state.*cannot grade the feature/,
+    )
+  }
+  for (const subject of [
+    { ...macAlacritty, version: "0.18.0" },
+    { ...macAlacritty, kind: "mux" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
   const screenDeclared = appSemanticDeclarations(screen)
   expect(screenDeclared["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)
@@ -827,6 +860,16 @@ test("only the missing forwarding-control line marks the read as that failure", 
     rmSync(directory, { recursive: true })
   }
 }, 20_000)
+
+// @cto b0de55c0: a measured result beats a declaration in probe code too. iTerm2's UTF-8 mouse mode read Supported
+// on macOS 26.6.2, so the pointer-route list no longer declares that one cell; its other pointer cells stay declared.
+test("the macOS pointer-route list leaves iTerm2's measured UTF-8 mouse mode to its probe", () => {
+  const iterm2 = appSemanticDeclarations({ kind: "term", id: "iterm2", version: "3.6.11", os: "macos" })
+  expect(iterm2).not.toHaveProperty("modes.utf8-mouse-1005")
+  expect(Object.keys(iterm2)).toEqual(expect.arrayContaining(["extensions.osc22-pointer", "input.kitty-click-events"]))
+  const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(ghostty["modes.utf8-mouse-1005"]).toContain("no permitted pointer route")
+})
 
 test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!

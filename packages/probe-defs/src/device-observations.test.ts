@@ -842,7 +842,7 @@ describe("window-operation qualification", () => {
         const result = await callback(id).terminal(source)
         if (behavior === "unobservable") {
           expect(result.observation).toBeUndefined()
-          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
         } else {
           expect(result.observation).toMatchObject({
             assertionType: "buffer_state",
@@ -918,6 +918,51 @@ describe("window-operation qualification", () => {
       await expect(callback(id).terminal(source)).rejects.toThrow("injected App title read error")
       expect(fixture.title()).toBe("incoming-title")
       expect(fixture.depth()).toBe(0)
+    }
+  })
+
+  // #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+  test("a failed owned-title cleanup is recorded on the reading, not raised instead of it", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      let title = "incoming-title"
+      let reads = 0
+      const source = {
+        write(bytes: string) {
+          for (const [, code, text] of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
+            if (code === "2") title = text ?? ""
+          }
+        },
+        // The eighth read is the owned-title restore; it answers a title this surface never shows.
+        readTitle: async () => (++reads === 8 ? "leaked-title" : title),
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      const result = await callback(id).terminal(source)
+      expect(result.observation?.outcome, id).toBe("unsupported")
+      expect(result.note, id).toMatch(/Owned title restoration mismatch/)
+      expect(
+        result.tests?.some((one) => one.status === "probe-invalid"),
+        id,
+      ).toBeFalsy()
+    }
+  })
+
+  // A probe that threw still reports why the surface was left dirty: the restore detail rides on the error
+  // already propagating instead of being lost with it (@dev/luna3's note on slice 2).
+  test("a failed restore is added to the error a title-stack probe already raised", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      let reads = 0
+      const source = {
+        write: () => {},
+        readTitle: async () => {
+          reads++
+          if (reads === 3) throw new Error("injected title read error")
+          return reads === 4 ? "leaked-title" : "incoming-title"
+        },
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      await expect(callback(id).terminal(source)).rejects.toThrow(
+        /injected title read error; Owned title restoration mismatch/,
+      )
     }
   })
 

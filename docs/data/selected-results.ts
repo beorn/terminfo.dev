@@ -14,6 +14,12 @@ import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import { isDefaultOf, MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import {
+  REMOVE_DECLARED_ROW,
+  loadDeclaredUntestable,
+  type DeclaredMarker,
+  type DeclaredUntestableCell,
+} from "./declared-untestable.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
@@ -243,6 +249,11 @@ export interface SelectedContextCell {
    */
   reopened?: ReopenedMarker
   /**
+   * Set only when a declared-untestable row (declared-untestable.ts, @cto 82a54984) read this open cell: the feature
+   * result reads untestable by review, while `result`, `run` and `origin` stay the original. Never a grade.
+   */
+  declared?: DeclaredMarker
+  /**
    * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
    * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
    */
@@ -290,6 +301,8 @@ export interface SelectedContextSummary {
   counts: RollupCounts
   /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
   derivedIds: string[]
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
+  byReview: number
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -449,6 +462,8 @@ export function projectResults(
     log?: (line: string) => void
     /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
     reopened?: readonly ReopenedCell[]
+    /** Open cells reviewed as untestable (content/declared-untestable.json); loadSelectedResults always passes them. */
+    declared?: readonly DeclaredUntestableCell[]
     /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
     derived?: readonly DerivedPair[]
   },
@@ -604,6 +619,7 @@ export function projectResults(
       supplements,
       policy.reopened ?? [],
       policy.derived ?? DERIVED_UNSUPPORTED,
+      policy.declared ?? [],
     ),
   }
 }
@@ -656,6 +672,43 @@ function applyReopened(
       reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
     }
     applied.add(row)
+  }
+}
+
+/**
+ * Read the declared-untestable rows into one context's cells (@cto 82a54984 (c), b0d3cd4e). A row covers every context
+ * of its app on its OS. Its cell must read PROBE TODO: then the feature result reads untestable with the row's words,
+ * and result, run and origin stay. A measured cell, a probe's own Untestable, a probe defect (PROBE INVALID, PROBE
+ * CONFLICT), a reopened cell or a missing cell throws naming the row: a measured result always beats a declaration.
+ */
+function applyDeclared(
+  contextKey: string,
+  cells: Record<string, SelectedContextCell>,
+  subject: ProbeSubject | undefined,
+  rows: readonly DeclaredUntestableCell[],
+  applied: Set<DeclaredUntestableCell>,
+  log?: (line: string) => void,
+): void {
+  if (!subject) return
+  for (const row of rows) {
+    if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
+    const cell = cells[row.featureId]
+    const featureResult = cell?.featureResult
+    const status = cell?.reopened ? "reopened" : (featureResult?.status ?? "missing")
+    if (!cell || !featureResult || status !== "probe-todo") {
+      throw new Error(
+        `Declared-untestable cell ${cellLabel(row)} reads ${status} in ${contextKey}${
+          cell ? ` (run ${cell.run.runId})` : ""
+        }; a probe result beats a declaration, so ${REMOVE_DECLARED_ROW}`,
+      )
+    }
+    cells[row.featureId] = {
+      ...cell,
+      featureResult: { ...featureResult, status: "untestable", strength: null },
+      declared: { reason: row.reason, testableIf: row.testableIf, reviewedOn: row.reviewedOn },
+    }
+    applied.add(row)
+    log?.(`declared untestable by review: ${contextKey}/${row.featureId} (row ${cellLabel(row)})`)
   }
 }
 
@@ -715,8 +768,10 @@ function composeContextSummaries(
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
   derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
+  declared: readonly DeclaredUntestableCell[] = [],
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
+  const declaredApplied = new Set<DeclaredUntestableCell>()
   const runsById = new Map<string, ProjectionRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
     // A pass may cite its original draft and its sealed admitted snapshot: one run, different
@@ -904,6 +959,8 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // After reopening, so a reopened cell refuses a declaration; before derivation, so a declared parent derives nothing.
+    applyDeclared(contextKey, cells, candidates[0]?.subject, declared, declaredApplied, log)
     // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
     applyHeld(cells, HELD_NEGATIVES, heldWitnesses)
     // After reopening and holding, before derivation, so a demoted parent derives nothing (#33665, @cto fccc41a9).
@@ -928,6 +985,7 @@ function composeContextSummaries(
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
         ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
+        ...(cells[featureId]?.declared && { declared: cells[featureId]?.declared }),
       })),
       viewIds,
     )
@@ -952,6 +1010,7 @@ function composeContextSummaries(
       attempts,
       counts: aggregate.counts,
       derivedIds,
+      byReview: aggregate.byReview,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
       ...(outerAbsentRefusals.length > 0 && { outerAbsentRefusals }),
@@ -964,6 +1023,14 @@ function composeContextSummaries(
       `${unmatched.length} reopened row(s) match no context cell graded as withdrawn; delete or re-confirm: ${unmatched
         .map((row) => `${cellLabel(row)} (${row.graded})`)
         .join(", ")}`,
+    )
+  }
+  const undeclared = declared.filter((row) => !declaredApplied.has(row))
+  if (undeclared.length > 0) {
+    throw new Error(
+      `${undeclared.length} declared-untestable row(s) match no context cell: ${undeclared
+        .map((row) => cellLabel(row))
+        .join(", ")}; ${REMOVE_DECLARED_ROW}`,
     )
   }
   return summaries
@@ -1168,8 +1235,10 @@ export function loadSelectedResults(
       textSnapshots,
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
-      log: (line) => console.log(line),
+      // Diagnostics go to stderr: callers such as the VitePress config loader print JSON on stdout.
+      log: (line) => console.error(line),
       reopened: loadReopenedCells(contentDir, features),
+      declared: loadDeclaredUntestable(contentDir),
     },
     loadArchivedExclusions(contentDir),
   )
