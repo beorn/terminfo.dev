@@ -3278,6 +3278,9 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
     return notTestedResult(OSC720_SCREEN_OPEN, { reading })
   }
   if (ctx.mux === "tmux") return osc720ScrollUpTmux(ctx)
+  // The subject app itself has no permitted read of its pane (#31741, @cto 20b9ffed): the wheel arm
+  // below reads the viewport it moved, and this app cannot report where that viewport went.
+  if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
 
   const capture = ctx.capture
   const input = ctx.input

@@ -303,6 +303,7 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "alacritty",
     comm: "alacritty",
     titleRead: "system-events",
+    scrollbackUnavailable: "no pane read on this app",
   })
   // WezTerm.app's CFBundleExecutable is wezterm-gui (run 39274899363); the CLI binary never appears here.
   expect(hostedDarwinAppFromExecutablePath("/Applications/WezTerm.app/Contents/MacOS/wezterm-gui")).toEqual({
@@ -315,12 +316,14 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
+    scrollbackUnavailable: "no pane read on this app",
     titleUnavailable: expect.stringContaining('"[Extension Development Host] Cursor"'),
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Visual Studio Code.app/Contents/MacOS/Code")).toEqual({
     id: "com.microsoft.VSCode",
     comm: "Code",
     titleRead: "none",
+    scrollbackUnavailable: "no pane read on this app",
     titleUnavailable: expect.stringContaining('"[Extension Development Host] Visual Studio Code"'),
   })
   // 33056: Warp alone declares a chrome band; every other row's exact match proves the default is none.
@@ -537,4 +540,33 @@ test("darwinHosted alone on Linux refuses by platform, not as a missing arm", as
       darwinHosted: { receiptPath },
     }),
   ).rejects.toThrow(/Owned Darwin hosted terminal requires Darwin/)
+})
+
+/**
+ * #31741 / @cto 20b9ffed: the declaration names Alacritty, VS Code and Cursor and nobody else, with the
+ * reason text verbatim. An app that HAS a pane read must not be declared, or the row would lose a
+ * measurement the run can still make; an app whose read is not yet implemented (Ghostty's scrollback
+ * file, cmux's read-screen) also stays undeclared, because a missing arm is work, not an absence.
+ */
+test("only Alacritty, VS Code and Cursor declare no pane read, with @cto's exact reason", () => {
+  const reason = "no pane read on this app"
+  const declared = [
+    "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+    "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+  ]
+  for (const path of declared) {
+    expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBe(reason)
+  }
+  const measured = [
+    "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+    "/Applications/cmux.app/Contents/MacOS/cmux",
+    "/Applications/Warp.app/Contents/MacOS/stable",
+  ]
+  for (const path of measured) {
+    expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBeUndefined()
+  }
 })
