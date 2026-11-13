@@ -5,6 +5,7 @@
  * @consumer the OSC 52 write/read/clipboard gate on an app a person opened normally (@cto 2026-11-13).
  * @testonly the receipt parser and its admission predicate, driven with synthetic receipts: no Mac host is needed
  *   to prove what the parser refuses.
+ * @reach fs-walk <fixture-only: receipts this test writes under its own mkdtempSync root>
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
