@@ -116,10 +116,17 @@ test("the picker chooses two cells that differ in both row and column, and refus
 // because the restore erases a wide character at the region's edge whole and would change the frame
 // this read digests. Both shapes that used to slip through now refuse by name.
 test("the picker never puts the second cell on a row a compared region uses (33981)", () => {
-  expect(() => witnessCellsFor([cells], { rows: 3, cols: 6 })).toThrow(/on a row it does not use, in the 3x6 grid/)
-  expect(() => witnessCellsFor([{ top: 2, left: 1, bottom: 3, right: 2 }], { rows: 5, cols: 6 })).toThrow(
-    /on a row it does not use, in the 5x6 grid, differs from cell 1,1/,
+  // A five-row screen whose region leaves one clear row cannot hold a pair: the second cell would
+  // have to differ in row, and there is no other row. It refuses and names that limit (34040).
+  expect(() => witnessCellsFor([cells], { rows: 3, cols: 6 })).toThrow(
+    /on a row it does not use, in the 3x6 grid.*the compared region leaves one clear row, 3,/,
   )
+  // 34040: cell 4,2 is three rows below the first cell and clear of the region. It was outside the
+  // old fixed candidate list, which refused this grid; the search takes the nearest usable cell.
+  expect(witnessCellsFor([{ top: 2, left: 1, bottom: 3, right: 2 }], { rows: 5, cols: 6 })).toEqual({
+    a: { row: 1, col: 1 },
+    b: { row: 4, col: 2 },
+  })
 })
 
 test("the crop origin comes from where the sentinel pair landed in this frame, not from calibration (33000)", async () => {

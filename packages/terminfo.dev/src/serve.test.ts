@@ -66,6 +66,15 @@ it.each(["tmux", "screen", "darwin-screen"])(
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
     let suppliedTarget=target,hasAttachment=true,hasBinary=true,historyThroughCli=false,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    // 31741 cmux record boundary (@dev/1 peer verdict, F2): the arm's evidence must reach the run the
+    // collector persists, so this models the owner's own shape - a live lastRead getter over the last CLI
+    // read - and switches arms between collects below.
+    const cmuxExecutable="/Applications/cmux.app/Contents/MacOS/cmux"
+    const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
+    let cmuxArm,cmuxLast
+    const cmuxHistory=()=>cmuxArm==="grant-failed"
+      ? {executable:cmuxExecutable,surface:null,grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -80,8 +89,9 @@ it.each(["tmux", "screen", "darwin-screen"])(
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>{cmuxLast=JSON.stringify({surface:"surface-uuid-1",ownership:"surface",markers:null,extras:null,totalLines:73});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
+        ...(cmuxArm===undefined?{}:{cmuxHistory:cmuxHistory(),historyReadsThroughCli:true,historyExecutable:{path:cmuxExecutable,sha256:"ab".repeat(32),version:"cmux 0.65.2"}}),
         // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
         // binary's proof; this flag models that arm with no measured CLI proof.
         ...(historyThroughCli?{historyReadsThroughCli:true}:{}),
@@ -96,6 +106,9 @@ it.each(["tmux", "screen", "darwin-screen"])(
       else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
       try{if(!darwin)await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
+      // The history probe reads through the owner before the run record exists; a record serialized at
+      // grant would carry the grant receipt as its last read (@dev/1 peer verdict, F2).
+      if(cmuxArm==="success"||cmuxArm==="config-absent")await options.ownedTerminal.getScrollback()
       // Batch-only coverage cannot see the producer overwrite its persisted collection custody.
       const readDraft=()=>JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY||join(process.env.HOME,".terminfo-dev","http-responses"),options.captureRunId+".draft.json"),"utf8"))
       collectionAttempt=readDraft().rawReplies["collector.collectionAttempt"]
@@ -119,6 +132,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.deepEqual(JSON.parse(run.rawReplies["collector.historyIdentityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
+    assert.equal(run.rawReplies["collector.cmuxHistory"],undefined,"a run with no cmux arm writes no history evidence")
     if(!darwin){
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
@@ -155,6 +169,27 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=true;writeFileSync(path,JSON.stringify(outerApp.provenance))
       const outer=await collect()
       assert.deepEqual(JSON.parse(outer.rawReplies["collector.preflightIdentity"]),{...preflight,launchRunId:"a".repeat(32)})
+      // F2: collect through serve.ts's own record construction and read what the collector persists, so
+      // deleting the assignment at serve.ts:1319 fails here instead of leaving a helper test green.
+      preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
+      cmuxArm="success"
+      const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(cmuxRecord.executable,cmuxExecutable)
+      assert.equal(cmuxRecord.surface,"surface-uuid-1")
+      assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
+      assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
+      assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
+      assert.equal(JSON.parse(cmuxRecord.lastRead).totalLines,73)
+      cmuxArm="grant-failed";cmuxLast=undefined
+      const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(failedRecord.surface,null)
+      assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
+      assert.match(failedRecord.grantProof,/published no CMUX_SURFACE_ID/)
+      cmuxArm="config-absent";cmuxLast=undefined
+      const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.deepEqual(JSON.parse(absentRecord.grantProof).config,{read:"absent"},"a launch with no config keeps the absence in the record")
+      assert.equal(JSON.parse(absentRecord.lastRead).ownership,"surface")
+      cmuxArm=undefined
     }
   `,
       ],

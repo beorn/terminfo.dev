@@ -97,6 +97,7 @@ import {
   type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
+import { cmuxHistoryEvidence } from "./cmux-history-record.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
@@ -1360,6 +1361,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       : undefined
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
+    // The cmux arm's own proof belongs in the persisted run, not only on the object the collector keeps
+    // (@dev/1 peer read 2026-11-13): the grant receipt, or the failure that replaced it, and the last
+    // read. Serializing here evaluates the live getter, so the record carries the read that happened.
+    const cmuxEvidence = cmuxHistoryEvidence(ownedTerminal?.cmuxHistory)
+    if (cmuxEvidence !== undefined) Object.assign(batch.rawReplies, cmuxEvidence)
     // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched
     // shell's bytes cannot explain a count the terminal's own CLI produced — and when that CLI's proof was
     // not measured, naming the shell's binary instead would be the silent substitution this comment

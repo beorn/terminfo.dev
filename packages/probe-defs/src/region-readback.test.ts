@@ -28,6 +28,7 @@ import type {
   CaptureRectangle,
   MeasuredProbeCallbackResult,
   ObservationFrame,
+  PixelCellCrop,
   PixelObservationFrame,
   ProbeCallbackResult,
   ProbeSuiteManifest,
@@ -109,6 +110,11 @@ function ownedWindow(options: {
    * hand-built read; the collector-backed reader always carries one with the region digest.
    */
   cropFor?: (label: string) => CaptureRectangle | undefined
+  /**
+   * What the capture measured about the grid behind each read's rectangle, keyed by label (33982).
+   * Absent models a pre-change or hand-built frame, which cannot be exempted.
+   */
+  cellCropFor?: (label: string) => PixelCellCrop | undefined
 }): Fake {
   const sentinelAnswers = options.sentinelAnswers ?? true
   let screen = options.regionDigest([])
@@ -153,12 +159,14 @@ function ownedWindow(options: {
       }
     }
     const regionRectangle = options.cropFor?.(label)
+    const cellCrop = options.cellCropFor?.(label)
     const frame: ObservationFrame = {
       role,
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
       ...(regionRectangle ? { regionRectangle } : {}),
+      ...(cellCrop ? { cellCrop } : {}),
     }
     const cell = key(region)
     const content = cell === SENTINEL_CELL ? glyph : screen
@@ -2377,4 +2385,39 @@ test("declared visual crop movement alone cannot witness target freshness", asyn
     { x: 1, y: 32, width: 8, height: 16 },
   ])
   expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+})
+
+/**
+ * 33982, through the path the real rows run: `captureRegionReadbackDecision`. Warp repaints its text
+ * area 35 rows lower when a probe sends RIS, so the seed and post-sequence frames stay at one place
+ * while the expected and ignored-attribute frames are cropped 560 px lower. The exemption must read
+ * that as one grid move and decide the row, not as two crops of unrelated cells.
+ */
+function rowsMovedCellCrop(originY: number): PixelCellCrop {
+  return {
+    origin: { x: 49, y: originY },
+    basis: "sentinel pair located by frame difference",
+    basisDetail: "sentinel re-located by frame difference at cells 1,2 and 2,1 (33000, 33981)",
+    cell: { width: 16, height: 16 },
+    grid: { columns: 123, rows: 39 },
+    image: { width: 2000, height: 1400 },
+    witness: {
+      a: { cell: { row: 1, col: 2 }, box: { x: 65, y: originY } },
+      b: { cell: { row: 2, col: 1 }, box: { x: 49, y: originY + 16 } },
+    },
+  }
+}
+
+test("a grid that moves 35 rows between the seed and the expected frame is decided, not refused (#33982)", async () => {
+  const movedAfter = new Set(["editing.delete-chars: expected frame"])
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: (label) => ({ x: 49, y: movedAfter.has(label) ? 638 : 78, width: 48, height: 16 }),
+    cellCropFor: (label) => rowsMovedCellCrop(movedAfter.has(label) ? 606 : 46),
+  })
+  const result = await decide(fake)
+  // Decided, not refused: the exemption turns what used to be a tool-invalid row into a verdict.
+  expect(result.observation.outcome).toBe("supported")
+  expect(JSON.stringify(result.observation)).not.toMatch(/cropped from different positions/)
 })

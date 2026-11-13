@@ -497,6 +497,7 @@ export function ownedAppCommand(
   output: string,
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
+  runId: string,
   probeIds?: string[],
 ): { argv: string[]; label: string } {
   // An unknown id is refused here, against the catalogue already in this tree, before any host is
@@ -512,8 +513,13 @@ export function ownedAppCommand(
     context.id,
     ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]),
   ]
+  // #34018: the run identity is the composer's, on BOTH routes. The local route hands it to the same
+  // admin flag the transport sets on the host, so a pass compares one identity either way.
   if (transport.runner === "local") {
-    return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
+    return {
+      argv: [...probe, "--run-id", runId, "--output", output],
+      label: `${labelOf(context)} owned-app collection`,
+    }
   }
   if (!transport.knownHosts) {
     throw new Error(
@@ -533,6 +539,8 @@ export function ownedAppCommand(
       sourceRevision,
       "--context",
       context.id,
+      "--run-id",
+      runId,
       "--known-hosts",
       transport.knownHosts,
       ...(transport.removeStage ? ["--remove-stage"] : []),
@@ -867,7 +875,7 @@ export async function collectPass(
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, probeIds)
+        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, handed.draft.runId, probeIds)
         runChild(
           command.argv,
           command.label,
