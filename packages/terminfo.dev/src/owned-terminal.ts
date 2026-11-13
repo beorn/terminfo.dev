@@ -338,6 +338,13 @@ export interface OwnedTerminal {
   readonly historyExecutable?: { readonly path: string; readonly sha256: string; readonly version: string }
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
+  /**
+   * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
+   * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
+   * where the history rows read it as their declared Untestable reason. Absent where the app has a read;
+   * a later app version that grows one removes the entry.
+   */
+  readonly scrollbackUnavailable?: string
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
    * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
