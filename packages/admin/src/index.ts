@@ -97,8 +97,16 @@ probe
   .option("-f, --force", "Re-run even if cached")
   .option("--output <directory>", "Retain the collected run and original HTTP response privately")
   .option("--probe-ids <json>", "Exact probe IDs as a JSON array; [] executes none", json)
+  .option("--run-id <id>", "Carry this run identity instead of minting one; 32 lowercase hex characters (#34018)")
   .actionMerged(
-    async (opts: { terminal?: string; all?: boolean; force?: boolean; output?: string; probeIds?: unknown }) => {
+    async (opts: {
+      terminal?: string
+      all?: boolean
+      force?: boolean
+      output?: string
+      probeIds?: unknown
+      runId?: string
+    }) => {
       ensureSourceSuiteEnvironment()
       const { handleApp } = await import("./app.ts")
       const probeIds = opts.probeIds === undefined ? undefined : collectorIds(opts.probeIds, "--probe-ids")

@@ -21,6 +21,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  copyFileSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -37,6 +38,7 @@ import * as versions from "../packages/admin/versions.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
@@ -1531,18 +1533,30 @@ const ownedAppContext: CollectionContext = {
   uncollectable: null,
 }
 const ownedAppRevision = "c".repeat(40)
+// #34018: the composer hands the run identity down; the owned routes never mint their own.
+const ownedAppRunId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 // The local route must stay byte-identical to the argv it always ran; the ssh route hands the
 // SAME probe arguments to the transport driver after its own transport flags, never a second probe.
 it("starts an owned-app row locally with the probe argv it always ran", () => {
-  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
   expect(command.label).toBe("kitty/macos owned-app collection")
+  // #34018 is the addition: the run identity the composer handed down. Everything else is the argv
+  // this route always ran, in the same order.
   expect(command.argv).toEqual([
     "bun",
     "packages/admin/src/index.ts",
     "probe",
     "app",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--output",
     "/private/kitty",
   ])
@@ -1552,7 +1566,14 @@ it("forwards an explicit probe selection through the app route on both runners",
   const selected = selectAppProbes()
     .expected.slice(0, 2)
     .map((probe) => probe.id)
-  const local = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision, selected)
+  const local = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+    selected,
+  )
   expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
   const remote = ownedAppCommand(
     ownedAppContext,
@@ -1564,6 +1585,7 @@ it("forwards an explicit probe selection through the app route on both runners",
       removeStage: true,
     },
     ownedAppRevision,
+    ownedAppRunId,
     selected,
   )
   const probeStart = remote.argv.indexOf("--") + 1
@@ -1590,6 +1612,7 @@ it("refuses an unknown selected id locally, with the daemon's own sentence, befo
         removeStage: true,
       },
       ownedAppRevision,
+      ownedAppRunId,
       ["not-a-probe"],
     ),
   ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
@@ -1600,7 +1623,13 @@ it("refuses an unknown selected id locally, with the daemon's own sentence, befo
 // "unknown command 'term'" while the suite stayed green. The argv is only correct if the CLI it names
 // registers that subcommand, so this reads the CLI's own command list instead of trusting the name.
 it("names a probe subcommand the admin CLI registers", () => {
-  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
   const probe = command.argv.indexOf("probe")
   const subcommand = command.argv[probe + 1]
   expect(subcommand).toBeDefined()
@@ -1715,9 +1744,10 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
       removeStage: true,
     },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.label).toBe("kitty/macos owned-app transport")
-  expect(command.argv.slice(0, 13)).toEqual([
+  expect(command.argv.slice(0, 15)).toEqual([
     "bun",
     "scripts/owned-app-remote-run.ts",
     "--transport",
@@ -1730,6 +1760,8 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     ownedAppRevision,
     "--context",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--known-hosts",
   ])
   expect(command.argv).toContain("--remove-stage")
@@ -1749,6 +1781,7 @@ it("hands the ssh transport no stage when none is supplied, so the driver derive
     "/private/kitty",
     { runner: "ssh:fixture@fixture.invalid", knownHosts: "/home/fixture/.ssh/known_hosts" },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.argv).not.toContain("--stage")
   expect(command.argv.slice(0, 8)).toEqual([
@@ -1770,6 +1803,7 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
       "/private/kitty",
       { runner: "ssh:fixture@fixture.invalid", stage: "/remote/stage" },
       ownedAppRevision,
+      ownedAppRunId,
     ),
   ).toThrow(/requires --owned-app-known-hosts/)
 })
@@ -1851,9 +1885,11 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       'case "$*" in',
       "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
       "  --version) echo '1.2.3' ;;",
-      "  *) out=''",
-      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     cp "$PRODUCER_RUN" "$out/kitty-current-todo.json" ;;',
+      "  *) out=''; id=''",
+      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; --run-id) shift; id="$1" ;; esac; shift; done',
+      '     [ -n "$id" ] || { echo "host stub: no --run-id reached the host command" >&2; exit 9; }',
+      '     printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      '     sed \'s/"runId":"[^"]*"/"runId":"\'"$id"\'"/\' "$PRODUCER_RUN" > "$out/kitty-current-todo.json" ;;',
       "esac",
     ].join("\n"),
   )
@@ -1862,7 +1898,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   const producerDraft = initializeRunDraft({
     runId: "transport-kitty-current-todo",
     sourceRevision: revision,
-    manifest: { ...currentManifest, schemaVersion: 4 },
+    // The current derived suite: placement verifies an App run against the trusted current snapshot,
+    // so a historical fixture manifest would be refused before the identity is ever read.
+    manifest: { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 },
     source: { kind: "live" },
     intendedSubject: { kind: "term", id: "kitty" },
   })
@@ -1880,6 +1918,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   producerDraft.identity = "unverified"
   producerDraft.origin = { kind: "collector" }
   producerDraft.measuredAt = "2026-10-06T23:41:34.869Z"
+  // #34018 R1: the measured identity replies a real kitty run carries, so the transported original is
+  // a record the place path can accept — the point of the route is a run, not a JSON shape.
+  producerDraft.rawReplies["collector.xtversion"] = "\x1bP>|kitty(0.48.2)\x1b\\\x1b[?62;22c"
   writeFileSync(producerRun, JSON.stringify(finalizeCollectedDraft(producerDraft as CapturedRunDraft)))
   const producerBytes = readFileSync(producerRun)
   try {
@@ -1888,6 +1929,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       output,
       { runner: "ssh:fixture@fixture.invalid", stage, knownHosts },
       revision,
+      ownedAppRunId,
     )
     // argv[0] is the `bun` token the collector resolves from PATH; here the runner is this process,
     // so only the driver path and its arguments are passed.
@@ -1901,6 +1943,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
         OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
         PRODUCER_RUN: producerRun,
+        INBOUND_ID_FILE: join(directory, "inbound-run-id.txt"),
         REAL_RSYNC: "/usr/bin/rsync",
         REAL_BUN: process.execPath,
       },
@@ -1919,22 +1962,154 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     // collector classifies a run after transport.
     const runPath = join(transport, "kitty-current-todo.json")
     const runBytes = readFileSync(runPath)
+    // The host rewrote the identity and nothing else: the transported bytes are the producer's with
+    // the composer's id in place of the placeholder, which is what "one run, composer-named" means.
+    const expectedBytes = producerBytes.toString("utf8").replace(/"runId":"[^"]*"/, `"runId":"${ownedAppRunId}"`)
+    expect(runBytes.toString("utf8")).toBe(expectedBytes)
     expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
-      createHash("sha256").update(producerBytes).digest("hex"),
+      createHash("sha256").update(expectedBytes).digest("hex"),
     )
     const raw = runBytes.toString("utf8")
     const probeHash = (JSON.parse(raw) as { probeHash: string }).probeHash
-    const suitePath = join(CONTENT, "suites", `${probeHash.slice(0, 12)}.json`)
-    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const manifest = { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 as const }
     const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
     expect(run.results?.every((result) => result.status === "probe-todo")).toBe(true)
+    // #34018 R1 (@dev/17 peer REVISE): the SAME App original this route produced is one the place
+    // path accepts, under the identity the composer handed down — not a separate fixture run.
+    expect(readFileSync(join(directory, "inbound-run-id.txt"), "utf8")).toBe(ownedAppRunId)
+    const content = mkdtempSync(join(directory, "content"))
+    copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
+    for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
+    const placed = placeCollectedRun(runPath, manifest, content)
+    expect(basename(placed)).toContain(ownedAppRunId)
+    expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([{ runId: ownedAppRunId }])
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
 }, 60_000)
+
+// #34018 R1 (@dev/17 peer REVISE): the composed owned route, driven through the real pass. The host
+// stub consumes the inbound `--run-id` as the identity of the run it hands back — which is what the
+// admin does with `createProbeRun(runId)` — so the only way the assertions below can hold is if the
+// composer's identity really crossed to the host and came back as the run's own identity.
+async function composedOwnedPass(hostRunId?: string) {
+  const directory = mkdtempSync(join(tmpdir(), "composed-owned-"))
+  const shims = join(directory, "shims")
+  const output = join(directory, "output")
+  const witness = join(directory, "inbound-run-id.txt")
+  const producer = join(directory, "producer.json")
+  mkdirSync(shims, { recursive: true })
+  mkdirSync(output, { recursive: true })
+  writeFileSync(
+    join(shims, "bun"),
+    [
+      "#!/bin/sh",
+      'out=""; id=""',
+      "while [ $# -gt 0 ]; do",
+      '  case "$1" in',
+      '    --run-id) shift; id="$1" ;;',
+      '    --output) shift; out="$1" ;;',
+      "  esac",
+      "  shift",
+      "done",
+      '[ -n "$id" ] || { echo "host stub: no --run-id crossed the compose boundary" >&2; exit 9; }',
+      'printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      'write="$id"',
+      '[ -n "$HOST_RUN_ID" ] && write="$HOST_RUN_ID"',
+      'sed \'s/"runId":"[^"]*"/"runId":"\'"$write"\'"/\' "$PRODUCER_RUN" > "$out/terminal-app-current-todo.json"',
+    ].join("\n"),
+    { mode: 0o755 },
+  )
+  const snapshot = versions.probeSuiteSnapshot()
+  const manifest = versions.derivedSuiteManifest(snapshot)
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    encoding: "utf8",
+  }).trim()
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "00000000000000000000000000000000",
+    sourceRevision,
+    manifest: { ...manifest, schemaVersion: 4 },
+    intendedSubject: { kind: "term", id: "terminal-app", os: "macos" },
+  })
+  draft.subject = {
+    kind: "term",
+    id: "terminal-app",
+    version: "2.15",
+    os: "macos",
+    osVersion: "26.6.2",
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.identity = "unverified"
+  draft.origin = { kind: "collector" }
+  draft.measuredAt = "2026-10-06T23:41:34.869Z"
+  writeFileSync(producer, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
+  const environment = {
+    PATH: `${shims}:/usr/bin:/bin`,
+    PRODUCER_RUN: producer,
+    INBOUND_ID_FILE: witness,
+    HOST_RUN_ID: hostRunId ?? "",
+  }
+  const previous = Object.entries(environment).map(([key, value]) => [key, process.env[key]] as const)
+  Object.assign(process.env, environment)
+  // The local owned route starts only on the host that owns the app (@cto 33963 condition 3), so the
+  // pass is driven as it would run on the Mac, without pretending this machine launched the app.
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
+  try {
+    const pass = await collectPass(output, { runner: "local" }, { contexts: ["terminal-app/macos"] })
+    return { pass, witness, manifest, directory }
+  } finally {
+    if (platform) Object.defineProperty(process, "platform", platform)
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
+it("admits the identity the host consumed, not a fixture identity", async () => {
+  // Placement of the same App original is proven on the ssh route below, where the transported run
+  // carries the measured identity replies a real kitty run does; here the subject is the census's
+  // terminal-app row, which has no placement identity profile of its own to satisfy.
+  const { pass, witness, directory } = await composedOwnedPass()
+  try {
+    expect(pass.contexts).toHaveLength(1)
+    const row = pass.contexts[0]!
+    expect(row.error).toBeUndefined()
+    expect(row.status).toBe("classified")
+    expect(row.summary).toBeDefined()
+    const draftPath = join(pass.directory, "term-terminal-app-macos.draft.json")
+    const handed = parseJsonStrict(draftPath, readFileSync(draftPath, "utf8")) as { runId: string }
+    // The identity the host was given, the identity it handed back, and the identity the pass graded
+    // are one run — not a fixture that was minted before the pass and could never disagree.
+    expect(readFileSync(witness, "utf8")).toBe(handed.runId)
+    const original = JSON.parse(readFileSync(row.rawRun!, "utf8")) as { runId: string }
+    expect(original.runId).toBe(handed.runId)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
+
+it("refuses by name when the host hands back an identity it was not given", async () => {
+  const { pass, directory } = await composedOwnedPass("ffffffffffffffffffffffffffffffff")
+  try {
+    const row = pass.contexts[0]!
+    // The pass leaves the row unstarted and names the substitution: the host was given one identity
+    // and handed back another, and the composer refuses rather than grading one run as the other.
+    expect(row.error).toMatch(/terminal-app\/macos: Collector changed logical runId/)
+    expect(pass.complete).toBe(false)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
 
 it("records the host-written transport receipt as evidence and refuses anything else", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))

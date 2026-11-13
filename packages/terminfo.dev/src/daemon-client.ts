@@ -45,10 +45,25 @@ export interface Run {
   scriptPath: string
 }
 
-export function createProbeRun(): Run {
+/** The one shape an externally supplied run id may take: the same 16 random bytes this module mints,
+ * spelled as lowercase hex. It is not a secret, but it is text that reaches a shell command line and a
+ * file name, so the alphabet is stated once here rather than assumed at each call site (34018). */
+export const RUN_ID_PATTERN = /^[0-9a-f]{32}$/
+
+export function createProbeRun(runId?: string): Run {
   // Darwin's per-user tmpdir can exceed an editor's Unix-socket budget once its run marker is appended.
   const directory = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "terminfo-run-"))
-  const id = randomBytes(16).toString("hex")
+  // #34018: an owned-app run carries the identity the composer handed it, so both sides name one run.
+  // A malformed id refuses by name instead of falling back to a fresh mint, which would silently
+  // reintroduce the mismatch this parameter exists to remove.
+  if (runId !== undefined && !RUN_ID_PATTERN.test(runId)) {
+    rmSync(directory, { recursive: true, force: true })
+    throw new Error(
+      `run id ${JSON.stringify(runId)} is not 32 lowercase hex characters; an owned-app run carries the ` +
+        `identity it was handed and never substitutes one of its own`,
+    )
+  }
+  const id = runId ?? randomBytes(16).toString("hex")
   // The script carries the run id: Ghostty's run file names it unquoted, scoped to this run (@cto D2).
   return { id, directory, scriptPath: join(directory, `serve-${id}.sh`) }
 }
