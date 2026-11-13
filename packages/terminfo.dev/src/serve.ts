@@ -786,6 +786,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             label: checkpoint.label,
             sentinel,
             regions,
+            deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {

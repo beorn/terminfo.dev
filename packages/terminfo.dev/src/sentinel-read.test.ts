@@ -66,6 +66,7 @@ test("the crop origin comes from where the sentinel landed in this frame, not fr
       label: "cells 1,1-2,2",
       sentinel,
       regions: [cells],
+      deadline: Date.now() + 1_000,
     })
     return { origin, painted: painted.writes }
   }
@@ -94,6 +95,7 @@ test("a frame without this read's sentinel refuses by name, and the painted cell
       label: "cells 1,1-2,2",
       sentinel,
       regions: [cells],
+      deadline: Date.now() + 1_000,
     }),
   ).rejects.toThrow(
     "cells 1,1-2,2: calibration's sentinel painted at cell 3,1 is nowhere in the frame this read digests, so its crop cannot be anchored",
@@ -114,6 +116,7 @@ test("a sentinel colour that is not one solid block refuses by name rather than 
       label: "cells 1,1-2,2",
       sentinel,
       regions: [cells],
+      deadline: Date.now() + 1_000,
     }),
   ).rejects.toThrow(
     "cells 1,1-2,2: calibration's sentinel painted at cell 3,1 is not one cell block: 5 px in a 12x6 box, against a 2x2 cell at 0,0",
@@ -133,7 +136,56 @@ test("a capture that fails for its own reason still restores the cell, and keeps
       label: "cells 1,1-2,2",
       sentinel,
       regions: [cells],
+      deadline: Date.now() + 1_000,
     }),
   ).rejects.toBe(failure)
+  expect(painted.writes).toEqual(["\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8", "\x1b7\x1b[3;1H\x1b[0m \x1b8"])
+})
+
+test("a capture that lands one write behind the paint is captured again, not refused (33000)", async () => {
+  const witness = { row: 3, col: 1 }
+  const painted = source()
+  const blank: CapturedFrame = { width: 12, height: 8, rgba: new Uint8Array(12 * 8 * 4).fill(255) }
+  const frames = [blank, windowAt({ x: 2, y: 2 }, witness)]
+  let captures = 0
+  const origin = await readThroughSentinel({
+    source: painted.source,
+    capture: async (resolve) => {
+      const frame = frames[captures]
+      captures += 1
+      if (frame === undefined) throw new Error("fixture ran out of frames")
+      return resolve({ frame, pixelGeometry })
+    },
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    deadline: Date.now() + 1_000,
+  })
+  expect(captures).toBe(2)
+  expect(origin.origin).toEqual({ x: 2, y: 2 })
+  // Still one paint and one restore around the whole read, however many captures it took.
+  expect(painted.writes).toEqual(["\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8", "\x1b7\x1b[3;1H\x1b[0m \x1b8"])
+})
+
+test("a sentinel that never appears refuses at the read's deadline and still restores (33000)", async () => {
+  const painted = source()
+  const blank: CapturedFrame = { width: 12, height: 8, rgba: new Uint8Array(12 * 8 * 4).fill(255) }
+  let captures = 0
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      capture: async (resolve) => {
+        captures += 1
+        return resolve({ frame: blank, pixelGeometry })
+      },
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      deadline: Date.now() - 1,
+    }),
+  ).rejects.toThrow(
+    "cells 1,1-2,2: calibration's sentinel painted at cell 3,1 is nowhere in the frame this read digests, so its crop cannot be anchored; it did not settle before this read's deadline",
+  )
+  expect(captures).toBe(1)
   expect(painted.writes).toEqual(["\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8", "\x1b7\x1b[3;1H\x1b[0m \x1b8"])
 })

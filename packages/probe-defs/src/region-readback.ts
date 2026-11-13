@@ -545,12 +545,13 @@ export function witnessCellFor(
     regions.some((region) => cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right)
   const visible = (cell: { row: number; col: number }): boolean =>
     cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
+  // split a wide character straddling the region's edge, and the terminal erases the whole glyph,
+  // which would change the very frame this read digests (@dev/10 peer read).
   const candidates = [
     { row: first.top - 1, col: first.left },
     { row: first.top - 1, col: first.right + 1 },
     { row: first.bottom + 1, col: first.left },
-    { row: first.top, col: first.left - 1 },
-    { row: first.top, col: first.right + 1 },
   ]
   const found = candidates.find((cell) => visible(cell) && !digested(cell))
   if (!found) {

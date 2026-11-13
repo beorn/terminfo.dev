@@ -152,6 +152,18 @@ test("the sentinel cell is one clear of every digested region, and a crowded gri
   expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 24, right: 80 }], grid)).toThrow(
     /No cell outside the digested region 1,1-24,80 in the 24x80 grid can carry calibration's sentinel/,
   )
+  // No same-row candidate is offered (@dev/10 peer read): a neighbouring cell on the region's own
+  // row can split a wide glyph straddling its edge and change the frame being digested. So a region
+  // that starts on row 1 and runs to the last row has nowhere to put the sentinel.
+  expect(() =>
+    witnessCellFor(
+      [
+        { top: 1, left: 1, bottom: 22, right: 10 },
+        { top: 23, left: 1, bottom: 23, right: 10 },
+      ],
+      grid,
+    ),
+  ).toThrow(/No cell outside the digested region/)
 })
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {
