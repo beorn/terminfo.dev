@@ -218,6 +218,7 @@ function fixture(): void {
     join(shims, "bun"),
     [
       "#!/bin/sh",
+      'if [ "$1" = "--version" ] || [ "$1" = "--eval" ]; then exec "$REAL_BUN" "$@"; fi',
       'case "$*" in',
       '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
@@ -502,6 +503,20 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("does not stage or witness mutable test caches", () => {
+    // 33797: the witness must not spawn readlink once per staged link. Count actual tool calls
+    // while retaining the existing transport/cache assertions; no production-only test seam.
+    const linkCalls = join(root, "resource-readlink-calls")
+    writeFileSync(linkCalls, "")
+    executable(
+      join(shims, "readlink"),
+      `#!${process.execPath}\n` +
+        `import { appendFileSync } from "node:fs"\n` +
+        `appendFileSync(${JSON.stringify(linkCalls)}, "readlink\\n")\n` +
+        `const result = Bun.spawnSync(["/usr/bin/readlink", ...process.argv.slice(2)], { stdout: "inherit", stderr: "inherit" })\n` +
+        `process.exit(result.exitCode)\n`,
+    )
+    writeFileSync(join(code, "node_modules", "resource with space.txt"), "same witnessed bytes\n")
+    symlinkSync("resource with space.txt", join(code, "node_modules", "link with space"))
     const caches = [".vitest", ".cache", ".vitest-cache"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
@@ -517,6 +532,7 @@ describe("owned-app ssh transport", () => {
     const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
     expect(again.status, again.stderr).toBe(0)
     expect(proof(again).resourceManifestSha256).toBe(proof(first).resourceManifestSha256)
+    expect(readFileSync(linkCalls, "utf8"), "resource witness spawned a child for a link").toBe("")
   }, 60_000)
 
   it("removes the stage only when asked", () => {
@@ -688,11 +704,14 @@ describe("owned-app ssh transport", () => {
     expect(result.stderr).toContain("broken staged symlink")
   }, 60_000)
 
-  it("refuses a host with no bun", () => {
-    rmSync(join(shims, "bun"))
+  it.each(["absent", "wrong version"])("refuses a host whose bun is %s", (runtime) => {
+    // The shared witness runs only under the matching Bun runtime, before any probe starts.
+    if (runtime === "absent") rmSync(join(shims, "bun"))
+    else executable(join(shims, "bun"), "#!/bin/sh\necho 0.0.0\n")
     const result = run()
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain("bun absent")
+    expect(result.stderr).toContain(runtime === "absent" ? "bun absent" : "bun version mismatch")
+    expect(existsSync(join(output, "transport"))).toBe(false)
   }, 60_000)
 
   it("refuses an argv that does not name the bun runtime token", () => {
@@ -759,6 +778,7 @@ describe("owned-app ssh transport", () => {
           OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
           SHIM_SSH_LOG: sshLog,
           SHIM_RSYNC_LOG: rsyncLog,
+          REAL_BUN: process.execPath,
         },
       },
     )
