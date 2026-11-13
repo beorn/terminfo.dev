@@ -156,7 +156,15 @@ from the same rectangle as the frames they are compared with; a moved crop is pr
 unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
 reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
 paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
-the progress shows outside the window the run captures. The same no-change on a tmux or Screen arm
+the progress shows outside the window the run captures. If set-50 changes the App window and clear
+restores it, the same capture additionally compares stable normal-state37/73/37 pairs, clearing
+exactly to baseline after each. Both values must differ from baseline and each other, and replay37
+must equal the first37. The ordinary OSC9 text payload `terminfo-progress-control-37` must leave the
+window unchanged: its alphabetic prefix is not a ConEmu numeric subcommand and its number tests the
+notification confound. Passing these controls decides a repeatable, value-dependent window change
+removed by clear, with the actual target image cited. It claims no numerical fill accuracy, other
+progress states or effects outside the capture. Failed stability, replay, sensitivity or restoration
+stays unresolved, never Unsupported through this positive branch. The same no-change on a tmux or Screen arm
 keeps Untestable (no setup). OSC 555 uses the same whole-window controls and
 nine finite samples; missed flash declares Untestable (no way to tell), never Unsupported. Missing
 or broken controls keep these rows open. Real colour replies and qualified exact-command reports

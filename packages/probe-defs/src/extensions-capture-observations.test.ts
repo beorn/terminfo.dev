@@ -77,7 +77,15 @@ function calibratedIterm2Arm(
     captureKind?: "pixels" | "text-cells"
     colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean; resetRestores?: boolean }
     effect?: "cursor" | "progress" | "flash"
-    progress?: "values" | "ignored" | "same-values" | "unstable" | "replay-mismatch" | "clear-fails" | "text-notification" | "made-up"
+    progress?:
+      | "values"
+      | "ignored"
+      | "same-values"
+      | "unstable"
+      | "replay-mismatch"
+      | "clear-fails"
+      | "text-notification"
+      | "made-up"
     blind?: boolean
     /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
     resetRegionShift?: { x: number; y: number }
@@ -123,9 +131,12 @@ function calibratedIterm2Arm(
         const value = /\x1b\]9;4;1;(\d+)\x07/.exec(bytes)?.[1]
         if (value && options.progress !== "ignored") {
           if (value === "37") progress37Writes++
-          progress = options.progress === "same-values" ? "active"
-            : options.progress === "replay-mismatch" && value === "37" && progress37Writes > 1 ? "changed-replay"
-              : value
+          progress =
+            options.progress === "same-values"
+              ? "active"
+              : options.progress === "replay-mismatch" && value === "37" && progress37Writes > 1
+                ? "changed-replay"
+                : value
         }
         if (options.progress === "text-notification" && bytes.includes("\x1b]9;terminfo-progress-control-37\x07")) {
           progress = "notification 37"
@@ -161,14 +172,18 @@ function calibratedIterm2Arm(
         role,
         label,
         capturedAt: ++reads,
-        ref: options.progress ? `sha256:${createHash("sha256").update(`frame${reads}`).digest("hex")}` : `sha256:frame${reads}`,
+        ref: options.progress
+          ? `sha256:${createHash("sha256").update(`frame${reads}`).digest("hex")}`
+          : `sha256:frame${reads}`,
         regionDigest:
           cells?.top === 1 && cells.left === 1
             ? `witness:${glyph}`
             : options.effect === "cursor"
               ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
               : `plane:${plane}`,
-        pixelsDigest: options.progress ? `sha256:${createHash("sha256").update(progressPixels).digest("hex")}` : `window:${plane}:${glyph}`,
+        pixelsDigest: options.progress
+          ? `sha256:${createHash("sha256").update(progressPixels).digest("hex")}`
+          : `window:${plane}:${glyph}`,
         ...(cells &&
           !resetRegionMissing && {
             regionRectangle: {
@@ -647,7 +662,11 @@ test.each([
   const recorded = recordExecutedProbe({
     featureId: "extensions.osc9-progress",
     attempt: { scope: "probe", startedAt: "2026-11-12T00:00:00.000Z" },
-    observation: result.observation && { ...result.observation, featureId: "extensions.osc9-progress", rawReplyRef: "extensions.osc9-progress" },
+    observation: result.observation && {
+      ...result.observation,
+      featureId: "extensions.osc9-progress",
+      rawReplyRef: "extensions.osc9-progress",
+    },
     coverage: result.notTested && { featureId: "extensions.osc9-progress", ...result.notTested },
     assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: "extensions.osc9-progress" })),
     tests: result.tests,
@@ -793,7 +812,10 @@ function expectCapturedResultParses(featureId: string, result: ProbeCallbackResu
 
 test("extensions.osc112-reset-cursor's supported observation survives the run parser", async () => {
   const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
-  expectCapturedResultParses("extensions.osc112-reset-cursor", await find("extensions.osc112-reset-cursor").term!(context))
+  expectCapturedResultParses(
+    "extensions.osc112-reset-cursor",
+    await find("extensions.osc112-reset-cursor").term!(context),
+  )
 })
 
 test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {

@@ -1855,6 +1855,70 @@ async function wholeWindowOscAppCapture(
     }
     ctx.write(clear)
     const cleared = await shoot("effect cleared")
+    if (
+      kind === "progress" &&
+      ctx.mux === undefined &&
+      cleared.pixelsDigest === baseline &&
+      targets.some((digest) => digest !== baseline)
+    ) {
+      // OSC9 also carries text notifications. A numbered text payload must not explain this image change.
+      ctx.write("\x1b]9;terminfo-progress-control-37\x07")
+      const notification = await shoot("numbered text-notification control")
+      if (notification.pixelsDigest !== baseline) {
+        return notTestedResult(`${id}: numbered OSC9 text notification changed the captured window`, state())
+      }
+      const samples: { frame: ObservationFrame; pixelsDigest: string }[] = []
+      for (const [index, value] of [37, 73, 37].entries()) {
+        const phase = `normal ${value}${index === 2 ? " replay" : ""}`
+        ctx.write(`\x1b]9;4;1;${value}\x07`)
+        const sample = await captureStabilityPair(
+          id,
+          "screenshot",
+          () => shoot(`${phase} first`, "target"),
+          () => shoot(`${phase} second`, "target"),
+        )
+        ctx.write(clear)
+        const restored = await shoot(`${phase} cleared`)
+        if (sample.refusal) {
+          return notTestedResult(`${id}: ${phase} captures were not byte-stable`, state())
+        }
+        if (restored.pixelsDigest !== baseline) {
+          return notTestedResult(`${id}: ${phase} clear did not restore the exact baseline`, state())
+        }
+        samples.push(sample.second)
+      }
+      const [first, second, replay] = samples
+      if (
+        first === undefined ||
+        second === undefined ||
+        replay === undefined ||
+        first.pixelsDigest === baseline ||
+        second.pixelsDigest === baseline ||
+        first.pixelsDigest === second.pixelsDigest ||
+        replay.pixelsDigest !== first.pixelsDigest
+      ) {
+        return notTestedResult(`${id}: normal 37/73/37 did not produce distinct, repeatable window images`, state())
+      }
+      return {
+        pass: true,
+        response: JSON.stringify(state()),
+        observation: {
+          outcome: "supported",
+          assertionType: "screenshot",
+          frames,
+          screenshotRef: first.frame.ref,
+        },
+        assertions: [
+          {
+            assertionType: "screenshot",
+            kind: "positive",
+            expected:
+              "OSC9 normal 37/73/37 produces stable, distinct and repeatable captured-window changes after paint, made-up and numbered text-notification controls, with exact clear restoration",
+            observed: JSON.stringify(state()),
+          },
+        ],
+      }
+    }
     if (cleared.pixelsDigest !== baseline || targets.some((digest) => digest !== baseline)) {
       return notTestedResult(
         `${id}: the whole-window effect changed or did not restore its baseline; this no-change branch does not decide that effect`,
