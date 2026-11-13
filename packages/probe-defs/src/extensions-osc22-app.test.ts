@@ -189,6 +189,30 @@ test.each([
       "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
   },
   {
+    name: "default config, no control possible: declared untestable",
+    read: {
+      status: "unavailable",
+      reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+      titlesForwarded: false,
+      detail: {},
+    },
+    status: "probe-todo",
+    reason:
+      "No forwarding control reaches the outer record under the default config, so what the multiplexer sent for OSC 22 was not read.",
+  },
+  {
+    name: "set-titles profile, control missing: invalid",
+    read: {
+      status: "unavailable",
+      reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+      titlesForwarded: true,
+      detail: {},
+    },
+    status: "probe-invalid",
+    reason:
+      "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read.",
+  },
+  {
     name: "not attempted: invalid with the no-record reason",
     read: { status: "unavailable", reason: "Outer command read not attempted: no verified owned mux terminal" },
     status: "probe-invalid",
@@ -201,8 +225,11 @@ test.each([
   const result = outer.grade(read)
   expect(result.criterionBranch).toBe("osc22-mux-outer-command")
   if (status === "unsupported") {
-    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply", note: reason })
-    expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
+    // The decided negative asserts on the outer command record, the same `buffer_state` kind every outer-record
+    // grade in this package uses; this arm issues no query, so a query_reply assertion would be a collector stop
+    // (@cto 33920).
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state", note: reason })
+    expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "buffer_state" })])
     expect(result.tests).toBeUndefined()
   } else {
     expect(result.observation).toBeUndefined()

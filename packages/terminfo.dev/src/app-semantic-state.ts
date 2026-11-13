@@ -12,6 +12,7 @@ import {
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -929,7 +930,11 @@ const sgrPaintMatcher: OuterCommandMatcher = {
 }
 
 /**
- * A forwarding control carrying the invocation's nonce, then one target, as whole record lines.
+ * One target line, then a forwarding control carrying the invocation's nonce that closes its window, as whole
+ * record lines. The callback writes the target FIRST and the control second (@cto 33919 condition 3): a multiplexer
+ * forwards a title when it next redraws, never at the instant the pane writes it, so everything it forwarded before
+ * the control is already in the record when the control line arrives. A target line found before the control belongs
+ * to this invocation; one found after it is a later write's and cannot make this arm's negative sound.
  * Lines are copied verbatim from the bare Kitty 0.49.2 --dump-commands capture
  * /hh/var/@dev16/32593/kitty-dump/record.txt (sha256 a432e932819c98bfd7f5b41e0f76358f145a07a80691cbaa4bb8cb8c9355b49c),
  * retained as fixtures/kitty-osc2-osc22-commands.txt; nothing here is read from terminal source.
@@ -949,8 +954,8 @@ function controlTargetMatcher(spec: {
         throw new Error(`Outer ${spec.label} trace has ${controls.length} forwarding control writes; one is required`)
       }
       const at = writes.findIndex((value) => spec.control.write.exec(value) !== null)
-      if (!writes.slice(at + 1).includes(spec.target.write)) {
-        throw new Error(`Outer ${spec.label} trace has no target write after its forwarding control`)
+      if (!writes.slice(0, at).includes(spec.target.write)) {
+        throw new Error(`Outer ${spec.label} trace has no target write before its forwarding control`)
       }
       const controlLine = spec.control.line(nonce)
       return {
@@ -960,30 +965,34 @@ function controlTargetMatcher(spec: {
           const unknown: string[] = []
           let control: number | undefined
           let target: number | undefined
+          let targetAfterControl: number | undefined
           for (const match of text.matchAll(/([^\n]*)\n/g)) {
             const line = match[1] ?? ""
-            // This invocation's control opens its window: the callback sends the nonce title first, then the
-            // target, so a target or any other line before the control is an earlier invocation's (32593 peer).
-            if (control === undefined) {
-              if (line === controlLine) control = match.index
+            // The control closes this invocation's phase but does not end the read: the window runs to the deadline so
+            // a target line that arrives only AFTER the control is visible, and can be refused as a negative rather
+            // than counted as "the multiplexer did not send" (@cto 33919 condition 3, 33920 condition 2).
+            if (line === controlLine && control === undefined) {
+              control = match.index
               continue
             }
-            if (line === controlLine) continue
             if (line === spec.target.line) {
-              target = match.index
-              return {
-                commands: { control, target },
-                start: control,
-                end: match.index + match[0].length,
-                unknown: named(unknown),
+              if (control === undefined) {
+                if (target === undefined) target = match.index
+              } else if (targetAfterControl === undefined) {
+                targetAfterControl = match.index
               }
+              continue
             }
             unknown.push(line)
           }
-          return { commands: { control, target }, start: control, unknown: named(unknown) }
+          return {
+            commands: { control, target, targetAfterControl },
+            start: target ?? control,
+            unknown: named(unknown),
+          }
         },
         decide(scan) {
-          const seen = scan.commands as { control?: number; target?: number }
+          const seen = scan.commands as { control?: number; target?: number; targetAfterControl?: number }
           if (seen.control === undefined) {
             throw new Error(`Outer command record has no forwarding control line: ${controlLine}`)
           }
@@ -993,6 +1002,14 @@ function controlTargetMatcher(spec: {
           const other = scan.unknown.lines.find((line) => line.startsWith(`${command} `))
           if (seen.target === undefined && other !== undefined) {
             throw new Error(`Outer command record has ${command} in another form than the target line: ${other}`)
+          }
+          // A control that arrived before the target is not a negative (@cto 33919 condition 3, 33920 condition 2):
+          // whatever the multiplexer forwarded before it is already in the record, so a target line after the
+          // control is a later write's and shows nothing about this invocation.
+          if (seen.target === undefined && seen.targetAfterControl !== undefined) {
+            throw new Error(
+              `Outer command record carries ${spec.target.line} only after its forwarding control; this invocation's target must precede it`,
+            )
           }
           return { target: spec.target.line, targetSent: seen.target !== undefined }
         },
@@ -1108,14 +1125,30 @@ export function hasOuterCommandMatcher(featureId: string): boolean {
 }
 
 /** Collector-local outer command read for every per-probe matcher (the name predates the non-SGR matchers); ownership comes from the existing live terminal owner. */
+/**
+ * Does this run's mux config forward a title — the OSC 2 forwarding control — to the outer terminal? Declared per
+ * multiplexer: GNU Screen passes the pane's title through with any config (measured in the 32593 run-1112 screen
+ * record), while tmux forwards one only with its documented `set-titles` option on (off by default in 3.8). A
+ * profile's exact bytes come from the same table the placement check reads, so a label cannot drift from its file.
+ * Undefined when the mux or its recorded config is unknown, which leaves the reader's own reason in place.
+ */
+function muxForwardsTitle(mux: string | undefined, config: string | null | undefined): boolean | undefined {
+  if (mux === undefined) return undefined
+  if (mux !== "tmux") return true
+  if (config === null || config === undefined) return undefined
+  return MUX_PROFILE_CONFIG_FILES[config]?.content.split("\n").includes("set-titles on") ?? false
+}
+
 export function beginMuxSgrCommandRead(input: {
   featureId: string
-  subject: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal">>
+  subject: Pick<ProbeSubject, "kind"> &
+    Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal" | "config">>
   proof?: Pick<LinuxMuxAttachmentProof, "platform" | "mux" | "launchRunId" | "collector">
 }) {
   try {
     const { subject, proof } = input
     const env = process.env
+    const titlesForwarded = muxForwardsTitle(subject.id, subject.config)
     if (
       subject.kind !== "mux" ||
       !declarations.some(
@@ -1222,13 +1255,18 @@ export function beginMuxSgrCommandRead(input: {
           return {
             status: "unavailable" as const,
             reason: error instanceof Error ? error.message : String(error),
+            titlesForwarded,
             detail,
           }
         }
       },
     }
   } catch (error) {
-    return { status: "unavailable" as const, reason: error instanceof Error ? error.message : String(error) }
+    return {
+      status: "unavailable" as const,
+      reason: error instanceof Error ? error.message : String(error),
+      titlesForwarded: muxForwardsTitle(input.subject.id, input.subject.config),
+    }
   }
 }
 

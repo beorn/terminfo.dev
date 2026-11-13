@@ -1288,7 +1288,17 @@ export type OuterCommandRead =
       trace?: { sha256: string; lines: number; window: { offset: number; endOffset?: number } }
       detail: object
     }
-  | { status: "unavailable"; reason: string; detail?: object }
+  | {
+      status: "unavailable"
+      reason: string
+      /**
+       * Whether this run's mux config forwards a title to the outer terminal at all. `false` (the empty default tmux
+       * config) means no forwarding control can reach the record, so a row that needs one is untestable here, not
+       * probe-invalid (@cto 33919 condition 2). Absent when the reader cannot tell.
+       */
+      titlesForwarded?: boolean
+      detail?: object
+    }
 
 /** Same-row observations from the owned App reader; no App identity enters probe definitions. */
 export type AppSemanticReading =
