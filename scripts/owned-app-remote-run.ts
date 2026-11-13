@@ -842,9 +842,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     }
     const archive = join(scratch, "archive")
     const localLines = [
-      ...(light
-        ? []
-        : manifestScan(archiveOf(options, archive), [], "resource manifest mismatch").lines),
+      ...(light ? [] : manifestScan(archiveOf(options, archive), [], "resource manifest mismatch").lines),
       ...scan.lines,
       ...closureLines,
     ]
