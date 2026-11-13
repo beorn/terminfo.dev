@@ -7,6 +7,7 @@
  * probes/unified.ts admits only the three OSC 52 rows, and only after its own live walk.
  */
 import { basename } from "node:path"
+import { appBundleId } from "./app-bundles.ts"
 import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipboard.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import {
@@ -16,18 +17,9 @@ import {
   type OrdinaryOpenReceipt,
 } from "./ordinary-open-receipt.ts"
 
-/**
- * The app registry lives in packages/admin/src/app.ts, and that module reaches the collector through
- * admin/src/collected-run.ts → terminfo.dev/src/serve.ts. A static import here would close a module cycle, so it is
- * loaded lazily — the same answer admin/src/server.ts and admin/src/here.ts already give that cycle. A run without
- * a receipt never loads the registry at all.
- */
-async function registryBundleId(id: string): Promise<string | undefined> {
-  const { appBundleId } = await import("../../admin/src/app.ts")
-  return appBundleId(id)
-}
-
+/** The variable a launcher sets to hand a collector the receipt for a window the person opened. */
 export const ORDINARY_OPEN_RECEIPT_ENV = "TERMINFO_ORDINARY_OPEN_RECEIPT"
+/** The other, unrelated proof: a disposable runner's own receipt. A run is one or the other, never both. */
 export const DISPOSABLE_RECEIPT_ENV = "TERMINFO_DISPOSABLE_RECEIPT"
 
 /** What an ordinary-open run is, once its receipt has been bound to this run's subject. */
@@ -101,7 +93,7 @@ export async function resolveOrdinaryOpenRun(input: {
   if (receipt.subject.id !== subject.id) {
     throw new Error(`ordinary-open receipt names ${receipt.subject.id}, and this run measures ${subject.id}`)
   }
-  const expectedBundleId = await registryBundleId(subject.id)
+  const expectedBundleId = appBundleId(subject.id)
   if (expectedBundleId === undefined) {
     throw new Error(
       `no bundle id is named for ${subject.id} in the app registry, so an ordinary-open receipt cannot bind this app`,
@@ -122,6 +114,15 @@ export async function resolveOrdinaryOpenRun(input: {
   if (receipt.subject.version !== subject.version) {
     throw new Error(`ancestry app is version ${receipt.subject.version}, row measures ${subject.version}`)
   }
+  // @dev/16 12:22 nit: a receipt for an app that is already gone binds nothing, so the walk runs at START too.
+  // The same check runs again on every read and write; this one only decides whether the run may begin.
+  const startVerdict = checkOrdinaryOpenLiveAncestry({
+    receipt,
+    expectedBundleId,
+    probePid: input.probePid ?? process.pid,
+    ...(input.readAncestry && { reader: input.readAncestry }),
+  })
+  if (!startVerdict.ok) throw new Error(startVerdict.probeTodo)
   const clipboard = await createDarwinClipboardAdapter({
     appId: receipt.subject.id,
     appComm: basename(receipt.subject.executableInBundle),
@@ -170,4 +171,17 @@ export function ordinaryOpenRecord(run: OrdinaryOpenRun, probePid: number = proc
     chainLength: run.receipt.ancestry.chain.length,
     appPidAlive: live.ok,
   })
+}
+
+/**
+ * The rows must publish the version the receipt bound (@dev/16 12:22 R1). START binds what the run knows before its
+ * first probe; the subject publishes what the probes measured, and the two are not always the same string — so a run
+ * whose rows would disagree with its receipt refuses instead of publishing rows about another build.
+ */
+export function assertOrdinaryOpenVersionBound(run: OrdinaryOpenRun, publishedVersion: string | undefined): void {
+  if (publishedVersion === run.receipt.subject.version) return
+  throw new Error(
+    `this run publishes app version ${publishedVersion ?? "(none)"}, and the ordinary-open receipt bound ` +
+      `${run.receipt.subject.version}: rows about another build are not this receipt's rows`,
+  )
 }

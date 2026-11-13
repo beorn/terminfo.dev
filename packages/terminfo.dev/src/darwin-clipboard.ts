@@ -43,6 +43,37 @@ function pasteboardText(raw: string): string {
  * Owned clipboard and title for a github-hosted Darwin run. The runner is the receipt's app.
  * The general pasteboard is saved and restored around one probe. No CGEvent.
  */
+/**
+ * The pasteboard types a plain-text round trip puts back exactly. Anything else — an image, a file promise, styled
+ * text — survives `pbpaste`/`pbcopy` as text or not at all, so a run that wrote over it would "restore" something
+ * else and report success (@cto 2026-11-13, F2 on f3f5e725b).
+ */
+const TEXT_RESTORABLE_TYPES = new Set([
+  "«class utf8»",
+  "«class ut16»",
+  "«class TEXT»",
+  "string",
+  "public.utf8-plain-text",
+  "public.utf16-plain-text",
+  "public.text",
+])
+
+/**
+ * `osascript -e 'clipboard info'` reduced to TYPE NAMES. Its sizes are dropped here and never leave this function:
+ * a size is a length of someone's pasteboard, which the same ruling forbids publishing.
+ */
+export function parsePasteboardTypes(output: string): string[] {
+  return output
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "" && !/^\d+$/u.test(part))
+}
+
+/** The types a text round trip cannot restore. Empty means every present type is plain text this probe can put back. */
+export function unrestorablePasteboardTypes(types: readonly string[]): string[] {
+  return types.filter((type) => !TEXT_RESTORABLE_TYPES.has(type))
+}
+
 export async function createDarwinClipboardAdapter(input: {
   appComm: string
   /**
@@ -138,8 +169,23 @@ export async function createDarwinClipboardAdapter(input: {
   // @dev/8 R1: the sentinel readback belongs INSIDE the fixture, where a failure refuses the probes
   // that need the pasteboard and leaves the rest of the run standing. Thrown at construction it
   // would kill all 273 rows over one feature's fixture, which is what unified.ts:653 forbids.
-  const withClipboardFixture: LinuxClipboardAdapter["withClipboardFixture"] =
-    disposable === undefined
+  const withClipboardFixture: LinuxClipboardAdapter["withClipboardFixture"] = personMode
+    ? async (work, trace, verify) => {
+        await input.assertOwned()
+        // Types only, and before the first write: a clipboard holding an image or styled text would come back as
+        // plain text, which is "left changed" without ever saying so.
+        const unrestorable = unrestorablePasteboardTypes(
+          parsePasteboardTypes(await run("/usr/bin/osascript", ["-e", "clipboard info"])),
+        )
+        if (unrestorable.length > 0) {
+          const reason =
+            "the person's clipboard holds content this probe cannot restore " +
+            `(${unrestorable.join(", ")}), so nothing was written`
+          return { pass: false, note: reason, tests: [{ id: "prerequisite", status: "probe-todo" as const, reason }] }
+        }
+        return transaction(work, trace, verify)
+      }
+    : disposable === undefined
       ? transaction
       : async (work, trace, verify) => {
           await input.assertOwned()

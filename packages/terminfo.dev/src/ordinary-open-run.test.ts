@@ -17,6 +17,7 @@ import { ORDINARY_OPEN_RECEIPT_KIND, type LiveAncestryReader } from "./ordinary-
 import {
   DISPOSABLE_RECEIPT_ENV,
   ORDINARY_OPEN_RECEIPT_ENV,
+  assertOrdinaryOpenVersionBound,
   ordinaryOpenReceiptPath,
   ordinaryOpenRecord,
   resolveOrdinaryOpenRun,
@@ -79,10 +80,11 @@ function receiptFile(overrides: Record<string, unknown> = {}): string {
 }
 
 /** A pasteboard that holds what a person left there; `pbpaste` strips its own trailing newline. */
-function personPasteboard(initial = PERSON, refuseRestore = false) {
+function personPasteboard(initial = PERSON, refuseRestore = false, types = "«class utf8», 12, string, 12") {
   let value = initial
   const run: DarwinCommand = async (file, _args, stdin) => {
     if (file.endsWith("pbpaste")) return `${value}\n`
+    if (file.endsWith("osascript")) return types
     if (file.endsWith("pbcopy")) {
       if (refuseRestore && stdin === initial) throw new Error("pbcopy refused the restore")
       value = stdin ?? ""
@@ -99,9 +101,10 @@ function resolve(
     subject?: { id: string; os: string; version: string | undefined }
     runId?: string
     refuseRestore?: boolean
+    baseline?: string
   } = {},
 ) {
-  const board = personPasteboard(PERSON, options.refuseRestore === true)
+  const board = personPasteboard(options.baseline ?? PERSON, options.refuseRestore === true)
   return resolveOrdinaryOpenRun({
     receiptPath: receiptFile(options.overrides),
     runId: options.runId ?? RUN,
@@ -163,16 +166,25 @@ test("every way a receipt can fail to bind this run refuses at START, by name", 
 
 test("the walk is live, not cached: a chain that no longer reaches the app refuses the row", async () => {
   const board = personPasteboard()
+  // The START walk sees the real chain once; every walk after it sees nothing, as if the app had quit mid-run.
+  let calls = 0
+  const readAncestry = {
+    parent: (pid: number) => {
+      calls += 1
+      // The first three calls are the START walk (4802 -> 4790 -> 4711); every later walk sees nothing.
+      return calls <= 3 ? liveChain.parent(pid) : undefined
+    },
+  }
   const resolved = await resolveOrdinaryOpenRun({
     receiptPath: receiptFile(),
     runId: RUN,
     subject: SUBJECT,
     run: board.run,
     probePid: PROBE_PID,
-    readAncestry: { parent: () => undefined },
+    readAncestry,
   })
   await expect(resolved.clipboard.assertOwned()).rejects.toThrow(/does not reach the app pid 4711/)
-  // And the refusal is repeated on the next call, because nothing was cached from the first.
+  // And the refusal is repeated on the next call, because nothing was cached from the START walk.
   await expect(resolved.clipboard.assertOwned()).rejects.toThrow(/does not reach the app pid 4711/)
 })
 
@@ -190,15 +202,23 @@ test("the person's pasteboard is restored even when a row throws", async () => {
   expect(board.read()).toBe(PERSON)
 })
 
-test("a failed restore is loud and says whose clipboard was left changed", async () => {
-  const { resolved } = await resolve({ refuseRestore: true })
-  await expect(
-    resolved.clipboard.withClipboardFixture(
+test("a failed restore is loud, says whose clipboard was left changed, and never quotes the value", async () => {
+  const baseline = "luna6-baseline-9f3c2a"
+  const { resolved, board } = await resolve({ refuseRestore: true, baseline })
+  const message = await resolved.clipboard
+    .withClipboardFixture(
       async () => ({ pass: true }) as ProbeCallbackResult,
       () => {},
       async () => {},
-    ),
-  ).rejects.toThrow(/^The person's clipboard was left changed: restoration failed: pbcopy refused the restore$/)
+    )
+    .then(
+      () => "",
+      (error: unknown) => (error as Error).message,
+    )
+  expect(message).toBe("The person's clipboard was left changed: restoration failed: pbcopy refused the restore")
+  // The value it could not put back is the thing a diagnostic must never repeat.
+  expect(message).not.toContain(baseline)
+  expect(board.read()).toBe(baseline)
 })
 
 test("a foreign pasteboard value publishes neither its digest nor its length", async () => {
@@ -220,6 +240,7 @@ test("a foreign pasteboard value publishes neither its digest nor its length", a
       }
       return `${value}\n`
     }
+    if (file.endsWith("osascript")) return "«class utf8», 20"
     if (file.endsWith("pbcopy")) {
       value = stdin ?? ""
       return ""
@@ -272,4 +293,51 @@ test("the published record carries no path, not even a home directory", async ()
   })
   expect(record.chainLength).toBe(3)
   expect(typeof record.appPidAlive).toBe("boolean")
+})
+
+test("a START refusal runs no pasteboard command at all, so nothing is written and no row can exist", async () => {
+  const calls: string[] = []
+  const run: DarwinCommand = async (file) => {
+    calls.push(file)
+    return ""
+  }
+  await expect(
+    resolveOrdinaryOpenRun({
+      receiptPath: receiptFile(),
+      runId: RUN,
+      subject: { ...SUBJECT, version: "3.5.15" },
+      run,
+      probePid: PROBE_PID,
+      readAncestry: liveChain,
+    }),
+  ).rejects.toThrow(/ancestry app is version 3.5.14, row measures 3.5.15/)
+  expect(calls).toEqual([])
+})
+
+test("an app that is already gone is refused at START, not after the rows", async () => {
+  const calls: string[] = []
+  const run: DarwinCommand = async (file) => {
+    calls.push(file)
+    return ""
+  }
+  await expect(
+    resolveOrdinaryOpenRun({
+      receiptPath: receiptFile(),
+      runId: RUN,
+      subject: SUBJECT,
+      run,
+      probePid: PROBE_PID,
+      readAncestry: { parent: () => undefined },
+    }),
+  ).rejects.toThrow(/does not reach the app pid 4711/)
+  expect(calls).toEqual([])
+})
+
+test("the rows must publish the version the receipt bound", async () => {
+  const { resolved } = await resolve()
+  expect(() => assertOrdinaryOpenVersionBound(resolved, "3.5.14")).not.toThrow()
+  expect(() => assertOrdinaryOpenVersionBound(resolved, "3.5.15")).toThrow(
+    /publishes app version 3.5.15, and the ordinary-open receipt bound 3.5.14/,
+  )
+  expect(() => assertOrdinaryOpenVersionBound(resolved, undefined)).toThrow(/publishes app version \(none\)/)
 })

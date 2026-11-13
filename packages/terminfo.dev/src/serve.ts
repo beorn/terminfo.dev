@@ -75,6 +75,8 @@ import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
 import {
+  ORDINARY_OPEN_RECEIPT_ENV,
+  assertOrdinaryOpenVersionBound,
   ordinaryOpenReceiptPath,
   ordinaryOpenRecord,
   resolveOrdinaryOpenRun,
@@ -1207,21 +1209,35 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
               const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
-              // A person's own window (@cto 2026-11-13 PLAN GO): the receipt binds THIS run or the run refuses
-              // here, before a single row exists. No owned terminal is involved, so the version it binds is the
-              // one these rows will carry, resolved exactly as the subject below resolves it.
+              // A person's own window (@cto 2026-11-13 PLAN GO, F3): one proof per run, so an owned terminal and an
+              // ordinary-open receipt refuse together instead of OR-ing two ownership claims into one artifact.
               const ordinaryOpenReceipt = ordinaryOpenReceiptPath()
+              if (ordinaryOpenReceipt !== undefined && ownedTerminal) {
+                throw new Error(
+                  `${ORDINARY_OPEN_RECEIPT_ENV} is set on a run that owns its terminal (${kind}): an owned run and ` +
+                    "an ordinary-open receipt are different proofs; set exactly one",
+                )
+              }
               if (ordinaryOpenReceipt !== undefined) {
+                // The version bound here is what the run knows before its first probe; the subject below publishes
+                // what the probes measured, and `assertOrdinaryOpenVersionBound` refuses if the two disagree.
+                const beforeProbes = resolveMeasuredAppVersion(
+                  measuredTerminal.name,
+                  measuredTerminal.version,
+                  draft.rawReplies,
+                )
                 ordinaryOpen = await resolveOrdinaryOpenRun({
                   receiptPath: ordinaryOpenReceipt,
                   runId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
                   subject: {
                     id: measuredTerminal.name,
                     os: terminal.os,
-                    version: declaredAppVersion(
-                      resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, draft.rawReplies),
-                      process.env.TERMINFO_TARGET_VERSION,
-                    ),
+                    // @dev/16 12:22 R2: declaredAppVersion answers "unknown", never undefined, so map it here —
+                    // otherwise the "no measured version" refusal could never fire on this path.
+                    version:
+                      beforeProbes === "unknown"
+                        ? undefined
+                        : declaredAppVersion(beforeProbes, process.env.TERMINFO_TARGET_VERSION),
                   },
                 })
               }
@@ -1330,6 +1346,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           config: null,
           permissions: null,
         }
+    // @dev/16 12:22 R1: START binds the pre-probe version, the subject above carries the measured one. If the
+    // probes turned out to measure a different build, these rows are about another app and are refused, not published.
+    if (ordinaryOpen) assertOrdinaryOpenVersionBound(ordinaryOpen, subject.version)
     const provenance =
       provenancePath && !muxSubject
         ? parseRunProvenance(provenanceSource, subject, { probeHash, sourceRevision }, provenancePath)
