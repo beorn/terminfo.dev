@@ -502,6 +502,20 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("does not stage or witness mutable test caches", () => {
+    // 33797: the witness must not spawn readlink once per staged link. Count actual tool calls
+    // while retaining the existing transport/cache assertions; no production-only test seam.
+    const linkCalls = join(root, "resource-readlink-calls")
+    writeFileSync(linkCalls, "")
+    executable(
+      join(shims, "readlink"),
+      `#!${process.execPath}\n` +
+        `import { appendFileSync } from "node:fs"\n` +
+        `appendFileSync(${JSON.stringify(linkCalls)}, "readlink\\n")\n` +
+        `const result = Bun.spawnSync(["/usr/bin/readlink", ...process.argv.slice(2)], { stdout: "inherit", stderr: "inherit" })\n` +
+        `process.exit(result.exitCode)\n`,
+    )
+    writeFileSync(join(code, "node_modules", "resource with space.txt"), "same witnessed bytes\n")
+    symlinkSync("resource with space.txt", join(code, "node_modules", "link with space"))
     const caches = [".vitest", ".cache", ".vitest-cache"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
@@ -517,6 +531,7 @@ describe("owned-app ssh transport", () => {
     const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
     expect(again.status, again.stderr).toBe(0)
     expect(proof(again).resourceManifestSha256).toBe(proof(first).resourceManifestSha256)
+    expect(readFileSync(linkCalls, "utf8"), "resource witness spawned a child for a link").toBe("")
   }, 60_000)
 
   it("removes the stage only when asked", () => {
