@@ -19,7 +19,8 @@ import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import { cellRectangle } from "../../terminfo.dev/src/capture-core.ts"
-import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
+import type { CaptureRequest, ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
+import { witnessCellsFor } from "./region-readback.ts"
 
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
@@ -251,6 +252,35 @@ test.each([
   expect(finalized.status).toBe(expectedStatus)
   if (expectedReason) {
     expect(finalized.reason).toBe(expectedReason)
+  }
+})
+
+test("an image row never paints the read's sentinel pair on the image it draws (33985)", async () => {
+  // Warp run 43386197195: the read painted its sentinel at cell 3,4, inside the 3x3 inline image the
+  // probe draws at 3;3, so the sentinel never showed and the row read probe-invalid. The image's
+  // footprint comes from the probe's own bytes, not from the code under test.
+  const { context, writes } = calibratedIterm2Arm()
+  const requests: CaptureRequest[] = []
+  const capture = context.capture
+  if (!capture) throw new Error("the calibrated arm has a capture adapter")
+  context.capture = (async (request: CaptureRequest) => {
+    requests.push(request)
+    return capture(request as Parameters<typeof capture>[0])
+  }) as typeof context.capture
+  await find("extensions.iterm2-images").term!(context)
+  expect(writes.some((write) => write.includes("\x1b[3;3H\x1b]1337;File=inline=1;width=3;height=3;"))).toBe(true)
+  const image = { top: 3, left: 3, bottom: 5, right: 5 }
+  const reads = requests.filter((request) => request.cells !== undefined)
+  expect(reads.length).toBeGreaterThan(0)
+  for (const request of reads) {
+    const regions = [request.cells!, ...(request.controlCells ? [request.controlCells] : [])]
+    const avoid = request.avoid ? [request.avoid] : []
+    const { a, b } = witnessCellsFor(regions, { rows: context.rows, cols: context.cols }, avoid)
+    for (const cell of [a, b]) {
+      const covered =
+        cell.row >= image.top && cell.row <= image.bottom && cell.col >= image.left && cell.col <= image.right
+      expect(covered, `${request.label}: sentinel cell ${cell.row},${cell.col} lies on the drawn image`).toBe(false)
+    }
   }
 })
 
