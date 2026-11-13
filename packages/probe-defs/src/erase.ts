@@ -363,28 +363,52 @@ type MuxHistory = number | { reason: ObservationReason; note: string }
  * multiplexer over its socket out-of-band from the pane's inner PTY, fence each read with a DSR 6
  * cursor-position round-trip so the multiplexer has consumed the preceding PTY write (`seed` or `ED3`).
  */
+type FencedHistory =
+  | { readonly status: "read"; readonly lines: number; readonly fence: { readonly row: number; readonly col: number } }
+  | { readonly status: "refused"; readonly reason: ObservationReason; readonly note: string }
+
+async function historyLinesFenced(
+  ctx: TermProbeSource,
+  label: string,
+  read: () => Promise<TerminalScrollbackReading>,
+  stage: "seed" | "ED3" | "alive",
+): Promise<FencedHistory> {
+  const fence = await ctx.queryCursorPosition()
+  if (!fence) {
+    return {
+      status: "refused",
+      reason: "no-response",
+      note: `no cursor-position reply to fence ${stage} before ${label}`,
+    }
+  }
+  let reading: TerminalScrollbackReading
+  try {
+    reading = await read()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { status: "refused", reason: "collector-error", note: `${label} failed: ${message}` }
+  }
+  const lines = reading.screenLines === undefined ? Number.NaN : reading.totalLines - reading.screenLines
+  if (!Number.isSafeInteger(lines) || lines < 0) {
+    return {
+      status: "refused",
+      reason: "invalid-reply",
+      note: `${label} gave no history count: ${JSON.stringify(reading)}`,
+    }
+  }
+  return { status: "read", lines, fence: { row: fence.row, col: fence.col } }
+}
+
 async function muxHistoryLines(
   ctx: TermProbeSource,
   mux: "tmux" | "screen",
   stage: "seed" | "ED3",
 ): Promise<MuxHistory> {
   const query = MUX_HISTORY_QUERY[mux]
-  if (!ctx.getScrollback) return { reason: "collector-error", note: `this run has no reader for ${query}` }
-  if (!(await ctx.queryCursorPosition())) {
-    return { reason: "no-response", note: `no cursor-position reply to fence ${stage} before ${query}` }
-  }
-  let reading: TerminalScrollbackReading
-  try {
-    reading = await ctx.getScrollback()
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { reason: "collector-error", note: `${query} failed: ${message}` }
-  }
-  const lines = reading.screenLines === undefined ? Number.NaN : reading.totalLines - reading.screenLines
-  if (!Number.isSafeInteger(lines) || lines < 0) {
-    return { reason: "invalid-reply", note: `${query} gave no history count: ${JSON.stringify(reading)}` }
-  }
-  return lines
+  const read = ctx.getScrollback
+  if (read === undefined) return { reason: "collector-error", note: `this run has no reader for ${query}` }
+  const fenced = await historyLinesFenced(ctx, query, () => read(), stage)
+  return fenced.status === "read" ? fenced.lines : { reason: fenced.reason, note: fenced.note }
 }
 
 /**
@@ -430,7 +454,88 @@ function muxScrollbackResult(
  * prove history is observable, then grade whether ED3 removes it.
  * Never enable mouse tracking — that would steal the wheel into stdin.
  * Multiplexers decide from their own history count instead (muxScrollbackResult); their frames only corroborate.
+ * A run that owns a history reader needs neither wheel nor capture: the reader counts the lines above
+ * the screen, so the seed proves it put lines into history and the read after ED3 proves whether they
+ * left. A seed that never reached history is insufficient evidence, never a pass, and a reader that
+ * fails is named rather than graded.
  */
+async function scrollbackEraseHistory(
+  ctx: TermProbeSource,
+  read: () => Promise<TerminalScrollbackReading>,
+): Promise<ProbeCallbackResult> {
+  const rows = ctx.rows
+  const seeded = rows + 30
+  const required = 30
+  const refill = rows + 5
+  const state: {
+    rows: number
+    seeded: number
+    requiredHistory: number
+    refill: number
+    before: number | null
+    after: number | null
+    alive: number | null
+    fences: Array<{ stage: "seed" | "ED3" | "alive"; row: number; col: number }>
+  } = { rows, seeded, requiredHistory: required, refill, before: null, after: null, alive: null, fences: [] }
+  const invalid = (reason: ObservationReason, note: string): ProbeCallbackResult => ({
+    pass: false,
+    response: JSON.stringify(state),
+    note,
+    observation: { outcome: "inconclusive", reason, assertionType: "buffer_state", note },
+  })
+  // The criterion's own shape: write the lines, then ED3, then read the count. The seed goes in as
+  // visible rows plus the 30 the criterion asks for, so a screen that keeps everything still leaves
+  // the history above zero and the before-read can tell "no history" from "not enough lines".
+  ctx.write("\x1b[2J\x1b[H")
+  ctx.write(`${"E".repeat(Math.min(ctx.cols, 40))}\r\n`.repeat(seeded))
+  const before = await historyLinesFenced(ctx, "owned terminal history", read, "seed")
+  if (before.status === "refused") return invalid(before.reason, before.note)
+  state.before = before.lines
+  state.fences.push({ stage: "seed", ...before.fence })
+  // Seeding rows+30 lines must leave at least the 30 the criterion writes past the screen; anything
+  // less proves the seed never filled history and says nothing about ED3 (@cto 8511f7e3 condition a).
+  if (before.lines < required) {
+    return invalid(
+      "insufficient-evidence",
+      `the seed reached the owned history with ${before.lines} lines above a ${rows}-line screen, fewer than the ${required} written past it, so ED3 has nothing this read can show was removed`,
+    )
+  }
+  ctx.write("\x1b[3J")
+  const after = await historyLinesFenced(ctx, "owned terminal history", read, "ED3")
+  if (after.status === "refused") return invalid(after.reason, after.note)
+  state.after = after.lines
+  state.fences.push({ stage: "ED3", ...after.fence })
+  // Both counts are recorded and a non-zero after is a plain fail, never a partial grade
+  // (@cto 8511f7e3 condition c).
+  if (after.lines > 0) {
+    return parserStateResult(
+      false,
+      "ED3 removes the owned terminal's history: the lines above the screen drop to 0",
+      state,
+      `owned history ${before.lines} -> ${after.lines} lines above a ${rows}-line screen: ED3 left the history in place`,
+    )
+  }
+  // A reader that died on ED3 would answer 0 twice and grade a pass, so the arm refills and requires
+  // the count to move again (@cto 8511f7e3 condition b).
+  ctx.write(`${"Z".repeat(Math.min(ctx.cols, 40))}\r\n`.repeat(refill))
+  const alive = await historyLinesFenced(ctx, "owned terminal history", read, "alive")
+  if (alive.status === "refused") return invalid(alive.reason, alive.note)
+  state.alive = alive.lines
+  state.fences.push({ stage: "alive", ...alive.fence })
+  if (alive.lines === 0) {
+    return invalid(
+      "insufficient-evidence",
+      `the reader reported 0 lines after ED3 and 0 again after ${refill} more lines, so it is not answering and the erase cannot be read`,
+    )
+  }
+  return parserStateResult(
+    true,
+    "ED3 removes the owned terminal's history: the lines above the screen drop to 0 while the reader still follows new ones",
+    state,
+    `owned history ${before.lines} -> ${after.lines} lines above a ${rows}-line screen, and ${alive.lines} after ${refill} more`,
+  )
+}
+
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
   if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
@@ -449,12 +554,16 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
   const capture = ctx.capture
   const input = ctx.input
   const readInput = ctx.readInput
+  const historyRead = ctx.getScrollback
   if (!capture || !input || !readInput) {
-    return notTestedResult("OS-level scrollback dump or XTEST wheel+capture", {
-      capture: Boolean(capture),
-      input: Boolean(input),
-      readInput: Boolean(readInput),
-    })
+    if (historyRead === undefined) {
+      return notTestedResult("OS-level scrollback dump or XTEST wheel+capture", {
+        capture: Boolean(capture),
+        input: Boolean(input),
+        readInput: Boolean(readInput),
+      })
+    }
+    return scrollbackEraseHistory(ctx, () => historyRead())
   }
 
   const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
