@@ -20,6 +20,7 @@ import {
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { launchIterm2Window, resolveIterm2Window } from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -80,6 +81,7 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
   stopOwnedDaemon: vi.fn(),
   shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
+vi.mock("./iterm2-launch.ts", () => ({ launchIterm2Window: vi.fn(), resolveIterm2Window: vi.fn() }))
 vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
@@ -283,6 +285,52 @@ test("Kitty text collection owns a run-local socket and removes it with its one 
   })
 })
 
+test("an owned iTerm2 launch is collected on its sole-instance proof, then closed by its recorded pid", async () => {
+  const launch = {
+    executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    preflightAtEpochSeconds: 1794489720,
+    beforeWindowIds: [10],
+    appleScriptWindowId: 3,
+    tty: "/dev/ttys009",
+  }
+  const owned = {
+    provider: "iterm2" as const,
+    windowId: 41,
+    tty: "/dev/ttys009",
+    ownerPid: 900,
+    executablePath: launch.executablePath,
+    startedAtEpochSeconds: 1794489721,
+  }
+  vi.mocked(launchIterm2Window).mockReturnValue(launch)
+  vi.mocked(resolveIterm2Window).mockReturnValue(owned)
+  vi.mocked(closeOwnedTerminalWindow).mockReturnValue(undefined)
+  await handleApp("iterm2", {})
+  expect(launchIterm2Window).toHaveBeenCalledWith("/private/run/serve.sh", launch.executablePath)
+  const script = String(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1])
+  expect(script).toContain(`printf '%s\\n' "$(tty)" > '/private/run/owner-tty.txt'`)
+  expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
+  expect(resolveIterm2Window).toHaveBeenCalledWith(launch, "/dev/ttys009")
+  expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(owned, 555)
+  expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+    process: {
+      asserter: "terminfo-admin",
+      launchRunId: "private-run",
+      workerPid: 555,
+      provider: "iterm2",
+      ownerPid: 900,
+      executablePath: launch.executablePath,
+      basis: { kind: "sole-instance", preflightAbsent: true },
+      tty: "/dev/ttys009",
+      windowId: 41,
+      intendedVersion: "2.15",
+    },
+  })
+  expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(owned)
+  // The one Apple event is the launch; no osascript close follows it.
+  expect(vi.mocked(execFileSync).mock.calls.some(([file]) => file === "osascript")).toBe(false)
+  expect(removeProbeRun).toHaveBeenCalled()
+})
+
 describe("WezTerm cli-process arm", () => {
   const ownedWindow = {
     provider: "cli-process" as const,
@@ -338,7 +386,7 @@ describe("WezTerm cli-process arm", () => {
         provider: "cli-process",
         ownerPid: 777,
         executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
-        marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
+        basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" } },
         tty: "/dev/ttys009",
         intendedVersion: "2.15",
       },
@@ -418,7 +466,7 @@ describe("Ghostty cli-process arm", () => {
         provider: "cli-process",
         ownerPid: 777,
         executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-        marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
+        basis: { kind: "marker", marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" } },
         tty: "/dev/ttys009",
         intendedVersion: "2.15",
       },
@@ -775,7 +823,7 @@ exports.activate = async (context) => {
       process: expect.objectContaining({
         ownerPid: 778,
         executablePath: ownedWindow.executablePath,
-        marker: ownedWindow.marker,
+        basis: { kind: "marker", marker: ownedWindow.marker },
       }),
     })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)

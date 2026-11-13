@@ -647,7 +647,7 @@ it("sends the process owner as processOwner, refused when it names another daemo
     provider: "kitty" as const,
     ownerPid: 900,
     executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-    marker: { flag: "--instance-group", value: `terminfo-${"c".repeat(32)}` },
+    basis: { kind: "marker" as const, marker: { flag: "--instance-group", value: `terminfo-${"c".repeat(32)}` } },
     tty: "/dev/ttys004",
     intendedVersion: "0.44.0",
   }
