@@ -128,6 +128,29 @@ export function ownedWezTermExecutableProof(
   return { status: "measured", proof: { path: executable, sha256, version } }
 }
 
+/**
+ * What an owned WezTerm arm records about the CLI it reads history through (31741). One decision for every
+ * platform: the arm never borrows another binary's proof, so a measured proof is named, and an unmeasured one
+ * always ships its reason — an `unmeasured` with no reason is not an identity check (@cto REVISE at f1b0a7ffe,
+ * where a macOS-only proof left the Linux arm with neither).
+ */
+export type WezTermHistoryIdentity = Readonly<{
+  /** This arm's count comes from the terminal's own CLI; no other binary's proof explains it. */
+  readonly historyReadsThroughCli: true
+  /** The measured proof, present exactly when the CLI hashed and answered its version. */
+  readonly historyExecutable?: WezTermExecutableProof
+  /** Why the proof could not be measured — always present when `historyExecutable` is absent. */
+  readonly historyExecutableUnmeasured?: string
+}>
+
+export function wezTermHistoryIdentity(executable: string | undefined): WezTermHistoryIdentity | undefined {
+  if (executable === undefined) return undefined
+  const proof = ownedWezTermExecutableProof(executable)
+  return proof.status === "measured"
+    ? { historyExecutable: proof.proof, historyReadsThroughCli: true }
+    : { historyReadsThroughCli: true, historyExecutableUnmeasured: proof.reason }
+}
+
 /** The pane list this run's own socket answers, reduced to what the cross-check needs. */
 function listedPane(
   options: OwnedWezTermPaneOptions & { readonly socket: string; readonly pane: string },

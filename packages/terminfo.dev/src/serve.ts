@@ -1294,7 +1294,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const historyIdentityReason = hasHistoryExecutable
       ? undefined
       : ownedTerminal?.historyReadsThroughCli === true
-        ? "owned scrollback CLI proof unmeasured: this arm reads through the terminal's own CLI, and no other binary explains its count"
+        ? (ownedTerminal.historyExecutableUnmeasured ??
+          "owned scrollback CLI proof unmeasured: this arm reads through the terminal's own CLI, and no other binary explains its count")
         : "owned scrollback binary path, sha256 and version unavailable"
     if (historyIdentity) {
       batch.rawReplies["collector.historyIdentityCheck"] = JSON.stringify({
