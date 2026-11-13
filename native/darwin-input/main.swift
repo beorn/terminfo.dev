@@ -16,8 +16,10 @@
 // nothing here proves more than those three facts at post time (@cto 75732b9d,
 // 60e39dfc, 33587: codimac's console has other people's apps open). Mouse and wheel events go through
 // the HID tap, which lands by screen position, so every mouse verb now NAMES the pid and window and
-// proves that window is still this pid's, with the point inside its re-read frame, in the same call as
-// the post (@cto cbc34e67). Every posting verb also holds one exclusive lock for the length of its own
+// proves that window is still this pid's, that the point is inside its re-read frame, AND that the
+// topmost window at that point is that same window — every other app's window, menu, banner and the
+// Dock included — in the same call as the post (@cto cbc34e67, 1ca329e6). Every posting verb also
+// holds one exclusive lock for the length of its own
 // invocation, so two runs cannot interleave a proof with someone else's focus change. A posting the app
 // ignores is not detectable here: the collector installs this helper only after one injected key comes
 // back through the app's own TTY.
@@ -333,10 +335,120 @@ func insideWindow(_ point: CGPoint, _ frame: CGRect) -> Bool {
     point.x >= frame.minX && point.y >= frame.minY && point.x < frame.maxX && point.y < frame.maxY
 }
 
+/// One on-screen window as the window server lists it, front to back.
+struct ScreenWindow {
+    let id: Int
+    let ownerPid: Int
+    let layer: Int
+    let frame: CGRect
+}
+
+/// Every on-screen window, front to back, across ALL layers and ALL owners. Vanishing windows are
+/// skipped by the caller's size rule; nothing here filters by owner or layer.
+func screenWindows() -> [ScreenWindow] {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+        fail("CGWindowListCopyWindowInfo returned no list")
+    }
+    var rows: [ScreenWindow] = []
+    for entry in list {
+        guard let bounds = entry[kCGWindowBounds as String] as? [String: Any] else { continue }
+        let rect = CGRect(
+            x: number(bounds["X"]), y: number(bounds["Y"]),
+            width: number(bounds["Width"]), height: number(bounds["Height"]))
+        rows.append(ScreenWindow(
+            id: (entry[kCGWindowNumber as String] as? Int) ?? -1,
+            ownerPid: (entry[kCGWindowOwnerPID as String] as? Int) ?? -1,
+            layer: (entry[kCGWindowLayer as String] as? Int) ?? -1,
+            frame: rect))
+    }
+    return rows
+}
+
+func number(_ value: Any?) -> CGFloat {
+    // Rounded exactly as windowRows rounds its bounds, so the frame a mouse verb checked the point
+    // against and the frame the topmost rule compares are the same rectangle, never one pixel apart.
+    if let int = value as? Int { return CGFloat(int) }
+    if let double = value as? Double { return CGFloat(Int(double.rounded())) }
+    return 0
+}
+
+/// The window HID events reach at `point`: the FIRST window, front to back, whose frame contains it.
+/// This is the only question that decides where a posted event lands, and it is not the same question
+/// as "is the point inside our window" — another app's window, a menu, a banner or the Dock can sit
+/// over the point and take the event while our window is still the right owner (@cto 1ca329e6).
+func coveringWindow(_ rows: [ScreenWindow], _ point: CGPoint) -> ScreenWindow? {
+    for row in rows where row.frame.width >= 1 && row.frame.height >= 1 {
+        if insideWindow(point, row.frame) { return row }
+    }
+    return nil
+}
+
+/// Refuse unless the topmost window at `point` is the run's own. Called in the SAME process call as the
+/// post, immediately before it, so nothing separates the proof from the event. The refusal names the
+/// covering window's owner pid and layer — never its title, which is the app's text.
+func requireTopmost(_ point: CGPoint, _ pid: pid_t, _ target: Int, _ operation: String) {
+    let where_ = "point \(Int(point.x)),\(Int(point.y))"
+    guard let covering = coveringWindow(screenWindows(), point) else {
+        fail("no on-screen window contains \(where_), so a mouse \(operation) could not land in the run's " +
+            "own window \(target); refusing it")
+    }
+    if covering.id == target && covering.ownerPid == Int(pid) { return }
+    fail("\(where_) is covered by window \(covering.id) owned by pid \(covering.ownerPid) at layer " +
+        "\(covering.layer), not the run's own window \(target) of pid \(pid); refusing the mouse \(operation)")
+}
+
+/// The topmost rule's own test, on synthetic rows. No window server read, no event, no app, no trust.
+/// Run by the compile-only gate and by anyone who wants to know the rule still holds.
+func selftest() {
+    let point = CGPoint(x: 50, y: 50)
+    let own = ScreenWindow(id: 7, ownerPid: 100, layer: 0, frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+    func outcome(_ rows: [ScreenWindow]) -> String {
+        guard let row = coveringWindow(rows, point) else { return "none" }
+        return "window=\(row.id) pid=\(row.ownerPid) layer=\(row.layer)"
+    }
+    let cases: [(String, String, String)] = [
+        ("uncovered", outcome([own]), "window=7 pid=100 layer=0"),
+        ("covered-by-other-app", outcome([
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 0, y: 0, width: 100, height: 100)),
+            own,
+        ]), "window=9 pid=200 layer=0"),
+        ("covered-by-higher-layer", outcome([
+            ScreenWindow(id: 8, ownerPid: 100, layer: 3,
+                         frame: CGRect(x: 0, y: 0, width: 100, height: 100)),
+            own,
+        ]), "window=8 pid=100 layer=3"),
+        ("unrelated-window-elsewhere", outcome([
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 500, y: 500, width: 10, height: 10)),
+            own,
+        ]), "window=7 pid=100 layer=0"),
+        ("no-window-at-the-point", outcome([
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 500, y: 500, width: 10, height: 10)),
+        ]), "none"),
+    ]
+    var failed = 0
+    for (name, got, want) in cases {
+        if got == want {
+            out("selftest=ok case=\(name)")
+        } else {
+            failed += 1
+            out("selftest=FAIL case=\(name) got=\(got) want=\(want)")
+        }
+    }
+    if failed > 0 { fail("\(failed) topmost-window selftest case(s) failed") }
+    out("selftest=ok cases=\(cases.count)")
+}
+
 /// One posted event at a time across processes. The proof and the post must be atomic, or a second run
 /// can move focus between them and the posting lands in another window with its silence read as the
 /// app's (@cto cbc34e67 point 4). One fixed file, exclusive, released when this process exits. The
 /// run-level "one run at a time" is custody, not this lock, and is not built here.
+///
+/// This lock covers ONE invocation. A drag is a press in one call and a release in the next, so the
+/// lock does not span it: run-level custody has to cover the whole drag before any drag row may be
+/// graded (@cto 1ca329e6 carry).
 func holdInputLock() {
     let path = "/tmp/darwin-input-helper.input.lock"
     // O_NOFOLLOW: a symlink planted at this fixed path must not redirect the lock (or a later write) to a
@@ -378,6 +490,9 @@ guard arguments.count >= 2 else {
 switch arguments[1] {
 case "trust":
     out("trusted=\(trusted())")
+case "selftest":
+    // Pure: synthetic rows only. No window server read, no event, no app, no trust.
+    selftest()
 case "front":
     guard arguments.count == 3 || arguments.count == 4 else {
         fail("usage: darwin-input-helper front <pid> [window-id]")
@@ -434,6 +549,7 @@ case "mouse":
             fail("mouse move \(x),\(y) is outside the run's own window \(target) at \(describe(owned.frame)); " +
                 "refusing the move")
         }
+        requireTopmost(point, pid, target, "move")
         postMouse(dragged ? .leftMouseDragged : .mouseMoved, at: point)
         out("posted=\(dragged ? "dragged" : "move") \(owned.proof) point=\(x),\(y)")
     case "press", "release", "click":
@@ -452,6 +568,8 @@ case "mouse":
             fail("the pointer is at \(pointer.x),\(pointer.y), outside the run's own window \(target) at " +
                 "\(describe(owned.frame)); refusing the \(operation)")
         }
+        // Owner and frame are not enough: whatever is stacked above that point receives the event.
+        requireTopmost(pointer, pid, target, operation)
         switch button {
         case 4, 5:
             // Wheel 4 scrolls up and 5 scrolls down: one line notch per click, the same shape a
