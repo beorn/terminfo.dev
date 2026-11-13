@@ -14,6 +14,7 @@ import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
+import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
 import {
   appSemanticDeclarations,
   beginMuxSgrCommandRead,
@@ -215,50 +216,54 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
 })
 
 // The existing tmux CWD fixtures and WezTerm OSC8 text fixture cannot see the owned pane JSON directory field.
-// Drive the registered OSC7 callback through its existing collector port, with only CLI reads and OSC effects faked.
-test("owned WezTerm OSC7 observes two fresh directory values and restores the public URI", async () => {
+// The real platform-owner boundary is checked in its own fixture. Here the registered callback consumes
+// the shared parser's literal CWD, including escapes that must survive restoration without normalization.
+test("shared WezTerm OSC7 observes two fresh directory values and restores the literal public URI", async () => {
   const runId = "a".repeat(32)
-  for (const [key, value] of Object.entries({
-    TERMINFO_RUN_ID: runId,
-    TERMINFO_MUX_KIND: "",
-    TERMINFO_TARGET_ID: "wezterm",
-    TERMINFO_TARGET_VERSION: "0-unstable-2026-10-10",
-    TERMINFO_CAPTURE_DIRECTORY: "/owned/artifacts",
-    WEZTERM_PANE: "17",
-    WEZTERM_UNIX_SOCKET: "/owned/wezterm.sock",
-  }))
-    vi.stubEnv(key, value)
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-literal-"))
   const initial = "file:///terminfo-original%2Fkeep%20case"
   let cwd = initial
+  let text = ""
   const feeds: string[] = []
-  vi.mocked(execFileSync).mockImplementation((file, args) => {
+  weztermCli.mockImplementation((file, args) => {
     expect(file).toBe("/owned/wezterm")
-    if (args?.[0] === "--version") return "wezterm 0-unstable-2026-10-10\n"
     expect(args).toEqual(["cli", "--no-auto-start", "list", "--format", "json"])
-    return JSON.stringify([{ pane_id: 17, cwd }])
+    return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
   })
   const source = replayTermProbeSource(new Map())
-  source.write = (bytes) => {
+  const privateWrite = (bytes: string) => {
+    text = bytes
     for (const command of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
       feeds.push(command[0])
       if (command[1] === "7") cwd = command[2]!
     }
   }
-  source.readAppSemanticState = (featureId, write) =>
-    readAppSemanticState({
-      featureId,
-      write,
+  source.readAppSemanticState = () =>
+    readWezTermCwd({
+      write: privateWrite,
       runId,
-      executable: { path: "/owned/wezterm-gui", sha256: "b".repeat(64) },
+      captureDirectory: directory,
+      readText: async () => text,
+      async readPane() {
+        const read = readOwnedWezTermPane({ executable: "/owned/wezterm", socket: "/owned/wezterm.sock", pane: "17" })
+        if (read.status !== "listed" || read.matchingPanes !== 1 || typeof read.cwd !== "string") {
+          throw new Error("No unique owned CWD")
+        }
+        return read.cwd
+      },
     })
-  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
-  const result = await definition.term!(source)
-  expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
-  expect(feeds.map((feed) => /^\x1b\](\d+);/.exec(feed)?.[1])).toEqual(["77", "7", "7", "7"])
-  expect(feeds[1]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-control-[0-9a-f]{8}\x07$/)
-  expect(feeds[2]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-target-[0-9a-f]{8}\x07$/)
-  expect(cwd).toBe(initial)
-  expect(feeds.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  try {
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(feeds.map((feed) => /^\x1b\](\d+);/.exec(feed)?.[1])).toEqual(["77", "7", "7", "7"])
+    expect(feeds[1]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-control-[0-9a-f]{8}\x07$/)
+    expect(feeds[2]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-target-[0-9a-f]{8}\x07$/)
+    expect(cwd).toBe(initial)
+    expect(feeds.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test("WezTerm CWD keeps its initial home URI private while the registered callback decides support", async () => {

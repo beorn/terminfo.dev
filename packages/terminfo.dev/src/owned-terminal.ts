@@ -2042,6 +2042,7 @@ export async function createOwnedTerminal(options: {
                 if (
                   typeof read.cwd !== "string" ||
                   !read.cwd.startsWith("file://") ||
+                  // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
                   /[\x00-\x1f\x7f]/.test(read.cwd)
                 ) {
                   throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
