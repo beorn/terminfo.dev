@@ -487,6 +487,8 @@ describe("WezTerm cli-process arm", () => {
     { name: "malformed JSON", stdout: "not-json", message: /invalid JSON/ },
     { name: "CLI failure", status: 2, message: /exit 2/ },
     { name: "read and close failure", status: 2, cleanupFailure: true, message: /exit 2/ },
+    // 34076: a cleanup-only failure must not be mislabeled as a primary read failure in CLI JSON.
+    { name: "close failure only", cleanupFailure: true, message: /close failed/ },
     { name: "unresolved owner", ownerFailure: true, message: /ambiguous owner/ },
   ])("hand-read preserves $name and only closes an acquired owner", async (fault) => {
     vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
@@ -520,20 +522,36 @@ describe("WezTerm cli-process arm", () => {
       }
       return previous(file, args, options)
     })
-    await expect(handleApp("wezterm", { handRead: true, output: "/private/hand" })).rejects.toThrow(fault.message)
-    expect(requestDaemonProbe).not.toHaveBeenCalled()
-    expect(placeCollectedRun).not.toHaveBeenCalled()
-    expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
-    expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(fault.ownerFailure ? 0 : 1)
-    const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
-    expect(saved).toBeDefined()
-    const diagnostic: unknown = JSON.parse(String(saved![1]))
-    expect(diagnostic).toMatchObject({ primaryFailure: expect.stringMatching(fault.message) })
-    expect(diagnostic).toMatchObject({
-      cleanup: {
-        errors: fault.cleanupFailure || fault.ownerFailure ? expect.arrayContaining([expect.any(String)]) : [],
-      },
-    })
+    const summaryLog =
+      fault.name === "close failure only" ? vi.spyOn(console, "log").mockImplementation(() => {}) : undefined
+    try {
+      await expect(handleApp("wezterm", { handRead: true, output: "/private/hand" })).rejects.toThrow(fault.message)
+      expect(requestDaemonProbe).not.toHaveBeenCalled()
+      expect(placeCollectedRun).not.toHaveBeenCalled()
+      expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(fault.ownerFailure ? 0 : 1)
+      const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
+      expect(saved).toBeDefined()
+      const diagnostic: unknown = JSON.parse(String(saved![1]))
+      expect(diagnostic).toMatchObject({ primaryFailure: summaryLog ? null : expect.stringMatching(fault.message) })
+      if (summaryLog) {
+        expect(summaryLog).toHaveBeenCalledExactlyOnceWith(expect.any(String))
+        const summary: unknown = JSON.parse(String(summaryLog.mock.calls[0]?.[0]))
+        expect(summary).toEqual({
+          kind: "app-hand-read",
+          receipt: "/private/hand/hand-read.json",
+          error: expect.stringMatching(/close failed/),
+        })
+        expect(summary).not.toHaveProperty("primaryFailure")
+      }
+      expect(diagnostic).toMatchObject({
+        cleanup: {
+          errors: fault.cleanupFailure || fault.ownerFailure ? expect.arrayContaining([expect.any(String)]) : [],
+        },
+      })
+    } finally {
+      summaryLog?.mockRestore()
+    }
   })
 
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {

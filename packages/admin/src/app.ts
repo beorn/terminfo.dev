@@ -1254,7 +1254,7 @@ export async function handleApp(
     const app = APPS.find((candidate) => candidate.id === "wezterm")
     if (app === undefined) throw new Error("WezTerm is missing from the configured app inventory")
     const result = await runApp(app, { output: opts.output, runId: opts.runId, mode: "hand-read" })
-    console.log(JSON.stringify({ kind: "app-hand-read", receipt, primaryFailure: result.error ?? null }))
+    console.log(JSON.stringify({ kind: "app-hand-read", receipt, error: result.error ?? null }))
     if (!result.success) throw new Error(`WezTerm hand read failed: ${result.error}`)
     return
   }
