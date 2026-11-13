@@ -37,6 +37,7 @@ import { assertPrivateCollectionOutput, writeCollectedRun, retainCollectedRun } 
 import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
+import { APP_BUNDLE_IDS } from "../../terminfo.dev/src/app-bundles.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import { launchIterm2Window, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
 import {
@@ -181,7 +182,7 @@ const APPS: AppDef[] = [
     id: "ghostty",
     appPath: "/Applications/Ghostty.app",
     binaryPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-    bundleId: "com.mitchellh.ghostty",
+    bundleId: APP_BUNDLE_IDS.ghostty,
     // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
     // owner is resolved from, never the spawned handle, which a running instance can absorb.
     cliLaunch: {
@@ -201,28 +202,28 @@ const APPS: AppDef[] = [
     id: "iterm2",
     appPath: "/Applications/iTerm.app",
     binaryPath: "", // iTerm2 uses AppleScript (its own API, not System Events)
-    bundleId: "com.googlecode.iterm2",
+    bundleId: APP_BUNDLE_IDS.iterm2,
   },
   {
     name: "Terminal.app",
     id: "terminal-app",
     appPath: "/System/Applications/Utilities/Terminal.app",
     binaryPath: "", // Terminal.app uses AppleScript (its own API)
-    bundleId: "com.apple.Terminal",
+    bundleId: APP_BUNDLE_IDS["terminal-app"],
   },
   {
     name: "kitty",
     id: "kitty",
     appPath: "/Applications/kitty.app",
     binaryPath: KITTY_BINARY_PATH,
-    bundleId: "net.kovidgoyal.kitty",
+    bundleId: APP_BUNDLE_IDS.kitty,
   },
   {
     name: "WezTerm",
     id: "wezterm",
     appPath: "/Applications/WezTerm.app",
     binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
-    bundleId: "com.github.wez.wezterm",
+    bundleId: APP_BUNDLE_IDS.wezterm,
     // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
     cliLaunch: {
       spawnPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
@@ -249,7 +250,7 @@ const APPS: AppDef[] = [
     id: "cursor",
     appPath: "/Applications/Cursor.app",
     binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
-    bundleId: "com.todesktop.230313mzl4w4u92",
+    bundleId: APP_BUNDLE_IDS.cursor,
     cliLaunch: {
       spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
       executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
@@ -296,7 +297,7 @@ const APPS: AppDef[] = [
     id: "com.microsoft.VSCode",
     appPath: "/Applications/Visual Studio Code.app",
     binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
-    bundleId: "com.microsoft.VSCode",
+    bundleId: APP_BUNDLE_IDS["com.microsoft.VSCode"],
     cliLaunch: {
       spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
       executablePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
@@ -342,7 +343,7 @@ const APPS: AppDef[] = [
     id: "warp",
     appPath: "/Applications/Warp.app",
     binaryPath: "", // Warp doesn't support direct command launch
-    bundleId: "dev.warp.Warp-Stable",
+    bundleId: APP_BUNDLE_IDS.warp,
   },
 ]
 

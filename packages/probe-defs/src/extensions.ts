@@ -5008,6 +5008,22 @@ async function liveClipboardProbe(
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
     const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
+    // @cto 2026-11-13: a read's feature IS the query, so a control must prove this TTY answers queries at all before
+    // silence can mean anything. Control fails = probe-todo naming the control; control passes and the query is
+    // silent = unsupported. A profile reading names its profile and exact setting; a default reading names nothing.
+    const profileNote = fixture.readProfile
+      ? `${fixture.readProfile.profile}: ${fixture.readProfile.setting}`
+      : undefined
+    if (kind === "read") {
+      const control = await ctx.queryCursorPosition()
+      // probe-todo, never the declared-untestable shape: the channel was not measured, nothing was declared absent.
+      if (!control)
+        return {
+          pass: false,
+          note: "cursor-position control before the OSC 52 read",
+          tests: [{ id: "criterion", status: "probe-todo", reason: "cursor-position control before the OSC 52 read" }],
+        }
+    }
     if (mux) {
       const settled = await settledClipboardReply(
         async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
@@ -5063,6 +5079,91 @@ async function liveClipboardProbe(
     }
     const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
     const outcome = settled.outcome
+    // @cto 2026-11-13: the control answered and the query never did. What that silence MEANS depends on the
+    // configuration the run measured (@dev/16 peer 18:43: a granting profile is its own case, and the default
+    // decides only default-configuration runs):
+    //  - a read-granting profile (a profile that set read-clipboard and is not deny-read): nothing can hold the
+    //    query behind a prompt, so silence is the feature's absence — unsupported, with the section named;
+    //  - the app's pinned default "ask": a person may be holding the query, and nothing here answers a prompt or
+    //    injects an answer, so the silence grades nothing;
+    //  - pinned "deny"/"absent": silence is the default answer — unsupported;
+    //  - no citation at all: the row names the missing citation instead of guessing.
+    if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+      // A deny-read profile configured the refusal this run measured, so its silence is this run's own setting
+      // talking, not a statement about the app's default (@dev/16 peer).
+      if (fixture.readProfile?.profile === "deny-read") {
+        const reason = "deny-read profile: refusal configured by this run; grades nothing about the default"
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
+      const granting = fixture.readProfile !== undefined
+      const posture = fixture.readDefault?.posture
+      if (granting) {
+        const note = `cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
+          profileNote ? ` (${profileNote})` : ""
+        }`
+        return {
+          pass: false,
+          response: outcome.raw,
+          note,
+          observation: { outcome: "unsupported", assertionType: "query_reply", note },
+          assertions: [
+            {
+              assertionType: "query_reply" as const,
+              kind: "negative" as const,
+              expected: "OSC 52 c returns the independently written payload",
+              observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+            },
+          ],
+        }
+      }
+      if (posture === undefined || posture === "ask") {
+        // @cto 2026-11-13: a citation from another version never grades this run — for a "deny" citation that would
+        // write a wrong negative — so the adapter refuses it and the row names BOTH versions instead of claiming no
+        // citation exists.
+        let reason: string
+        if (posture === "ask") {
+          reason = "default asks the user; the prompt was not answered"
+        } else if (fixture.readDefaultRefusal !== undefined) {
+          reason = `cursor-position control answered; OSC 52 c returned no reply; ${fixture.readDefaultRefusal}`
+        } else {
+          reason =
+            "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+        }
+        // @dev/16 peer, and @cto's "attach an existing capture, do not add one": a frame the run already takes is kept
+        // next to an undecided row, in case the prompt is visible in it. Nothing here answers the prompt.
+        if (ctx.capture) {
+          const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
+          return {
+            pass: false,
+            note: reason,
+            tests: [{ id: "criterion", status: "probe-todo", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              assertionType: "screenshot",
+              screenshotRef: frame.ref,
+              note: `${reason}; the frame is attached in case a prompt is visible, and this run does not answer one`,
+            },
+          }
+        }
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
+      const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
+      return {
+        pass: false,
+        response: outcome.raw,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply" as const,
+            kind: "negative" as const,
+            expected: "OSC 52 c returns the independently written payload",
+            observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+          },
+        ],
+      }
+    }
     const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
@@ -5078,7 +5179,15 @@ async function liveClipboardProbe(
         },
       }
     }
-    return result
+    return profileNote && kind === "read" && result.observation
+      ? {
+          ...result,
+          observation: {
+            ...result.observation,
+            note: result.observation.note ? `${result.observation.note} (${profileNote})` : profileNote,
+          },
+        }
+      : result
   })
 }
 
