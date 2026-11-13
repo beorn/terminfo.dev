@@ -29,6 +29,14 @@ export type CmuxRefusal =
 export type CmuxRefused = Readonly<{ status: "refused"; refusal: CmuxRefusal; reason: string }>
 
 /**
+ * How this run proves the read is its own surface: a block of numbered markers it wrote (probe arms that
+ * write their own fixture), or the single nonce line it wrote before reading (the ordinary owned arm).
+ */
+export type CmuxOwnership =
+  | Readonly<{ kind: "markers"; prefix: string; count: number; nonce: string }>
+  | Readonly<{ kind: "nonce"; nonce: string }>
+
+/**
  * The cmux CLI that can read an OWNED surface's history, or undefined when this run owns no cmux surface.
  * A declared path counts only when it is absolute: a relative or empty declaration is not a program this
  * run chose, and answering through it would hand an untrusted binary the run's own socket.
@@ -70,7 +78,8 @@ export function cmuxExecutableProof(
     }
     const sha256 = createHash("sha256").update(readFileSync(executable)).digest("hex")
     const result = spawnSync(executable, ["--version"], { encoding: "utf8", timeout: 5000 })
-    const reported = result.status === 0 && typeof result.stdout === "string" ? (result.stdout.split("\n")[0] ?? "").trim() : ""
+    const reported =
+      result.status === 0 && typeof result.stdout === "string" ? (result.stdout.split("\n")[0] ?? "").trim() : ""
     return {
       status: "measured",
       proof: {
@@ -186,6 +195,39 @@ export function cmuxMarkerProof(input: {
 }
 
 /**
+ * The ownership proof of the arm that has no block of its own: the run writes ONE line into the surface it
+ * is running in (`CMUX-<nonce>-BEGIN`) and the read must contain it. A read that cannot find the line is a
+ * read of some other surface, or of none; a duplicate means two surfaces answered, which is not a reading.
+ * Unlike the marker proof this needs no expected count, so the ordinary probe arm can use it.
+ */
+export function cmuxNonceProof(input: {
+  readonly transcript: string
+  readonly nonce: string
+}): { readonly status: "graded"; readonly extras: readonly string[] } | CmuxRefused {
+  const rows = lines(input.transcript)
+  if (rows.length === 0 || input.transcript.trim() === "") {
+    return { status: "refused", refusal: "cmux-read-empty", reason: "cmux read returned no lines" }
+  }
+  if (input.nonce.trim() === "") {
+    return {
+      status: "refused",
+      refusal: "cmux-surface-not-owned",
+      reason: "the run has no nonce, so no returned line can be shown to be this run's own output",
+    }
+  }
+  const marker = `CMUX-${input.nonce}-BEGIN`
+  const seen = rows.reduce((total, line) => total + (line === marker ? 1 : 0), 0)
+  if (seen !== 1) {
+    return {
+      status: "refused",
+      refusal: "cmux-surface-not-owned",
+      reason: `this run's sentinel appears ${seen} times in the read; a surface it wrote to shows it once`,
+    }
+  }
+  return { status: "graded", extras: rows.filter((line) => line !== marker) }
+}
+
+/**
  * The socket guard is proved, not assumed: the run records the config file's hash at launch and this check
  * requires the same hash after the run. An unrecorded or unreadable hash leaves `cmuxOnly` unproven, which
  * is a refusal — never a silent default.
@@ -240,7 +282,7 @@ export function readOwnedCmuxHistory(options: {
   readonly executable: string
   readonly surface?: string | undefined
   readonly rows: number
-  readonly expected: Readonly<{ prefix: string; count: number; nonce: string }>
+  readonly ownership: CmuxOwnership
   readonly configSha256AtLaunch: string | undefined
   readonly readConfigSha256: () => string | undefined
   readonly spawn?: (args: readonly string[]) => CommandOutcome
@@ -271,7 +313,15 @@ export function readOwnedCmuxHistory(options: {
       reason: `cmux read-screen answered nothing this run may read (${result.error?.message ?? result.signal ?? `exit ${result.status}`})`,
     }
   }
-  const proof = cmuxMarkerProof({ transcript: stdout, ...options.expected })
+  const proof =
+    options.ownership.kind === "markers"
+      ? cmuxMarkerProof({
+          transcript: stdout,
+          nonce: options.ownership.nonce,
+          prefix: options.ownership.prefix,
+          count: options.ownership.count,
+        })
+      : cmuxNonceProof({ transcript: stdout, nonce: options.ownership.nonce })
   if (proof.status === "refused") return proof
   const guard = cmuxConfigGuard({
     sha256AtLaunch: options.configSha256AtLaunch,
@@ -292,7 +342,8 @@ export function readOwnedCmuxHistory(options: {
     reading: { totalLines, screenLines: options.rows },
     receipt: JSON.stringify({
       surface: options.surface ?? null,
-      markers: proof.markers,
+      ownership: options.ownership.kind,
+      markers: "markers" in proof ? proof.markers : null,
       extras: proof.extras,
       totalLines,
       screenLines: options.rows,

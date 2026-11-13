@@ -19,6 +19,7 @@ import {
   cmuxConfigGuard,
   cmuxHistoryIdentity,
   cmuxMarkerProof,
+  cmuxNonceProof,
   ownedCmuxHistoryExecutable,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
@@ -136,6 +137,35 @@ test("a read without this run's sentinels, or with them duplicated, is not this 
   expect(other.status === "refused" && other.refusal).toBe("cmux-surface-not-owned")
 })
 
+test("the ordinary arm proves its own surface by the one nonce line it wrote", () => {
+  const owned = cmuxNonceProof({
+    transcript: transcriptOf(3, measuredExtra, false).replace(/^/, `CMUX-${nonce}-BEGIN\n`),
+    nonce,
+  })
+  expect(owned.status).toBe("graded")
+  expect(owned.status === "graded" && owned.extras).not.toContain(`CMUX-${nonce}-BEGIN`)
+  const foreign = cmuxNonceProof({ transcript: transcriptOf(3, measuredExtra, false), nonce })
+  expect(foreign.status === "refused" && foreign.refusal).toBe("cmux-surface-not-owned")
+  const twice = cmuxNonceProof({ transcript: `CMUX-${nonce}-BEGIN\nCMUX-${nonce}-BEGIN\nINSIDE-1`, nonce })
+  expect(twice.status === "refused" && twice.refusal).toBe("cmux-surface-not-owned")
+  expect(cmuxNonceProof({ transcript: "\n", nonce }).status).toBe("refused")
+})
+
+test("the reader grades the nonce arm and still reports retained lines", () => {
+  const read = readOwnedCmuxHistory({
+    executable,
+    rows: 50,
+    ownership: { kind: "nonce", nonce },
+    configSha256AtLaunch: configSha256,
+    readConfigSha256: () => configSha256,
+    spawn: () => ({ status: 0, stdout: `CMUX-${nonce}-BEGIN\nINSIDE-1\nINSIDE-2`, stderr: "" }),
+    processCount: () => 0,
+  })
+  expect(read.status).toBe("read")
+  expect(read.status === "read" && read.reading.totalLines).toBe(3)
+  expect(read.status === "read" && (JSON.parse(read.receipt) as { ownership: string }).ownership).toBe("nonce")
+})
+
 test("the socket guard is proved by the config hash the run recorded at launch", () => {
   expect(cmuxConfigGuard({ sha256AtLaunch: configSha256, sha256AfterRun: configSha256 }).status).toBe("unchanged")
   const changed = cmuxConfigGuard({ sha256AtLaunch: configSha256, sha256AfterRun: "0".repeat(64) })
@@ -155,7 +185,7 @@ test("the reader names the surface it reads and returns retained lines, not the 
     executable,
     surface: "surface:1000070000",
     rows: 50,
-    expected: { prefix: "INSIDE-", count: 12, nonce },
+    ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
     configSha256AtLaunch: configSha256,
     readConfigSha256: () => configSha256,
     spawn: (args) => {
@@ -177,7 +207,7 @@ test("the reader refuses when a cmux process outlives the run or the guard moved
   const base = {
     executable,
     rows: 50,
-    expected: { prefix: "INSIDE-", count: 12, nonce },
+    ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
     configSha256AtLaunch: configSha256,
     spawn: () => ({ status: 0, stdout: transcriptOf(12), stderr: "" }),
   }
