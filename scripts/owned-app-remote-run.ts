@@ -840,10 +840,9 @@ function main(options: Parsed): OwnedAppTransportProof {
       closureLines.push(...next.lines)
       targets = next.linkTargets
     }
+    const archive = join(scratch, "archive")
     const localLines = [
-      ...(light
-        ? []
-        : manifestScan(archiveOf(options, join(scratch, "archive")), [], "resource manifest mismatch").lines),
+      ...(light ? [] : manifestScan(archiveOf(options, archive), [], "resource manifest mismatch").lines),
       ...scan.lines,
       ...closureLines,
     ]
@@ -956,6 +955,20 @@ function main(options: Parsed): OwnedAppTransportProof {
         `git -C ${shq(checkout)} status --porcelain`,
       ).stdout.trim()
       if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+    }
+
+    if (!light) {
+      // A former closure root is outside every current per-root --delete. Reconcile the owned
+      // source projection against the archived source list, protecting current resources and Git
+      // metadata. Existing tracked bytes stay with the verified checkout; runs/ is outside source/.
+      // Archive equals the tracked tree here; adding export-ignore attributes breaks that assumption.
+      rsync(options, "resource root reconciliation", `${archive}/`, `${userAndHost}:${source}/`, [
+        "--delete",
+        "--existing",
+        "--ignore-existing",
+        "--exclude=.git",
+        ...[...RESOURCE_DIRS, ...linkDirs, ...extras, ...RESOURCE_FILES].map((entry) => `--exclude=/${entry}`),
+      ])
     }
 
     for (const [from, entry] of [
