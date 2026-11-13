@@ -514,12 +514,21 @@ function traceDocument<Cell>(
   }
 }
 
+/** Freeze the JSON trace tree before its original run shares it with another consumer. */
+function freezeTrace(value: unknown): void {
+  if (value === null || typeof value !== "object") return
+  for (const child of Object.values(value)) freezeTrace(child)
+  Object.freeze(value)
+}
+
 /** The allowlisted trace of a current run's stored results. */
 export function currentTrace(version: CurrentSelectedVersion) {
+  if (version.traceMemo?.value) return version.traceMemo.value
+  const raw = version.readRaw()
   const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
-    const rawReply = result.rawReplyRef === undefined ? undefined : version.rawReplies[result.rawReplyRef]
+    const rawReply = result.rawReplyRef === undefined ? undefined : raw.rawReplies[result.rawReplyRef]
     if (result.rawReplyRef !== undefined && rawReply === undefined) {
       throw new Error(`Run ${version.runId}/${result.featureId}: missing retained raw reply ${result.rawReplyRef}`)
     }
@@ -531,10 +540,15 @@ export function currentTrace(version: CurrentSelectedVersion) {
         headless,
         result.reason,
         rawReply,
-        version.assertions.filter((assertion) => assertion.featureId === result.featureId),
+        raw.assertions.filter((assertion) => assertion.featureId === result.featureId),
         `run ${version.runId} feature ${result.featureId}`,
       ),
     }
   }
-  return traceDocument(3, version, cells)
+  const trace = traceDocument(3, { ...version, identity: raw.identity }, cells)
+  if (trace && version.traceMemo) {
+    freezeTrace(trace)
+    version.traceMemo.value = trace
+  }
+  return trace
 }
