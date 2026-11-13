@@ -1704,8 +1704,10 @@ export async function createOwnedTerminal(options: {
               throw new ScrollbackReadingUnavailable("Owned cmux history needs a measured grid: " + geometry.diagnostic)
             }
             out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+            const surface = (process.env.CMUX_SURFACE_ID ?? "").trim()
             const read = readOwnedCmuxHistory({
               executable: ownedCmuxCli,
+              ...(surface === "" ? {} : { surface }),
               rows: geometry.rows,
               ownership: { kind: "nonce", nonce: captureRunId },
               configAtLaunch: cmuxConfigAtLaunch,
