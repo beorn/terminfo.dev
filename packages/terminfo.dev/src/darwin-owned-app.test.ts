@@ -1,3 +1,9 @@
+/**
+ * @failure The launcher-side launch diff or the required per-app proof table silently accepts a window this launch did not create, a refusal stops naming the app, or the title-echo proof passes on the pre-echo title.
+ * @level l1
+ * @consumer Owned-Mac app arm (launcher before/after census diff, required per-app proof table, tty title-echo proof).
+ * @testonly none
+ */
 import { describe, expect, it } from "vitest"
 import {
   OWNED_APP_PROOF_TABLE,
