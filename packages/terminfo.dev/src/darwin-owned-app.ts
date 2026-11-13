@@ -1,56 +1,61 @@
 /**
- * The owned-Mac app arm (#34012, @cto 47b187f6).
+ * The owned-Mac app arm's REQUIRED proofs, one app at a time (#34012, @cto 47b187f6 + 9f889378).
  *
- * Both input families (keyboard, mouse) need an app launched into a window this run owns, on an owned
- * Mac, with its pid, window id and tty measured AT LAUNCH. Nothing in this tree does that today: the
- * Terminal.app arm receives its owner assertion from the client, the iTerm2 arm proves a window by a
- * process census, and the hosted arms read a GitHub-runner receipt. This module is the one place where a
- * launched app's identity is decided, so the payload every later proof reads is the same payload.
+ * This module deliberately does NOT own an app's identity. `OwnedTerminalWindow` (terminal-app-window.ts)
+ * already carries the pid, tty, executable and run marker for the `cli-process` arm, and the CG window id,
+ * tty and start time for `iterm2`; `findOwnerPids` already refuses zero and several owners. What no arm
+ * carries is which proofs a given app MUST satisfy before its rows may be graded, and the two proof kinds
+ * that answer it: the CSS-free title echo, and the launcher-side census diff.
  *
- * Two rules are the reason it exists rather than a flag on an existing arm:
+ * So this file holds exactly three things:
  *
- * 1. An app with NO table entry is refused BY NAME. There is no default proof, no "keys are probably
- *    fine" arm, and no entry whose required proofs may be skipped: the table says what proves a posting
- *    reached the app's own surface, and an app we have not measured that for cannot be graded at all.
- * 2. The table is empty until an app's proof is measured. An entry is evidence, not configuration: it
- *    lands with the run or record that proved it, and until then the refusal names the app.
+ * 1. The per-app table. An app with no entry is refused BY NAME: there is no default proof, nothing in an
+ *    entry is optional, and no proof falls back to another at run time (@cto 9f889378 2/3a/3b).
+ * 2. The title-echo tty proof: write a fresh nonce into the RUN'S OWN tty as a title, see the claimed
+ *    window's title carry it in the census, restore the title. That proves "this tty is drawn in that
+ *    window" by observation, with no object model and no per-app AppleScript.
+ * 3. The census diff the LAUNCHER uses to decide which window this launch created. Pure, no I/O: the
+ *    launcher reads the census before and after the spawn and passes both lists here.
  */
-import { censusDarwinWindows, type DarwinWindow, type DarwinWindowCensus } from "./darwin-capture.ts"
 
 /**
- * What the run marks its own window with, so the census can pick it out from a stranger's window that
- * happens to belong to the same app. Every value here is a fact the app itself reports back to us.
+ * How a window is proved to be the one this launch created.
+ * - `census-diff`: it did not exist before the launch, and its owner pid was not there either.
+ * - `marker-title`: the same diff, and the window's title carries this run's marker.
  */
-export type OwnedAppWindowMarker = "launch-argument" | "window-title" | "app-tab-tty"
+export type OwnedAppWindowProof = "census-diff" | "marker-title"
 
 /**
- * What proves a posting reached THIS app's own surface, beyond "the pid owns the window". One of these
- * is required per app; which one is a measured fact about that app, never a choice made here.
+ * How the run's OWN tty is proved to be the tty drawn in that window. `unavailable` is a value and not a
+ * gap: it keeps the app gradable for pixel and mouse rows while naming why its keyboard rows cannot be.
  */
-export type OwnedAppSurfaceProof = "tty-echo" | "socket-pane" | "marker-file"
+export type OwnedAppTtyProof =
+  | { readonly kind: "object-model"; readonly reader: string }
+  | { readonly kind: "title-echo" }
+  | { readonly kind: "unavailable"; readonly reason: string }
 
-/** One app's required proofs. Nothing in here is optional, and nothing here has a default. */
-export interface OwnedAppLaunchSpec {
-  /** The bundle identity the launched process must have; a window owned by any other app is refused. */
+/** One app's required proofs. Nothing optional, nothing defaulted. */
+export interface OwnedAppProofSpec {
+  /** The bundle identity the launcher opened; a window whose owner runs another app is not this run. */
   readonly bundleId: string
-  readonly windowMarker: OwnedAppWindowMarker
-  readonly surfaceProof: OwnedAppSurfaceProof
+  readonly windowProof: OwnedAppWindowProof
+  readonly ttyProof: OwnedAppTtyProof
 }
 
 /**
- * app id -> its required proofs. EMPTY on purpose at step 1: every app is refused by name until its
- * own proof is measured and recorded, which is what keeps an unmeasured app from gradable rows.
+ * app id -> its required proofs. EMPTY at step 1 on @cto's ruling: every app is refused by name until its
+ * own proof is measured, and each entry lands alone with the evidence that proves it. No sketched entries.
  */
-export const OWNED_APP_LAUNCH_TABLE: Readonly<Record<string, OwnedAppLaunchSpec>> = Object.freeze({})
+export const OWNED_APP_PROOF_TABLE: Readonly<Record<string, OwnedAppProofSpec>> = Object.freeze({})
 
 /** The app's required proofs, or a refusal that names the app and says why it cannot be graded. */
-export function ownedAppLaunchSpec(appId: unknown): OwnedAppLaunchSpec {
+export function ownedAppProofSpec(appId: unknown): OwnedAppProofSpec {
   if (typeof appId !== "string" || appId.trim() === "") {
     throw new Error(
       "the owned-Mac app arm needs the app it must launch; this run named none, so no window could be proved",
     )
   }
-  const spec = OWNED_APP_LAUNCH_TABLE[appId]
+  const spec = OWNED_APP_PROOF_TABLE[appId]
   if (!spec) {
     throw new Error(
       `no required-proof entry for the owned-Mac app "${appId}": launching it would produce rows whose ` +
@@ -61,123 +66,27 @@ export function ownedAppLaunchSpec(appId: unknown): OwnedAppLaunchSpec {
   return spec
 }
 
-/**
- * What the launcher measured about the window it opened. `windowTty` is required whenever the entry's
- * surface proof is a tty echo, because a posting the app ignores must be caught at install, not read as
- * the app's behaviour later.
- */
-export interface OwnedAppLaunchRecord {
-  readonly appId: string
-  readonly appPid: number
-  readonly windowId: number
-  readonly windowTty: string | null
-  readonly launchRunId: string
-}
-
-function positiveInteger(value: unknown, what: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`an owned-Mac app launch record needs ${what}; got ${JSON.stringify(value)}`)
-  }
-  return value
+/** One layer-0 window the window server listed, in the shape darwin-capture.ts CENSUS emits. */
+export interface LaunchCensusWindow {
+  readonly id: number
+  readonly ownerPid: number
+  readonly name: string | null
 }
 
 /**
- * Read a launch record strictly. A record that does not describe exactly one app, one process and one
- * window is refused: a partially-read identity is how a posting lands in a window nobody proved.
+ * The layer-0, onscreen windows in one census read. Offscreen windows are skipped: a launch builds its
+ * window in stages and the window server lists the placeholders too, so counting them would read one
+ * launch as two windows (@cto cbc34e67 conditions apply to what is graded, not to what is built).
  */
-export function parseOwnedAppLaunchRecord(value: unknown): OwnedAppLaunchRecord {
-  // Shape first, then the entry rule: a malformed record is a malformed record whatever app it names, and an
-  // external record is only readable for an app this run is allowed to grade at all.
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("an owned-Mac app launch record must be an object")
-  }
-  return validateLaunchShape(value, ownedAppLaunchSpec((value as Record<string, unknown>).appId))
-}
-
-/**
- * The shape rules of a launch record, given the app's entry. Split from the table lookup so the launch
- * mechanism can be driven by a spec that is not in the table, and no other path can skip the lookup.
- */
-export function validateLaunchShape(value: unknown, spec: OwnedAppLaunchSpec): OwnedAppLaunchRecord {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("an owned-Mac app launch record must be an object")
-  }
-  const record = value as Record<string, unknown>
-  const appId = record.appId as string
-  const appPid = positiveInteger(record.appPid, "the launched app's pid")
-  if (appPid < 2) throw new Error(`an owned-Mac app launch record needs the app's own pid; got ${String(appPid)}`)
-  const windowId = positiveInteger(record.windowId, "the launched window's id")
-  const launchRunId = record.launchRunId
-  if (typeof launchRunId !== "string" || launchRunId.trim() === "") {
-    throw new Error("an owned-Mac app launch record needs the run id that launched the window")
-  }
-  const tty = record.windowTty
-  if (spec.surfaceProof === "tty-echo") {
-    if (typeof tty !== "string" || !tty.startsWith("/dev/ttys")) {
-      throw new Error(
-        `the owned-Mac app "${appId}" proves its surface by a tty echo, so the record must name the ` +
-          `app's own tty; got ${JSON.stringify(tty)}`,
-      )
-    }
-    return { appId, appPid, windowId, windowTty: tty, launchRunId }
-  }
-  if (tty !== null && (typeof tty !== "string" || !tty.startsWith("/dev/ttys"))) {
-    throw new Error(`an owned-Mac app launch record's tty must be a pty path or null; got ${JSON.stringify(tty)}`)
-  }
-  return { appId, appPid, windowId, windowTty: tty as string | null, launchRunId }
-}
-
-/** The census rows are the window server's answer, in the shape darwin-capture.ts CENSUS emits. */
-export interface OwnedAppWindowProof {
-  readonly window: DarwinWindow
-  readonly census: DarwinWindowCensus
-  readonly proof: string
-}
-
-/**
- * Prove the launched window is still the app's own, using the ONE census implementation the capture arm
- * already trusts (`censusDarwinWindows`) rather than a second reader. `markerMatched` is the app's own
- * confirmation that the selected window is the one this run opened; a false there is a refusal, never a
- * smaller window or "the largest one".
- */
-export function proveOwnedAppWindow(
-  rows: unknown,
-  record: OwnedAppLaunchRecord,
-  markerMatched: boolean,
-): OwnedAppWindowProof {
-  if (!markerMatched) {
-    throw new Error(
-      `the owned-Mac app "${record.appId}" did not report window ${String(record.windowId)} as the one this ` +
-        "run opened, so the census could be looking at another of its windows; refusing to grade it",
-    )
-  }
-  // The census is the ONLY reader here. Given the launched id it already refuses a window that is absent,
-  // other-owned, layered, offscreen or transparent by name, and returns that exact window otherwise — so a
-  // second "did it pick mine" check here would be a guard nothing can reach.
-  const census = censusDarwinWindows(rows, record.appPid, record.windowId)
-  const window = census.selected.window
-  return {
-    window,
-    census,
-    proof:
-      `owned=true app=${record.appId} pid=${String(record.appPid)} window=${String(window.id)} ` +
-      `launch=${record.launchRunId} marker=matched`,
-  }
-}
-
-/** One layer-0 window as the window server listed it, before any app claim. */
-function layerZeroWindows(rows: unknown): Array<{ id: number; ownerPid: number; name: string | null }> {
+export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
   if (!Array.isArray(rows)) throw new Error("the owned-Mac app launch census must be a window list")
-  const out: Array<{ id: number; ownerPid: number; name: string | null }> = []
+  const out: LaunchCensusWindow[] = []
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw new Error("the owned-Mac app launch census contains a non-object row")
     }
     const value = row as Record<string, unknown>
     if (typeof value.id !== "number" || typeof value.ownerPid !== "number" || value.layer !== 0) continue
-    // A launch builds windows in stages, and the window server lists the offscreen ones too. They are not
-    // windows this run can own or grade — the capture census refuses them by name for the same reason — so
-    // counting them here would read one launch as two windows and refuse a launch that is fine.
     if (value.onscreen === false) continue
     out.push({
       id: value.id,
@@ -188,84 +97,94 @@ function layerZeroWindows(rows: unknown): Array<{ id: number; ownerPid: number; 
   return out
 }
 
-export interface OwnedAppLaunchOptions {
-  readonly appId: string
-  /** The bundle to open, as the launch names it; the record's window must belong to a process it started. */
-  readonly bundlePath: string
-  /** Unique to this run, and the only reason a window can be claimed as OURS rather than merely the app's. */
-  readonly runMarker: string
-  /** Injected so the launch is testable without a Mac: it opens the app, and provides nothing else. */
-  spawn: (program: string, args: readonly string[]) => void
-  /** Injected: the window server's list, read fresh each attempt (the same reader the capture arm uses). */
-  census: () => Promise<unknown> | unknown
-  /** Injected: the app's own tty for the launched pid, or null when the app has no such reader. */
-  ttyOf: (appPid: number) => Promise<string | null> | string | null
-  /** Injected sleep, so a test does not wait. */
-  wait?: (ms: number) => Promise<void> | void
-  readonly attempts?: number
+/**
+ * The windows this launch created: not present before it, and owned by a process that was not there
+ * either. A window the app already had is never claimed, however well its title matches the marker.
+ */
+export function newWindowsForLaunch(before: readonly unknown[], after: readonly unknown[]): LaunchCensusWindow[] {
+  const beforeRows = launchCensusWindows(before)
+  const ids = new Set(beforeRows.map((row) => row.id))
+  const pids = new Set(beforeRows.map((row) => row.ownerPid))
+  return launchCensusWindows(after).filter((row) => !ids.has(row.id) && !pids.has(row.ownerPid))
 }
 
-/**
- * Launch the app and measure the ONE window this run opened.
- *
- * The claim is never "a window the app owns": that window may be a stranger's, left open before this run.
- * It is the difference between the census taken BEFORE the launch and the one taken after — a window that
- * did not exist, owned by a process that was not there, whose title carries this run's marker when the app
- * reports titles. Both halves are required, and a launch that adds no single such window is refused by name.
- */
-export async function launchOwnedApp(options: OwnedAppLaunchOptions): Promise<OwnedAppLaunchRecord> {
-  // The table is the gate: an app with no measured entry never reaches the mechanism.
-  return proveOwnedAppLaunch(ownedAppLaunchSpec(options.appId), options)
-}
-
-/**
- * The mechanism, without the table: exported so refusal tests can drive it with a spec that is not in the
- * table. Nothing else may call it — the entry rule is what keeps an unmeasured app out of a run.
- */
-export async function proveOwnedAppLaunch(
-  spec: OwnedAppLaunchSpec,
-  options: OwnedAppLaunchOptions,
-): Promise<OwnedAppLaunchRecord> {
-  if (typeof options.runMarker !== "string" || options.runMarker.trim() === "") {
+/** The one window a launch created, or a refusal: zero and several are both refusals, never a guess. */
+export function oneNewWindowForLaunch(
+  before: readonly unknown[],
+  after: readonly unknown[],
+  marker: { readonly value: string; readonly required: boolean },
+): LaunchCensusWindow {
+  if (typeof marker.value !== "string" || marker.value.trim() === "") {
     throw new Error("an owned-Mac app launch needs a run marker; without one no window can be claimed as this run's")
   }
-  const before = layerZeroWindows(await options.census())
-  const beforeIds = new Set(before.map((row) => row.id))
-  const beforePids = new Set(before.map((row) => row.ownerPid))
-  options.spawn("open", ["-na", options.bundlePath, "--args", `--hh-run=${options.runMarker}`])
-  const wait = options.wait ?? ((ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms))
-  const attempts = options.attempts ?? 40
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const fresh = layerZeroWindows(await options.census()).filter(
-      (row) => !beforeIds.has(row.id) && !beforePids.has(row.ownerPid),
+  const fresh = newWindowsForLaunch(before, after)
+  const matching = marker.required ? fresh.filter((row) => row.name?.includes(marker.value)) : fresh
+  const [only] = matching
+  if (only === undefined) {
+    throw new Error(
+      `the owned-Mac app opened no new window for launch marker ${marker.value}; refusing to grade a window ` +
+        "this run cannot claim",
     )
-    const named =
-      spec.windowMarker === "window-title" ? fresh.filter((row) => row.name?.includes(options.runMarker)) : fresh
-    if (named.length > 0) {
-      if (named.length > 1) {
-        throw new Error(
-          `the owned-Mac app "${options.appId}" opened ${String(named.length)} windows for one launch ` +
-            `(${named.map((row) => String(row.id)).join(", ")}); one run owns one window, so none is graded`,
-        )
-      }
-      const window = named[0]!
-      const appPid = window.ownerPid
-      const windowTty = await options.ttyOf(appPid)
-      return validateLaunchShape(
-        {
-          appId: options.appId,
-          appPid,
-          windowId: window.id,
-          windowTty,
-          launchRunId: options.runMarker,
-        },
-        spec,
-      )
-    }
-    await wait(250)
   }
-  throw new Error(
-    `the owned-Mac app "${options.appId}" opened no new window for launch marker ${options.runMarker} in ` +
-      `${String(attempts)} attempts; refusing to grade a window this run cannot claim`,
-  )
+  if (matching.length > 1) {
+    throw new Error(
+      `the owned-Mac app opened ${String(matching.length)} windows for one launch ` +
+        `(${matching.map((row) => String(row.id)).join(", ")}); one run owns one window, so none is graded`,
+    )
+  }
+  return only
+}
+
+export interface TitleEchoOptions {
+  /** The claimed window and its app; the census must show THIS window carrying the nonce. */
+  readonly windowId: number
+  /** Write a title to the run's own tty (an OSC 0 sequence on the tty the collector runs on). */
+  writeTitle: (title: string) => void
+  /** The claimed window's title as the census reports it, or null when the census withheld it. */
+  readTitle: () => string | null
+  /** Put the previous title back; called exactly once, including on refusal. */
+  restoreTitle: () => void
+  /** Fresh per proof, so a title left from an earlier attempt cannot satisfy this one. */
+  readonly nonce: string
+  readonly attempts?: number
+  readonly wait?: () => void
+}
+
+/**
+ * Prove "the run's own tty is drawn in that window" by observation instead of an object model (@cto
+ * 9f889378 3b). The nonce is written into the title of the tty the collector itself runs on; the census
+ * must then show the CLAIMED window's title carrying it. An app that does not report titles to the census
+ * cannot use this proof, and its entry says so — there is no fallback to another proof at run time.
+ */
+export function proveTtyByTitleEcho(options: TitleEchoOptions): string {
+  if (typeof options.nonce !== "string" || options.nonce.trim().length < 8) {
+    throw new Error(
+      "the title-echo tty proof needs a fresh nonce of at least 8 characters; a reused one could be matched " +
+        "by a title left over from an earlier attempt",
+    )
+  }
+  const title = `hh-tty-echo-${options.nonce}`
+  const attempts = options.attempts ?? 20
+  try {
+    options.writeTitle(title)
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const seen = options.readTitle()
+      if (seen !== null) {
+        if (!seen.includes(title)) {
+          throw new Error(
+            `the claimed window ${String(options.windowId)} shows a title that is not this run's echo ` +
+              `(${JSON.stringify(seen)}); the tty is not drawing in the claimed window`,
+          )
+        }
+        return `tty=title-echo window=${String(options.windowId)} nonce=${options.nonce}`
+      }
+      options.wait?.()
+    }
+    throw new Error(
+      `the claimed window ${String(options.windowId)} reported no title through the census in ${String(attempts)} ` +
+        "attempts, so the title-echo proof cannot show this tty is drawn there",
+    )
+  } finally {
+    options.restoreTitle()
+  }
 }
