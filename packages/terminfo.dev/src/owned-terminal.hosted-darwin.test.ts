@@ -1096,7 +1096,8 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
             // would return the rival's three lines instead of our four (@dev/1 peer verdict, F3).
             const named = args[args.indexOf("--surface") + 1]
             if (named === "surface-uuid-1") {
-              return { status: 0, stdout: "$ prompt\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ prompt", stderr: "" }
+              // One non-sentinel line names a path, so the record can be proved not to carry the transcript.
+              return { status: 0, stdout: "$ /Users/x\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ /Users/x", stderr: "" }
             }
             return { status: 0, stdout: "rival-a\\nrival-b\\nrival-c", stderr: "" }
           }
@@ -1130,6 +1131,15 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(grant.ownership, "nonce")
     assert.equal(grant.surface, "surface-uuid-1")
     assert.equal(owner.cmuxHistory.surface, "surface-uuid-1")
+    // The persisted record is built through serve.ts's own constructor, on the real owner and the real
+    // transcript: a grant-only run must publish the read's facts and nothing the CLI printed (@cto REVISE).
+    const { cmuxHistoryEvidence } = await import("./packages/terminfo.dev/src/cmux-history-record.ts")
+    const grantRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
+    assert.equal(grantRecord.lastRead.kind, "grant", "with no later read, the grant read is what the record shows")
+    assert.equal(grantRecord.lastRead.extras, 3, "extras is a count of the lines, never the lines")
+    assert.equal(JSON.stringify(grantRecord).includes("/Users/x"), false, "the pane transcript never reaches the record")
+    assert.equal(JSON.stringify(grantRecord).includes("/"), false, "no path separator reaches the record")
+    assert.equal(grantRecord.grantRefusal, undefined, "a proved grant records no refusal")
     const atGrant = cmuxCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
@@ -1150,10 +1160,15 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
       assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
     }
     assert.equal(writes.length, 1, "no read may write to the surface")
-    const readReceipt = JSON.parse(owner.cmuxHistory.lastRead)
-    assert.equal(readReceipt.ownership, "surface")
-    assert.equal(readReceipt.surface, "surface-uuid-1")
-    assert.equal(readReceipt.screenLines, 24)
+    const readFacts = owner.cmuxHistory.lastRead
+    assert.equal(readFacts.kind, "read")
+    assert.equal(readFacts.ownership, "surface")
+    assert.equal(readFacts.screenLines, 24)
+    assert.equal(typeof readFacts.receiptSha256, "string")
+    assert.equal(readFacts.receiptSha256.length, 64, "the receipt is recorded by hash, never by text")
+    const readRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
+    assert.equal(readRecord.pane, "surface-uuid-1", "the record still names the surface the run acquired")
+    assert.equal(JSON.stringify(readRecord).includes("/"), false, "no path separator reaches the record")
     process.stdout.write = realWrite
     await owner.dispose()
   `

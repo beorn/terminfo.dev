@@ -48,6 +48,8 @@ import {
   cmuxHistoryIdentity,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
+  type CmuxLastRead,
+  type CmuxReadFacts,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
@@ -371,17 +373,21 @@ export interface OwnedTerminal {
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
-   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant,
-   * the grant receipt or the failure that replaced it, and the last read's receipt. `lastRead` is a
-   * getter, so a record built after the probes sees the latest read rather than the grant (@cto 81073ae1).
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant, the
+   * grant's outcome, and the last read reduced to facts. `lastRead` is a getter, so a record built after the
+   * probes sees the latest read rather than the grant (@cto 81073ae1) — and it publishes no receipt text at
+   * all, because that receipt carries the pane transcript (@cto REVISE 2026-11-13). The receipt and the
+   * grant proof stay on this object, which no run record serializes.
    */
   readonly cmuxHistory?: {
     readonly executable: string
     readonly surface: string | null
     /** Whether the surface was proved at grant. The proof itself stays on this object, out of any record. */
     readonly grant: "proved" | "failed" | "not attempted"
+    /** The path-free refusal code, with its reason only when the reason names no path. Null when proved. */
+    readonly grantRefusal: string | null
     readonly grantProof: string
-    readonly lastRead: string | null
+    readonly lastRead: CmuxLastRead | null
   }
   /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
@@ -1236,6 +1242,31 @@ export function ownedTerminalProcessBasisFor(
     : undefined
 }
 
+/**
+ * A read reduced to what a record may publish: which read it was, the receipt's hash and length so the
+ * receipt can be matched without being shown, and the counts it proved (@cto REVISE 2026-11-13).
+ */
+const cmuxReadRecord = (kind: "grant" | "read", receipt: string, facts: CmuxReadFacts): CmuxLastRead => ({
+  kind,
+  receiptSha256: createHash("sha256").update(receipt).digest("hex"),
+  receiptLength: receipt.length,
+  ...facts,
+})
+
+const pathSeparator = /[\\/]/u
+
+/**
+ * A refusal's code is always publishable; its reason is a diagnostic the CLI wrote and may name the path it
+ * failed on. A reason carrying a separator is withheld by name rather than published or silently dropped.
+ */
+const publishedRefusal = (failure: string): string => {
+  const split = failure.indexOf(": ")
+  const code = split === -1 ? failure : failure.slice(0, split)
+  const reason = split === -1 ? "" : failure.slice(split + 2)
+  if (reason === "") return code
+  return pathSeparator.test(reason) ? code + " (reason withheld: names a host path)" : failure
+}
+
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
 export async function createOwnedTerminal(options: {
   captureRunId: string
@@ -1733,7 +1764,7 @@ export async function createOwnedTerminal(options: {
     let cmuxSurface: string | undefined
     let cmuxGrantReceipt: string | undefined
     let cmuxGrantFailure: string | undefined
-    let cmuxLastReceipt: string | undefined
+    let cmuxLastRead: CmuxLastRead | undefined
     if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
       const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
       if (published === "") {
@@ -1755,7 +1786,7 @@ export async function createOwnedTerminal(options: {
           })
           if (proof.status === "read") {
             cmuxGrantReceipt = proof.receipt
-            cmuxLastReceipt = proof.receipt
+            cmuxLastRead = cmuxReadRecord("grant", proof.receipt, proof.facts)
             break
           }
           if (proof.refusal !== "cmux-surface-not-owned") {
@@ -1792,7 +1823,7 @@ export async function createOwnedTerminal(options: {
             if (read.status === "refused") {
               throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
             }
-            cmuxLastReceipt = read.receipt
+            cmuxLastRead = cmuxReadRecord("read", read.receipt, read.facts)
             // cmux's own command receipt stays in the grant; the count carries the surface by id, and its
             // surface id is the pane this run proved at grant.
             const identity = ownedHistoryReceipt({
@@ -1945,11 +1976,12 @@ export async function createOwnedTerminal(options: {
           surface: cmuxSurface ?? null,
           grant:
             cmuxGrantReceipt !== undefined ? "proved" : cmuxGrantFailure !== undefined ? "failed" : "not attempted",
+          grantRefusal: cmuxGrantFailure === undefined ? null : publishedRefusal(cmuxGrantFailure),
           grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
           // A getter, not a captured value: this object is built once at owner creation, so a snapshot
           // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
-          get lastRead(): string | null {
-            return cmuxLastReceipt ?? null
+          get lastRead(): CmuxLastRead | null {
+            return cmuxLastRead ?? null
           },
         },
       }),

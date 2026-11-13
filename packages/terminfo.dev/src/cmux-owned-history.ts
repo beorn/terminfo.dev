@@ -280,8 +280,36 @@ export function cmuxConfigGuard(input: {
   return { status: "unchanged", observed: launch.read }
 }
 
+/**
+ * What a read may be reduced to for a persisted record: the counts it proves, never the lines themselves.
+ * `extras` is how MANY non-sentinel lines the read carried, because those lines are the pane's transcript —
+ * screen text, and whatever cwd a prompt prints (@cto REVISE 2026-11-13, @dev/18 peer read). The receipt
+ * itself stays on the owner: it is the arm's own proof and is not publishable.
+ */
+export type CmuxReadFacts = Readonly<{
+  readonly ownership: "markers" | "nonce" | "surface"
+  readonly markers: number | null
+  readonly extras: number | null
+  readonly totalLines: number
+  readonly screenLines: number | null
+  /** Whether the socket guard was there, by hash. An unreadable file records only that it was unreadable. */
+  readonly config:
+    | "unrecorded"
+    | Readonly<{ readonly read: "absent" | "unreadable" }>
+    | Readonly<{ readonly read: "present"; readonly sha256: string }>
+}>
+
+/** The record's view of the last read: which read it was, and the facts it proved — never the receipt text. */
+export type CmuxLastRead = Readonly<{
+  readonly kind: "grant" | "read"
+  /** sha256 and length of the receipt this read produced: enough to match it without publishing it. */
+  readonly receiptSha256: string
+  readonly receiptLength: number
+}> &
+  CmuxReadFacts
+
 export type OwnedCmuxRead =
-  | Readonly<{ status: "read"; reading: TerminalScrollbackReading; receipt: string }>
+  | Readonly<{ status: "read"; reading: TerminalScrollbackReading; receipt: string; facts: CmuxReadFacts }>
   | CmuxRefused
 
 type CommandOutcome = Readonly<{
@@ -354,22 +382,34 @@ export function readOwnedCmuxHistory(options: {
   const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
   const totalLines = lines(stdout).length
+  const markers = proof !== undefined && "markers" in proof && typeof proof.markers === "number" ? proof.markers : null
+  const extras: readonly string[] | null = proof?.extras ?? null
+  const config =
+    options.configAtLaunch === undefined
+      ? "unrecorded"
+      : options.configAtLaunch.read === "present"
+        ? { read: "present" as const, sha256: options.configAtLaunch.sha256 }
+        : { read: options.configAtLaunch.read }
   return {
     status: "read",
     reading: { totalLines, ...(options.rows === undefined ? {} : { screenLines: options.rows }) },
+    // The receipt is the owner's proof and may carry the transcript; the facts are what a record may show.
     receipt: JSON.stringify({
       surface: options.surface ?? null,
       ownership: options.ownership.kind,
-      markers: proof !== undefined && "markers" in proof ? proof.markers : null,
-      extras: proof?.extras ?? null,
+      markers,
+      extras,
       totalLines,
       screenLines: options.rows ?? null,
-      config:
-        options.configAtLaunch === undefined
-          ? "unrecorded"
-          : options.configAtLaunch.read === "present"
-            ? { read: "present", sha256: options.configAtLaunch.sha256 }
-            : { read: options.configAtLaunch.read },
+      config,
     }),
+    facts: {
+      ownership: options.ownership.kind,
+      markers,
+      extras: extras === null ? null : extras.length,
+      totalLines,
+      screenLines: options.rows ?? null,
+      config,
+    },
   }
 }
