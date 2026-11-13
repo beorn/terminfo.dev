@@ -139,6 +139,7 @@ export async function readThroughSentinel<T>(input: {
     const gap = { x: b.col - a.col, y: b.row - a.row }
     const impliedPitch = { x: Math.abs(offset.x) / Math.abs(gap.x), y: Math.abs(offset.y) / Math.abs(gap.y) }
     const basis = `sentinel re-located by frame difference at ${where} (33000, 33981)`
+    const basisKind = "sentinel pair located by frame difference"
     const direction =
       Math.sign(offset.x) * Math.sign(gap.x) === Math.sign(offset.y) * Math.sign(gap.y)
         ? Math.sign(offset.x) * Math.sign(gap.x)
@@ -149,7 +150,18 @@ export async function readThroughSentinel<T>(input: {
       Math.abs(impliedPitch.y - size.height) <= slack
     ) {
       const aBox = direction > 0 ? first : second
-      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}` }
+      const bBox = direction > 0 ? second : first
+      return {
+        origin: originFromSentinel(aBox, a, size),
+        basis: `${basis}${noise}`,
+        basisKind,
+        // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
+        // pitch on its own rather than restating the one box it already reduced to an origin (33982).
+        witness: {
+          a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
+          b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
+        },
+      }
     }
     throw wrong(
       `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`,

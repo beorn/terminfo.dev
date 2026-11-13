@@ -33,6 +33,7 @@ import type {
   CaptureRectangle,
   ColourNoAttributeWitness,
   ObservationFrame,
+  PixelCellCrop,
   ProbeCallbackResult,
   MeasuredProbeCallbackResult,
   TermProbeSource,
@@ -758,6 +759,93 @@ function rectangleSpelling(rectangle: CaptureRectangle): string {
   return `${rectangle.x},${rectangle.y} ${rectangle.width}x${rectangle.height}`
 }
 
+/** One proved whole-row grid move: the way a row records that its frames read the same screen twice. */
+export interface GridMove {
+  /** Rows the grid moved between the first compared frame and this one; positive is down the image. */
+  rows: number
+  /** The later frame's role, so the record names where the move was seen. */
+  at: string
+}
+
+/** Every compared entry the exemption reads: the rectangle, and what the arm measured behind it. */
+export type ComparedCrop = { role: string; rectangle: CaptureRectangle | undefined; crop?: PixelCellCrop }
+
+const sameSurface = (left: CaptureRectangle | undefined, right: CaptureRectangle | undefined): boolean =>
+  left === undefined || right === undefined
+    ? left === right
+    : left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height
+
+const insideImage = (rectangle: CaptureRectangle, image: { width: number; height: number }): boolean =>
+  rectangle.x >= 0 &&
+  rectangle.y >= 0 &&
+  rectangle.x + rectangle.width <= image.width &&
+  rectangle.y + rectangle.height <= image.height
+
+/**
+ * The independent half of a proved move (33982). The origin is derived from ONE located sentinel box,
+ * so "two origins differ by N rows" is that one measurement restated — it cannot also prove the crop
+ * landed on the cells the read chose. The PAIR is independent of it: its two boxes must sit exactly
+ * one cell pitch apart per row and column their painted cells differ by, in THIS frame. A pair that
+ * does is a frame whose cell size and grid are intact, which is what makes the derived origin land on
+ * the cells the read named.
+ */
+function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean {
+  const here = crop.witness
+  const seed = first.witness
+  if (here === undefined || seed === undefined) return false
+  if (here.a.cell.row !== seed.a.cell.row || here.a.cell.col !== seed.a.cell.col) return false
+  if (here.b.cell.row !== seed.b.cell.row || here.b.cell.col !== seed.b.cell.col) return false
+  const rowGap = Math.abs(here.b.cell.row - here.a.cell.row)
+  const colGap = Math.abs(here.b.cell.col - here.a.cell.col)
+  if (rowGap === 0 && colGap === 0) return false
+  return (
+    Math.abs(here.b.box.y - here.a.box.y) === rowGap * crop.cell.height &&
+    Math.abs(here.b.box.x - here.a.box.x) === colGap * crop.cell.width
+  )
+}
+
+/**
+ * The ONE exemption to the same-crop rule (33982, @cto 9af65976). A terminal may repaint its whole
+ * text area lower after a reset — Warp moves it 35 rows when a probe sends RIS — and then a row's
+ * frames are cropped from two positions that hold the SAME cells. The exemption accepts exactly that
+ * and nothing else: every compared frame is judged against the FIRST compared frame, and the move is
+ * accepted only when the origin's x, the cell pitch, the grid's columns and rows, the surface and the
+ * measurement's basis all agree, the y difference is a whole number of cell heights, the rectangle
+ * follows that origin exactly, every rectangle lies inside the pixels that frame captured, and the
+ * frame's own witness pair proves the pitch (see `witnessProvesPitch`). A resize, a horizontal move,
+ * a half-row shift or an unmeasured frame refuses exactly as before this function existed.
+ */
+export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMove[] {
+  const [seed, ...rest] = compared
+  if (seed === undefined || rest.length === 0) return []
+  const first = seed.crop
+  if (first === undefined || seed.rectangle === undefined) return []
+  if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return []
+  const moves: GridMove[] = []
+  for (const entry of rest) {
+    const crop = entry.crop
+    const rectangle = entry.rectangle
+    if (crop === undefined || rectangle === undefined) return []
+    if (crop.basis !== first.basis) return []
+    if (!sameSurface(crop.surface, first.surface)) return []
+    if (crop.cell.width !== first.cell.width || crop.cell.height !== first.cell.height) return []
+    if (crop.grid === undefined) return []
+    if (crop.grid.columns !== first.grid.columns || crop.grid.rows !== first.grid.rows) return []
+    if (crop.origin.x !== first.origin.x) return []
+    const dy = crop.origin.y - first.origin.y
+    if (dy % first.cell.height !== 0) return []
+    if (rectangle.x !== seed.rectangle.x) return []
+    if (rectangle.width !== seed.rectangle.width || rectangle.height !== seed.rectangle.height) return []
+    if (rectangle.y - seed.rectangle.y !== dy) return []
+    if (!insideImage(seed.rectangle, first.image) || !insideImage(rectangle, crop.image)) return []
+    if (!witnessProvesPitch(crop, first)) return []
+    const rows = dy / first.cell.height
+    if (rows === 0) return []
+    moves.push({ rows, at: entry.role })
+  }
+  return moves
+}
+
 /**
  * Refuse a comparison whose frames were cropped from different screen positions: their region
  * digests were never taken over the same cells, so neither equality nor inequality between them
@@ -768,19 +856,22 @@ function rectangleSpelling(rectangle: CaptureRectangle): string {
  */
 export function cropPositionRefusal(input: {
   id: string
-  compared: Array<{ role: string; rectangle: CaptureRectangle | undefined }>
+  compared: Array<ComparedCrop>
   response: string
   frames: ObservationFrame[]
   screenshotRef?: string
 }): ProbeCallbackResult | null {
   const { id, compared, response, frames, screenshotRef } = input
   const cropped = compared.filter(
-    (entry): entry is { role: string; rectangle: CaptureRectangle } => entry.rectangle !== undefined,
+    (entry): entry is ComparedCrop & { rectangle: CaptureRectangle } => entry.rectangle !== undefined,
   )
   if (cropped.length !== compared.length) return null
   const [seed, ...rest] = cropped
   if (seed === undefined) return null
   if (rest.every(({ rectangle }) => sameRectangle(rectangle, seed.rectangle))) return null
+  // 33982: the one accepted difference. A whole-row grid move is not two crops of different cells;
+  // every other difference still refuses below, with the sentence it always used.
+  if (gridMoveExemption(cropped).length > 0) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
   return {
     pass: false,
@@ -1205,8 +1296,20 @@ export async function captureStabilityPair<T extends StabilityCapture>(
     const movedCrop = cropPositionRefusal({
       id,
       compared: [
-        { role: "the first stability capture", rectangle: stableA.frame.regionRectangle },
-        { role: "the second stability capture", rectangle: stableB.frame.regionRectangle },
+        {
+          role: "the first stability capture",
+          rectangle: stableA.frame.regionRectangle,
+          ...(stableA.frame.kind === "text-cells" || stableA.frame.cellCrop === undefined
+            ? {}
+            : { crop: stableA.frame.cellCrop }),
+        },
+        {
+          role: "the second stability capture",
+          rectangle: stableB.frame.regionRectangle,
+          ...(stableB.frame.kind === "text-cells" || stableB.frame.cellCrop === undefined
+            ? {}
+            : { crop: stableB.frame.cellCrop }),
+        },
       ],
       response,
       frames: [],
@@ -1358,9 +1461,16 @@ export async function captureSameRunPhases(
       frames.push(capture.frame)
       measured.push({ name: phase.name, capture })
     }
+    const compared: ComparedCrop[] = measured.map(({ name, capture }) => ({
+      role: name,
+      rectangle: capture.regionRectangle,
+      ...(capture.frame.kind === "text-cells" || capture.frame.cellCrop === undefined
+        ? {}
+        : { crop: capture.frame.cellCrop }),
+    }))
     const moved = cropPositionRefusal({
       id,
-      compared: measured.map(({ name, capture }) => ({ role: name, rectangle: capture.regionRectangle })),
+      compared,
       response: JSON.stringify({ stability: run.stability }),
       frames,
       screenshotRef: measured.find(({ name }) => name === targetName)?.capture.frame.ref,
@@ -1371,7 +1481,21 @@ export async function captureSameRunPhases(
       if (value === undefined) throw new Error(`${id}: missing same-run ${name} sample`)
       return value
     }
-    return decide(run, digest)
+    // 33982: when the compared frames were accepted as ONE grid move, the row says so. The frames
+    // themselves already carry every compared origin, so a reader sees the move without the trace.
+    const graded = decide(run, digest)
+    const moves = gridMoveExemption(compared)
+    if (moves.length === 0 || graded.observation === undefined) return graded
+    const spelled = moves
+      .map(({ rows, at }) => `grid moved ${rows > 0 ? "" : "-"}${Math.abs(rows)} rows at frame ${at}`)
+      .join("; ")
+    return {
+      ...graded,
+      observation: {
+        ...graded.observation,
+        note: graded.observation.note === undefined ? spelled : `${graded.observation.note}; ${spelled}`,
+      },
+    }
   } finally {
     endCaptureLifecycle(ctx)
   }

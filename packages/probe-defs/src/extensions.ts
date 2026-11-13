@@ -1550,7 +1550,11 @@ async function cursorColorSetupAppCapture(
     const state = { initial: fallback.response, cursor, stability: pair.stability, frames }
     const cropped = cropPositionRefusal({
       id,
-      compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: frames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(state),
       frames,
       screenshotRef: target.frame.ref,
@@ -1595,7 +1599,11 @@ async function cursorColorSetupAppCapture(
     const comparedFrames = [...frames, ...resetReads.map((entry) => entry.frame)]
     const resetCropped = cropPositionRefusal({
       id,
-      compared: comparedFrames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: comparedFrames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(afterReset),
       frames: comparedFrames,
       screenshotRef: target.frame.ref,
@@ -6381,8 +6389,20 @@ const extensionDefinitions: ProbeDefinition[] = [
             const moved = cropPositionRefusal({
               id,
               compared: [
-                { role: "isolated character", rectangle: control.frame.regionRectangle },
-                { role: sample.phase, rectangle: sample.frame.regionRectangle },
+                {
+                  role: "isolated character",
+                  rectangle: control.frame.regionRectangle,
+                  ...(control.frame.kind === "text-cells" || control.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: control.frame.cellCrop }),
+                },
+                {
+                  role: sample.phase,
+                  rectangle: sample.frame.regionRectangle,
+                  ...(sample.frame.kind === "text-cells" || sample.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: sample.frame.cellCrop }),
+                },
               ],
               response: JSON.stringify({ samples }),
               frames,
