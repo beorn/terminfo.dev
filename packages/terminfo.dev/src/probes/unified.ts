@@ -804,8 +804,8 @@ export async function runProbeBatch(
       // The collector's measured absence of a pane read has to reach the rows through THIS handoff, not only
       // through the OwnedTerminal record: without this copy every history row fell back to its screenshot arm
       // and declared nothing (0/12 in the peer's faithful replay, @dev/3 REVISE at b48438b96).
-      const unavailable = options.ownedTerminal?.scrollbackUnavailable
-      if (unavailable) probeSource.scrollbackUnavailable = unavailable
+      const unavailableReason = options.ownedTerminal?.scrollbackUnavailable
+      if (unavailableReason) probeSource.scrollbackUnavailable = unavailableReason
     }
     if (ownsTerminal && (options.subject?.kind === "term" || options.subject?.kind === "mux")) {
       // 32569: a mux child reads the same marker path; the reading names the mux, since a present value there may
