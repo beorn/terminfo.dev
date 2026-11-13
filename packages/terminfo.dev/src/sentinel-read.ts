@@ -1,16 +1,22 @@
 import {
-  CALIBRATION_SOLID_PAINT,
   sentinelCellsInFrame,
   originFromSentinel,
   CELL_EDGE_TOLERANCE_PX,
   sentinelBlockRefusal,
-  type CalibrationSentinel,
   type CaptureCells,
+  type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
-import { locateChangedColour, type CapturedFrame, type OriginResolver } from "./capture-core.ts"
+import { locateChanged, type CapturedFrame, type OriginResolver } from "./capture-core.ts"
 
 /** A frame this read cannot anchor yet: the paint may still be one capture behind (33000). Never fatal. */
 class SentinelNotOnFrame extends Error {}
+
+/**
+ * A paint that covered more than one cell: U+2588 on a terminal that treats the character as two
+ * columns wide. The cell is left half erased and no read after it can be trusted, so the caller stops
+ * anchoring this run's reads on the sentinel instead of carrying on over the damage (@cto 2db35bf8).
+ */
+export class SentinelPaintWiderThanCell extends Error {}
 
 /**
  * The one pixel read that anchors its crop on the sentinel it paints (33000), located by FRAME
@@ -48,13 +54,25 @@ class SentinelNotOnFrame extends Error {}
  * Deliberately NOT calibration's two-frame confirmation: calibration pays a capture-until-stable loop
  * because it is measuring geometry once, while this runs for every pixel row.
  *
- * Three residuals, none reachable today by a pixel-row probe, stated rather than implied:
- * - `ESC 7` is one save slot: a probe holding its own DECSC across a read loses that saved state.
- * - Under DECOM the margins move the CUP origin, so the paint lands off the cells and the derived
- *   origin is shifted by the margin: a wrong crop, not a refusal.
- * - The restore writes a default-colour blank, so whatever the witness cells held (probe text, or a
- *   background set by BCE) is gone. Both cells are chosen clear of every digested region so that
- *   nothing this read measures loses its evidence to them.
+ * Nothing here emits SGR (@cto 2db35bf8). The paint draws U+2588 FULL BLOCK in whatever attributes
+ * the probe left current, and the restore writes a space in those same attributes: rendition is not
+ * queryable portably, so an SGR save or a reset would be a guess that rewrites what the rows measure.
+ * Position is saved and restored with CPR plus an absolute CUP, never `ESC 7`/`ESC 8`: one save slot
+ * is what this read must stop touching.
+ *
+ * Limits, named rather than implied:
+ * - This reader is UTF-8 only. The glyph is U+2588, whose UTF-8 bytes contain 0x88, which an 8-bit
+ *   terminal reads as a C1 control that sets a tab stop. A terminal that measured 8-bit decoding is
+ *   refused by name BEFORE any paint; that terminal is not handled.
+ * - The restore writes a space under the probe's current attributes, so a cell returns to the current
+ *   background. That is the modal background the cell was chosen for only when the screen was drawn
+ *   with those attributes. A row that shows otherwise comes back to @cto; no extra capture is paid
+ *   to paper it over.
+ * - CUP clears the pending-wrap flag. A read taken while the probe's cursor sat in the last column
+ *   with a wrap pending loses that flag (the column itself is put back). Census of the rows that can
+ *   reach such a read: /hh/var/@dev11/33981/WRAP-CENSUS.md.
+ * - Under DECOM the margins move the CUP origin, so the paint lands off the chosen cells and the
+ *   derived origin is shifted by the margin: a wrong crop, not a refusal.
  */
 export async function readThroughSentinel<T>(input: {
   /** Where this read paints, and the grid its sentinel cells must fit in. */
@@ -68,7 +86,18 @@ export async function readThroughSentinel<T>(input: {
   capture: (resolve: OriginResolver) => Promise<T>
   /** The checkpoint's own label, so a refusal names the read that made it. */
   label: string
-  sentinel: CalibrationSentinel
+  /**
+   * The cursor's position, asked of the probe's own reply route (CSI 6n) and bounded by this read's
+   * deadline. `null` — no reply, or none parsable — refuses the read by name: there is no ESC 7
+   * fallback, because one save slot is the thing this read must stop touching.
+   */
+  cursorPosition: () => Promise<{ row: number; col: number } | null>
+  /**
+   * This run's measured plain-UTF-8 decoding, when the collector measured one. A terminal that
+   * measured 8-bit decoding is refused before any paint; absent means this context has no
+   * measurement, which is every adapter that installs this reader today.
+   */
+  utf8Decoding?: () => Promise<Utf8DecodingReading>
   regions: readonly CaptureCells[]
   /** Cells the probe's own output may cover (an inline image); the pair is never painted there (33985). */
   avoid?: CaptureCells
@@ -126,27 +155,35 @@ export async function readThroughSentinel<T>(input: {
   chosen = choose(before)
   const resolve: OriginResolver = ({ frame, pixelGeometry }) => {
     const { a, b } = pair()
-    const { regions, ignoredPixels } = locateChangedColour(before, frame, input.sentinel.rgb)
-    const noise = ignoredPixels === 0 ? "" : ` (${ignoredPixels} other changed px carry no sentinel colour)`
+    const { regions } = locateChanged(before, frame)
     if (regions.length === 0) {
       throw new SentinelNotOnFrame(
-        `${input.label}: no cell changed to the sentinel colour at ${where()} between the frames this read compared${noise}, so its crop cannot be anchored`,
+        `${input.label}: the sentinel paint is not visible under the probe's current attributes — no pixel changed between the frames this read compared, so its crop cannot be anchored`,
       )
     }
     const size = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
+    const slack = 2 * CELL_EDGE_TOLERANCE_PX
     const wrong = (reason: string) =>
-      new SentinelNotOnFrame(
-        `${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}${noise}`,
-      )
+      new SentinelNotOnFrame(`${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}`)
     if (regions.length !== 2) {
-      throw wrong(
-        `${regions.length} connected regions changed into the sentinel colour — ${named(regions)} — where the two painted cells need exactly two`,
+      throw new SentinelNotOnFrame(
+        `${input.label}: other change during this read at ${where()}: ${regions.length} disconnected regions changed between the frames it compared — ${named(regions)} — where the two painted cells need exactly two`,
       )
     }
     const [first, second] = regions as [
       { box: { x: number; y: number; width: number; height: number }; pixels: number },
       { box: { x: number; y: number; width: number; height: number }; pixels: number },
     ]
+    const wide = [first, second].find(
+      (region) =>
+        region.box.width > size.width + CELL_EDGE_TOLERANCE_PX ||
+        region.box.height > size.height + CELL_EDGE_TOLERANCE_PX,
+    )
+    if (wide) {
+      throw new SentinelPaintWiderThanCell(
+        `${input.label}: the sentinel paint is wider than one cell — ${wide.pixels} px in a ${wide.box.width}x${wide.box.height} box at ${wide.box.x},${wide.box.y} against a ${size.width}x${size.height} cell — so this run stops anchoring its reads on the sentinel`,
+      )
+    }
     const firstRefusal = sentinelBlockRefusal(first, size)
     if (firstRefusal) throw wrong(`one box is ${firstRefusal} at ${first.box.x},${first.box.y}`)
     const secondRefusal = sentinelBlockRefusal(second, size)
@@ -155,7 +192,6 @@ export async function readThroughSentinel<T>(input: {
     // axis and move its origin by the same, so "the same size" and "the offset the cells imply" are
     // both read with that tolerance — never with the box size in place of the cell PITCH, which a
     // blended edge would break on every read (@dev/10 peer read).
-    const slack = 2 * CELL_EDGE_TOLERANCE_PX
     if (
       Math.abs(first.box.width - second.box.width) > slack ||
       Math.abs(first.box.height - second.box.height) > slack
@@ -178,24 +214,35 @@ export async function readThroughSentinel<T>(input: {
       Math.abs(impliedPitch.y - size.height) <= slack
     ) {
       const aBox = direction > 0 ? first : second
-      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}` }
+      return { origin: originFromSentinel(aBox, a, size), basis }
     }
     throw wrong(
       `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`,
     )
   }
-  const paint = CALIBRATION_SOLID_PAINT[input.sentinel.form]
-  const atA = () => {
-    const { a } = pair()
-    return `\x1b[${a.row};${a.col}H`
+  // U+2588 FULL BLOCK fills the cell whatever attributes are current, and it is the character the
+  // shape test above can recognise without a colour (33981, @cto 2db35bf8).
+  const glyph = "\u2588"
+  const at = (cell: { row: number; col: number }) => `\x1b[${cell.row};${cell.col}H`
+  const paintCells = (cursor: { row: number; col: number }) =>
+    input.source.write(`${at(pair().a)}${glyph}${at(pair().b)}${glyph}${at(cursor)}`)
+  const clearCells = (cursor: { row: number; col: number }) =>
+    input.source.write(`${at(pair().a)} ${at(pair().b)} ${at(cursor)}`)
+  if (input.utf8Decoding) {
+    const decoding = await input.utf8Decoding()
+    if (decoding === "8-bit") {
+      throw new Error(
+        `${input.label}: this read paints U+2588, whose UTF-8 bytes contain 0x88, and this terminal measured ISO-8859-1 decoding, so the sentinel cannot be painted without setting a tab stop`,
+      )
+    }
   }
-  const atB = () => {
-    const { b } = pair()
-    return `\x1b[${b.row};${b.col}H`
+  const cursor = await input.cursorPosition()
+  if (cursor === null) {
+    throw new Error(
+      `${input.label}: the cursor position this read must put back was not reported — no reply, or no parsable reply, to CSI 6n within the read deadline — so its crop cannot be anchored without moving the probe's cursor`,
+    )
   }
-  const paintCells = () => input.source.write(`\x1b7${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m\x1b8`)
-  const clearCells = () => input.source.write(`\x1b7${atA()}\x1b[0m ${atB()} \x1b[0m\x1b8`)
-  paintCells()
+  paintCells(cursor)
   try {
     for (;;) {
       try {
@@ -207,13 +254,13 @@ export async function readThroughSentinel<T>(input: {
         }
         // Restart the read (33981, @dev/10): clear this read's paint, so the fresh frame below is
         // truly a frame BEFORE the paint, then repaint and capture again.
-        clearCells()
+        clearCells(cursor)
         before = await input.prePaint()
         chosen = choose(before)
-        paintCells()
+        paintCells(cursor)
       }
     }
   } finally {
-    clearCells()
+    clearCells(cursor)
   }
 }

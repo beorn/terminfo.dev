@@ -503,6 +503,45 @@ export function locateChangedColour(
       carries[y * width + x] = 1
     }
   }
+  return { regions: connectedRegions(carries, width, height), ignoredPixels }
+}
+
+/**
+ * Where the pixels that CHANGED between two frames of the same window sit, with no colour test at all
+ * (33981, @cto 2026-11-13). The read's paint can no longer name a colour — it draws its glyph in
+ * whatever attributes the probe has left current — so a paint is recognised by the shape of the
+ * change alone: exactly the two cell-sized regions the two painted cells imply, and anything else
+ * refuses. `changedPixels` is reported so a refusal can say how much moved.
+ */
+export function locateChanged(
+  before: CapturedFrame,
+  after: CapturedFrame,
+): { regions: CaptureLocated[]; changedPixels: number } {
+  if (before.width !== after.width || before.height !== after.height) {
+    throw new Error(
+      `Frame difference needs two frames of one window; got ${before.width}x${before.height} and ${after.width}x${after.height}`,
+    )
+  }
+  const { width, height } = after
+  const carries = new Uint8Array(width * height)
+  let changedPixels = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4
+      const changed =
+        before.rgba[offset] !== after.rgba[offset] ||
+        before.rgba[offset + 1] !== after.rgba[offset + 1] ||
+        before.rgba[offset + 2] !== after.rgba[offset + 2]
+      if (!changed) continue
+      carries[y * width + x] = 1
+      changedPixels++
+    }
+  }
+  return { regions: connectedRegions(carries, width, height), changedPixels }
+}
+
+/** One box per connected patch of marked pixels, in reading order. */
+function connectedRegions(carries: Uint8Array, width: number, height: number): CaptureLocated[] {
   const regions: CaptureLocated[] = []
   const stack = new Int32Array(width * height)
   for (let y = 0; y < height; y++) {
@@ -547,5 +586,5 @@ export function locateChangedColour(
       regions.push({ box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels })
     }
   }
-  return { regions, ignoredPixels }
+  return regions
 }

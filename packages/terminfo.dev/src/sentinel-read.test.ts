@@ -10,17 +10,22 @@
 import { sentinelCellsInFrame } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame } from "./capture-core.ts"
-import { readThroughSentinel } from "./sentinel-read.ts"
+import { SentinelPaintWiderThanCell, readThroughSentinel } from "./sentinel-read.ts"
 
 const sentinel = { form: "basic" as const, rgb: [255, 136, 255] as const }
 const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
 const cells = { top: 1, left: 1, bottom: 2, right: 2 }
 const grid = { rows: 4, cols: 6 }
 const at = (cell: { row: number; col: number }) => `\x1b[${cell.row};${cell.col}H`
-const paintOf = (pair: { a: { row: number; col: number }; b: { row: number; col: number } }) =>
-  `\x1b7${at(pair.a)}\x1b[0m\x1b[45m ${at(pair.b)}\x1b[45m \x1b[0m\x1b8`
-const clearOf = (pair: { a: { row: number; col: number }; b: { row: number; col: number } }) =>
-  `\x1b7${at(pair.a)}\x1b[0m ${at(pair.b)} \x1b[0m\x1b8`
+/** The glyph the read paints, in the probe's current attributes: no SGR (@cto 2db35bf8). */
+const GLYPH = "\u2588"
+type Pair = { a: { row: number; col: number }; b: { row: number; col: number } }
+type Cursor = { row: number; col: number }
+/** What CSI 6n answers in these tests: the cursor the paint must put back. */
+const CURSOR = { row: 1, col: 1 }
+const cursorAt = async () => CURSOR
+const paintOf = (pair: Pair, cursor: Cursor) => `${at(pair.a)}${GLYPH}${at(pair.b)}${GLYPH}${at(cursor)}`
+const clearOf = (pair: Pair, cursor: Cursor) => `${at(pair.a)} ${at(pair.b)} ${at(cursor)}`
 
 /**
  * A 16x12 window whose text area starts at `origin`: the probe's cells carry a pattern that depends
@@ -90,8 +95,8 @@ const chosenPair = sentinelCellsInFrame({
   grid,
   regions: [cells],
 })
-const PAINT = paintOf(chosenPair)
-const CLEAR = clearOf(chosenPair)
+const PAINT = paintOf(chosenPair, CURSOR)
+const CLEAR = clearOf(chosenPair, CURSOR)
 const WHERE = `cells ${chosenPair.a.row},${chosenPair.a.col} and ${chosenPair.b.row},${chosenPair.b.col}`
 
 /**
@@ -106,7 +111,7 @@ function terminal(origin: { x: number; y: number }) {
   const drawn = () => writes.slice(0, Math.max(0, writes.length - state.lag))
   const paintsNow = () => {
     const last = drawn().at(-1)
-    return last !== undefined && last.includes("\x1b[45m")
+    return last !== undefined && last.includes(GLYPH)
   }
   return {
     writes,
@@ -131,10 +136,10 @@ test("the crop origin comes from where the sentinel pair landed in this frame, n
       prePaint: async () => before(drawnAt),
       capture: async (resolve) => resolve({ frame, pixelGeometry }),
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: drawnAt,
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now() + 1_000,
     })
     return { origin, writes: painted.writes }
@@ -160,10 +165,10 @@ test("a probe whose own pixels already carry the sentinel colour still anchors o
     prePaint: async () => pre,
     capture: async (resolve) => resolve({ frame, pixelGeometry }),
     label: "cells 1,1-2,2",
-    sentinel,
     regions: [cells],
     reading: { x: 2, y: 2 },
     cell: { width: 2, height: 2 },
+    cursorPosition: cursorAt,
     deadline: Date.now() + 1_000,
   })
   expect(origin.origin).toEqual({ x: 2, y: 2 })
@@ -185,15 +190,15 @@ test("a lone sentinel-coloured patch cannot stand in for the pair, and refuses b
       prePaint: async () => before({ x: 2, y: 2 }),
       capture: async (resolve) => resolve({ frame: witness, pixelGeometry }),
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 2, y: 2 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now(),
     }),
   ).rejects.toThrow(
     new RegExp(
-      `^cells 1,1-2,2: the changed sentinel at ${WHERE} is not one painted pair: 1 connected regions changed into the sentinel colour — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
+      `^cells 1,1-2,2: other change during this read at ${WHERE}: 1 disconnected regions changed between the frames it compared — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
     ),
   )
   // Both cells are still restored.
@@ -220,10 +225,10 @@ test("two changed cells at an offset the painted pair does not imply refuse by n
       prePaint: async () => before({ x: 0, y: 0 }),
       capture: async (resolve) => resolve({ frame, pixelGeometry }),
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 0, y: 0 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now(),
     }),
   ).rejects.toThrow(
@@ -250,10 +255,10 @@ test("a pair whose boxes are a blended edge short on each axis still anchors, be
     prePaint: async () => pre,
     capture: async (resolve) => resolve({ frame, pixelGeometry: pitch }),
     label: "cells 1,1-2,2",
-    sentinel,
     regions: [cells],
     reading: { x: 0, y: 0 },
     cell: { width: 12, height: 12 },
+    cursorPosition: cursorAt,
     deadline: Date.now() + 1_000,
   })
   // The chooser picks cells 1,3 and 2,4 of this all-blank frame, so the block at (25,1) implies an
@@ -273,34 +278,37 @@ test("a third changed cell carrying the sentinel colour refuses by name with eve
       prePaint: async () => pre,
       capture: async (resolve) => resolve({ frame, pixelGeometry }),
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 2, y: 2 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now(),
     }),
   ).rejects.toThrow(
-    /3 connected regions changed into the sentinel colour — .*where the two painted cells need exactly two/,
+    /other change during this read at cells .*: 3 disconnected regions changed between the frames it compared — .*where the two painted cells need exactly two/,
   )
 })
 
-test("changed pixels that carry no sentinel colour are counted in the evidence, not filtered by guesswork (33981)", async () => {
+// @cto 2db35bf8: filtering non-sentinel change by colour was the lucky part. With a colour-free
+// difference there is no such filter, so a probe drawing during the read REFUSES the read instead of
+// being counted as noise and read past.
+test("anything else that changes during the read refuses it, rather than being filtered away (33981)", async () => {
   const frame = windowAt({ x: 2, y: 2 })
   frame.rgba.set([1, 2, 3, 255], 0)
   frame.rgba.set([4, 5, 6, 255], 4)
-  const origin = await readThroughSentinel({
-    source: source().source,
-    prePaint: async () => before({ x: 2, y: 2 }),
-    capture: async (resolve) => resolve({ frame, pixelGeometry }),
-    label: "cells 1,1-2,2",
-    sentinel,
-    regions: [cells],
-    reading: { x: 2, y: 2 },
-    cell: { width: 2, height: 2 },
-    deadline: Date.now() + 1_000,
-  })
-  expect(origin.origin).toEqual({ x: 2, y: 2 })
-  expect(origin.basis).toContain("(2 other changed px carry no sentinel colour)")
+  await expect(
+    readThroughSentinel({
+      source: source().source,
+      prePaint: async () => before({ x: 2, y: 2 }),
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      regions: [cells],
+      reading: { x: 2, y: 2 },
+      cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(/other change during this read .*: 3 disconnected regions/)
 })
 
 test("a read whose first frame is one write behind the paint restarts and still anchors (33000)", async () => {
@@ -322,10 +330,10 @@ test("a read whose first frame is one write behind the paint restarts and still 
       return resolve({ frame: captured, pixelGeometry })
     },
     label: "cells 1,1-2,2",
-    sentinel,
     regions: [cells],
     reading: { x: 2, y: 2 },
     cell: { width: 2, height: 2 },
+    cursorPosition: cursorAt,
     deadline: Date.now() + 1_000,
   })
   expect(origin.origin).toEqual({ x: 2, y: 2 })
@@ -348,10 +356,10 @@ test("a pre-paint frame that lagged the probe's own drawing is retaken, and the 
       return resolve({ frame: frame.frameNow(), pixelGeometry })
     },
     label: "cells 1,1-2,2",
-    sentinel,
     regions: [cells],
     reading: { x: 2, y: 2 },
     cell: { width: 2, height: 2 },
+    cursorPosition: cursorAt,
     deadline: Date.now() + 1_000,
   })
   expect(origin.origin).toEqual({ x: 2, y: 2 })
@@ -367,14 +375,14 @@ test("a frame without this read's painted cells refuses by name, and both cells 
       prePaint: async () => frame,
       capture: async (resolve) => resolve({ frame, pixelGeometry }),
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 2, y: 2 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now() + 50,
     }),
   ).rejects.toThrow(
-    `cells 1,1-2,2: no cell changed to the sentinel colour at ${WHERE} between the frames this read compared, so its crop cannot be anchored`,
+    `cells 1,1-2,2: the sentinel paint is not visible under the probe's current attributes — no pixel changed between the frames this read compared, so its crop cannot be anchored`,
   )
   // Each attempt paints both cells; each retry clears first, so the frame it re-takes is a pre-paint frame.
   expect(painted.writes[0]).toBe(PAINT)
@@ -396,11 +404,11 @@ test("the pair is painted clear of the probe's own output when the read names it
         throw failure
       },
       label: "cells 2,2-2,2",
-      sentinel,
       regions: [{ top: 2, left: 2, bottom: 2, right: 2 }],
       avoid: { top: 1, left: 1, bottom: 3, right: 3 },
       reading: { x: 0, y: 0 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now() + 1_000,
     }),
   ).rejects.toBe(failure)
@@ -414,7 +422,7 @@ test("the pair is painted clear of the probe's own output when the read names it
     regions: [{ top: 2, left: 2, bottom: 2, right: 2 }],
     avoid: [{ top: 1, left: 1, bottom: 3, right: 3 }],
   })
-  expect(writes).toEqual([paintOf(picked), clearOf(picked)])
+  expect(writes).toEqual([paintOf(picked, CURSOR), clearOf(picked, CURSOR)])
 })
 
 test("a capture that fails for its own reason still restores both cells, and keeps its own error (33000)", async () => {
@@ -428,10 +436,10 @@ test("a capture that fails for its own reason still restores both cells, and kee
         throw failure
       },
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 0, y: 0 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now() + 1_000,
     }),
   ).rejects.toBe(failure)
@@ -460,17 +468,98 @@ test("a sentinel pair that never appears refuses at the read's deadline and stil
         return resolve({ frame: blank, pixelGeometry })
       },
       label: "cells 1,1-2,2",
-      sentinel,
       regions: [cells],
       reading: { x: 0, y: 0 },
       cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
       deadline: Date.now() - 1,
     }),
-  ).rejects.toThrow(
-    new RegExp(
-      `no cell changed to the sentinel colour at cells ${picked.a.row},${picked.a.col} and ${picked.b.row},${picked.b.col}`,
-    ),
-  )
+  ).rejects.toThrow(/the sentinel paint is not visible under the probe's current attributes/)
   expect(captures).toBe(1)
-  expect(painted.writes).toEqual([paintOf(picked), clearOf(picked)])
+  expect(painted.writes).toEqual([paintOf(picked, CURSOR), clearOf(picked, CURSOR)])
+})
+
+// @cto 2db35bf8 condition 3: the cursor position is asked, bounded, and consumed by this read. No
+// reply or a malformed one refuses by name, and there is no ESC 7 fallback — nothing is painted.
+test("a cursor position that was never reported refuses the read before anything is painted (33981)", async () => {
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => before({ x: 0, y: 0 }),
+      capture: async (resolve) => resolve({ frame: windowAt({ x: 0, y: 0 }), pixelGeometry }),
+      label: "cells 1,1-2,2",
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      cursorPosition: async () => null,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(/the cursor position this read must put back was not reported/)
+  expect(painted.writes).toEqual([])
+})
+
+// @cto 2db35bf8 condition 2: U+2588's UTF-8 bytes contain 0x88, a C1 control on an 8-bit terminal.
+// A run that measured 8-bit decoding is refused before the paint, never carried.
+test("a terminal that measured 8-bit decoding is refused before the sentinel is painted (33981)", async () => {
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => before({ x: 0, y: 0 }),
+      capture: async (resolve) => resolve({ frame: windowAt({ x: 0, y: 0 }), pixelGeometry }),
+      label: "cells 1,1-2,2",
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
+      utf8Decoding: async () => "8-bit",
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(/measured ISO-8859-1 decoding/)
+  expect(painted.writes).toEqual([])
+})
+
+// @cto 2db35bf8 condition 2: a block two cells wide means the terminal took U+2588 as a wide glyph.
+// The cell is half erased, so the read stops the run's sentinel use instead of reading over it — and
+// it still restores what it painted.
+test("a paint that covered more than one cell stops the read and restores what it wrote (33981)", async () => {
+  const blank: CapturedFrame = { width: 16, height: 12, rgba: new Uint8Array(16 * 12 * 4).fill(255) }
+  const picked = sentinelCellsInFrame({
+    ...blank,
+    reading: { x: 0, y: 0 },
+    cell: { width: 2, height: 2 },
+    grid,
+    regions: [cells],
+  })
+  const { a, b } = picked
+  const frame: CapturedFrame = { ...blank, rgba: Uint8Array.from(blank.rgba) }
+  // Cell b comes back two cells wide, as a terminal that treats U+2588 as a wide glyph would draw it;
+  // cell a is the one-cell block it should have been. (Wide on the LOWER cell: a wide block under the
+  // other would merge with it and the test would be reading one region, not a wide pair.)
+  for (let dy = 0; dy < 2; dy += 1) {
+    for (let dx = 0; dx < 2; dx += 1) {
+      frame.rgba.set([...sentinel.rgb, 255], ((a.row - 1) * 2 + dy) * 16 * 4 + ((a.col - 1) * 2 + dx) * 4)
+    }
+  }
+  for (let dy = 0; dy < 2; dy += 1) {
+    for (let dx = 0; dx < 4; dx += 1) {
+      frame.rgba.set([...sentinel.rgb, 255], ((b.row - 1) * 2 + dy) * 16 * 4 + ((b.col - 1) * 2 + dx) * 4)
+    }
+  }
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => blank,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      cursorPosition: cursorAt,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toBeInstanceOf(SentinelPaintWiderThanCell)
+  expect(painted.writes).toEqual([paintOf(picked, CURSOR), clearOf(picked, CURSOR)])
 })

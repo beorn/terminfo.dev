@@ -48,7 +48,7 @@ import {
   type InputFixture,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
-import { readThroughSentinel } from "./sentinel-read.ts"
+import { SentinelPaintWiderThanCell, readThroughSentinel } from "./sentinel-read.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import {
@@ -759,6 +759,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       let calibrationError: Error | undefined
       /** The source whose next read anchors its crop on the sentinel it paints (33000). */
       let pixelSource: TermProbeSource | undefined
+      /**
+       * Set once a paint turns out wider than one cell (U+2588 treated as two columns): the cell is
+       * half erased, so this run stops anchoring its reads on the sentinel and captures plainly
+       * (@cto 2db35bf8). Never unset — the damage is to the run, not to one read.
+       */
+      let sentinelUnusable = false
       /** Records every raw frame this route takes outside a read (calibration, 33981 pre-paint) in the artifact. */
       let frameRecord: ((result: Awaited<ReturnType<ProbeCapture>>) => void) | undefined
       /**
@@ -791,24 +797,41 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           if (sentinel === undefined || source === undefined || regions.length === 0) {
             return adapter.capture(checkpoint, calibrated)
           }
+          if (sentinelUnusable) return adapter.capture(checkpoint, calibrated)
+          // Read the method off the narrowed source once: a non-null assertion would be a lint error,
+          // and the captured value narrowed by the guard above is what the optional input wants.
+          const utf8Decoding = source.utf8Decoding
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
           // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
-          return readThroughSentinel({
-            source,
-            prePaint: () =>
-              captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
-            capture: (resolve) => adapter.capture(checkpoint, resolve),
-            label: checkpoint.label,
-            sentinel,
-            regions,
-            // 33981: the cells are chosen from the frame, so the read needs the same origin and cell
-            // size the adapter measures its crops against — never a window width over a column count.
-            reading: calibrated.origin,
-            cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
-            ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
-            deadline: Date.now() + DEFAULT_TIMEOUT_MS,
-          })
+          try {
+            return await readThroughSentinel({
+              source,
+              prePaint: () =>
+                captureRawFrame(
+                  checkpoint.featureId,
+                  `${checkpoint.label}: pre-paint`,
+                  Date.now() + DEFAULT_TIMEOUT_MS,
+                ),
+              capture: (resolve) => adapter.capture(checkpoint, resolve),
+              label: checkpoint.label,
+              regions,
+              // 33981: the cells are chosen from the frame, so the read needs the same origin and cell
+              // size the adapter measures its crops against — never a window width over a column count.
+              reading: calibrated.origin,
+              cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
+              // The cursor position the paint must put back, through the probe's own reply route: bounded,
+              // consumed by this read, and never an ESC 7 fallback (@cto 2db35bf8).
+              cursorPosition: () => source.queryCursorPosition(),
+              ...(utf8Decoding ? { utf8Decoding: () => utf8Decoding() } : {}),
+              ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
+              deadline: Date.now() + DEFAULT_TIMEOUT_MS,
+            })
+          } catch (error) {
+            if (!(error instanceof SentinelPaintWiderThanCell)) throw error
+            sentinelUnusable = true
+            return adapter.capture(checkpoint, calibrated)
+          }
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           textOrigin = undefined
