@@ -178,7 +178,15 @@ made-up OSC control and a distinct independent SGR reference. OSC 112 uses a vis
 CPR, shown/hidden/restored pixels and the made-up control, and both post-reset reads must be cropped
 from the same rectangle as the frames they are compared with; a moved crop is probe-invalid. Only
 unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
-reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
+reset or stack result. A pixel-region read whose target frame carries the expected frame's own background and
+per-pixel ink coverage, within 2 of 255, while its ink COLOUR differs is graded Unsupported as a
+named colour mismatch (osc104), and the reason spells out after, expected and seed colours plus
+whether the target paints the seed's own colour (nothing changed) or a third colour. Each compared
+pixel frame records `background`, `inkColour`, `inkCount` and `contrast` from the crop its
+`regionDigest` hashed; the coverage array itself stays in memory, because a full-run record holds
+millions of compared pixels and the retained PNGs already carry them. The branch refuses at a
+coverage difference of 3 or more, on a background change, on a moved crop, and on ink below
+contrast 40 of 255 or under 16 ink pixels. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
 paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
 the progress shows outside the window the run captures. If set-50 changes the App window and clear
 restores it, the same capture additionally compares stable normal-state37/73/37 pairs, clearing

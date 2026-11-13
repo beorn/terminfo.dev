@@ -315,6 +315,38 @@ export interface ObservationFrameBase {
  * A frame read from the screen's PIXELS. Its digests are over raw bytes, so two frames are
  * comparable only when their rectangles match.
  */
+/**
+ * The rendering axes of one cropped pixel frame, measured from the same bytes its `regionDigest`
+ * hashed (osc104). Two frames that agree on `background`, whose per-pixel coverage agrees within the
+ * tolerance the reader names, and whose ink colour differs, differ in INK COLOUR and nothing else —
+ * a result the terminal's colour rows can be graded on instead of refusing it as "some rendering
+ * axis differed".
+ *
+ * `coverage` is each pixel's distance from the frame's own modal background as a fraction of that
+ * frame's own modal ink distance, scaled to 0..255. Normalising by the frame's OWN ink is what keeps
+ * a brighter ink's footprint equal to a dimmer one's: at raw byte level one antialiasing pixel of the
+ * same glyph crosses the "differs from background" line when the ink colour changes (measured: 198
+ * vs 197 background pixels on Warp's retained osc104 pair).
+ */
+export interface CaptureRenderingAxes {
+  /** Modal background colour of the crop, as `#rrggbb`. */
+  background: string
+  /** Modal ink colour of the crop, as `#rrggbb`; equal to `background` when the crop carries no ink. */
+  inkColour: string
+  /** Pixels that differ from the modal background. A crop with no ink carries 0. */
+  inkCount: number
+  /** Largest channel distance between the modal ink and the modal background, 0..255. */
+  contrast: number
+  /**
+   * One byte per pixel, row-major, of the coverage these axes were measured from. IN MEMORY ONLY:
+   * the capture adapter defines it non-enumerable, so it never reaches a stored run record — a
+   * full-run record holds millions of compared pixels and the retained PNGs already carry them.
+   * Absent on every frame read back from a record, which is why the reader refuses rather than
+   * guesses when it is missing.
+   */
+  readonly coverage?: Uint8Array
+}
+
 export interface PixelObservationFrame extends ObservationFrameBase {
   /**
    * Optional HERE on purpose: every frame written before text frames existed is a pixel frame and every one of
@@ -345,6 +377,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * carries neither.
    */
   regionRectangle?: CaptureRectangle
+  /**
+   * The rendering axes of exactly this crop, taken from the same pixels as `regionDigest`. Present
+   * exactly when `regionDigest` is. Recorded whether or not a colour verdict is reached, so a reader
+   * of the record can see the background, ink colour, ink count and contrast the run measured.
+   */
+  rendering?: CaptureRenderingAxes
   /**
    * Raw-pixel digest of the second cell-aligned region named by the request's `controlCells`,
    * cropped from the SAME captured image as `regionDigest` and `pixelsDigest`, so the two
@@ -382,6 +420,7 @@ export interface PixelObservationFrame extends ObservationFrameBase {
 export interface TextCellsObservationFrame extends ObservationFrameBase {
   kind: "text-cells"
   regionDigest?: never
+  rendering?: never
   pixelsDigest?: never
   regionRectangle?: never
   controlRegionDigest?: never
