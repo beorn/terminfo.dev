@@ -152,7 +152,7 @@ export interface PublicProbeResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "selection" | "screenRecord" | "readRaw"
+  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo"
 > {
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
@@ -356,7 +356,14 @@ export function publicResults(
       if (prior.sha256 !== version.sha256) throw new Error(`Conflicting stored current run ${version.runId}`)
       return prior
     }
-    const { selection: _selection, screenRecord: _screen, readRaw: _read, results, ...metadata } = version
+    const {
+      selection: _selection,
+      screenRecord: _screen,
+      readRaw: _read,
+      traceMemo: _trace,
+      results,
+      ...metadata
+    } = version
     const screen = screenGeometry(version.screenRecord)
     const mappedResults = results.map((result) => mapResult(result, version))
     const mapped: PublicVersion = {

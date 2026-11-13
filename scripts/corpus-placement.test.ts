@@ -19,7 +19,7 @@ import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { loadSelectedResults } from "../docs/data/selected-results.ts"
+import { loadSelectedResults, projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 
 const dirs: string[] = []
@@ -142,6 +142,38 @@ test("publication names a stored run changed after projection loaded", () => {
   expect(message).toContain(destination)
   expect(message).toContain(f.run.runId)
   expect(message).toMatch(/digest|sha256/i)
+})
+
+// A stored run's trace is shared across readers. Equal bytes alone miss a mutable shared document.
+test("publication reuses a deeply frozen trace for a stored run", () => {
+  const f = fixture()
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash)
+  const first = publicResults(projection, new Map())
+  const [entry] = first.documents
+  if (!entry || !("featureResults" in entry[1].document)) throw new Error("Missing stored trace fixture")
+  const [url, trace] = entry
+  const second = publicResults(projection, new Map())
+  expect(second.documents.get(url)?.document).toBe(trace.document)
+  if (!("featureResults" in trace.document)) throw new Error("Missing stored trace cells")
+  const [cell] = Object.values(trace.document.featureResults)
+  if (!cell) throw new Error("Missing stored trace cell")
+  expect(Reflect.set(cell, "status", "unsupported")).toBe(false)
+  expect(Reflect.set(trace.document.featureResults, "injected", {})).toBe(false)
+  expect(second.documents.get(url)?.bytes).toBe(trace.bytes)
+  expect(JSON.stringify(second.projection)).not.toContain("traceMemo")
+
+  // Explicit in-memory inputs remain mutable; a stored-reference memo must not attach to them.
+  const [raw] = loadStoredRuns(f.content, f.manifest.catalogIds!)
+  if (!raw) throw new Error("Missing mutable run fixture")
+  const mutable = projectResults([raw], f.manifest.catalogIds!, { currentProbeHash: f.manifest.probeHash }, [])
+  const before = publicResults(mutable, new Map()).documents.get(url)
+  raw.identity = "unverified"
+  const after = publicResults(mutable, new Map()).documents.get(url)
+  if (!before || !after) throw new Error("Missing mutable trace fixture")
+  expect(after.document).not.toBe(before.document)
+  expect(JSON.parse(after.bytes)).toMatchObject({ identity: { recorded: "unverified" } })
 })
 
 // Stored suite filenames must identify their actual manifest; valid content under a wrong name is not trustworthy.

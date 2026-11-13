@@ -17,6 +17,7 @@ import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } 
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
+import type { CurrentTraceDocument } from "./run-trace.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -50,6 +51,11 @@ function fail(path: string, message: string): never {
 type ReadObservation = HistoricalRun["observations"][number]
 type ReadAssertion = HistoricalRun["assertions"][number]
 
+/** Created only for a digest-bound stored reference; mutable working inputs never have one. */
+interface RunTraceMemo {
+  value?: { url: string; sha256: string; bytes: string; document: CurrentTraceDocument }
+}
+
 /** Selection facts only; run-owned evidence is read once when its public trace is built. */
 export type ProjectionRun = Pick<
   LoadedRun,
@@ -74,6 +80,7 @@ export type ProjectionRun = Pick<
   screenRecord: string | undefined
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
   readRaw: () => RunTraceFacts
+  traceMemo?: RunTraceMemo
 }
 
 function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
@@ -204,6 +211,7 @@ export interface CurrentSelectedVersion {
   selection: CollectorSelection | undefined
   screenRecord: string | undefined
   readRaw: () => RunTraceFacts
+  traceMemo?: RunTraceMemo
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -510,6 +518,7 @@ export function projectResults(
       selection: run.selection,
       screenRecord: run.screenRecord,
       readRaw: run.readRaw,
+      ...(run.traceMemo && { traceMemo: run.traceMemo }),
       suiteFreshness,
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
@@ -1133,7 +1142,10 @@ export function loadSelectedResults(
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const features = loadFeatures(contentDir)
   const catalog = Object.keys(features)
-  const runs = loadStoredRuns(contentDir, catalog, compactRun)
+  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => ({
+    ...compactRun(run, readRaw),
+    traceMemo: {},
+  }))
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
   for (const run of runs) {
