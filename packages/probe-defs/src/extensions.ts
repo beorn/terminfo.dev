@@ -39,6 +39,7 @@ import {
   cancelReplyFailure,
   cleanupReading,
   callbackReading,
+  withCleanupDetail,
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
@@ -7657,6 +7658,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const readings: string[] = []
         const state = { before, values, readings, negative: "", restored: "" }
         let result: ProbeCallbackResult | undefined
+        let failure: unknown
         try {
           for (const value of values) {
             ctx.write(`\x1b]2;${value}\x07`)
@@ -7686,13 +7688,17 @@ const extensionDefinitions: ProbeDefinition[] = [
                   ],
                 }
           if (!controls) result.criterionBranch = "app-title-control"
+        } catch (error) {
+          failure = error
+          throw error
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
           if (state.restored !== before) {
-            // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
             const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
             if (result) result = cleanupReading(result, cleanup)
+            else failure = withCleanupDetail(failure, cleanup)
           }
         }
         return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -7858,6 +7864,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const readings: string[] = []
           const state = { before, controls, readings, title: "", icon: "", restored: "" }
           let result: ProbeCallbackResult | undefined
+          let failure: unknown
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -7906,13 +7913,17 @@ const extensionDefinitions: ProbeDefinition[] = [
                 }
               }
             }
+          } catch (error) {
+            failure = error
+            throw error
           } finally {
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
               const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
+              else failure = withCleanupDetail(failure, cleanup)
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -8044,6 +8055,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const readings: string[] = []
           const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
           let result: ProbeCallbackResult | undefined
+          let failure: unknown
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -8081,14 +8093,18 @@ const extensionDefinitions: ProbeDefinition[] = [
                       ? parserStateResult(false, OSC7_TITLE_EXPECTED, state)
                       : notTestedResult(OSC7_TITLE_ABSENT_OPEN, state)
             }
+          } catch (error) {
+            failure = error
+            throw error
           } finally {
             ctx.write("\x1b]7;\x07")
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
               const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
+              else failure = withCleanupDetail(failure, cleanup)
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }
