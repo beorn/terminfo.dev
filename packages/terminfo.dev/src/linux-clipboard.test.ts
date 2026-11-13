@@ -1482,11 +1482,11 @@ function reownFixture(
   })
   const run = (observation = true) =>
     transaction(
-      async () => {
+      async (): Promise<ProbeCallbackResult> => {
         state.ran = true
         return observation
           ? { pass: true, observation: { outcome: "supported", assertionType: "query_reply", note: "measured" } }
-          : { pass: true, note: "measured" }
+          : { pass: true, note: "measured", tests: [{ status: "probe-todo", reason: "fixture" }] }
       },
       (event) => events.push(event),
       async () => {},
@@ -1521,7 +1521,11 @@ test("a clean displacement by a read client that is not ours re-owns once, and t
     observation: { outcome: "supported", assertionType: "query_reply", note: `measured; ${said}` },
   })
   const unobserved = reownFixture(displaced)
-  expect(await unobserved.run(false)).toEqual({ pass: true, note: `measured; ${said}` })
+  expect(await unobserved.run(false)).toEqual({
+    pass: true,
+    note: `measured; ${said}`,
+    tests: [{ status: "probe-todo", reason: "fixture" }],
+  })
 })
 
 test("any other exit, an unread taker or a taker that could be ours refuses before the callback, never re-owns", async () => {
