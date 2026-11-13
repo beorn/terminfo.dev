@@ -188,7 +188,7 @@ export function appSections(
   subjects: ReadonlyMap<string, CurrentResult>,
   contentDir: string,
 ): Record<string, SelectionFileApp> {
-  const joined = joinedAppCells(projection, subjects)
+  const joined = joinedAppCells(projection, subjects, contentDir)
   const apps: Record<string, SelectionFileApp> = {}
   for (const [key, subject] of subjects) {
     const app = joined.get(key)

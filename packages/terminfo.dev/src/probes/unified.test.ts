@@ -4,6 +4,8 @@
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
+ * @reach fs-read vendor/terminfo.dev/content/probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json
+ * @reach fs-read vendor/terminfo.dev/content/suites/8533e1c9630b.json
  */
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -24,7 +26,7 @@ import {
   type AppSemanticReading,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
-import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -54,6 +56,154 @@ vi.mock("node:fs", async (importOriginal) => {
 })
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+
+// @failure A ruled Mac pointer row stays TODO, or the declaration leaks into Linux/new versions.
+// Generic declaration cases below have no exact Mac route table; exercise its real selection and fold.
+it.each([
+  ["wezterm", "20240203-110809-5046fc22"],
+  ["terminal-app", "2.15"],
+  ["iterm2", "3.6.11"],
+])(
+  "folds the exact ruled Mac pointer route for %s without changing other platforms or versions",
+  async (app, reviewedVersion) => {
+    const id = "input.kitty-click-events"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const original = { term: definition.term, termWrites: definition.termWrites }
+    try {
+      definition.termWrites = "query"
+      definition.term = async () => notTestedResult("No owned pointer delivery", { input: false })
+      for (const [os, version, expected] of [
+        ["macos", reviewedVersion, "untestable"],
+        ["linux", reviewedVersion, "probe-todo"],
+        ["macos", "unreviewed", "probe-todo"],
+      ] as const) {
+        const declarations = appSemanticDeclarations({ kind: "term", id: app, version, os })
+        const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+        const row = batch.results.find((result) => result.featureId === id)
+        expect(row?.status).toBe(expected)
+        if (expected === "untestable") {
+          expect(row?.reason).toBe("no permitted pointer route: owned-host rule and hosted no-input rule")
+        }
+      }
+    } finally {
+      definition.term = original.term
+      definition.termWrites = original.termWrites
+    }
+  },
+)
+
+// @failure A declaration silently coexists with a measurement, hiding that its route ruling is stale.
+// Preserve the measured evidence while refusing the contradictory declaration by name (CTO1dbd273f).
+it("names a ruled pointer declaration collision and retains the actual measurement", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  try {
+    definition.termWrites = "query"
+    definition.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "input_bytes" },
+      tests: [{ id: "criterion", status: "supported", reason: "controlled actual input" }],
+    })
+    const declarations = appSemanticDeclarations({
+      kind: "term",
+      id: "wezterm",
+      version: "20240203-110809-5046fc22",
+      os: "macos",
+    })
+    const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+    expect(batch.observations).toContainEqual(
+      expect.objectContaining({ featureId: id, outcome: "supported", assertionType: "input_bytes" }),
+    )
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("supported")
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: expect.stringMatching(/declared.untestable.*collision/i),
+    })
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
+
+// @failure A current route declaration erases the old iTerm2 mode-query measurement (CTOfd05a5f1).
+// Use the real stored row and its assertions; this preserves the old claim, not a new encoding result.
+it("retains the stored iTerm2 1005 measurement and names its declaration collision", async () => {
+  const id = "modes.utf8-mouse-1005"
+  const url = new URL(
+    "../../../../content/probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json",
+    import.meta.url,
+  )
+  const suiteUrl = new URL("../../../../content/suites/8533e1c9630b.json", import.meta.url)
+  const suite = parseSuiteManifest(suiteUrl.pathname, readFileSync(suiteUrl, "utf8"))
+  const bytes = readFileSync(url, "utf8")
+  const stored = parseRun(url.pathname, bytes, suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
+  const row = stored.results!.find((entry) => entry.featureId === id)!
+  expect(row).toMatchObject({
+    status: "supported",
+    assertionType: "query_reply",
+    reason: "DECRPM mode 1005: reset (Ps 2)",
+  })
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsDisposable: definition.termNeedsDisposable,
+  }
+  try {
+    definition.termWrites = "query"
+    // Replay the retained query evidence only; the stub performs no live terminal mutation.
+    definition.termNeedsDisposable = undefined
+    definition.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "query_reply", note: row.reason },
+      tests: row.tests.map(({ id, status, reason }) => ({ id, status, reason })),
+      assertions: stored.assertions
+        .filter((entry) => entry.featureId === id)
+        .map(({ featureId: _featureId, assertionType, ...assertion }) => {
+          if (assertionType !== "query_reply") throw new Error("Stored iTerm2 1005 fixture lost its query assertion")
+          return { ...assertion, assertionType }
+        }),
+    })
+    const batch = await runProbeBatch({ ids: [id], appDeclarations: appSemanticDeclarations(stored.subject) })
+    expect(batch.results.find((entry) => entry.featureId === id)).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      reason: row.reason,
+    })
+    expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual(
+      stored.assertions.filter((entry) => entry.featureId === id),
+    )
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      name: "DeclaredUntestableCollision",
+      message: expect.stringMatching(/declared.untestable.*collision/i),
+    })
+    // The finished collector uses these same raw replies; its reader must expose the warning
+    // without turning the retained historical measurement into a collector failure.
+    const captured = asRun(batch)
+    // Replay the real trace with the real query assertions; the callback stub sends no live query.
+    const trace = stored.rawReplies[id]
+    if (trace === undefined) throw new Error("Stored iTerm2 1005 fixture lost its query trace")
+    captured.rawReplies = { ...captured.rawReplies, [id]: trace }
+    const parsed = parseRun(
+      "pointer-collision-roundtrip.json",
+      JSON.stringify(captured),
+      [id],
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain("DeclaredUntestableCollision")
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain(id)
+    expect(parsed.results?.find((entry) => entry.featureId === id)).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      reason: row.reason,
+    })
+    expect(readFileSync(url, "utf8")).toBe(bytes)
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+    definition.termNeedsDisposable = original.termNeedsDisposable
+  }
+})
 
 // @failure An approved exact-version declaration is dropped by either unresolved callback path.
 // Existing native recording cases have no declaration map; both paths are used by prompt callbacks.

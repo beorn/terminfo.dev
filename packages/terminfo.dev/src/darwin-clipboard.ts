@@ -76,21 +76,25 @@ export async function createDarwinClipboardAdapter(input: {
     await run("/usr/bin/pbcopy", [], sentinel)
   }
   const baseline = input.ownedHost ? sentinel : pasteboardText(await run("/usr/bin/pbpaste", []))
-  const withClipboardFixture = createClipboardTransaction(baseline, {
-    async readText(trace, kind, verify) {
-      await input.assertOwned()
-      await verify()
-      const text = pasteboardText(await run("/usr/bin/pbpaste", []))
-      trace({ kind, at: new Date().toISOString(), length: text.length })
-      return text
+  const withClipboardFixture = createClipboardTransaction(
+    baseline,
+    {
+      async readText(trace, kind, verify) {
+        await input.assertOwned()
+        await verify()
+        const text = pasteboardText(await run("/usr/bin/pbpaste", []))
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+        return text
+      },
+      async writeText(text, trace, kind, verify) {
+        await input.assertOwned()
+        await verify()
+        await run("/usr/bin/pbcopy", [], text)
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+      },
     },
-    async writeText(text, trace, kind, verify) {
-      await input.assertOwned()
-      await verify()
-      await run("/usr/bin/pbcopy", [], text)
-      trace({ kind, at: new Date().toISOString(), length: text.length })
-    },
-  })
+    input.ownedHost ? { foreignReadDigest: "omit" } : undefined,
+  )
   return {
     profile: "default",
     pasteboard: "darwin",
@@ -113,7 +117,20 @@ export async function createDarwinClipboardAdapter(input: {
     },
     withClipboardFixture,
     async dispose() {
-      if (input.ownedHost) await run("/usr/bin/pbcopy", [], "")
+      if (!input.ownedHost) return
+      // Emptying is a write to the machine's pasteboard like any other, so it needs the same proof
+      // (@dev/3 R2 at 2fe85988d106b). A run whose window is gone is not entitled to empty it, and a
+      // value we can no longer vouch for is the lesser harm; cleanup never throws, so the skip is
+      // named on stderr instead.
+      try {
+        await input.assertOwned()
+      } catch (error) {
+        console.error(
+          `darwin owned pasteboard: not cleared; the run no longer owns its window (${error instanceof Error ? error.message : String(error)})`,
+        )
+        return
+      }
+      await run("/usr/bin/pbcopy", [], "")
     },
   }
 }

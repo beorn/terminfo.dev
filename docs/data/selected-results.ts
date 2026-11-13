@@ -362,7 +362,8 @@ export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject
   return admitted.get(contextKey(subject)) ?? projectedContextKey(subject, 2)
 }
 
-const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
+/** The one app-version order: the projection's baseline choice and the site's context pick both use it. */
+export const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 interface SupplementInput {
   run: LoadedRun
@@ -954,13 +955,17 @@ function applySupplements(
       runId: run.runId,
       ...(declaredDefault && { declaredDefault }),
     }
-    if (priorDecided) {
+    if (priorDecided && !(prior && supplement.notesDecided && priorStatus === "untestable")) {
       // A decided default cell keeps its status, reason and tests: the supplement's decided status is a note only.
       if (prior && supplement.notesDecided) {
         cells[id] = { ...prior, supplement: { ...marker, filled: false, noted: result.status } }
       }
       continue
     }
+    // The one decided status a supplement may replace is Untestable: it is a statement about the config the default
+    // run measured (the default tmux config forwards no title), so a run under a declared config that can decide the
+    // row is the deciding observation, not a note (#32593, @cto 2026-11-12 (a)). It still takes a supplement that
+    // declares notesDecided, and only its own declared ids, so no other decided row moves.
     if (result.status !== "supported" && ignoresInSilence) {
       // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell

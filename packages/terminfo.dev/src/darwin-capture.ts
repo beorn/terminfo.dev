@@ -1,7 +1,14 @@
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { capturePixels, command, decodeCapture, finishCapture, type NamedTextOrigin } from "./capture-core.ts"
+import {
+  capturePixels,
+  command,
+  decodeCapture,
+  finishCapture,
+  type NamedTextOrigin,
+  type OriginResolver,
+} from "./capture-core.ts"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export interface DarwinWindow {
@@ -398,7 +405,7 @@ export async function createDarwinCapture(
     }
     return { source: { bytes, format: "png" as const, ...pixels, capturedAt }, trace }
   }
-  const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin) => {
+  const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
     const { source, trace } = await acquire()
     return finishCapture({ directory, onRetained, checkpoint, source, png: source.bytes, origin, trace })
   }

@@ -593,6 +593,31 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
+/**
+ * The one owned-window admission: a run may only be collected when the launch it made carries a proof
+ * this probe can re-verify (a Terminal.app window, a marker-owned process, an iTerm2 sole instance, or
+ * kitty's run-local socket window). It reads the launch record and nothing else, so it is called once,
+ * right after the launch, and a test can prove both outcomes with synthetic records.
+ *
+ * It cannot be hoisted above staging on the ssh route: the ssh route runs this whole process on the
+ * target host after the source copy, and before a launch there is no launch record to judge. The
+ * static refusals that ARE reachable before any copy are the app's own route refusals (an unknown app,
+ * a manual-server app such as Warp, and an unknown probe selection) — see the selection check in
+ * release1-collection.ts, which runs before the transport argv exists (@cto 737a99e3 condition 4).
+ */
+export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): void {
+  if (
+    launch.terminalWindow === undefined &&
+    app.id !== "kitty" &&
+    launch.marker === undefined &&
+    launch.iterm2 === undefined
+  ) {
+    throw new Error(
+      `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
+    )
+  }
+}
+
 export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
   if (launch.terminalWindow) {
     return closeOwnedTerminalWindow(launch.terminalWindow)
@@ -625,6 +650,8 @@ interface ProbeOptions {
   captureBundleRoot?: string
   appId: string
   version: string
+  /** The exact probe ids this run asked for; absent means the whole app suite (#mac-probe-selection). */
+  ids?: string[]
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
   ownedWindow: OwnedTerminalWindow
   invocation?: readonly string[]
@@ -641,7 +668,7 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch } = options
+  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
   const appLaunch =
     invocation === undefined
       ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
@@ -665,6 +692,7 @@ async function probeDaemon(
       : {
           process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
         },
+    ids,
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
@@ -881,7 +909,7 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
 
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean; output?: string },
+  opts: { force?: boolean; output?: string; probeIds?: string[] },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -898,16 +926,7 @@ async function runApp(
   try {
     console.log(`  Launching ${app.name} v${version}...`)
     launch = launchWithServe(app, run)
-    if (
-      launch.terminalWindow === undefined &&
-      app.id !== "kitty" &&
-      launch.marker === undefined &&
-      launch.iterm2 === undefined
-    ) {
-      throw new Error(
-        `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
-      )
-    }
+    assertOwnedWindowAssertion(app, launch)
     console.log(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
@@ -944,6 +963,7 @@ async function runApp(
       ownedWindow,
       invocation: launch.invocation,
       outputDirectory: opts.output,
+      ids: opts.probeIds,
       launcherStderr: launch.launcherStderr,
       outerLaunch,
       ...(ownedWindow.provider === "terminal-app" && {
@@ -1034,7 +1054,7 @@ async function runApp(
 
 export async function handleApp(
   terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean; output?: string },
+  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[] },
 ): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
@@ -1070,7 +1090,7 @@ export async function handleApp(
 
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force, output: opts.output })
+    const result = await runApp(app, { force: opts.force, output: opts.output, probeIds: opts.probeIds })
     results.push({ app, result })
 
     if (result.skipped) {

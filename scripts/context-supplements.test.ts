@@ -17,7 +17,9 @@ import {
   MUX_DEFAULT_CONFIG,
   READ_ALLOWED,
   SCREEN_TRUECOLOR_CONFIG,
+  SET_TITLES_ON,
   supplementOf,
+  TMUX_SET_TITLES_CONFIG,
   TRUECOLOR_ON,
 } from "../docs/data/context-supplements.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
@@ -41,7 +43,7 @@ const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
 const at = "2026-11-10T05:00:00.000Z"
 const attempt = { scope: "probe" as const, startedAt: at }
 
-type Measured = Record<string, "supported" | "unsupported" | "probe-invalid">
+type Measured = Record<string, "supported" | "unsupported" | "probe-invalid" | "declared-untestable">
 
 /** One schema-4 run of `app` on Linux: every id an untouched TODO except the measured ones. */
 function run(
@@ -51,12 +53,13 @@ function run(
   permissions: string | null,
   measuredAt = at,
   mux?: { config: string },
+  catalog: { ids: string[]; suite: ProbeSuiteManifest & { schemaVersion: 4 } } = { ids, suite },
 ) {
   const kind = mux ? "mux" : "term"
   const draft = initializeRunDraft({
     runId,
     sourceRevision: suite.sourceRevision!,
-    manifest: suite,
+    manifest: catalog.suite,
     source: { kind: "live" },
     intendedSubject: { kind, id: app },
   })
@@ -76,10 +79,19 @@ function run(
   draft.origin = { kind: "collector" }
   const entries = Object.entries(measured)
   draft.rawReplies = Object.fromEntries(entries.map(([id, status]) => [id, status === "supported" ? "ACK" : "NO"]))
-  draft.results = ids.map((featureId): ProbeResult => {
+  draft.results = catalog.ids.map((featureId): ProbeResult => {
     const index = entries.findIndex(([id]) => id === featureId)
     const status = measured[featureId]
     if (!status) return { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "Not run" }
+    if (status === "declared-untestable") {
+      return {
+        featureId,
+        status: "untestable",
+        criterionBranch: "headless-observable-review",
+        attempt: { scope: "none" },
+        tests: [{ id: "declared-untestable", status: "untestable", attempt, reason: "declared fixture reason" }],
+      }
+    }
     return {
       featureId,
       status,
@@ -103,12 +115,14 @@ function run(
         observed: status === "supported" ? "ACK" : "NO",
       })),
     }),
-    ids,
-    new Map([[suite.probeHash, suite]]),
+    catalog.ids,
+    new Map([[catalog.suite.probeHash, catalog.suite]]),
   )
 }
 
 const project = (runs: ReturnType<typeof run>[]) => projectResults(runs, ids, { currentProbeHash: suite.probeHash }, [])
+const projectWith = (runs: ReturnType<typeof run>[], catalog: string[]) =>
+  projectResults(runs, catalog, { currentProbeHash: suite.probeHash }, [])
 
 describe("read-allowed supplement (33119)", () => {
   const allowed = READ_ALLOWED.permissions!.kitty!
@@ -333,5 +347,55 @@ describe("truecolor-on supplement (33151)", () => {
       "Context supplement truecolor-on must declare exactly one of permissions or config; it declares neither",
     )
     expect(() => checkSupplement(READ_ALLOWED)).not.toThrow()
+  })
+})
+
+/**
+ * #32593 (@cto 33919 condition 2, re-ruled as (a)): the default tmux row is a declared untestable, and the
+ * set-titles supplement notes that decision so the one run that can decide it fills the cell. notesDecided is a
+ * property of the whole supplement, so this also proves the flag cannot reach any other row: the supplement
+ * declares one id, and a decided row outside it keeps its status and gains no marker.
+ */
+describe("set-titles-on supplement (32593)", () => {
+  const OSC = "extensions.osc22-pointer"
+  const muxCatalog = { ids: [OSC, "sgr.bold"], suite: { ...suite, catalogIds: [OSC, "sgr.bold"] } }
+  const base = run(
+    "tmux",
+    "tmux-default",
+    { [OSC]: "declared-untestable", "sgr.bold": "supported" },
+    null,
+    at,
+    { config: MUX_DEFAULT_CONFIG },
+    muxCatalog,
+  )
+  const supplement = run(
+    "tmux",
+    "tmux-set-titles",
+    { [OSC]: "unsupported" },
+    null,
+    at,
+    { config: TMUX_SET_TITLES_CONFIG },
+    muxCatalog,
+  )
+
+  it("declares exactly one row, and only the set-titles config is its run", () => {
+    expect(SET_TITLES_ON.featureIds).toEqual([OSC])
+    expect(SET_TITLES_ON.notesDecided).toBe(true)
+    expect(supplementOf(base.subject)).toBeUndefined()
+    expect(supplementOf(supplement.subject)).toBe(SET_TITLES_ON)
+  })
+
+  it("fills the decided untestable cell from the supplement's own run, and no other decided cell", () => {
+    const key = Object.keys(projectWith([base], muxCatalog.ids).contexts)[0]!
+    const before = projectWith([base], muxCatalog.ids).contexts[key]!
+    expect(before.cells[OSC]?.result.status).toBe("untestable")
+    const after = projectWith([base, supplement], muxCatalog.ids).contexts[key]!
+    expect(after.cells[OSC]?.origin.runId).toBe("tmux-set-titles")
+    expect(after.cells[OSC]?.result.status).toBe("unsupported")
+    expect(after.cells[OSC]?.supplement).toMatchObject({ name: "set-titles-on", filled: true })
+    // sgr.bold is decided in the base run and is not one of the supplement's ids: status, origin and marker hold.
+    expect(after.cells["sgr.bold"]?.result).toEqual(before.cells["sgr.bold"]?.result)
+    expect(after.cells["sgr.bold"]?.origin.runId).toBe("tmux-default")
+    expect(after.cells["sgr.bold"]?.supplement).toBeUndefined()
   })
 })
