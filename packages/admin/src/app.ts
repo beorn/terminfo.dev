@@ -909,7 +909,7 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
 
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean; output?: string; probeIds?: string[] },
+  opts: { force?: boolean; output?: string; probeIds?: string[]; runId?: string },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -917,7 +917,16 @@ async function runApp(
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
 
-  const run = createProbeRun()
+  // #34018: a run identity handed in must be free before anything is launched. A daemon already
+  // registered under it is an earlier run of that name, and binding to it would grade one run's
+  // daemon as another's. Refuse by name and write nothing (single check, no wait: timeout 0).
+  if (opts.runId !== undefined && (await findOwnedDaemon(opts.runId, DAEMON_DIR, app.id, 0)) !== null) {
+    return {
+      success: false,
+      error: `run id ${opts.runId} is already registered by a live daemon; a handed identity names one run and is never reused`,
+    }
+  }
+  const run = createProbeRun(opts.runId)
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
   let daemonStopAttempted = false
@@ -1054,7 +1063,7 @@ async function runApp(
 
 export async function handleApp(
   terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[] },
+  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[]; runId?: string },
 ): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
@@ -1088,9 +1097,21 @@ export async function handleApp(
 
   const results: Array<{ app: AppDef; result: Awaited<ReturnType<typeof runApp>> }> = []
 
+  // One identity names one run and one run measures one app: a handed id with a multi-app selection
+  // would have to be reused, so it refuses by name before any launch (#34018).
+  if (opts.runId !== undefined && appsToRun.length > 1) {
+    throw new Error(
+      `--run-id names one run and ${appsToRun.length} apps would run; pass --run-id only with a single app selection`,
+    )
+  }
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force, output: opts.output, probeIds: opts.probeIds })
+    const result = await runApp(app, {
+      force: opts.force,
+      output: opts.output,
+      probeIds: opts.probeIds,
+      runId: opts.runId,
+    })
     results.push({ app, result })
 
     if (result.skipped) {

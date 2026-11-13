@@ -1531,18 +1531,30 @@ const ownedAppContext: CollectionContext = {
   uncollectable: null,
 }
 const ownedAppRevision = "c".repeat(40)
+// #34018: the composer hands the run identity down; the owned routes never mint their own.
+const ownedAppRunId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 // The local route must stay byte-identical to the argv it always ran; the ssh route hands the
 // SAME probe arguments to the transport driver after its own transport flags, never a second probe.
 it("starts an owned-app row locally with the probe argv it always ran", () => {
-  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
   expect(command.label).toBe("kitty/macos owned-app collection")
+  // #34018 is the addition: the run identity the composer handed down. Everything else is the argv
+  // this route always ran, in the same order.
   expect(command.argv).toEqual([
     "bun",
     "packages/admin/src/index.ts",
     "probe",
     "app",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--output",
     "/private/kitty",
   ])
@@ -1552,7 +1564,14 @@ it("forwards an explicit probe selection through the app route on both runners",
   const selected = selectAppProbes()
     .expected.slice(0, 2)
     .map((probe) => probe.id)
-  const local = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision, selected)
+  const local = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+    selected,
+  )
   expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
   const remote = ownedAppCommand(
     ownedAppContext,
@@ -1564,6 +1583,7 @@ it("forwards an explicit probe selection through the app route on both runners",
       removeStage: true,
     },
     ownedAppRevision,
+    ownedAppRunId,
     selected,
   )
   const probeStart = remote.argv.indexOf("--") + 1
@@ -1590,6 +1610,7 @@ it("refuses an unknown selected id locally, with the daemon's own sentence, befo
         removeStage: true,
       },
       ownedAppRevision,
+      ownedAppRunId,
       ["not-a-probe"],
     ),
   ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
@@ -1600,7 +1621,13 @@ it("refuses an unknown selected id locally, with the daemon's own sentence, befo
 // "unknown command 'term'" while the suite stayed green. The argv is only correct if the CLI it names
 // registers that subcommand, so this reads the CLI's own command list instead of trusting the name.
 it("names a probe subcommand the admin CLI registers", () => {
-  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
   const probe = command.argv.indexOf("probe")
   const subcommand = command.argv[probe + 1]
   expect(subcommand).toBeDefined()
@@ -1715,9 +1742,10 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
       removeStage: true,
     },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.label).toBe("kitty/macos owned-app transport")
-  expect(command.argv.slice(0, 13)).toEqual([
+  expect(command.argv.slice(0, 15)).toEqual([
     "bun",
     "scripts/owned-app-remote-run.ts",
     "--transport",
@@ -1730,6 +1758,8 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     ownedAppRevision,
     "--context",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--known-hosts",
   ])
   expect(command.argv).toContain("--remove-stage")
@@ -1749,6 +1779,7 @@ it("hands the ssh transport no stage when none is supplied, so the driver derive
     "/private/kitty",
     { runner: "ssh:fixture@fixture.invalid", knownHosts: "/home/fixture/.ssh/known_hosts" },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.argv).not.toContain("--stage")
   expect(command.argv.slice(0, 8)).toEqual([
@@ -1770,6 +1801,7 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
       "/private/kitty",
       { runner: "ssh:fixture@fixture.invalid", stage: "/remote/stage" },
       ownedAppRevision,
+      ownedAppRunId,
     ),
   ).toThrow(/requires --owned-app-known-hosts/)
 })
@@ -1888,6 +1920,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       output,
       { runner: "ssh:fixture@fixture.invalid", stage, knownHosts },
       revision,
+      ownedAppRunId,
     )
     // argv[0] is the `bun` token the collector resolves from PATH; here the runner is this process,
     // so only the driver path and its arguments are passed.

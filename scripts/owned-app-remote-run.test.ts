@@ -239,6 +239,9 @@ function fixture(): void {
   executable(join(shims, "kitty"), "#!/bin/sh\necho 'kitty 0.0.0-decoy'\n")
 }
 
+/** #34018: the composer hands the run identity down; the driver never mints one. */
+const RUN_ID = "0123456789abcdef0123456789abcdef"
+
 function run(
   extraEnv: Record<string, string> = {},
   extraArgs: string[] = [],
@@ -272,6 +275,8 @@ function run(
       revision,
       "--context",
       context,
+      "--run-id",
+      RUN_ID,
       "--known-hosts",
       knownHosts,
       ...extraArgs,
@@ -323,6 +328,56 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  // #34018: the run identity belongs to the composer. The driver must carry it, never mint one —
+  // a fresh mint on the host is exactly what made the composed pass refuse the run it collected.
+  it("requires the composer's run id and refuses by name when it is absent or malformed", () => {
+    const absent = spawnSync(
+      process.execPath,
+      [
+        driver,
+        "--transport",
+        "ssh:fixture@fixture.invalid",
+        "--output",
+        output,
+        "--source-revision",
+        revision,
+        "--context",
+        "kitty",
+        "--known-hosts",
+        knownHosts,
+        "--",
+        "bun",
+        "packages/admin/src/index.ts",
+        "probe",
+        "app",
+        "kitty",
+      ],
+      { encoding: "utf8" },
+    )
+    expect(absent.status).toBe(2)
+    expect(absent.stderr).toMatch(/--run-id/)
+
+    const malformed = run({}, ["--run-id", "NOT-HEX"])
+    expect(malformed.status).not.toBe(0)
+    expect(malformed.stderr).toMatch(/invalid run id: run id "NOT-HEX" is not 32 lowercase hex characters/)
+  })
+
+  it("carries the handed run id in the explicit remote command, before the output directory", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const lines = readFileSync(sshLog, "utf8").split("\n")
+    const probe = lines.find((line) => line.includes("--run-id"))
+    expect(probe).toBeDefined()
+    // It travels as argv on the shell line the driver names, never through ssh environment forwarding:
+    // no ssh option forwards an environment variable, so the only way it can be here is as text.
+    // The driver shell-quotes every argv token, so the id carries its quotes on the remote line.
+    const flag = "--run-id '" + RUN_ID + "'"
+    expect(probe).toContain(flag)
+    expect(probe!.indexOf("--run-id")).toBeLessThan(probe!.indexOf("--output"))
+    expect(probe).toContain("probe")
+    expect(probe).toContain("app")
+  })
+
   // Real staging and receipt subprocesses exceeded the 5 s default under fleet load (7.04 s).
   it("stages portable resource modes without source-host privilege bits", () => {
     const resources = join(code, "node_modules", "portable-modes")
@@ -760,6 +815,8 @@ describe("owned-app ssh transport", () => {
         revision,
         "--context",
         "kitty",
+        "--run-id",
+        RUN_ID,
         "--known-hosts",
         knownHosts,
         "--",

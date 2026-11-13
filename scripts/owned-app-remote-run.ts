@@ -145,6 +145,8 @@ export interface OwnedAppRemoteOptions {
   readonly output: string
   readonly sourceRevision: string
   readonly context: string
+  /** #34018: the composer's run identity, carried to the host collector so both name one run. */
+  readonly runId: string
   readonly knownHosts: string
   readonly removeStage: boolean
   readonly check: CheckDepth
@@ -241,6 +243,7 @@ function parseArgs(argv: readonly string[]): Parsed {
         "--output",
         "--source-revision",
         "--context",
+        "--run-id",
         "--known-hosts",
         "--check",
         "--ssh-timeout-ms",
@@ -260,6 +263,15 @@ function parseArgs(argv: readonly string[]): Parsed {
   const output = values.output ?? usage()
   const sourceRevision = values["source-revision"] ?? usage()
   const context = values.context ?? usage()
+  // #34018: the owned route never mints. A missing id is an error by name, because a fresh mint here
+  // is exactly the silent substitution that made the composer refuse the run at collection.
+  const runId = values["run-id"] ?? usage()
+  if (!/^[0-9a-f]{32}$/.test(runId)) {
+    fail(
+      "invalid run id",
+      `run id ${JSON.stringify(runId)} is not 32 lowercase hex characters; the transport carries the identity it was given and never mints one`,
+    )
+  }
   const knownHosts = values["known-hosts"] ?? usage()
   const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
   const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
@@ -295,6 +307,7 @@ function parseArgs(argv: readonly string[]): Parsed {
     output: resolve(output),
     sourceRevision,
     context,
+    runId,
     knownHosts: resolve(knownHosts),
     removeStage,
     check,
@@ -336,7 +349,7 @@ function validateStage(stage: string, hint = ""): void {
 function usage(): never {
   console.error(
     "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> [--stage <remote-dir>]\n" +
-      "         --output <local-output-dir> --source-revision <sha> --context <id>\n" +
+      "         --output <local-output-dir> --source-revision <sha> --context <id> --run-id <32 hex>\n" +
       "         --known-hosts <path> [--remove-stage] [--check full|light] [--ssh-timeout-ms <ms>]\n" +
       "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>\n" +
       "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.",
@@ -1051,7 +1064,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       options,
       "owned-app probe",
       "owned-app probe failed",
-      `cd ${shq(checkout)} && ${process.env.TERMINFO_CAPTURE_RUN_ID ? `TERMINFO_CAPTURE_RUN_ID=${shq(process.env.TERMINFO_CAPTURE_RUN_ID)} ` : ""}${shq(bun)} ${probeArgs.map(shq).join(" ")} --output ${shq(remoteOutput)}`,
+      `cd ${shq(checkout)} && ${process.env.TERMINFO_CAPTURE_RUN_ID ? `TERMINFO_CAPTURE_RUN_ID=${shq(process.env.TERMINFO_CAPTURE_RUN_ID)} ` : ""}${shq(bun)} ${probeArgs.map(shq).join(" ")} --run-id ${shq(options.runId)} --output ${shq(remoteOutput)}`,
     )
     if (/ENOENT|not found/i.test(probe.stdout) && /kitty/i.test(probe.stdout)) {
       fail("kitty absent", `the owned-app probe on ${hostname} could not launch kitty: ${probe.stdout.trim()}`)
