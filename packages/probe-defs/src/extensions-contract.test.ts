@@ -1798,3 +1798,45 @@ test.each([
     }
   }
 })
+
+// #34012: `rejects.toThrow(regex)` passes a wrapper too, so identity was asserted in prose only.
+test("App OSC 2 keeps the error's type when a failed restore rides on it", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw new Error("injected title read error")
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  const thrown: unknown = await definition.term!(source).then(
+    () => new Error("the probe answered instead of throwing"),
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).name).toBe("Error")
+  expect((thrown as Error).message).toMatch(/injected title read error; Owned title restoration mismatch/)
+})
+
+// #34012: a throwable that is not an Error is wrapped, not returned untouched — otherwise the restore
+// detail is dropped with no trace, which is the exact fact this slice exists to keep.
+test("App OSC 2 wraps a non-Error throwable so the restore detail survives", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw { toString: () => "injected title read failure" }
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  const thrown: unknown = await definition.term!(source).then(
+    () => new Error("the probe answered instead of throwing"),
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).message).toMatch(/^injected title read failure; Owned title restoration mismatch/)
+})
