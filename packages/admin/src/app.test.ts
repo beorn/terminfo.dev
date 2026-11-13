@@ -246,11 +246,18 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
 
 test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
   expect(() =>
-    assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, {
-      proc: null,
-      identityPath: "/private/run/owner-tty.txt",
-      iterm2: { tty: "/dev/ttys009", beforeWindowIds: [1] },
-    } as AppLaunch),
+    assertOwnedWindowAssertion(
+      { name: "iTerm2", id: "iterm2" },
+      {
+        proc: null,
+        identityPath: "/private/run/owner-tty.txt",
+        iterm2: {
+          executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+          preflightAtEpochSeconds: 1794489720,
+          beforeWindowIds: [1],
+        },
+      },
+    ),
   ).not.toThrow()
 })
 

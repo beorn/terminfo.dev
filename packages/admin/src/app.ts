@@ -637,7 +637,7 @@ export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLau
   // the launch (@cto 11983ea0, condition 3), so nothing is signaled or closed; say so.
   if (launch.iterm2 !== undefined) {
     console.error(
-      `  WARNING: ${app.name} launched (TTY ${launch.iterm2.tty}) but its owner was never resolved; no process was signaled. A window may still be open — quit iTerm2 by hand.`,
+      `  WARNING: ${app.name} launched (${launch.iterm2.executablePath}) but its owner was never resolved; no process was signaled. A window may still be open — quit iTerm2 by hand.`,
     )
     return
   }
