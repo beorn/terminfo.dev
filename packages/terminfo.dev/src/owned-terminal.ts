@@ -2103,8 +2103,9 @@ export async function createOwnedTerminal(options: {
             }
             return reading
           }
-          if (!linux)
+          if (!linux) {
             return { status: "invalid" as const, reason: "No owned App semantic reader for this feature on macOS" }
+          }
           await owner.readGeometry()
           return readAppSemanticState({
             featureId,
