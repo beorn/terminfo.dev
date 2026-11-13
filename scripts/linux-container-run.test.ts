@@ -31,7 +31,13 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/vers
 import { OWNED_LAYOUT } from "../packages/probes/fixtures/owned-layout.fixture.ts"
 import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
-import { MUX_DEFAULT_CONFIG, SCREEN_TRUECOLOR_CONFIG, TRUECOLOR_ON } from "../docs/data/context-supplements.ts"
+import {
+  MUX_DEFAULT_CONFIG,
+  SCREEN_TRUECOLOR_CONFIG,
+  SET_TITLES_ON,
+  TRUECOLOR_ON,
+  TMUX_SET_TITLES_CONFIG,
+} from "../docs/data/context-supplements.ts"
 import { MUX_PROFILE_CONFIG_FILES } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -1917,6 +1923,39 @@ describe("mux profile configs", () => {
     expect(MUX_PROFILE_CONFIG_FILES[SCREEN_TRUECOLOR_CONFIG]?.mux).toBe("screen")
     expect(readFileSync(launcher, "utf8")).toContain(
       'screen_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"',
+    )
+  })
+
+  // #32593 (@cto 33919): tmux's set-titles profile is the one context in which a title forwarding control can reach
+  // the outer record, so its label, its bytes and the supplement that keys on it must stay equal here too.
+  it("records tmux's set-titles config exactly as the selection keys it", () => {
+    expect(muxProfileConfig("tmux", "set-titles")).toMatchObject({ status: 0, stdout: TMUX_SET_TITLES_CONFIG })
+    expect(SET_TITLES_ON.config).toEqual({ tmux: TMUX_SET_TITLES_CONFIG })
+    expect(SET_TITLES_ON.featureIds).toEqual(["extensions.osc22-pointer"])
+  })
+
+  it("refuses set-titles on any mux but tmux, naming the mux and the profile", () => {
+    expect(muxProfileConfig("screen", "set-titles")).toMatchObject({
+      status: 2,
+      stderr: "mux profile set-titles has no declared option on mux screen",
+    })
+    expect(muxProfileConfig("", "set-titles")).toMatchObject({
+      status: 2,
+      stderr: "mux profile set-titles has no declared option on mux (none)",
+    })
+  })
+
+  it("writes tmux's set-titles bytes, exactly the bytes the receipt check declares", () => {
+    const content = (profile: string) =>
+      spawnSync("bash", ["-c", 'source "$1"; tmux_config_content "$2"', "_", launcher, profile], { encoding: "utf8" })
+    expect(content("default")).toMatchObject({ status: 0, stdout: "" })
+    expect(content("set-titles")).toMatchObject({
+      status: 0,
+      stdout: MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content,
+    })
+    expect(MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.mux).toBe("tmux")
+    expect(readFileSync(launcher, "utf8")).toContain(
+      'tmux_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"',
     )
   })
 })
