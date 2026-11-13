@@ -946,6 +946,26 @@ describe("window-operation qualification", () => {
     }
   })
 
+  // A probe that threw still reports why the surface was left dirty: the restore detail rides on the error
+  // already propagating instead of being lost with it (@dev/luna3's note on slice 2).
+  test("a failed restore is added to the error a title-stack probe already raised", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      let reads = 0
+      const source = {
+        write: () => {},
+        readTitle: async () => {
+          reads++
+          if (reads === 3) throw new Error("injected title read error")
+          return reads === 4 ? "leaked-title" : "incoming-title"
+        },
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      await expect(callback(id).terminal(source)).rejects.toThrow(
+        /injected title read error; Owned title restoration mismatch/,
+      )
+    }
+  })
+
   /**
    * @failure A terminal that shows the icon title (OSC 1) in preference to the OSC 2 title hid every
    *   title control once device.xtwinops-20 left "test-icon" set: both title-stack rows read

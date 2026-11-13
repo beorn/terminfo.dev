@@ -112,6 +112,20 @@ test.each([false, true])("App OSC 2 measures and restores its owned title, disab
   expect(library.getTitle()).toBe(before)
 })
 
+test("App OSC 2 adds a failed restore to the error its own read already raised", async () => {
+  let reads = 0
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  const source = {
+    write: () => {},
+    readTitle: async () => {
+      reads++
+      if (reads === 4) throw new Error("injected title read error")
+      return reads === 5 ? "leaked-title" : "terminfo-title-control-A"
+    },
+  } as unknown as TermProbeSource
+  await expect(definition.term!(source)).rejects.toThrow(/injected title read error; Owned title restoration mismatch/)
+})
+
 // #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
 test("App OSC 2 keeps its decided reading when the owned title cleanup does not restore", async () => {
   const library = semanticSurfaceSource([])

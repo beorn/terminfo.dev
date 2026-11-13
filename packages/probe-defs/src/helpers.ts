@@ -375,6 +375,16 @@ export function callbackReading(result: ProbeCallbackResult | undefined): ProbeC
   return result
 }
 
+/**
+ * A restore the fixture could not complete is added to the failure already propagating, so a probe that threw
+ * still reports why the surface was left dirty. Neither fact replaces the other: the error keeps its type and
+ * its own message, and the cleanup rides behind it.
+ */
+export function withCleanupDetail(failure: unknown, cleanup: string): unknown {
+  if (failure instanceof Error && !failure.message.includes(cleanup)) failure.message = `${failure.message}; ${cleanup}`
+  return failure
+}
+
 /** Add completed producer evidence only where the callback explicitly requested it. */
 export function withReplyFailureEvidence(
   featureId: string,
