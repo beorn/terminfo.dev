@@ -13,6 +13,7 @@
  * except the one field that is a bundle-internal path, and every executable is a basename.
  */
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 
 /** The receipt's own identity. It shares no kind value with {@link DisposableKind}. */
 export const ORDINARY_OPEN_RECEIPT_KIND = "ordinary-open-app"
@@ -246,6 +247,17 @@ export function parseOrdinaryOpenReceipt(bytes: string): OrdinaryOpenReceipt {
   }
 }
 
+/** Read and parse the receipt at `path`; a missing file or a bad read is loud, never a silent default. */
+export function readOrdinaryOpenReceipt(path: string): OrdinaryOpenReceipt {
+  let bytes: string
+  try {
+    bytes = readFileSync(path, "utf8")
+  } catch (cause) {
+    throw new Error(`Ordinary-open receipt unreadable at ${path}`, { cause })
+  }
+  return parseOrdinaryOpenReceipt(bytes)
+}
+
 export type OrdinaryOpenAdmission =
   | { readonly admit: true }
   | {
@@ -266,8 +278,13 @@ export function ordinaryOpenAdmission(input: {
   readonly probeId: string
   readonly subject: { readonly id: string; readonly os: string; readonly kind: string }
   readonly measuredVersion: string | undefined
+  /**
+   * The bundle id the Mac app registry names for this subject. Supplied by the caller so there is exactly ONE
+   * registry (packages/admin/src/app.ts); this module never keeps a second copy to drift from it.
+   */
+  readonly expectedBundleId: string | undefined
 }): OrdinaryOpenAdmission {
-  const { receipt, probeId, subject, measuredVersion } = input
+  const { receipt, probeId, subject, measuredVersion, expectedBundleId } = input
   if (!(ORDINARY_OPEN_PROBE_IDS as readonly string[]).includes(probeId)) {
     return {
       admit: false,
@@ -287,6 +304,22 @@ export function ordinaryOpenAdmission(input: {
       admit: false,
       unprovable: false,
       refusal: `ancestry names ${receipt.subject.id}, not ${subject.id}`,
+    }
+  }
+  // @cto 2026-11-13: the BUNDLE ID binds, not the id string alone — two builds can share an id, and a receipt can
+  // claim any id it likes. Without the registry's bundle id this row proves nothing about which app it measured.
+  if (expectedBundleId === undefined) {
+    return {
+      admit: false,
+      unprovable: true,
+      refusal: `no bundle id is named for ${subject.id} in the app registry, so the ancestry cannot bind to an app`,
+    }
+  }
+  if (receipt.subject.bundleId !== expectedBundleId) {
+    return {
+      admit: false,
+      unprovable: false,
+      refusal: `ancestry bundle id ${receipt.subject.bundleId} is not the bundle ${subject.id} names (${expectedBundleId})`,
     }
   }
   if (measuredVersion !== undefined && receipt.subject.version !== measuredVersion) {

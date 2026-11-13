@@ -8,7 +8,12 @@
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
-import { ordinaryOpenAdmission, parseOrdinaryOpenReceipt, ORDINARY_OPEN_RECEIPT_KIND } from "./ordinary-open-receipt.ts"
+import {
+  ordinaryOpenAdmission,
+  parseOrdinaryOpenReceipt,
+  readOrdinaryOpenReceipt,
+  ORDINARY_OPEN_RECEIPT_KIND,
+} from "./ordinary-open-receipt.ts"
 
 const RUN = "0f6c1a2b3c4d5e6f708192a3b4c5d6e7"
 
@@ -141,6 +146,7 @@ test("the three OSC 52 rows are admitted on a matching app and measured version"
         probeId,
         subject: { id: "iterm2", os: "macos", kind: "term" },
         measuredVersion: "3.5.14",
+        expectedBundleId: "com.googlecode.iterm2",
       }),
     ).toEqual({ admit: true })
   }
@@ -153,6 +159,7 @@ test("another probe id, another app, another version and a failed witness each r
     probeId: "extensions.osc52-read",
     subject: { id: "iterm2", os: "macos", kind: "term" },
     measuredVersion: "3.5.14",
+    expectedBundleId: "com.googlecode.iterm2",
   }
   expect(ordinaryOpenAdmission({ ...base, probeId: "modes.bracketed-paste" })).toMatchObject({
     admit: false,
@@ -182,4 +189,48 @@ test("another probe id, another app, another version and a failed witness each r
     admit: false,
     refusal: expect.stringContaining("baseline was not restored"),
   })
+})
+
+test("the bundle id binds, not the id string: a receipt claiming the id with another bundle is refused", () => {
+  const parsed = parseOrdinaryOpenReceipt(
+    receipt({
+      subject: {
+        id: "iterm2",
+        bundleId: "com.example.lookalike",
+        version: "3.5.14",
+        executableInBundle: "iTerm.app/Contents/MacOS/iTerm2",
+      },
+      signature: {},
+    }),
+  )
+  expect(
+    ordinaryOpenAdmission({
+      receipt: parsed,
+      probeId: "extensions.osc52-read",
+      subject: { id: "iterm2", os: "macos", kind: "term" },
+      measuredVersion: "3.5.14",
+      expectedBundleId: "com.googlecode.iterm2",
+    }),
+  ).toMatchObject({
+    admit: false,
+    unprovable: false,
+    refusal: "ancestry bundle id com.example.lookalike is not the bundle iterm2 names (com.googlecode.iterm2)",
+  })
+})
+
+test("a subject the registry names no bundle for is unprovable, not a measured negative", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  expect(
+    ordinaryOpenAdmission({
+      receipt: parsed,
+      probeId: "extensions.osc52-read",
+      subject: { id: "iterm2", os: "macos", kind: "term" },
+      measuredVersion: "3.5.14",
+      expectedBundleId: undefined,
+    }),
+  ).toMatchObject({ admit: false, unprovable: true })
+})
+
+test("the reader refuses a missing receipt loudly instead of returning a default", () => {
+  expect(() => readOrdinaryOpenReceipt("/nonexistent/ordinary-open.json")).toThrow(/unreadable at/)
 })
