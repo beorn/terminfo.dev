@@ -88,6 +88,19 @@ describe("34040 a pair that cannot exist refuses and names the screen's limit", 
   })
 })
 
+describe("34040 the pair's refusal does not blame the probe's own output", () => {
+  it("names no limit it cannot act on when an avoid band, not the region, blocks the rows", () => {
+    // Row 3 is the probe's own output, not a compared region. The second cell avoids the compared
+    // region's rows only, so the honest sentence is the generic one — saying "every row is inside a
+    // digested region" would blame the compared region for rows it does not use (@dev/15 peer read).
+    expect(() =>
+      witnessCellsFor([{ top: 2, left: 1, bottom: 2, right: 5 }], { rows: 3, cols: 10 }, [
+        { top: 3, left: 1, bottom: 3, right: 10 },
+      ]),
+    ).toThrow(/no a second cell outside the digested regions is left in the 3x10 grid that the pair rule accepts/)
+  })
+})
+
 describe("34040 the first cell gets the same search, not a second fixed list", () => {
   it("finds the last free row of the screen instead of refusing", () => {
     // The case the old list got wrong: rows 1-23 digested on a 24-row screen, so row 24 is the only

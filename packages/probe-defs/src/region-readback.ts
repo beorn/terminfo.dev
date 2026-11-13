@@ -697,6 +697,10 @@ export function witnessCellsFor(
     regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
   const apart = (cell: { row: number; col: number }): boolean => cell.row !== a.row && cell.col !== a.col
   const accepts = cleared(grid, digested)
+  // Kept from 33981 and NOT widened here: the first cell avoids every row the probe's own output
+  // covers, the second avoids only the compared region's rows. Changing that moves the pair on every
+  // frame that carries an avoid band, so it is left as it is rather than folded into 34040
+  // (@dev/15 peer read, residual 1).
   const usable = (cell: { row: number; col: number }): boolean => accepts(cell) && !onRegionRow(cell) && apart(cell)
   // Closest first, and another ROW before another row's far column: the +/-1 column, +/-1 and +/-2 row
   // cells keep 33981's original preference, then the search takes over.
@@ -716,7 +720,11 @@ export function witnessCellsFor(
     return { a, b: cell }
   }
   throw new Error(
-    `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column: ${spelledLimit(clearExtent(footprint, grid), grid, "a second cell")}, so this frame's crop cannot be anchored by a sentinel pair`,
+    // The limit is measured from the compared region alone, because that is what the SECOND cell
+    // avoids: the probe's own output is not a digested region for it (its rectangles are excluded
+    // cell by cell, as before). Counting avoid rows here named a limit the reader could not act on
+    // (@dev/15 peer read, 34040).
+    `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column: ${spelledLimit(clearExtent(regions, grid), grid, "a second cell")}, so this frame's crop cannot be anchored by a sentinel pair`,
   )
 }
 
