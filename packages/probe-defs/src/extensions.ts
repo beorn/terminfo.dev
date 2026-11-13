@@ -5008,6 +5008,22 @@ async function liveClipboardProbe(
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
     const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
+    // @cto 2026-11-13: a read's feature IS the query, so a control must prove this TTY answers queries at all before
+    // silence can mean anything. Control fails = probe-todo naming the control; control passes and the query is
+    // silent = unsupported. A profile reading names its profile and exact setting; a default reading names nothing.
+    const profileNote = fixture.readProfile
+      ? `${fixture.readProfile.profile}: ${fixture.readProfile.setting}`
+      : undefined
+    if (kind === "read") {
+      const control = await ctx.queryCursorPosition()
+      // probe-todo, never the declared-untestable shape: the channel was not measured, nothing was declared absent.
+      if (!control)
+        return {
+          pass: false,
+          note: "cursor-position control before the OSC 52 read",
+          tests: [{ id: "criterion", status: "probe-todo", reason: "cursor-position control before the OSC 52 read" }],
+        }
+    }
     if (mux) {
       const settled = await settledClipboardReply(
         async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
@@ -5063,6 +5079,25 @@ async function liveClipboardProbe(
     }
     const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
     const outcome = settled.outcome
+    // @cto 2026-11-13: the control answered and the query never did, so the feature is absent in this configuration,
+    // not unknown. Never a zero-byte read graded as "did not write".
+    if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+      const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
+      return {
+        pass: false,
+        response: outcome.raw,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply" as const,
+            kind: "negative" as const,
+            expected: "OSC 52 c returns the independently written payload",
+            observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+          },
+        ],
+      }
+    }
     const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
@@ -5078,7 +5113,15 @@ async function liveClipboardProbe(
         },
       }
     }
-    return result
+    return profileNote && kind === "read" && result.observation
+      ? {
+          ...result,
+          observation: {
+            ...result.observation,
+            note: result.observation.note ? `${result.observation.note} (${profileNote})` : profileNote,
+          },
+        }
+      : result
   })
 }
 
