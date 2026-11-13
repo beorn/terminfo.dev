@@ -1888,7 +1888,11 @@ export async function createOwnedTerminal(options: {
           executable: ownedCmuxCli,
           surface: cmuxSurface ?? null,
           grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
-          lastRead: cmuxLastReceipt ?? null,
+          // A getter, not a captured value: this object is built once at owner creation, so a snapshot
+          // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
+          get lastRead(): string | null {
+            return cmuxLastReceipt ?? null
+          },
         },
       }),
       ...(readTitle && {
