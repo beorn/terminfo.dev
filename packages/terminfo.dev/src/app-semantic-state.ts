@@ -52,6 +52,25 @@ type AppSemanticCapability = {
 }
 
 const declarations: readonly AppSemanticCapability[] = [
+  // CTO316a2912: this Mac apparatus cannot observe these rows; no capability verdict.
+  ...[
+    ...promptFeatures,
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ].map((featureId) => ({
+    kind: "term",
+    id: "alacritty",
+    version: "0.17.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no way): The selected Alacritty IPC surface reads configuration, not the terminal's parsed feature state. It provides no App-owned readback for this probe's unknown, independently handled, and target controls. This observation route cannot grade the feature; declare it untestable through this apparatus.",
+  })),
   // Remove when either route rule changes: hosted pointer helper installed or owned-host rule changes.
   // These exact App routes are untestable under the current rules, not feature negatives (CTO2aabe241/fd05a5f1).
   ...[
