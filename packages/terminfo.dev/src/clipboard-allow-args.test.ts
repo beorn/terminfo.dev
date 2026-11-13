@@ -10,7 +10,12 @@ import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
-import { assertClipboardProfile, CLIPBOARD_ALLOW_ARGS, type ClipboardApp } from "./linux-clipboard.ts"
+import {
+  assertClipboardProfile,
+  clipboardReadProfile,
+  CLIPBOARD_ALLOW_ARGS,
+  type ClipboardApp,
+} from "./linux-clipboard.ts"
 
 const launcher = join(dirname(fileURLToPath(import.meta.url)), "../../../scripts/linux-container-run.sh")
 
@@ -76,4 +81,19 @@ test("deny-read exists only for Kitty", () => {
     assertClipboardProfile("kitty", "deny-read", argv("kitty", ["-o", "clipboard_control=write-clipboard"])),
   ).not.toThrow()
   expect(() => assertClipboardProfile("ghostty", "deny-read", argv("ghostty", []))).toThrow(/no declared deny-read/)
+})
+
+// @dev/16 peer: a profile reading must name the setting that run applied. deny-read configures write-clipboard only,
+// so a deny-read reading that printed the allow args would name the opposite of what ran.
+test("a deny-read profile names write-clipboard only, and allow names the app's read args", () => {
+  expect(clipboardReadProfile("kitty", "deny-read")).toEqual({
+    profile: "deny-read",
+    setting: "kitty -o clipboard_control=write-clipboard",
+  })
+  expect(clipboardReadProfile("kitty", "allow")).toEqual({
+    profile: "allow",
+    setting: "kitty -o clipboard_control=write-clipboard read-clipboard",
+  })
+  expect(clipboardReadProfile("wezterm", "allow")).toBeUndefined()
+  expect(clipboardReadProfile("kitty", "default")).toBeUndefined()
 })

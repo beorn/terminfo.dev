@@ -1500,6 +1500,25 @@ describe("OSC 52 read leg control and profile naming", () => {
     })
   })
 
+  test("a deny-read profile grades its own configured refusal, naming write-clipboard only", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "deny-read", setting: "kitty -o clipboard_control=write-clipboard" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "deny-read profile: refusal configured by this run; grades nothing about the default",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
   test("an answered query passes and its note carries the profile and exact setting", async () => {
     let seeded = ""
     const result = await readCallback()(

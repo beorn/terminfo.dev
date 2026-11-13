@@ -859,6 +859,20 @@ export const CLIPBOARD_READ_DEFAULTS: Readonly<
 }
 
 /** The argv tokens that set each terminal's clipboard read control, flag and value together. */
+/**
+ * The read setting a run's profile ACTUALLY applied, as `assertClipboardProfile` verifies against the live argv:
+ * allow = the app's read-allowed args; deny-read = write-clipboard only. A record names this, so a deny-read reading
+ * cannot be printed as if it had granted reads (@dev/16 peer).
+ */
+export function clipboardReadProfile(
+  app: ClipboardApp,
+  profile: "default" | "allow" | "deny-read",
+): { readonly profile: string; readonly setting: string } | undefined {
+  if (profile === "default") return undefined
+  const applied = profile === "deny-read" ? ["-o", "clipboard_control=write-clipboard"] : CLIPBOARD_ALLOW_ARGS[app]
+  return applied.length > 0 ? { profile, setting: `${app} ${applied.join(" ")}` } : undefined
+}
+
 function clipboardControls(app: ClipboardApp, options: string[]): string[] {
   const valueOf = (flags: string[], value: (part: string) => boolean) =>
     options.flatMap((part, index) => {
@@ -1168,6 +1182,7 @@ export async function createLinuxClipboardAdapter(
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
   }
+  const readProfile = clipboardReadProfile(app, receipt.profile)
   const withClipboardFixture = createClipboardTransaction(
     baseline,
     {
@@ -1180,10 +1195,7 @@ export async function createLinuxClipboardAdapter(
     {
       // @cto 2026-11-13: a profile reading names its profile and its exact setting; a default-configuration reading
       // names nothing, and that absence is what tells the two apart downstream.
-      ...(receipt.profile !== "default" &&
-        CLIPBOARD_ALLOW_ARGS[app].length > 0 && {
-          readProfile: { profile: receipt.profile, setting: `${app} ${CLIPBOARD_ALLOW_ARGS[app].join(" ")}` },
-        }),
+      ...(readProfile && { readProfile }),
       ...(receipt.profile === "default" &&
         CLIPBOARD_READ_DEFAULTS[app] && { readDefault: CLIPBOARD_READ_DEFAULTS[app] }),
       ...(tmuxTarget && {
