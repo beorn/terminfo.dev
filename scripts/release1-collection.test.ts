@@ -49,8 +49,12 @@ import {
 } from "@terminfo/probe-defs"
 import {
   assertHostedWindowCustody,
+  assertOwnedTransportApplies,
+  ownedRowVerdict,
+  assertOwnedRowsStartable,
   childExitWords,
   collectPass,
+  collectionRoutes,
   ownedAppCommand,
   ownedAppRunsDirectory,
   readOwnedAppTransportProof,
@@ -270,16 +274,16 @@ it.each([
           : undefined
     const catalogSelection =
       inputChange === "hosted-census-one"
-        ? vi
-            .spyOn(catalog, "loadTerminals")
-            .mockReturnValue(
-              Object.fromEntries(
-                Object.entries(catalog.loadTerminals(CONTENT)).map(([id, terminal]) => [
-                  id,
-                  id === "terminal-app" ? terminal : { ...terminal, historical: true },
-                ]),
-              ),
-            )
+        ? vi.spyOn(catalog, "loadTerminals").mockReturnValue(
+            Object.fromEntries(
+              Object.entries(catalog.loadTerminals(CONTENT)).map(([id, terminal]) => [
+                id,
+                // Terminal.app is owned (33963) and cannot be hosted, so the one-live-app census
+                // case keeps a hosted terminal live instead: the point is one dispatched row.
+                id === "ghostty" ? terminal : { ...terminal, historical: true },
+              ]),
+            ),
+          )
         : undefined
     const textCase = inputChange.startsWith("text-")
     // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
@@ -522,7 +526,7 @@ it.each([
             } else writeFileSync(join(folder, "run.json"), "{}")
             // 30035: exercise the actual development collection boundary, including its retained bytes.
             // The recipe itself is tested independently; this case proves the caller passes verified context.
-            if (textCase && id === "terminal-app") {
+            if (textCase && id === "ghostty") {
               const fixtureRows = textQualificationFixtures(4, 12)
               if (typeof fixtureRows === "string") throw new Error(fixtureRows)
               const artifactsDirectory = join(folder, "artifacts")
@@ -618,7 +622,9 @@ it.each([
             }
             writeFileSync(
               join(folder, "collector-bun.lock"),
-              id === "terminal-app" && !textCase && !cohort ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+              // terminal-app is owned (33963) and never reaches a hosted artifact on this host, so the
+              // wrong-lock fixture hangs on a hosted row that does.
+              id === "iterm2" && !textCase && !cohort ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
             )
             writeFileSync(
               join(folder, "collector-build.json"),
@@ -667,15 +673,15 @@ it.each([
     try {
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
       const selection = cohort
-        ? { contexts: ["terminal-app/macos"], ids: ["sgr.bold"] }
+        ? { contexts: ["ghostty/macos"], ids: ["sgr.bold"] }
         : inputChange.startsWith("macos-")
           ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
           : inputChange === "hosted-selected"
-            ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
+            ? { contexts: ["ghostty/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
             : inputChange === "hosted-one-os"
               ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
               : inputChange === "hosted-contexts" || inputChange.startsWith("hosted-ref-")
-                ? { contexts: ["terminal-app/macos"] }
+                ? { contexts: ["ghostty/macos"] }
                 : inputChange === "selected" || inputChange === "completed-collector-error"
                   ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
                   : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
@@ -834,7 +840,7 @@ it.each([
         const dispatches = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
         expect(dispatches).toHaveLength(1)
         expect(dispatches[0]?.[1]).toContain(
-          `context_matrix=${JSON.stringify({ include: [{ id: "terminal-app", bundle: "/System/Applications/Utilities/Terminal.app" }] })}`,
+          `context_matrix=${JSON.stringify({ include: [{ id: "ghostty", bundle: "/Applications/Ghostty.app" }] })}`,
         )
         expect(dispatches[0]?.[1]?.some((argument) => String(argument).startsWith("probe_ids="))).toBe(false)
         return
@@ -899,9 +905,7 @@ it.each([
               : {
                   id: row.context.id,
                   bundle:
-                    row.context.id === "terminal-app"
-                      ? "/System/Applications/Utilities/Terminal.app"
-                      : "/Applications/Visual Studio Code.app",
+                    row.context.id === "ghostty" ? "/Applications/Ghostty.app" : "/Applications/Visual Studio Code.app",
                 },
           )
           expect(launcher).toHaveBeenCalledWith(
@@ -1022,7 +1026,7 @@ it.each([
 
       if (textCase) {
         const terminal = pass.contexts.find(
-          (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
+          (row) => row.context.kind === "term" && row.context.id === "ghostty" && row.context.os === "macos",
         )
         expect(terminal?.status).toBe("not-started")
         expect(terminal?.error).toMatch(/Collector changed logical runId/)
@@ -1246,7 +1250,8 @@ it.each([
           (row) =>
             row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
         )
-        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 12 : 9)
+        // Terminal.app left the hosted matrix with 33963: 11 hosted rows across both platforms, 8 on macOS.
+        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 11 : 8)
         expect(affected.every((row) => row.status === "not-started" && row.error?.includes("EEXIST"))).toBe(true)
         expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
           inputChange === "blocked-hosted" ? 0 : 1,
@@ -1284,7 +1289,7 @@ it.each([
           expect.anything(),
         )
         const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-        expect(hosted).toHaveLength(os === "macos" ? 9 : 3)
+        expect(hosted).toHaveLength(os === "macos" ? 8 : 3)
         if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
       }
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -1313,8 +1318,13 @@ it.each([
         expect(pass.errors.some((error) => error.includes("windows-measurement") && error.includes("exited 1"))).toBe(
           true,
         )
-        const mac = pass.contexts.find((row) => row.context.id === "terminal-app")
+        // A hosted macOS row reports the lock refusal; terminal-app is owned now, so on this host it
+        // is recorded "not run" by name and never carries a hosted error.
+        const mac = pass.contexts.find((row) => row.context.id === "iterm2" && row.context.os === "macos")
         if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
+        const owned = pass.contexts.find((row) => row.context.id === "terminal-app" && row.context.os === "macos")
+        expect(owned?.notRun).toMatch(/^not run: terminal-app\/macos starts only when it is selected explicitly/)
+        expect(owned?.error).toBeUndefined()
         const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
         expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
         expect(windows?.error).toMatch(/schemaVersion/)
@@ -1410,17 +1420,10 @@ describe("release 1 collection census", () => {
     const missing = census().filter((entry) => entry.route === null)
     expect(missing).toHaveLength(1)
     expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(0)
-    for (const id of [
-      "terminal-app",
-      "iterm2",
-      "ghostty",
-      "alacritty",
-      "wezterm",
-      "cursor",
-      "com.microsoft.VSCode",
-      "warp",
-      "cmux",
-    ]) {
+    // Terminal.app is the owned route (33963): it is measured on the host that owns it, never by the
+    // hosted matrix, and the rest of the macOS terminals stay hosted.
+    expect(census().find((entry) => entry.id === "terminal-app" && entry.os === "macos")?.route).toBe("local-owned-app")
+    for (const id of ["iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty", "wezterm"]) {
@@ -1603,6 +1606,96 @@ it("names a probe subcommand the admin CLI registers", () => {
   expect(help.stdout).toContain("Commands:")
   const registered = [...help.stdout.matchAll(/^\s{2}([a-z][a-z-]*)\s/gm)].map((match) => match[1])
   expect(registered).toContain(subcommand)
+})
+
+// 33963 (@cto A): a Mac app whose owned arm proves window ownership routes to the owned route only,
+// and the owned transport is used or refused, never accepted for rows it cannot start.
+it("routes an owned app away from the hosted matrix, and refuses a transport for routed contexts", () => {
+  const apps = [
+    "terminal-app",
+    "iterm2",
+    "ghostty",
+    "warp",
+    "cursor",
+    "com.microsoft.VSCode",
+    "cmux",
+    "alacritty",
+    "wezterm",
+  ]
+  const expected = apps.map((terminalId) => ({
+    context: `${terminalId}/macos`,
+    terminalId,
+    os: "macos" as const,
+    kind: "term" as const,
+  }))
+  const routeOf = (contexts: readonly CollectionContext[], id: string): string | null | undefined =>
+    contexts.find((context) => context.id === id)?.route
+
+  const withEntry = collectionRoutes(expected, new Set(["terminal-app"]))
+  expect(routeOf(withEntry, "terminal-app")).toBe("local-owned-app")
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app")) {
+    expect(routeOf(withEntry, id)).toBe("hosted-workflow")
+  }
+
+  const withEmptySet = collectionRoutes(expected, new Set<string>())
+  // Terminal.app left the hosted matrix with this change, so an empty owned set must leave it NAMED as
+  // uncollectable, never quietly hosted-dispatched as if the owned route had never existed.
+  expect(routeOf(withEmptySet, "terminal-app")).toBeNull()
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app")) {
+    expect(routeOf(withEmptySet, id)).toBe("hosted-workflow")
+  }
+
+  const ownedOnly = withEntry.filter((context) => context.id === "terminal-app")
+  expect(() => assertOwnedTransportApplies(ownedOnly, "ssh:codi@codimac")).not.toThrow()
+  expect(() => assertOwnedTransportApplies(withEmptySet, "ssh:codi@codimac")).toThrow(
+    /do not route there: terminal-app\/macos, iterm2\/macos/,
+  )
+  expect(() => assertOwnedTransportApplies(withEntry, "ssh:codi@codimac")).toThrow(/iterm2\/macos/)
+  expect(() => assertOwnedTransportApplies(withEmptySet, "local")).not.toThrow()
+})
+
+// 33963 (@cto A, condition 2): a host that cannot start an owned row records it "not run" by name and
+// the collection stays green; only a selection that can measure nothing is refused.
+it("records an owned row as not run on a host that cannot start it, and starts it where it can", () => {
+  const owned = collectionRoutes(
+    [{ context: "terminal-app/macos", terminalId: "terminal-app", os: "macos" as const, kind: "term" as const }],
+    new Set(["terminal-app"]),
+  )[0]!
+  const hosted = collectionRoutes(
+    [{ context: "ghostty/macos", terminalId: "ghostty", os: "macos" as const, kind: "term" as const }],
+    new Set(["terminal-app"]),
+  )[0]!
+
+  // @cto 33963 condition 3: the default pass never starts an owned row, on ANY host. A Mac default is
+  // the dangerous one, because it is the host where the launch would succeed.
+  const defaultOnDarwin = ownedRowVerdict(owned, "local", "darwin", false)
+  expect(defaultOnDarwin.start).toBe(false)
+  expect(defaultOnDarwin.start === false && defaultOnDarwin.reason).toMatch(
+    /^not run: terminal-app\/macos starts only when it is selected explicitly or an owned transport names its host; a default collection never starts an owned row$/,
+  )
+  const defaultOnLinux = ownedRowVerdict(owned, "local", "linux", false)
+  expect(defaultOnLinux.start).toBe(false)
+  expect(defaultOnLinux.start === false && defaultOnLinux.reason).toMatch(
+    /a default collection never starts an owned row/,
+  )
+  // An explicit selection of the row starts it on the host that owns it...
+  expect(ownedRowVerdict(owned, "local", "darwin", true).start).toBe(true)
+  // ...and the same selection on a host that cannot start it refuses by name below.
+  const selectedOnLinux = ownedRowVerdict(owned, "local", "linux", true)
+  expect(selectedOnLinux.start).toBe(false)
+  expect(selectedOnLinux.start === false && selectedOnLinux.reason).toMatch(
+    /^not run: terminal-app\/macos starts through the owned route on the host that owns it, and this host is linux/,
+  )
+  // An owned transport names the host, so it starts there regardless of this host's platform.
+  expect(ownedRowVerdict(owned, "ssh:codi@codimac", "linux", false).start).toBe(true)
+  // A hosted row is the host's business, never the owned route's.
+  expect(ownedRowVerdict(hosted, "local", "linux", false).start).toBe(true)
+  // ...and a selection that NAMES it is refused by name rather than skipped.
+  expect(() => assertOwnedRowsStartable([owned], ["terminal-app/macos"], "local", "linux")).toThrow(
+    /terminal-app\/macos was selected explicitly, but not run: .*this host is linux/,
+  )
+  expect(() => assertOwnedRowsStartable([owned], undefined, "local", "linux")).not.toThrow()
+  expect(() => assertOwnedRowsStartable([owned], ["terminal-app/macos"], "local", "darwin")).not.toThrow()
 })
 
 it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
@@ -2112,6 +2205,17 @@ it.each([
     })
   try {
     const pass = await collectPass(directory, { runner: "local" })
+    // 33963 (@cto A, conditions 2 and 3): a default collection NEVER starts an owned row, on any
+    // host — including the Mac, which is the host where the implicit launch would have succeeded. The
+    // row is named "not run", never an error, so the pass stays green for what the host can measure.
+    const ownedRow = pass.contexts.find((entry) => entry.context.id === "terminal-app" && entry.context.os === "macos")!
+    expect(ownedRow.status, ownedRow.error).toBe("not-started")
+    expect(ownedRow.notRun).toMatch(
+      /^not run: terminal-app\/macos (starts only when it is selected explicitly|starts through the owned route)/,
+    )
+    expect(ownedRow.error).toBeUndefined()
+    expect(ownedRow.directory, "the default pass launched nothing for the owned row").toBeUndefined()
+    expect(pass.errors.filter((error) => error.includes("terminal-app"))).toEqual([])
     if (fault === "linux-receipt") {
       const linux = pass.contexts.find(
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",

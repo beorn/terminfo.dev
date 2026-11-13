@@ -1,10 +1,6 @@
 {
   "schemaVersion": 4,
-<<<<<<<< HEAD:content/suites/ffb467adcac9.json
-  "probeHash": "ffb467adcac9",
-========
   "probeHash": "19015ade8fba",
->>>>>>>> 65cc4ad0b0ef:content/suites/19015ade8fba.json
   "adapterVersion": "4.0.0",
   "probes": {
     "term": [

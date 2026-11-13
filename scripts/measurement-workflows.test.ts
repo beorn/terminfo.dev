@@ -1368,7 +1368,11 @@ test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispat
   if (os === "windows") {
     expect(matrix.include).toEqual([{ id: "windows-terminal" }, { id: "alacritty" }, { id: "wezterm" }])
   } else {
-    expect(matrix.include).toHaveLength(9)
+    // 33963: Terminal.app is owned and no longer hosted, so the macOS dispatch default carries the 8
+    // hosted terminals and never the owned one — a hosted job for it would measure a window it does
+    // not own.
+    expect(matrix.include).toHaveLength(8)
+    expect(matrix.include.map((row: { id: string }) => row.id)).not.toContain("terminal-app")
     expect(matrix.include.every((row: { id: string; bundle?: string }) => row.id && row.bundle)).toBe(true)
     expect(inputs.cohort).toMatchObject({ type: "boolean", required: false, default: false })
     expect(workflow.concurrency).toEqual({
