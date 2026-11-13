@@ -80,6 +80,19 @@ export interface SelectionOwnerIo {
 
 const hex = (id: bigint) => `0x${id.toString(16)}`
 
+/** The child's JSON as X ids, or null when a field is missing or not a decimal integer. */
+function xIds(parsed: unknown): { owner: bigint; mask: bigint; children: bigint[] } | null {
+  const decimal = (value: unknown) => (typeof value === "string" && /^\d+$/.test(value) ? BigInt(value) : null)
+  if (typeof parsed !== "object" || parsed === null) return null
+  const { owner, mask, children } = parsed as Record<string, unknown>
+  const ownerId = decimal(owner)
+  const maskBits = decimal(mask)
+  if (ownerId === null || maskBits === null || !Array.isArray(children)) return null
+  const childIds = children.map(decimal)
+  if (childIds.some((id) => id === null)) return null
+  return { owner: ownerId, mask: maskBits, children: childIds as bigint[] }
+}
+
 /** Read the selection's owner and name its client. Every failure is a named `read: false`, never a throw. */
 export async function readSelectionTaker(
   selection: "clipboard" | "primary",
@@ -98,16 +111,24 @@ export async function readSelectionTaker(
     const how = ran.signal ? `signal ${ran.signal}` : `exited ${ran.code ?? "without a code"}`
     return { read: false, at, reason: `taker child ${how}${ran.stderr.trim() ? `: ${ran.stderr.trim()}` : ""}` }
   }
-  let parsed: { owner: string; mask: string; children: string[] }
+  let parsed: unknown
   try {
-    parsed = JSON.parse(ran.stdout) as typeof parsed
+    parsed = JSON.parse(ran.stdout)
   } catch {
     return { read: false, at, reason: `taker child printed no JSON: ${JSON.stringify(ran.stdout.slice(0, 120))}` }
   }
-  const owner = BigInt(parsed.owner)
+  const fields = xIds(parsed)
+  if (fields === null) {
+    return {
+      read: false,
+      at,
+      reason: `taker child printed JSON without a numeric owner, mask and children list: ${JSON.stringify(ran.stdout.slice(0, 120))}`,
+    }
+  }
+  const { owner, mask, children } = fields
   if (owner === 0n) return { read: false, at, reason: `${selection} has no owner` }
-  const base = owner & ~BigInt(parsed.mask)
-  const clientWindows = parsed.children.map(BigInt).filter((id) => (id & ~BigInt(parsed.mask)) === base)
+  const base = owner & ~mask
+  const clientWindows = children.filter((id) => (id & ~mask) === base)
   for (const id of clientWindows) {
     const props = await io.xprop(hex(id)).catch(() => "")
     const wmClass = /^WM_CLASS\(STRING\) = (.+)$/m.exec(props)?.[1]
