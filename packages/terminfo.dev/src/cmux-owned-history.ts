@@ -29,7 +29,6 @@ export type CmuxRefusal =
   | "cmux-marker-missing"
   | "cmux-markers-out-of-order"
   | "cmux-config-hash-changed"
-  | "cmux-process-left"
 
 export type CmuxRefused = Readonly<{ status: "refused"; refusal: CmuxRefusal; reason: string }>
 
@@ -40,6 +39,8 @@ export type CmuxRefused = Readonly<{ status: "refused"; refusal: CmuxRefusal; re
 export type CmuxOwnership =
   | Readonly<{ kind: "markers"; prefix: string; count: number; nonce: string }>
   | Readonly<{ kind: "nonce"; nonce: string }>
+  // Ownership was proved once at grant; this read only names the surface and must not write.
+  | Readonly<{ kind: "surface" }>
 
 /**
  * The cmux CLI that can read an OWNED surface's history, or undefined when this run owns no cmux surface.
@@ -168,7 +169,9 @@ export function cmuxMarkerProof(input: {
   })
   const opening = rows.indexOf(begin)
   const closing = rows.indexOf(end)
-  if (read.length === 0 || opening > read[0]!.index || closing < read[read.length - 1]!.index) {
+  const first = read.at(0)
+  const last = read.at(-1)
+  if (first === undefined || last === undefined || opening > first.index || closing < last.index) {
     return {
       status: "refused",
       refusal: "cmux-surface-not-owned",
@@ -303,12 +306,11 @@ const text = (value: Buffer | string | null | undefined): string =>
 export function readOwnedCmuxHistory(options: {
   readonly executable: string
   readonly surface?: string | undefined
-  readonly rows: number
+  readonly rows?: number | undefined
   readonly ownership: CmuxOwnership
   readonly configAtLaunch: CmuxConfigObservation | undefined
   readonly observeConfig: () => CmuxConfigObservation
   readonly spawn?: (args: readonly string[]) => CommandOutcome
-  readonly processCount?: () => number
 }): OwnedCmuxRead {
   const args = [
     "read-screen",
@@ -336,36 +338,32 @@ export function readOwnedCmuxHistory(options: {
     }
   }
   const proof =
-    options.ownership.kind === "markers"
-      ? cmuxMarkerProof({
-          transcript: stdout,
-          nonce: options.ownership.nonce,
-          prefix: options.ownership.prefix,
-          count: options.ownership.count,
-        })
-      : cmuxNonceProof({ transcript: stdout, nonce: options.ownership.nonce })
-  if (proof.status === "refused") return proof
+    options.ownership.kind === "surface"
+      ? { status: "graded" as const, extras: undefined }
+      : options.ownership.kind === "markers"
+        ? cmuxMarkerProof({
+            transcript: stdout,
+            nonce: options.ownership.nonce,
+            prefix: options.ownership.prefix,
+            count: options.ownership.count,
+          })
+        : options.ownership.kind === "nonce"
+          ? cmuxNonceProof({ transcript: stdout, nonce: options.ownership.nonce })
+          : undefined
+  if (proof !== undefined && proof.status === "refused") return proof
   const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
-  const remaining = options.processCount?.() ?? 0
-  if (remaining > 0) {
-    return {
-      status: "refused",
-      refusal: "cmux-process-left",
-      reason: `${remaining} cmux process(es) outlived the run, so the instance that answered cannot be said to be gone`,
-    }
-  }
   const totalLines = lines(stdout).length
   return {
     status: "read",
-    reading: { totalLines, screenLines: options.rows },
+    reading: { totalLines, ...(options.rows === undefined ? {} : { screenLines: options.rows }) },
     receipt: JSON.stringify({
       surface: options.surface ?? null,
       ownership: options.ownership.kind,
-      markers: "markers" in proof ? proof.markers : null,
-      extras: proof.extras,
+      markers: proof !== undefined && "markers" in proof ? proof.markers : null,
+      extras: proof?.extras ?? null,
       totalLines,
-      screenLines: options.rows,
+      screenLines: options.rows ?? null,
       config:
         options.configAtLaunch === undefined
           ? "unrecorded"

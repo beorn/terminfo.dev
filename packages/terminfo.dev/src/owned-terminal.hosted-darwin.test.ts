@@ -805,7 +805,13 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
         return child
       },
       spawnSync: (file, args) => {
-        if (String(file).includes("cmux")) cmuxCalls.push(String(file) + " " + args.join(" "))
+        if (String(file).includes("cmux")) {
+          cmuxCalls.push(String(file) + " " + args.join(" "))
+          // read-screen shows the surface's own history: the grant nonce line comes back exactly once.
+          if (args.includes("read-screen")) {
+            return { status: 0, stdout: "$ prompt\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ prompt", stderr: "" }
+          }
+        }
         return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
       }
     }))
@@ -814,6 +820,12 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    process.env.CMUX_SURFACE_ID = "surface-uuid-1"
+    const writes = []
+    // selectedFd accepts only the daemon's real stdout (or a real tty WriteStream), so the spy lives on
+    // process.stdout. The only write this owner may make is the single grant nonce line (@cto REVISE F1).
+    const realWrite = process.stdout.write.bind(process.stdout)
+    process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, "cmux")
@@ -822,11 +834,24 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(owner.historyReadsThroughCli, true)
     assert.equal(owner.historyExecutable?.path, executable)
     assert.equal(owner.historyExecutable?.version, "cmux 0.65.2")
+    // The grant proof wrote the nonce once; no later read may write anything (@cto REVISE F1).
+    assert.equal(writes.length, 1)
+    assert.match(writes[0], /CMUX-a{32}-BEGIN/)
+    const grant = JSON.parse(owner.cmuxHistory.grantProof)
+    assert.equal(grant.ownership, "nonce")
+    assert.equal(grant.surface, "surface-uuid-1")
+    assert.equal(owner.cmuxHistory.surface, "surface-uuid-1")
     const atGrant = cmuxCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
     assert.equal(error?.message, "Hosted cmux ancestor is now pid 5555, not pid 4242 measured at launch")
     assert.equal(cmuxCalls.length, atGrant, "no cmux read may follow the refusal")
+    const readsBefore = cmuxCalls.length
+    await owner.getScrollback().then(() => undefined, () => undefined)
+    await owner.getScrollback().then(() => undefined, () => undefined)
+    assert.equal(writes.length, 1, "a later read must not write to the surface")
+    assert.ok(readsBefore >= atGrant)
+    process.stdout.write = realWrite
     await owner.dispose()
   `
   const result = spawnSync(process.execPath, ["-e", script], {

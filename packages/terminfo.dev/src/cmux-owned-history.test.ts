@@ -162,7 +162,6 @@ test("the reader grades the nonce arm and still reports retained lines", () => {
     configAtLaunch: { read: "present" as const, sha256: configSha256 },
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
     spawn: () => ({ status: 0, stdout: `CMUX-${nonce}-BEGIN\nINSIDE-1\nINSIDE-2`, stderr: "" }),
-    processCount: () => 0,
   })
   expect(read.status).toBe("read")
   expect(read.status === "read" && read.reading.totalLines).toBe(3)
@@ -171,7 +170,10 @@ test("the reader grades the nonce arm and still reports retained lines", () => {
 
 test("the socket guard is proved by what the run observed at launch and after", () => {
   const present = { read: "present" as const, sha256: configSha256 }
-  expect(cmuxConfigGuard({ atLaunch: present, afterRun: present })).toEqual({ status: "unchanged", observed: "present" })
+  expect(cmuxConfigGuard({ atLaunch: present, afterRun: present })).toEqual({
+    status: "unchanged",
+    observed: "present",
+  })
   // A fresh runner may have no file at all: absent on both sides is an honest "nothing changed", and the
   // receipt says absent rather than claiming cmuxOnly was verified.
   const absent = { read: "absent" as const }
@@ -219,7 +221,6 @@ test("the reader names the surface it reads and returns retained lines, not the 
       calls.push([...args])
       return { status: 0, stdout: transcriptOf(12), stderr: "" }
     },
-    processCount: () => 0,
   })
   expect(calls).toEqual([["read-screen", "--surface", "surface:1000070000", "--scrollback"]])
   expect(read.status).toBe("read")
@@ -230,23 +231,55 @@ test("the reader names the surface it reads and returns retained lines, not the 
   expect(read.status === "read" && read.reading.capacity).toBeUndefined()
 })
 
-test("the reader refuses when a cmux process outlives the run or the guard moved", () => {
+test("a surface read proves nothing per call and refuses only an empty read or a moved guard", () => {
   const base = {
     executable,
     rows: 50,
-    ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
+    ownership: { kind: "surface" as const },
     configAtLaunch: { read: "present" as const, sha256: configSha256 },
-    spawn: () => ({ status: 0, stdout: transcriptOf(12), stderr: "" }),
-  }
-  const left = readOwnedCmuxHistory({ ...base, observeConfig: () => ({ read: "present" as const, sha256: configSha256 }), processCount: () => 1 })
-  expect(left.status === "refused" && left.refusal).toBe("cmux-process-left")
-  const moved = readOwnedCmuxHistory({ ...base, observeConfig: () => ({ read: "present" as const, sha256: "f".repeat(64) }), processCount: () => 0 })
-  expect(moved.status === "refused" && moved.refusal).toBe("cmux-config-hash-changed")
-  const failed = readOwnedCmuxHistory({
-    ...base,
-    spawn: () => ({ status: 1, stdout: "", stderr: "Access denied - only processes started inside cmux can connect" }),
+    spawn: () => ({ status: 0, stdout: transcriptOf(12, measuredExtra, false), stderr: "" }),
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
-    processCount: () => 0,
+  }
+  const read = readOwnedCmuxHistory(base)
+  expect(read.status).toBe("read")
+  expect(read.status === "read" && read.reading.totalLines).toBe(14)
+  expect(read.status === "read" && read.reading.screenLines).toBe(50)
+  const empty = readOwnedCmuxHistory({ ...base, spawn: () => ({ status: 0, stdout: "", stderr: "" }) })
+  expect(empty.status === "refused" && empty.refusal).toBe("cmux-read-empty")
+  const moved = readOwnedCmuxHistory({
+    ...base,
+    observeConfig: () => ({ read: "present" as const, sha256: "f".repeat(64) }),
   })
-  expect(failed.status === "refused" && failed.refusal).toBe("cmux-surface-not-owned")
+  expect(moved.status === "refused" && moved.refusal).toBe("cmux-config-hash-changed")
+  // cmux's own denial phrase goes to the collector's stderr log, never into the published reason
+  // (the sibling WezTerm arm proves the same split), so the read is taken with the log captured.
+  const stderrLog: string[] = []
+  const originalError = console.error
+  console.error = (...args: unknown[]) => {
+    stderrLog.push(args.map(String).join(" "))
+  }
+  let denied: ReturnType<typeof readOwnedCmuxHistory>
+  try {
+    denied = readOwnedCmuxHistory({
+      ...base,
+      spawn: () => ({ status: 1, stdout: "", stderr: "Access denied - only processes started inside cmux can connect" }),
+    })
+  } finally {
+    console.error = originalError
+  }
+  expect(denied.status === "refused" && denied.refusal).toBe("cmux-surface-not-owned")
+  expect(stderrLog.join("\n")).toContain("Access denied")
+})
+
+test("a surface read without a measured grid still reports retained lines and claims no screen height", () => {
+  const read = readOwnedCmuxHistory({
+    executable,
+    ownership: { kind: "surface" as const },
+    configAtLaunch: { read: "present" as const, sha256: configSha256 },
+    spawn: () => ({ status: 0, stdout: transcriptOf(3, measuredExtra, false), stderr: "" }),
+    observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
+  })
+  expect(read.status).toBe("read")
+  expect(read.status === "read" && read.reading.screenLines).toBeUndefined()
+  expect(read.status === "read" && read.reading.totalLines).toBe(5)
 })

@@ -1694,28 +1694,67 @@ export async function createOwnedTerminal(options: {
       ownsCmuxSurface: hostedCmuxOwnerCheck !== undefined,
       ...(hostedAppExecutablePath === undefined ? {} : { declaredExecutable: hostedAppExecutablePath }),
     })
+    const ownedCmuxIdentity = ownedCmuxCli === undefined ? undefined : cmuxHistoryIdentity(ownedCmuxCli)
     const cmuxConfigAtLaunch = ownedCmuxCli === undefined ? undefined : observeCmuxConfig(cmuxConfigPath(homedir()))
+    // Ownership is proved ONCE here, before the probe writes anything: the nonce line goes into the surface
+    // this process is running in and a read that carries it exactly once is this run's own history. Every
+    // later read names that surface and writes nothing, so the instrument never moves what it measures
+    // (@cto REVISE F1 at 9ae6fad2459). A proof that never reads back leaves every read refusing by name.
+    let cmuxSurface: string | undefined
+    let cmuxGrantReceipt: string | undefined
+    let cmuxGrantFailure: string | undefined
+    let cmuxLastReceipt: string | undefined
+    if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
+      const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
+      if (published !== "") cmuxSurface = published
+      out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const proof = readOwnedCmuxHistory({
+          executable: ownedCmuxCli,
+          ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+          ownership: { kind: "nonce", nonce: captureRunId },
+          configAtLaunch: cmuxConfigAtLaunch,
+          observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+        })
+        if (proof.status === "read") {
+          cmuxGrantReceipt = proof.receipt
+          cmuxLastReceipt = proof.receipt
+          break
+        }
+        if (proof.refusal !== "cmux-surface-not-owned") {
+          cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
+          break
+        }
+        // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
+        await new Promise((resolve) => {
+          setTimeout(resolve, 250)
+        })
+      }
+      if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
+        cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
+      }
+    }
     const ownedCmuxHistory =
       hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined
         ? async (): Promise<TerminalScrollbackReading> => {
             await hostedCmuxOwnerCheck()
+            if (cmuxGrantFailure !== undefined) throw new ScrollbackReadingUnavailable(cmuxGrantFailure)
             const geometry = await readBoundGeometry(binding, windowsKernel)
             if (geometry.status !== "measured") {
               throw new ScrollbackReadingUnavailable("Owned cmux history needs a measured grid: " + geometry.diagnostic)
             }
-            out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
-            const surface = (process.env.CMUX_SURFACE_ID ?? "").trim()
             const read = readOwnedCmuxHistory({
               executable: ownedCmuxCli,
-              ...(surface === "" ? {} : { surface }),
+              ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
               rows: geometry.rows,
-              ownership: { kind: "nonce", nonce: captureRunId },
+              ownership: { kind: "surface" },
               configAtLaunch: cmuxConfigAtLaunch,
               observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
             })
             if (read.status === "refused") {
               throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
             }
+            cmuxLastReceipt = read.receipt
             return read.reading
           }
         : undefined
@@ -1843,7 +1882,15 @@ export async function createOwnedTerminal(options: {
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
       ...(wezTermOwnerCheck === undefined ? undefined : ownedWezTermIdentity),
-      ...(hostedCmuxOwnerCheck === undefined ? undefined : cmuxHistoryIdentity(ownedCmuxCli)),
+      ...(hostedCmuxOwnerCheck === undefined ? undefined : ownedCmuxIdentity),
+      ...(ownedCmuxCli !== undefined && {
+        cmuxHistory: {
+          executable: ownedCmuxCli,
+          surface: cmuxSurface ?? null,
+          grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
+          lastRead: cmuxLastReceipt ?? null,
+        },
+      }),
       ...(readTitle && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
