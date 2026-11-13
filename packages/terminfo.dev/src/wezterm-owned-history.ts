@@ -278,6 +278,7 @@ export function readOwnedWezTermPane(
       readonly tty: string | undefined
       readonly cwd: unknown
       readonly matchingPanes: number
+      readonly privateTranscript: string
     }
   | { readonly status: "refused"; readonly reason: string } {
   const args = ["cli", "--no-auto-start", "list", "--format", "json"]
@@ -324,6 +325,7 @@ export function readOwnedWezTermPane(
     tty: typeof row.tty_name === "string" ? row.tty_name : undefined,
     cwd: row.cwd,
     matchingPanes: matches.length,
+    privateTranscript: failure(options.executable, args, result),
   }
 }
 

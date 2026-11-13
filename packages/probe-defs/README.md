@@ -76,6 +76,8 @@ is published only after the write succeeds, and retention failure is a named col
 The restoration writer bypasses the publishable call log. Failed restoration throws through the
 collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
 neither process-CWD inference nor URI normalization supplies an answer.
+The reading carries the existing path-free owned-pane identity receipt. Native pane-list and get-text
+argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and

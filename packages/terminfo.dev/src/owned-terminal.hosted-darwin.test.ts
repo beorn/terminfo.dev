@@ -341,6 +341,7 @@ test.each([
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const realWrite = process.stdout.write
+    const retained = []
     process.stdout.write = (chunk) => {
       text = String(chunk); writes++
       const command = /\\x1b\\]7;([^\\x07]*)\\x07/.exec(text)
@@ -349,7 +350,7 @@ test.each([
       return true
     }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
-      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: artifact => retained.push(artifact) })
     assert.equal(typeof owner.readAppSemanticState, "function", "hosted owner must install the CWD reader")
     const result = await owner.readAppSemanticState("extensions.osc7-cwd", () => { throw new Error("public writer leaked restoration") })
       .then((value) => value, (error) => ({ status: "run-error", reason: error.message }))
@@ -367,6 +368,15 @@ test.each([
       assert.equal(cwd, initial)
       assert.equal(writes, 4)
       assert.equal(JSON.stringify(result).includes("private-person"), false)
+      assert.equal(typeof result.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
+      assert.deepEqual(JSON.parse(result.detail.ownershipReceipt), {
+        surface: "wezterm", pane: "0", listedTty: "ttys004", measuredTty: "ttys004",
+        ttyMatch: true, socketPresent: true, executable: "wezterm",
+      })
+      assert.equal(/[\\\\/]/u.test(result.detail.ownershipReceipt), false)
+      const nativeReads = retained.map(artifact => JSON.parse(fs.readFileSync(artifact.path, "utf8")))
+      assert.ok(nativeReads.some(read => read.args?.includes("list") && typeof read.stdout === "string" && read.stdout.includes(initial)), "private pane-list argv/stdout must survive")
+      assert.ok(nativeReads.some(read => read.args?.includes("get-text") && typeof read.stdoutBase64 === "string"), "private get-text argv/stdout must survive")
     }
     await owner.dispose()
     process.stdout.write = realWrite

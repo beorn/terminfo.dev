@@ -523,6 +523,7 @@ let weztermRefused = false, weztermReads = 0
 let cwdActive = false, cwd = "file:///Users/private-person/secret-project", cwdText = ""
 let cwdLost = false, loseCwdOwnerAfterWrite = false, cwdWrites = 0
 let weztermCliVersion = "0-unstable-2026-10-10"
+const cwdArtifacts = []
 let xpropReads = 0, iconFault = null, failIconCleanup = false
 let nativeTitle = "native original title"
 let iconProperties = {
@@ -650,7 +651,7 @@ try {
   const executable = { path: kittyExecutable, sha256: digest("owned-kitty-binary") }
   const factory = (out, run = capture, live = executable) =>
     verifier.createOwnedTerminal({ expectedLaunchRunId: launch, captureRunId: run, out,
-      linux: { receiptPath, executable: live } })
+      linux: { receiptPath, executable: live }, onRetained: artifact => cwdArtifacts.push(artifact) })
   if (mode === "no-ctty") {
     await assert.rejects(factory(process.stdout), /controlling tty_nr 0/)
   } else {
@@ -905,6 +906,12 @@ try {
       assert.equal(cwd, cwdInitial, "restore must keep the exact initial public URI")
       assert.equal(cwdWrites, 4)
       assert.equal(JSON.stringify(reading).includes("private-person"), false)
+      assert.equal(typeof reading.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
+      assert.deepEqual(JSON.parse(reading.detail.ownershipReceipt), {
+        surface: "wezterm", pane: "17", listedTty: null, measuredTty: null,
+        ttyMatch: null, socketPresent: true, executable: "wezterm",
+      })
+      assert.equal(/[\\/]/u.test(reading.detail.ownershipReceipt), false)
       // An owned process alone cannot widen the reviewed version or borrow the launch's identity.
       for (const [reported, launched] of [["unreviewed-version", "0-unstable-2026-10-10"], ["0-unstable-2026-10-10", "unreviewed-version"]]) {
         weztermCliVersion = reported
