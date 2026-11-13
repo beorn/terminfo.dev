@@ -262,7 +262,11 @@ test("a surface read proves nothing per call and refuses only an empty read or a
   try {
     denied = readOwnedCmuxHistory({
       ...base,
-      spawn: () => ({ status: 1, stdout: "", stderr: "Access denied - only processes started inside cmux can connect" }),
+      spawn: () => ({
+        status: 1,
+        stdout: "",
+        stderr: "Access denied - only processes started inside cmux can connect",
+      }),
     })
   } finally {
     console.error = originalError
