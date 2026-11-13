@@ -146,7 +146,12 @@ function assertCornerStaircase(
         throw refusal(`Capture calibration non-solid grid: the ${corner} fillet is not a monotone staircase`)
       }
     }
-    if (columns.length > previous) {
+    // A row may carry ONE more cut pixel than the row above it: the antialiased rim of the window's
+    // rounded corner is drawn in blend colours, so a rim pixel that differs from the paint by one
+    // step joins the cut run and lengthens it. The retained Terminal.app 2.15 (macOS 26.6.2) corner
+    // measures 10, 8, 5, 6, 3 columns per row for exactly that reason. Anything longer is an
+    // occlusion growing into the grid, not a rim, and still refuses.
+    if (columns.length > previous + 1) {
       throw refusal(`Capture calibration non-solid grid: the ${corner} fillet is not a monotone staircase`)
     }
     previous = columns.length

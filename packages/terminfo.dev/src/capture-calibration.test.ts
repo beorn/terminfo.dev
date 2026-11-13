@@ -617,6 +617,39 @@ test("window corner fillets do not defeat calibration of an exact raster", async
   expect(measured.basis).toMatch(/corner fillets 4 px/)
 })
 
+// Terminal.app 2.15 on macOS 26.6.2 paints a rounded corner whose one-pixel antialiased rim is a
+// blend (measured 23..32 against paint 28), so a rim pixel sometimes differs from the paint and
+// joins the cut run. That row measures one cut column more than the row above it - the retained
+// corner runs 10, 8, 5, 6, 3 - which is a rim, not an occlusion.
+function cornerRows(rows: ReadonlyArray<readonly [number, number]>): CapturedFrame {
+  const pixels: Array<readonly [number, number]> = []
+  for (const [row, length] of rows) for (let column = 0; column < length; column++) pixels.push([2 + column, 2 + row])
+  return filletCorners(rasterFrame("solid"), pixels)
+}
+
+test("a corner rim one pixel longer than the row above is tolerated as a rounded corner", async () => {
+  const solid = cornerRows([
+    [0, 6],
+    [1, 4],
+    [2, 3],
+    [3, 4],
+  ])
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  const measured = await run.promise
+  expect(measured.origin).toEqual({ x: 2, y: 2 })
+})
+
+test("a corner cut that grows by more than the one-pixel rim still refuses", async () => {
+  const solid = cornerRows([
+    [0, 6],
+    [1, 4],
+    [2, 3],
+    [3, 7],
+  ])
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/not a monotone staircase/)
+})
+
 test("an interior hole is still refused once corner fillets are tolerated", async () => {
   const solid = filletCorners(rasterFrame("solid"))
   solid.rgba.set([0, 0, 0, 255], (5 * 12 + 5) * 4)
