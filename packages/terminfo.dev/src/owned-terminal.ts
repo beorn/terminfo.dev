@@ -452,8 +452,11 @@ export type AncestryRow = {
 /** @cto 20b9ffed verbatim: the reason text these apps' history rows declare, so one string names the absence. */
 const NO_PANE_READ = "no pane read on this app"
 
+/** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
+const TERMINAL_APP_HOSTED: HostedDarwinApp = { id: "terminal-app", comm: "Terminal", titleRead: "system-events" }
+
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
-  Terminal: { id: "terminal-app", comm: "Terminal", titleRead: "system-events" },
+  Terminal: TERMINAL_APP_HOSTED,
   // The System Events permission dialog hangs a hosted iTerm2 collector (#33017).
   iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none" },
   // Ghostty's own scrollback-file action is an acceptable read under @cto a1663f9d's five conditions, so the
@@ -1412,9 +1415,10 @@ export async function createOwnedTerminal(options: {
         appId: hostedApp.id,
         titleRead: hostedApp.titleRead,
         ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
-        assertOwned: async () => {
-          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
-        },
+        assertOwned: () =>
+          process.platform === "darwin"
+            ? Promise.resolve()
+            : Promise.reject(new Error("Darwin pasteboard read left Darwin")),
       })
     }
     if (!clipboard && binding.platform === "darwin" && terminalApp) {
@@ -1422,14 +1426,15 @@ export async function createOwnedTerminal(options: {
       // is a fixture for the subject the run measures. Without this the artifact records no
       // clipboard fixture at all and the OSC 52 rows cannot say anything but "no fixture".
       clipboard = await createDarwinClipboardAdapter({
-        appComm: HOSTED_DARWIN_EXECUTABLE.Terminal!.comm,
-        appId: HOSTED_DARWIN_EXECUTABLE.Terminal!.id,
+        appComm: TERMINAL_APP_HOSTED.comm,
+        appId: TERMINAL_APP_HOSTED.id,
         titleRead: "none",
         titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
         ownedHost: true,
-        assertOwned: async () => {
-          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
-        },
+        assertOwned: () =>
+          process.platform === "darwin"
+            ? Promise.resolve()
+            : Promise.reject(new Error("Darwin pasteboard read left Darwin")),
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
