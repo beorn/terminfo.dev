@@ -982,7 +982,7 @@ function readOwnedWeztermPane(
   assertOwnedTerminalWindow(owner, workerPid)
   const argv = ["--config-file", owner.marker.value, "cli", "--no-auto-start", "list", "--format", "json"]
   const read: NonNullable<HandReadDiagnostic["read"]> = {
-    command: app.binaryPath,
+    command: cliPath,
     argv,
     socket,
     paneId: Number(pane),
@@ -995,7 +995,7 @@ function readOwnedWeztermPane(
     pane: null,
   }
   diagnostic.read = read
-  const result = spawnSync(app.binaryPath, argv, {
+  const result = spawnSync(cliPath, argv, {
     encoding: "utf8",
     timeout: 15_000,
     maxBuffer: 1024 * 1024,

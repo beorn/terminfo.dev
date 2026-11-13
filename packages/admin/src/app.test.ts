@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import {
@@ -406,6 +406,9 @@ describe("WezTerm cli-process arm", () => {
   // 34076: the hand operation must use the real app lifetime without entering collection.
   // Existing tests exercise collection, so none detects a diagnostic accidentally grading a run.
   test("hand-read retains one own-pane snapshot and closes its fresh fixture without collecting", async () => {
+    vi.mocked(realpathSync).mockImplementation((path) =>
+      String(path).replace("/Applications/WezTerm.app", "/private/VerifiedWezTerm.app"),
+    )
     vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
     vi.mocked(readFileSync).mockImplementation((path) =>
@@ -433,7 +436,7 @@ describe("WezTerm cli-process arm", () => {
       expect(placeCollectedRun).not.toHaveBeenCalled()
       const reads = vi.mocked(spawnSync).mock.calls.filter((call) => call[1]?.includes("list"))
       expect(reads).toHaveLength(1)
-      expect(reads[0]?.[0]).toBe("/Applications/WezTerm.app/Contents/MacOS/wezterm")
+      expect(reads[0]?.[0]).toBe("/private/VerifiedWezTerm.app/Contents/MacOS/wezterm")
       expect(reads[0]?.[1]).toEqual([
         "--config-file",
         "/private/run/wezterm-private-run.lua",
@@ -450,6 +453,7 @@ describe("WezTerm cli-process arm", () => {
       const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
       expect(saved).toBeDefined()
       const diagnostic = JSON.parse(String(saved![1]))
+      expect(diagnostic).toHaveProperty("bundle.cliPath", reads[0]?.[0])
       expect(diagnostic).toMatchObject({
         primaryFailure: null,
         read: { stdout, pane: { pane_id: 4, cwd: "file:///private/app-reported" } },
