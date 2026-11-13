@@ -1227,6 +1227,22 @@ export interface PasteRoute {
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
   readonly baseline?: string
+  /**
+   * The clipboard-read setting this run's owned configuration applied, when it applied one (@cto 2026-11-13): a
+   * record names its profile and the exact setting, so a profile reading is never mistaken for the default
+   * configuration a person gets when they open the app. Absent on a default-configuration reading, and absent on a
+   * Mac ordinary-open run, where the app keeps its own settings.
+   */
+  readonly readProfile?: { readonly profile: string; readonly setting: string }
+  /**
+   * The app's pinned default for a clipboard read at this run's version, with its source (@cto 2026-11-13): "ask"
+   * means a read waits on a person, so a silent query cannot tell "no" from "waiting" and grades nothing; "deny" or
+   * "absent" means the silence is the default answer, so it grades unsupported. Absent when the default is not pinned
+   * from the app's own documentation — a run then names that, never a guess.
+   */
+  readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  /** This tree's citation is for another app version: the row names both, and no default is applied. */
+  readonly readDefaultRefusal?: string
   /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
   readonly disposableSession?: boolean
   /** Verified tmux server `set-clipboard` option read before the callback (#32164). */

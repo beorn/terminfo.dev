@@ -334,6 +334,12 @@ export function createClipboardTransaction(
   options?: {
     readonly writeDeadlineMs?: number
     readonly writePollMs?: number
+    /** @cto 2026-11-13: the clipboard-read setting this run applied, so a profile reading names itself. */
+    readonly readProfile?: { readonly profile: string; readonly setting: string }
+    /** @cto 2026-11-13: the app's pinned default for a clipboard read, so a silent read grades what it means. */
+    readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+    /** The citation this tree holds is for another version: name both, never grade from the other version's. */
+    readonly readDefaultRefusal?: string
     /**
      * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
      * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
@@ -401,6 +407,9 @@ export function createClipboardTransaction(
       const realKeyEvent = io.realKeyEvent
       const fixture: ClipboardFixture = {
         baseline,
+        ...(options?.readProfile && { readProfile: options.readProfile }),
+        ...(options?.readDefault && { readDefault: options.readDefault }),
+        ...(options?.readDefaultRefusal && { readDefaultRefusal: options.readDefaultRefusal }),
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
         ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
@@ -824,6 +833,82 @@ export const CLIPBOARD_ALLOW_ARGS: Readonly<Record<ClipboardApp, readonly string
   wezterm: [],
 }
 
+/**
+ * Each app's PINNED DEFAULT for a clipboard read, cited from its own source at the version it is measured at
+ * (@cto 2026-11-13): a silent read means "the user was asked" for one app and "the answer is no" for another, and a
+ * default taken from the silence is a guess, not evidence. An app absent here is unpinned: its read rows say
+ * "default not established" by name. A version not named below has no entry — extend this with that version's own
+ * source rather than reusing another version's citation.
+ */
+export const CLIPBOARD_READ_DEFAULTS: Readonly<
+  Partial<
+    Record<
+      ClipboardApp,
+      { readonly posture: "ask" | "deny" | "absent"; readonly version: string; readonly source: string }
+    >
+  >
+> = {
+  kitty: {
+    posture: "ask",
+    version: "0.49.2",
+    source:
+      "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
+      "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
+  },
+  ghostty: {
+    posture: "ask",
+    version: "1.4.0",
+    source: 'ghostty v1.4.0 src/config/Config.zig:2458: "clipboard-read": ClipboardAccess = .ask',
+  },
+  alacritty: {
+    posture: "deny",
+    version: "0.17.0",
+    source:
+      "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
+      '"only copy sequence is accepted"',
+  },
+}
+
+/**
+ * The default a run may use: its OWN version's citation or nothing (@cto 2026-11-13 — a citation from another version
+ * must never grade a run, and "deny" is the case where that writes a wrong negative). A run whose version has no
+ * citation gets a refusal naming both versions, so the row says which citation was missing, not that none exists.
+ */
+export function clipboardReadDefault(
+  app: ClipboardApp,
+  profile: "default" | "allow" | "deny-read",
+  measuredVersion: string | undefined,
+): {
+  readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  readDefaultRefusal?: string
+} {
+  if (profile !== "default") return {}
+  const cited = CLIPBOARD_READ_DEFAULTS[app]
+  if (!cited) return {}
+  if (cited.version === measuredVersion) return { readDefault: { posture: cited.posture, source: cited.source } }
+  return {
+    readDefaultRefusal: `default not established: this tree cites ${app} ${cited.version}, this run measured ${
+      measuredVersion ?? "(no version recorded)"
+    }`,
+  }
+}
+
+/**
+ * The read setting a run's profile ACTUALLY applied, as `assertClipboardProfile` verifies against the live argv:
+ * allow = the app's read-allowed args; deny-read = write-clipboard only. A record names this, so a deny-read reading
+ * cannot be printed as if it had granted reads (@dev/16 peer).
+ */
+export const CLIPBOARD_DENY_READ_ARGS: readonly string[] = ["-o", "clipboard_control=write-clipboard"]
+
+export function clipboardReadProfile(
+  app: ClipboardApp,
+  profile: "default" | "allow" | "deny-read",
+): { readonly profile: string; readonly setting: string } | undefined {
+  if (profile === "default") return undefined
+  const applied = profile === "deny-read" ? CLIPBOARD_DENY_READ_ARGS : CLIPBOARD_ALLOW_ARGS[app]
+  return applied.length > 0 ? { profile, setting: `${app} ${applied.join(" ")}` } : undefined
+}
+
 /** The argv tokens that set each terminal's clipboard read control, flag and value together. */
 function clipboardControls(app: ClipboardApp, options: string[]): string[] {
   const valueOf = (flags: string[], value: (part: string) => boolean) =>
@@ -862,7 +947,7 @@ export function assertClipboardProfile(app: ClipboardApp, profile: ClipboardRece
   const expected = {
     default: [],
     allow: CLIPBOARD_ALLOW_ARGS[app],
-    "deny-read": ["-o", "clipboard_control=write-clipboard"],
+    "deny-read": CLIPBOARD_DENY_READ_ARGS,
   }[profile]
   if (JSON.stringify(clipboardControls(app, options)) !== JSON.stringify(expected)) {
     throw new Error(`Owned ${app} argv clipboard control differs from ${profile} receipt`)
@@ -1134,6 +1219,10 @@ export async function createLinuxClipboardAdapter(
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
   }
+  const readProfile = clipboardReadProfile(app, receipt.profile)
+  // The launcher has already compared TERMINFO_TARGET_VERSION with the app's own version reply at this point
+  // (linux-container-run.sh:721), so this is the version the run measured, not one asserted here.
+  const readDefaultChoice = clipboardReadDefault(app, receipt.profile, process.env.TERMINFO_TARGET_VERSION)
   const withClipboardFixture = createClipboardTransaction(
     baseline,
     {
@@ -1143,44 +1232,48 @@ export async function createLinuxClipboardAdapter(
       realKeyEvent: (trace, verify) =>
         pressRealKey(receipt.terminal.windowId, (file, args) => command(file, args, env), xServerTimeMs, trace, verify),
     },
-    tmuxTarget
-      ? {
-          muxState: {
-            async snapshot() {
-              await assertOwned()
-              const rawOption = await command(
-                tmuxTarget.executable.path,
-                ["-S", tmuxTarget.socketPath, "show-options", "-s", "-v", "set-clipboard"],
-                env,
-              )
-              await assertOwned()
-              const tmuxSetClipboard = rawOption.trim()
-              if (!tmuxSetClipboard) throw new Error("Owned tmux set-clipboard option readback was empty")
-              const buffers = await listTmuxBuffers(tmuxTarget)
-              return { tmuxSetClipboard, buffers }
-            },
-            async restore(before) {
-              const keep = new Set(before)
-              const current = await listTmuxBuffers(tmuxTarget)
-              for (const name of current) {
-                if (!keep.has(name)) {
-                  await assertOwned()
-                  await command(
-                    tmuxTarget.executable.path,
-                    ["-S", tmuxTarget.socketPath, "delete-buffer", "-b", name],
-                    env,
-                  )
-                  await assertOwned()
-                }
-              }
-              const restored = await listTmuxBuffers(tmuxTarget)
-              if (JSON.stringify(restored) !== JSON.stringify(before)) {
-                throw new Error("Owned tmux paste buffer restoration verification failed")
-              }
-            },
+    {
+      // @cto 2026-11-13: a profile reading names its profile and its exact setting; a default-configuration reading
+      // names nothing, and that absence is what tells the two apart downstream.
+      ...(readProfile && { readProfile }),
+      ...readDefaultChoice,
+      ...(tmuxTarget && {
+        muxState: {
+          async snapshot() {
+            await assertOwned()
+            const rawOption = await command(
+              tmuxTarget.executable.path,
+              ["-S", tmuxTarget.socketPath, "show-options", "-s", "-v", "set-clipboard"],
+              env,
+            )
+            await assertOwned()
+            const tmuxSetClipboard = rawOption.trim()
+            if (!tmuxSetClipboard) throw new Error("Owned tmux set-clipboard option readback was empty")
+            const buffers = await listTmuxBuffers(tmuxTarget)
+            return { tmuxSetClipboard, buffers }
           },
-        }
-      : undefined,
+          async restore(before) {
+            const keep = new Set(before)
+            const current = await listTmuxBuffers(tmuxTarget)
+            for (const name of current) {
+              if (!keep.has(name)) {
+                await assertOwned()
+                await command(
+                  tmuxTarget.executable.path,
+                  ["-S", tmuxTarget.socketPath, "delete-buffer", "-b", name],
+                  env,
+                )
+                await assertOwned()
+              }
+            }
+            const restored = await listTmuxBuffers(tmuxTarget)
+            if (JSON.stringify(restored) !== JSON.stringify(before)) {
+              throw new Error("Owned tmux paste buffer restoration verification failed")
+            }
+          },
+        },
+      }),
+    },
   )
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
   let screenRead = 0
