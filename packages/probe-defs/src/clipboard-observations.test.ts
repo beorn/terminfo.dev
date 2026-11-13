@@ -650,7 +650,7 @@ test.each([null, 0] as const)("App bracketed paste uses controlled effects after
   for (const [paste, expected] of [
     ["controlled", "supported"],
     ["raw", "unsupported"],
-    ["bracketed", "probe-invalid"],
+    ["bracketed", "probe-todo"],
   ] as const) {
     const { ctx } = pasteAndRead({ paste })
     const source = {

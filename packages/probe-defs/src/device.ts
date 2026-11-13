@@ -10,6 +10,7 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
   replyFailure,
+  methodUnavailable,
   notTestedResult,
   declaredUntestableResult,
   NO_SAME_PATH_CONTROL,
@@ -20,6 +21,8 @@ import {
   sentinelNegativeResult,
   sentinelSilenceResult,
   stackStateResult,
+  cleanupReading,
+  callbackReading,
 } from "./helpers.ts"
 
 /**
@@ -346,7 +349,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   ctx.write(CLEAR_ICON_TITLE)
   let pushed = false
   const state: Record<string, unknown> = { before }
-  let result: ProbeCallbackResult
+  let result: ProbeCallbackResult | undefined
   try {
     const fixture = async (originalTitle: string, changedTitle: string) => {
       set(saved)
@@ -375,7 +378,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
           "XTWINOPS 22/23 restores both controlled pushed titles",
           state,
         )
-      : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
+      : { ...methodUnavailable("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
     if (!controlled) result.criterionBranch = "app-title-control"
   } finally {
     try {
@@ -383,10 +386,14 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
     } finally {
       set(before)
       state.restored = await read()
-      if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+      if (state.restored !== before) {
+        // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+        const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+        if (result) result = cleanupReading(result, cleanup)
+      }
     }
   }
-  return { ...result, response: JSON.stringify(state) }
+  return { ...callbackReading(result), response: JSON.stringify(state) }
 }
 
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {

@@ -35,7 +35,10 @@ import {
   sentinelAnswer,
   replyFrame,
   replyFailure,
+  methodUnavailable,
   cancelReplyFailure,
+  cleanupReading,
+  callbackReading,
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
@@ -48,6 +51,7 @@ import {
   fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
+  measuredSilence,
   sgrCaptureTooSmall,
   tooSmall,
   unmeasuredCellResult,
@@ -4477,8 +4481,9 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
-    const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    const empty = silence !== null || (outcome.reason === "timeout" && outcome.raw === "")
+    const expected = "OSC 52 c query returns the exact written nonce"
+    const silence = sentinelSilenceResult(outcome, expected)
+    const empty = measuredSilence(outcome, expected)
     const handoff = empty ? clipboardPasteHandoff(ctx, pasteBefore) : null
     if (handoff) return handoff
     return withClipboardControlNote(
@@ -5289,7 +5294,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const resetAgain = await readPaste(false)
       if (reset !== nonce || resetAgain !== nonce || (report !== nonce && report !== `\x1b[200~${nonce}\x1b[201~`)) {
         return {
-          ...replyFailure("Paste framing lacks exact raw reset controls or a complete target nonce"),
+          ...methodUnavailable("Paste framing lacks exact raw reset controls or a complete target nonce"),
           response: JSON.stringify({ reset, report, resetAgain }),
         }
       }
@@ -5376,6 +5381,12 @@ const OSC0_TITLE_QUERY = "\x1b[21t"
 const OSC0_ICON_REPLY = /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/
 const OSC0_TITLE_REPLY = /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/
 
+/**
+ * The OSC 0 icon and window-title clauses share one result builder, and each `silence` field is positional:
+ * `silence.icon` grades the icon-label query (CSI 20 t) and `silence.title` grades the window-title query
+ * (CSI 21 t). They are never interchangeable — an icon/title swap here would report an unreadable reply as a
+ * measured silence and open a row that our own instrument failed.
+ */
 function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
@@ -5384,6 +5395,7 @@ function osc0IconTitleResult(
     "icon" | "title",
     TerminalQueryOutcome["reason"] | "feedCapture boundary" | "owned public title read"
   >,
+  silence: { icon: boolean; title: boolean },
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
@@ -5392,6 +5404,16 @@ function osc0IconTitleResult(
       ...(windowTitle === null ? [`window title (CSI 21 t): ${reasons.title}`] : []),
     ]
     const note = `no complete OSC 0 target reply: ${missing.join("; ")}`
+    const unread = (iconLabel === null && !silence.icon) || (windowTitle === null && !silence.title)
+    if (!unread) {
+      // The target queries are this surface's read-back instrument, so a measured silence says we could not
+      // read the label, not that OSC 0 failed (@cto 1676cf8a Q3). The clause we did read stays in `response`.
+      return {
+        ...methodUnavailable(note),
+        response,
+        criterionBranch: "app-query-instrument",
+      }
+    }
     return {
       response,
       note,
@@ -7634,7 +7656,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         ]
         const readings: string[] = []
         const state = { before, values, readings, negative: "", restored: "" }
-        let result: ProbeCallbackResult
+        let result: ProbeCallbackResult | undefined
         try {
           for (const value of values) {
             ctx.write(`\x1b]2;${value}\x07`)
@@ -7667,9 +7689,13 @@ const extensionDefinitions: ProbeDefinition[] = [
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
-          if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+          if (state.restored !== before) {
+            // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+            const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+            if (result) result = cleanupReading(result, cleanup)
+          }
         }
-        return { ...result, response: JSON.stringify(state) }
+        return { ...callbackReading(result), response: JSON.stringify(state) }
       },
       "buffer_state",
     ),
@@ -7701,7 +7727,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             ) {
               return {
                 response: JSON.stringify({ before, controls, firstTitleControl, controlled }),
-                ...replyFailure("OSC 0 independent icon/title controls were not both read back"),
+                ...methodUnavailable("OSC 0 independent icon/title controls were not both read back"),
               }
             }
             ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
@@ -7804,6 +7830,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
               title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
             },
+            {
+              icon: iconOutcome ? measuredSilence(iconOutcome, "OSC 0 icon name") : false,
+              title: titleOutcome ? measuredSilence(titleOutcome, "OSC 0 window title") : false,
+            },
           )
           const response = JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason })
           if (controlled && result.observation) {
@@ -7827,14 +7857,14 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controls = ["terminfo-osc0-control-A", "terminfo-osc0-control-B"]
           const readings: string[] = []
           const state = { before, controls, readings, title: "", icon: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
               readings.push(await read())
             }
             if (readings[0] !== controls[0] || readings[1] !== controls[1]) {
-              result = replyFailure("Owned title reader failed the OSC 0 title-clause controls")
+              result = methodUnavailable("Owned title reader failed the OSC 0 title-clause controls")
             } else {
               ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
               state.title = await read()
@@ -7850,8 +7880,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
                 // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
                 // because "got no answer" would be false for it.
-                const silent =
-                  icon.reason === "timeout" || sentinelSilenceResult(icon, "OSC 0 icon-label reply") !== null
+                const silent = measuredSilence(icon, "OSC 0 icon-label reply")
                 if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
@@ -7867,6 +7896,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                     state.title,
                     { icon: icon.raw, title: state.title },
                     { icon: icon.reason, title: "owned public title read" },
+                    { icon: silent, title: false },
                   )
                   if (result.assertions) {
                     result.assertions = result.assertions.map((assertion, index) =>
@@ -7879,9 +7909,13 @@ const extensionDefinitions: ProbeDefinition[] = [
           } finally {
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
@@ -7891,6 +7925,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           title.match?.[1] ?? null,
           { icon: icon.raw, title: title.raw },
           { icon: icon.reason, title: title.reason },
+          {
+            icon: measuredSilence(icon, "OSC 0 icon-label reply"),
+            title: measuredSilence(title, "OSC 0 window-title reply"),
+          },
         )
       },
       "query_reply",
@@ -8005,7 +8043,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controlReadings: string[] = []
           const readings: string[] = []
           const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -8047,9 +8085,13 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write("\x1b]7;\x07")
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`OSC 7 title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         const note = "No working-directory metadata readback for OSC 7"
         return {

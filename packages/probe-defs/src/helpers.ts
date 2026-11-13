@@ -366,10 +366,40 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   }
 }
 
+/**
+ * Mark a read-method gap: the probe ran, but this terminal gave it no way to read the answer here — it has no
+ * owned reader, or a control the probe injected did not read back. The row stays open (probe-todo); only a
+ * broken fixture is probe-invalid (@cto 91ec1211, 2026-11-13).
+ */
+export function methodUnavailable(reason: string): ExecutionOnlyProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+    replyFailureTestIds: ["criterion"],
+  }
+}
+
 /** An operational cleanup failure replaces reply intent on the object already being returned. */
 export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackResult {
   const unmarked = result as { replyFailureTestIds?: readonly string[] }
   delete unmarked.replyFailureTestIds
+  return result
+}
+
+/**
+ * A fixture that could not restore the surface after its controls records that on the reading it produced
+ * (@cto 1676cf8a, slice 2): the reading is the measurement, the restore is our own hygiene. The cleanup
+ * supersedes reply absence, so a reply marker is never attached to a failure the probe caused itself.
+ */
+export function cleanupReading(result: ProbeCallbackResult, cleanup: string): ProbeCallbackResult {
+  const carried = cancelReplyFailure({ ...result })
+  return { ...carried, note: carried.note ? `${carried.note}; ${cleanup}` : cleanup }
+}
+
+/** The reading a callback produced. Reaching a callback's return without one is a bug in its control flow. */
+export function callbackReading(result: ProbeCallbackResult | undefined): ProbeCallbackResult {
+  if (result === undefined) throw new Error("A probe callback reached its return without a reading")
   return result
 }
 
@@ -396,9 +426,11 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests?.some((test) => test.id === id && test.status === "probe-invalid")) {
+    if (
+      !result.tests?.some((test) => test.id === id && (test.status === "probe-todo" || test.status === "probe-invalid"))
+    ) {
       throw new Error(
-        `Callback ${featureId} reply marker ${id} must name a probe-invalid test; fix the callback builder use`,
+        `Callback ${featureId} reply marker ${id} must name an open or invalid test; fix the callback builder use`,
       )
     }
   }
@@ -432,7 +464,9 @@ export function withReplyFailureEvidence(
   return {
     ...result,
     tests: result.tests?.map((test) =>
-      marked.has(test.id) && test.status === "probe-invalid" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+      marked.has(test.id) && (test.status === "probe-invalid" || test.status === "probe-todo")
+        ? { ...test, reason: `${test.reason}; ${detail}` }
+        : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
 }
@@ -2867,6 +2901,17 @@ export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported"
 export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
   if (outcome.reason !== "sentinel") return null
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
+}
+
+/**
+ * Whether a query's silence was measured: a wait that ran out with nothing on the wire, or the DA1 fence
+ * came back with nothing that matched it. A timeout that still carried bytes is not silence, and neither
+ * are bytes the pattern could not read — both are an answer we failed to read, and the caller keeps
+ * treating those as its own defect (#30559).
+ */
+export function measuredSilence(outcome: TerminalQueryOutcome, expected: string): boolean {
+  const timedOutEmpty = outcome.reason === "timeout" && outcome.raw === ""
+  return timedOutEmpty || sentinelSilenceResult(outcome, expected) !== null
 }
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
