@@ -498,8 +498,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(keys(v3.history),[]);
         assert.ok(Object.values(analyses).every(entry=>!entry.sources?.length));
       }
-      for (const [key,{selected,routeKey}] of compatibility) {
-        assert.deepEqual(matrix.stats[key].score,selected.score);
+      for (const [key,{selected,routeKey,contextKey}] of compatibility) {
+        // Each consumer shows the number for ITS subject (@cto 921916bc, d321729a rule 5). Per app: the site
+        // matrix and the page header show the joined summary's count. Per context: the API shows that
+        // context's own count, which compatibilitySubjects selected. With one context the two are the same.
+        const app = site.selectedByBackend[key].selected;
+        assert.deepEqual(matrix.stats[key].score,app.score);
+        assert.deepEqual(v3.contexts[contextKey].score,selected.score);
+        if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
@@ -510,8 +516,8 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         // A shared route retains its legacy primary params; its other OS columns read the
         // same matrix checked above. They must not create duplicate public routes.
         if (page.params.backendId===key) {
-          assert.equal(page.params.total,String(selected.score.all));
-          assert.equal(page.params.yes,String(selected.score.supported));
+          assert.equal(page.params.total,String(app.score.all));
+          assert.equal(page.params.yes,String(app.score.supported));
         }
       }
       if (!v3.contextCount) {
