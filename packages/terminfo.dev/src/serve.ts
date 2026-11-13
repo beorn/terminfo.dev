@@ -802,6 +802,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             label: checkpoint.label,
             sentinel,
             regions,
+            // 33981: the cells are chosen from the frame, so the read needs the same origin and cell
+            // size the adapter measures its crops against — never a window width over a column count.
+            reading: calibrated.origin,
+            cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
             ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })

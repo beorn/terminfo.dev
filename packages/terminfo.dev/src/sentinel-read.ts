@@ -1,9 +1,9 @@
 import {
   CALIBRATION_SOLID_PAINT,
+  sentinelCellsInFrame,
   originFromSentinel,
   CELL_EDGE_TOLERANCE_PX,
   sentinelBlockRefusal,
-  witnessCellsFor,
   type CalibrationSentinel,
   type CaptureCells,
 } from "@terminfo/probe-defs"
@@ -72,17 +72,44 @@ export async function readThroughSentinel<T>(input: {
   regions: readonly CaptureCells[]
   /** Cells the probe's own output may cover (an inline image); the pair is never painted there (33985). */
   avoid?: CaptureCells
+  /**
+   * Where cell 1,1 sits in the frames this read compares, in pixels — the witnessed text origin the
+   * capture adapter measures against, never a window width divided by a column count.
+   */
+  reading: { x: number; y: number }
+  /** The cell this run was calibrated to, which the chosen cells must be measured in. */
+  cell: { width: number; height: number }
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
-  const { a, b } = witnessCellsFor(
-    input.regions,
-    { rows: input.source.rows, cols: input.source.cols },
-    input.avoid ? [input.avoid] : [],
-  )
-  const atA = `\x1b[${a.row};${a.col}H`
-  const atB = `\x1b[${b.row};${b.col}H`
-  const where = `cells ${a.row},${a.col} and ${b.row},${b.col}`
+  const grid = { rows: input.source.rows, cols: input.source.cols }
+  /**
+   * The two cells to paint, chosen from the frame taken just before this attempt's paint: only cells
+   * that were already background, so the blank this read writes back restores them and the probe's
+   * own drawing is never covered (@dev/15's 19-row diagnosis, 33981).
+   */
+  const choose = (frame: CapturedFrame) =>
+    sentinelCellsInFrame({
+      rgba: frame.rgba,
+      width: frame.width,
+      height: frame.height,
+      reading: input.reading,
+      cell: input.cell,
+      grid,
+      regions: input.regions,
+      ...(input.avoid ? { avoid: [input.avoid] } : {}),
+    })
+  let chosen: ReturnType<typeof choose> | undefined
+  const pair = () => {
+    if (chosen === undefined) {
+      throw new Error(`${input.label}: the sentinel cells were chosen after the capture that needed them`)
+    }
+    return chosen
+  }
+  const where = () => {
+    const { a, b } = pair()
+    return `cells ${a.row},${a.col} and ${b.row},${b.col}`
+  }
   const named = (
     regions: readonly { box: { x: number; y: number; width: number; height: number }; pixels: number }[],
   ) => {
@@ -96,18 +123,20 @@ export async function readThroughSentinel<T>(input: {
     return regions.length > 8 ? `${spelled}; and ${regions.length - 8} more` : spelled
   }
   let before = await input.prePaint()
+  chosen = choose(before)
   const resolve: OriginResolver = ({ frame, pixelGeometry }) => {
+    const { a, b } = pair()
     const { regions, ignoredPixels } = locateChangedColour(before, frame, input.sentinel.rgb)
     const noise = ignoredPixels === 0 ? "" : ` (${ignoredPixels} other changed px carry no sentinel colour)`
     if (regions.length === 0) {
       throw new SentinelNotOnFrame(
-        `${input.label}: no cell changed to the sentinel colour at ${where} between the frames this read compared${noise}, so its crop cannot be anchored`,
+        `${input.label}: no cell changed to the sentinel colour at ${where()} between the frames this read compared${noise}, so its crop cannot be anchored`,
       )
     }
     const size = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
     const wrong = (reason: string) =>
       new SentinelNotOnFrame(
-        `${input.label}: the changed sentinel at ${where} is not one painted pair: ${reason}${noise}`,
+        `${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}${noise}`,
       )
     if (regions.length !== 2) {
       throw wrong(
@@ -138,7 +167,7 @@ export async function readThroughSentinel<T>(input: {
     const offset = { x: second.box.x - first.box.x, y: second.box.y - first.box.y }
     const gap = { x: b.col - a.col, y: b.row - a.row }
     const impliedPitch = { x: Math.abs(offset.x) / Math.abs(gap.x), y: Math.abs(offset.y) / Math.abs(gap.y) }
-    const basis = `sentinel re-located by frame difference at ${where} (33000, 33981)`
+    const basis = `sentinel re-located by frame difference at ${where()} (33000, 33981)`
     const direction =
       Math.sign(offset.x) * Math.sign(gap.x) === Math.sign(offset.y) * Math.sign(gap.y)
         ? Math.sign(offset.x) * Math.sign(gap.x)
@@ -156,8 +185,16 @@ export async function readThroughSentinel<T>(input: {
     )
   }
   const paint = CALIBRATION_SOLID_PAINT[input.sentinel.form]
-  const paintCells = () => input.source.write(`\x1b7${atA}\x1b[0m${paint} ${atB}${paint} \x1b[0m\x1b8`)
-  const clearCells = () => input.source.write(`\x1b7${atA}\x1b[0m ${atB} \x1b[0m\x1b8`)
+  const atA = () => {
+    const { a } = pair()
+    return `\x1b[${a.row};${a.col}H`
+  }
+  const atB = () => {
+    const { b } = pair()
+    return `\x1b[${b.row};${b.col}H`
+  }
+  const paintCells = () => input.source.write(`\x1b7${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m\x1b8`)
+  const clearCells = () => input.source.write(`\x1b7${atA()}\x1b[0m ${atB()} \x1b[0m\x1b8`)
   paintCells()
   try {
     for (;;) {
@@ -172,6 +209,7 @@ export async function readThroughSentinel<T>(input: {
         // truly a frame BEFORE the paint, then repaint and capture again.
         clearCells()
         before = await input.prePaint()
+        chosen = choose(before)
         paintCells()
       }
     }

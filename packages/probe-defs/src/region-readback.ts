@@ -535,52 +535,6 @@ export function originFromSentinel(
   }
 }
 
-/**
- * The cell a read paints calibration's sentinel on so its origin can be derived from the very frame
- * it reads (33000). One cell clear of every region that frame digests, inside the grid, preferring
- * the cell directly above the compared region's first cell — the same place the region would have
- * started had it not been pushed down. A frame with no such cell refuses by name: a crop nobody can
- * anchor is not a reading.
- */
-export function witnessCellFor(
-  regions: readonly CaptureCells[],
-  grid: { rows: number; cols: number },
-  avoid: readonly CaptureCells[] = [],
-): { row: number; col: number } {
-  const [first] = regions
-  if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
-  const digested = (cell: { row: number; col: number }): boolean =>
-    [...regions, ...avoid].some(
-      (region) =>
-        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
-    )
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
-  // split a wide character straddling the region's edge, and the terminal erases the whole glyph,
-  // which would change the very frame this read digests (@dev/10 peer read).
-  // The probe's own output (an inline image, 33985) may cover the rows around the compared region:
-  // the same three places, taken again just outside that footprint, keep the sentinel visible.
-  const band = avoid.filter((region) => region.bottom >= first.top && region.top <= first.bottom)
-  const top = Math.min(first.top, ...band.map((region) => region.top))
-  const bottom = Math.max(first.bottom, ...band.map((region) => region.bottom))
-  const candidates = [
-    { row: first.top - 1, col: first.left },
-    { row: first.top - 1, col: first.right + 1 },
-    { row: first.bottom + 1, col: first.left },
-    { row: top - 1, col: first.left },
-    { row: top - 1, col: first.right + 1 },
-    { row: bottom + 1, col: first.left },
-  ]
-  const found = candidates.find((cell) => visible(cell) && !digested(cell))
-  if (!found) {
-    throw new Error(
-      `No cell outside the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
-    )
-  }
-  return found
-}
-
 const spelledRegions = (regions: readonly CaptureCells[]): string =>
   regions.map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`).join(" and ")
 
@@ -621,7 +575,7 @@ export function sentinelCellsInFrame(input: {
   const avoid = input.avoid ?? []
   const pixels = (x: number, y: number): number => {
     const offset = (y * width + x) * 4
-    return (rgba[offset] ?? 0) << 16 | (rgba[offset + 1] ?? 0) << 8 | (rgba[offset + 2] ?? 0)
+    return ((rgba[offset] ?? 0) << 16) | ((rgba[offset + 1] ?? 0) << 8) | (rgba[offset + 2] ?? 0)
   }
   const counts = new Map<number, number>()
   for (let y = 0; y < height; y++) {
@@ -659,7 +613,10 @@ export function sentinelCellsInFrame(input: {
       eligible.push({ row, col })
     }
   }
-  const spelled = eligible.slice(0, 6).map((cellAt) => `${cellAt.row},${cellAt.col}`).join(" ")
+  const spelled = eligible
+    .slice(0, 6)
+    .map((cellAt) => `${cellAt.row},${cellAt.col}`)
+    .join(" ")
   const refusal = (why: string): string =>
     `${why}: ${eligible.length} blank cell(s) outside ${spelledRegions(input.regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry the sentinel${eligible.length === 0 ? "" : ` — ${spelled}${eligible.length > 6 ? " …" : ""}`}, so this frame's crop cannot be anchored`
   const a = eligible[0]
@@ -667,52 +624,6 @@ export function sentinelCellsInFrame(input: {
   const b = eligible.find((cellAt) => cellAt.row !== a.row && cellAt.col !== a.col)
   if (b === undefined) throw new Error(refusal("no second blank cell shares neither the first's row nor its column"))
   return { a, b }
-}
-
-/**
- * The TWO cells one read paints calibration's sentinel on (33981, @cto): the pair has to differ in
- * BOTH row and column, so one stray sentinel-coloured patch, a horizontal run of them, or a full-line
- * repaint can never satisfy it. The first cell is the one `witnessCellFor` chooses, which keeps
- * 33000's preference and its named refusal; the second is the nearest cell clear of every digested
- * region that differs from the first in both axes, preferring another row than the first so a wide
- * character straddling the region's edge is never split. A grid with no such second cell — a
- * one-row or one-column viewport — refuses by name rather than degrading to a single cell.
- */
-export function witnessCellsFor(
-  regions: readonly CaptureCells[],
-  grid: { rows: number; cols: number },
-  avoid: readonly CaptureCells[] = [],
-): { a: { row: number; col: number }; b: { row: number; col: number } } {
-  const a = witnessCellFor(regions, grid, avoid)
-  const digested = (cell: { row: number; col: number }): boolean =>
-    [...regions, ...avoid].some(
-      (region) =>
-        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
-    )
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  const candidates = [
-    { row: a.row - 1, col: a.col + 1 },
-    { row: a.row - 1, col: a.col - 1 },
-    { row: a.row + 1, col: a.col + 1 },
-    { row: a.row + 1, col: a.col - 1 },
-    { row: a.row - 2, col: a.col + 1 },
-    { row: a.row - 2, col: a.col - 1 },
-    { row: a.row + 2, col: a.col + 1 },
-    { row: a.row + 2, col: a.col - 1 },
-  ]
-  // A cell on a digested region's OWN ROW is excluded even when its column is clear: a wide character
-  // straddling the region's edge is erased whole by the restore, which would change the very frame
-  // this read digests (@dev/10 peer read).
-  const onRegionRow = (cell: { row: number; col: number }): boolean =>
-    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
-  const found = candidates.find((cell) => visible(cell) && !digested(cell) && !onRegionRow(cell))
-  if (!found) {
-    throw new Error(
-      `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column, so this frame's crop cannot be anchored by a sentinel pair`,
-    )
-  }
-  return { a, b: found }
 }
 
 /**

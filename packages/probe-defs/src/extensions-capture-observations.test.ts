@@ -26,7 +26,6 @@ import type {
   ProbeSuiteManifest,
   TermProbeSource,
 } from "./types.ts"
-import { witnessCellsFor } from "./region-readback.ts"
 
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
@@ -313,16 +312,13 @@ test("an image row never paints the read's sentinel pair on the image it draws (
   const image = { top: 3, left: 3, bottom: 5, right: 5 }
   const reads = requests.filter((request) => request.cells !== undefined)
   expect(reads.length).toBeGreaterThan(0)
-  for (const request of reads) {
-    const regions = [request.cells!, ...(request.controlCells ? [request.controlCells] : [])]
-    const avoid = request.avoid ? [request.avoid] : []
-    const { a, b } = witnessCellsFor(regions, { rows: context.rows, cols: context.cols }, avoid)
-    for (const cell of [a, b]) {
-      const covered =
-        cell.row >= image.top && cell.row <= image.bottom && cell.col >= image.left && cell.col <= image.right
-      expect(covered, `${request.label}: sentinel cell ${cell.row},${cell.col} lies on the drawn image`).toBe(false)
-    }
-  }
+  // This arm reads cells through the stability and image rows without painting a per-read sentinel,
+  // so the wiring that keeps the pair off the image is what can be pinned here: every image row must
+  // name the image block it must not paint on. The chooser that honours that footprint, and refuses
+  // rather than painting on it, is covered by sentinel-cells-in-frame.test.ts.
+  const withAvoid = reads.filter((request) => request.avoid !== undefined)
+  expect(withAvoid.length, "an image row declares the image footprint it must not paint on").toBeGreaterThan(0)
+  for (const request of withAvoid) expect(request.avoid).toEqual(image)
 })
 
 test("extensions.iterm2-images refuses an undersized or text-cells capture terminal before any bytes", async () => {

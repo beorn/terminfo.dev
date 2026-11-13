@@ -1,3 +1,12 @@
+/**
+ * @failure A pixel read paints its sentinel pair on cells the probe has already drawn and its blank
+ * restore erases that evidence, or anchors on a pair one stray patch could satisfy, or refuses an
+ * unanchorable frame without naming what it looked for.
+ * @level l2
+ * @consumer The one sentinel-cell chooser every pixel read paints through (33981, @dev/15's 19 rows).
+ * @testonly none
+ * @reach none
+ */
 import { expect, test } from "vitest"
 import { sentinelCellsInFrame } from "./region-readback.ts"
 
