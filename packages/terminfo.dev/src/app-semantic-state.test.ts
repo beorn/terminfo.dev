@@ -284,6 +284,39 @@ test("reader capability rows do not become declarations or lend their identity t
   ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
+  const macAlacritty = { ...alacritty, os: "macos" }
+  for (const featureId of [
+    "extensions.osc-633-vscode",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ]) {
+    expect(appSemanticDeclarations(macAlacritty)[featureId]).toMatch(
+      /^Untestable \(no way\):.*configuration, not the terminal's parsed feature state.*cannot grade the feature/,
+    )
+  }
+  for (const subject of [
+    { ...macAlacritty, version: "0.18.0" },
+    { ...macAlacritty, kind: "mux" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
   const screen = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux" }
   const screenDeclared = appSemanticDeclarations(screen)
   expect(screenDeclared["modes.color-scheme-reporting"]).toMatch(/Untestable \(no way\):.*2031/)

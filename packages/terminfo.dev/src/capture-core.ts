@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { CaptureLocated, CaptureRectangle } from "@terminfo/probe-defs"
+import type { CaptureLocated, CaptureRectangle, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -253,9 +253,21 @@ export interface CaptureSource {
 export interface NamedTextOrigin {
   origin: { x: number; y: number }
   basis: string
+  /**
+   * The settled name of the measurement behind `origin` (33982): `basis` is prose that names this
+   * frame's own noise, so two frames of one read can never compare equal on it. Equality of THIS name
+   * is what lets a comparison treat two frames as measured one way rather than two.
+   */
+  basisKind?: string
   surface?: CaptureRectangle
   /** The measured text-area pixels when a window edge clips the last row or column. */
   visible?: { width: number; height: number }
+  /**
+   * The sentinel pair this read located, cells and boxes. The origin above is derived from one box,
+   * so a later comparison of origins is that one measurement restated; the pair is the independent
+   * half and must travel with the frame for a grid move to be proved (33982).
+   */
+  witness?: NonNullable<PixelCellCrop["witness"]>
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -370,6 +382,7 @@ export async function finishCapture(input: {
   let controlRegionDigest: string | undefined
   let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
+  let cellCrop: PixelCellCrop | undefined
   const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
@@ -414,6 +427,20 @@ export async function finishCapture(input: {
     ]
     regionDigest = region.digest
     regionRectangle = rectangle
+    const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
+    const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
+    cellCrop = {
+      origin: placement.origin,
+      ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+      basisDetail: placement.basis,
+      ...(placement.surface !== undefined ? { surface: placement.surface } : {}),
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
+        ? { grid: { columns, rows } }
+        : {}),
+      image: { width, height },
+      ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+    }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle
     regionTrace = {
@@ -454,6 +481,7 @@ export async function finishCapture(input: {
       ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
       ...(controlRegionRectangle !== undefined ? { controlRegionRectangle } : {}),
       ...(located !== undefined ? { located } : {}),
+      ...(cellCrop !== undefined ? { cellCrop } : {}),
     },
     trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }
