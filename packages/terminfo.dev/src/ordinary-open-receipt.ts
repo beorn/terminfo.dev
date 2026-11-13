@@ -12,8 +12,10 @@
  * recomputed from it here, so a copied payload from another run is refused by name. No host path is recorded
  * except the one field that is a bundle-internal path, and every executable is a basename.
  */
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { basename } from "node:path"
 
 /** The receipt's own identity. It shares no kind value with {@link DisposableKind}. */
 export const ORDINARY_OPEN_RECEIPT_KIND = "ordinary-open-app"
@@ -346,4 +348,111 @@ export function ordinaryOpenAdmission(input: {
     }
   }
   return { admit: true }
+}
+
+/** One link of a LIVE walk, read from the operating system rather than from a receipt. */
+export interface LiveAncestryReader {
+  /** The parent of `pid`, or undefined when it has none (pid 1, or the process is gone). */
+  parent(pid: number): OrdinaryOpenAncestryLink | undefined
+}
+
+/**
+ * The POSIX reader: `ps -o ppid= -p <pid>` for the parent and `ps -o comm=` for its basename. No host path is
+ * recorded — `comm` is the executable's own name, the same vocabulary the receipt's chain uses. A `ps` that fails
+ * is `undefined`, which the caller turns into a named probe-todo rather than a grade.
+ */
+export const posixAncestryReader: LiveAncestryReader = {
+  parent(pid) {
+    const ppidText = execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).trim()
+    const ppid = Number(ppidText)
+    if (!Number.isSafeInteger(ppid) || ppid < 1) return undefined
+    const comm = execFileSync("ps", ["-o", "comm=", "-p", String(ppid)], { encoding: "utf8" }).trim()
+    if (comm === "") return undefined
+    return { pid: ppid, executable: basename(comm) }
+  },
+}
+
+/** Walk from `fromPid` to pid 1 or the last readable parent. A cycle is refused rather than looping. */
+export function walkProcessAncestry(
+  fromPid: number,
+  reader: LiveAncestryReader = posixAncestryReader,
+): OrdinaryOpenAncestryLink[] {
+  const links: OrdinaryOpenAncestryLink[] = []
+  const seen = new Set<number>()
+  let current = fromPid
+  while (true) {
+    if (seen.has(current)) {
+      throw new Error(
+        `Ordinary-open live ancestry (pid ${String(fromPid)}): the parent chain loops at pid ${String(current)}`,
+      )
+    }
+    seen.add(current)
+    const parent = reader.parent(current)
+    if (parent === undefined) return links
+    links.push(parent)
+    if (parent.pid === 1) return links
+    current = parent.pid
+  }
+}
+
+export type OrdinaryOpenLiveVerdict =
+  | { readonly ok: true; readonly reason: string }
+  /** Missing method, never a negative about the terminal: the row keeps its probe-todo wording. */
+  | { readonly ok: false; readonly probeTodo: string }
+
+/**
+ * At each probe, re-walk the live ancestry and compare it with what the receipt recorded (@cto 2026-11-13). A
+ * re-parse of the stored bytes would check nothing that could have moved; this checks that the process holding the
+ * clipboard right now is the one the receipt named, still reaching the same app pid.
+ */
+export function checkOrdinaryOpenLiveAncestry(input: {
+  readonly receipt: OrdinaryOpenReceipt
+  readonly expectedBundleId: string
+  readonly probePid: number
+  readonly reader?: LiveAncestryReader
+}): OrdinaryOpenLiveVerdict {
+  const { receipt, expectedBundleId, probePid } = input
+  let live: OrdinaryOpenAncestryLink[]
+  try {
+    live = walkProcessAncestry(probePid, input.reader ?? posixAncestryReader)
+  } catch (error) {
+    return { ok: false, probeTodo: `read method unavailable here: ${(error as Error).message}` }
+  }
+  const appPid = receipt.ancestry.appPid
+  const at = live.findIndex((link) => link.pid === appPid)
+  if (at === -1) {
+    return {
+      ok: false,
+      probeTodo:
+        `read method unavailable here: the live ancestry from pid ${String(probePid)} does not reach the app pid ` +
+        `${String(appPid)} the receipt names`,
+    }
+  }
+  const liveToApp = live.slice(0, at + 1)
+  // The receipt's first link IS the probe; a live walk yields ancestors, so the comparable tail starts at 1.
+  const recordedAncestors = receipt.ancestry.chain.slice(1)
+  if (liveToApp.length !== recordedAncestors.length) {
+    return {
+      ok: false,
+      probeTodo:
+        `read method unavailable here: the live ancestry reaches the app in ${String(liveToApp.length)} links, ` +
+        `the receipt recorded ${String(recordedAncestors.length)}`,
+    }
+  }
+  for (let index = 0; index < liveToApp.length; index += 1) {
+    const now = liveToApp[index] as OrdinaryOpenAncestryLink
+    const then = recordedAncestors[index] as OrdinaryOpenAncestryLink
+    if (now.pid !== then.pid || now.executable !== then.executable) {
+      return {
+        ok: false,
+        probeTodo:
+          `read method unavailable here: live ancestry link ${String(index)} is pid ${String(now.pid)} ` +
+          `${now.executable}, the receipt recorded pid ${String(then.pid)} ${then.executable}`,
+      }
+    }
+  }
+  return {
+    ok: true,
+    reason: `ordinary-open re-check: live ancestry still reaches ${expectedBundleId} pid ${String(appPid)}`,
+  }
 }

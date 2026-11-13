@@ -9,9 +9,12 @@
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import {
+  checkOrdinaryOpenLiveAncestry,
   ordinaryOpenAdmission,
   parseOrdinaryOpenReceipt,
   readOrdinaryOpenReceipt,
+  walkProcessAncestry,
+  type LiveAncestryReader,
   ORDINARY_OPEN_RECEIPT_KIND,
 } from "./ordinary-open-receipt.ts"
 
@@ -233,4 +236,71 @@ test("a subject the registry names no bundle for is unprovable, not a measured n
 
 test("the reader refuses a missing receipt loudly instead of returning a default", () => {
   expect(() => readOrdinaryOpenReceipt("/nonexistent/ordinary-open.json")).toThrow(/unreadable at/)
+})
+
+/** A synthetic process table: pid -> parent link, so the walk is proved without a Mac or a real process tree. */
+function table(entries: Record<number, { pid: number; executable: string }>): LiveAncestryReader {
+  return { parent: (pid) => entries[pid] }
+}
+
+test("the live walk compares against the receipt and names the app when it still reaches it", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  const reader = table({
+    4802: { pid: 4790, executable: "zsh" },
+    4790: { pid: 4711, executable: "iTerm2" },
+    4711: { pid: 1, executable: "launchd" },
+  })
+  expect(
+    checkOrdinaryOpenLiveAncestry({
+      receipt: parsed,
+      expectedBundleId: "com.googlecode.iterm2",
+      probePid: 4802,
+      reader,
+    }),
+  ).toEqual({ ok: true, reason: "ordinary-open re-check: live ancestry still reaches com.googlecode.iterm2 pid 4711" })
+})
+
+test("a live chain that no longer reaches the app pid is probe-todo, never a grade about the terminal", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  const reader = table({
+    4802: { pid: 9001, executable: "bash" },
+    9001: { pid: 1, executable: "launchd" },
+  })
+  const verdict = checkOrdinaryOpenLiveAncestry({
+    receipt: parsed,
+    expectedBundleId: "com.googlecode.iterm2",
+    probePid: 4802,
+    reader,
+  })
+  expect(verdict).toMatchObject({ ok: false, probeTodo: expect.stringContaining("does not reach the app pid 4711") })
+})
+
+test("a live chain with a different intermediate pid is probe-todo naming the first link that moved", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  const reader = table({
+    4802: { pid: 4790, executable: "fish" },
+    4790: { pid: 4711, executable: "iTerm2" },
+    4711: { pid: 1, executable: "launchd" },
+  })
+  expect(
+    checkOrdinaryOpenLiveAncestry({
+      receipt: parsed,
+      expectedBundleId: "com.googlecode.iterm2",
+      probePid: 4802,
+      reader,
+    }),
+  ).toMatchObject({
+    ok: false,
+    probeTodo: expect.stringContaining("link 0 is pid 4790 fish, the receipt recorded pid 4790 zsh"),
+  })
+})
+
+test("the POSIX walk works on this host: the real parent chain is readable and ends at pid 1 or a root", () => {
+  const links = walkProcessAncestry(process.pid)
+  expect(links.length).toBeGreaterThan(0)
+  for (const link of links) {
+    expect(link.pid).toBeGreaterThan(0)
+    expect(link.executable).not.toContain("/")
+  }
+  expect(links[links.length - 1]?.pid).toBe(1)
 })
