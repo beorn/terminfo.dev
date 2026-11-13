@@ -25,6 +25,7 @@ import {
   originalRunFor,
 } from "./selected-results.ts"
 import { currentTrace, type CurrentTraceDocument } from "./run-trace.ts"
+import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
 /** Missing kind retains the historical PNG shape byte for byte. */
@@ -324,8 +325,7 @@ export function publicResults(
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const isScoredTodo = result.status === "probe-todo" && !isEnvironmentGroup(result.featureId)
-    const selection =
-      isScoredTodo && result.attempt.scope === "none" ? version.selection : undefined
+    const selection = isScoredTodo && result.attempt.scope === "none" ? version.selection : undefined
     // Scheduling facts explain an untouched row; attempted TODO rows expose their reader-safe missing-evidence cause.
     const reason =
       selection && !selection.ids.includes(result.featureId)
@@ -357,13 +357,7 @@ export function publicResults(
       if (prior.sha256 !== version.sha256) throw new Error(`Conflicting stored current run ${version.runId}`)
       return prior
     }
-    const {
-      selection: _selection,
-      screenRecord: _screen,
-      readRaw: _read,
-      results,
-      ...metadata
-    } = version
+    const { selection: _selection, screenRecord: _screen, readRaw: _read, results, ...metadata } = version
     const screen = screenGeometry(version.screenRecord)
     const mappedResults = results.map((result) => mapResult(result, version))
     const mapped: PublicVersion = {
@@ -376,6 +370,8 @@ export function publicResults(
       results: mappedResults,
     }
     mappedRuns.set(version.runId, mapped)
+    // The trace has serialized this one run; do not let its raw parse accumulate across the corpus.
+    collectGarbage()
     return mapped
   }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>

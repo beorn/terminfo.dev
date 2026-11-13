@@ -1,5 +1,5 @@
 /** One context selection rule shared by compatibility and full-project readers. */
-import { readCollectorSelection, type FeatureResultStatus, type ProbeResult } from "@terminfo/probe-defs"
+import { type FeatureResultStatus, type ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type FeatureResultDisplayState, type SuiteRelation } from "./release-scope.ts"
 import type { SourceHistory } from "./source-history.ts"
 import {
@@ -109,7 +109,7 @@ export function candidateFromSelected(
           measuredAt: original.measuredAt,
           suiteId: original.suiteId,
           suiteRelation: original.suiteRelation,
-          partial: readCollectorSelection(original.rawReplies) !== undefined,
+          partial: original.selection !== undefined,
         }
       }),
       context: selected,

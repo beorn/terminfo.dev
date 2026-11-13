@@ -53,8 +53,20 @@ type ReadAssertion = HistoricalRun["assertions"][number]
 /** Selection facts only; run-owned evidence is read once when its public trace is built. */
 export type ProjectionRun = Pick<
   LoadedRun,
-  | "path" | "schemaVersion" | "source" | "runId" | "sha256" | "subject" | "measuredAt"
-  | "suiteId" | "probeHash" | "sourceRevision" | "catalogIds" | "results" | "screenshotRefs" | "textSnapshotRefs"
+  | "path"
+  | "schemaVersion"
+  | "source"
+  | "runId"
+  | "sha256"
+  | "subject"
+  | "measuredAt"
+  | "suiteId"
+  | "probeHash"
+  | "sourceRevision"
+  | "catalogIds"
+  | "results"
+  | "screenshotRefs"
+  | "textSnapshotRefs"
 > & {
   assertions: Array<Pick<ReadAssertion, "featureId" | "kind" | "assertionType">>
   selection: CollectorSelection | undefined
@@ -66,13 +78,25 @@ export type ProjectionRun = Pick<
 
 function compactRun(run: LoadedRun, readRaw: () => LoadedRun): ProjectionRun {
   return {
-    path: run.path, schemaVersion: run.schemaVersion, source: run.source, runId: run.runId, sha256: run.sha256,
-    subject: run.subject, measuredAt: run.measuredAt, suiteId: run.suiteId, probeHash: run.probeHash,
-    sourceRevision: run.sourceRevision, catalogIds: run.catalogIds, results: run.results,
-    screenshotRefs: run.screenshotRefs, textSnapshotRefs: run.textSnapshotRefs,
+    path: run.path,
+    schemaVersion: run.schemaVersion,
+    source: run.source,
+    runId: run.runId,
+    sha256: run.sha256,
+    subject: run.subject,
+    measuredAt: run.measuredAt,
+    suiteId: run.suiteId,
+    probeHash: run.probeHash,
+    sourceRevision: run.sourceRevision,
+    catalogIds: run.catalogIds,
+    results: run.results,
+    screenshotRefs: run.screenshotRefs,
+    textSnapshotRefs: run.textSnapshotRefs,
     assertions: run.assertions.map(({ featureId, kind, assertionType }) => ({ featureId, kind, assertionType })),
-    selection: readCollectorSelection(run.rawReplies), attempt: readCollectorAttempt(run.rawReplies),
-    screenRecord: run.rawReplies["collector.geometry"], readRaw,
+    selection: readCollectorSelection(run.rawReplies),
+    attempt: readCollectorAttempt(run.rawReplies),
+    screenRecord: run.rawReplies["collector.geometry"],
+    readRaw,
     ...(run.outerApp && { outerApp: { subject: run.outerApp.subject } }),
   }
 }
@@ -471,7 +495,7 @@ export function projectResults(
     const { suiteRelation, suiteFreshness } = suiteRelationOf(run.probeHash, policy.currentProbeHash)
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
-      ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
+      ...(run.schemaVersion === 4 ? { source: run.source } : {}),
       runId: run.runId,
       subject: run.subject,
       measuredAt: run.measuredAt,
