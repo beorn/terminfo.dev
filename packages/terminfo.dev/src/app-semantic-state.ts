@@ -1340,7 +1340,7 @@ export function beginMuxSgrCommandRead(input: {
 
 type NativeEditorSource = {
   appId: "com.microsoft.VSCode" | "cursor"
-  assertProcess: (pid: number) => Promise<void>
+  assertProcess: (pid: number, collectorAncestor?: boolean) => Promise<void>
   capture: (featureId: string, phase: string) => Promise<unknown>
 }
 
@@ -1389,7 +1389,8 @@ async function readNativeEditorState(input: {
   if (!captureDirectory || !isAbsolute(captureDirectory))
     throw new Error("Native editor read has no owned capture directory")
   // The owned Darwin receipt selected this App; the Linux launcher's environment is not a second authority.
-  const directory = dirname(captureDirectory)
+  const directory = process.env.TERMINFO_EDITOR_RUN_DIRECTORY
+  if (!directory || !isAbsolute(directory)) throw new Error("Native editor read has no private launch directory")
   const activationPath = join(directory, "editor-activation.json")
   const activationIdentity = statSync(activationPath)
   const activationRaw = readFileSync(activationPath, "utf8")
@@ -1506,11 +1507,16 @@ async function readNativeEditorState(input: {
       unavailableReason = `Native editor terminal.processId is unavailable: ${nativePid.reason}`
       throw new Error(unavailableReason)
     }
-    if (nativePid?.present !== true || nativePid.value !== process.pid) {
-      throw new Error("Native editor reply process differs from the owned terminal process")
+    if (
+      nativePid?.present !== true ||
+      typeof nativePid.value !== "number" ||
+      !Number.isSafeInteger(nativePid.value) ||
+      nativePid.value <= 0
+    ) {
+      throw new Error("Native editor reply has an invalid terminal process PID")
     }
     await input.editor.assertProcess(reply.extensionPid)
-    await input.editor.assertProcess(nativePid.value)
+    await input.editor.assertProcess(nativePid.value, true)
     lastSequence = reply.sequence
     const cwd = reply.terminal.shellIntegrationCwd
     if (

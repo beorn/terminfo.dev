@@ -144,6 +144,7 @@ function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | 
     shellPath: "/bin/bash",
     shellArgs: ["-p", run.scriptPath],
     cwd: run.directory,
+    env: { TERMINFO_EDITOR_RUN_DIRECTORY: run.directory },
   }
   const terminalJson = JSON.stringify(terminal)
   const extension = `const vscode = require("vscode");

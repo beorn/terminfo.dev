@@ -622,6 +622,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       throw new Error("Controlled Linux collection lacks measured executable")
     }
     let capture: ProbeCapture | undefined
+    // Native semantic reads retain the same owned window without a cell crop or calibration.
+    let nativeAppCapture: ProbeCapture | undefined
     /** The installed pixel capture's fixed settle wait, when its adapter declares one. */
     let captureSettleMs: number | undefined
     /** Set when `capture` above reads the terminal's own text rather than pixels. */
@@ -975,13 +977,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       // arm does, with the owned-host limits.
       // iTerm2 and both Terminal.app arms use pixels; Kitty keeps its qualified text route.
       // Without retention, still name the missing directory through the existing text adapter.
+      const nativeAppRead = ["cursor", "com.microsoft.VSCode", "cmux"].includes(terminal.hostedAppId ?? "")
       const textFirst =
         !captureDirectory ||
-        (kind !== "terminalApp" && terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
+        (!nativeAppRead &&
+          kind !== "terminalApp" &&
+          terminal.hostedAppId !== "iterm2" &&
+          terminal.hostedAppId !== "terminal-app")
       if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      if (!textFirst && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
+      if (!textFirst && !nativeAppRead && (kind === "darwinHosted" || kind === "terminalApp"))
+        installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
         hostedAppId: terminal.hostedAppId,
@@ -998,6 +1005,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
         onRetained,
       })
+      if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
     }
     if (captureDirectory && process.platform === "linux") {
@@ -1059,6 +1067,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
         darwinHosted: { receiptPath: hostedReceipt },
+        appSemanticCapture: async (featureId, phase) => {
+          if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
+          return nativeAppCapture({ featureId, role: "witness", label: `Native App ${phase}` })
+        },
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
       await installDarwinCapture(ownedTerminal)

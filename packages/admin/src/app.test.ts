@@ -1153,6 +1153,7 @@ test.each(["vscode", "cursor"] as const)(
         shellPath: "/bin/bash",
         shellArgs: ["-p", join(directory, "serve.sh")],
         cwd: directory,
+        env: { TERMINFO_EDITOR_RUN_DIRECTORY: directory },
       })
       expect(nativeTerminal.show).toHaveBeenCalledOnce()
       expect(subscriptions.some((value) => value === nativeTerminal)).toBe(true)

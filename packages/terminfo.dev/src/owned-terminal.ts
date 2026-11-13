@@ -1518,7 +1518,7 @@ export async function createOwnedTerminal(options: {
       (ownedAppId === "cursor" || ownedAppId === "com.microsoft.VSCode")
         ? ownedAppId
         : undefined
-    const assertNativeEditorProcess = async (pid: number) => {
+    const assertNativeEditorProcess = async (pid: number, collectorAncestor = false) => {
       if (!hostedApp || !hostedAncestor) throw new Error("Native editor read has no measured hosted App ancestor")
       const actual = requireHostedDarwinAppAncestor(
         hostedApp.comm,
@@ -1527,6 +1527,9 @@ export async function createOwnedTerminal(options: {
       ).pid
       if (actual !== hostedAncestor.pid) {
         throw new Error(`Native editor ancestor is now pid ${actual}, not pid ${hostedAncestor.pid} measured at launch`)
+      }
+      if (collectorAncestor && !readProcessAncestry(process.pid).some((ancestor) => ancestor.pid === pid)) {
+        throw new Error(`Native terminal pid ${pid} is not an ancestor of this collector`)
       }
     }
     // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the

@@ -46,6 +46,7 @@ afterEach(() => {
 // or accepts another activation's data. This drives the existing collector entry and real files.
 test.each([
   "native",
+  "shell-ancestor",
   "owned-target-no-env",
   "owned-target-conflicting-env",
   "wrong-activation",
@@ -57,7 +58,9 @@ test.each([
 ])("editor CWD collector qualifies native replies and captures before restoration (%s)", async (mode) => {
   const { randomUUID } = await import("node:crypto")
   const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-reader-"))
-  const capture = join(directory, "artifacts")
+  // Hosted output is outside the private editor launch directory.
+  const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-output-"))
+  const capture = join(captureRoot, "artifacts")
   const replyDirectory = join(directory, "editor-replies-activation")
   mkdirSync(capture)
   mkdirSync(replyDirectory)
@@ -92,6 +95,7 @@ test.each([
   if (mode === "owned-target-conflicting-env") vi.stubEnv("TERMINFO_TARGET_ID", "cursor")
   vi.stubEnv("TERMINFO_MUX_KIND", "")
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+  vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
   // Only the external-API fixture writes replies; production must write only requests.
   const producer = setInterval(() => {
     if (!existsSync(requestPath)) return
@@ -122,7 +126,7 @@ test.each([
           processId:
             mode === "pid-absent"
               ? { present: false, reason: "Native terminal.processId is undefined" }
-              : { present: true, value: process.pid },
+              : { present: true, value: mode === "shell-ancestor" ? process.ppid : process.pid },
           shellIntegrationCwd:
             mode === "api-absent"
               ? { present: false, reason: "Native terminal.shellIntegration is undefined" }
@@ -138,7 +142,11 @@ test.each([
       runId,
       editor: {
         appId: "com.microsoft.VSCode",
-        assertProcess: async (pid: number) => {
+        assertProcess: async (pid: number, collectorAncestor?: boolean) => {
+          if (pid === process.ppid && mode === "shell-ancestor") {
+            expect(collectorAncestor).toBe(true)
+            return
+          }
           if (pid !== extensionPid && pid !== process.pid)
             throw new Error("Native reply process is outside the owned App")
         },
@@ -156,7 +164,7 @@ test.each([
         }
       },
     })
-    if (mode !== "native" && !mode.startsWith("owned-target-")) {
+    if (mode !== "native" && mode !== "shell-ancestor" && !mode.startsWith("owned-target-")) {
       expect(reading.status).toBe(
         mode === "api-absent" || mode === "pid-absent" || mode === "unchanged-target" ? "unavailable" : "invalid",
       )
@@ -196,6 +204,7 @@ test.each([
   } finally {
     clearInterval(producer)
     rmSync(directory, { recursive: true })
+    rmSync(captureRoot, { recursive: true })
   }
 })
 

@@ -1589,6 +1589,8 @@ describe("private finite daemon startup", () => {
     { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
     { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "cursor", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "com.microsoft.VSCode", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "pixels", retained: true, pid: true },
     {
@@ -1749,7 +1751,7 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
       // Hosted pixel runs must retain the same qualification refusals without replacing pixels.
-      if (route === "text-cells" || route === "pixels") {
+      if (route === "text-cells" || (route === "pixels" && !["cursor", "com.microsoft.VSCode"].includes(app))) {
         assert.ok(run.textQualification, "hosted pixel capture skipped text qualification")
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
