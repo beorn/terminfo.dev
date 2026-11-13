@@ -138,6 +138,7 @@ export {
   CELL_EDGE_TOLERANCE_PX,
   SENTINEL_BOX_SLACK_PX,
   sentinelBoxDeficit,
+  sentinelFillClause,
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,

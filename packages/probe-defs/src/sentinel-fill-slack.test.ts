@@ -9,7 +9,12 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { SENTINEL_BOX_SLACK_PX, sentinelBlockRefusal, sentinelBoxDeficit } from "./region-readback.ts"
+import {
+  SENTINEL_BOX_SLACK_PX,
+  sentinelBlockRefusal,
+  sentinelBoxDeficit,
+  sentinelFillClause,
+} from "./region-readback.ts"
 
 const cell = { width: 8, height: 16 }
 const area = cell.width * cell.height
@@ -40,5 +45,23 @@ describe("34015 sentinel box fill", () => {
   it("records the deficit of an accepted short box and nothing for a full one", () => {
     expect(sentinelBoxDeficit(box(area - 2))).toEqual({ pixels: area - 2, area, short: 2 })
     expect(sentinelBoxDeficit(box(area))).toBeUndefined()
+  })
+})
+
+describe("34015 fill clause on the frame's basis", () => {
+  it("says nothing when both boxes fill their area", () => {
+    expect(sentinelFillClause([box(area), box(area)])).toBe("")
+  })
+
+  it("names the one box that was accepted short, and by how much", () => {
+    expect(sentinelFillClause([box(area), box(area - 1)])).toBe(
+      "; sentinel box accepted short of its area (127 of 128 px)",
+    )
+  })
+
+  it("names both boxes when both leaned on the slack", () => {
+    expect(sentinelFillClause([box(area - 1), box(area - 2)])).toBe(
+      "; sentinel box accepted short of its area (127 of 128 px, 126 of 128 px)",
+    )
   })
 })
