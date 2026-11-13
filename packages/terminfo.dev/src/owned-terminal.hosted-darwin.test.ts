@@ -542,6 +542,19 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     titleRead: "none",
     titleUnavailable: expect.stringContaining('"Terminal"'),
   })
+  // 34087: each sentence names its calibration run first and says the counted runs read nothing, so no
+  // app-own-title row can be read as a live measurement of a run that attempted none; the calibration
+  // pid is gone because it is not a fact about the row.
+  for (const [path, calibrationRun] of [
+    ["/Applications/Cursor.app/Contents/MacOS/Cursor", "43325922491"],
+    ["/Applications/Visual Studio Code.app/Contents/MacOS/Code", "43325922491"],
+    ["/Applications/cmux.app/Contents/MacOS/cmux", "43327254711"],
+  ] as const) {
+    const sentence = hostedDarwinAppFromExecutablePath(path).titleUnavailable ?? ""
+    expect(sentence).toContain(`on 33821 calibration run ${calibrationRun}`)
+    expect(sentence).toContain("counted runs attempted no title-row read")
+    expect(sentence).not.toMatch(/\bpid \d+/)
+  }
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
     "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",

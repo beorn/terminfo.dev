@@ -535,26 +535,27 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
-  // 33821 run 43325922491: the run wrote its own marker title and the window server still reported
-  // "[Extension Development Host] Cursor" (other-title). The name is the app's window title, so this
-  // instrument cannot observe the run's title and says so.
+  // On 33821 calibration run 43325922491 the run wrote its own marker title and the window server still
+  // reported "[Extension Development Host] Cursor" (other-title). That is the app's window title, so the
+  // read could not observe the run's title; the counted runs attempted no title-row read (titleRead none).
   Cursor: {
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
     scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
-      "Hosted Darwin title read unavailable for Cursor: the window server reports the app's own window title (\"[Extension Development Host] Cursor\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: other-title)",
+      "Hosted Darwin title read unavailable for Cursor: on 33821 calibration run 43325922491 the read saw the window server report the app's own window title (\"[Extension Development Host] Cursor\") rather than that run's title, so it could not observe the title and the row recorded other-title; the counted runs attempted no title-row read (titleRead none)",
   },
-  // 33821 run 43325922491: observed "[Extension Development Host] Visual Studio Code"; the final poll
-  // was killed at the 2 s census cap, so the row records read-failed with that name observed.
+  // On 33821 calibration run 43325922491 the last poll was killed at the 2 s census cap with
+  // "[Extension Development Host] Visual Studio Code" observed, so the row recorded read-failed with
+  // that name observed; the counted runs attempted no title-row read (titleRead none).
   Code: {
     id: "com.microsoft.VSCode",
     comm: "Code",
     titleRead: "none",
     scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
-      "Hosted Darwin title read unavailable for com.microsoft.VSCode: the window server reports the app's own window title (\"[Extension Development Host] Visual Studio Code\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: read-failed with that name observed)",
+      "Hosted Darwin title read unavailable for com.microsoft.VSCode: on 33821 calibration run 43325922491 the poll was killed at the 2 s census cap with its last observation the app's own window title (\"[Extension Development Host] Visual Studio Code\") rather than that run's title, so the row recorded read-failed with that name observed; the counted runs attempted no title-row read (titleRead none)",
   },
   // Warp's title bar shows an "Update Warp" pill ~3 s after launch (797 px at y 6-29 on run 42861023633; grid from
   // y 46), so calibration excuses y 0-39 there and records the count (33056, @cto f15dec92).
@@ -564,16 +565,17 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     titleRead: "system-events",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   },
-  // 33821 run 43327254711: the 2 s window-name measurement did not finish (osascript SIGKILL at 2003 ms) and
-  // its last observation was "Terminal", the pre-marker name. Every raster-capture census of the same window
-  // (id 36, pid 2751, /Applications/cmux.app) after the marker write did record this run's title, through
-  // 23:17:27.999Z — so the receipt shows a capped read, not an app that can never expose its title.
+  // On 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its
+  // last observation "Terminal", the pre-marker name. Every raster-capture census of the same cmux window
+  // (id 36, /Applications/cmux.app) after the marker write did record that run's title, through
+  // 23:17:27.999Z — so the receipt showed a capped read, not an app that can never expose its title; the
+  // counted runs attempted no title-row read (titleRead none).
   cmux: {
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
     titleUnavailable:
-      'Hosted Darwin title read unavailable for cmux: the 2 s window-name measurement did not finish (osascript killed at 2003 ms) and its last observation was "Terminal", the pre-marker name; raster-capture censuses of the same cmux window (pid 2751) after the marker write did record this run\'s title, so the bounded read is what failed, not the app (33821 calibration run 43327254711: read-failed)',
+      'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
   },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
