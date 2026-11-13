@@ -7868,8 +7868,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 // the label pattern (tty.ts matchResponse, #30559), so only a measured emptiness — or
                 // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
                 // because "got no answer" would be false for it.
-                const silent =
-                  measuredSilence(icon, "OSC 0 icon-label reply")
+                const silent = measuredSilence(icon, "OSC 0 icon-label reply")
                 if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
