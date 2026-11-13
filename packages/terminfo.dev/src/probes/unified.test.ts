@@ -4095,7 +4095,10 @@ it.each([false, true])(
     expect(published).not.toContain("private-person")
     expect(privateWrites).toHaveLength(4)
     expect(privateWrites.at(-1)).toContain(initial)
-    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8"))
+    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8")) as {
+      initial?: string
+      phases: unknown[]
+    }
     expect(phaseRecord.initial).toBe(initial)
     expect(phaseRecord.phases).toContainEqual(
       expect.objectContaining({ name: "restoration", feed: expect.stringContaining(initial) }),
