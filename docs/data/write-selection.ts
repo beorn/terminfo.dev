@@ -41,6 +41,18 @@ export interface SelectionFileCell {
   reopened?: SelectedContextCell["reopened"]
   /** Present only when the mux-input demotion read this cell (#33665): measured status and the outer run it leaned on. */
   outerAbsent?: SelectedContextCell["outerAbsent"]
+  /**
+   * Present only on an untestable cell (#33928): why no route measures it, as stored — the mux-input demotion's reason
+   * when that demotion made it untestable, else the run's own result reason. null when the run stored none, so a
+   * reader shows the gap instead of dropping the row.
+   */
+  reason?: string | null
+}
+
+/** The stored reason an untestable cell gives; never invented. */
+function untestableReason(cell: SelectedContextCell): string | null {
+  const reason = cell.outerAbsent?.reason ?? cell.result.reason
+  return reason?.trim() ? reason.trim() : null
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -65,9 +77,10 @@ export function selectionFile(
       if (!working && !isUnder(cell.run.path, contentDir)) {
         throw new Error(`${runId} ${featureId}: placed run file ${cell.run.path} is not under ${contentDir}`)
       }
+      const status = cell.featureResult?.status ?? cell.result.status
       cells.push({
         featureId,
-        status: cell.featureResult?.status ?? cell.result.status,
+        status,
         terminalId: cell.run.subject.id,
         version,
         os: cell.run.subject.os,
@@ -81,6 +94,7 @@ export function selectionFile(
         ...(cell.supplement && { supplement: cell.supplement }),
         ...(cell.reopened && { reopened: cell.reopened }),
         ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent }),
+        ...(status === "untestable" && { reason: untestableReason(cell) }),
       })
     }
   }
