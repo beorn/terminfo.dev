@@ -1422,7 +1422,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("no control reply is probe-todo naming the control, never unsupported", async () => {
     const result = await readCallback()(
       termSource({
-        queryCursorPosition: async () => undefined,
+        queryCursorPosition: async () => null,
         withClipboardFixture: async (work) =>
           work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
       }),
