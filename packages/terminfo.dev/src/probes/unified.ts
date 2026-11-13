@@ -220,6 +220,7 @@ export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; 
 }
 
 /**
+ * OSC633 P can pin the pane cwd until it closes, so it follows cwd and prompt observations.
  * OSC 52 stays after the other probes so a clipboard write does not disturb them. DECRQCRA is
  * last: on iTerm2 it raises a consent banner that covers every later pixel probe (#31741).
  */
@@ -232,6 +233,8 @@ export function scheduleAppProbes<T extends { readonly id: string }>(requested: 
     else if (probe.id.startsWith("extensions.osc52-")) clipboard.push(probe)
     else body.push(probe)
   }
+  const cwdPin = body.findIndex((probe) => probe.id === "extensions.osc633-p")
+  if (cwdPin !== -1) body.push(...body.splice(cwdPin, 1))
   return [...body, ...clipboard, ...consent]
 }
 
