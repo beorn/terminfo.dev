@@ -3,8 +3,11 @@
  *   another run's evidence grade this one — either way a Mac row is published from evidence nobody can trace.
  * @level l1
  * @consumer the OSC 52 write/read/clipboard gate on an app a person opened normally (@cto 2026-11-13).
- * @testonly the receipt parser and its admission predicate, driven with synthetic receipts: no Mac host is needed
- *   to prove what the parser refuses.
+ * @testonly none
+ * @reach fs-walk <fixture-only: receipts this test writes under its own mkdtempSync root>
+ *
+ * Every receipt here is synthetic: the parser and its admission predicate need no Mac host to prove what they
+ * refuse, which is why this file drives the walk through the `LiveAncestryReader` seam rather than a live process.
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"

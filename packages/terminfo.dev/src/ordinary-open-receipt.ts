@@ -115,8 +115,9 @@ function record(source: Record<string, unknown>, key: string, where: string): Re
 
 function integer(source: Record<string, unknown>, key: string, where: string, minimum: number): number {
   const value = source[key]
-  if (!Number.isSafeInteger(value) || (value as number) < minimum)
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
     fail(where, `${key} must be an integer >= ${minimum}`)
+  }
   return value as number
 }
 
