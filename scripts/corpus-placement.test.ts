@@ -19,6 +19,8 @@ import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { loadSelectedResults } from "../docs/data/selected-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -116,6 +118,29 @@ test("persists and reloads exact bytes, idempotently, refusing conflicts", () =>
   writeFileSync(destination, "different")
   expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/different collected run/)
   expect(readFileSync(destination, "utf8")).toBe("different")
+})
+
+// A projection must publish the exact run it admitted, even when evidence is read later.
+// Existing placement conflicts happen before projection; they cannot catch a subsequent file change.
+test("publication names a stored run changed after projection loaded", () => {
+  const f = fixture()
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash)
+  expect(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds)).toContain(f.run.runId)
+
+  // Still valid JSON with the same semantic result: only exact-byte binding detects this replacement.
+  writeFileSync(destination, `${readFileSync(destination, "utf8")}\n`)
+  let failure: unknown
+  try {
+    publicResults(projection, new Map())
+  } catch (cause) {
+    failure = cause
+  }
+  expect(failure).toBeInstanceOf(Error)
+  const message = (failure as Error).message
+  expect(message).toContain(destination)
+  expect(message).toContain(f.run.runId)
+  expect(message).toMatch(/digest|sha256/i)
 })
 
 // Stored suite filenames must identify their actual manifest; valid content under a wrong name is not trustworthy.
