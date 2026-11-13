@@ -1,5 +1,5 @@
 /** One context selection rule shared by compatibility and full-project readers. */
-import type { FeatureResultStatus, ProbeResult } from "@terminfo/probe-defs"
+import { readCollectorSelection, type FeatureResultStatus, type ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type FeatureResultDisplayState, type SuiteRelation } from "./release-scope.ts"
 import {
   originalRunFor,
@@ -27,7 +27,18 @@ export interface ContextCandidate {
   terminalId: string
   os: string
   permissions: string | null
-  sources: Array<{ runId: string; measuredAt: string; suiteId: string; suiteRelation: SuiteRelation }>
+  sources: Array<{
+    runId: string
+    measuredAt: string
+    suiteId: string
+    suiteRelation: SuiteRelation
+    /**
+     * This run recorded a probe selection, so it never measured the whole suite. Absent means this
+     * reader held no raw replies to judge (the historical per-version overload); it never means the
+     * run was proven full. Only the composed projection path can see `collector.selection`.
+     */
+    partial?: boolean
+  }>
   /** The canonical context, when this candidate is a composed view. */
   context?: SelectedContextSummary
   cells?: ShareCells
@@ -96,6 +107,7 @@ export function candidateFromSelected(
           measuredAt: original.measuredAt,
           suiteId: original.suiteId,
           suiteRelation: original.suiteRelation,
+          partial: readCollectorSelection(original.rawReplies) !== undefined,
         }
       }),
       context: selected,
@@ -123,7 +135,12 @@ export function candidateFromSelected(
 }
 
 /** How the summary context was chosen, printed beside the row. */
-export type RunSelection = "only current" | "default profile" | "latest original evidence"
+export type RunSelection =
+  | "only current"
+  | "default profile"
+  | "latest original evidence"
+  /** The only candidate standing was a selected run, so the summary covers its selection, not the suite. */
+  | "latest partial selection"
 
 export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { run: T; selection: RunSelection }
 
@@ -141,15 +158,33 @@ export function pickContextRun<T extends ContextCandidate>(candidates: readonly 
   if (dated.length === 0) return undefined
   const current = dated.filter(({ candidate }) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : dated
-  const [only] = considered
-  if (considered.length === 1 && only) return { run: only.candidate, selection: "only current" }
-  const defaults = considered.filter(({ candidate }) => candidate.permissions === null)
+  // A run that measured a selection is a real reading of its ids and never a reading of the suite, so a
+  // full run outranks it at equal standing — in the current-suite pool and in the fallback alike. Only
+  // when no full run stands at all may a selected run be the summary, and then the reason says so.
+  const full = considered.filter(({ candidate }) => !candidate.sources.some((source) => source.partial === true))
+  const partialOnly = full.length === 0
+  const pool = partialOnly ? considered : full
+  const [only] = pool
+  if (pool.length === 1 && only) {
+    return { run: only.candidate, selection: partialOnly ? "latest partial selection" : "only current" }
+  }
+  const defaults = pool.filter(({ candidate }) => candidate.permissions === null)
   const [onlyDefault] = defaults
-  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault.candidate, selection: "default profile" }
-  const [latest] = [...considered].sort(
+  if (defaults.length === 1 && onlyDefault) {
+    return {
+      run: onlyDefault.candidate,
+      selection: partialOnly ? "latest partial selection" : "default profile",
+    }
+  }
+  const [latest] = [...pool].sort(
     (left, right) =>
       right.latest - left.latest ||
       (left.candidate.key < right.candidate.key ? -1 : left.candidate.key > right.candidate.key ? 1 : 0),
   )
-  return latest && { run: latest.candidate, selection: "latest original evidence" }
+  return (
+    latest && {
+      run: latest.candidate,
+      selection: partialOnly ? "latest partial selection" : "latest original evidence",
+    }
+  )
 }

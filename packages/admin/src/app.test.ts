@@ -9,7 +9,14 @@ import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { handleApp, launchPreparedCli, prepareCliLaunch, stopLaunchedApp, type AppLaunch } from "./app.ts"
+import {
+  assertOwnedWindowAssertion,
+  handleApp,
+  launchPreparedCli,
+  prepareCliLaunch,
+  stopLaunchedApp,
+  type AppLaunch,
+} from "./app.ts"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -235,6 +242,22 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
     warn.mockRestore()
     error.mockRestore()
   }
+})
+
+test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
+  expect(() =>
+    assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, {
+      proc: null,
+      identityPath: "/private/run/owner-tty.txt",
+      iterm2: { tty: "/dev/ttys009", beforeWindowIds: [1] },
+    } as AppLaunch),
+  ).not.toThrow()
+})
+
+test("the owned-window admission refuses a launch carrying no proof, by the same sentence", () => {
+  expect(() => assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, { proc: null } as AppLaunch)).toThrow(
+    "iTerm2 has no owned-window assertion; refusing to collect a run this probe cannot prove it launched",
+  )
 })
 
 test("Kitty text collection owns a run-local socket and removes it with its one window", async () => {

@@ -593,6 +593,31 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
+/**
+ * The one owned-window admission: a run may only be collected when the launch it made carries a proof
+ * this probe can re-verify (a Terminal.app window, a marker-owned process, an iTerm2 sole instance, or
+ * kitty's run-local socket window). It reads the launch record and nothing else, so it is called once,
+ * right after the launch, and a test can prove both outcomes with synthetic records.
+ *
+ * It cannot be hoisted above staging on the ssh route: the ssh route runs this whole process on the
+ * target host after the source copy, and before a launch there is no launch record to judge. The
+ * static refusals that ARE reachable before any copy are the app's own route refusals (an unknown app,
+ * a manual-server app such as Warp, and an unknown probe selection) — see the selection check in
+ * release1-collection.ts, which runs before the transport argv exists (@cto 737a99e3 condition 4).
+ */
+export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): void {
+  if (
+    launch.terminalWindow === undefined &&
+    app.id !== "kitty" &&
+    launch.marker === undefined &&
+    launch.iterm2 === undefined
+  ) {
+    throw new Error(
+      `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
+    )
+  }
+}
+
 export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
   if (launch.terminalWindow) {
     return closeOwnedTerminalWindow(launch.terminalWindow)
@@ -653,7 +678,7 @@ async function probeDaemon(
   // cli-process send the shared process proof's own observables so the worker can re-verify them.
   const res = await requestDaemonProbe(
     daemon,
-    (ownedWindow.provider === "terminal-app"
+    ownedWindow.provider === "terminal-app"
       ? {
           terminalApp: {
             asserter: "terminfo-admin",
@@ -666,7 +691,7 @@ async function probeDaemon(
         }
       : {
           process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
-        }),
+        },
     ...(ids === undefined ? [] : [ids]),
   )
   const retained = await readRetainedDaemonProbeResponse(res)
@@ -901,16 +926,7 @@ async function runApp(
   try {
     console.log(`  Launching ${app.name} v${version}...`)
     launch = launchWithServe(app, run)
-    if (
-      launch.terminalWindow === undefined &&
-      app.id !== "kitty" &&
-      launch.marker === undefined &&
-      launch.iterm2 === undefined
-    ) {
-      throw new Error(
-        `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
-      )
-    }
+    assertOwnedWindowAssertion(app, launch)
     console.log(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
