@@ -5089,7 +5089,13 @@ async function liveClipboardProbe(
     //  - pinned "deny"/"absent": silence is the default answer — unsupported;
     //  - no citation at all: the row names the missing citation instead of guessing.
     if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
-      const granting = fixture.readProfile !== undefined && fixture.readProfile.profile !== "deny-read"
+      // A deny-read profile configured the refusal this run measured, so its silence is this run's own setting
+      // talking, not a statement about the app's default (@dev/16 peer).
+      if (fixture.readProfile?.profile === "deny-read") {
+        const reason = "deny-read profile: refusal configured by this run; grades nothing about the default"
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
+      const granting = fixture.readProfile !== undefined
       const posture = fixture.readDefault?.posture
       if (granting) {
         const note = `cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
