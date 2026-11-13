@@ -40,9 +40,9 @@ export class UntrustedSuiteError extends Error {
   ) {
     super(
       `${path}: suite ${suiteId} has no committed manifest under ${join(root, "content", "suites")} and is not this ` +
-        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: on a ` +
-        `tree at that suite run \`bun scripts/write-suite-manifest.ts\` and submit the file it writes (the definition ` +
-        `batch's last step), or place a run at that suite`,
+        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: placing a ` +
+        `run at that suite writes its manifest (placement is the only writer; there is no standalone step). A ` +
+        `capture at a suite that is neither this tree's nor placed cannot be read here.`,
     )
     this.name = "UntrustedSuiteError"
   }

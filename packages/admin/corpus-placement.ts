@@ -501,9 +501,10 @@ function suiteManifestFile(manifest: ProbeSuiteManifest, contentDir: string): { 
 
 /**
  * Write this tree's suite manifest into content/suites through placement's own writer (33109, @cto 0e10dc13,
- * d05d6b32). A suite's manifest is a pure function of the tree that defines it; scripts/write-suite-manifest.ts runs
- * this on main after a definition batch's final merge, so working runs at main's suite stay readable without anyone
- * placing a run. Identical existing bytes are a no-op ("existing"); different bytes under the same suite id refuse.
+ * d05d6b32, 70719828). A suite's manifest is a pure function of the tree that defines it, and placement writes it in
+ * the change that places that suite's first run; there is no standalone step, and a tree that has placed no run needs
+ * no file because readers derive the live suite. Identical existing bytes are a no-op ("existing"); different bytes
+ * under the same suite id refuse.
  */
 export function placeSuiteManifest(
   contentDir: string = CONTENT_DIR,

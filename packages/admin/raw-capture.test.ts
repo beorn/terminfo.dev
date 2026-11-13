@@ -53,6 +53,18 @@ describe("loadRawCapture: the one raw-capture reader fails loudly", () => {
       JSON.stringify({ runId: "r", probeHash: "000000000000", suiteId: "000000000000", sourceRevision: "s" }),
     )
     expect(() => loadRawCapture(path, { root, catalogIds: [] })).toThrow("suite 000000000000 has no committed manifest")
+    // 34088: the cure names placement and never the retired standalone step, so the next reader cannot be sent
+    // looking for a manifest-only carrier (33109, @cto 70719828).
+    let refusal = ""
+    try {
+      loadRawCapture(path, { root, catalogIds: [] })
+    } catch (error) {
+      refusal = (error as Error).message
+    }
+    expect(refusal).toContain("placement is the only writer")
+    expect(refusal).toContain("there is no standalone step")
+    expect(refusal).toContain("neither this tree's nor placed cannot be read here")
+    expect(refusal).not.toContain("write-suite-manifest")
   })
 
   it("refuses a capture whose suiteId disagrees with its trusted manifest", () => {
