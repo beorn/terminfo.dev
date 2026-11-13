@@ -14,7 +14,7 @@ import { sentinelCellsInFrame } from "./region-readback.ts"
 function frame(input: {
   grid: { rows: number; cols: number }
   cell: { width: number; height: number }
-  ink: readonly { row: number; col: number; half?: boolean }[]
+  ink: readonly { row: number; col: number; half?: boolean; leftHalf?: boolean }[]
 }) {
   const { grid, cell } = input
   const background = 0x050505
@@ -34,14 +34,18 @@ function frame(input: {
     const left = (cellAt.col - 1) * cell.width
     const top = (cellAt.row - 1) * cell.height
     const rows = cellAt.half ? Math.floor(cell.height / 2) : cell.height
-    for (let y = top; y < top + rows; y++) for (let x = left; x < left + cell.width; x++) put(x, y, inkColour)
+    const cols = cellAt.leftHalf ? Math.floor(cell.width / 2) : cell.width
+    for (let y = top; y < top + rows; y++) for (let x = left; x < left + cols; x++) put(x, y, inkColour)
   }
   return { rgba, width, height }
 }
 
 const grid = { rows: 24, cols: 8 }
 const cell = { width: 7, height: 15 }
-const selection = (ink: readonly { row: number; col: number; half?: boolean }[], extra: Record<string, unknown> = {}) =>
+const selection = (
+  ink: readonly { row: number; col: number; half?: boolean; leftHalf?: boolean }[],
+  extra: Record<string, unknown> = {},
+) =>
   sentinelCellsInFrame({
     ...frame({ grid, cell, ink }),
     reading: { x: 0, y: 0 },
@@ -90,4 +94,23 @@ test("refuses when the only blank cells share a row, since the pair must differ 
     Array.from({ length: 8 }, (_, col) => ({ row: row + 1, col: col + 1, half: true })),
   ).flat()
   expect(() => selection(inked)).toThrow(/no second blank cell/)
+})
+
+// @dev/15's finding on the A+B head: a double-width glyph draws its ink in one half and can leave
+// the other half the background colour, so "every pixel is background" alone would choose the blank
+// half and the restore would erase the glyph whole — @dev/10's rule. The cell a wide glyph could
+// straddle into is never eligible, however blank it looks.
+test("never uses the blank half of a wide glyph as a sentinel cell", () => {
+  const wide = { grid: { rows: 8, cols: 24 }, cell: { width: 4, height: 6 } }
+  const regions = [{ top: 3, left: 1, bottom: 5, right: 11 }]
+  const glyph = [{ row: 3, col: 11, leftHalf: true }]
+  const { a, b } = sentinelCellsInFrame({
+    ...frame({ ...wide, ink: glyph }),
+    reading: { x: 0, y: 0 },
+    ...wide,
+    regions,
+  })
+  for (const chosen of [a, b]) {
+    expect(chosen, "the cell beside inked text can be a wide glyph's blank half").not.toEqual({ row: 3, col: 12 })
+  }
 })

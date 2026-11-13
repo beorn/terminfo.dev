@@ -441,6 +441,15 @@ test("a capture that fails for its own reason still restores both cells, and kee
 test("a sentinel pair that never appears refuses at the read's deadline and still restores (33000)", async () => {
   const painted = source()
   const blank: CapturedFrame = { width: 16, height: 12, rgba: new Uint8Array(16 * 12 * 4).fill(255) }
+  // A frame with no ink anywhere: the chooser's first two all-background cells, which is where this
+  // read paints and what its refusal must name (33981).
+  const picked = sentinelCellsInFrame({
+    ...blank,
+    reading: { x: 0, y: 0 },
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    grid,
+    regions: [cells],
+  })
   let captures = 0
   await expect(
     readThroughSentinel({
@@ -457,7 +466,11 @@ test("a sentinel pair that never appears refuses at the read's deadline and stil
       cell: { width: 2, height: 2 },
       deadline: Date.now() - 1,
     }),
-  ).rejects.toThrow(new RegExp(`no cell changed to the sentinel colour at ${WHERE}`))
+  ).rejects.toThrow(
+    new RegExp(
+      `no cell changed to the sentinel colour at cells ${picked.a.row},${picked.a.col} and ${picked.b.row},${picked.b.col}`,
+    ),
+  )
   expect(captures).toBe(1)
-  expect(painted.writes).toEqual([PAINT, CLEAR])
+  expect(painted.writes).toEqual([paintOf(picked), clearOf(picked)])
 })

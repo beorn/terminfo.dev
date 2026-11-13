@@ -558,6 +558,13 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
  * second must differ from the first in BOTH row and column so one stray patch can never satisfy the
  * pair.
  *
+ * Blank is not enough on its own (@dev/15 peer read, 33981): a double-width glyph draws its ink in
+ * one half and can leave the other half the background colour, so a cell whose neighbour carries ink
+ * may BE the blank half of a glyph — and the blank restore erases a wide glyph whole, which changes
+ * the very frame this read digests (@dev/10's rule, generalised). So a cell is eligible only when its
+ * own cell AND the cells either side of it on the same row are all background. Neighbouring ink is
+ * the only evidence that says so; blankness alone cannot.
+ *
  * `reading` is where cell 1,1 sits in the frame, in pixels. A frame too short to hold the whole grid
  * at that origin cannot be used to choose cells, and says so rather than guessing.
  */
@@ -596,8 +603,8 @@ export function sentinelCellsInFrame(input: {
     [...input.regions, ...avoid].some(
       (region) => row >= region.top && row <= region.bottom && col >= region.left && col <= region.right,
     )
-  /** Every pixel of this cell is the frame's background, so a blank restore puts it back as found. */
-  const blank = (row: number, col: number): boolean => {
+  /** Every pixel of this cell is the frame's background. */
+  const modal = (row: number, col: number): boolean => {
     const left = reading.x + (col - 1) * cell.width
     const top = reading.y + (row - 1) * cell.height
     if (left < 0 || top < 0 || left + cell.width > width || top + cell.height > height) return false
@@ -606,6 +613,13 @@ export function sentinelCellsInFrame(input: {
     }
     return true
   }
+  /**
+   * A cell a blank restore puts back as it was found: background itself, and with no ink either side
+   * of it on its row, so it cannot be the blank half of a wide glyph whose other half is drawn next
+   * door. A neighbour outside the grid has no glyph and does not exclude the cell.
+   */
+  const blank = (row: number, col: number): boolean =>
+    modal(row, col) && (col === 1 || modal(row, col - 1)) && (col === grid.cols || modal(row, col + 1))
   const eligible: { row: number; col: number }[] = []
   for (let row = 1; row <= grid.rows; row++) {
     for (let col = 1; col <= grid.cols; col++) {

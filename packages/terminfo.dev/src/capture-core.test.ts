@@ -219,7 +219,9 @@ test("a moved window digests the same cells, because the crop follows the sentin
   const sentinel = [255, 136, 255] as const
   const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
   const cells = { top: 1, left: 1, bottom: 2, right: 2 }
-  // The cell the frame-based chooser picks for this window: the first blank cell outside the region.
+  // The cell the frame-based chooser picks for this window: the first all-background cell outside the
+  // region whose neighbours are background too — the cell next to the region's ink could be the blank
+  // half of a wide glyph (@dev/10's rule).
   const witness = sentinelCellsInFrame({
     ...drawnWindow({ x: 0, y: 0 }, { row: 0, col: 0 }, cells, sentinel),
     reading: { x: 0, y: 0 },
@@ -227,7 +229,7 @@ test("a moved window digests the same cells, because the crop follows the sentin
     grid: { rows: 4, cols: 6 },
     regions: [cells],
   }).a
-  expect(witness).toEqual({ row: 1, col: 3 })
+  expect(witness).toEqual({ row: 1, col: 4 })
   const calibrated = { origin: { x: 0, y: 0 }, basis: "complete raster calibration" }
   // The fix under test: the crop is taken from where the sentinel actually landed in THIS frame,
   // with the same one-cell block test the post-hoc layout check uses.
