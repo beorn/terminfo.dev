@@ -581,6 +581,8 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
     proofSpec: () => proof,
     findOwnerPids: () => pids,
     readWindowRows: () => rows,
+    readBundleId: () => proof.bundleId,
+    workerTty: () => "/dev/ttys004",
   })
 
   const withRunEnv = (body: () => void) => {
@@ -613,8 +615,36 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
           readWindowRows: () => {
             throw new Error("the proof must refuse before any census is read")
           },
+          readBundleId: () => {
+            throw new Error("the proof must refuse before any bundle is read")
+          },
+          workerTty: () => {
+            throw new Error("the proof must refuse before any tty is read")
+          },
         }),
       ).toThrow(/no required-proof entry/)
+    })
+  })
+
+  test("refuses an executable whose live bundle is not the one its proof entry requires", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          ...probes([4242], [censusRow(77, 4242)]),
+          readBundleId: () => "com.example.other",
+        }),
+      ).toThrow(/is bundle "com.example.other", not the "example.app"/)
+    })
+  })
+
+  test("refuses a record whose tty is not this worker's controlling tty", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          ...probes([4242], [censusRow(77, 4242)]),
+          workerTty: () => "/dev/ttys009",
+        }),
+      ).toThrow(/the record names TTY \/dev\/ttys004 but this worker's controlling TTY is \/dev\/ttys009/)
     })
   })
 

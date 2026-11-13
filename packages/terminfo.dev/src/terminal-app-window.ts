@@ -4,7 +4,7 @@ import { realpathSync } from "node:fs"
 import { basename } from "node:path"
 import { CENSUS, censusDarwinWindows } from "./darwin-capture.ts"
 import { parseLstart } from "./disposable-receipt.ts"
-import type { OwnedAppProofSpec } from "./darwin-owned-app.ts"
+import { ownedAppProofSpec, type OwnedAppProofSpec } from "./darwin-owned-app.ts"
 import type { OwnedAppOwnerAssertion } from "./owned-terminal.ts"
 import {
   argvCarriesMarker,
@@ -272,13 +272,19 @@ export interface OwnedAppProbes {
   readonly proofSpec: (appId: unknown) => OwnedAppProofSpec
   readonly findOwnerPids: (executablePath: string, marker: ProcessMarker) => readonly number[]
   readonly readWindowRows: () => unknown
+  /** The bundle identifier of the .app enclosing the record's executable, read live from its Info.plist. */
+  readonly readBundleId: (executablePath: string) => string
+  /** This worker's own controlling TTY, read live from the process table. */
+  readonly workerTty: () => string
 }
 
 /**
  * The worker's own re-proof of an owned-Mac app launch (#34012, @cto 9f889378). The admin's record names
  * an expectation and nothing here is trusted from it: the app must have a required-proof entry, the claim
- * must be this worker's run, exactly ONE live pid may run that executable with that marker and it must be
- * the recorded one, and the census must show the recorded window owned by that pid.
+ * must be this worker's run, the executable's live bundle identifier must be the one that entry names, the
+ * recorded tty must be this worker's own controlling tty, exactly ONE live pid may run that executable
+ * with that marker and it must be the recorded one, and the census must show the recorded window owned by
+ * that pid.
  *
  * `assertOwnedProcess` is deliberately NOT used: it requires the owner to descend from the daemon, and an
  * app the launcher spawned is a child of launchd, so that check would refuse a correct launch.
@@ -288,8 +294,26 @@ export function assertOwnedAppOwner(
   expectedLaunchRunId: string,
   probes: OwnedAppProbes,
 ): void {
-  probes.proofSpec(owner.appId)
+  const spec = probes.proofSpec(owner.appId)
   requireOwnWorker(owner, expectedLaunchRunId, "owned-app")
+  // The record names the app and the executable as two separate claims, so they must be tied together:
+  // otherwise a run launched as app X could be graded under app Y's proof entry.
+  const bundleId = probes.readBundleId(owner.executablePath)
+  if (bundleId !== spec.bundleId) {
+    throw new Error(
+      `owned-app owner assertion: ${owner.executablePath} is bundle ${JSON.stringify(bundleId)}, not the ` +
+        `${JSON.stringify(spec.bundleId)} its ${owner.appId} proof entry requires`,
+    )
+  }
+  // The tty the record carries is the window's, and this worker is the one drawing in it: they must agree.
+  // The entry's ttyProof still runs separately before any keyboard row is graded (@cto 9f889378 3a/3b).
+  const workerTty = probes.workerTty()
+  if (workerTty !== owner.tty) {
+    throw new Error(
+      `owned-app owner assertion: the record names TTY ${owner.tty} but this worker's controlling TTY is ` +
+        `${workerTty}, so it is not the worker drawing there`,
+    )
+  }
   const pids = probes.findOwnerPids(owner.executablePath, owner.marker)
   if (pids.length === 0) {
     throw new Error(
@@ -313,7 +337,48 @@ export function assertOwnedAppOwner(
   censusDarwinWindows(probes.readWindowRows(), owner.ownerPid, owner.windowId)
 }
 
-/** Every live pid that runs `executablePath` and carries the marker as an exact argv token. */
+/**
+ * The bundle identifier of the .app enclosing `executablePath`, read live from that bundle's Info.plist.
+ * An executable outside a .app, or one whose plist cannot be read, refuses by name: there is nothing to
+ * compare the proof entry's bundleId against.
+ */
+export function readBundleIdForExecutable(executablePath: string): string {
+  const at = executablePath.indexOf(".app/")
+  if (at < 0) {
+    throw new Error(`owned-app owner assertion: ${executablePath} is not inside a .app bundle`)
+  }
+  const plist = `${executablePath.slice(0, at + ".app".length)}/Contents/Info.plist`
+  const result = spawnSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", plist], { encoding: "utf8" })
+  const bundleId = (result.stdout ?? "").trim()
+  if (result.status !== 0 || bundleId === "") {
+    throw new Error(
+      `owned-app owner assertion: ${plist} did not yield a CFBundleIdentifier ` +
+        `(exit ${String(result.status)}); refusing a launch whose app identity cannot be read`,
+    )
+  }
+  return bundleId
+}
+
+/** The controlling TTY of this worker process, in the same shape the claim and census use. */
+export function workerControllingTty(): string {
+  return tty(run("/bin/ps", ["-p", String(process.pid), "-o", "tty="]).stdout)
+}
+
+/** The one production probe set; serve.ts passes this so there is no second place to wire. */
+export const ownedAppProbes: OwnedAppProbes = {
+  proofSpec: ownedAppProofSpec,
+  findOwnerPids,
+  readWindowRows: readDarwinWindowRows,
+  readBundleId: readBundleIdForExecutable,
+  workerTty: workerControllingTty,
+}
+
+/**
+ * Every live pid that runs `executablePath` and carries the marker as an exact argv token. The `ps` call
+ * is `-A`, so it lists every user's processes, not only this account's: matching is by realpath and by an
+ * exact argv token, and the fleet Mac runs no other user's marker-carrying processes, so a foreign match
+ * would have to reproduce this run's marker value exactly (@cto 50d402239 carry).
+ */
 export function findOwnerPids(executablePath: string, marker: ProcessMarker): number[] {
   const expected = realpathSync(executablePath)
   const owners: number[] = []
