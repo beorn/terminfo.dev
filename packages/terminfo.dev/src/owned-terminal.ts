@@ -378,6 +378,8 @@ export interface OwnedTerminal {
   readonly cmuxHistory?: {
     readonly executable: string
     readonly surface: string | null
+    /** Whether the surface was proved at grant. The proof itself stays on this object, out of any record. */
+    readonly grant: "proved" | "failed" | "not attempted"
     readonly grantProof: string
     readonly lastRead: string | null
   }
@@ -1941,6 +1943,8 @@ export async function createOwnedTerminal(options: {
         cmuxHistory: {
           executable: ownedCmuxCli,
           surface: cmuxSurface ?? null,
+          grant:
+            cmuxGrantReceipt !== undefined ? "proved" : cmuxGrantFailure !== undefined ? "failed" : "not attempted",
           grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
           // A getter, not a captured value: this object is built once at owner creation, so a snapshot
           // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).

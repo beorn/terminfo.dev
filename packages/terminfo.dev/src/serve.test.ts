@@ -73,8 +73,8 @@ it.each(["tmux", "screen", "darwin-screen"])(
     const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
     let cmuxArm,cmuxLast
     const cmuxHistory=()=>cmuxArm==="grant-failed"
-      ? {executable:cmuxExecutable,surface:null,grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
-      : {executable:cmuxExecutable,surface:"surface-uuid-1",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
+      ? {executable:cmuxExecutable,surface:null,grant:"failed",grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grant:"proved",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -178,20 +178,23 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
       cmuxArm="success"
       const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(cmuxRecord.executable,cmuxExecutable)
-      assert.equal(cmuxRecord.surface,"surface-uuid-1")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
+      assert.equal(cmuxRecord.executable,"cmux","the record names the executable by basename, never the host path")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/Applications/"),false,"no host path reaches the record")
+      assert.equal(cmuxRecord.surface,"cmux")
+      assert.equal(cmuxRecord.pane,"surface-uuid-1")
+      assert.equal(cmuxRecord.grant,"proved","the grant's outcome is recorded as a status")
+      assert.equal("grantProof" in cmuxRecord,false,"the grant proof stays out of the record")
       assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
       assert.equal(JSON.parse(cmuxRecord.lastRead).totalLines,73)
       cmuxArm="grant-failed";cmuxLast=undefined
       const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(failedRecord.surface,null)
+      assert.equal(failedRecord.pane,null)
+      assert.equal(failedRecord.grant,"failed")
       assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
-      assert.match(failedRecord.grantProof,/published no CMUX_SURFACE_ID/)
+      assert.equal("grantProof" in failedRecord,false)
       cmuxArm="config-absent";cmuxLast=undefined
       const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.deepEqual(JSON.parse(absentRecord.grantProof).config,{read:"absent"},"a launch with no config keeps the absence in the record")
+      assert.equal(absentRecord.grant,"proved","a launch with no config still shows the grant's outcome")
       assert.equal(JSON.parse(absentRecord.lastRead).ownership,"surface")
       cmuxArm=undefined
     }
