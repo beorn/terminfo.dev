@@ -1,32 +1,40 @@
 /**
- * One app's cells, joined from the contexts that measured the same release.
+ * One app's cells, joined row by row from the contexts that measured the same release.
  *
- * The site chooses ONE primary context per app and OS (`pickContextRun` in
- * run-selection.ts). A second context joins that primary only when it measured the same app version
- * with the same probe suite: those are the only contexts whose answers can be compared. A context on
- * another suite or another app version is history — it is shown where history is shown and never
- * changes a grade, an undecided label or a count (criterion c88ab98d, @cto c5ddabf3).
+ * The site chooses ONE primary context per app and OS (`pickContextRun` in run-selection.ts, by app version and
+ * then source-revision ancestry). Another context's cell joins the primary's cell for a row only when all three
+ * tests hold (33587, @cto d805d1af):
+ * 1. the app version is equal (a missing version never joins, @cto c5ddabf3);
+ * 2. the row's catalogue entry hash (`catalogEntrySha256[row]` of each run's suite manifest, or the reconstructed
+ *    row in content/legacy-entry-hashes.json) is equal;
+ * 3. the probe-defs file that defines the row is byte-equal at the two runs' source revisions.
+ * Otherwise the other cell is refused for that row by name (`refused`, naming the failed test), and the row shows
+ * only the primary run's observation: nothing merges in from the refused cell and no grade is read from source.
  *
  * Wherever the site lists apps (tables, counts, percentages, app pages), the unit is (app, OS).
  * An app measured on multiple OSes has a column per OS, labelled with the OS; single-OS labels stay
  * unchanged. Released app URLs stay unchanged. The legacy key's OS order is Linux, macOS, Windows,
  * other OS lexical, missing OS last; measurement dates never choose that key's OS (@cto ad37642d).
- * Newest-observation macOS selection is the separate follow-up #33587, not this same-suite join.
  *
- * Inside the join (@cto 4eef35ea): a decided grade in any joined context decides the cell; two
- * disagreeing decided grades read `differs-by-context` and name each context's grade; when no joined
- * context decided, Conflicting outranks Invalid outranks To do, and the cell names where the error was
- * seen. A cell a ruling reopened stays To do — no other context may decide it.
+ * Inside a joined row: each context already holds its newest observation (the projection's rule, where
+ * could-not-measure never replaces decided). Across contexts, one decided grade wins over the others'
+ * could-not-measure; two different decided grades read open `probe-conflict` and name both contexts (@cpo/term
+ * 62555b47, replacing the decided `differs-by-context`); when no joined context decided, Conflicting outranks
+ * Invalid outranks To do, and the cell names where the error was seen. A cell a ruling reopened stays To do —
+ * no other context may decide it.
  *
  * Counts stay per app and probe: a context that joins adds evidence, never a cell.
  */
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
 
-/** A cell's grade when the contexts that measured it disagree. Its own decided bucket, never Supported. */
+/**
+ * The retired disagreement bucket. The join no longer produces it (two decided grades read `probe-conflict`), so it
+ * counts zero; it stays in the bucket list only while the pages and the stored-count refusal still name it.
+ */
 export const DIFFERS_BY_CONTEXT = "differs-by-context" as const
 export type AppCellStatus = FeatureResultStatus | typeof DIFFERS_BY_CONTEXT
 
-/** The five decided or open states a joined cell can read, plus the disagreement bucket. */
+/** The five decided or open states a joined cell can read, plus the retired disagreement bucket. */
 export const APP_CELL_STATUSES: readonly AppCellStatus[] = [
   "supported",
   "unsupported",
@@ -49,8 +57,12 @@ export interface ContextCellFacts {
    * Null when the run recorded none, and a missing version never joins (@cto c5ddabf3).
    */
   version: string | null
-  /** The probe suite hash the measuring run recorded; null when it recorded none, and that never joins. */
+  /** The probe suite hash the measuring run recorded; null when it recorded none. Named in refusals only. */
   suite: string | null
+  /** This row's catalogue entry hash under the run's suite; null when no manifest or legacy row records it. */
+  entryHash: string | null
+  /** The source revision the measuring run recorded; null when it recorded none, and that never joins. */
+  sourceRevision: string | null
   runId: string
   /** Set when a reopened-cells row withdrew this grade; the cell reads probe-todo until its exit is met. */
   reopened?: boolean
@@ -70,10 +82,21 @@ export interface JoinedCellSource {
   runId: string
 }
 
+/** Another context's cell for a row that did not join the primary's, and the test it failed. */
+export interface JoinRefusal {
+  context: string
+  runId: string
+  reason: string
+}
+
 export interface JoinedCell {
   status: AppCellStatus
   /** The contexts whose grades produced `status`, each with its own recorded grade. Empty for To do. */
   from: JoinedCellSource[]
+  /** The primary context's run the row was read from; absent when the primary never attempted the row. */
+  primary?: JoinedCellSource
+  /** Other contexts' cells for this row that did not join, each with the test it failed. */
+  refused: JoinRefusal[]
 }
 
 export interface JoinedApp {
@@ -83,39 +106,77 @@ export interface JoinedApp {
   counts: Record<AppCellStatus, number>
 }
 
+/**
+ * Why the probe-defs file defining `featureId` is not byte-equal at the two source revisions, or null when it is
+ * (source-history.ts `definitionDiffers`).
+ */
+export type DefinitionCheck = (featureId: string, left: string, right: string) => string | null
+
 const isDecided = (status: string): status is FeatureResultStatus => DECIDED.has(status)
 
-/** The contexts whose cell for `featureId` measured the same app version and the same suite as the primary. */
+type NamedCell = { context: string } & ContextCellFacts
+
+/** The first of the three join tests `cell` fails against `anchor` for `featureId`, or null when it joins. */
+function joinRefusal(
+  anchor: NamedCell,
+  cell: NamedCell,
+  featureId: string,
+  definition: DefinitionCheck,
+): string | null {
+  // Two absences are not a match: a run that recorded no app version, entry hash or source revision cannot prove
+  // it measured the same row, so it never joins, not even another context that recorded nothing either.
+  if (anchor.version === null || cell.version === null) {
+    return `app version not recorded by ${anchor.version === null ? anchor.runId : cell.runId}`
+  }
+  if (anchor.version !== cell.version) return `app version ${cell.version} differs from ${anchor.version}`
+  if (anchor.entryHash === null || cell.entryHash === null) {
+    const missing = anchor.entryHash === null ? anchor : cell
+    return `suite ${missing.suite ?? "not recorded"} records no catalogue entry hash for ${featureId}`
+  }
+  if (anchor.entryHash !== cell.entryHash) {
+    return `catalogue entry for ${featureId} differs between suite ${cell.suite ?? "not recorded"} and ${anchor.suite ?? "not recorded"}`
+  }
+  if (anchor.sourceRevision === null || cell.sourceRevision === null) {
+    return `source revision not recorded by ${anchor.sourceRevision === null ? anchor.runId : cell.runId}`
+  }
+  return definition(featureId, anchor.sourceRevision, cell.sourceRevision)
+}
+
+/** The primary's cell for `featureId`, the other contexts' cells that pass the join tests, and those refused. */
 function joinedCells(
   primary: ContextFacts,
   others: readonly ContextFacts[],
   featureId: string,
-): Array<{ context: string } & ContextCellFacts> {
-  const anchor = primary.cells[featureId]
-  if (!anchor) return []
-  const joined: Array<{ context: string } & ContextCellFacts> = [{ context: primary.key, ...anchor }]
-  // Two absences are not a match: a run that recorded no suite hash or no app version cannot prove it
-  // measured the same release, so it never joins, not even another context that recorded nothing either.
-  if (anchor.version === null || anchor.suite === null) return joined
+  definition: DefinitionCheck,
+): { joined: NamedCell[]; refused: JoinRefusal[] } {
+  const facts = primary.cells[featureId]
+  if (!facts) return { joined: [], refused: [] }
+  const anchor: NamedCell = { context: primary.key, ...facts }
+  const joined: NamedCell[] = [anchor]
+  const refused: JoinRefusal[] = []
   for (const other of others) {
     const cell = other.cells[featureId]
-    if (!cell || cell.version === null || cell.suite === null) continue
-    if (cell.version !== anchor.version || cell.suite !== anchor.suite) continue
-    joined.push({ context: other.key, ...cell })
+    if (!cell) continue
+    const named: NamedCell = { context: other.key, ...cell }
+    const reason = joinRefusal(anchor, named, featureId, definition)
+    if (reason === null) joined.push(named)
+    else refused.push({ context: other.key, runId: cell.runId, reason })
   }
-  return joined
+  return { joined, refused }
 }
 
-function mergedCell(joined: Array<{ context: string } & ContextCellFacts>): JoinedCell {
-  const source = (cell: { context: string } & ContextCellFacts): JoinedCellSource => ({
-    context: cell.context,
-    status: cell.status,
-    runId: cell.runId,
-  })
+const source = (cell: NamedCell): JoinedCellSource => ({
+  context: cell.context,
+  status: cell.status,
+  runId: cell.runId,
+})
+
+function mergedCell(joined: readonly NamedCell[]): Pick<JoinedCell, "status" | "from"> {
   if (joined.some((cell) => cell.reopened === true)) return { status: "probe-todo", from: [] }
   const decided = joined.filter((cell) => isDecided(cell.status))
   const grades = new Set(decided.map((cell) => cell.status))
-  if (grades.size > 1) return { status: DIFFERS_BY_CONTEXT, from: decided.map(source) }
+  // Two contexts that decided differently leave the row open, naming both (@cpo/term 62555b47).
+  if (grades.size > 1) return { status: "probe-conflict", from: decided.map(source) }
   const [grade] = grades
   if (grade !== undefined) return { status: grade, from: decided.map(source) }
   const conflict = joined.filter((cell) => cell.status === "probe-conflict")
@@ -126,7 +187,7 @@ function mergedCell(joined: Array<{ context: string } & ContextCellFacts>): Join
 }
 
 /**
- * Join every context that measured `primary`'s release into one cell set.
+ * Join every context's cells that pass the per-row tests into `primary`'s cell set.
  *
  * `featureIds` is the app's published catalogue: a feature the primary never attempted stays To do,
  * because no joined context can be compared with it. `countedIds` is the graded subset the counts fold
@@ -137,16 +198,16 @@ export function joinContextCells(
   primary: ContextFacts,
   others: readonly ContextFacts[],
   featureIds: readonly string[],
+  definition: DefinitionCheck,
   countedIds: readonly string[] = featureIds,
 ): JoinedApp {
   const counts = Object.fromEntries(APP_CELL_STATUSES.map((status) => [status, 0])) as Record<AppCellStatus, number>
   const cells: Record<string, JoinedCell> = {}
-  const contributors = new Set<string>()
+  const contributors = new Set<string>([primary.key])
   for (const featureId of featureIds) {
-    const joined = joinedCells(primary, others, featureId)
-    const cell = mergedCell(joined)
-    cells[featureId] = cell
-    contributors.add(primary.key)
+    const { joined, refused } = joinedCells(primary, others, featureId, definition)
+    const [anchor] = joined
+    cells[featureId] = { ...mergedCell(joined), ...(anchor && { primary: source(anchor) }), refused }
     for (const entry of joined) contributors.add(entry.context)
   }
   for (const featureId of countedIds) {

@@ -27,6 +27,7 @@ import {
   writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
+import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
 import * as catalog from "@terminfo/catalog"
@@ -1045,9 +1046,16 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119), and
-      // Screen's truecolor-on supplement (33151).
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(13)
+      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119),
+      // Screen's truecolor-on supplement (33151), and the tmux set-titles-on supplement (32593).
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(14)
+      // The tmux set-titles-on profile launches as its own context, with the one declared option.
+      expect(
+        launcher.mock.calls.some(
+          ([command, args]) =>
+            command === "bash" && Array.isArray(args) && args.includes("--mux-profile") && args.includes("set-titles"),
+        ),
+      ).toBe(true)
       // Both Linux mux rows run inside the Kitty container through the launcher's --mux arm.
       for (const id of ["tmux", "screen"]) {
         const row = pass.contexts.find(
@@ -1074,7 +1082,7 @@ it.each([
         expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
       }
       // 33151: Screen's truecolor-on supplement is the same Kitty --mux launch with the mux profile added and only its
-      // three ids; tmux declares none.
+      // three ids.
       const screenRow = pass.contexts.find(
         (entry) => entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux",
       )
@@ -1118,6 +1126,43 @@ it.each([
       ).toBe(true)
       expect(supplementRow?.error?.split(SCREEN_SUPPLEMENT_ERROR)).toHaveLength(2)
       expect(pass.errors).toContain(supplementRow?.error)
+      // 32593: tmux's set-titles-on supplement is the same Kitty --mux launch with the one declared profile option
+      // added and only its own feature id, and the failure stays on the default tmux row.
+      const tmuxRow = pass.contexts.find(
+        (entry) => entry.context.kind === "mux" && entry.context.id === "tmux" && entry.context.os === "linux",
+      )
+      const setTitlesOutput = join(pass.directory, "linux", "tmux.set-titles-on")
+      expect(launcher).toHaveBeenCalledWith(
+        "bash",
+        [
+          "scripts/linux-container-run.sh",
+          "--target",
+          "kitty",
+          "--preset",
+          "current",
+          "--clipboard-profile",
+          "default",
+          "--mux-profile",
+          "set-titles",
+          "--mux",
+          "tmux",
+          "--ids",
+          "extensions.osc22-pointer",
+          setTitlesOutput,
+        ],
+        expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
+      )
+      expect(tmuxRow?.supplements).toHaveLength(1)
+      expect(tmuxRow?.supplements?.[0]).toMatchObject({
+        name: "set-titles-on",
+        featureIds: ["extensions.osc22-pointer"],
+        status: "failed",
+        directory: setTitlesOutput,
+      })
+      expect(tmuxRow?.supplements?.[0]?.error).toMatch(
+        /^tmux\/linux set-titles-on supplement: .*exited 17; logs retained at /,
+      )
+      expect(pass.errors).toContain(tmuxRow?.supplements?.[0]?.error)
       for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === id && entry.context.os === "linux",
@@ -1183,7 +1228,11 @@ it.each([
       for (const row of pass.contexts.filter(
         (entry) =>
           (entry.context.kind !== "term" || entry.context.os !== "linux") &&
-          !(entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux"),
+          !(
+            entry.context.kind === "mux" &&
+            (entry.context.id === "screen" || entry.context.id === "tmux") &&
+            entry.context.os === "linux"
+          ),
       )) {
         expect(row.supplements, `${row.context.id}/${row.context.os}`).toBeUndefined()
       }
@@ -1480,11 +1529,76 @@ it("starts an owned-app row locally with the probe argv it always ran", () => {
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "term",
+    "app",
     "kitty",
     "--output",
     "/private/kitty",
   ])
+})
+
+it("forwards an explicit probe selection through the app route on both runners", () => {
+  const selected = selectAppProbes()
+    .expected.slice(0, 2)
+    .map((probe) => probe.id)
+  const local = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision, selected)
+  expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
+  const remote = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      removeStage: true,
+    },
+    ownedAppRevision,
+    selected,
+  )
+  const probeStart = remote.argv.indexOf("--") + 1
+  expect(remote.argv.slice(probeStart)).toEqual([
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+    "--probe-ids",
+    JSON.stringify(selected),
+  ])
+})
+
+it("refuses an unknown selected id locally, with the daemon's own sentence, before any ssh argv exists", () => {
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      {
+        runner: "ssh:fixture@fixture.invalid",
+        stage: "/remote/stage",
+        knownHosts: "/home/fixture/.ssh/known_hosts",
+        removeStage: true,
+      },
+      ownedAppRevision,
+      ["not-a-probe"],
+    ),
+  ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
+})
+
+// 33954: the rename to canonical run vocabulary changed this argv to `probe term`, a subcommand the
+// admin CLI never had, and the assertion above cemented it: every owned-app row died on the host with
+// "unknown command 'term'" while the suite stayed green. The argv is only correct if the CLI it names
+// registers that subcommand, so this reads the CLI's own command list instead of trusting the name.
+it("names a probe subcommand the admin CLI registers", () => {
+  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const probe = command.argv.indexOf("probe")
+  const subcommand = command.argv[probe + 1]
+  expect(subcommand).toBeDefined()
+  const help = spawnSync(process.execPath, ["packages/admin/src/index.ts", "probe", "--help"], {
+    cwd: dirname(CONTENT),
+    encoding: "utf8",
+  })
+  expect(help.stdout).toContain("Commands:")
+  const registered = [...help.stdout.matchAll(/^\s{2}([a-z][a-z-]*)\s/gm)].map((match) => match[1])
+  expect(registered).toContain(subcommand)
 })
 
 it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
@@ -1521,7 +1635,7 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "term",
+    "app",
     "kitty",
   ])
 })

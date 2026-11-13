@@ -26,7 +26,7 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-import { command, decodeCapture, finishCapture, type NamedTextOrigin } from "./capture-core.ts"
+import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -386,7 +386,7 @@ export async function createLinuxCapture(
       },
     }
   }
-  const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin) => {
+  const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
     const acquired = await acquire(checkpoint.featureId)
     return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }

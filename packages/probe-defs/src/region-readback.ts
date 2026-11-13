@@ -491,6 +491,79 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * Whether a located sentinel is one solid cell block of the expected size. The ONE spelling of that
+ * test: the post-hoc layout check and the per-read origin derivation must agree, or a frame one of
+ * them accepts is a frame the other refuses. Returns the clause, or undefined when it fits.
+ */
+export function sentinelBlockRefusal(
+  located: { box: { width: number; height: number }; pixels: number },
+  cell: { width: number; height: number },
+): string | undefined {
+  const fits = (size: number, expected: number) => size <= expected && size >= expected - 2 * CELL_EDGE_TOLERANCE_PX
+  if (
+    located.pixels !== located.box.width * located.box.height ||
+    !fits(located.box.width, cell.width) ||
+    !fits(located.box.height, cell.height)
+  ) {
+    return `${located.pixels} px in a ${located.box.width}x${located.box.height} box, against a ${cell.width}x${cell.height} cell`
+  }
+  return undefined
+}
+
+/**
+ * The text-area origin a located sentinel implies (33000): the cell the check painted and the cell
+ * size give the grid back, so a crop taken from THAT frame lands on the cells the run asked for even
+ * when the window moved after calibration. Exact arithmetic only — no fitted correction, no tolerance
+ * band; a frame one pixel off yields an origin one pixel off, which is what lets the caller refuse
+ * rather than paper over a real move.
+ */
+export function originFromSentinel(
+  located: { box: { x: number; y: number } },
+  cell: { row: number; col: number },
+  cellSize: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: located.box.x - (cell.col - 1) * cellSize.width,
+    y: located.box.y - (cell.row - 1) * cellSize.height,
+  }
+}
+
+/**
+ * The cell a read paints calibration's sentinel on so its origin can be derived from the very frame
+ * it reads (33000). One cell clear of every region that frame digests, inside the grid, preferring
+ * the cell directly above the compared region's first cell — the same place the region would have
+ * started had it not been pushed down. A frame with no such cell refuses by name: a crop nobody can
+ * anchor is not a reading.
+ */
+export function witnessCellFor(
+  regions: readonly CaptureCells[],
+  grid: { rows: number; cols: number },
+): { row: number; col: number } {
+  const [first] = regions
+  if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
+  const digested = (cell: { row: number; col: number }): boolean =>
+    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right)
+  const visible = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
+  // split a wide character straddling the region's edge, and the terminal erases the whole glyph,
+  // which would change the very frame this read digests (@dev/10 peer read).
+  const candidates = [
+    { row: first.top - 1, col: first.left },
+    { row: first.top - 1, col: first.right + 1 },
+    { row: first.bottom + 1, col: first.left },
+  ]
+  const found = candidates.find((cell) => visible(cell) && !digested(cell))
+  if (!found) {
+    const spelled = regions.map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`).join(" and ")
+    throw new Error(
+      `No cell outside the digested region ${spelled} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
+    )
+  }
+  return found
+}
+
+/**
  * Where calibration's sentinel paint lands now at `cell`, asked only after a probe's own reads ended
  * undecided (33000). Warp's normal screen is a command block whose header can cover the rows
  * calibration measured, so a crop at the calibrated cell reads the header instead of the probe.

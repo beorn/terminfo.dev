@@ -31,7 +31,12 @@ async function muxArm(mux: "tmux" | "screen") {
   const session = withCallLog(source as unknown as TermProbeSource, { mode: "record", log })
   const result = await definition.term!(session.context)
   session.finish()
-  const title = /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/.exec(writes[0] ?? "")?.[1]
+  // The arm writes the target first and the forwarding control second (@cto 33919 condition 3), so the control is
+  // found by its own shape rather than by position; the order itself is asserted in "the arm writes the target
+  // before its forwarding control" below.
+  const title = writes
+    .map((text) => /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/.exec(text)?.[1])
+    .find((value) => value !== undefined)
   return { writes, result, title, callLog: JSON.stringify(log) }
 }
 
@@ -74,31 +79,43 @@ async function read(mux: "tmux" | "screen", record: (title: string) => string) {
   }
 }
 
-test("the osc22 multiplexer arm sends its forwarding control, then plain OSC 22 pointer, and no query", async () => {
+// @cto 33919 condition 3, 33920 condition 2: the target goes first and the forwarding control second, because a
+// multiplexer forwards a title when it next redraws, never at the instant the pane writes it.
+test("the osc22 multiplexer arm writes plain OSC 22 pointer first, then its forwarding control, and no query", async () => {
   expect(hasOuterCommandMatcher("extensions.osc22-pointer")).toBe(true)
   for (const mux of ["tmux", "screen"] as const) {
     const arm = await muxArm(mux)
-    expect(arm.writes, mux).toEqual([`\x1b]2;${arm.title}\x1b\\`, "\x1b]22;pointer\x1b\\"])
+    expect(arm.writes, mux).toEqual(["\x1b]22;pointer\x1b\\", `\x1b]2;${arm.title}\x1b\\`])
     expect(arm.result.criterionBranch, mux).toBe("osc22-mux-outer-command")
     expect(arm.result.observation, mux).toBeUndefined()
   }
 })
 
+/**
+ * This invocation's record under the arm's write order: the plain OSC 22 pointer line, then the title control that
+ * closes its window. Derived from the verbatim capture by moving the title line after the pointer line; the trailing
+ * lines stay where the capture has them, so the window's close is exercised, not just its absence.
+ */
+function thisInvocation(title: string): string {
+  return capture
+    .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
+    .replace("set_title tdv-title-32593\n", "")
+    .replace("set_dynamic_color 22 pointer\n", `set_dynamic_color 22 pointer\nset_title ${title}\n`)
+}
+
 test.each(["tmux", "screen"] as const)(
-  "%s: the captured record with this invocation's title reads the target as sent",
+  "%s: the captured record with this invocation's target before its control reads the target as sent",
   async (mux) => {
-    const result = await read(mux, (title) => capture.replace("tdv-title-32593", title))
+    const result = await read(mux, (title) => thisInvocation(title))
     expect(result).toMatchObject({
       status: "measured",
       target: "set_dynamic_color 22 pointer",
       targetSent: true,
       outer: { app: "kitty", version: "0.49.2" },
     })
-    // The made-up name inside the window is counted and named, never dropped.
-    expect(result.detail).toMatchObject({
-      closedBy: "match",
-      unknown: { count: 1, lines: ["set_dynamic_color 22 tdv-made-up-shape"] },
-    })
+    // The window runs to the deadline by design: it must stay open past the control so a late target line is
+    // visible to the "only after its forwarding control" refusal rather than silently read as not sent.
+    expect(result.detail).toMatchObject({ closedBy: "deadline" })
   },
   20_000,
 )
@@ -127,42 +144,25 @@ test("a record with the control and no OSC 22 line reads the target as not sent,
   })
 }, 20_000)
 
-// 32593 peer (@dev/3): the callback sends the nonce title first, then OSC 22, so a target line before this
-// invocation's control is an earlier invocation's and cannot qualify this one.
-test("a target line before this invocation's control does not read as sent", async () => {
-  const result = await read(
-    "tmux",
-    (title) =>
-      `set_dynamic_color 22 pointer\nset_title ${title}\n` +
-      capture
-        .replace("set_title tdv-title-32593\n", "")
-        .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
-        .replace("set_dynamic_color 22 pointer\n", ""),
+// @cto 33919 condition 3, 33920 condition 2: a control that arrives BEFORE the target is never a negative. The
+// verbatim capture has the title line first, so a pointer line after it belongs to a later write and says nothing
+// about what the multiplexer had forwarded when this invocation's control arrived.
+test("a target line only after this invocation's control is a named failure, never Unsupported", async () => {
+  const result = await read("tmux", (title) =>
+    capture.replace("tdv-title-32593", title).replace("set_dynamic_color 22 tdv-made-up-shape\n", ""),
   )
-  expect(result).toMatchObject({ status: "measured", targetSent: false })
-  // Only the lines after the control are this invocation's: the earlier target is neither the target nor unknown.
-  expect(result.detail).toMatchObject({
-    closedBy: "deadline",
-    unknown: {
-      count: 5,
-      lines: [
-        "select_graphic_rendition 1",
-        "draw B",
-        "select_graphic_rendition 0",
-        "screen_carriage_return",
-        "screen_linefeed",
-      ],
-    },
-  })
+  expect(result.status).toBe("unavailable")
+  if (result.status === "unavailable") {
+    expect(result.reason).toBe(
+      "Outer command record carries set_dynamic_color 22 pointer only after its forwarding control; this invocation's target must precede it",
+    )
+  }
 }, 20_000)
 
 // @cto 18d11184: a target forwarded in another form must never read as "did not send".
 test("the target's command word in another form is a named failure, never Unsupported", async () => {
   const result = await read("tmux", (title) =>
-    capture
-      .replace("tdv-title-32593", title)
-      .replace("set_dynamic_color 22 tdv-made-up-shape\n", "")
-      .replace("set_dynamic_color 22 pointer\n", "set_dynamic_color 22 hand\n"),
+    thisInvocation(title).replace("set_dynamic_color 22 pointer\n", "set_dynamic_color 22 hand\n"),
   )
   expect(result.status).toBe("unavailable")
   if (result.status === "unavailable") {

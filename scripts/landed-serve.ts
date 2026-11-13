@@ -31,6 +31,7 @@ import { existsSync, readFileSync, renameSync, rmSync, statSync, watch } from "n
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
+import { peakCeilingBytes } from "./build-peak-guard.ts"
 import { newestCompleteRun, siteWorkingRunsDir } from "../docs/data/working-runs.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
@@ -92,8 +93,12 @@ export function rebuildReason(target: string, stamp: ServedStamp, newestRunId: s
 
 type RunBuild = (env: NodeJS.ProcessEnv) => Promise<number | null>
 
-/** Hosted builds carry the existing task declaration so the host judges their own memory ceiling. */
-function siteBuildArgs(env: NodeJS.ProcessEnv): string[] {
+/**
+ * Hosted builds carry the existing task declaration so the host judges their own memory ceiling. The host's ceiling is
+ * the build's one declared ceiling, `TERMINFO_SITE_PEAK_CEILING_BYTES` (default 16 GiB, so 16384 MiB), never a second
+ * number: a build that outgrows it is raised in one place, the service's env (33965).
+ */
+export function siteBuildArgs(env: NodeJS.ProcessEnv): string[] {
   const landingRoot = env["TERMINFO_SITE_LANDING_ROOT"]
   return landingRoot === undefined
     ? ["run", "build"]
@@ -102,7 +107,7 @@ function siteBuildArgs(env: NodeJS.ProcessEnv): string[] {
         "--task",
         "terminfo-site-build",
         "--max-rss-mib",
-        "16384",
+        String(Math.ceil(peakCeilingBytes(env) / 1024 ** 2)),
         "--",
         "bun",
         "run",

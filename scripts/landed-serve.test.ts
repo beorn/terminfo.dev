@@ -17,6 +17,7 @@ import {
   rebuildForRun,
   rebuildReason,
   resolveServedPath,
+  siteBuildArgs,
 } from "./landed-serve.ts"
 
 let dist: string
@@ -106,6 +107,17 @@ it.each(["code", "run"] as const)(
   },
   20_000,
 )
+
+// 33965: the site build outgrew a 16384 MiB host ceiling hardcoded here while its own guard read the declared env.
+it("gives the host the build's declared ceiling, 16384 MiB by default", () => {
+  const ceiling = (env: NodeJS.ProcessEnv) => {
+    const args = siteBuildArgs({ TERMINFO_SITE_LANDING_ROOT: "/landing", ...env })
+    return args[args.indexOf("--max-rss-mib") + 1]
+  }
+  expect(ceiling({})).toBe("16384")
+  expect(ceiling({ TERMINFO_SITE_PEAK_CEILING_BYTES: String(20 * 1024 ** 3) })).toBe("20480")
+  expect(() => ceiling({ TERMINFO_SITE_PEAK_CEILING_BYTES: "-1" })).toThrow("TERMINFO_SITE_PEAK_CEILING_BYTES")
+})
 
 function get(path: string, init?: RequestInit): Response {
   return createPreviewHandler(dist)(new Request(`http://preview.test${path}`, init))

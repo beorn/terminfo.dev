@@ -188,7 +188,12 @@ export interface GeometryCorroboration {
   cols?: number
 }
 
-function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
+/**
+ * The one app-selection rule: ids resolve against the catalogue or the run refuses by name. Exported so a
+ * caller that is about to stage source onto another host can apply the SAME rule before it copies anything
+ * (@cto 737a99e3 condition 2: same error text, never a second validator).
+ */
+export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
   const resolved = resolveProbeIds(ids ?? expected.map((probe) => probe.id))
   if (resolved.result === "invalid") {
@@ -1252,7 +1257,14 @@ export async function runProbeBatch(
           result.notTested.noObservable.trim().length > 0 &&
           onlyTodoTests
         : Boolean(result.tests?.length) && onlyTodoTests
-      if (declaration && unresolved && !claimsMeasurement(result)) {
+      if (declaration && claimsMeasurement(result)) {
+        batch.ungradedDiagnostics[probe.id] = {
+          kind: "collector-error",
+          name: "DeclaredUntestableCollision",
+          message: `Declared-untestable collision for ${probe.id}: ${declaration}; ${refusedClaimEvidence(result)} is retained and the declaration is refused`,
+        }
+        batch.rawReplies[`${probe.id}.declarationCollision`] = JSON.stringify(batch.ungradedDiagnostics[probe.id])
+      } else if (declaration && unresolved) {
         const response = result.response
         result = {
           ...declaredUntestableResult(declaration, { featureId: probe.id }),
@@ -1428,11 +1440,16 @@ export async function runProbeBatch(
       }
       const index = batch.results.findIndex((result) => result.featureId === probe.id)
       if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
+      const diagnostic = batch.ungradedDiagnostics[probe.id]
       const recorded = recordExecutedProbe({
         featureId: probe.id,
         attempt,
         observation,
-        diagnostic: batch.ungradedDiagnostics[probe.id],
+        // This names the refused declaration, not a defect in the retained measurement.
+        diagnostic:
+          diagnostic?.kind === "collector-error" && diagnostic.name === "DeclaredUntestableCollision"
+            ? undefined
+            : diagnostic,
         coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
         assertions: batch.assertions,
         tests: callbackTests,
