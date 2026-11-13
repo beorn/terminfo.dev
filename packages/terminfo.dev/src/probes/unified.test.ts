@@ -4091,16 +4091,17 @@ it.each([false, true])(
     const published = JSON.stringify(batch)
     expect(published).not.toContain(initial)
     expect(published).not.toContain("private-person")
-    expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
     expect(privateWrites).toHaveLength(4)
     expect(privateWrites.at(-1)).toContain(initial)
     const row = batch.results.find((result) => result.featureId === id)
     if (failRestore) {
+      expect(batch.rawReplies[id]).toBeDefined()
       expect(cwd).not.toBe(initial)
       expect(row?.status).not.toBe("supported")
       expect(batch.suiteComplete).toBe(false)
       expect(JSON.stringify(batch.ungradedDiagnostics[id])).toContain("pane's reported directory was left changed")
     } else {
+      expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
       expect(cwd).toBe(initial)
       expect(row?.status).toBe("supported")
       expect(batch.ungradedDiagnostics[id]).toBeUndefined()
