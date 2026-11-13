@@ -1964,9 +1964,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const runBytes = readFileSync(runPath)
     // The host rewrote the identity and nothing else: the transported bytes are the producer's with
     // the composer's id in place of the placeholder, which is what "one run, composer-named" means.
-    const expectedBytes = producerBytes
-      .toString("utf8")
-      .replace(/"runId":"[^"]*"/, `"runId":"${ownedAppRunId}"`)
+    const expectedBytes = producerBytes.toString("utf8").replace(/"runId":"[^"]*"/, `"runId":"${ownedAppRunId}"`)
     expect(runBytes.toString("utf8")).toBe(expectedBytes)
     expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
       createHash("sha256").update(expectedBytes).digest("hex"),
