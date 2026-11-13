@@ -27,6 +27,7 @@ import {
   writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
+import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
 import * as catalog from "@terminfo/catalog"
@@ -1485,6 +1486,53 @@ it("starts an owned-app row locally with the probe argv it always ran", () => {
     "--output",
     "/private/kitty",
   ])
+})
+
+it("forwards an explicit probe selection through the app route on both runners", () => {
+  const selected = selectAppProbes()
+    .expected.slice(0, 2)
+    .map((probe) => probe.id)
+  const local = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision, selected)
+  expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
+  const remote = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      removeStage: true,
+    },
+    ownedAppRevision,
+    selected,
+  )
+  const probeStart = remote.argv.indexOf("--") + 1
+  expect(remote.argv.slice(probeStart)).toEqual([
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+    "--probe-ids",
+    JSON.stringify(selected),
+  ])
+})
+
+it("refuses an unknown selected id locally, with the daemon's own sentence, before any ssh argv exists", () => {
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      {
+        runner: "ssh:fixture@fixture.invalid",
+        stage: "/remote/stage",
+        knownHosts: "/home/fixture/.ssh/known_hosts",
+        removeStage: true,
+      },
+      ownedAppRevision,
+      ["not-a-probe"],
+    ),
+  ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
 })
 
 // 33954: the rename to canonical run vocabulary changed this argv to `probe term`, a subcommand the
