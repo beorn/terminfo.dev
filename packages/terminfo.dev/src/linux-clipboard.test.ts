@@ -1486,7 +1486,7 @@ function reownFixture(
         state.ran = true
         return observation
           ? { pass: true, observation: { outcome: "supported", assertionType: "query_reply", note: "measured" } }
-          : { pass: true, note: "measured", tests: [{ status: "probe-todo", reason: "fixture" }] }
+          : { pass: true, note: "measured", tests: [{ id: "fixture", status: "probe-todo", reason: "fixture" }] }
       },
       (event) => events.push(event),
       async () => {},
@@ -1524,7 +1524,7 @@ test("a clean displacement by a read client that is not ours re-owns once, and t
   expect(await unobserved.run(false)).toEqual({
     pass: true,
     note: `measured; ${said}`,
-    tests: [{ status: "probe-todo", reason: "fixture" }],
+    tests: [{ id: "fixture", status: "probe-todo", reason: "fixture" }],
   })
 })
 
