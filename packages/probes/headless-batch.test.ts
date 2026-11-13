@@ -6571,7 +6571,10 @@ test.runIf(OWNED_LAYOUT).each([
   )
   for (const result of batch.results) {
     if (negatives.includes(result.featureId)) {
-      expect(result.reason, result.featureId).toBe("library reported this sequence as unhandled")
+      // Colour-capture cells keep their declared fixture context ahead of the library reason (6253e6d36).
+      expect(result.reason, result.featureId).toMatch(
+        /^(Fixture .+ \(declared, not confirmed sent\); )?library reported this sequence as unhandled$/,
+      )
     } else {
       expect(result.tests, result.featureId).toEqual([
         expect.objectContaining({ id: "declared-untestable", status: "untestable" }),

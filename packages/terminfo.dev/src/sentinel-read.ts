@@ -1,8 +1,9 @@
 import {
   CALIBRATION_SOLID_PAINT,
   originFromSentinel,
-  CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
   sentinelBlockRefusal,
+  sentinelFillClause,
   witnessCellsFor,
   type CalibrationSentinel,
   type CaptureCells,
@@ -126,7 +127,7 @@ export async function readThroughSentinel<T>(input: {
     // axis and move its origin by the same, so "the same size" and "the offset the cells imply" are
     // both read with that tolerance — never with the box size in place of the cell PITCH, which a
     // blended edge would break on every read (@dev/10 peer read).
-    const slack = 2 * CELL_EDGE_TOLERANCE_PX
+    const slack = SENTINEL_BOX_SLACK_PX
     if (
       Math.abs(first.box.width - second.box.width) > slack ||
       Math.abs(first.box.height - second.box.height) > slack
@@ -151,9 +152,12 @@ export async function readThroughSentinel<T>(input: {
     ) {
       const aBox = direction > 0 ? first : second
       const bBox = direction > 0 ? second : first
+      // 34015: a box the size of the cell that is one or two pixels short is ACCEPTED, and says so
+      // here — the basis travels on the frame, so a reader can count how many reads leaned on the
+      // slack instead of inferring it from a silence.
       return {
         origin: originFromSentinel(aBox, a, size),
-        basis: `${basis}${noise}`,
+        basis: `${basis}${noise}${sentinelFillClause([aBox, bBox])}`,
         basisKind,
         // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
         // pitch on its own rather than restating the one box it already reduced to an origin (33982).

@@ -11,6 +11,7 @@ import {
   resolveProbeIds,
   recordExecutedProbe,
   colourSiblingSeparation,
+  colourOnlyAttempts,
   type OuterColourControl,
   finalizeProbeResult,
   finalizeVisualResult,
@@ -1457,6 +1458,19 @@ export async function runProbeBatch(
         // The capture trace is where a text read records whose buffer it returned; the observation
         // carries that host so no consumer parses it out of a caption (30055 AC4).
         const host = captures.map((capture) => capturedConsoleHost(capture.trace)).find((value) => value !== undefined)
+        // The colour branch grades only when EVERY attempt reaching the comparison fires it (@cto
+        // 91917ee1): a terminal that supports a reset but paints late would otherwise grade from one
+        // stale frame. The attempts are visible here, in the capture list, not inside the reader.
+        const colourAttempts =
+          criterionBranch === "colour-only-mismatch"
+            ? colourOnlyAttempts(
+                probe.id,
+                captures.map(({ frame }) => frame),
+              )
+            : undefined
+        const colourNote = colourAttempts && "note" in colourAttempts ? colourAttempts.note : undefined
+        const colourDisagreement =
+          colourAttempts && "disagreement" in colourAttempts ? colourAttempts.disagreement : undefined
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
@@ -1464,6 +1478,16 @@ export async function runProbeBatch(
           ...(result.observation.frames && { frames: captures.map(({ frame }) => frame) }),
           ...(host === undefined ? {} : { host }),
           ...(result.note && !result.observation.note ? { note: result.note } : {}),
+          ...(colourNote === undefined
+            ? {}
+            : { note: [result.observation.note, colourNote].filter(Boolean).join("; ") }),
+          ...(colourDisagreement === undefined
+            ? {}
+            : {
+                outcome: "inconclusive" as const,
+                reason: "insufficient-evidence" as const,
+                note: colourDisagreement,
+              }),
           ...(resized
             ? {
                 outcome: "inconclusive" as const,

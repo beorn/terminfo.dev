@@ -861,6 +861,16 @@ test("only the missing forwarding-control line marks the read as that failure", 
   }
 }, 20_000)
 
+// @cto b0de55c0: a measured result beats a declaration in probe code too. iTerm2's UTF-8 mouse mode read Supported
+// on macOS 26.6.2, so the pointer-route list no longer declares that one cell; its other pointer cells stay declared.
+test("the macOS pointer-route list leaves iTerm2's measured UTF-8 mouse mode to its probe", () => {
+  const iterm2 = appSemanticDeclarations({ kind: "term", id: "iterm2", version: "3.6.11", os: "macos" })
+  expect(iterm2).not.toHaveProperty("modes.utf8-mouse-1005")
+  expect(Object.keys(iterm2)).toEqual(expect.arrayContaining(["extensions.osc22-pointer", "input.kitty-click-events"]))
+  const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(ghostty["modes.utf8-mouse-1005"]).toContain("no permitted pointer route")
+})
+
 test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!
   const fallback = await definition.term!(

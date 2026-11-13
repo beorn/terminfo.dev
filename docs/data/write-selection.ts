@@ -17,6 +17,7 @@ import {
   type SelectedProjection,
 } from "./selected-results.ts"
 import { compatibilitySubjects, joinedAppCells, type CurrentResult } from "./current-results.ts"
+import { publicDeclaredReason } from "./declared-untestable.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
 
@@ -43,6 +44,8 @@ export interface SelectionFileCell {
   reopened?: SelectedContextCell["reopened"]
   /** Present only when the mux-input demotion read this cell (#33665): measured status and the outer run it leaned on. */
   outerAbsent?: SelectedContextCell["outerAbsent"]
+  /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); counted "by review". */
+  declared?: SelectedContextCell["declared"]
   /**
    * Present only on an untestable cell (#33928): why no route measures it, as stored — the mux-input demotion's reason
    * when that demotion made it untestable, else the run's own result reason. null when the run stored none, so a
@@ -53,7 +56,7 @@ export interface SelectionFileCell {
 
 /** The stored reason an untestable cell gives; never invented. */
 function untestableReason(cell: SelectedContextCell): string | null {
-  const reason = cell.outerAbsent?.reason ?? cell.result.reason
+  const reason = cell.declared ? publicDeclaredReason(cell.declared) : (cell.outerAbsent?.reason ?? cell.result.reason)
   return reason?.trim() ? reason.trim() : null
 }
 
@@ -96,6 +99,7 @@ export function selectionFile(
         ...(cell.supplement && { supplement: cell.supplement }),
         ...(cell.reopened && { reopened: cell.reopened }),
         ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent }),
+        ...(cell.declared && { declared: cell.declared }),
         ...(status === "untestable" && { reason: untestableReason(cell) }),
       })
     }

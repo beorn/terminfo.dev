@@ -718,7 +718,7 @@ test.each([null, "unknown"] as const)("text.wrap measures controlled effects aft
     if (mode === "unknown") expect(result.note).toContain("Ps 0")
   }
   const missing = await byId("text.wrap").term(app({ queryMode: async () => mode }))
-  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(textProbes.find((entry) => entry.id === "text.wrap")?.termNeedsDisposable).toBe(true)
 })
 

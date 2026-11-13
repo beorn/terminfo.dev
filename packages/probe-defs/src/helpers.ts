@@ -85,6 +85,17 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
   },
+  // termless 1738b811 (vs 343c2e5d): layout.json moves only nativeModuleSha256 and the receipt only its build
+  // record (sha256, recipe and flake-lock hashes, gcc 16.2.0, python 3.14.10); offsets, widths and adapter code
+  // are unchanged (@cto bef7054c condition 4).
+  kitty1738b811: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "b131e26069edf2129b4ff70aa2ce88c154dea811",
+    "packages/kitty/build/native-mode-layout.receipt.json": "3e2dfd878a701eba5430a31948bc26a372ebdcfc",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
@@ -256,6 +267,23 @@ export function auditedAdapterSources(
   )
 }
 
+/**
+ * The audited kitty 0.49.2 library: the engine version, the upstream commit the run read from the loaded binary
+ * (KITTY_VCS_REV), and an audited adapter cohort. kitty-official is upstream's prebuilt archive with only
+ * interpreter and runpath fixups, so its binary bytes move with every derivation edit while the engine does not;
+ * the binary sha stays in the record and decides nothing (@cto bef7054c, the vt100-rust shape of 90d6183a).
+ */
+export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]): boolean {
+  return (
+    identity?.kind === "native" &&
+    identity.engineVersion === "0.49.2" &&
+    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
+    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811"] as const).some((cohort) =>
+      auditedAdapterSources(identity, cohort),
+    )
+  )
+}
+
 export function unauditedAdapterSourceDiagnostic(
   backend: string,
   identity: LibProbeSource["runtimeIdentity"],
@@ -338,11 +366,56 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   }
 }
 
+/**
+ * Mark a read-method gap: the probe ran, but this terminal gave it no way to read the answer here — it has no
+ * owned reader, or a control the probe injected did not read back. The row stays open (probe-todo); only a
+ * broken fixture is probe-invalid (@cto 91ec1211, 2026-11-13).
+ */
+export function methodUnavailable(reason: string): ExecutionOnlyProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+    replyFailureTestIds: ["criterion"],
+  }
+}
+
 /** An operational cleanup failure replaces reply intent on the object already being returned. */
 export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackResult {
   const unmarked = result as { replyFailureTestIds?: readonly string[] }
   delete unmarked.replyFailureTestIds
   return result
+}
+
+/**
+ * A fixture that could not restore the surface after its controls records that on the reading it produced
+ * (@cto 1676cf8a, slice 2): the reading is the measurement, the restore is our own hygiene. The cleanup
+ * supersedes reply absence, so a reply marker is never attached to a failure the probe caused itself.
+ */
+export function cleanupReading(result: ProbeCallbackResult, cleanup: string): ProbeCallbackResult {
+  const carried = cancelReplyFailure({ ...result })
+  return { ...carried, note: carried.note ? `${carried.note}; ${cleanup}` : cleanup }
+}
+
+/** The reading a callback produced. Reaching a callback's return without one is a bug in its control flow. */
+export function callbackReading(result: ProbeCallbackResult | undefined): ProbeCallbackResult {
+  if (result === undefined) throw new Error("A probe callback reached its return without a reading")
+  return result
+}
+
+/**
+ * The failure a probe is already propagating, carrying one more fact: the restore the fixture could not
+ * complete. An Error is returned as the same object, so its type, identity and message survive and only the
+ * detail is appended; anything else thrown is wrapped, because a primitive or plain object cannot carry the
+ * detail at all. The caller throws the result from `finally` — assigning it to a local would leave the
+ * original value propagating and silently drop the detail (that is why a wrapper only works when thrown).
+ */
+export function withCleanupDetail(failure: unknown, cleanup: string): unknown {
+  if (failure instanceof Error) {
+    if (!failure.message.includes(cleanup)) failure.message = `${failure.message}; ${cleanup}`
+    return failure
+  }
+  return new Error(`${String(failure)}; ${cleanup}`)
 }
 
 /** Add completed producer evidence only where the callback explicitly requested it. */
@@ -368,9 +441,11 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests?.some((test) => test.id === id && test.status === "probe-invalid")) {
+    if (
+      !result.tests?.some((test) => test.id === id && (test.status === "probe-todo" || test.status === "probe-invalid"))
+    ) {
       throw new Error(
-        `Callback ${featureId} reply marker ${id} must name a probe-invalid test; fix the callback builder use`,
+        `Callback ${featureId} reply marker ${id} must name an open or invalid test; fix the callback builder use`,
       )
     }
   }
@@ -404,7 +479,9 @@ export function withReplyFailureEvidence(
   return {
     ...result,
     tests: result.tests?.map((test) =>
-      marked.has(test.id) && test.status === "probe-invalid" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+      marked.has(test.id) && (test.status === "probe-invalid" || test.status === "probe-todo")
+        ? { ...test, reason: `${test.reason}; ${detail}` }
+        : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
 }
@@ -2839,6 +2916,17 @@ export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported"
 export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
   if (outcome.reason !== "sentinel") return null
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
+}
+
+/**
+ * Whether a query's silence was measured: a wait that ran out with nothing on the wire, or the DA1 fence
+ * came back with nothing that matched it. A timeout that still carried bytes is not silence, and neither
+ * are bytes the pattern could not read — both are an answer we failed to read, and the caller keeps
+ * treating those as its own defect (#30559).
+ */
+export function measuredSilence(outcome: TerminalQueryOutcome, expected: string): boolean {
+  const timedOutEmpty = outcome.reason === "timeout" && outcome.raw === ""
+  return timedOutEmpty || sentinelSilenceResult(outcome, expected) !== null
 }
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */

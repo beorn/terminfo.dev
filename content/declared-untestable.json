@@ -1,0 +1,4 @@
+{
+  "about": "Open app cells no observable probe can answer, each reviewed by a second person (docs/data/declared-untestable.ts). Rows are added one reviewed batch at a time; a cell that later gets any probe result stops the build until its row is removed.",
+  "rows": []
+}

@@ -165,7 +165,16 @@ it("retains the stored iTerm2 1005 measurement and names its declaration collisi
           return { ...assertion, assertionType }
         }),
     })
-    const batch = await runProbeBatch({ ids: [id], appDeclarations: appSemanticDeclarations(stored.subject) })
+    // The real list no longer declares this cell (@cto b0de55c0, app-semantic-state.test.ts); the collision path
+    // keeps this measured row as its only real-data witness by declaring the cell here.
+    expect(appSemanticDeclarations(stored.subject)).not.toHaveProperty(id)
+    const batch = await runProbeBatch({
+      ids: [id],
+      appDeclarations: {
+        ...appSemanticDeclarations(stored.subject),
+        [id]: "no permitted pointer route: owned-host rule and hosted no-input rule",
+      },
+    })
     expect(batch.results.find((entry) => entry.featureId === id)).toMatchObject({
       status: "supported",
       assertionType: "query_reply",

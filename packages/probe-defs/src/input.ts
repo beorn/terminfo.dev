@@ -20,6 +20,7 @@ import {
   probe,
   reportsDecidedOutcome,
   replyFailure,
+  methodUnavailable,
   validSize,
   withUnhandledModeReport,
 } from "./helpers.ts"
@@ -699,7 +700,9 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
 
 export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
-  if (!input || !readInput) return replyFailure("Mouse tracking effect needs owned click injection and input readback")
+  if (!input || !readInput) {
+    return methodUnavailable("Mouse tracking effect needs owned click injection and input readback")
+  }
   const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
   const readClick = async () =>
     (
@@ -722,13 +725,13 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
     const observed: Record<string, unknown> = { reset, set, resetAgain }
     if (!reset || !set || !resetAgain) {
       return {
-        ...replyFailure("Mouse tracking effect needs plain-a delivery in every arm"),
+        ...methodUnavailable("Mouse tracking effect needs plain-a delivery in every arm"),
         response: JSON.stringify(observed),
       }
     }
     if (X10_OR_SGR_MOUSE.test(reset) || X10_OR_SGR_MOUSE.test(resetAgain)) {
       return {
-        ...replyFailure("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
+        ...methodUnavailable("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
         response: JSON.stringify(observed),
       }
     }
@@ -747,7 +750,7 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
     observed.control = control
     if (!hasClick(control)) {
       return {
-        ...replyFailure("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
+        ...methodUnavailable("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
         response: JSON.stringify(observed),
       }
     }
@@ -757,7 +760,7 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
 
 export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
-  if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
+  if (!input || !readInput) return methodUnavailable("SGR mouse effect needs owned click injection and input readback")
   const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
   // The 1002/1003 resets go BEFORE 1000 is set, as allMotion1003 does (#33058): Screen keeps one mouse mode,
   // so resetting 1002 after 1000h switched click reports off and every arm read a bare "a".
@@ -781,11 +784,11 @@ export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackR
       bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")),
     )
     if (!offReports?.length || !onReports?.length || !restoredReports?.length) {
-      return { ...replyFailure("SGR mouse effect needs click reports followed by plain a in every arm"), response }
+      return { ...methodUnavailable("SGR mouse effect needs click reports followed by plain a in every arm"), response }
     }
     if (!offReports.every(isX10Mouse) || !restoredReports.every(isX10Mouse)) {
       return {
-        ...replyFailure("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
+        ...methodUnavailable("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
         response,
       }
     }
@@ -800,7 +803,7 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
   const { input, readInput } = ctx
   const injectMove = input?.injectMove
   if (!input || !readInput || !injectMove) {
-    return replyFailure("All-motion effect needs owned buttonless movement and input readback")
+    return methodUnavailable("All-motion effect needs owned buttonless movement and input readback")
   }
   const geometry = ctx.captureGeometry?.geometry
   if (
@@ -829,7 +832,7 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
   try {
     const control = await withMouseModes(ctx, () => read(() => input.injectClick(1)))
     if (!control || !SGR_MOUSE.test(control)) {
-      return replyFailure("All-motion click control did not read a 1000 mouse report followed by injected plain a")
+      return methodUnavailable("All-motion click control did not read a 1000 mouse report followed by injected plain a")
     }
     ctx.write("\x1b[?1006h")
     const readMotion = async (enabled: boolean) => {
@@ -845,19 +848,19 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
     const response = JSON.stringify(observed)
     if (!reset || !set || !resetAgain) {
       return {
-        ...replyFailure("All-motion effect did not read the ending plain-a delivery control in every arm"),
+        ...methodUnavailable("All-motion effect did not read the ending plain-a delivery control in every arm"),
         response,
       }
     }
     if (SGR_MOUSE.test(reset) || SGR_MOUSE.test(resetAgain)) {
       return {
-        ...replyFailure("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
+        ...methodUnavailable("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
         response,
       }
     }
     const reports = set.match(new RegExp(SGR_MOUSE.source, "g")) ?? []
     if (reports.some((report) => !isButtonEventMotion(report))) {
-      return { ...replyFailure("Buttonless all-motion injection emitted a non-motion mouse report"), response }
+      return { ...methodUnavailable("Buttonless all-motion injection emitted a non-motion mouse report"), response }
     }
     const expected =
       "buttonless movement reports only with 1003 set, after a measured 1000 click and with plain-a delivery in every arm"

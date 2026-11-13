@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -24,7 +24,7 @@ import { getTrustedSuiteReceipt } from "../packages/terminfo.dev/src/serve.ts"
 
 /** Verbatim copy of a linux-xvfb-container receipt the round carried (#30764 M4 P1b). */
 const LINUX_RECEIPT_FIXTURE = "070448f8377ad6e3dfae0579235fb402.json"
-import { verifySuiteManifest } from "../packages/admin/suite-manifest.ts"
+import { readExplicitSuiteTarget, verifySuiteManifest } from "../packages/admin/suite-manifest.ts"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -214,4 +214,35 @@ test("the derived in-development declaration is not uncommitted collector dirt (
   // A changed committed input is still dirt, so the check still means what it says.
   writeFileSync(join(directory, "scripts", "build-cli.ts"), "// collector input, developed\n")
   expect(uncommittedCollectorDirt(directory, snapshot)).toContain("scripts/build-cli.ts")
+})
+
+/**
+ * @cto 70719828 rule 1: a suite with no placed run is correctly absent from content/suites, so the
+ * reader that a working run goes through must DERIVE the live suite from the measured tree instead of
+ * refusing it. RED BEFORE: readExplicitSuiteTarget threw "no suite manifest carries that id" for the
+ * tree's own live suite, so a working run at a fresh suite was unreadable until someone committed a
+ * standalone pin — the loop that produced three ids in one day.
+ * Rule 3 stays: an absent id that is NOT the live suite still refuses by name, so no derived
+ * declaration ever stands in for an older suite.
+ */
+test("the live suite is derived when content/suites has no manifest for it (70719828)", () => {
+  const directory = temp("terminfo-live-suite-")
+  for (const entry of readdirSync(REPO_ROOT, { withFileTypes: true })) {
+    if (entry.name === "content") continue
+    symlinkSync(join(REPO_ROOT, entry.name), join(directory, entry.name), entry.isDirectory() ? "dir" : "file")
+  }
+  mkdirSync(join(directory, "content", "suites"), { recursive: true })
+  for (const entry of readdirSync(join(REPO_ROOT, "content"))) {
+    if (entry === "suites") continue
+    symlinkSync(join(REPO_ROOT, "content", entry), join(directory, "content", entry))
+  }
+
+  const tree = probeSuiteSnapshot(directory)
+  const derived = derivedSuiteManifest(tree)
+  const target = readExplicitSuiteTarget(directory, tree.probeHash)
+  expect(target.manifest.probeHash).toBe(tree.probeHash)
+  expect(target.manifest).toEqual(derived)
+  expect(target.path).toContain("derived from this tree")
+
+  expect(() => readExplicitSuiteTarget(directory, "deadbeefcafe")).toThrow(/names no suite in this registry/)
 })
