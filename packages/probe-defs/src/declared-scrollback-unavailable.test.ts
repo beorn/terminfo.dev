@@ -75,40 +75,37 @@ test("an app that can read its own pane is never pre-empted by the declaration p
   expect(reads).toBeGreaterThan(0)
   expect(result?.tests?.some((entry) => entry.id === DECLARED_UNTESTABLE_TEST) ?? false).toBe(false)
 })
-
 /**
- * @failure The osc720-scroll-up geometry row disappears or turns into a decided outcome for an app whose pane
- *   this run cannot read, so a declared-untestable app silently loses one of the feature's static rows, or the
- *   row reports something the declaration never measured (@cto 34005, shape 2).
+ * @failure A definition the collector's no-pane-read declaration must cover loses its static geometry row, so a
+ *   declared-untestable app would drop one of the feature's rows. The runner side — that the row still reads the
+ *   declaration when geometry is measured, and the geometry refusal when it is not — is covered by
+ *   `packages/terminfo.dev/src/probes/unified.test.ts` through the real batch handoff (@dev/18 peer read, 34005).
  * @level l1
- * @consumer The definition's static row set for an app that declares no pane read.
+ * @consumer The definition-level row set behind a declared-untestable app.
  * @testonly none
  */
-test("a declared app keeps every static geometry row, and the flag is the definition's, not the run's", async () => {
-  // Derived from the definitions, never typed in: which scope rows need a measured grid, and what the same
-  // definition reports when the source names no pane read.
-  const definitions = ROWS.map((id) => definition(id))
-  const staticGeometry = definitions.filter((entry) => entry.termNeedsGeometry === true).map((entry) => entry.id)
-  // The scope rows and the static-geometry rows are the same derived set: osc720's geometry row is one of the
-  // four, never a fifth id, and it survives the declaration because the flag lives on the definition.
-  expect(staticGeometry.sort()).toEqual([...ROWS].sort())
+test("the declaration covers exactly the approved rows, and each keeps its static geometry row", async () => {
+  // Derived, not typed in: every scrollback, erase and extensions definition runs against the declared source, and
+  // the set that declares must be the approved scope. A definition that starts or stops declaring changes this set.
+  const defs = [...scrollbackProbes, ...eraseProbes, ...extensionsProbes].filter((entry) => entry.term !== undefined)
+  const declared: string[] = []
+  for (const entry of defs) {
+    const result = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
+    const named = result?.tests?.some(
+      (item) => item.id === DECLARED_UNTESTABLE_TEST && item.reason === NO_PANE_READ,
+    )
+    if (named) declared.push(entry.id)
+  }
+  expect(declared.sort()).toEqual([...ROWS].sort())
 
-  for (const entry of definitions) {
-    const declaredStatic = entry.termNeedsGeometry
-    const declared = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
-    // Shape 1 would have let the run's context clear the flag. It cannot: the static fact is unchanged, and
-    // the undeclared run of the same definition reads the same fact.
-    expect(entry.termNeedsGeometry, `${entry.id} geometry flag moved by the declaration`).toBe(declaredStatic)
-    expect(entry.termNeedsGeometry, `${entry.id} differs after an open run`).toBe(declaredStatic)
-    // The row's own text is the declaration and nothing else: named with the collector's reason, never blank.
-    expect(declared?.criterionBranch, entry.id).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(declared?.tests, entry.id).toEqual([
-      { id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason: NO_PANE_READ },
-    ])
-    expect(declared?.note, entry.id).toBe(NO_PANE_READ)
-    expect(
-      declared?.tests?.some((item) => item.status === "probe-invalid"),
-      entry.id,
-    ).toBeFalsy()
+  // Each covered definition still carries the static geometry fact (@cto 34005 shape 2), and its own text is the
+  // named declaration and nothing else: named with the collector's reason, never blank.
+  for (const id of ROWS) {
+    const entry = definition(id)
+    expect(entry.termNeedsGeometry, `${id} lost its static geometry row`).toBe(true)
+    const result = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
+    expect(result?.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(result?.tests, id).toEqual([{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason: NO_PANE_READ }])
+    expect(result?.note, id).toBe(NO_PANE_READ)
   }
 })
