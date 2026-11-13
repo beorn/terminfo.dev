@@ -1885,9 +1885,11 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       'case "$*" in',
       "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
       "  --version) echo '1.2.3' ;;",
-      "  *) out=''",
-      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     cp "$PRODUCER_RUN" "$out/kitty-current-todo.json" ;;',
+      "  *) out=''; id=''",
+      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; --run-id) shift; id="$1" ;; esac; shift; done',
+      '     [ -n "$id" ] || { echo "host stub: no --run-id reached the host command" >&2; exit 9; }',
+      '     printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      '     sed \'s/"runId":"[^"]*"/"runId":"\'"$id"\'"/\' "$PRODUCER_RUN" > "$out/kitty-current-todo.json" ;;',
       "esac",
     ].join("\n"),
   )
@@ -1896,7 +1898,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   const producerDraft = initializeRunDraft({
     runId: "transport-kitty-current-todo",
     sourceRevision: revision,
-    manifest: { ...currentManifest, schemaVersion: 4 },
+    // The current derived suite: placement verifies an App run against the trusted current snapshot,
+    // so a historical fixture manifest would be refused before the identity is ever read.
+    manifest: { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 },
     source: { kind: "live" },
     intendedSubject: { kind: "term", id: "kitty" },
   })
@@ -1914,6 +1918,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   producerDraft.identity = "unverified"
   producerDraft.origin = { kind: "collector" }
   producerDraft.measuredAt = "2026-10-06T23:41:34.869Z"
+  // #34018 R1: the measured identity replies a real kitty run carries, so the transported original is
+  // a record the place path can accept — the point of the route is a run, not a JSON shape.
+  producerDraft.rawReplies["collector.xtversion"] = "\x1bP>|kitty(0.48.2)\x1b\\\x1b[?62;22c"
   writeFileSync(producerRun, JSON.stringify(finalizeCollectedDraft(producerDraft as CapturedRunDraft)))
   const producerBytes = readFileSync(producerRun)
   try {
@@ -1936,6 +1943,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
         OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
         PRODUCER_RUN: producerRun,
+        INBOUND_ID_FILE: join(directory, "inbound-run-id.txt"),
         REAL_RSYNC: "/usr/bin/rsync",
         REAL_BUN: process.execPath,
       },
@@ -1954,18 +1962,32 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     // collector classifies a run after transport.
     const runPath = join(transport, "kitty-current-todo.json")
     const runBytes = readFileSync(runPath)
+    // The host rewrote the identity and nothing else: the transported bytes are the producer's with
+    // the composer's id in place of the placeholder, which is what "one run, composer-named" means.
+    const expectedBytes = producerBytes
+      .toString("utf8")
+      .replace(/"runId":"[^"]*"/, `"runId":"${ownedAppRunId}"`)
+    expect(runBytes.toString("utf8")).toBe(expectedBytes)
     expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
-      createHash("sha256").update(producerBytes).digest("hex"),
+      createHash("sha256").update(expectedBytes).digest("hex"),
     )
     const raw = runBytes.toString("utf8")
     const probeHash = (JSON.parse(raw) as { probeHash: string }).probeHash
-    const suitePath = join(CONTENT, "suites", `${probeHash.slice(0, 12)}.json`)
-    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const manifest = { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 as const }
     const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
     expect(run.results?.every((result) => result.status === "probe-todo")).toBe(true)
+    // #34018 R1 (@dev/17 peer REVISE): the SAME App original this route produced is one the place
+    // path accepts, under the identity the composer handed down — not a separate fixture run.
+    expect(readFileSync(join(directory, "inbound-run-id.txt"), "utf8")).toBe(ownedAppRunId)
+    const content = mkdtempSync(join(directory, "content"))
+    copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
+    for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
+    const placed = placeCollectedRun(runPath, manifest, content)
+    expect(basename(placed)).toContain(ownedAppRunId)
+    expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([{ runId: ownedAppRunId }])
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -2055,8 +2077,11 @@ async function composedOwnedPass(hostRunId?: string) {
   }
 }
 
-it("admits the identity the host consumed and places that same App original", async () => {
-  const { pass, witness, manifest, directory } = await composedOwnedPass()
+it("admits the identity the host consumed, not a fixture identity", async () => {
+  // Placement of the same App original is proven on the ssh route below, where the transported run
+  // carries the measured identity replies a real kitty run does; here the subject is the census's
+  // terminal-app row, which has no placement identity profile of its own to satisfy.
+  const { pass, witness, directory } = await composedOwnedPass()
   try {
     expect(pass.contexts).toHaveLength(1)
     const row = pass.contexts[0]!
@@ -2070,63 +2095,6 @@ it("admits the identity the host consumed and places that same App original", as
     expect(readFileSync(witness, "utf8")).toBe(handed.runId)
     const original = JSON.parse(readFileSync(row.rawRun!, "utf8")) as { runId: string }
     expect(original.runId).toBe(handed.runId)
-    const content = mkdtempSync(join(tmpdir(), "composed-content-"))
-    try {
-      copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
-      for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
-      // The place path binds the composed identity and reaches its identity profile: an owned App
-      // original carries no measured identity replies here, so the refusal is that profile, named.
-      // It is never a changed, unsafe or suite-mismatched id — those checks run first and pass.
-      expect(() => placeCollectedRun(row.rawRun!, manifest, content)).toThrow(/identity-replies-mismatch/)
-      // The identity the host produced is one the place path accepts unchanged: a lib run carrying
-      // that exact id places and reloads, so nothing about the composed id is refused downstream.
-      const subject = {
-        kind: "lib" as const,
-        id: "xtermjs",
-        version: "6.0.0",
-        os: "linux",
-        osVersion: null,
-        outerTerminal: null,
-        mux: null,
-        config: null,
-        permissions: null,
-      }
-      const placedDraft = initializeRunDraft({
-        runId: handed.runId,
-        sourceRevision: "a".repeat(40),
-        manifest: { ...manifest, schemaVersion: 4 },
-        source: { kind: "live" },
-        intendedSubject: subject,
-      })
-      Object.assign(placedDraft, {
-        subject,
-        identity: "verified",
-        measuredAt: "2026-11-13T00:00:00.000Z",
-        origin: { kind: "collector" },
-        runtimeIdentity: {
-          kind: "js",
-          engineVersion: "6.0.0",
-          runtimeFormat: "js",
-          adapterVersion: "0.10.2",
-          termlessRevision: "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
-          resolvedPath: "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
-          integrity: {
-            kind: "registry",
-            lockIntegrity:
-              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-          },
-        },
-      })
-      const placedSource = join(content, "placed.json")
-      writeFileSync(placedSource, JSON.stringify(finalizeCollectedDraft(placedDraft as CapturedRunDraft)))
-      const placed = placeCollectedRun(placedSource, { ...manifest, schemaVersion: 4 }, content)
-      expect(basename(placed)).toContain(handed.runId)
-      expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([
-        { runId: handed.runId, sha256: expect.any(String) },
-      ])
-    } finally {
-      rmSync(content, { recursive: true, force: true })
-    }
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
