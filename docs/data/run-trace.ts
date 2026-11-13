@@ -516,10 +516,11 @@ function traceDocument<Cell>(
 
 /** The allowlisted trace of a current run's stored results. */
 export function currentTrace(version: CurrentSelectedVersion) {
+  const raw = version.readRaw()
   const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
-    const rawReply = result.rawReplyRef === undefined ? undefined : version.rawReplies[result.rawReplyRef]
+    const rawReply = result.rawReplyRef === undefined ? undefined : raw.rawReplies[result.rawReplyRef]
     if (result.rawReplyRef !== undefined && rawReply === undefined) {
       throw new Error(`Run ${version.runId}/${result.featureId}: missing retained raw reply ${result.rawReplyRef}`)
     }
@@ -531,10 +532,10 @@ export function currentTrace(version: CurrentSelectedVersion) {
         headless,
         result.reason,
         rawReply,
-        version.assertions.filter((assertion) => assertion.featureId === result.featureId),
+        raw.assertions.filter((assertion) => assertion.featureId === result.featureId),
         `run ${version.runId} feature ${result.featureId}`,
       ),
     }
   }
-  return traceDocument(3, version, cells)
+  return traceDocument(3, { ...version, identity: raw.identity }, cells)
 }

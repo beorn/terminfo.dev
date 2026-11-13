@@ -59,8 +59,39 @@ export function collectGarbage(): void {
 /** Over the 50-run corpus of 2026-11-11 the read peaked at 1.95 GB RSS, 1.29 GB collecting every 5 runs, same wall time. */
 const RUNS_PER_COLLECTION = 5
 
-/** One corpus read: LoadedRun.sha256 is parseRun's hash of the exact bytes read once here. */
-export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[] {
+function storedRunReader(
+  path: string,
+  runId: string,
+  sha256: string,
+  catalog: readonly string[],
+  suites: ReadonlyMap<string, ProbeSuiteManifest>,
+): () => LoadedRun {
+  // Capture only immutable references and parser inputs, never the loaded run whose payload can be large.
+  return () => {
+    let bytes: string
+    try {
+      bytes = readFileSync(path, "utf8")
+    } catch (cause) {
+      throw new Error(`${path}: cannot reread stored run ${runId}`, { cause })
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex")
+    if (digest !== sha256) throw new Error(`${path}: stored run ${runId} sha256 digest changed after load`)
+    return parseRun(path, bytes, catalog, suites)
+  }
+}
+
+/** One corpus read; a projection may retain compact facts while each validated raw run is still local. */
+export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[]
+export function loadStoredRuns<T>(
+  contentDir: string,
+  catalog: readonly string[],
+  project: (run: LoadedRun, reread: () => LoadedRun) => T,
+): T[]
+export function loadStoredRuns<T>(
+  contentDir: string,
+  catalog: readonly string[],
+  project?: (run: LoadedRun, reread: () => LoadedRun) => T,
+): Array<LoadedRun | T> {
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
   if (existsSync(suitesDir)) {
@@ -75,7 +106,7 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
       suites.set(manifest.probeHash, manifest)
     }
   }
-  const runs: LoadedRun[] = []
+  const runs: Array<LoadedRun | T> = []
   for (const dir of [RUN_DIRS.term, RUN_DIRS.mux, RUN_DIRS.lib]) {
     const path = join(contentDir, dir)
     if (!existsSync(path)) throw new Error(`${path}: missing required probe directory`)
@@ -83,8 +114,9 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
       .filter((name) => name.endsWith(".json") && name !== "unified.json")
       .sort()) {
       const runPath = join(path, file)
-      runs.push(parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites))
-      if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
+      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
+      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256, catalog, suites)) : run)
+      if (project || runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }
   return runs
