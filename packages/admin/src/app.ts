@@ -625,6 +625,8 @@ interface ProbeOptions {
   captureBundleRoot?: string
   appId: string
   version: string
+  /** The exact probe ids this run asked for; absent means the whole app suite (#mac-probe-selection). */
+  ids?: string[]
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
   ownedWindow: OwnedTerminalWindow
   invocation?: readonly string[]
@@ -641,7 +643,7 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch } = options
+  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
   const appLaunch =
     invocation === undefined
       ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
@@ -651,7 +653,7 @@ async function probeDaemon(
   // cli-process send the shared process proof's own observables so the worker can re-verify them.
   const res = await requestDaemonProbe(
     daemon,
-    ownedWindow.provider === "terminal-app"
+    (ownedWindow.provider === "terminal-app"
       ? {
           terminalApp: {
             asserter: "terminfo-admin",
@@ -664,7 +666,8 @@ async function probeDaemon(
         }
       : {
           process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
-        },
+        }),
+    ...(ids === undefined ? [] : [ids]),
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
@@ -881,7 +884,7 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
 
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean; output?: string },
+  opts: { force?: boolean; output?: string; probeIds?: string[] },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -944,6 +947,7 @@ async function runApp(
       ownedWindow,
       invocation: launch.invocation,
       outputDirectory: opts.output,
+      ids: opts.probeIds,
       launcherStderr: launch.launcherStderr,
       outerLaunch,
       ...(ownedWindow.provider === "terminal-app" && {
@@ -1034,7 +1038,7 @@ async function runApp(
 
 export async function handleApp(
   terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean; output?: string },
+  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[] },
 ): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
@@ -1070,7 +1074,7 @@ export async function handleApp(
 
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force, output: opts.output })
+    const result = await runApp(app, { force: opts.force, output: opts.output, probeIds: opts.probeIds })
     results.push({ app, result })
 
     if (result.skipped) {

@@ -285,6 +285,34 @@ test("Kitty text collection owns a run-local socket and removes it with its one 
   })
 })
 
+test("a selected probe list reaches the daemon as its exact ids", async () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(parseKittyIdentity).mockReturnValue({
+    windowId: 7,
+    kittyPid: 777,
+    tty: "/dev/ttys009",
+    term: "xterm-kitty",
+  })
+  await handleApp("kitty", { probeIds: ["cursor.mode", "kitty.graphics-protocol"] })
+  expect(requestDaemonProbe).toHaveBeenCalledWith(
+    registration,
+    expect.objectContaining({ process: expect.objectContaining({ provider: "kitty" }) }),
+    ["cursor.mode", "kitty.graphics-protocol"],
+  )
+})
+
+test("an omitted selection stays a whole-suite request with no ids argument", async () => {
+  vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(parseKittyIdentity).mockReturnValue({
+    windowId: 7,
+    kittyPid: 777,
+    tty: "/dev/ttys009",
+    term: "xterm-kitty",
+  })
+  await handleApp("kitty", {})
+  expect(vi.mocked(requestDaemonProbe).mock.calls[0]).toHaveLength(2)
+})
+
 test("an owned iTerm2 launch is collected on its sole-instance proof, then closed by its recorded pid", async () => {
   const launch = {
     executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
