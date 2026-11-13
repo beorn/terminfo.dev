@@ -5909,7 +5909,10 @@ export function osc22MuxSent(outer: string): string {
 export const OSC22_MUX_NO_RECORD =
   "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read."
 
-/** Grades only the outer command reading; a missing control or record arrives as `unavailable`. */
+/** Grades only the outer command reading; a missing control or record arrives as `unavailable`. A measured
+ * record with the control and no target is the criterion's Unsupported, and it asserts on the outer command
+ * record (buffer_state), the kind every outer-record grade in this package uses: this arm writes a control
+ * and a target and never asks a query, so query_reply bytes are not its evidence (@cto 33920). */
 export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
   const state = { outerCommands: read }
   const open = (status: "probe-todo" | "probe-invalid", reason: string): ProbeCallbackResult => ({
@@ -5926,8 +5929,6 @@ export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
       `outer command record carries the forwarding control and ${read.target}`,
       state,
       OSC22_MUX_NOT_SENT,
-      undefined,
-      "query_reply",
     ),
     criterionBranch: OSC22_MUX_OUTER_BRANCH,
   }
