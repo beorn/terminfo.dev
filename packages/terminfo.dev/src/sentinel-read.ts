@@ -70,10 +70,16 @@ export async function readThroughSentinel<T>(input: {
   label: string
   sentinel: CalibrationSentinel
   regions: readonly CaptureCells[]
+  /** Cells the probe's own output may cover (an inline image); the pair is never painted there (33985). */
+  avoid?: CaptureCells
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
-  const { a, b } = witnessCellsFor(input.regions, { rows: input.source.rows, cols: input.source.cols })
+  const { a, b } = witnessCellsFor(
+    input.regions,
+    { rows: input.source.rows, cols: input.source.cols },
+    input.avoid ? [input.avoid] : [],
+  )
   const atA = `\x1b[${a.row};${a.col}H`
   const atB = `\x1b[${b.row};${b.col}H`
   const where = `cells ${a.row},${a.col} and ${b.row},${b.col}`

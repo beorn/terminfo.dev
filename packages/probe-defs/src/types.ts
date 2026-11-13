@@ -512,6 +512,12 @@ export interface CaptureRequest {
    * frame without the control digest, and the consumer names that absence.
    */
   controlCells?: CaptureCells
+  /**
+   * Cells the probe's own output may cover beyond what it digests (an inline image's footprint,
+   * 33985). A read that paints calibration's sentinel never paints it here: a terminal that draws the
+   * image over text hides the sentinel, and the crop cannot be anchored.
+   */
+  avoid?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
   /**

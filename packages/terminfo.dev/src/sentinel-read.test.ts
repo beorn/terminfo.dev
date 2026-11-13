@@ -360,6 +360,31 @@ test("a frame without this read's painted cells refuses by name, and both cells 
   expect(painted.writes.length % 2).toBe(0)
 })
 
+test("the pair is painted clear of the probe's own output when the read names it (33985)", async () => {
+  // An image row compares one interior cell of a block it draws; every cell next to that interior lies
+  // under the image, which Warp draws over text, so the pair must go outside the whole block.
+  const writes: string[] = []
+  const failure = new Error("stop after the paint")
+  await expect(
+    readThroughSentinel({
+      source: { rows: 8, cols: 8, write: (text: string) => writes.push(text) },
+      prePaint: async () => before({ x: 0, y: 0 }),
+      capture: async () => {
+        throw failure
+      },
+      label: "cells 2,2-2,2",
+      sentinel,
+      regions: [{ top: 2, left: 2, bottom: 2, right: 2 }],
+      avoid: { top: 1, left: 1, bottom: 3, right: 3 },
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toBe(failure)
+  expect(writes).toEqual([
+    "\x1b7\x1b[4;2H\x1b[0m\x1b[45m \x1b[5;3H\x1b[45m \x1b[0m\x1b8",
+    "\x1b7\x1b[4;2H\x1b[0m \x1b[5;3H \x1b[0m\x1b8",
+  ])
+})
+
 test("a capture that fails for its own reason still restores both cells, and keeps its own error (33000)", async () => {
   const painted = source()
   const failure = new Error("the window went away")

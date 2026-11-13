@@ -171,6 +171,8 @@ export type ProbeCapture = (checkpoint: {
   pixelGeometry?: CapturePixelGeometry
   /** An exact colour to find in the whole decoded frame; the frame answers `located`. */
   locate?: CaptureRequest["locate"]
+  /** Cells the probe's own output may cover; the read never paints its sentinel there (33985). */
+  avoid?: CaptureRequest["avoid"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>

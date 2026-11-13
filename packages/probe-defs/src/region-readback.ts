@@ -69,6 +69,8 @@ export type RegionRead = (request: {
   region: CellRegion
   /** Absent on a text arm: it reads cells, so there is no cell-to-pixel mapping to report. */
   pixelGeometry?: PixelGeometry
+  /** Cells the probe's own output may cover; the read's sentinel is never painted there (33985). */
+  avoid?: CellRegion
 }) => Promise<RegionCapture>
 
 /**
@@ -80,8 +82,8 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
   // A text arm hands the region readback its own cells adapter; every other arm reads pixels.
   const capture = ctx.cells ?? ctx.capture
   if (!capture) return null
-  return async ({ role, label, region, pixelGeometry }) => {
-    const frame = await capture({ role, label, cells: region, pixelGeometry })
+  return async ({ role, label, region, pixelGeometry, avoid }) => {
+    const frame = await capture({ role, label, cells: region, pixelGeometry, ...(avoid ? { avoid } : {}) })
     // ONE accessor for both kinds: a pixel frame hands over its raw-pixel digests, a
     // text frame its cell digests. The comparison below never names a field, so it is one path.
     const digests = frameDigests(frame)
@@ -106,6 +108,11 @@ export interface RegionReadback {
   discriminator?: { signal: string; expected: "change" | "no-change" }
   /** The reserved one-cell paint witness, outside every compared region. */
   sentinel: { row: number; col: number }
+  /**
+   * Cells the sequence under test may cover beyond `region` — an inline image's whole footprint
+   * (33985). Every read of this decision carries it, so a read never paints its sentinel there.
+   */
+  avoid?: CellRegion
   /** The row the fixture parks the cursor on before each witness; excluded from every region. */
   cursorRow: number
   /** Writes that paint the seed frame. */
@@ -538,11 +545,12 @@ export function originFromSentinel(
 export function witnessCellFor(
   regions: readonly CaptureCells[],
   grid: { rows: number; cols: number },
+  avoid: readonly CaptureCells[] = [],
 ): { row: number; col: number } {
   const [first] = regions
   if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
   const digested = (cell: { row: number; col: number }): boolean =>
-    regions.some(
+    [...regions, ...avoid].some(
       (region) =>
         cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
     )
@@ -551,22 +559,33 @@ export function witnessCellFor(
   // Only cells in another ROW than the compared region: a neighbouring cell on the same row can
   // split a wide character straddling the region's edge, and the terminal erases the whole glyph,
   // which would change the very frame this read digests (@dev/10 peer read).
+  // The probe's own output (an inline image, 33985) may cover the rows around the compared region:
+  // the same three places, taken again just outside that footprint, keep the sentinel visible.
+  const band = avoid.filter((region) => region.bottom >= first.top && region.top <= first.bottom)
+  const top = Math.min(first.top, ...band.map((region) => region.top))
+  const bottom = Math.max(first.bottom, ...band.map((region) => region.bottom))
   const candidates = [
     { row: first.top - 1, col: first.left },
     { row: first.top - 1, col: first.right + 1 },
     { row: first.bottom + 1, col: first.left },
+    { row: top - 1, col: first.left },
+    { row: top - 1, col: first.right + 1 },
+    { row: bottom + 1, col: first.left },
   ]
   const found = candidates.find((cell) => visible(cell) && !digested(cell))
   if (!found) {
-    const spelled = regions
-      .map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`)
-      .join(" and ")
     throw new Error(
-      `No cell outside the digested region ${spelled} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
+      `No cell outside the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel, so this frame's crop cannot be anchored`,
     )
   }
   return found
 }
+
+const spelledRegions = (regions: readonly CaptureCells[]): string =>
+  regions.map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`).join(" and ")
+
+const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
+  avoid.length === 0 ? "" : ` or the probe's own output ${spelledRegions(avoid)}`
 
 /**
  * The TWO cells one read paints calibration's sentinel on (33981, @cto): the pair has to differ in
@@ -580,10 +599,11 @@ export function witnessCellFor(
 export function witnessCellsFor(
   regions: readonly CaptureCells[],
   grid: { rows: number; cols: number },
+  avoid: readonly CaptureCells[] = [],
 ): { a: { row: number; col: number }; b: { row: number; col: number } } {
-  const a = witnessCellFor(regions, grid)
+  const a = witnessCellFor(regions, grid, avoid)
   const digested = (cell: { row: number; col: number }): boolean =>
-    regions.some(
+    [...regions, ...avoid].some(
       (region) =>
         cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
     )
@@ -606,11 +626,8 @@ export function witnessCellsFor(
     regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
   const found = candidates.find((cell) => visible(cell) && !digested(cell) && !onRegionRow(cell))
   if (!found) {
-    const spelled = regions
-      .map((region) => `${region.top},${region.left}-${region.bottom},${region.right}`)
-      .join(" and ")
     throw new Error(
-      `No second cell clear of the digested region ${spelled} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column, so this frame's crop cannot be anchored by a sentinel pair`,
+      `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column, so this frame's crop cannot be anchored by a sentinel pair`,
     )
   }
   return { a, b: found }
@@ -1468,8 +1485,12 @@ export async function captureRegionReadbackDecision(
   ctx: TermProbeSource,
   id: string,
   spec: RegionReadback,
-  read: RegionRead | null,
+  readRegion: RegionRead | null,
 ): Promise<ProbeCallbackResult | null> {
+  // The probe's own output footprint rides on every read this decision makes, so no read paints its
+  // sentinel under it (33985).
+  const avoid = spec.avoid
+  let read: RegionRead | null = readRegion && avoid ? (request) => readRegion({ ...request, avoid }) : readRegion
   // How this decision was seen: the terminal's own cells on a text arm, pixels everywhere else.
   // Every branch below names it, so a published claim never says pixels it did not see.
   const assertionType = ctx.captureKind === "text-cells" ? ("buffer_state" as const) : ("screenshot" as const)
