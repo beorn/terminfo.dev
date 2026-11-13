@@ -10,11 +10,20 @@ export interface ProcessMarker {
   value: string
 }
 
-/** The one process proof both process-backed arms share. kitty is this with its instance group as the marker. */
+/**
+ * Why the recorded pid is this run's. A run-scoped argv marker names it directly. iTerm2 takes no argv
+ * marker, so its basis is the launch preflight: no instance of its binary ran under this account before
+ * the launch, and exactly one, started after the preflight, ran after it (@cto 11983ea0, condition 1).
+ */
+export type ProcessOwnerBasis =
+  | { kind: "marker"; marker: ProcessMarker }
+  | { kind: "sole-instance"; preflightAbsent: true }
+
+/** The one process proof every process-backed arm shares. kitty is this with its instance group as the marker. */
 export interface OwnedProcess {
   ownerPid: number
   executablePath: string
-  marker: ProcessMarker
+  basis: ProcessOwnerBasis
   tty: string
 }
 
@@ -166,8 +175,8 @@ export function markerText(marker: ProcessMarker): string {
 }
 
 /**
- * The one process proof both process-backed arms share. The pid must still run the launched binary,
- * still carry the run-scoped marker as an exact argv token, own the daemon's controlling TTY, and be an
+ * The one process proof every process-backed arm shares. The pid must still run the launched binary,
+ * still carry the run-scoped marker as an exact argv token (marker basis only), own the daemon's controlling TTY, and be an
  * ancestor of the daemon. Every check reads the live process table; the launch record supplies only the
  * expectation. A pid that is gone, reused, or a different binary is a refusal, never a pass.
  */
@@ -191,11 +200,24 @@ export function assertOwnedProcess(owned: OwnedProcess, daemonPid: number, who: 
       `${who} owner assertion: pid ${owned.ownerPid} runs ${liveExecutable}, not the launched ${owned.executablePath}`,
     )
   }
-  const argv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
-  if (!argvCarriesMarker(argv, owned.marker)) {
-    throw new Error(
-      `${who} owner assertion: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.marker)}`,
-    )
+  switch (owned.basis.kind) {
+    case "marker": {
+      const argv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
+      if (!argvCarriesMarker(argv, owned.basis.marker)) {
+        throw new Error(
+          `${who} owner assertion: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.basis.marker)}`,
+        )
+      }
+      break
+    }
+    case "sole-instance":
+      // No argv marker exists to read. The launch preflight is the basis; the pid, binary, TTY and
+      // ancestry checks around this switch are the live proof.
+      break
+    default: {
+      const unknown: never = owned.basis
+      throw new Error(`${who} owner assertion has an unknown ownership basis: ${JSON.stringify(unknown)}`)
+    }
   }
   descendToOwner(daemonPid, owned.ownerPid, parentOf, who)
 }

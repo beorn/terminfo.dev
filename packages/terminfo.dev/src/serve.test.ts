@@ -108,7 +108,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     if(darwin)process.env.TERMINFO_CAPTURE_DIRECTORY=join(process.env.HOME,"capture")
-    const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",marker:{flag:"--run",value:"a".repeat(32)},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
+    const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",basis:{kind:"marker",marker:{flag:"--run",value:"a".repeat(32)}},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
     const run=await collect()
     const {decodeCollectorDraft}=await import("./packages/run-parser/src/index.ts")
     assert.equal(decodeCollectorDraft("owned-history fixture",JSON.stringify(run),globalThis.__TERMINFO_BUNDLED_SUITE__.manifest,revision).kind,"captured")
@@ -544,7 +544,7 @@ describe("daemon HTTP boundary", () => {
         const {requestDaemonProbe}=await import("./packages/terminfo.dev/src/daemon-client.ts")
         const processOwner={asserter:"terminfo-admin",launchRunId:registration.runId,workerPid:registration.pid,
           provider:"kitty",ownerPid:900,executablePath:"/Applications/kitty.app/Contents/MacOS/kitty",
-          marker:{flag:"--instance-group",value:"terminfo-"+registration.runId},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
+          basis:{kind:"marker",marker:{flag:"--instance-group",value:"terminfo-"+registration.runId}},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
         try {await requestDaemonProbe(registration,{process:processOwner})}
         catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
           message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
@@ -619,7 +619,7 @@ describe("daemon HTTP boundary", () => {
       provider: "kitty",
       ownerPid: 900,
       executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-      marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` },
+      basis: { kind: "marker", marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` } },
       tty: "/dev/ttys004",
       intendedVersion: "0.44.0",
     }
@@ -763,7 +763,7 @@ function runHostedDarwinFixture(script: string, timeoutMs = 10_000) {
  * script reports which app PID the adapter was installed for, how often calibration ran, and any
  * refusal. `ownerPid` is the pid the verified owner reports; undefined is an owner with none.
  */
-function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
+function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwner?: Record<string, unknown>) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
   const ownerPidField = ownerPid === undefined ? "" : `appPid: ${ownerPid},`
   const script = `
@@ -773,6 +773,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const geometry = { status: "measured", rows: 24, cols: 80 }
     const appPids = []
+    const captureOptions = []
     let calibrationCalls = 0
     mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
       detectTerminal: () => ({ name: "ghostty", version: "1.3.1", os: "macos", osVersion: "fixture" })
@@ -795,6 +796,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
       createDarwinCapture: async (_directory, options) => {
         appPids.push(options.appPid)
+        captureOptions.push({ expectedWindowId: options.expectedWindowId ?? null, ownedHost: options.ownedHost })
         const refuse = async () => { throw new Error("capture must retain the calibration refusal") }
         return { capture: refuse, captureRaw: refuse }
       }
@@ -815,11 +817,11 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     let refusal
     try {
-      await collectProbeRun({ ids: ["extensions.truecolor", "erase.line.all"], processOwner: { provider: "ghostty" } })
+      await collectProbeRun({ ids: ["extensions.truecolor", "erase.line.all"], processOwner: ${JSON.stringify(processOwner ?? { provider: "ghostty" })} })
     } catch (error) {
       refusal = error.message
     }
-    console.log("RESULT " + JSON.stringify({ appPids, calibrationCalls, refusal }))
+    console.log("RESULT " + JSON.stringify({ appPids, calibrationCalls, refusal, ...(${processOwner !== undefined} && { captureOptions }) }))
   `
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: packageRoot,
@@ -956,6 +958,15 @@ describe("private finite daemon startup", () => {
     const { stderr, observed } = runDarwinProcessCaptureFixture(4242)
     expect(observed).toEqual({ appPids: [4242], calibrationCalls: 1 })
     expect(stderr).toBe("")
+  })
+
+  // 33845: the owned iTerm2 arm pins the capture to the CG window its owner census proved new, as
+  // Terminal.app pins its asserted window, and stays window-only on the owned host.
+  it("pins the owned iTerm2 capture to its asserted CG window on the owned host", () => {
+    const { observed } = runDarwinProcessCaptureFixture(4242, { provider: "iterm2", windowId: 41 })
+    expect(observed).toMatchObject({ appPids: [4242], captureOptions: [{ expectedWindowId: 41, ownedHost: true }] })
+    const other = runDarwinProcessCaptureFixture(4242, { provider: "kitty" })
+    expect(other.observed).toMatchObject({ captureOptions: [{ expectedWindowId: null, ownedHost: true }] })
   })
 
   it("refuses an owned-process capture by name when the verified owner reports no pid", () => {

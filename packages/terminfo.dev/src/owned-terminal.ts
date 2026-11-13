@@ -77,7 +77,7 @@ import {
   runScopedMarker,
   processCommand,
   argvCarriesMarker,
-  type ProcessMarker,
+  type ProcessOwnerBasis,
 } from "./owned-process.ts"
 import {
   createLineRenditionTracker,
@@ -123,20 +123,63 @@ export interface TerminalAppOwnerAssertion {
 
 /**
  * The admin's claim for a process-backed Darwin arm, verified by the worker field by field. It names
- * the ONE shared process proof's own observables (terminal-app-window.ts's OwnedProcess): the live pid,
- * its realpath executable, the run-scoped argv marker and the window TTY. There is no window id: the
- * worker cannot check one, and the ownership proof does not need it.
+ * the ONE shared process proof's own observables (owned-process.ts's OwnedProcess): the live pid, its
+ * realpath executable, the ownership basis and the window TTY. The basis is the run-scoped argv marker
+ * (kitty, cli-process) or, for iTerm2, which takes no marker, the launch preflight that found no
+ * instance (@cto 11983ea0, condition 1). Only iTerm2 names a window id: the CG id the admin's census
+ * proved new and owned, which the worker's capture pins its window to.
  */
 export interface ProcessOwnerAssertion {
   asserter: "terminfo-admin"
   launchRunId: string
   workerPid: number
-  provider: "kitty" | "cli-process"
+  provider: "kitty" | "cli-process" | "iterm2"
   ownerPid: number
   executablePath: string
-  marker: ProcessMarker
+  basis: ProcessOwnerBasis
   tty: string
+  /** iTerm2 only, and required there: the CG window id. Refused on every other provider. */
+  windowId?: number
   intendedVersion: string
+}
+
+/** Exactly these keys, no more and no fewer. */
+const exactKeys = (object: Record<string, unknown>, keys: readonly string[]): boolean =>
+  Object.keys(object).length === keys.length && keys.every((key) => Object.hasOwn(object, key))
+
+/** The basis is a tagged union, and each provider has exactly one kind: kitty and cli-process prove a
+ * marker, iTerm2 the sole instance. An unknown kind, or a kind on the wrong provider, is invalid. */
+function parseProcessOwnerBasis(value: unknown, provider: unknown): ProcessOwnerBasis | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const basis = value as Record<string, unknown>
+  switch (basis.kind) {
+    case "marker": {
+      if (!exactKeys(basis, ["kind", "marker"]) || (provider !== "kitty" && provider !== "cli-process")) {
+        return undefined
+      }
+      const marker = basis.marker
+      if (!marker || typeof marker !== "object" || Array.isArray(marker)) return undefined
+      const markerObject = marker as Record<string, unknown>
+      if (
+        !exactKeys(markerObject, ["flag", "value"]) ||
+        typeof markerObject.flag !== "string" ||
+        markerObject.flag.length === 0 ||
+        /\s/.test(markerObject.flag) ||
+        typeof markerObject.value !== "string" ||
+        markerObject.value.length === 0 ||
+        /\s/.test(markerObject.value)
+      ) {
+        return undefined
+      }
+      return { kind: "marker", marker: { flag: markerObject.flag, value: markerObject.value } }
+    }
+    case "sole-instance":
+      return exactKeys(basis, ["kind", "preflightAbsent"]) && basis.preflightAbsent === true && provider === "iterm2"
+        ? { kind: "sole-instance", preflightAbsent: true }
+        : undefined
+    default:
+      return undefined
+  }
 }
 
 /** The request is an admin assertion; the worker independently verifies every observable field. */
@@ -151,42 +194,31 @@ export function parseProcessOwnerAssertion(value: unknown): ProcessOwnerAssertio
     "provider",
     "ownerPid",
     "executablePath",
-    "marker",
+    "basis",
     "tty",
+    ...(object.provider === "iterm2" ? ["windowId"] : []),
     "intendedVersion",
   ]
-  if (Object.keys(object).length !== keys.length || keys.some((key) => !Object.hasOwn(object, key))) throw invalid()
-  const marker = object.marker
-  if (!marker || typeof marker !== "object" || Array.isArray(marker)) throw invalid()
-  const markerObject = marker as Record<string, unknown>
+  if (!exactKeys(object, keys)) throw invalid()
+  const basis = parseProcessOwnerBasis(object.basis, object.provider)
   if (
-    Object.keys(markerObject).length !== 2 ||
-    !Object.hasOwn(markerObject, "flag") ||
-    !Object.hasOwn(markerObject, "value")
-  ) {
-    throw invalid()
-  }
-  if (
+    basis === undefined ||
     object.asserter !== "terminfo-admin" ||
     typeof object.launchRunId !== "string" ||
     !/^[0-9a-f]{32}$/.test(object.launchRunId) ||
     typeof object.workerPid !== "number" ||
     !Number.isSafeInteger(object.workerPid) ||
     object.workerPid < 1 ||
-    (object.provider !== "kitty" && object.provider !== "cli-process") ||
+    (object.provider !== "kitty" && object.provider !== "cli-process" && object.provider !== "iterm2") ||
     typeof object.ownerPid !== "number" ||
     !Number.isSafeInteger(object.ownerPid) ||
     object.ownerPid < 1 ||
     typeof object.executablePath !== "string" ||
     !object.executablePath.startsWith("/") ||
-    typeof markerObject.flag !== "string" ||
-    markerObject.flag.length === 0 ||
-    /\s/.test(markerObject.flag) ||
-    typeof markerObject.value !== "string" ||
-    markerObject.value.length === 0 ||
-    /\s/.test(markerObject.value) ||
     typeof object.tty !== "string" ||
     !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(object.tty) ||
+    (object.provider === "iterm2" &&
+      (typeof object.windowId !== "number" || !Number.isSafeInteger(object.windowId) || object.windowId < 1)) ||
     typeof object.intendedVersion !== "string" ||
     !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}$/.test(object.intendedVersion)
   ) {
@@ -199,8 +231,9 @@ export function parseProcessOwnerAssertion(value: unknown): ProcessOwnerAssertio
     provider: object.provider,
     ownerPid: object.ownerPid,
     executablePath: object.executablePath,
-    marker: { flag: markerObject.flag, value: markerObject.value },
+    basis,
     tty: object.tty,
+    ...(typeof object.windowId === "number" && { windowId: object.windowId }),
     intendedVersion: object.intendedVersion,
   }
 }
@@ -1135,23 +1168,42 @@ export async function createOwnedTerminal(options: {
     if (process.platform !== "darwin") throw new Error("Owned process owner requires Darwin")
     const assertion = parseProcessOwnerAssertion(processOwner)
     requireOwnWorker(assertion, expectedLaunchRunId, assertion.provider)
-    // The marker must carry THIS launch run id, by runScopedMarker's own rule: a marker from another
-    // run would let a live process belonging to that run satisfy this one's proof.
-    const marker = runScopedMarker({
-      appName: assertion.provider,
-      runId: expectedLaunchRunId,
-      flag: assertion.marker.flag,
-      value: assertion.marker.value,
-    })
+    let basis: ProcessOwnerBasis
+    let disposableBasis: string | undefined
+    switch (assertion.basis.kind) {
+      case "marker": {
+        // The marker must carry THIS launch run id, by runScopedMarker's own rule: a marker from another
+        // run would let a live process belonging to that run satisfy this one's proof.
+        const marker = runScopedMarker({
+          appName: assertion.provider,
+          runId: expectedLaunchRunId,
+          flag: assertion.basis.marker.flag,
+          value: assertion.basis.marker.value,
+        })
+        basis = { kind: "marker", marker }
+        disposableBasis = `Disposable prerequisite satisfied by run-scoped process owner pid ${assertion.ownerPid}, marker ${marker.flag} ${marker.value}`
+        break
+      }
+      case "sole-instance":
+        // iTerm2 (@cto 11983ea0): the admin's preflight found no instance, so there is no argv to read;
+        // the pid, executable, TTY and ancestry below are re-verified here. It runs the operator's own
+        // profile, so it makes no disposable-prerequisite claim.
+        basis = assertion.basis
+        break
+      default: {
+        const unknown: never = assertion.basis
+        throw new Error(`Process owner assertion has an unknown ownership basis: ${JSON.stringify(unknown)}`)
+      }
+    }
     if (darwinMux) darwinAttachment = readDarwinMuxAttachment(darwinMux, assertion, captureRunId)
     // The one process proof, not a second reading of ps/argv/ancestry: the same function the admin
     // calls, with the daemon (this worker) as the process that must descend from the owner.
     assertOwnedProcess(
-      { ownerPid: assertion.ownerPid, executablePath: assertion.executablePath, marker, tty: assertion.tty },
+      { ownerPid: assertion.ownerPid, executablePath: assertion.executablePath, basis, tty: assertion.tty },
       darwinAttachment ? darwinAttachment.attachedClient.pid : process.pid,
       assertion.provider,
     )
-    processOwnerBasis = `Disposable prerequisite satisfied by run-scoped process owner pid ${assertion.ownerPid}, marker ${marker.flag} ${marker.value}`
+    processOwnerBasis = disposableBasis
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
