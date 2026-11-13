@@ -62,7 +62,12 @@ describe("#30763 baseline row readout", () => {
     expect(homeBaselineRow({ ...derivedOnly, derived: 0 }).text).toBe("0% · 0/6 supported / all")
 
     // A decided row keeps each page's own text, byte-identical to before the fix.
-    const decided = { counts: counts({ unsupported: 2, "probe-todo": 4 }), derived: 0, pct: 0, score: { supported: 0, all: 6 } }
+    const decided = {
+      counts: counts({ unsupported: 2, "probe-todo": 4 }),
+      derived: 0,
+      pct: 0,
+      score: { supported: 0, all: 6 },
+    }
     expect(homeBaselineRow(decided)).toEqual({ text: "0% · 0/6 supported / all", title: undefined })
     expect(baselineShareRow(decided)).toEqual({ text: "0/6 supported (0%)", title: undefined })
   })
