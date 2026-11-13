@@ -553,7 +553,8 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const directory = ${JSON.stringify(directory)}
-    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory + "/artifacts"
+    fs.writeFileSync(directory + "/terminal-launch.json", JSON.stringify({ appId: "terminal-app", terminalWindow: { provider: "terminal-app", windowId: 34 } }))
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
@@ -656,11 +657,13 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "terminal-app",
     comm: "Terminal",
     titleRead: "system-events",
+    captureWindowSelection: "largest",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/iTerm.app/Contents/MacOS/iTerm2")).toEqual({
     id: "iterm2",
     comm: "iTerm2",
     titleRead: "none",
+    captureWindowSelection: "largest",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Ghostty.app/Contents/MacOS/ghostty")).toEqual({
     id: "ghostty",

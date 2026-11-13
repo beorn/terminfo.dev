@@ -677,12 +677,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         }
       }
       capture = async (checkpoint) => {
+        // Preserve the failed selected write; a later empty write would replace it with stream-destroyed.
+        if (out.errored) throw out.errored
         if (process.platform === "win32") {
           await consoleBarrier(checkpoint.label)
         } else {
           await new Promise<void>((resolve, reject) => {
             out.write("", (error) => {
-              if (error) reject(error)
+              if (error) reject(out.errored ?? error)
               else resolve()
             })
           })
@@ -751,6 +753,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
+    let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
      * What happened when the Darwin input adapter was installed, so the run record carries it:
@@ -981,27 +984,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      // Hosted runners install no input in this head (@cto 75732b9d P2-3): only the owned Terminal.app
-      // arm does, with the owned-host limits.
-      // iTerm2 and both Terminal.app arms use pixels; Kitty keeps its qualified text route.
-      // Without retention, still name the missing directory through the existing text adapter.
-      const textFirst =
-        !captureDirectory ||
-        (kind !== "terminalApp" && terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
-      if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
+      if (!captureDirectory) {
+        captureInstallationRefusal = `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`
+        return
+      }
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      if (!textFirst && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
+      if (terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
-        hostedAppId: terminal.hostedAppId,
-        // Terminal.app's asserted window, or the CG window the iTerm2 owner census proved new (33845).
-        expectedWindowId:
-          kind === "terminalApp"
-            ? options.terminalAppOwner?.windowId
-            : kind === "process" && options.processOwner?.provider === "iterm2"
-              ? options.processOwner.windowId
-              : undefined,
+        expectedWindowId: terminal.expectedWindowId,
+        windowSelection: terminal.captureWindowSelection ?? "unique",
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
         // No `measureWindowName` for a hosted runner (33821): the apps that need a title declare a measured
@@ -1271,6 +1264,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                         sessionBus,
                       ),
                 ...(capture && { capture }),
+                ...(captureInstallationRefusal && { captureGeometryRefusal: captureInstallationRefusal }),
                 ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
