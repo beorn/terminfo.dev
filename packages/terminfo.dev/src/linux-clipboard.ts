@@ -336,6 +336,8 @@ export function createClipboardTransaction(
     readonly writePollMs?: number
     /** @cto 2026-11-13: the clipboard-read setting this run applied, so a profile reading names itself. */
     readonly readProfile?: { readonly profile: string; readonly setting: string }
+    /** @cto 2026-11-13: the app's pinned default for a clipboard read, so a silent read grades what it means. */
+    readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
     /**
      * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
      * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
@@ -404,6 +406,7 @@ export function createClipboardTransaction(
       const fixture: ClipboardFixture = {
         baseline,
         ...(options?.readProfile && { readProfile: options.readProfile }),
+        ...(options?.readDefault && { readDefault: options.readDefault }),
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
         ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
@@ -827,6 +830,34 @@ export const CLIPBOARD_ALLOW_ARGS: Readonly<Record<ClipboardApp, readonly string
   wezterm: [],
 }
 
+/**
+ * Each app's PINNED DEFAULT for a clipboard read, cited from its own source at the version it is measured at
+ * (@cto 2026-11-13): a silent read means "the user was asked" for one app and "the answer is no" for another, and a
+ * default taken from the silence is a guess, not evidence. An app absent here is unpinned: its read rows say
+ * "default not established" by name. A version not named below has no entry — extend this with that version's own
+ * source rather than reusing another version's citation.
+ */
+export const CLIPBOARD_READ_DEFAULTS: Readonly<
+  Partial<Record<ClipboardApp, { readonly posture: "ask" | "deny" | "absent"; readonly source: string }>>
+> = {
+  kitty: {
+    posture: "ask",
+    source:
+      "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
+      "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
+  },
+  ghostty: {
+    posture: "ask",
+    source: 'ghostty v1.4.0 src/config/Config.zig:2458: "clipboard-read": ClipboardAccess = .ask',
+  },
+  alacritty: {
+    posture: "deny",
+    source:
+      "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
+      '"only copy sequence is accepted"',
+  },
+}
+
 /** The argv tokens that set each terminal's clipboard read control, flag and value together. */
 function clipboardControls(app: ClipboardApp, options: string[]): string[] {
   const valueOf = (flags: string[], value: (part: string) => boolean) =>
@@ -1153,6 +1184,8 @@ export async function createLinuxClipboardAdapter(
         CLIPBOARD_ALLOW_ARGS[app].length > 0 && {
           readProfile: { profile: receipt.profile, setting: `${app} ${CLIPBOARD_ALLOW_ARGS[app].join(" ")}` },
         }),
+      ...(receipt.profile === "default" &&
+        CLIPBOARD_READ_DEFAULTS[app] && { readDefault: CLIPBOARD_READ_DEFAULTS[app] }),
       ...(tmuxTarget && {
         muxState: {
           async snapshot() {
