@@ -795,12 +795,16 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
   if (here === undefined || seed === undefined) return false
   if (here.a.cell.row !== seed.a.cell.row || here.a.cell.col !== seed.a.cell.col) return false
   if (here.b.cell.row !== seed.b.cell.row || here.b.cell.col !== seed.b.cell.col) return false
-  const rowGap = Math.abs(here.b.cell.row - here.a.cell.row)
-  const colGap = Math.abs(here.b.cell.col - here.a.cell.col)
+  const rowGap = here.b.cell.row - here.a.cell.row
+  const colGap = here.b.cell.col - here.a.cell.col
   if (rowGap === 0 && colGap === 0) return false
+  // SIGNED, so a pair recorded the other way round is not accepted as its own mirror; and with the
+  // same edge tolerance `sentinelBlockRefusal` and the read's own derivation use, so a pair one
+  // blended edge line short is accepted here exactly when it was accepted there.
+  const slack = 2 * CELL_EDGE_TOLERANCE_PX
   return (
-    Math.abs(here.b.box.y - here.a.box.y) === rowGap * crop.cell.height &&
-    Math.abs(here.b.box.x - here.a.box.x) === colGap * crop.cell.width
+    Math.abs(here.b.box.y - here.a.box.y - rowGap * crop.cell.height) <= slack &&
+    Math.abs(here.b.box.x - here.a.box.x - colGap * crop.cell.width) <= slack
   )
 }
 
@@ -821,6 +825,7 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
   const first = seed.crop
   if (first === undefined || seed.rectangle === undefined) return []
   if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return []
+  if (!witnessProvesPitch(first, first)) return []
   const moves: GridMove[] = []
   for (const entry of rest) {
     const crop = entry.crop
@@ -840,7 +845,10 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
     if (!insideImage(seed.rectangle, first.image) || !insideImage(rectangle, crop.image)) return []
     if (!witnessProvesPitch(crop, first)) return []
     const rows = dy / first.cell.height
-    if (rows === 0) return []
+    // A frame that did not move is the ordinary case, not a contradiction: a row whose seed and
+    // post-sequence frames stay put while the expected and ignored frames follow a reset reads
+    // exactly that way (@dev/10's real-shape probe). Only the frames that DID move are judged.
+    if (rows === 0) continue
     moves.push({ rows, at: entry.role })
   }
   return moves
@@ -1794,6 +1802,13 @@ export async function captureRegionReadbackDecision(
   // Each digest's own crop rectangle, pushed in lockstep with it: two digests mean the same cells
   // only when their rectangles match (29580).
   const cropRectangles: Array<CaptureRectangle | undefined> = []
+  // Each rectangle's own grid measurement, pushed in the same lockstep: a later frame can only be
+  // proved a whole-row move when it says where its origin sat (33982).
+  const cropMeasurements: Array<PixelCellCrop | undefined> = []
+  const cropMeasurementAt = (index: number): { crop?: PixelCellCrop } => {
+    const crop = cropMeasurements[index]
+    return crop === undefined ? {} : { crop }
+  }
   // The declared row groups' [above, at-or-below] reads of the seed, target and expected frames.
   const rowGroups = spec.cursorRowGroups
   const groupReads: RowGroupRead[][] = []
@@ -1898,6 +1913,7 @@ export async function captureRegionReadbackDecision(
       })
       digests.push(measured.regionDigest)
       cropRectangles.push(measured.regionRectangle)
+      cropMeasurements.push(measured.frame.kind === "text-cells" ? undefined : measured.frame.cellCrop)
       frames.push(measured.frame)
       if (step.role === "target") targetScreenshotRef = measured.frame.ref
       if (savedRendition && step.phase) {
@@ -1918,9 +1934,21 @@ export async function captureRegionReadbackDecision(
         const moved = cropPositionRefusal({
           id,
           compared: [
-            { role: "initial stability", rectangle: stableBaseline.regionRectangle },
-            { role: "initial N", rectangle: cropRectangles[0] },
-            { role: step.label, rectangle: measured.regionRectangle },
+            {
+              role: "initial stability",
+              rectangle: stableBaseline.regionRectangle,
+              ...(stableBaseline.frame.kind === "text-cells" || stableBaseline.frame.cellCrop === undefined
+                ? {}
+                : { crop: stableBaseline.frame.cellCrop }),
+            },
+            { role: "initial N", rectangle: cropRectangles[0], ...cropMeasurementAt(0) },
+            {
+              role: step.label,
+              rectangle: measured.regionRectangle,
+              ...(measured.frame.kind === "text-cells" || measured.frame.cellCrop === undefined
+                ? {}
+                : { crop: measured.frame.cellCrop }),
+            },
           ],
           response: response(),
           frames,
@@ -2041,24 +2069,32 @@ export async function captureRegionReadbackDecision(
     const cropRefusal = cropPositionRefusal({
       id,
       compared: [
-        { role: "the seed frame", rectangle: cropRectangles[0] },
-        { role: "the post-sequence frame", rectangle: cropRectangles[1] },
-        { role: "the expected frame", rectangle: cropRectangles[2] },
-        ...(spec.ignored === undefined ? [] : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3] }]),
+        { role: "the seed frame", rectangle: cropRectangles[0], ...cropMeasurementAt(0) },
+        { role: "the post-sequence frame", rectangle: cropRectangles[1], ...cropMeasurementAt(1) },
+        { role: "the expected frame", rectangle: cropRectangles[2], ...cropMeasurementAt(2) },
+        ...(spec.ignored === undefined ? [] : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3], ...cropMeasurementAt(3) }]),
         ...(spec.setupReference === undefined
           ? []
-          : [{ role: "the independent setup reference", rectangle: cropRectangles[referenceIndex] }]),
+          : [{ role: "the independent setup reference", rectangle: cropRectangles[referenceIndex],
+            ...cropMeasurementAt(referenceIndex) }]),
         ...(spec.noAttribute === undefined
           ? []
           : [
               {
                 role: "the no-attribute frame",
                 rectangle: cropRectangles[referenceIndex + (spec.setupReference === undefined ? 0 : 1)],
+                ...cropMeasurementAt(referenceIndex + (spec.setupReference === undefined ? 0 : 1)),
               },
             ]),
         ...(spec.walkedAttribute === undefined
           ? []
-          : [{ role: "the walked-attribute frame", rectangle: cropRectangles[walkedIndex] }]),
+          : [
+              {
+                role: "the walked-attribute frame",
+                rectangle: cropRectangles[walkedIndex],
+                ...cropMeasurementAt(walkedIndex),
+              },
+            ]),
       ],
       response: observed,
       frames,

@@ -158,3 +158,34 @@ describe("33982 whole-row grid move", () => {
     expect(refusal(compared)).toBeNull()
   })
 })
+
+describe("33982 witness pair, both sides", () => {
+  it("refuses when the FIRST compared frame's own pair proves no pitch", () => {
+    // The seed's origin comes from box a; if its pair does not sit one pitch apart, the seed itself
+    // is unanchored and no later frame can be judged against it.
+    const compared = [
+      frame("seed", firstOrigin, {}, { b: { x: firstOrigin.x, y: firstOrigin.y + 4 } }),
+      frame("expected", movedOrigin),
+    ]
+    expect(gridMoveExemption(compared)).toEqual([])
+    expect(refusal(compared)).not.toBeNull()
+  })
+
+  it("refuses a pair recorded the other way round (b above a where its cells say below)", () => {
+    const compared = [
+      frame("seed", firstOrigin),
+      frame("expected", movedOrigin, {}, { a: { x: movedOrigin.x + 16, y: movedOrigin.y + cell.height }, b: { x: movedOrigin.x, y: movedOrigin.y } }),
+    ]
+    expect(gridMoveExemption(compared)).toEqual([])
+    expect(refusal(compared)).not.toBeNull()
+  })
+
+  it("accepts a pair one blended edge line short, as the read's own derivation does", () => {
+    const compared = [
+      frame("seed", firstOrigin),
+      frame("expected", movedOrigin, {}, { b: { x: movedOrigin.x, y: movedOrigin.y + cell.height - 2 } }),
+    ]
+    expect(gridMoveExemption(compared)).toEqual([{ rows: movedRows, at: "expected" }])
+    expect(refusal(compared)).toBeNull()
+  })
+})
