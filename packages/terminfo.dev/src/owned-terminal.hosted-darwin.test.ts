@@ -990,11 +990,12 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTe
     Object.assign(process.env, { TERMINFO_RUN_ID: "b".repeat(32), TERMINFO_MUX_KIND: "", TERMINFO_TARGET_ID: "wezterm",
       TERMINFO_TARGET_VERSION: version, TERMINFO_CAPTURE_DIRECTORY: "/owned/capture", WEZTERM_PANE: "1", WEZTERM_UNIX_SOCKET: "/owned/gui.sock" })
     const device = { dev: 7n, rdev: 9n, ino: 11n, isSocket: () => true }
+    const realReadFileSync = fs.readFileSync
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
-      readFileSync: (path, ...args) => path === executable ? Buffer.from("gui") : fs.readFileSync(path, ...args),
+      readFileSync: (path, ...args) => path === executable ? Buffer.from("gui") : path === cli ? Buffer.from("cli") : realReadFileSync(path, ...args),
       realpathSync: path => fault === "wrong bundle" && path === cli ? "/outside/wezterm" : path }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
-    let uri = "file://localhost/original", cliCalls = 0
+    let uri = "file://localhost/original", cliCalls = 0, pasteboard = ""
     const rows = Array(24).fill("")
     mock.module("node:child_process", () => ({ ...cp,
       execFileSync: (command, args, options) => {
@@ -1013,13 +1014,22 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTe
         return JSON.stringify([{ pane_id: fault === "wrong pane" ? 2 : 1, tty_name: "/dev/ttys004", cwd: uri }])
       },
       spawnSync: (command, args, options) => {
+        if (args[0] === "--version") {
+          assert.equal(command, cli)
+          return { status: 0, signal: null, stdout: "wezterm " + version, stderr: "" }
+        }
         assert.equal(command, cli); assert.equal(options.env.WEZTERM_UNIX_SOCKET, "/owned/gui.sock")
         return { status: 0, signal: null, stdout: Buffer.from(rows.join("\\n") + "\\n"), stderr: Buffer.alloc(0) }
       },
       spawn: file => {
         const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter()
-        child.kill = () => true; child.stdin = { end() {} }
-        queueMicrotask(() => { child.stdout.emit("data", Buffer.from(String(file).endsWith("stty") ? "24 80\\n" : "\\n")); child.emit("close", 0) })
+        const tool = String(file)
+        child.kill = () => true
+        child.stdin = { end(text) {
+          if (tool.endsWith("pbcopy")) pasteboard = String(text ?? "")
+          const reply = tool.endsWith("pbcopy") ? "" : tool.endsWith("pbpaste") ? pasteboard + "\\n" : tool.endsWith("stty") ? "24 80\\n" : "\\n"
+          queueMicrotask(() => { child.stdout.emit("data", Buffer.from(reply)); child.emit("close", 0) })
+        } }
         return child
       }
     }))
