@@ -1445,12 +1445,16 @@ export function withUnhandledSgrReport(
     const selected = reported ?? result
     // Retain selected colour bytes beside the measured report, including normalized RGB codes.
     if (target === undefined && (id !== "sgr.underline-color-reset" || result.note === undefined)) return selected
+    // A declared Untestable result is terminal, so it never takes the Open clause (#34000).
+    const openClause = isDeclaredUntestable(result)
+      ? undefined
+      : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
     const reportNote =
       target === undefined
         ? reported?.note
         : reported
           ? `measured: library reported the code unhandled; ${reported.note}`
-          : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
+          : openClause
     const note = [result.note, reportNote].filter(Boolean).join("; ")
     if (selected.notTested) {
       return { ...selected, note, notTested: { ...selected.notTested, noObservable: note } }
