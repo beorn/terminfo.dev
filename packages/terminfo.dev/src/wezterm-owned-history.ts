@@ -98,6 +98,14 @@ function failure(command: string, args: readonly string[], result: CommandOutcom
   })
 }
 
+/** How a command failed, in one phrase that carries no path this machine chose. */
+const commandOutcome = (result: CommandOutcome): string =>
+  result.error !== undefined
+    ? `error ${result.error.message}`
+    : result.signal !== undefined && result.signal !== null
+      ? `signal ${result.signal}`
+      : `exit ${result.status}`
+
 /**
  * Pin the CLI the run will read through: its path, its bytes and the version it reports. The version is
  * the app's own answer, so the artifact names which WezTerm produced a count. A failed read is never
@@ -162,6 +170,48 @@ export function hostedWezTermPrerequisites(input: {
   return undefined
 }
 
+/**
+ * @cto 8c084f05's three ownership proofs, run in order before EVERY read and reported as the first named
+ * refusal. Ancestry is re-read here, never handed in: a reading taken at construction would prove the
+ * process that existed then. A same-name ancestor with a different pid is refused, because a pid that
+ * changed is a different process however the name reads. Nothing downstream runs on a refusal.
+ */
+export function hostedWezTermOwnerProof(input: {
+  /** Reads the app ancestry NOW; a throw from it is its own named refusal and needs no second wording. */
+  readonly readAncestorPid: () => number
+  /** The app pid this run measured at grant; absent means the grant measured none and nothing can match. */
+  readonly measuredPid: number | undefined
+  /** This run's WEZTERM_UNIX_SOCKET, read now; absent or blank means the CLI has no socket to reach. */
+  readonly socket: string | undefined
+  /** The measured app pid's own unix sockets, or the named reason they could not be read. */
+  readonly heldSockets: (
+    socketPath: string,
+    pid: number,
+  ) => { readonly status: "held" } | { readonly status: "refused"; readonly reason?: string }
+  /** The tty this arm measured for the collector's own pane; absent means there is nothing to match. */
+  readonly measuredTty: string | undefined
+}): { readonly status: "proved" } | { readonly status: "refused"; readonly reason: string } {
+  const ancestorPid = input.readAncestorPid()
+  if (input.measuredPid === undefined || ancestorPid !== input.measuredPid) {
+    return {
+      status: "refused",
+      reason: `Hosted WezTerm ancestor is now pid ${ancestorPid}, not pid ${input.measuredPid ?? "none"} measured at grant`,
+    }
+  }
+  const socket = input.socket
+  if (socket === undefined || socket.trim() === "") {
+    return { status: "refused", reason: "hosted WezTerm pane published no socket" }
+  }
+  const held = input.heldSockets(socket, ancestorPid)
+  if (held.status === "refused") {
+    return { status: "refused", reason: held.reason ?? "WezTerm socket is not held by the measured app process" }
+  }
+  if (input.measuredTty === undefined || input.measuredTty.trim() === "") {
+    return { status: "refused", reason: "hosted WezTerm pane has no measured tty to match" }
+  }
+  return { status: "proved" }
+}
+
 export function wezTermHistoryIdentity(executable: string | undefined): WezTermHistoryIdentity | undefined {
   if (executable === undefined) return undefined
   const proof = ownedWezTermExecutableProof(executable)
@@ -181,7 +231,7 @@ export function socketHeldByPid(input: {
   readonly pid: number
   /** The lister this run chose; a test fixture passes its own, production takes the system lsof. */
   readonly executable?: string
-}): { readonly status: "held"; readonly receipt: string } | { readonly status: "refused"; readonly reason: string } {
+}): { readonly status: "held" } | { readonly status: "refused"; readonly reason: string } {
   const executable = input.executable ?? "/usr/sbin/lsof"
   const args = ["-a", "-U", "-p", String(input.pid), "-Fn"]
   const result = spawnSync(executable, args, {
@@ -193,9 +243,12 @@ export function socketHeldByPid(input: {
   // lsof exits 1 when it matched nothing, which is a reading ("this pid holds no unix socket"), not a failure.
   const listedNothing = result.status === 1 && (result.stdout ?? "") === "" && result.error === undefined
   if (!listedNothing && (result.error || result.signal || result.status !== 0 || typeof result.stdout !== "string")) {
+    // The row's reason is published and must stay value-free: lsof's output can name every socket this
+    // process holds. The command's own evidence goes to the collector's stderr log instead (@cto, a1473808).
+    console.error(`WezTerm socket ownership: ${failure(executable, args, result)}`)
     return {
       status: "refused",
-      reason: `WezTerm socket ownership could not be read: ${failure(executable, args, result)}`,
+      reason: `WezTerm socket ownership could not be read (${commandOutcome(result)})`,
     }
   }
   const paths =
@@ -208,13 +261,10 @@ export function socketHeldByPid(input: {
   if (!paths.includes(input.socketPath)) {
     return {
       status: "refused",
-      reason: `WezTerm socket ${JSON.stringify(input.socketPath)} is not held by the measured app process ${input.pid}; it holds ${JSON.stringify(paths)}`,
+      reason: `WezTerm socket is not held by the measured app process (${paths.length} unix sockets held)`,
     }
   }
-  return {
-    status: "held",
-    receipt: JSON.stringify({ executable, args, socket: input.socketPath, pid: input.pid, heldSockets: paths.length }),
-  }
+  return { status: "held" }
 }
 
 /** The pane list this run's own socket answers, reduced to what the cross-check needs. */

@@ -15,6 +15,7 @@ vi.mock("node:fs", async (importOriginal) => ({
   readFileSync: files.readFileSync,
 }))
 import {
+  hostedWezTermOwnerProof,
   hostedWezTermPrerequisites,
   ownedWezTermExecutableProof,
   ownedWezTermHistoryExecutable,
@@ -227,35 +228,120 @@ test.each([
 })
 
 // Condition 2, re-checked before every read: the socket must be one the measured app process itself holds.
-test("a socket the measured app process holds passes, with a receipt naming the pid", () => {
+test("a socket the measured app process holds passes", () => {
   child.spawnSync.mockReturnValue({
     status: 0,
     stdout: `p2623\nf12\nn/private/tmp/term/other.sock\nn${socket}\n`,
     stderr: "",
   })
   const held = socketHeldByPid({ socketPath: socket, pid: 2623, executable: "/usr/sbin/lsof" })
-  expect(held.status).toBe("held")
-  expect(held.status === "held" && JSON.parse(held.receipt)).toMatchObject({ socket, pid: 2623, heldSockets: 2 })
+  expect(held).toEqual({ status: "held" })
   expect(child.spawnSync.mock.calls.at(-1)!.slice(0, 2)).toEqual(["/usr/sbin/lsof", ["-a", "-U", "-p", "2623", "-Fn"]])
 })
 
-test("a socket another process holds refuses by name and lists what the pid holds", () => {
+// The reason is published with the row, so it stays value-free and stable: no socket path, no pid
+// (@cto, a1473808 REVISE 1).
+test("a socket another process holds refuses by name, without publishing any path", () => {
   child.spawnSync.mockReturnValue({ status: 0, stdout: "p900\nn/private/tmp/term/other.sock\n", stderr: "" })
   const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
-  expect(held.status).toBe("refused")
-  expect(held.status === "refused" && held.reason).toMatch(/is not held by the measured app process 2623/)
-  expect(held.status === "refused" && held.reason).toContain("/private/tmp/term/other.sock")
+  expect(held).toEqual({
+    status: "refused",
+    reason: "WezTerm socket is not held by the measured app process (1 unix sockets held)",
+  })
+  expect(held.status === "refused" && held.reason).not.toContain("/private/tmp")
 })
 
 test("a pid that holds no unix socket refuses rather than passing on an empty list", () => {
   child.spawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" })
   const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
-  expect(held.status === "refused" && held.reason).toMatch(/is not held by the measured app process 2623/)
+  expect(held).toEqual({
+    status: "refused",
+    reason: "WezTerm socket is not held by the measured app process (0 unix sockets held)",
+  })
 })
 
-test("an unreadable lsof refuses and keeps the command's own evidence", () => {
+test("an unreadable lsof refuses value-free and puts the command's own evidence on stderr", () => {
   child.spawnSync.mockReturnValue({ status: 2, stdout: null, stderr: "lsof: permission denied" })
-  const held = socketHeldByPid({ socketPath: socket, pid: 2623 })
-  expect(held.status === "refused" && held.reason).toMatch(/socket ownership could not be read/)
-  expect(held.status === "refused" && held.reason).toContain("lsof: permission denied")
+  const errors: string[] = []
+  const originalError = console.error
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map(String).join(" "))
+  }
+  let held: ReturnType<typeof socketHeldByPid>
+  try {
+    held = socketHeldByPid({ socketPath: socket, pid: 2623 })
+  } finally {
+    console.error = originalError
+  }
+  expect(held).toEqual({ status: "refused", reason: "WezTerm socket ownership could not be read (exit 2)" })
+  expect(held.status === "refused" && held.reason).not.toContain("permission denied")
+  expect(errors.join("\n")).toContain("lsof: permission denied")
+})
+
+// Condition 1, re-read at call time: an ancestor that is present but a different process is refused by
+// pid, before the socket or tty proof and so before any read (@cto, a1473808 REVISE 2).
+test("an ancestor that is a different pid than measured at grant refuses by name, and no proof runs after it", () => {
+  const heldCalls: string[] = []
+  const proof = hostedWezTermOwnerProof({
+    readAncestorPid: () => 5555,
+    measuredPid: 2623,
+    socket,
+    heldSockets: (socketPath, pid) => {
+      heldCalls.push(`${socketPath} ${pid}`)
+      return { status: "held" }
+    },
+    measuredTty: "ttys004",
+  })
+  expect(proof).toEqual({
+    status: "refused",
+    reason: "Hosted WezTerm ancestor is now pid 5555, not pid 2623 measured at grant",
+  })
+  expect(heldCalls).toEqual([])
+})
+
+test("a grant that measured no ancestor pid refuses by name instead of matching any live app", () => {
+  expect(
+    hostedWezTermOwnerProof({
+      readAncestorPid: () => 5555,
+      measuredPid: undefined,
+      socket,
+      heldSockets: () => ({ status: "held" }),
+      measuredTty: "ttys004",
+    }),
+  ).toEqual({
+    status: "refused",
+    reason: "Hosted WezTerm ancestor is now pid 5555, not pid none measured at grant",
+  })
+})
+
+test("the three proofs pass only with the same pid, a socket that pid holds, and a measured tty", () => {
+  const input = {
+    readAncestorPid: () => 2623,
+    measuredPid: 2623,
+    socket,
+    measuredTty: "ttys004",
+  }
+  expect(hostedWezTermOwnerProof({ ...input, heldSockets: () => ({ status: "held" }) })).toEqual({ status: "proved" })
+  expect(hostedWezTermOwnerProof({ ...input, socket: "  ", heldSockets: () => ({ status: "held" }) })).toEqual({
+    status: "refused",
+    reason: "hosted WezTerm pane published no socket",
+  })
+  expect(
+    hostedWezTermOwnerProof({
+      ...input,
+      heldSockets: () => ({
+        status: "refused",
+        reason: "WezTerm socket is not held by the measured app process (0 unix sockets held)",
+      }),
+    }),
+  ).toEqual({
+    status: "refused",
+    reason: "WezTerm socket is not held by the measured app process (0 unix sockets held)",
+  })
+  expect(
+    hostedWezTermOwnerProof({ ...input, measuredTty: undefined, heldSockets: () => ({ status: "held" }) }),
+  ).toEqual({
+    status: "refused",
+    reason: "hosted WezTerm pane has no measured tty to match",
+  })
 })

@@ -88,6 +88,7 @@ import {
 import { readWindowsWezTermRows, readWindowsWezTermText } from "./windows-wezterm-text.ts"
 import {
   hostedWezTermPrerequisites,
+  hostedWezTermOwnerProof,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
   socketHeldByPid,
@@ -1572,31 +1573,26 @@ export async function createOwnedTerminal(options: {
       darwinHosted !== undefined &&
       ownedAppId === "wezterm" &&
       wezTermOwnedReadProbeTodo === undefined
-        ? async (): Promise<void> => {
-            if (hostedApp === undefined) throw new Error("Hosted WezTerm read has no receipt app")
-            // 1. the ancestor this run measured is still the same process, by pid, not by name.
-            const ancestor = requireHostedDarwinAppAncestor(
-              hostedApp.comm,
-              readProcessAncestry(process.pid),
-              hostedAppExecutablePath,
-            )
-            if (hostedAncestor === undefined || ancestor.pid !== hostedAncestor.pid) {
-              throw new Error(
-                `Hosted WezTerm ancestor is now pid ${ancestor.pid}, not pid ${hostedAncestor?.pid ?? "none"} measured at grant`,
-              )
+        ? (): Promise<void> => {
+            if (hostedApp === undefined) {
+              return Promise.reject(new Error("Hosted WezTerm read has no receipt app"))
             }
-            // 2. the socket the CLI will use belongs to that process.
-            const socket = process.env.WEZTERM_UNIX_SOCKET
-            if (socket === undefined || socket.trim() === "") {
-              throw new Error("hosted WezTerm pane published no socket")
-            }
-            const held = socketHeldByPid({ socketPath: socket, pid: ancestor.pid })
-            if (held.status === "refused") throw new Error(held.reason)
-            // 3. the pane read is this collector's pane: the reader refuses unless the listed pane's tty is the
-            //    measured one, and there is nothing to match when this arm measured no tty.
-            if (binding.platform !== "darwin" || binding.tabTty === undefined) {
-              throw new Error("hosted WezTerm pane has no measured tty to match")
-            }
+            // The three proofs, in order: the same ancestor pid, that pid's own socket, and a measured tty —
+            // every one re-read here, before each read (@cto 8c084f05). The check is the first await of the
+            // reader, so a refusal means no read was attempted.
+            const proof = hostedWezTermOwnerProof({
+              readAncestorPid: () =>
+                requireHostedDarwinAppAncestor(
+                  hostedApp.comm,
+                  readProcessAncestry(process.pid),
+                  hostedAppExecutablePath,
+                ).pid,
+              measuredPid: hostedAncestor?.pid,
+              socket: process.env.WEZTERM_UNIX_SOCKET,
+              heldSockets: (socketPath, pid) => socketHeldByPid({ socketPath, pid }),
+              measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+            })
+            return proof.status === "refused" ? Promise.reject(new Error(proof.reason)) : Promise.resolve()
           }
         : undefined
     const wezTermOwnerCheck =
