@@ -3,6 +3,7 @@
  *   or a failed iTerm or Terminal.app qualification read loses its original diagnostic inputs.
  * @level l1
  * @consumer createOwnedTerminal darwinHosted arm used by collectProbeRun on hosted Mac.
+ * @reach fs-walk <fixture-only: assertion diagnostics read this test's generated capture directory>
  * @testonly none
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
