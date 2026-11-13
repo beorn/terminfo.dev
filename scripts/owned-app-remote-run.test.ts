@@ -778,6 +778,7 @@ describe("owned-app ssh transport", () => {
           OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
           SHIM_SSH_LOG: sshLog,
           SHIM_RSYNC_LOG: rsyncLog,
+          REAL_BUN: process.execPath,
         },
       },
     )
