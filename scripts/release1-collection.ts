@@ -268,8 +268,8 @@ export function collectionRoutes(
         sourceRun: fact.runId,
         uncollectable: fact.reason,
       })
-    // Owned membership wins over the hosted matrix: a context whose arm can prove ownership is sent to
-    // that route only, never to both (@cto 33963 condition 1).
+      // Owned membership wins over the hosted matrix: a context whose arm can prove ownership is sent to
+      // that route only, never to both (@cto 33963 condition 1).
     } else if (os === "macos" && ownedMacApps.has(id)) contexts.push(localOwnedAppRow(id))
     else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
     else if (os === "windows" && hosted.windows.has(id)) {
@@ -368,6 +368,12 @@ export interface CollectionPass {
     transport?: CollectionPass["transport"]
     error?: string
     reason?: string
+    /**
+     * Named when this host cannot start the row at all: the row is reported "not run" with this reason
+     * and the pass stays green. It is never an error, because a Mac-only arm measured on Linux is a
+     * fact about the host, not a failure of the collection (@cto 33963 condition 2).
+     */
+    notRun?: string
     /** Every declared supplement of this row, run or not, so a missing one is visible and never read as no result. */
     supplements?: SupplementRow[]
   }>
@@ -422,6 +428,48 @@ export function assertOwnedTransportApplies(contexts: readonly CollectionContext
       `${unowned.map(contextNameOf).join(", ")}. Select only owned contexts, or omit the transport flag; ` +
       `it is refused rather than accepted and ignored.`,
   )
+}
+
+/**
+ * Whether this host can start an owned-app row. @cto 33963 condition 2: the owned route starts the app
+ * on the host that owns it, so a local runner starts it only on macOS. An ssh runner starts it on the
+ * host the caller named, which is that host's choice. A host that cannot start it says so by name and
+ * the pass records the row "not run" instead of turning a host fact into a red collection.
+ */
+export function ownedRowVerdict(
+  context: CollectionContext,
+  runner: string,
+  platform: string,
+): { start: true } | { start: false; reason: string } {
+  if (context.route !== "local-owned-app" || runner !== "local" || platform === "darwin") return { start: true }
+  return {
+    start: false,
+    reason:
+      `not run: ${context.id}/${context.os} starts through the owned route on the host that owns it, and this host is ${platform}; ` +
+      `run it on that host or pass --owned-app-transport ssh:<host>`,
+  }
+}
+
+/**
+ * A selection that NAMES an owned row this host cannot start is refused by name: it cannot measure it,
+ * and returning a pass that quietly skipped the row it was asked for is the silent fallback this rule
+ * exists to prevent. A selection that does not name it records the row "not run" instead.
+ */
+export function assertOwnedRowsStartable(
+  contexts: readonly CollectionContext[],
+  selected: readonly string[] | undefined,
+  runner: string,
+  platform: string,
+): void {
+  for (const context of contexts) {
+    if (selected?.includes(contextNameOf(context)) !== true) continue
+    const verdict = ownedRowVerdict(context, runner, platform)
+    if (verdict.start) continue
+    throw new Error(
+      `${contextNameOf(context)} was selected explicitly, but ${verdict.reason}. ` +
+        `Selecting it here cannot measure it, so the selection is refused rather than returning a pass that never ran it.`,
+    )
+  }
 }
 
 export function ownedAppCommand(
@@ -603,6 +651,20 @@ export async function collectPass(
   const selectedContexts = declared.filter((context) => requestedContexts.includes(contextNameOf(context)))
   const census = selectedContexts
   assertOwnedTransportApplies(census, ownedApp.runner)
+  // @cto 33963 condition 2: an owned row is started by the host that owns the app. On a host that
+  // cannot start it the row is recorded "not run" with the reason by name and the pass stays green;
+  // a selection that names nothing this host CAN start refuses by name instead, because a request
+  // that measures nothing must not come back looking like a pass.
+  const verdictOf = (context: CollectionContext) => ownedRowVerdict(context, ownedApp.runner, process.platform)
+  const cannotStartOwned = (context: CollectionContext): boolean => verdictOf(context).start === false
+  const notRunReason = (context: CollectionContext): string => {
+    const verdict = verdictOf(context)
+    if (verdict.start) {
+      throw new Error(`internal: ${context.id}/${context.os} was asked for a not-run reason it does not have`)
+    }
+    return verdict.reason
+  }
+  assertOwnedRowsStartable(selectedContexts, selection?.contexts, ownedApp.runner, process.platform)
   const pass: CollectionPass = {
     directory,
     probeHash: snapshot.probeHash,
@@ -726,6 +788,11 @@ export async function collectPass(
     pass.contexts.push(row)
     const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
     if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
+    if (cannotStartOwned(context)) {
+      row.notRun = notRunReason(context)
+      row.reason = row.notRun
+      continue
+    }
     row.rawRun = handed.path
     try {
       let path: string
@@ -965,7 +1032,10 @@ export async function collectPass(
     // every declared id is a reason, never an error.
     for (const supplement of row.supplements) if (supplement.error) pass.errors.push(supplement.error)
   }
-  const eligible = pass.contexts
+  // A row this host cannot start is accounted for by name, not counted as measured: it carries
+  // `notRun` and is excluded from the completeness test, so a Linux pass is complete for what Linux
+  // can measure instead of red for a Mac arm it was never able to run.
+  const eligible = pass.contexts.filter((row) => row.notRun === undefined)
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
       if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
