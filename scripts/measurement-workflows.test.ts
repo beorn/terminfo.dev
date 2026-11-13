@@ -1368,7 +1368,10 @@ test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispat
   if (os === "windows") {
     expect(matrix.include).toEqual([{ id: "windows-terminal" }, { id: "alacritty" }, { id: "wezterm" }])
   } else {
-    expect(matrix.include).toHaveLength(9)
+    // The two owned apps must never also dispatch a hosted window.
+    expect(matrix.include).toHaveLength(7)
+    expect(matrix.include.map((row: { id: string }) => row.id)).not.toContain("terminal-app")
+    expect(matrix.include.map((row: { id: string }) => row.id)).not.toContain("iterm2")
     expect(matrix.include.every((row: { id: string; bundle?: string }) => row.id && row.bundle)).toBe(true)
     expect(inputs.cohort).toMatchObject({ type: "boolean", required: false, default: false })
     expect(workflow.concurrency).toEqual({

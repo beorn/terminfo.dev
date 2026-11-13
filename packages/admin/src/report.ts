@@ -12,7 +12,8 @@ import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { originalRunFor, type SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
-import { readExplicitSuiteTarget } from "../suite-manifest.ts"
+import { readExplicitSuiteTarget, readSuiteManifestFile } from "../suite-manifest.ts"
+import { retainedSuiteManifestPath } from "../suite-retention.ts"
 import { loadRawCapture } from "../raw-capture.ts"
 import { renderReport } from "../report.tsx"
 
@@ -56,6 +57,8 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
     pass: string
     suite: string
     sourceRevision: string
+    /** The declaration this pass retained beside its runs (33987); absent on a pass written before the field. */
+    manifestPath?: string
     context?: DeclaredContext
   }
   type EvidenceRow = NonNullable<ReturnType<typeof rows.get>>[number]
@@ -67,11 +70,17 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
     if (typeof header.probeHash !== "string" || typeof header.sourceRevision !== "string") {
       throw new Error(`${path}: pass requires probeHash and sourceRevision`)
     }
-    readExplicitSuiteTarget(ROOT, header.probeHash)
+    // 33987 (@cto ruling C): a pass carries its own declaration; read that file, not the build root's registry. A pass
+    // written before the field existed keeps the registry trust it was measured under.
+    let manifestPath: string | undefined
+    if (header.suiteManifest === undefined) readExplicitSuiteTarget(ROOT, header.probeHash)
+    else manifestPath = retainedSuiteManifestPath(dirname(path), header.suiteManifest, path)
+    if (manifestPath !== undefined) readSuiteManifestFile(manifestPath, header.probeHash)
     const identity: PassContext = {
       pass: basename(dirname(path)),
       suite: header.probeHash,
       sourceRevision: header.sourceRevision,
+      ...(manifestPath !== undefined && { manifestPath }),
     }
     for (const value of contexts) {
       if (!record(value) || !record(value.context)) throw new Error(`${path}: pass has no context identity`)
@@ -173,7 +182,12 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         throw new Error(`${path}: declared ${pass.context.context}; recorded ${context.context}`)
       }
       // The one raw-capture reader (shared with the preview site's hourly view); it throws on any invalid input.
-      const run = loadRawCapture(path, { root: ROOT, catalogIds, bytes })
+      const run = loadRawCapture(path, {
+        root: ROOT,
+        catalogIds,
+        bytes,
+        ...(pass?.manifestPath !== undefined && { manifestPath: pass.manifestPath }),
+      })
       if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
       workingRuns.push(run)
       const totals: Record<string, number> = {}

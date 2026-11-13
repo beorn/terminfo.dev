@@ -8,12 +8,15 @@ import { expect, test } from "vitest"
 import {
   decrpmModeProbe,
   cursorProbe,
+  declaredUntestableResult,
+  notTestedResult,
   parserStateResult,
   recordExecutedProbe,
   NO_SAME_PATH_CONTROL,
   sgrProbe,
   sgrCaptureFrames,
   unmeasuredCellResult,
+  withUnhandledSgrReport,
   type DecrpmPs,
 } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
@@ -1389,4 +1392,33 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
     },
   ])
   expect(written).toEqual([])
+})
+
+// #34000: the wrapper appends its "Open: no qualified unhandled report" clause only to an undecided row, so a
+// declared Untestable row never carries a status word that contradicts its own grade.
+test("the unhandled SGR report leaves a declared Untestable reason unchanged and still notes an undecided row", () => {
+  const target = { feed: "\x1b[58m", code: { kind: "csi" as const, code: "58m" } }
+  const untestableReason =
+    "Untestable: the live libvterm native cell has no underlineColor readback field; observed own keys: char."
+  const ctx = headless()
+
+  const untestable = withUnhandledSgrReport(
+    "sgr.underline.color",
+    "\x1b[58m",
+    () => declaredUntestableResult(untestableReason, {}),
+    target,
+  )(ctx)
+  expect(untestable.note).toBe(untestableReason)
+  expect(untestable.notTested?.noObservable).toBe(untestableReason)
+
+  const openReason = "Open: our test could not read underline colour from the screen cells."
+  const open = withUnhandledSgrReport(
+    "sgr.underline.color",
+    "\x1b[58m",
+    () => notTestedResult(openReason, {}),
+    target,
+  )(ctx)
+  expect(open.note).toBe(
+    `${openReason}; Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries`,
+  )
 })

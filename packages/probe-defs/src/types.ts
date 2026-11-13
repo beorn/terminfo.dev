@@ -1411,6 +1411,14 @@ export interface TermProbeSource {
    * named a missing thing that the run's own artifact recorded as present.
    */
   clipboardFixtureRefusal?: string
+  /**
+   * Present exactly when the collector knows this run's subject app exposes no permitted read of its own
+   * pane — the app was measured and none exists, not "the first route failed" (#31741, @cto 20b9ffed).
+   * The history rows return this as their declared Untestable reason instead of falling back to a
+   * screenshot arm that cannot read retained history. A later app version that grows a read removes the
+   * field, which is what makes the declaration reversible.
+   */
+  scrollbackUnavailable?: string
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,

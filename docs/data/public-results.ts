@@ -1,6 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
+import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   FeatureResultStatus,
@@ -152,7 +152,7 @@ export interface PublicProbeResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "rawReplies" | "assertions" | "origin" | "textQualification" | "identity"
+  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo"
 > {
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
@@ -227,13 +227,17 @@ export interface PublicFeatureGradeSource {
  * grades applied. `from` names the contexts behind each cell so a page can apply rule 4; a cell whose
  * grade came from a joined context carries that context's evidence rather than the primary's.
  */
-function composeJoinedSummary(
+export function composeJoinedSummary(
   primary: PublicContextSummary,
   app: JoinedApp,
   contexts: Record<string, PublicContextSummary>,
 ): PublicContextSummary {
   if (app.contexts.length < 2) return primary
   const featureResults = { ...primary.featureResults }
+  // A cell that carries another context's evidence names that context's run, so the summary carries its
+  // receipt too: a reader resolves every cell as `sources[cell.origin.runId]` (docs/api.md, 33979).
+  // `contributingRunIds` stays the primary's: a page matches its analysis entry on exactly that list.
+  const sources = { ...primary.sources }
   for (const [featureId, cell] of Object.entries(app.cells)) {
     const own = primary.featureResults[featureId]
     if (!own) continue
@@ -243,6 +247,13 @@ function composeJoinedSummary(
     const primaryDecided = cell.from.some((grade) => grade.context === primary.contextKey)
     const source = primaryDecided ? undefined : cell.from.find((grade) => grade.context !== primary.contextKey)
     const other = source ? contexts[source.context]?.featureResults[featureId] : undefined
+    if (source && other && !(other.origin.runId in sources)) {
+      const receipt = contexts[source.context]?.sources[other.origin.runId]
+      if (!receipt) {
+        throw new Error(`Joined context ${source.context} lacks source ${other.origin.runId} for ${featureId}`)
+      }
+      sources[other.origin.runId] = receipt
+    }
     featureResults[featureId] = {
       ...(other ?? own),
       status: cell.status,
@@ -257,6 +268,7 @@ function composeJoinedSummary(
   return {
     ...primary,
     featureResults,
+    sources,
     contexts: app.contexts,
     counts: { ...app.counts },
     score: { supported: app.counts.supported, all: primary.score.all },
@@ -324,8 +336,7 @@ export function publicResults(
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const isScoredTodo = result.status === "probe-todo" && !isEnvironmentGroup(result.featureId)
-    const selection =
-      isScoredTodo && result.attempt.scope === "none" ? readCollectorSelection(version.rawReplies) : undefined
+    const selection = isScoredTodo && result.attempt.scope === "none" ? version.selection : undefined
     // Scheduling facts explain an untouched row; attempted TODO rows expose their reader-safe missing-evidence cause.
     const reason =
       selection && !selection.ids.includes(result.featureId)
@@ -358,15 +369,14 @@ export function publicResults(
       return prior
     }
     const {
-      rawReplies: _raw,
-      assertions: _assertions,
-      origin: _origin,
-      textQualification: _qualification,
-      identity: _identity,
+      selection: _selection,
+      screenRecord: _screen,
+      readRaw: _read,
+      traceMemo: _trace,
       results,
       ...metadata
     } = version
-    const screen = screenGeometry(version.rawReplies["collector.geometry"])
+    const screen = screenGeometry(version.screenRecord)
     const mappedResults = results.map((result) => mapResult(result, version))
     const mapped: PublicVersion = {
       ...metadata,

@@ -37,7 +37,12 @@ export interface HeldMarker {
  * a positive screenshot assertion for it. A Supported from a path that never painted the probe's frames proves nothing
  * about its bytes (@cto 413dbac4).
  */
-export function supportedSuites(runs: readonly LoadedRun[], held: readonly HeldNegative[]): Map<string, Set<string>> {
+export function supportedSuites(
+  runs: readonly (Pick<LoadedRun, "results" | "suiteId"> & {
+    assertions: readonly { featureId: string; kind: string; assertionType?: string }[]
+  })[],
+  held: readonly HeldNegative[],
+): Map<string, Set<string>> {
   const suites = new Map<string, Set<string>>(held.map((row) => [row.featureId, new Set<string>()]))
   for (const run of runs) {
     // A run with no results array recorded no reading at all, so it witnesses nothing.

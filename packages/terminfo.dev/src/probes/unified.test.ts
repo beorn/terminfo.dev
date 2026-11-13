@@ -1107,6 +1107,51 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
+// @failure The collector records "no pane read on this app", but the handoff into the probe source drops it,
+//   so every history row falls back to its screenshot arm and declares nothing (@dev/3 REVISE at b48438b96:
+//   0/12 through the faithful handoff, 12/12 only when the source was built by hand).
+// @level l1
+// @consumer App batch -> probe source handoff -> history rows.
+it("carries the owned collector's no-pane-read declaration into every history row", async () => {
+  verifiedBatchFixture()
+  const reason = "no pane read on this app"
+  const batch = await runProbeBatch({
+    ids: ["scrollback.accumulate", "scrollback.total-lines", "erase.screen.scrollback", "extensions.osc720-scroll-up"],
+    subject: { kind: "term", id: "cursor", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), scrollbackUnavailable: reason },
+  })
+  const rows = batch.results.filter((result) =>
+    [
+      "scrollback.accumulate",
+      "scrollback.total-lines",
+      "erase.screen.scrollback",
+      "extensions.osc720-scroll-up",
+    ].includes(result.featureId),
+  )
+  expect(rows).toHaveLength(4)
+  for (const row of rows) {
+    expect(row.tests, row.featureId).toHaveLength(1)
+    expect(row.tests?.[0], row.featureId).toMatchObject({ id: "declared-untestable", status: "untestable", reason })
+  }
+})
+
+// @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding
+//   that this run could not establish the grid its row needs (@cto 34005 ruling: the refusal wins).
+// @level l1
+// @consumer App batch geometry check -> declared-untestable row precedence.
+it("lets the geometry refusal win over the no-pane-read declaration when geometry is unavailable", async () => {
+  verifiedBatchFixture()
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc720-scroll-up"],
+    subject: { kind: "term", id: "cursor", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(noGeometry), scrollbackUnavailable: "no pane read on this app" },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc720-scroll-up")
+  expect(row?.status).toBe("probe-todo")
+  expect(row?.reason).toMatch(/^Grant geometry unavailable: /u)
+  expect(row?.tests?.map((item) => item.id)).toEqual(["geometry"])
+})
+
 // @failure The native focus recorder loses an enable-time report before it attaches stdin.
 // The mode-only fixtures emit during focusRoundTrip, after the listener is already attached.
 // @level l1
