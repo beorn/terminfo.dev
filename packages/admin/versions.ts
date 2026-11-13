@@ -31,6 +31,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/admin/versions.ts",
   "packages/admin/app-harness.ts",
   "packages/admin/src/terminal-app-receipt.ts",
+  "packages/admin/src/iterm2-launch.ts",
   "packages/terminfo.dev/src/terminal-app-window.ts",
   "packages/terminfo.dev/src/probe-output.ts",
   "packages/admin/corpus-placement.ts",
