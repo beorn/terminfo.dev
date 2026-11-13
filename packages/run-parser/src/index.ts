@@ -98,6 +98,17 @@ export type LoadedRun = LoadedRunFields &
     | { schemaVersion: 1 | 2 | 3; source?: never; assertions: ReadAssertion[]; observations: ReadObservation[] }
   )
 
+export type RunTraceFacts = Pick<LoadedRun, "identity" | "rawReplies" | "assertions">
+
+/** The trace-owned facts of a record already validated by parseRun, or bound to those exact bytes. */
+export function runTraceFacts(raw: Record<string, unknown>): RunTraceFacts {
+  return {
+    identity: raw.identity as LoadedRun["identity"],
+    rawReplies: raw.rawReplies as LoadedRun["rawReplies"],
+    assertions: raw.assertions as LoadedRun["assertions"],
+  }
+}
+
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0
@@ -1659,6 +1670,7 @@ export function parseRun(
     )
   }
   if (!object(raw.intendedSubject)) fail(path, "current run requires intendedSubject")
+  const traceFacts = runTraceFacts(raw)
   return {
     path,
     sha256,
@@ -1669,7 +1681,7 @@ export function parseRun(
     intendedSubject: normalizeIntendedSubject(raw.intendedSubject, schemaVersion, path),
     runId,
     subject: subject,
-    identity: raw.identity as LoadedRun["identity"],
+    identity: traceFacts.identity,
     ...(runtimeIdentity && { runtimeIdentity }),
     ...(provenance && { provenance }),
     ...(outerApp && { outerApp }),
@@ -1685,8 +1697,8 @@ export function parseRun(
       ...(typeof raw.origin.url === "string" && { url: raw.origin.url }),
       ...(appLaunch && { appLaunch }),
     },
-    rawReplies: raw.rawReplies as Record<string, string>,
-    assertions,
+    rawReplies: traceFacts.rawReplies,
+    assertions: traceFacts.assertions,
     screenshotRefs: raw.screenshotRefs as string[],
     textSnapshotRefs,
     ...(textQualification === undefined ? {} : { textQualification }),

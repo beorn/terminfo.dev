@@ -25,7 +25,6 @@ import {
   originalRunFor,
 } from "./selected-results.ts"
 import { currentTrace, type CurrentTraceDocument } from "./run-trace.ts"
-import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
 /** Missing kind retains the historical PNG shape byte for byte. */
@@ -370,8 +369,6 @@ export function publicResults(
       results: mappedResults,
     }
     mappedRuns.set(version.runId, mapped)
-    // The trace has serialized this one run; do not let its raw parse accumulate across the corpus.
-    collectGarbage()
     return mapped
   }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>

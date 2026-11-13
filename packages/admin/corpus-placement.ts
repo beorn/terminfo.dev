@@ -10,8 +10,10 @@ import {
   measuredVersionTokens,
   parseJsonStrict,
   parseRun,
+  runTraceFacts,
   parseSuiteManifest,
   type LoadedRun,
+  type RunTraceFacts,
 } from "@terminfo/run-parser"
 import { WINDOWS_MESA_RENDERER_DLLS } from "../run-parser/src/app-launch.ts"
 import {
@@ -59,15 +61,11 @@ export function collectGarbage(): void {
 /** Over the 50-run corpus of 2026-11-11 the read peaked at 1.95 GB RSS, 1.29 GB collecting every 5 runs, same wall time. */
 const RUNS_PER_COLLECTION = 5
 
-function storedRunReader(
-  path: string,
-  runId: string,
-  sha256: string,
-  catalog: readonly string[],
-  suites: ReadonlyMap<string, ProbeSuiteManifest>,
-): () => LoadedRun {
+function storedRunReader(path: string, runId: string, sha256: string): () => RunTraceFacts {
   // Capture only immutable references and parser inputs, never the loaded run whose payload can be large.
   return () => {
+    // The previous trace's raw parse is unreachable now; keep only one run live while rereading.
+    collectGarbage()
     let bytes: string
     try {
       bytes = readFileSync(path, "utf8")
@@ -75,8 +73,13 @@ function storedRunReader(
       throw new Error(`${path}: cannot reread stored run ${runId}`, { cause })
     }
     const digest = createHash("sha256").update(bytes).digest("hex")
-    if (digest !== sha256) throw new Error(`${path}: stored run ${runId} sha256 digest changed after load`)
-    return parseRun(path, bytes, catalog, suites)
+    if (digest !== sha256) {
+      throw new Error(
+        `${path}: stored run ${runId} sha256 digest changed after load; expected ${sha256}, got ${digest}`,
+      )
+    }
+    // This closure exists only after this process's canonical parseRun validated the same SHA.
+    return runTraceFacts(parseJsonStrict(path, bytes) as Record<string, unknown>)
   }
 }
 
@@ -85,12 +88,12 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project: (run: LoadedRun, reread: () => LoadedRun) => T,
+  project: (run: LoadedRun, reread: () => RunTraceFacts) => T,
 ): T[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project?: (run: LoadedRun, reread: () => LoadedRun) => T,
+  project?: (run: LoadedRun, reread: () => RunTraceFacts) => T,
 ): Array<LoadedRun | T> {
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
@@ -115,7 +118,7 @@ export function loadStoredRuns<T>(
       .sort()) {
       const runPath = join(path, file)
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
-      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256, catalog, suites)) : run)
+      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256)) : run)
       if (project || runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }

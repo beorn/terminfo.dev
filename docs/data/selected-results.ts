@@ -35,7 +35,7 @@ import {
   readCollectorAttempt,
   isHarnessOutcome,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, parseJsonStrict } from "@terminfo/run-parser"
+import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import {
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
@@ -73,10 +73,10 @@ export type ProjectionRun = Pick<
   attempt: CollectorAttempt | undefined
   screenRecord: string | undefined
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
-  readRaw: () => LoadedRun
+  readRaw: () => RunTraceFacts
 }
 
-function compactRun(run: LoadedRun, readRaw: () => LoadedRun): ProjectionRun {
+function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
   return {
     path: run.path,
     schemaVersion: run.schemaVersion,
@@ -203,7 +203,7 @@ export interface CurrentSelectedVersion {
   results: ProbeResult[]
   selection: CollectorSelection | undefined
   screenRecord: string | undefined
-  readRaw: () => LoadedRun
+  readRaw: () => RunTraceFacts
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>

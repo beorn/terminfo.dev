@@ -302,7 +302,10 @@ function originalRun(
 }
 
 // Re-enter the production composer after a fixture changes an original subject/run.
-function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] = []): SelectedProjection {
+function recompose(
+  projection: SelectedProjection,
+  extra: readonly (LoadedRun | ProjectionRun)[] = [],
+): SelectedProjection {
   const runs = new Map<string, LoadedRun | ProjectionRun>(
     Object.values(projection.contexts).flatMap((context) =>
       Object.values(context.cells).map((cell) => [cell.run.runId, cell.run] as const),
@@ -311,7 +314,14 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   // Rejected original history still affects physical context keys and remains readable in history.
   for (const version of Object.values(projection.history).flat()) {
     if (runs.has(version.runId)) continue
-    runs.set(version.runId, version.readRaw())
+    runs.set(version.runId, {
+      ...version,
+      path: "/fixture/" + version.runId + ".json",
+      assertions: version.readRaw().assertions,
+      attempt: undefined,
+      screenshotRefs: [],
+      textSnapshotRefs: [],
+    })
   }
   for (const run of extra) runs.set(run.runId, run)
   return selectedResults.projectResults(
@@ -322,6 +332,12 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   )
 }
 
+function cloneFixtureRun(run: ProjectionRun): ProjectionRun {
+  const { readRaw, ...facts } = run
+  const raw = structuredClone(readRaw())
+  return { ...structuredClone(facts), readRaw: () => raw }
+}
+
 function addFixtureSubject(
   projection: SelectedProjection,
   kind: CurrentSelectedVersion["subject"]["kind"],
@@ -329,7 +345,7 @@ function addFixtureSubject(
 ) {
   const base = Object.values(projection.contexts).flatMap((context) => Object.values(context.cells))[0]?.run
   if (!base) throw new Error("Missing original run for subject fixture")
-  const run = structuredClone(base.readRaw())
+  const run = cloneFixtureRun(base)
   run.subject = { ...run.subject, kind, id }
   run.runId = `${base.runId}-${kind}-${id}`
   run.sha256 = createHash("sha256").update(run.runId).digest("hex")
@@ -1633,7 +1649,7 @@ it("uses explicit route and OS facts when display-column keys are opaque", () =>
   const original = requiredContext(projection, "term", "kitty")
   const source = Object.values(original.cells)[0]?.run
   if (!source) throw new Error("Missing original app fixture")
-  const linux = structuredClone(source.readRaw())
+  const linux = cloneFixtureRun(source)
   linux.subject = { ...linux.subject, os: "linux" }
   linux.runId += "-linux-os-column"
   linux.sha256 = createHash("sha256").update(linux.runId).digest("hex")
