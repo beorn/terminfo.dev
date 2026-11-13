@@ -883,6 +883,47 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   expect(clicks).toEqual([4, 5, 4, 5])
 })
 
+test("erase.screen.scrollback keeps its XTEST verdict when a history reader is also present (@cto 8511f7e3 condition e)", async () => {
+  const { ctx, keys, clicks } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const withReader: TermProbeSource = {
+    ...ctx,
+    getScrollback: async () => {
+      readerCalls += 1
+      throw new Error("the owned history reader must not decide a run that has capture, input and readInput")
+    },
+  }
+  const result = (await byId("erase.screen.scrollback").term(withReader)) as ProbeCallbackResult
+  expect(readerCalls).toBe(0)
+  expect(keys).toEqual(["a"])
+  expect(clicks).toEqual([4, 5, 4, 5])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+})
+
+test("erase.screen.scrollback hands the decision to the reader when ANY of capture, input and readInput is absent", async () => {
+  const { ctx, clicks } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    // Capture and XTEST input stay present: only the injected-input listener is gone, which is enough
+    // for the history reader to own the verdict (@cto 8511f7e3 condition e reads "any", not "all").
+    readInput: undefined,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return { viewportOffset: 0, totalLines, screenLines: ctx.rows }
+    },
+  }
+  const result = await byId("erase.screen.scrollback").term(withReader)
+  expect(readerCalls).toBe(3)
+  expect(clicks).toEqual([])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.note).toContain(
+    `owned history 37 -> 0 lines above a ${ctx.rows}-line screen, and 5 after ${ctx.rows + 5} more`,
+  )
+})
+
 test("multiplexer erase.screen.scrollback decides from tmux and screen history counts before and after ED3 (#32774, #32784, @cto e078c568, addfd7b2)", async () => {
   const featureId = "erase.screen.scrollback"
   const sourceRevision = "a".repeat(40)
