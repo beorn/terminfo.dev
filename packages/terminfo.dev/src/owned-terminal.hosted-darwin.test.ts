@@ -898,9 +898,15 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
       spawnSync: (file, args) => {
         if (String(file).includes("cmux")) {
           cmuxCalls.push(String(file) + " " + args.join(" "))
-          // read-screen shows the surface's own history: the grant nonce line comes back exactly once.
           if (args.includes("read-screen")) {
-            return { status: 0, stdout: "$ prompt\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ prompt", stderr: "" }
+            // Each surface answers with its own history, and an unnamed read answers as the focused
+            // surface. Focus moves to surface-uuid-2 after the grant, so a read that fell back to "current"
+            // would return the rival's three lines instead of our four (@dev/1 peer verdict, F3).
+            const named = args[args.indexOf("--surface") + 1]
+            if (named === "surface-uuid-1") {
+              return { status: 0, stdout: "$ prompt\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ prompt", stderr: "" }
+            }
+            return { status: 0, stdout: "rival-a\\nrival-b\\nrival-c", stderr: "" }
           }
         }
         return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
@@ -940,9 +946,13 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     // A refusal alone would let a broken success path pass, so restore the owner and read twice for real
     // (@dev/1 peer read 2026-11-13).
     appPid = 4242
+    // Focus moves to a second surface after grant; every later read must still name the acquired one
+    // (@dev/1 peer verdict, F3).
+    process.env.CMUX_SURFACE_ID = "surface-uuid-2"
     const first = await owner.getScrollback()
     const second = await owner.getScrollback()
     assert.deepEqual(second, first, "two reads of an unchanged surface report the same history")
+    assert.equal(first.totalLines, 4, "reads report the acquired surface's history, not the focused surface's")
     assert.equal(cmuxCalls.length, atGrant + 2, "each later read runs its own CLI read")
     for (const call of cmuxCalls.slice(atGrant)) {
       assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
