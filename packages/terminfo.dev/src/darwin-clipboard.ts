@@ -90,7 +90,7 @@ export async function createDarwinClipboardAdapter(input: {
       await run("/usr/bin/pbcopy", [], text)
       trace({ kind, at: new Date().toISOString(), length: text.length })
     },
-  })
+  }, input.ownedHost ? { foreignReadDigest: "omit" } : undefined)
   return {
     profile: "default",
     pasteboard: "darwin",

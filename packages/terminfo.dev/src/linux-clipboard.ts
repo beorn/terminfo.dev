@@ -252,6 +252,12 @@ export function createClipboardTransaction(
   options?: {
     readonly writeDeadlineMs?: number
     readonly writePollMs?: number
+    /**
+     * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
+     * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
+     * those runs record the read's length and never its digest. Linux and hosted runs keep it.
+     */
+    readonly foreignReadDigest?: "record" | "omit"
     readonly muxState?: {
       snapshot(): Promise<{ readonly tmuxSetClipboard?: string; readonly buffers: readonly string[] }>
       restore(before: readonly string[]): Promise<void>
@@ -259,6 +265,11 @@ export function createClipboardTransaction(
   },
 ): LinuxClipboardAdapter["withClipboardFixture"] {
   let busy = false
+  const described = (text: string): string => {
+    if (options?.foreignReadDigest !== "omit") return describeRead(text)
+    const length = Buffer.byteLength(text)
+    return `read length ${length}${length === 0 ? ", empty read (no owner or empty owner)" : ""}`
+  }
   return async (work, trace, verify) => {
     if (busy) throw new Error("Owned clipboard transaction cannot nest or overlap")
     busy = true
@@ -269,7 +280,7 @@ export function createClipboardTransaction(
       await verify()
       const owner = io.owner?.(trace)
       if (owner && !owner.alive) {
-        const read = await io.readText(trace, "clipboard-read", verify).then(describeRead, (error: unknown) => {
+        const read = await io.readText(trace, "clipboard-read", verify).then(described, (error: unknown) => {
           return `read failed: ${error instanceof Error ? error.message : String(error)}`
         })
         throw new Error(
@@ -279,7 +290,7 @@ export function createClipboardTransaction(
       const read = await io.readText(trace, "clipboard-read", verify)
       if (read !== baseline) {
         throw new Error(
-          `Owned clipboard baseline changed before callback: ${describeRead(read)}` +
+          `Owned clipboard baseline changed before callback: ${described(read)}` +
             (owner ? `; owner helper ${owner.helperPid} alive` : ""),
         )
       }

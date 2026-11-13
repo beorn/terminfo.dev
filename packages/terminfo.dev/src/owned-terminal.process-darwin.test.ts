@@ -214,6 +214,8 @@ function runDarwinArm(scenario: {
   tty?: string
   /** The claim's own run id, when it differs from the worker's. */
   claimRunId?: string
+  /** The window server answering for a window this run no longer has (@cto 1c7e19df, condition 4). */
+  windowOwnership?: "refused"
   batch?: "process" | "terminal-app" | "disposed"
   /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
   comms?: Record<string, string>
@@ -253,6 +255,7 @@ function runDarwinArm(scenario: {
       process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
     }
     const reads = []
+    const pasteboard = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     const realFs = await import("node:fs")
     const realOpenSync = realFs.openSync
@@ -297,15 +300,24 @@ function runDarwinArm(scenario: {
         if (command !== "/bin/ps") throw new Error("unexpected exec " + command)
         return ps(args)
       },
-      spawnSync: (command, args) => ({
-        status: 0,
-        stdout: command === "/bin/ps" ? ps(args) : "",
-        stderr: "",
-      }),
+      spawnSync: (command, args) => {
+        if (command === "osascript") {
+          if (scenario.windowOwnership === "refused") {
+            return { status: 1, stdout: "", stderr: "owned Terminal window no longer exists uniquely" }
+          }
+          return { status: 0, stdout: "0", stderr: "" }
+        }
+        return {
+          status: 0,
+          stdout: command === "/bin/ps" ? ps(args) : "",
+          stderr: "",
+        }
+      },
       spawn: (command, args) => {
         // #31741 follow-on: an owned Terminal.app window now carries its own pasteboard fixture, so
         // construction reads the pasteboard once. Nothing here writes the real one.
         if (command === "/usr/bin/pbpaste" || command === "/usr/bin/pbcopy") {
+          pasteboard.push(command)
           const pasteboard = new EventEmitter()
           Object.assign(pasteboard, {
             stdout: new EventEmitter(),
@@ -415,7 +427,7 @@ function runDarwinArm(scenario: {
         }))
       }
     } catch (error) {
-      console.log("REFUSED " + error.message)
+      console.log("REFUSED " + error.message + " PASTEBOARD " + JSON.stringify(pasteboard))
     }
   `
   return {
