@@ -1,6 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
+import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   FeatureResultStatus,
@@ -152,7 +152,7 @@ export interface PublicProbeResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "rawReplies" | "assertions" | "origin" | "textQualification" | "identity"
+  "results" | "selection" | "screenRecord" | "readRaw"
 > {
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
@@ -325,7 +325,7 @@ export function publicResults(
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const isScoredTodo = result.status === "probe-todo" && !isEnvironmentGroup(result.featureId)
     const selection =
-      isScoredTodo && result.attempt.scope === "none" ? readCollectorSelection(version.rawReplies) : undefined
+      isScoredTodo && result.attempt.scope === "none" ? version.selection : undefined
     // Scheduling facts explain an untouched row; attempted TODO rows expose their reader-safe missing-evidence cause.
     const reason =
       selection && !selection.ids.includes(result.featureId)
@@ -358,15 +358,13 @@ export function publicResults(
       return prior
     }
     const {
-      rawReplies: _raw,
-      assertions: _assertions,
-      origin: _origin,
-      textQualification: _qualification,
-      identity: _identity,
+      selection: _selection,
+      screenRecord: _screen,
+      readRaw: _read,
       results,
       ...metadata
     } = version
-    const screen = screenGeometry(version.rawReplies["collector.geometry"])
+    const screen = screenGeometry(version.screenRecord)
     const mappedResults = results.map((result) => mapResult(result, version))
     const mapped: PublicVersion = {
       ...metadata,

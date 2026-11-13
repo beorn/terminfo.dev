@@ -49,6 +49,38 @@ function fail(path: string, message: string): never {
 
 type ReadObservation = HistoricalRun["observations"][number]
 type ReadAssertion = HistoricalRun["assertions"][number]
+
+/** Selection facts only; run-owned evidence is read once when its public trace is built. */
+export type ProjectionRun = Pick<
+  LoadedRun,
+  | "path" | "schemaVersion" | "source" | "runId" | "sha256" | "subject" | "measuredAt"
+  | "suiteId" | "probeHash" | "sourceRevision" | "catalogIds" | "results" | "screenshotRefs" | "textSnapshotRefs"
+> & {
+  assertions: Array<Pick<ReadAssertion, "featureId" | "kind" | "assertionType">>
+  selection: CollectorSelection | undefined
+  attempt: CollectorAttempt | undefined
+  screenRecord: string | undefined
+  outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
+  readRaw: () => LoadedRun
+}
+
+function compactRun(run: LoadedRun, readRaw: () => LoadedRun): ProjectionRun {
+  return {
+    path: run.path, schemaVersion: run.schemaVersion, source: run.source, runId: run.runId, sha256: run.sha256,
+    subject: run.subject, measuredAt: run.measuredAt, suiteId: run.suiteId, probeHash: run.probeHash,
+    sourceRevision: run.sourceRevision, catalogIds: run.catalogIds, results: run.results,
+    screenshotRefs: run.screenshotRefs, textSnapshotRefs: run.textSnapshotRefs,
+    assertions: run.assertions.map(({ featureId, kind, assertionType }) => ({ featureId, kind, assertionType })),
+    selection: readCollectorSelection(run.rawReplies), attempt: readCollectorAttempt(run.rawReplies),
+    screenRecord: run.rawReplies["collector.geometry"], readRaw,
+    ...(run.outerApp && { outerApp: { subject: run.outerApp.subject } }),
+  }
+}
+
+function projectionRun(run: LoadedRun | ProjectionRun): ProjectionRun {
+  // Explicit in-memory working inputs and pure projection callers own their raw input's lifetime.
+  return "readRaw" in run ? run : compactRun(run, () => run)
+}
 export interface SelectedCell extends ReadObservation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
@@ -143,14 +175,11 @@ export interface CurrentSelectedVersion {
   probeHash: string
   sourceRevision: string
   sha256: string
-  /** The identity the run recorded for itself. Only its trace document publishes it. */
-  identity: LoadedRun["identity"]
   catalogIds: string[]
   results: ProbeResult[]
-  rawReplies: Record<string, string>
-  assertions: ReadAssertion[]
-  origin: RunOrigin
-  textQualification?: TextQualification
+  selection: CollectorSelection | undefined
+  screenRecord: string | undefined
+  readRaw: () => LoadedRun
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -161,7 +190,7 @@ export interface CurrentSelectedVersion {
 /** A private view refers to the original result and its own run, never to a synthetic capture. */
 export interface SelectedContextCell {
   origin: { runId: string; resultId: string }
-  run: LoadedRun
+  run: ProjectionRun
   result: ProbeResult
   /** Environment groups are retained run metadata, outside the feature-result catalogue. */
   featureResult?: FeatureResult
@@ -316,7 +345,7 @@ const contextKey = (t: ProbeSubject): string =>
  * Count over EVERY run the corpus holds for the target, legacy and current, and pass the one result to
  * both projections; a projection counting its own runs keys one context two ways (30661).
  */
-export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
+export function countContexts(runs: readonly Pick<LoadedRun, "subject">[]): Map<string, Set<string>> {
   const counts = new Map<string, Set<string>>()
   for (const run of runs) {
     const stem = `${run.subject.kind}:${run.subject.id}`
@@ -366,7 +395,7 @@ export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject
 export const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 interface SupplementInput {
-  run: LoadedRun
+  run: ProjectionRun
   supplement: ContextSupplement
   /** The default context's projected key: the only context this supplement may read into. */
   contextKey: string
@@ -378,7 +407,7 @@ interface SupplementInput {
  * list, and refusals this reading assesses for schema-3 or schema-4 runs are appended after them.
  */
 export function projectResults(
-  runs: readonly LoadedRun[],
+  inputRuns: readonly (LoadedRun | ProjectionRun)[],
   catalogIds: readonly string[],
   policy: {
     currentProbeHash: string
@@ -393,6 +422,7 @@ export function projectResults(
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
+  const runs = inputRuns.map(projectionRun)
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   checkReopenedWitnesses(policy.reopened ?? [], runs)
   // 30661: the context count is per target across every run the projection read, so a context key is
@@ -427,9 +457,9 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  const acceptedRuns: LoadedRun[] = []
+  const acceptedRuns: ProjectionRun[] = []
   const baselineRunIds: string[] = []
-  const historyVersion = (run: LoadedRun, recordTable = true): CurrentSelectedVersion => {
+  const historyVersion = (run: ProjectionRun, recordTable = true): CurrentSelectedVersion => {
     if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
@@ -449,15 +479,13 @@ export function projectResults(
       probeHash: run.probeHash,
       sourceRevision: run.sourceRevision,
       sha256: run.sha256,
-      identity: run.identity,
       catalogIds: [...run.catalogIds],
       // Preserve the parser's result objects: its private historical facts are keyed by identity.
       results,
       suiteRelation,
-      rawReplies: { ...run.rawReplies },
-      assertions: globalThis.structuredClone(run.assertions),
-      origin: globalThis.structuredClone(run.origin),
-      ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
+      selection: run.selection,
+      screenRecord: run.screenRecord,
+      readRaw: run.readRaw,
       suiteFreshness,
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
@@ -514,7 +542,7 @@ export function projectResults(
     )
     // Original versions retain their display order. Only an explicit historical baseline supplies
     // untouched cells; selected attempts are folded independently by their recorded start below.
-    const baseline = versions.find((version) => readCollectorSelection(version.rawReplies) === undefined)
+    const baseline = versions.find((version) => version.selection === undefined)
     if (baseline) baselineRunIds.push(baseline.runId)
     const unique = versions.filter(
       (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
@@ -522,7 +550,7 @@ export function projectResults(
     projection.versions[key] = unique
   }
   const admitted = admittedContextKeys(projection.versions)
-  const workingRuns = policy.workingRuns ?? []
+  const workingRuns = (policy.workingRuns ?? []).map(projectionRun)
   for (const run of workingRuns) {
     // A working run keeps its admitted subject's key, so its original resolves under the same context
     // the composed row cites. It never enters `table`, `versions` or `history`.
@@ -548,7 +576,7 @@ export function projectResults(
 }
 
 /** Every witness of a reopened row is a run the projection read, citing the row's feature at that assertion index. */
-function checkReopenedWitnesses(rows: readonly ReopenedCell[], runs: readonly LoadedRun[]): void {
+function checkReopenedWitnesses(rows: readonly ReopenedCell[], runs: readonly ProjectionRun[]): void {
   const byId = new Map(runs.map((run) => [run.runId, run]))
   for (const row of rows) {
     for (const { runId, assertionIndex } of row.witnesses) {
@@ -644,9 +672,9 @@ export function originalRunFor<T extends Pick<CurrentSelectedVersion, "runId">>(
 }
 
 function composeContextSummaries(
-  acceptedRuns: readonly LoadedRun[],
+  acceptedRuns: readonly ProjectionRun[],
   baselineRunIds: readonly string[],
-  workingRuns: readonly LoadedRun[],
+  workingRuns: readonly ProjectionRun[],
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
   contextKeys: ReadonlyMap<string, string>,
@@ -656,7 +684,7 @@ function composeContextSummaries(
   derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
-  const runsById = new Map<string, LoadedRun>()
+  const runsById = new Map<string, ProjectionRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
     // A pass may cite its original draft and its sealed admitted snapshot: one run, different
     // envelopes. Keep the admitted immutable owner; both input paths remain report evidence.
@@ -667,8 +695,8 @@ function composeContextSummaries(
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
   // Working inputs cannot rename an admitted key; see workingSubjectKey.
-  const keyFor = (run: LoadedRun): string => workingSubjectKey(contextKeys, run.subject)
-  const groups = new Map<string, LoadedRun[]>()
+  const keyFor = (run: ProjectionRun): string => workingSubjectKey(contextKeys, run.subject)
+  const groups = new Map<string, ProjectionRun[]>()
   for (const run of runs) {
     const key = keyFor(run)
     groups.set(key, [...(groups.get(key) ?? []), run])
@@ -708,25 +736,25 @@ function composeContextSummaries(
           (run) =>
             !baselineIds.has(run.runId) &&
             !workingIds.has(run.runId) &&
-            readCollectorSelection(run.rawReplies) === undefined &&
+            run.selection === undefined &&
             chosenBaselines.some((baseline) => baseline.subject.version === run.subject.version),
         )
         .sort((a, b) => Date.parse(a.measuredAt) - Date.parse(b.measuredAt) || a.runId.localeCompare(b.runId)),
       ...chosenBaselines,
-      ...candidates.filter((run) => workingIds.has(run.runId) && readCollectorSelection(run.rawReplies) === undefined),
+      ...candidates.filter((run) => workingIds.has(run.runId) && run.selection === undefined),
     ]
     const currentMethods = new Map<
       string,
       {
         version: string
         suite: string | null
-        probes: Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>
+        probes: Map<ProbeMethod | null, { run: ProjectionRun; result: ProbeResult }>
       }
     >()
     const decided = new Set<FeatureResultStatus>(["supported", "unsupported", "untestable"])
     const keptStreak = new Map<string, number>()
     let keptCount = 0
-    const keptDecidedCell = (run: LoadedRun, result: ProbeResult): boolean => {
+    const keptDecidedCell = (run: ProjectionRun, result: ProbeResult): boolean => {
       if (!isHarnessOutcome(result.harnessOutcome)) {
         keptStreak.delete(result.featureId)
         return false
@@ -754,7 +782,7 @@ function composeContextSummaries(
       )
       return true
     }
-    const remember = (run: LoadedRun, result: ProbeResult): void => {
+    const remember = (run: ProjectionRun, result: ProbeResult): void => {
       const classification = classifyResultMethod(result, run.subject, run.assertions)
       const method = classification.kind === "method" ? classification.method : null
       const prior = currentMethods.get(result.featureId)
@@ -765,7 +793,7 @@ function composeContextSummaries(
         method !== null &&
         !prior.probes.has(null)
           ? prior.probes
-          : new Map<ProbeMethod | null, { run: LoadedRun; result: ProbeResult }>()
+          : new Map<ProbeMethod | null, { run: ProjectionRun; result: ProbeResult }>()
       probes.set(method, { run, result })
       currentMethods.set(result.featureId, { version: run.subject.version, suite: run.probeHash, probes })
       const currentProbes = [...probes].map(([probeMethod, probe]) => ({
@@ -800,8 +828,8 @@ function composeContextSummaries(
       for (const result of run.results) remember(run, result)
     }
     const selected = candidates.flatMap((run) => {
-      const selection = readCollectorSelection(run.rawReplies)
-      return selection ? [{ runId: run.runId, run, selection, attempt: readCollectorAttempt(run.rawReplies) }] : []
+      const selection = run.selection
+      return selection ? [{ runId: run.runId, run, selection, attempt: run.attempt }] : []
     })
     selected.sort(compareContextAttempts)
     const attempts: SelectedContextAttempt[] = []
@@ -1077,7 +1105,7 @@ export function loadSelectedResults(
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const features = loadFeatures(contentDir)
   const catalog = Object.keys(features)
-  const runs = loadStoredRuns(contentDir, catalog)
+  const runs = loadStoredRuns(contentDir, catalog, compactRun)
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
   for (const run of runs) {
