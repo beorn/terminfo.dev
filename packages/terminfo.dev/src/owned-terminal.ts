@@ -81,7 +81,7 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
-import { assertOwnedTerminalWindow } from "./terminal-app-window.ts"
+import { assertOwnedAppOwner, assertOwnedTerminalWindow, ownedAppProbes } from "./terminal-app-window.ts"
 import {
   assertOwnedProcess,
   runScopedMarker,
@@ -1322,6 +1322,7 @@ export async function createOwnedTerminal(options: {
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
   process?: ProcessOwnerAssertion
+  ownedApp?: OwnedAppOwnerAssertion
   darwinMux?: DarwinMuxInput
   /** Retain this outer collector's identity before the launcher attaches a mux. */
   darwinPreflight?: boolean
@@ -1335,6 +1336,7 @@ export async function createOwnedTerminal(options: {
     linux,
     terminalApp,
     process: processOwner,
+    ownedApp,
     darwinMux,
     darwinPreflight,
     darwinHosted,
@@ -1342,7 +1344,7 @@ export async function createOwnedTerminal(options: {
   } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  const armCount = [linux, terminalApp, processOwner, darwinHosted, windowsHosted].filter(Boolean).length
+  const armCount = [linux, terminalApp, processOwner, ownedApp, darwinHosted, windowsHosted].filter(Boolean).length
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
@@ -1435,6 +1437,28 @@ export async function createOwnedTerminal(options: {
     processOwnerBasis = disposableBasis
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
+    if (darwinPreflight) {
+      const collector = readProcessAncestry(process.pid, process.pid)[0]
+      if (!collector || collector.startedAtEpochSeconds === undefined) {
+        throw new Error("Darwin outer collector birth could not be measured")
+      }
+      preflightIdentity = {
+        pid: collector.pid,
+        startedAtEpochSeconds: collector.startedAtEpochSeconds,
+        launchRunId: expectedLaunchRunId,
+      }
+    }
+  } else if (ownedApp) {
+    if (process.platform !== "darwin") throw new Error("Owned app launch requires Darwin")
+    const assertion = parseOwnedAppOwnerAssertion(ownedApp)
+    // The arm's whole proof: proof entry, this worker's run, live bundle, worker TTY, the one pid that
+    // carries the marker, and the census showing it owns the recorded window.
+    assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    // A read that happens later re-runs the same proof rather than trusting the grant: the app may quit
+    // and its pid be reused while the grant is alive.
+    processOwnerRecheck = () => assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    processOwnerPid = assertion.ownerPid
+    binding = darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
       const collector = readProcessAncestry(process.pid, process.pid)[0]
       if (!collector || collector.startedAtEpochSeconds === undefined) {
