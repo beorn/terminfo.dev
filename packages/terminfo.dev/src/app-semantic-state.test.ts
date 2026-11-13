@@ -19,6 +19,7 @@ import {
   beginMuxSgrCommandRead,
   openAppCommandLog,
   readAppSemanticState,
+  readWezTermCwd,
 } from "./app-semantic-state.ts"
 
 const weztermCli = vi.hoisted(() => vi.fn())
@@ -258,6 +259,47 @@ test("owned WezTerm OSC7 observes two fresh directory values and restores the pu
   expect(feeds[2]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-target-[0-9a-f]{8}\x07$/)
   expect(cwd).toBe(initial)
   expect(feeds.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+})
+
+test("WezTerm CWD keeps its initial home URI private while the registered callback decides support", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-private-"))
+  const initial = "file:///Users/private-person/secret-project"
+  let cwd = initial
+  let text = ""
+  let reading: AppSemanticReading | undefined
+  try {
+    const source = replayTermProbeSource(new Map())
+    source.readAppSemanticState = async () => {
+      reading = await readWezTermCwd({
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+          if (command) cwd = command[1]!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      return reading
+    }
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(JSON.stringify(result)).not.toContain(initial)
+    expect(JSON.stringify(result)).not.toContain("private-person")
+    expect(cwd).toBe(initial)
+    if (reading?.status !== "measured") throw new Error("No controlled CWD reading")
+    expect(reading.detail).toMatchObject({
+      restoredEqual: true,
+      initialSha256: expect.any(String),
+      restoredSha256: expect.any(String),
+    })
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test("reader capability rows do not become declarations or lend their identity to another version", () => {

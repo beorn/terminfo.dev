@@ -1314,6 +1314,144 @@ export function beginMuxSgrCommandRead(input: {
   }
 }
 
+/** The existing bounded semantic read loop, shared by native readers without another polling mechanism. */
+async function untilAppSemanticRead(
+  read: () => string | Promise<string>,
+  complete: (value: string) => boolean,
+  name: string,
+  phases: object[],
+): Promise<string> {
+  const deadline = Date.now() + 5000
+  let last = ""
+  do {
+    last = await read()
+    if (complete(last)) return last
+    await Bun.sleep(25)
+  } while (Date.now() < deadline)
+  phases.push({ name, incomplete: last })
+  throw new Error(`App semantic reader did not observe ${name} completion`)
+}
+
+/**
+ * One controlled WezTerm CWD observation for the existing platform owners. The capabilities must bracket each
+ * command with their live owner check. `write` is the owner's private TTY writer: restoration must not put the
+ * initial host URI into the probe source's publishable write trace (CTO6a2de139).
+ */
+export async function readWezTermCwd(input: {
+  runId: string
+  captureDirectory: string
+  write: (text: string) => void | Promise<void>
+  readPane: () => Promise<string>
+  readText: () => Promise<string>
+}): Promise<AppSemanticReading> {
+  const nonce = randomUUID().slice(0, 8)
+  const artifact = `wezterm-osc7-${nonce}.json`
+  const phases: object[] = []
+  const privateRecord: { initial?: string; restored?: string; phases: object[] } = { phases }
+  const detail: {
+    privateEvidence: string
+    initialProtocolPresence: string
+    initialSha256?: string
+    restoredSha256?: string
+    restoredEqual?: boolean
+  } = { privateEvidence: artifact, initialProtocolPresence: "unreported" }
+  const retain = () =>
+    writeFileSync(join(input.captureDirectory, artifact), JSON.stringify(privateRecord), { mode: 0o600 })
+  const digest = (value: string) => createHash("sha256").update(value).digest("hex")
+  const control = `file:///terminfo-control-${nonce}`
+  const target = `file:///terminfo-target-${nonce}`
+  let initial: string | undefined
+  let mutated = false
+  let serial = 0
+  let phase = "setup"
+  const sample = async (name: string, uri: string, command: "7" | "77") => {
+    phase = name
+    const marker = `Q-${nonce}-${serial++}`
+    const feed = `\x1b[1;1H\x1b[2K\x1b]${command};${uri}\x07${marker}`
+    phases.push({ name, feed, marker })
+    await input.write(feed)
+    const text = await untilAppSemanticRead(input.readText, (value) => value.includes(marker), `${name} marker`, phases)
+    phases.push({ name, text })
+  }
+  try {
+    if (!/^[0-9a-f]{32}$/.test(input.runId) || !isAbsolute(input.captureDirectory)) {
+      throw new Error("WezTerm OSC7 has no owned run/private capture directory")
+    }
+    for (const path of [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]) {
+      try {
+        statSync(path)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue
+        throw error
+      }
+      throw new Error("WezTerm OSC7 control paths are not fresh nonexistent paths")
+    }
+    initial = await input.readPane()
+    privateRecord.initial = initial
+    if (
+      !initial.startsWith("file://") ||
+      /[\x00-\x1f\x7f]/.test(initial) ||
+      initial === control ||
+      initial === target
+    ) {
+      throw new Error("WezTerm OSC7 initial public URI cannot be safely restored")
+    }
+    retain()
+    detail.initialSha256 = digest(initial)
+    mutated = true
+    await sample("inert control", target, "77")
+    const unknown = await input.readPane()
+    phases.push({ name: phase, cwd: unknown })
+    if (unknown !== initial) throw new Error("WezTerm OSC77 changed the public directory")
+    await sample("handled control", control, "7")
+    await untilAppSemanticRead(input.readPane, (value) => value === control, "OSC7 handled control", phases)
+    await sample("target", target, "7")
+    await untilAppSemanticRead(input.readPane, (value) => value === target, "OSC7 target", phases)
+    return {
+      status: "measured",
+      reader: "state",
+      runId: input.runId,
+      unknown: { before: digest(initial), after: digest(unknown) },
+      handled: { before: digest(initial), after: control, expected: control },
+      target: { before: control, after: target, expected: target },
+      detail,
+    }
+  } catch (error) {
+    phases.push({ name: phase, error: error instanceof Error ? error.message : String(error) })
+    return {
+      status: "invalid",
+      reason: `WezTerm OSC7 ${phase}: read method unavailable here`,
+      detail,
+    }
+  } finally {
+    if (mutated && initial !== undefined) {
+      try {
+        await sample("restoration", initial, "7")
+        privateRecord.restored = await untilAppSemanticRead(
+          input.readPane,
+          (value) => value === initial,
+          "OSC7 public directory restoration",
+          phases,
+        )
+        detail.restoredSha256 = digest(privateRecord.restored)
+        detail.restoredEqual = privateRecord.restored === initial
+      } catch (error) {
+        phases.push({ name: "restoration", error: error instanceof Error ? error.message : String(error) })
+        try {
+          retain()
+        } catch (retentionError) {
+          throw new AggregateError(
+            [error, retentionError],
+            "WezTerm OSC7 restoration failed: the pane's reported directory was left changed; private evidence retention also failed",
+          )
+        }
+        throw new Error("WezTerm OSC7 restoration failed: the pane's reported directory was left changed")
+      }
+    }
+    if (initial !== undefined && isAbsolute(input.captureDirectory)) retain()
+  }
+}
+
 /** Owned Linux App/mux read, using only the public actions qualified by #32566. */
 export async function readAppSemanticState(input: {
   featureId: string
@@ -1389,17 +1527,8 @@ export async function readAppSemanticState(input: {
       detail.commands.push({ argv, stdout })
       return stdout
     }
-    const until = async (read: () => string, complete: (value: string) => boolean, name: string) => {
-      const deadline = Date.now() + 5000
-      let last = ""
-      do {
-        last = read()
-        if (complete(last)) return last
-        await Bun.sleep(25)
-      } while (Date.now() < deadline)
-      detail.phases.push({ name, incomplete: last })
-      throw new Error(`App semantic reader did not observe ${name} completion`)
-    }
+    const until = (read: () => string, complete: (value: string) => boolean, name: string) =>
+      untilAppSemanticRead(read, complete, name, detail.phases)
     const osc = (body: string) => `\x1b]${body}\x07`
     const nonce = randomUUID().slice(0, 8)
     const mux = input.mux === "tmux"
