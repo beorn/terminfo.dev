@@ -106,6 +106,9 @@ test("a declared app keeps every static geometry row, and the flag is the defini
       { id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason: NO_PANE_READ },
     ])
     expect(declared?.note, entry.id).toBe(NO_PANE_READ)
-    expect(declared?.tests?.some((item) => item.status === "probe-invalid"), entry.id).toBeFalsy()
+    expect(
+      declared?.tests?.some((item) => item.status === "probe-invalid"),
+      entry.id,
+    ).toBeFalsy()
   }
 })
