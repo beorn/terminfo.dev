@@ -1434,16 +1434,53 @@ describe("OSC 52 read leg control and profile naming", () => {
     expect(result.observation?.outcome).not.toBe("unsupported")
   })
 
-  test("control answered and the query silent is unsupported, and the record names no profile on a default reading", async () => {
+  test("control answered and the query silent with a pinned deny default is unsupported, and names no profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "deny", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toBe("cursor-position control answered; OSC 52 c returned no reply")
+  })
+
+  test("an ask default grades the same silence as probe-todo naming the unanswered prompt", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "ask", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "default asks the user; the prompt was not answered",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("an unpinned default grades the same silence as probe-todo naming the missing citation", async () => {
     const result = await readCallback()(
       termSource({
         withClipboardFixture: async (work) =>
           work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
       }),
     )
-    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
-    expect(result.observation?.note).toBe("cursor-position control answered; OSC 52 c returned no reply")
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("default not established"),
+    })
   })
 
   test("an answered query passes and its note carries the profile and exact setting", async () => {
