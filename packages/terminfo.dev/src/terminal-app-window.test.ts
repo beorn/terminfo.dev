@@ -428,3 +428,120 @@ describe("recorded owner TTY", () => {
     expect(() => recordedOwnerTty("  \n")).toThrow(/recorded no TTY/)
   })
 })
+
+describe("iTerm2 sole-instance ownership", () => {
+  const daemonPid = 7300
+  const ownerPid = 6200
+  const executablePath = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
+  const started = Date.UTC(2026, 10, 12, 13, 22, 1) / 1000
+  const owner: OwnedTerminalWindow = {
+    provider: "iterm2",
+    windowId: 41,
+    tty: "/dev/ttys007",
+    ownerPid,
+    executablePath,
+    startedAtEpochSeconds: started,
+  }
+  const cgWindow = {
+    id: 41,
+    ownerPid,
+    layer: 0,
+    bounds: { x: 0, y: 25, width: 800, height: 600 },
+    alpha: 1,
+    onscreen: true,
+  }
+
+  /** One host: the uid-scoped iTerm2 listing, the per-pid reads, and successive window-server censuses. */
+  function fakeHost(host: { second?: number | null; censuses?: unknown[][]; tty?: string; appleEvents?: string[] }) {
+    const censuses = [...(host.censuses ?? [[cgWindow]])]
+    vi.mocked(spawnSync).mockImplementation(((command: string, args: readonly string[]) => {
+      const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
+      if (command === "sleep") return ok("")
+      if (command === "/usr/bin/osascript" && args.includes("JavaScript")) {
+        return ok(JSON.stringify(censuses.length > 1 ? censuses.shift() : censuses[0]))
+      }
+      if (command === "osascript") {
+        host.appleEvents?.push(args.join(" "))
+        return ok("")
+      }
+      if (command !== "/bin/ps") throw new Error(`unexpected command ${command}`)
+      if (args.includes("-U")) {
+        const second = host.second === undefined ? 1 : host.second
+        return ok(second === null ? "" : `${ownerPid} Thu Nov 12 13:22:0${second} 2026 ${executablePath}\n`)
+      }
+      const field = args[args.indexOf("-o") + 1]
+      const pid = Number(args[args.indexOf("-p") + 1])
+      if (field === "tty=" && pid === daemonPid) return ok(`${host.tty ?? "ttys007"}\n`)
+      if (field === "comm=" && pid === ownerPid) return ok(`${executablePath}\n`)
+      if (field === "ppid=" && pid === daemonPid) return ok("7000\n")
+      if (field === "ppid=" && pid === 7000) return ok(`${ownerPid}\n`)
+      return { status: 1, stdout: "", stderr: "" } as ReturnType<typeof spawnSync>
+    }) as unknown as typeof spawnSync)
+  }
+
+  test("assert holds on the same pid, binary, start time, TTY and owned CG window, with no Apple event", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    const appleEvents: string[] = []
+    fakeHost({ appleEvents })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).not.toThrow()
+    expect(appleEvents).toEqual([])
+  })
+
+  test.each([
+    ["a changed start time", { second: 5 }, /started at .*, not the launched owner's/],
+    ["a vanished owner", { second: null }, /no longer runs/],
+    ["a daemon TTY that is not the session's", { tty: "ttys009" }, /daemon TTY \/dev\/ttys009 differs/],
+    ["a CG window that is gone", { censuses: [[]] }, /names no window with that id/],
+    ["a CG window another pid owns", { censuses: [[{ ...cgWindow, ownerPid: 99 }]] }, /owned by PID 99/],
+  ])("assert refuses %s", (_name, host, refusal) => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeHost(host)
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).toThrow(refusal)
+  })
+
+  test("close re-asserts the start time before the signal and signals nothing when it changed", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeHost({ second: 5 })
+    const kill = vi.spyOn(process, "kill").mockReturnValue(true)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/started at .*; not signaling it/)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close SIGTERMs only the recorded pid, then proves the window server lists none of its windows", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    const appleEvents: string[] = []
+    fakeHost({ censuses: [[cgWindow], []], appleEvents })
+    const signals: Array<[number, string | number | undefined]> = []
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      signals.push([pid, signal])
+      if (signal === 0) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+      return true
+    })
+    try {
+      expect(closeOwnedTerminalWindow(owner)).toBeUndefined()
+      expect(signals[0]).toEqual([ownerPid, "SIGTERM"])
+      expect(signals.every(([pid]) => pid === ownerPid)).toBe(true)
+      expect(appleEvents).toEqual([])
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close refuses when the window server still lists a window for the exited pid", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeHost({ censuses: [[cgWindow]] })
+    const kill = vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
+      if (signal === 0) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+      return true
+    })
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/still lists layer-0 windows \[41\]/)
+    } finally {
+      kill.mockRestore()
+    }
+  })
+})

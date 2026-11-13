@@ -1,5 +1,6 @@
 import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
+import { withMuxOuterUnreadableRow } from "./mux-outer-rows.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
   beginCaptureLifecycle,
@@ -1009,4 +1010,6 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const editingProbes: ProbeDefinition[] = editingProbeDefinitions
+export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map(
+  withMuxOuterUnreadableRow("editing.decrqcra", DECRQCRA_REQUEST),
+)

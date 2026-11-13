@@ -1751,6 +1751,12 @@ it("records the host-written transport receipt as evidence and refuses anything 
     // A receipt for another revision cannot stand in for the bytes this pass measured.
     writeFileSync(path, JSON.stringify({ ...receipt, sourceRevision: "e".repeat(40) }))
     expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/names source/)
+    // A light transport check never hashed the node_modules trees, so it can never be placed.
+    writeFileSync(path, JSON.stringify({ ...receipt, check: "light" }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/only a full check may be placed/)
+    // A full one, and a receipt written before the field existed, are both placed.
+    writeFileSync(path, JSON.stringify({ ...receipt, check: "full" }))
+    expect(readOwnedAppTransportProof(path, ownedAppRevision).resourceFiles).toBe(42)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

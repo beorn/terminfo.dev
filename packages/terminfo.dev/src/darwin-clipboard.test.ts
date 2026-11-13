@@ -37,6 +37,53 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
   expect(pasteboard).toBe("baseline")
 })
 
+// @cto 2026-11-13: codimac's pasteboard is the fleet's one global pasteboard. Its pre-existing
+// contents are never read - not for a baseline, not to restore them - because reading is what would
+// put them in an artifact. The run writes its own sentinel first and leaves the pasteboard empty.
+test("an owned-host pasteboard is never read: the run writes its own sentinel first and empties it at dispose", async () => {
+  const calls: string[] = []
+  let pasteboard = "PRE-EXISTING SECRET"
+  const run: DarwinCommand = async (file, args, stdin) => {
+    if (file.endsWith("pbpaste")) {
+      calls.push("pbpaste")
+      return pasteboard + "\n"
+    }
+    if (file.endsWith("pbcopy")) {
+      calls.push("pbcopy:" + (stdin ?? ""))
+      pasteboard = stdin ?? ""
+      return ""
+    }
+    throw new Error("unexpected " + file)
+  }
+  let owned = 0
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "Terminal",
+    appId: "terminal-app",
+    titleRead: "none",
+    ownedHost: true,
+    assertOwned: async () => {
+      owned += 1
+    },
+    run,
+  })
+  expect(calls[0]).toMatch(/^pbcopy:terminfo owned pasteboard /)
+  expect(calls.filter((call) => call === "pbpaste")).toHaveLength(0)
+  expect(owned).toBe(1)
+  await adapter.withClipboardFixture(
+    async (fixture) => {
+      expect(await fixture.readText()).toMatch(/^terminfo owned pasteboard /)
+      await fixture.writeText("run value")
+      expect(await fixture.readText()).toBe("run value")
+      return { pass: true, note: "wrote" } as ProbeCallbackResult
+    },
+    () => {},
+    async () => {},
+  )
+  expect(JSON.stringify(calls)).not.toContain("PRE-EXISTING")
+  await adapter.dispose()
+  expect(pasteboard).toBe("")
+})
+
 test("a system-events declaration reads the window name and does not depend on the app id", async () => {
   const scripts: string[] = []
   const run: DarwinCommand = async (file, args) => {

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 
 export type DarwinCommand = (file: string, args: string[], stdin?: string) => Promise<string>
@@ -59,9 +60,22 @@ export async function createDarwinClipboardAdapter(input: {
   titleUnavailable?: string
   assertOwned: () => Promise<void>
   run?: DarwinCommand
+  /**
+   * The pasteboard belongs to a machine the fleet shares (codimac), not to a disposable runner
+   * (@cto 2026-11-13). Its contents are never read: the run writes its own sentinel first, grades
+   * only values it wrote itself, and leaves the pasteboard empty when it is done - success or
+   * failure. Saving and restoring the earlier contents is refused for the same reason: it would
+   * mean reading them.
+   */
+  ownedHost?: boolean
 }): Promise<LinuxClipboardAdapter> {
   const run = input.run ?? runDarwinCommand
-  const baseline = pasteboardText(await run("/usr/bin/pbpaste", []))
+  const sentinel = "terminfo owned pasteboard " + randomUUID()
+  if (input.ownedHost) {
+    await input.assertOwned()
+    await run("/usr/bin/pbcopy", [], sentinel)
+  }
+  const baseline = input.ownedHost ? sentinel : pasteboardText(await run("/usr/bin/pbpaste", []))
   const withClipboardFixture = createClipboardTransaction(baseline, {
     async readText(trace, kind, verify) {
       await input.assertOwned()
@@ -83,7 +97,7 @@ export async function createDarwinClipboardAdapter(input: {
     pasteboardApp: input.appId,
     config: null,
     permissions: "clipboard: read=allow,write=allow",
-    summary: `darwin hosted pasteboard for ${input.appComm}`,
+    summary: (input.ownedHost ? "darwin owned" : "darwin hosted") + " pasteboard for " + input.appComm,
     assertOwned: input.assertOwned,
     async readTitle() {
       await input.assertOwned()
@@ -98,6 +112,8 @@ export async function createDarwinClipboardAdapter(input: {
       return (await run("/usr/bin/osascript", ["-e", script])).replace(/\n$/u, "")
     },
     withClipboardFixture,
-    async dispose() {},
+    async dispose() {
+      if (input.ownedHost) await run("/usr/bin/pbcopy", [], "")
+    },
   }
 }

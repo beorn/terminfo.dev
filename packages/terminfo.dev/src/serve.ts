@@ -951,7 +951,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
         hostedAppId: terminal.hostedAppId,
-        expectedWindowId: kind === "terminalApp" ? options.terminalAppOwner?.windowId : undefined,
+        // Terminal.app's asserted window, or the CG window the iTerm2 owner census proved new (33845).
+        expectedWindowId:
+          kind === "terminalApp"
+            ? options.terminalAppOwner?.windowId
+            : kind === "process" && options.processOwner?.provider === "iterm2"
+              ? options.processOwner.windowId
+              : undefined,
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
         // No `measureWindowName` for a hosted runner (33821): the apps that need a title declare a measured

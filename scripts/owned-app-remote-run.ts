@@ -80,7 +80,26 @@ const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as c
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
 // Mutable caches are neither runtime resources nor part of the transported witness.
-const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".cache"])
+const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".vitest-cache", ".cache"])
+
+/** Written by a run that passed the FULL comparison, and the only thing a light run trusts its
+ * node_modules trees through. It names the lock the trees were installed from and the digest they
+ * hashed to, so a changed lock, a missing marker or a marker from another tool restages fully. */
+const RESOURCE_MARKER = ".owned-app-transport-resources"
+const RESOURCE_MARKER_VERSION = 1
+
+interface ResourceMarker {
+  readonly version: number
+  readonly lockSha256: string
+  readonly manifestSha256: string
+  readonly files: number
+  readonly sourceRevision: string
+}
+
+/** How deep a run checks the staged tree. `full` hashes every tracked file and every resource on
+ * both sides and is the only depth a placed run may use; `light` trusts node_modules through the
+ * stage's resource marker and the tracked source through its git tree id, and its receipt says so. */
+type CheckDepth = "full" | "light"
 
 /**
  * The gitignored dependency-link directories INSIDE the bundle-owned checkout that exist in the code
@@ -129,6 +148,7 @@ export interface OwnedAppRemoteOptions {
   readonly context: string
   readonly knownHosts: string
   readonly removeStage: boolean
+  readonly check: CheckDepth
   readonly sshTimeoutMs: number
   readonly rsyncTimeoutMs: number
   readonly argv: readonly string[]
@@ -141,6 +161,7 @@ export interface OwnedAppTransportProof {
   readonly resourceFiles: number
   readonly receiptSha256: string
   readonly remoteOutput: string
+  readonly check: CheckDepth
 }
 
 function fail(name: string, detail: string): never {
@@ -342,6 +363,7 @@ function parseArgs(argv: readonly string[]): Parsed {
         "--source-revision",
         "--context",
         "--known-hosts",
+        "--check",
         "--ssh-timeout-ms",
         "--rsync-timeout-ms",
       ].includes(arg)
@@ -362,6 +384,14 @@ function parseArgs(argv: readonly string[]): Parsed {
   const knownHosts = values["known-hosts"] ?? usage()
   const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
   const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
+  const rawCheck = values.check
+  if (rawCheck !== undefined && rawCheck !== "full" && rawCheck !== "light") {
+    fail(
+      "invalid check",
+      `--check ${JSON.stringify(rawCheck)} is not a check depth; the depths are full (hash everything, the only placable one) and light (uncounted runs only)`,
+    )
+  }
+  const check: CheckDepth = rawCheck === "light" ? "light" : "full"
   if (!rest.length) usage()
   if (!/^ssh:[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(transport)) {
     fail(
@@ -388,6 +418,7 @@ function parseArgs(argv: readonly string[]): Parsed {
     context,
     knownHosts: resolve(knownHosts),
     removeStage,
+    check,
     sshTimeoutMs,
     rsyncTimeoutMs,
     argv: rest,
@@ -427,7 +458,7 @@ function usage(): never {
   console.error(
     "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> [--stage <remote-dir>]\n" +
       "         --output <local-output-dir> --source-revision <sha> --context <id>\n" +
-      "         --known-hosts <path> [--remove-stage] [--ssh-timeout-ms <ms>]\n" +
+      "         --known-hosts <path> [--remove-stage] [--check full|light] [--ssh-timeout-ms <ms>]\n" +
       "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>\n" +
       "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.",
   )
@@ -530,6 +561,105 @@ function hostKeyOf(verboseStderr: string): { algorithm: string; fingerprint: str
     )
   }
   return { algorithm: match[1], fingerprint: match[2] }
+}
+
+/** What a light run checks before it may skip the node_modules hashing: the stage's resource
+ * marker still names the lock this machine holds, and the staged checkout still holds the named
+ * revision's own tree. Every failure is a reason to restage fully, never a silent shorter check. */
+function readLightStage(
+  options: Parsed,
+  stage: string,
+  checkout: string,
+  lockSha256: string,
+): { ok: true; marker: ResourceMarker } | { ok: false; reason: string } {
+  const raw = sshRun(
+    options,
+    "resource marker read",
+    "stage not owned",
+    `cat ${shq(`${stage}/${RESOURCE_MARKER}`)} || true`,
+  ).stdout
+  if (raw.trim() === "") return { ok: false, reason: "the stage holds no resource marker" }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch {
+    return {
+      ok: false,
+      reason: `the stage's resource marker is not JSON (${JSON.stringify(raw.trim().slice(0, 80))})`,
+    }
+  }
+  const marker = parsed as Partial<ResourceMarker>
+  if (marker.version !== RESOURCE_MARKER_VERSION) {
+    return {
+      ok: false,
+      reason: `the stage's resource marker is version ${JSON.stringify(marker.version)}, not ${String(RESOURCE_MARKER_VERSION)}`,
+    }
+  }
+  if (
+    typeof marker.lockSha256 !== "string" ||
+    typeof marker.manifestSha256 !== "string" ||
+    typeof marker.files !== "number"
+  ) {
+    return { ok: false, reason: "the stage's resource marker omits the lock, the manifest or its file count" }
+  }
+  if (marker.lockSha256 !== lockSha256) {
+    return { ok: false, reason: "bun.lock is not the lock the stage was last fully hashed against" }
+  }
+  // The tracked half, measured by git on the host: the checkout must hold the named revision's own
+  // tree, hold that revision's object, and hold nothing no revision names.
+  // One probe per fact, each answer trimmed on its own: a command that prints nothing must never
+  // shift another's answer, which is how a clean checkout once read as a missing revision.
+  const head = sshRun(
+    options,
+    "staged source head",
+    "stage source mismatch",
+    `git -C ${shq(checkout)} rev-parse HEAD || true`,
+  ).stdout.trim()
+  const tree = sshRun(
+    options,
+    "staged source tree",
+    "stage source mismatch",
+    `git -C ${shq(checkout)} rev-parse ${shq("HEAD^{tree}")} || true`,
+  ).stdout.trim()
+  const status = sshRun(
+    options,
+    "staged source clean",
+    "stage source mismatch",
+    `git -C ${shq(checkout)} status --porcelain || true`,
+  ).stdout.trim()
+  if (head !== options.sourceRevision) {
+    return {
+      ok: false,
+      reason: `the staged checkout is at ${JSON.stringify(head ?? "")}, not the named ${options.sourceRevision}`,
+    }
+  }
+  if (tree === undefined || tree === "") return { ok: false, reason: "the staged checkout answered no tree id" }
+  const expected = spawnSync("git", ["-C", ROOT, "rev-parse", `${options.sourceRevision}^{tree}`], {
+    encoding: "utf8",
+  })
+  if (expected.error || expected.status !== 0) {
+    fail(
+      "bundle missing objects",
+      `git rev-parse ${options.sourceRevision}^{tree}: ${expected.error?.message ?? expected.stderr.trim()}`,
+    )
+  }
+  const named = expected.stdout.trim()
+  if (tree !== named) {
+    return { ok: false, reason: `the staged tree ${tree} is not ${options.sourceRevision}'s tree ${named}` }
+  }
+  if (status !== "") {
+    return {
+      ok: false,
+      reason: `the staged checkout holds changes no revision names (${(status ?? "").split("\n")[0] ?? ""})`,
+    }
+  }
+  return { ok: true, marker: marker as ResourceMarker }
+}
+/** Whether a stage is there at all, asked without writing anything: a light run may only trust a
+ * stage an earlier run left, and this answers presence alone, never ownership. */
+function stagePresence(options: Parsed, stage: string): boolean {
+  const answer = sshRun(options, "stage presence", "stage not owned", `test -e ${shq(stage)} && echo present || true`)
+  return answer.stdout.trim() === "present"
 }
 
 /** The bundle is the only way source reaches the host: an exact sha, verified before it is used. */
@@ -743,10 +873,31 @@ function main(options: Parsed): OwnedAppTransportProof {
   let owned = false
   let created = false
   try {
-    const archived = archiveOf(options, join(scratch, "archive"))
+    // A light run's two trusts are read before any hashing: the stage's resource marker, which
+    // names the lock its node_modules trees were installed from, and the local lock's own bytes.
+    // Every refusal here sends the run down the full path; none of them shortens a check silently.
+    const lockSha256 = sha256(readFileSync(join(CODE_ROOT, "bun.lock")))
+    let light = false
+    let trusted: ResourceMarker | undefined
+    if (options.check === "light") {
+      const held = stagePresence(options, stage)
+        ? readLightStage(options, stage, checkout, lockSha256)
+        : { ok: false as const, reason: "no stage exists yet" }
+      if (held.ok) {
+        light = true
+        trusted = held.marker
+      } else {
+        console.error(`owned-app transport: light check declined (${held.reason}); restaging fully`)
+      }
+    }
+    if (light && trusted === undefined) fail("invalid check", "a light run holds no stage marker to trust")
     const linkDirs = bundleLinkDirs()
     const declared = [...RESOURCE_DIRS, ...linkDirs, ...RESOURCE_FILES]
-    const scan = manifestScan(CODE_ROOT, declared, "resource manifest mismatch")
+    // A light run hashes everything it stages EXCEPT the node_modules trees, which it trusts
+    // through the marker: skipping those hashes is the whole saving. A full run hashes them too,
+    // so a full digest still stands for every staged byte.
+    const checked = light ? declared.filter((entry) => entry !== "node_modules") : declared
+    const scan = manifestScan(CODE_ROOT, checked, "resource manifest mismatch")
     // Roots a link reaches beyond the declared resources ship from tracked extracts only, so the
     // closure is walked over the extracts, never over a working tree's untracked files.
     const closure = join(scratch, "closure")
@@ -770,16 +921,15 @@ function main(options: Parsed): OwnedAppTransportProof {
       targets = next.linkTargets
     }
     const localLines = [
-      ...manifestScan(archived, [], "resource manifest mismatch").lines,
+      ...(light
+        ? []
+        : manifestScan(archiveOf(options, join(scratch, "archive")), [], "resource manifest mismatch").lines),
       ...scan.lines,
       ...closureLines,
     ]
     localLines.sort()
     const local = digestValue(localLines)
     if (local.files === 0) fail("resource manifest mismatch", "the declared resources produced no files")
-
-    const bundle = createBundle(options, scratch)
-
     // A stage that already exists must be one this driver made; a stranger's directory is refused,
     // never adopted and never deleted.
     const ownership = sshRun(
@@ -805,36 +955,45 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (options.removeStage && !created) {
       console.error(`owned-app transport: ${stage} existed before this run; --remove-stage keeps it`)
     }
-    rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
-    // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
-    // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
-    sshRun(
-      options,
-      "stage checkout",
-      "stage source mismatch",
-      [
-        `set -e`,
-        `mkdir -p ${shq(`${source}/vendor`)}`,
-        `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
-        `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
-        `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
-        `git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
-        `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
-      ].join("\n"),
-    )
-    const dirty = sshRun(
-      options,
-      "clean-tree check",
-      "stage dirty tree",
-      `git -C ${shq(checkout)} status --porcelain`,
-    ).stdout.trim()
-    if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+
+    // A light run leaves the staged source exactly as the earlier full run left it: the
+    // revision and its tree were checked against git objects above, so nothing is moved.
+    if (!light) {
+      const bundle = createBundle(options, scratch)
+      rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
+      // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
+      // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
+      sshRun(
+        options,
+        "stage checkout",
+        "stage source mismatch",
+        [
+          `set -e`,
+          `mkdir -p ${shq(`${source}/vendor`)}`,
+          `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
+          `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
+          `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
+          `git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
+          `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
+        ].join("\n"),
+      )
+      const dirty = sshRun(
+        options,
+        "clean-tree check",
+        "stage dirty tree",
+        `git -C ${shq(checkout)} status --porcelain`,
+      ).stdout.trim()
+      if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+    }
 
     for (const [from, entry] of [
       ...RESOURCE_DIRS.map((entry) => [CODE_ROOT, entry] as const),
       ...linkDirs.map((entry) => [CODE_ROOT, entry] as const),
       ...extras.map((entry) => [closure, entry] as const),
     ]) {
+      // The node_modules trees are what the marker already stands for; a light run never re-sends
+      // them, which is the other half of the saving beside their hashes.
+      if (light && entry === "node_modules") continue
       rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
         "--delete",
         ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
@@ -845,11 +1004,14 @@ function main(options: Parsed): OwnedAppTransportProof {
     }
 
     const resourcePrune = [...RESOURCE_EXCLUDES].map((name) => "-name " + shq(name) + " -prune").join(" -o ")
+    // A light run lists exactly what it hashed: the staged tree minus the node_modules the marker
+    // already accounts for. The listing and the local manifest cover the same paths or not at all.
+    const listed = light ? checked.map((entry) => shq(`./${entry}`)).join(" ") : "."
     const files = sshRun(
       options,
       "remote file listing",
       "resource manifest mismatch",
-      `cd ${shq(source)} && find . \\( ${resourcePrune} \\) -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256`,
+      `cd ${shq(source)} && find ${listed} \\( ${resourcePrune} \\) -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256`,
     ).stdout
     const links = sshRun(
       options,
@@ -859,7 +1021,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         // The physical root, never the logical $PWD: under a symlinked ancestor (macOS /tmp) realpath
         // answers physically, so a logical root would read every valid link as an escape.
         `cd ${shq(source)} && R=$(pwd -P) && export R &&`,
-        `find . \\( ${resourcePrune} \\) -o -type l -exec sh -c '`,
+        `find ${listed} \\( ${resourcePrune} \\) -o -type l -exec sh -c '`,
         `  target=$(readlink "$1")`,
         `  if [ ! -e "$1" ]; then printf "%s\\t%s\\tdangling\\t%s\\n" "$1" "$target" "-"; exit 0; fi`,
         `  real=$(realpath "$1")`,
@@ -878,6 +1040,25 @@ function main(options: Parsed): OwnedAppTransportProof {
       fail(
         "resource manifest mismatch",
         `local ${local.sha256} (${String(local.files)} files) != staged ${remote.sha256} (${String(remote.files)} files); ${firstDifference(localLines, remote.lines)}`,
+      )
+    }
+
+    // Only a run that hashed the whole staged tree may write the marker a later light run trusts:
+    // it names the lock its node_modules came from and the digest they hashed to.
+    if (!light) {
+      const marker: ResourceMarker = {
+        version: RESOURCE_MARKER_VERSION,
+        lockSha256,
+        manifestSha256: local.sha256,
+        files: local.files,
+        sourceRevision: options.sourceRevision,
+      }
+      sshRun(
+        options,
+        "resource marker write",
+        "resource manifest mismatch",
+        `cat > ${shq(`${stage}/${RESOURCE_MARKER}`)}`,
+        { input: `${JSON.stringify(marker, null, 2)}\n` },
       )
     }
 
@@ -981,8 +1162,13 @@ function main(options: Parsed): OwnedAppTransportProof {
       identity,
       runtime: { bun: { path: bun, version: bunVersion }, kitty: { path: kitty, version: kittyVersion } },
       sourceRevision: options.sourceRevision,
-      resourceManifestSha256: local.sha256,
-      resourceFiles: local.files,
+      // A full run's digest is over every staged byte of THIS run. A light run cannot say that, so
+      // it carries the marker's digest, named as such, and its own lighter digest beside it.
+      check: light ? "light" : "full",
+      resourceManifestSha256: light && trusted ? trusted.manifestSha256 : local.sha256,
+      resourceFiles: light && trusted ? trusted.files : local.files,
+      resourceManifestBasis: light ? "stage marker from an earlier full run" : "this run",
+      ...(light ? { lightManifestSha256: local.sha256, lightResourceFiles: local.files } : {}),
       stage: { directory: stage, marker: STAGE_MARKER_VALUE },
       output: { directory: remoteOutput, files: outputs },
     }
@@ -1018,6 +1204,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       resourceFiles: local.files,
       receiptSha256,
       remoteOutput,
+      check: light ? "light" : "full",
     }
   } catch (error) {
     if (options.removeStage && owned && !isTimeout(error)) {

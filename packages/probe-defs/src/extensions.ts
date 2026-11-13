@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
+import { MUX_OUTER_ROWS, withMuxOuterRows } from "./mux-outer-rows.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -9106,7 +9107,9 @@ const extensionDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map(withAppSemanticObservation)
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions
+  .map(withAppSemanticObservation)
+  .map(withMuxOuterRows(MUX_OUTER_ROWS))
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.

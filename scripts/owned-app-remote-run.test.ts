@@ -502,7 +502,7 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("does not stage or witness mutable test caches", () => {
-    const caches = [".vitest", ".cache"]
+    const caches = [".vitest", ".cache", ".vitest-cache"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
       mkdirSync(directory, { recursive: true })
@@ -1036,4 +1036,52 @@ describe("default stage", () => {
     expect(result.stderr).toContain("home with space")
     expect(result.stderr).toMatch(/--owned-app-stage|--stage/)
   })
+
+  // Requirement: an uncounted run must not pay for hashing and re-sending a node_modules tree an
+  // earlier full run already hashed, and its receipt must say so; a changed lock must restage it.
+  it("reuses a stage a full run hashed, re-sending no node_modules, and names the light check", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(proof(first).check).toBe("full")
+    const markerPath = join(stage, ".owned-app-transport-resources")
+    expect(existsSync(markerPath)).toBe(true)
+    const marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>
+    expect(marker.lockSha256).toBe(
+      createHash("sha256")
+        .update(readFileSync(join(code, "bun.lock")))
+        .digest("hex"),
+    )
+    expect(marker.manifestSha256).toBe(proof(first).resourceManifestSha256)
+
+    const before = lines(rsyncLog).length
+    const second = run({}, ["--check", "light"], undefined, "kitty-light")
+    expect(second.status, second.stderr).toBe(0)
+    const light = proof(second)
+    expect(light.check).toBe("light")
+    // The node_modules trees are what the marker stands for: no transfer and no hash this run.
+    const transferred = lines(rsyncLog).slice(before)
+    expect(transferred.filter((line) => line.includes("node_modules"))).toEqual([])
+    // The receipt still names the digest those trees last hashed to, and says where it came from.
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as Record<
+      string,
+      unknown
+    >
+    expect(receipt.check).toBe("light")
+    expect(receipt.resourceManifestSha256).toBe(marker.manifestSha256)
+    expect(receipt.resourceManifestBasis).toBe("stage marker from an earlier full run")
+    expect(typeof receipt.lightManifestSha256).toBe("string")
+    // The marker is not rewritten by a run that did not hash the trees it stands for.
+    expect(readFileSync(markerPath, "utf8")).toBe(JSON.stringify(marker, null, 2) + "\n")
+  }, 60_000)
+
+  it("restages fully when the lock is not the one the stage was hashed against", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    writeFileSync(join(code, "bun.lock"), "changed lock\n")
+    const second = run({}, ["--check", "light"], undefined, "kitty-restage")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
 })

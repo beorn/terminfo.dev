@@ -239,6 +239,18 @@ export {
   unicodeProbes,
 }
 
+export {
+  MUX_OUTER_DECRQ_UNREADABLE,
+  MUX_OUTER_DECRQ_UNREADABLE_BRANCH,
+  MUX_OUTER_NO_RECORD,
+  MUX_OUTER_ROWS,
+  MUX_OUTER_ROW_CONTROL_WRITE,
+  muxOuterRowGrade,
+  withMuxOuterRows,
+  withMuxOuterUnreadableRow,
+  type MuxOuterRow,
+} from "./mux-outer-rows.ts"
+
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"

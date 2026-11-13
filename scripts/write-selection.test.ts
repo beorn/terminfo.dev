@@ -93,6 +93,39 @@ test("a cell a reopened-cells row withdrew carries that marker into the file", (
   )
 })
 
+// #33928: the status page lists every untestable result under its stored reason, so the file carries that reason on
+// untestable cells only: the mux-input demotion's reason first, else the run's own, else null (shown as a gap, never dropped).
+test("an untestable cell carries its stored reason, the demotion's first; other cells carry none", () => {
+  const base = projection.contexts["term:screen"]!.cells["sgr.reset"]!
+  const untestable = (result: object, extra: object = {}) =>
+    selectionFile(
+      {
+        ...projection,
+        contexts: { "term:screen": { cells: { "sgr.reset": { ...base, result, ...extra } } } },
+      } as unknown as SelectedProjection,
+      new Set(),
+      "/repo/content",
+    ).cells[0]!
+  expect(untestable({ status: "untestable", reason: " the app owns this command " }).reason).toBe(
+    "the app owns this command",
+  )
+  expect(untestable({ status: "untestable" }).reason).toBe(null)
+  const outerAbsent = {
+    terminalId: "kitty",
+    version: "0.40",
+    runId: "outer",
+    measured: "unsupported",
+    reason: "outer reads Unsupported",
+  }
+  expect(
+    untestable({ status: "unsupported", reason: "own" }, { featureResult: { status: "untestable" }, outerAbsent })
+      .reason,
+  ).toBe("outer reads Unsupported")
+  expect(selectionFile(projection, new Set(["working-run"]), "/repo/content").cells.some((c) => "reason" in c)).toBe(
+    false,
+  )
+})
+
 test("a placed cell whose run file is outside content/ is an error, not a guessed path", () => {
   expect(() => selectionFile(projection, new Set(), "/other/content")).toThrow(/not under/)
 })
