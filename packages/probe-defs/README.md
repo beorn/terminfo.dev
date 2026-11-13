@@ -1125,6 +1125,14 @@ new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+Owned Darwin apps share the existing window pixel capture, retention and calibration path.
+Their ownership adapter supplies the measured PID and any proved window ID; the common reader
+does not interpret app-specific launch receipts. Newly routed PID-only apps require exactly one
+visible normal-layer owned window, while Terminal.app and iTerm2 retain their existing selection
+policy. Missing retention names an apparatus refusal on affected rows and never selects text as
+a screenshot substitute. Existing text qualification retains its separate frames and write-error
+causes. Routing alone grades no feature and does not authorize a native run.
+
 The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
 The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
 or the attached mux's own title query; mux rows never substitute the outer window.

@@ -667,12 +667,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         }
       }
       capture = async (checkpoint) => {
+        // Preserve the failed selected write; a later empty write would replace it with stream-destroyed.
+        if (out.errored) throw out.errored
         if (process.platform === "win32") {
           await consoleBarrier(checkpoint.label)
         } else {
           await new Promise<void>((resolve, reject) => {
             out.write("", (error) => {
-              if (error) reject(error)
+              if (error) reject(out.errored ?? error)
               else resolve()
             })
           })

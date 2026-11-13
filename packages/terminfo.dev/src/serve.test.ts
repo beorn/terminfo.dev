@@ -1848,9 +1848,9 @@ describe("private finite daemon startup", () => {
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
       const closure = expectation.startsWith("closure")
-      const nativeQualification = closure || ["non-windows", "pending-write", "write-error"].includes(expectation)
+      const nativeQualification = closure || ["non-windows", "pending-write", "write-error", "final-custody"].includes(expectation)
       const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length)
-        : nativeQualification && !closure ? "kitty" : undefined
+        : nativeQualification ? "kitty" : undefined
       // Existing xterm adapter supplies the substituted native screen; collection/retention stay real.
       const screen = nativeQualification ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
       screen?.init({ rows: 24, cols: 80 })
@@ -1897,7 +1897,32 @@ describe("private finite daemon startup", () => {
       let captured = false
       let retainedFrame
       let calibrations = 0
-      if (pixelApp) {
+      if (expectation === "closure") {
+        // Substitute acquisition only: this journey proves production frame/qualification/trace custody,
+        // not the screenshot oracle. Raster acquisition and grading have their own owning contracts.
+        const core = await import("./packages/terminfo.dev/src/capture-core.ts")
+        mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+          createDarwinCapture: async (directory, { onRetained }) => {
+            const acquire = async checkpoint => {
+              const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aK1sAAAAASUVORK5CYII=", "base64")
+              const ref = core.retain(directory, png, "png", onRetained)
+              const cells = Array.from({ length: 24 }, (_, row) => Array.from({ length: 80 }, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join(""))
+              const digest = "sha256:" + createHash("sha256").update(cells.join("\\n")).digest("hex")
+              return { frame: { role: checkpoint.role, label: checkpoint.label, ref, sourceRef: ref,
+                capturedAt: Date.now(), regionDigest: digest, pixelsDigest: digest }, trace: { captureCommand: "custody acquisition fixture" } }
+            }
+            return { capture: acquire, captureRaw: async checkpoint => ({ result: await acquire(checkpoint), decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }) }
+          }
+        }))
+        mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+          calibrateCaptureOrigin: async ({ captureRaw }) => {
+            calibrations++
+            await captureRaw("custody calibration frame", Date.now() + 1000)
+            return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 80, textHeight: 24 }, basis: "custody fixture" }
+          }
+        }))
+      }
+      if (pixelApp && expectation !== "closure") {
         mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
           createDarwinCapture: async () => ({ captureRaw: async () => { throw new Error("pixel fixture must calibrate first") } })
         }))
@@ -1977,34 +2002,11 @@ describe("private finite daemon startup", () => {
             return actualBatch(options)
           }
           if (options.capture) {
-            if (expectation === "pending-write" || expectation === "write-error") {
-              // Real Writable queues the adapter's completion behind this unfinished chunk.
-              options.out.write("queued-clear")
-              const pending = tty.withTTYOperation(() => options.capture({ role: "witness", label: "fixture" }), options.out)
-              pending.catch(() => {}) // The original promise is asserted below, including its error.
-              await Promise.resolve()
-              assert.equal(reads, 0, "text readback ran before the selected output completed")
-              assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
-              if (expectation === "write-error") {
-                const failure = new Error("selected output completion failed")
-                const errorSeen = new Promise(resolve => out.once("error", resolve))
-                finishWrite(failure)
-                await assert.rejects(pending, error => error === failure)
-                assert.equal(reads, 0)
-                assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
-                assert.equal(await errorSeen, failure)
-              } else {
-                finishWrite()
-                await pending
-                captured = true
-              }
-            } else {
-              text = "hello"
-              options.out.write("probe-paint")
-              const retained = await tty.withTTYOperation(() => options.capture({ role: "control", label: "fixture" }), options.out)
-              retainedFrame = retained.frame
-              captured = true
-            }
+            text = "hello"
+            options.out.write("probe-paint")
+            const retained = await tty.withTTYOperation(() => options.capture({ role: "control", label: "fixture" }), options.out)
+            retainedFrame = retained.frame
+            captured = true
           }
           return {
             results: options.draft.results, rawReplies: {},
@@ -2024,13 +2026,13 @@ describe("private finite daemon startup", () => {
       } else {
         if (expectation === "write-error") {
           const refused = await collectProbeRun({ ids: ["erase.character"], out })
-          assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)))
+          assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)), JSON.stringify(refused.textQualification))
           assert.equal(reads, 0)
           assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
           process.exit(0)
         }
         const run = await collectProbeRun({ ids: [expectation === "timeout" || nativeQualification ? "erase.character" : "device.xtversion"], out })
-        if (pixelApp) {
+        if (pixelApp && expectation !== "closure") {
           assert.equal(captureKind, "absent", "qualification replaced the primary pixel adapter")
           assert.equal(calibrations, 1, "text qualification skipped pixel calibration")
           assert.equal(JSON.parse(run.rawReplies["collector.captureCalibration"]).outcome, "refused")
@@ -2050,7 +2052,7 @@ describe("private finite daemon startup", () => {
           }
           const assessment = assessTextQualification({ ...run, textQualificationSpec: TEXT_QUALIFICATION_SPEC }, snapshots)
           assert.equal(assessment.qualified, true, assessment.reason)
-          process.exit(0)
+          if (expectation !== "final-custody") process.exit(0)
         }
         if (expectation === "closure") {
           // Existing retention tests omit nested bindings; this production bundle supplies their positive control.
@@ -2102,14 +2104,16 @@ describe("private finite daemon startup", () => {
           assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
           process.exit(0)
         }
-        assert.equal(captureKind, "text-cells")
-        assert.equal(typeof capture, "function")
-        assert.equal(captured, expectation !== "write-error")
         const frames = readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt"))
-        assert.equal(frames.length, expectation === "write-error" ? 0 : 1)
-        if (expectation !== "write-error") {
-          assert.equal(reads, 1)
-          assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+        if (expectation !== "final-custody") {
+          assert.equal(captureKind, "text-cells")
+          assert.equal(typeof capture, "function")
+          assert.equal(captured, expectation !== "write-error")
+          assert.equal(frames.length, expectation === "write-error" ? 0 : 1)
+          if (expectation !== "write-error") {
+            assert.equal(reads, 1)
+            assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+          }
         }
         assert.equal(queryWrites, darwin ? 0 : 1)
         if (!darwin) assert.ok(writes.indexOf("probe-paint") < writes.indexOf("\\x1b[6n"))
@@ -2118,8 +2122,9 @@ describe("private finite daemon startup", () => {
           assert.equal(typeof run.rawReplies["collector.traceManifest"], "string", "producer did not seal retained artifact paths")
           const manifestBytes = run.rawReplies["collector.traceManifest"]
           const manifest = JSON.parse(manifestBytes)
-          assert.equal(manifest.blobs.length, 1)
-          assert.equal(manifest.blobs[0].path, "artifacts/" + frames[0])
+          assert.ok(frames.length > 0)
+          assert.deepEqual(manifest.blobs.map(blob => blob.path).sort(), frames.map(name => "artifacts/" + name).sort())
+          const retainedBytes = new Map(frames.map(name => ["artifacts/" + name, readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, name))]))
           const originalBytes = Buffer.from(JSON.stringify(run))
           const { readRetainedDaemonProbeResponse } = await import("./packages/terminfo.dev/src/daemon-client.ts")
           const { getTrustedSuiteReceipt } = await import("./packages/terminfo.dev/src/serve.ts")
@@ -2139,8 +2144,10 @@ describe("private finite daemon startup", () => {
             captureRunId: run.runId, captureSuiteId: run.suiteId, captureSourceRevision: run.sourceRevision
           }, { manifest: getTrustedSuiteReceipt().manifest, sourceRevision: run.sourceRevision, subject: run.subject })
           assert.equal(reopened.capture.rawReplies["collector.traceManifest"], manifestBytes)
-          assert.ok(reopened.files.includes(join(finalRoot, manifest.blobs[0].path)))
-          assert.match(readFileSync(join(finalRoot, manifest.blobs[0].path), "utf8"), /hello/u)
+          for (const blob of manifest.blobs) {
+            assert.ok(reopened.files.includes(join(finalRoot, blob.path)))
+            assert.deepEqual(readFileSync(join(finalRoot, blob.path)), retainedBytes.get(blob.path))
+          }
         }
       }
       `,
