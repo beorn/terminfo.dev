@@ -84,13 +84,16 @@ const declarations: readonly AppSemanticCapability[] = [
     { id: "terminal-app", version: "2.15" },
     { id: "iterm2", version: "3.6.11" },
   ].flatMap((subject) =>
-    ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"].map((featureId) => ({
-      ...subject,
-      kind: "term",
-      os: "macos",
-      featureId,
-      reason: "no permitted pointer route: owned-host rule and hosted no-input rule",
-    })),
+    ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"]
+      // A measured result beats a declaration (@cto b0de55c0): iTerm2's UTF-8 mouse mode read Supported on 26.6.2.
+      .filter((featureId) => !(subject.id === "iterm2" && featureId === "modes.utf8-mouse-1005"))
+      .map((featureId) => ({
+        ...subject,
+        kind: "term",
+        os: "macos",
+        featureId,
+        reason: "no permitted pointer route: owned-host rule and hosted no-input rule",
+      })),
   ),
   ...[
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },

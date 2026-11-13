@@ -578,6 +578,9 @@ describe("probe method classification", () => {
         // A ruling's reopened cells (#33164) correct the live corpus and cite its runs as witnesses; this view pins
         // the method classification of 17 stored runs, so it reads no corrections (reopened-cells.test.ts owns them).
         if (entry.name === "reopened-cells.json") continue
+        // Declared-untestable rows name live-corpus cells too, and a row matching no cell throws; this view has 13 of
+        // the contexts, so it reads no declarations (declared-untestable.test.ts owns them).
+        if (entry.name === "declared-untestable.json") continue
         symlinkSync(
           join(contentDir, entry.name),
           join(historicalContentDir, entry.name),
