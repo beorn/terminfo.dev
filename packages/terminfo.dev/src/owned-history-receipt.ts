@@ -14,7 +14,10 @@ export type OwnedHistoryIdentity = Readonly<{
   readonly listedTty: string | null
   /** The tty this run measured for itself, by name. */
   readonly measuredTty: string | null
-  /** null when there is no tty pair to compare: never a claim that two absent ttys matched. */
+  /**
+   * null when there is no tty pair to compare: never a claim that two absent ttys matched. Anything that
+   * consumes this field must read null as NOT matched (a surface with no listed tty is unproven, not equal).
+   */
   readonly ttyMatch: boolean | null
   /** Whether this run read through an explicit socket, or null where the reader has no socket. */
   readonly socketPresent: boolean | null
