@@ -127,7 +127,7 @@ export function validateLaunchShape(value: unknown, spec: OwnedAppLaunchSpec): O
   return { appId, appPid, windowId, windowTty: tty as string | null, launchRunId }
 }
 
-/** The census rows are the window server's answer; a marker match is the app's own answer. */
+/** The census rows are the window server's answer, in the shape darwin-capture.ts CENSUS emits. */
 export interface OwnedAppWindowProof {
   readonly window: DarwinWindow
   readonly census: DarwinWindowCensus
@@ -175,6 +175,10 @@ function layerZeroWindows(rows: unknown): Array<{ id: number; ownerPid: number; 
     }
     const value = row as Record<string, unknown>
     if (typeof value.id !== "number" || typeof value.ownerPid !== "number" || value.layer !== 0) continue
+    // A launch builds windows in stages, and the window server lists the offscreen ones too. They are not
+    // windows this run can own or grade — the capture census refuses them by name for the same reason — so
+    // counting them here would read one launch as two windows and refuse a launch that is fine.
+    if (value.onscreen === false) continue
     out.push({
       id: value.id,
       ownerPid: value.ownerPid,
