@@ -50,6 +50,7 @@ import {
   fencedSilenceResult,
   sentinelNegativeResult,
   sentinelSilenceResult,
+  measuredSilence,
   sgrCaptureTooSmall,
   tooSmall,
   unmeasuredCellResult,
@@ -5386,6 +5387,7 @@ function osc0IconTitleResult(
     "icon" | "title",
     TerminalQueryOutcome["reason"] | "feedCapture boundary" | "owned public title read"
   >,
+  silence: { icon: boolean; title: boolean },
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
@@ -5394,6 +5396,16 @@ function osc0IconTitleResult(
       ...(windowTitle === null ? [`window title (CSI 21 t): ${reasons.title}`] : []),
     ]
     const note = `no complete OSC 0 target reply: ${missing.join("; ")}`
+    const unread = (iconLabel === null && !silence.icon) || (windowTitle === null && !silence.title)
+    if (!unread) {
+      // The target queries are this surface's read-back instrument, so a measured silence says we could not
+      // read the label, not that OSC 0 failed (@cto 1676cf8a Q3). The clause we did read stays in `response`.
+      return {
+        ...methodUnavailable(note),
+        response,
+        criterionBranch: "app-query-instrument",
+      }
+    }
     return {
       response,
       note,
@@ -7799,6 +7811,10 @@ const extensionDefinitions: ProbeDefinition[] = [
               icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
               title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
             },
+            {
+              icon: iconOutcome ? measuredSilence(iconOutcome, "OSC 0 icon name") : false,
+              title: titleOutcome ? measuredSilence(titleOutcome, "OSC 0 window title") : false,
+            },
           )
           const response = JSON.stringify({ ...state, icon, title, iconLabel, windowTitle, iconReason, titleReason })
           if (controlled && result.observation) {
@@ -7846,7 +7862,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                 // a timeout — is a silence. Anything the terminal did say keeps the old refusal path,
                 // because "got no answer" would be false for it.
                 const silent =
-                  icon.reason === "timeout" || sentinelSilenceResult(icon, "OSC 0 icon-label reply") !== null
+                  measuredSilence(icon, "OSC 0 icon-label reply")
                 if (iconLabel === null && silent) {
                   // The owned read has already proved the title clause. A terminal that answers DA1
                   // yet stays silent on the icon-label report has limited what it will tell us; that
@@ -7862,6 +7878,7 @@ const extensionDefinitions: ProbeDefinition[] = [
                     state.title,
                     { icon: icon.raw, title: state.title },
                     { icon: icon.reason, title: "owned public title read" },
+                    { icon: silent, title: false },
                   )
                   if (result.assertions) {
                     result.assertions = result.assertions.map((assertion, index) =>
@@ -7890,6 +7907,10 @@ const extensionDefinitions: ProbeDefinition[] = [
           title.match?.[1] ?? null,
           { icon: icon.raw, title: title.raw },
           { icon: icon.reason, title: title.reason },
+          {
+            icon: measuredSilence(icon, "OSC 0 icon-label reply"),
+            title: measuredSilence(title, "OSC 0 window-title reply"),
+          },
         )
       },
       "query_reply",
