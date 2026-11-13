@@ -169,6 +169,30 @@ test("editing.decrqcra keeps its bytes, has no reader, and stays open by name on
   })
 })
 
+test.each(ROWS)("%s: the lib callback is the same function, so no library row can move", (id) => {
+  const row = MUX_OUTER_ROWS[id]!
+  const lib = () => ({ pass: false, reason: "library callback" })
+  const term = async () => ({ pass: false, reason: "terminal callback" })
+  const wrapped = withMuxOuterRows(MUX_OUTER_ROWS)({ id, lib, term } as never)
+  // 33801's eleven library rows run through `lib`; the wrapper replaces only `term`, and only for tmux.
+  expect(wrapped.lib).toBe(lib)
+  expect(wrapped.term).not.toBe(term)
+  expect(row.branch).toBe(MUX_OUTER_ROWS[id]!.branch)
+})
+
+test("editing.decrqcra: the lib callback is untouched there too", () => {
+  const lib = () => ({ pass: false, reason: "library callback" })
+  const wrapped = withMuxOuterUnreadableRow(
+    "editing.decrqcra",
+    "\u001b[1;1;1;1;1;5*y",
+  )({
+    id: "editing.decrqcra",
+    lib,
+    term: async () => ({ pass: false, reason: "terminal callback" }),
+  } as never)
+  expect(wrapped.lib).toBe(lib)
+})
+
 test("editing.decrqcra keeps its own callback on Screen", async () => {
   const seen: Array<string | undefined> = []
   const definition = withMuxOuterUnreadableRow(
