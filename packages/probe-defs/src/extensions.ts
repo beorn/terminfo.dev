@@ -5075,6 +5075,35 @@ async function liveClipboardProbe(
     // @cto 2026-11-13: the control answered and the query never did, so the feature is absent in this configuration,
     // not unknown. Never a zero-byte read graded as "did not write".
     if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+      // @cto 2026-11-13: silence means what the app's PINNED DEFAULT says it means. An "ask" app may be waiting on a
+      // person, and nothing here answers a prompt or injects an answer, so that silence grades nothing. Absent
+      // evidence of the default, the row names that instead of guessing.
+      const posture = fixture.readDefault?.posture
+      if (posture === undefined)
+        return {
+          pass: false,
+          note: "cursor-position control answered; OSC 52 c returned no reply; default not established",
+          tests: [
+            {
+              id: "criterion",
+              status: "probe-todo",
+              reason:
+                "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)",
+            },
+          ],
+        }
+      if (posture === "ask")
+        return {
+          pass: false,
+          note: "default asks the user; the prompt was not answered",
+          tests: [
+            {
+              id: "criterion",
+              status: "probe-todo",
+              reason: "default asks the user; the prompt was not answered",
+            },
+          ],
+        }
       const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
       return {
         pass: false,
