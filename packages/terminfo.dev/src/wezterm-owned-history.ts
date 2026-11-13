@@ -265,11 +265,21 @@ export function socketHeldByPid(input: {
   return { status: "held" }
 }
 
-/** The pane list this run's own socket answers, reduced to what the cross-check needs. */
-function listedPane(
-  options: OwnedWezTermPaneOptions & { readonly socket: string; readonly pane: string },
+/**
+ * One pane-list parse for history and CWD. History retains its first matching row and TTY policy;
+ * CWD additionally requires a unique match and validates the raw public URI in its own consumer.
+ * Callers bracket the command with their live owner check; parsing alone proves no ownership.
+ */
+export function readOwnedWezTermPane(
+  options: Pick<OwnedWezTermPaneOptions, "executable"> & { readonly socket: string; readonly pane: string },
 ):
-  | { readonly status: "listed"; readonly tty: string | undefined }
+  | {
+      readonly status: "listed"
+      readonly tty: string | undefined
+      readonly cwd: unknown
+      readonly matchingPanes: number
+      readonly privateTranscript: string
+    }
   | { readonly status: "refused"; readonly reason: string } {
   const args = ["cli", "--no-auto-start", "list", "--format", "json"]
   const result = spawnSync(options.executable, args, {
@@ -297,10 +307,11 @@ function listedPane(
   }
   if (!Array.isArray(parsed)) return refused("WezTerm owned pane list is not a pane array")
   const wanted = Number(options.pane)
-  const row = parsed.find(
-    (candidate): candidate is { pane_id: number; tty_name?: unknown } =>
+  const matches = parsed.filter(
+    (candidate): candidate is { pane_id: number; tty_name?: unknown; cwd?: unknown } =>
       typeof candidate === "object" && candidate !== null && (candidate as { pane_id?: unknown }).pane_id === wanted,
   )
+  const row = matches[0]
   if (!row) {
     const panes = parsed
       .map((candidate) =>
@@ -312,6 +323,9 @@ function listedPane(
   return {
     status: "listed",
     tty: typeof row.tty_name === "string" ? row.tty_name : undefined,
+    cwd: row.cwd,
+    matchingPanes: matches.length,
+    privateTranscript: failure(options.executable, args, result),
   }
 }
 
@@ -336,7 +350,7 @@ export function readOwnedWezTermHistory(options: OwnedWezTermPaneOptions): Owned
       reason: "WezTerm owned history requires this run's WEZTERM_UNIX_SOCKET and numeric WEZTERM_PANE",
     }
   }
-  const binding = listedPane({ ...options, socket: options.socket, pane: options.pane })
+  const binding = readOwnedWezTermPane({ ...options, socket: options.socket, pane: options.pane })
   if (binding.status === "refused") return binding
   const listedTty = ttyName(binding.tty)
   const measuredTty = ttyName(options.tty)

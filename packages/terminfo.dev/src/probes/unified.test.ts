@@ -10,7 +10,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
-import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
+import { appSemanticDeclarations, readSessionBus, readWezTermCwd } from "../app-semantic-state.ts"
 import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -4059,6 +4059,84 @@ it("records failed clipboard restoration as collector error rather than retainin
   ])
   expect(batch.suiteComplete).toBe(false)
 })
+
+// A direct semantic reading cannot see the collector's publishable call log or run-level failure.
+// The actual batch and shared observer must retain a home URI privately and revoke a failed restore.
+it.each([false, true])(
+  "WezTerm CWD batch keeps host URIs private and reports failed restoration: %s",
+  async (failRestore) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-batch-"))
+    receiptDirectories.push(directory)
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    const privateWrites: string[] = []
+    const retainedPhases: Array<{ path: string; sha256: string }> = []
+    const captured: { reading?: AppSemanticReading } = {}
+    const id = "extensions.osc7-cwd"
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        async readAppSemanticState(featureId, _publishableWrite) {
+          expect(featureId).toBe(id)
+          captured.reading = await readWezTermCwd({
+            onRetained: (artifact) => retainedPhases.push(artifact),
+            runId: "a".repeat(32),
+            captureDirectory: directory,
+            write(bytes) {
+              privateWrites.push(bytes)
+              text = bytes
+              const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+              if (command && !(failRestore && command[1] === initial)) cwd = command[1]!
+            },
+            readPane: async () => cwd,
+            readText: async () => text,
+          })
+          return captured.reading
+        },
+      },
+    })
+    const published = JSON.stringify(batch)
+    expect(published).not.toContain(initial)
+    expect(published).not.toContain("private-person")
+    expect(privateWrites).toHaveLength(4)
+    expect(privateWrites.at(-1)).toContain(initial)
+    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8")) as {
+      initial?: string
+      phases: unknown[]
+    }
+    expect(phaseRecord.initial).toBe(initial)
+    expect(phaseRecord.phases).toContainEqual(
+      expect.objectContaining({ name: "restoration", feed: expect.stringContaining(initial) }),
+    )
+    const row = batch.results.find((result) => result.featureId === id)
+    if (failRestore) {
+      expect(batch.rawReplies[id]).toBeDefined()
+      expect(cwd).not.toBe(initial)
+      expect(row?.status).not.toBe("supported")
+      expect(batch.suiteComplete).toBe(false)
+      expect(JSON.stringify(batch.ungradedDiagnostics[id])).toContain("pane's reported directory was left changed")
+      expect(phaseRecord.phases).toContainEqual(
+        expect.objectContaining({ name: "restoration", error: expect.any(String) }),
+      )
+    } else {
+      expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
+      expect(cwd).toBe(initial)
+      expect(row?.status).toBe("supported")
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      const reading = captured.reading
+      if (reading?.status !== "measured") throw new Error("No measured CWD reading")
+      const detail = reading.detail as { privateEvidence: string; restoredEqual: boolean }
+      expect(detail.restoredEqual).toBe(true)
+      expect(retainedPhases.some((artifact) => basename(artifact.path) === detail.privateEvidence)).toBe(true)
+      expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+    }
+  },
+  15_000,
+)
 
 // #30932 AC3: a TTY-only log loses the source's optional capture method. The saved-rendition
 // reference now needs pixel geometry before capture; replay must retain that same source shape
