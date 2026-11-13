@@ -278,7 +278,7 @@ test.each([
       expect(result!.observation?.outcome).not.toBe("unsupported")
       expect(result!.observation?.outcome).not.toBe("supported")
       expect(result!.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
-      expect(result!.tests).toMatchObject([{ status: "probe-invalid", reason: expect.any(String) }])
+      expect(result!.tests).toMatchObject([{ status: "probe-todo", reason: expect.any(String) }])
     } else {
       expect(result!.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       expect(result!.assertions?.map(({ kind }) => kind)).toContain(outcome === "supported" ? "positive" : "negative")

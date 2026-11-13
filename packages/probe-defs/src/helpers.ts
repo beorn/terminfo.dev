@@ -338,6 +338,20 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   }
 }
 
+/**
+ * Mark a read-method gap: the probe ran, but this terminal gave it no way to read the answer here — it has no
+ * owned reader, or a control the probe injected did not read back. The row stays open (probe-todo); only a
+ * broken fixture is probe-invalid (@cto 91ec1211, 2026-11-13).
+ */
+export function methodUnavailable(reason: string): ExecutionOnlyProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+    replyFailureTestIds: ["criterion"],
+  }
+}
+
 /** An operational cleanup failure replaces reply intent on the object already being returned. */
 export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackResult {
   const unmarked = result as { replyFailureTestIds?: readonly string[] }
@@ -368,9 +382,11 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests?.some((test) => test.id === id && test.status === "probe-invalid")) {
+    if (
+      !result.tests?.some((test) => test.id === id && (test.status === "probe-todo" || test.status === "probe-invalid"))
+    ) {
       throw new Error(
-        `Callback ${featureId} reply marker ${id} must name a probe-invalid test; fix the callback builder use`,
+        `Callback ${featureId} reply marker ${id} must name an open or invalid test; fix the callback builder use`,
       )
     }
   }
@@ -404,7 +420,9 @@ export function withReplyFailureEvidence(
   return {
     ...result,
     tests: result.tests?.map((test) =>
-      marked.has(test.id) && test.status === "probe-invalid" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+      marked.has(test.id) && (test.status === "probe-invalid" || test.status === "probe-todo")
+        ? { ...test, reason: `${test.reason}; ${detail}` }
+        : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
 }

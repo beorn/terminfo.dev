@@ -35,6 +35,7 @@ import {
   sentinelAnswer,
   replyFrame,
   replyFailure,
+  methodUnavailable,
   cancelReplyFailure,
   reviewResult,
   declaredUntestableResult,
@@ -5288,7 +5289,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       const resetAgain = await readPaste(false)
       if (reset !== nonce || resetAgain !== nonce || (report !== nonce && report !== `\x1b[200~${nonce}\x1b[201~`)) {
         return {
-          ...replyFailure("Paste framing lacks exact raw reset controls or a complete target nonce"),
+          ...methodUnavailable("Paste framing lacks exact raw reset controls or a complete target nonce"),
           response: JSON.stringify({ reset, report, resetAgain }),
         }
       }
@@ -7689,7 +7690,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             ) {
               return {
                 response: JSON.stringify({ before, controls, firstTitleControl, controlled }),
-                ...replyFailure("OSC 0 independent icon/title controls were not both read back"),
+                ...methodUnavailable("OSC 0 independent icon/title controls were not both read back"),
               }
             }
             ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
@@ -7822,7 +7823,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               readings.push(await read())
             }
             if (readings[0] !== controls[0] || readings[1] !== controls[1]) {
-              result = replyFailure("Owned title reader failed the OSC 0 title-clause controls")
+              result = methodUnavailable("Owned title reader failed the OSC 0 title-clause controls")
             } else {
               ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
               state.title = await read()

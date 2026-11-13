@@ -14,6 +14,7 @@ import {
   probe,
   withUnhandledModeReport,
   replyFailure,
+  methodUnavailable,
   decrpmModeProbe,
   headlessDecrpmArm,
   parserStateResult,
@@ -1862,12 +1863,14 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
   if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
   const { input, readInput } = ctx
   if (!input || !readInput) {
-    return replyFailure("Application cursor effect needs owned key injection and input readback")
+    return methodUnavailable("Application cursor effect needs owned key injection and input readback")
   }
   try {
     ctx.write("\x1b[?1l")
     const control = (await readInput(/^a$/, 1000, () => input.injectKey("a")))?.[0]
-    if (control !== "a") return replyFailure("Application cursor delivery control did not read the injected plain a")
+    if (control !== "a") {
+      return methodUnavailable("Application cursor delivery control did not read the injected plain a")
+    }
     const readUp = async (enabled: boolean) => {
       ctx.write(`\x1b[?1${enabled ? "h" : "l"}`)
       return (
@@ -1883,7 +1886,7 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
     const response = JSON.stringify({ decrpm, control, reset, set, resetAgain })
     if ([reset, set, resetAgain].some((report) => report !== "\x1b[Aa" && report !== "\x1bOAa")) {
       return {
-        ...replyFailure(
+        ...methodUnavailable(
           "Application cursor effect did not read an Up encoding followed by the plain-a delivery control in every arm",
         ),
         response,
@@ -1932,7 +1935,7 @@ export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | nul
     const control = await ctx.queryCursorPosition()
     if (home?.row !== 1 || home.col !== 1 || control?.row !== 1 || control.col !== cols) {
       return {
-        ...replyFailure(
+        ...methodUnavailable(
           "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
         ),
         response: JSON.stringify({ decrpm, cols, home, control }),
@@ -2024,7 +2027,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         reset.cols !== resetAgain.cols
       ) {
         return {
-          ...replyFailure("DECCOLM size controls did not establish valid stable reset/set/reset readings"),
+          ...methodUnavailable("DECCOLM size controls did not establish valid stable reset/set/reset readings"),
           response,
         }
       }
@@ -2066,7 +2069,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     }
   }
   if (!ctx.capture && !ctx.cells) {
-    return replyFailure(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
+    return methodUnavailable(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
   }
   const refusal = captureRefusal(ctx, 4, 54, "DECCOLM")
   if (refusal) return refusal
@@ -2197,7 +2200,7 @@ const modeDefinitions: ProbeDefinition[] = [
     term: async (ctx) => {
       const decrpm = await queryDecrpm(ctx, 1049)
       if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1049)
-      if (!ctx.capture && !ctx.cells) return replyFailure("Alternate-screen effect needs owned marker readback")
+      if (!ctx.capture && !ctx.cells) return methodUnavailable("Alternate-screen effect needs owned marker readback")
       const refusal = captureRefusal(ctx, 3, 8, "Alt-screen entry")
       if (refusal) return refusal
       const result = await primaryRestoreCapture(ctx, "modes.alt-screen.enter", 1049, "PRIMARY", "ALTONLY")
@@ -2289,7 +2292,7 @@ const modeDefinitions: ProbeDefinition[] = [
       const decrpm = await queryDecrpm(ctx, 2004)
       if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 2004)
       if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture) {
-        return replyFailure("Bracketed-paste effect needs owned clipboard, key injection and input readback")
+        return methodUnavailable("Bracketed-paste effect needs owned clipboard, key injection and input readback")
       }
       const paste = extensionsProbes.find((entry) => entry.id === "extensions.clipboard-paste")?.term
       if (!paste) throw new Error("Missing existing clipboard-paste App callback")

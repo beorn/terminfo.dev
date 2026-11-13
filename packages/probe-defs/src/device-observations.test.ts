@@ -842,7 +842,7 @@ describe("window-operation qualification", () => {
         const result = await callback(id).terminal(source)
         if (behavior === "unobservable") {
           expect(result.observation).toBeUndefined()
-          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
         } else {
           expect(result.observation).toMatchObject({
             assertionType: "buffer_state",

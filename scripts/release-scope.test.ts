@@ -126,6 +126,20 @@ describe("feature results", () => {
     })
     expect(rollup.families.sgr).toMatchObject({ open: 1, decided: 1 })
   })
+
+  // @cto 91ec1211: an unavailable read method is open, not a reviewed "cannot be tested". The row a migrated
+  // site now writes must project into the open bucket, never into the decided one.
+  it("projects a read-method gap as an open row", () => {
+    const featureId = "extensions.osc0-icon-title"
+    const projected = computeFeatureResults(
+      [{ featureId, probeId: `${featureId}:unobserved`, method: null, status: "probe-todo" }],
+      [featureId],
+    )[featureId]
+    expect(projected).toMatchObject({ status: "probe-todo", strength: null })
+    const rollup = rollupTerminalStatuses({ [featureId]: projected!.status })
+    expect(rollup).toMatchObject({ counts: { "probe-todo": 1 }, open: 1, decided: 0 })
+    expect(rollup.counts.untestable ?? 0).toBe(0)
+  })
 })
 
 // CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
