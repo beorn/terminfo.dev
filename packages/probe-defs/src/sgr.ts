@@ -372,6 +372,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       compared: set.map((frame) => ({
         role: frame.label,
         rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
       })),
       response: observed,
       frames,
@@ -478,6 +479,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     compared: [paintBefore, paintAfter].map((frame) => ({
       role: frame?.label ?? "missing repaint baseline",
       rectangle: frame?.kind === "text-cells" ? undefined : frame?.regionRectangle,
+      ...(frame?.kind === "text-cells" || frame?.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
     })),
     response: paintObserved,
     frames,

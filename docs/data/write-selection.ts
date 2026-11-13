@@ -2,12 +2,14 @@
  * Write the current selection to a caller-given path. The file is never committed and is not under content/.
  * Placed runs come from content/. Each --working-run is passed through the existing workingRuns input.
  */
-import { writeFileSync } from "node:fs"
-import { isAbsolute, relative, resolve, sep } from "node:path"
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
+import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
 import { loadRawCapture } from "../../packages/admin/raw-capture.ts"
+import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.ts"
 import {
   loadSelectedResults,
   suiteRelationOf,
@@ -41,6 +43,18 @@ export interface SelectionFileCell {
   reopened?: SelectedContextCell["reopened"]
   /** Present only when the mux-input demotion read this cell (#33665): measured status and the outer run it leaned on. */
   outerAbsent?: SelectedContextCell["outerAbsent"]
+  /**
+   * Present only on an untestable cell (#33928): why no route measures it, as stored — the mux-input demotion's reason
+   * when that demotion made it untestable, else the run's own result reason. null when the run stored none, so a
+   * reader shows the gap instead of dropping the row.
+   */
+  reason?: string | null
+}
+
+/** The stored reason an untestable cell gives; never invented. */
+function untestableReason(cell: SelectedContextCell): string | null {
+  const reason = cell.outerAbsent?.reason ?? cell.result.reason
+  return reason?.trim() ? reason.trim() : null
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -65,9 +79,10 @@ export function selectionFile(
       if (!working && !isUnder(cell.run.path, contentDir)) {
         throw new Error(`${runId} ${featureId}: placed run file ${cell.run.path} is not under ${contentDir}`)
       }
+      const status = cell.featureResult?.status ?? cell.result.status
       cells.push({
         featureId,
-        status: cell.featureResult?.status ?? cell.result.status,
+        status,
         terminalId: cell.run.subject.id,
         version,
         os: cell.run.subject.os,
@@ -81,6 +96,7 @@ export function selectionFile(
         ...(cell.supplement && { supplement: cell.supplement }),
         ...(cell.reopened && { reopened: cell.reopened }),
         ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent }),
+        ...(status === "untestable" && { reason: untestableReason(cell) }),
       })
     }
   }
@@ -125,11 +141,104 @@ export function parseSelectionArgs(argv: readonly string[]): {
   return { out, content, workingRuns }
 }
 
+/** One collection record: `collection.json` for a headless collection, `pass.json` for an app, hosted or owned-app pass. */
+export interface WorkingRunRecord {
+  readonly directory: string
+  readonly recordPath: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function physicalPath(path: string): string | undefined {
+  return existsSync(path) ? realpathSync(path) : undefined
+}
+
+/**
+ * The pass that recorded this run. An app run sits below its pass — `<pass>/linux/<context>/<run>/raw/v3-run.json`,
+ * and a draft `raw/artifacts/<runId>.draft.json` one level deeper again — so the record is wherever it is, and the
+ * walk goes to the filesystem root rather than to a guessed depth. Only a pass whose `contexts[]` (or a supplement)
+ * names this exact raw run is that run's record: a pass that does not name it refuses by name, because reading the
+ * run under it would swap its trust source silently.
+ */
+function passRecordingRun(target: string, rawPath: string): WorkingRunRecord | undefined {
+  let directory = dirname(rawPath)
+  for (;;) {
+    const parent = dirname(directory)
+    const recordPath = join(parent, "pass.json")
+    if (existsSync(recordPath)) {
+      const record = parseJsonStrict(recordPath, readFileSync(recordPath, "utf8"))
+      if (!isRecord(record) || !Array.isArray(record.contexts)) {
+        throw new Error(`${recordPath}: a pass record carries its contexts`)
+      }
+      const names = (value: unknown): boolean => {
+        if (typeof value !== "string") return false
+        return physicalPath(resolve(parent, value)) === target
+      }
+      const recorded = record.contexts.some(
+        (row) =>
+          isRecord(row) &&
+          (names(row.rawRun) ||
+            (Array.isArray(row.supplements) && row.supplements.some((item) => isRecord(item) && names(item.rawRun)))),
+      )
+      if (!recorded) {
+        throw new Error(
+          `${recordPath}: names no working run ${rawPath}; an app run is read through the pass that recorded it`,
+        )
+      }
+      return { directory: parent, recordPath }
+    }
+    if (parent === directory) return undefined
+    directory = parent
+  }
+}
+
+/**
+ * The record a working run is read through. 33987 (@cto ruling C): every reader of an unplaced run reads the
+ * declaration the producer retained beside that run, found through this record and never in `content/suites`.
+ *
+ * A placed corpus original is the one run with no record, and only inside `content/` is it one: an unplaced run whose
+ * producer wrote no record refuses by name, because it would otherwise be read under committed or current-tree trust —
+ * the silent trust swap this rule exists to prevent.
+ */
+export function workingRunRecord(rawPath: string, contentDir: string): WorkingRunRecord | undefined {
+  const target = physicalPath(rawPath)
+  // An absent run is named by the capture reader, which says what is missing about it.
+  if (target === undefined) return undefined
+  const directory = dirname(rawPath)
+  const beside = ["collection.json", "pass.json"]
+    .map((name) => join(directory, name))
+    .filter((path) => existsSync(path))
+  if (beside.length > 1) {
+    throw new Error(`${directory}: a working run's collection carries one record; found ${beside.join(", ")}`)
+  }
+  const recordPath = beside[0]
+  if (recordPath !== undefined) return { directory, recordPath }
+  const recorded = passRecordingRun(target, rawPath)
+  if (recorded !== undefined) return recorded
+  if (isUnder(target, contentDir)) return undefined
+  throw new Error(
+    `${rawPath}: no collection record names this working run and it is not under ${contentDir}; an unplaced run is read through the record its producer wrote`,
+  )
+}
+
+function readWorkingRun(rawPath: string, contentDir: string, root: string, catalogIds: readonly string[]): LoadedRun {
+  const found = workingRunRecord(rawPath, contentDir)
+  if (found === undefined) return loadRawCapture(rawPath, { root, catalogIds })
+  const record = parseJsonStrict(found.recordPath, readFileSync(found.recordPath, "utf8"))
+  if (!isRecord(record)) throw new Error(`${found.recordPath}: a collection record is a JSON object`)
+  // A pass written before the field existed keeps the custody it had (33987, @cto c11afb84 cure (a)).
+  if (!("suiteManifest" in record)) return loadRawCapture(rawPath, { root, catalogIds })
+  const manifestPath = retainedSuiteManifestPath(found.directory, record.suiteManifest, found.recordPath)
+  return loadRawCapture(rawPath, { root, catalogIds, manifestPath })
+}
+
 export function writeSelection(options: { out: string; content: string; workingRuns: readonly string[] }): number {
   refuseOutputUnderContent(options.out, options.content)
   const catalog = Object.keys(loadFeatures(options.content))
   const root = resolve(options.content, "..")
-  const loaded = options.workingRuns.map((path) => loadRawCapture(path, { root, catalogIds: catalog }))
+  const loaded = options.workingRuns.map((path) => readWorkingRun(path, options.content, root, catalog))
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
   const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
   const apps = appSections(projection, compatibilitySubjects(projection, options.content), options.content)
@@ -174,7 +283,7 @@ export function appSections(
   subjects: ReadonlyMap<string, CurrentResult>,
   contentDir: string,
 ): Record<string, SelectionFileApp> {
-  const joined = joinedAppCells(projection, subjects)
+  const joined = joinedAppCells(projection, subjects, contentDir)
   const apps: Record<string, SelectionFileApp> = {}
   for (const [key, subject] of subjects) {
     const app = joined.get(key)

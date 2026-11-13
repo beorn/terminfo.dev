@@ -100,6 +100,9 @@ export function sixelReadback(geometry: PixelGeometry, background = SGR_RED): Om
   const payload = sixelPayload(sixelTileSize(geometry))
   return {
     region: { ...SIXEL_REGION },
+    // The whole drawn block, not only its compared interior: a terminal that draws the image over
+    // text would hide a sentinel painted inside it (33985).
+    avoid: { top: BLOCK_TOP, left: BLOCK_LEFT, bottom: BLOCK_TOP + BLOCK_ROWS - 1, right: BLOCK_LEFT + BLOCK_COLS - 1 },
     sentinel: { ...SENTINEL },
     cursorRow: SIXEL_CURSOR_ROW,
     seed: `${CLEAR}${park()}`,

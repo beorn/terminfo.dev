@@ -19,6 +19,8 @@ import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { loadSelectedResults, projectResults } from "../docs/data/selected-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -46,7 +48,7 @@ function muxSpecimen() {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function fixture() {
+function fixture(runId = "fixture-run") {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-placement-"))
   dirs.push(dir)
   const content = join(dir, "content")
@@ -66,7 +68,7 @@ function fixture() {
     permissions: null,
   }
   const draft = initializeRunDraft({
-    runId: "fixture-run",
+    runId,
     sourceRevision: "a".repeat(40),
     manifest: currentManifest,
     source: { kind: "live" },
@@ -100,6 +102,17 @@ function fixture() {
 
 // Accepted: placement must retain exact run bytes and its trusted suite, and reads must bind them.
 // The retired admission tests never call the collection writer or reload what it actually persisted.
+// #34018: the composed owned route hands the run its identity, so the record the host produced and
+// the record the pass asked for are one run. The place path must accept that identity unchanged —
+// if placement only worked for a locally minted id, the handoff would be fixed and uncounted anyway.
+test("places a run whose identity the composer handed down", () => {
+  const handed = "0123456789abcdef0123456789abcdef"
+  const f = fixture(handed)
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  expect(destination).toBe(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-" + handed + ".json"))
+  expect(loadStoredRuns(f.content, f.manifest.catalogIds!)).toMatchObject([{ runId: handed }])
+})
+
 test("persists and reloads exact bytes, idempotently, refusing conflicts", () => {
   const f = fixture()
   const bytes = readFileSync(f.source)
@@ -116,6 +129,62 @@ test("persists and reloads exact bytes, idempotently, refusing conflicts", () =>
   writeFileSync(destination, "different")
   expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/different collected run/)
   expect(readFileSync(destination, "utf8")).toBe("different")
+})
+
+// A projection must publish the exact run it admitted, even when evidence is read later.
+// Existing placement conflicts happen before projection; they cannot catch a subsequent file change.
+test("publication names a stored run changed after projection loaded", () => {
+  const f = fixture()
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash)
+  expect(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds)).toContain(f.run.runId)
+
+  // Still valid JSON with the same semantic result: only exact-byte binding detects this replacement.
+  writeFileSync(destination, `${readFileSync(destination, "utf8")}\n`)
+  let failure: unknown
+  try {
+    publicResults(projection, new Map())
+  } catch (cause) {
+    failure = cause
+  }
+  expect(failure).toBeInstanceOf(Error)
+  const message = (failure as Error).message
+  expect(message).toContain(destination)
+  expect(message).toContain(f.run.runId)
+  expect(message).toMatch(/digest|sha256/i)
+})
+
+// A stored run's trace is shared across readers. Equal bytes alone miss a mutable shared document.
+test("publication reuses a deeply frozen trace for a stored run", () => {
+  const f = fixture()
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash)
+  const first = publicResults(projection, new Map())
+  const [entry] = first.documents
+  if (!entry || !("featureResults" in entry[1].document)) throw new Error("Missing stored trace fixture")
+  const [url, trace] = entry
+  const second = publicResults(projection, new Map())
+  expect(second.documents.get(url)?.document).toBe(trace.document)
+  if (!("featureResults" in trace.document)) throw new Error("Missing stored trace cells")
+  const [cell] = Object.values(trace.document.featureResults)
+  if (!cell) throw new Error("Missing stored trace cell")
+  expect(Reflect.set(cell, "status", "unsupported")).toBe(false)
+  expect(Reflect.set(trace.document.featureResults, "injected", {})).toBe(false)
+  expect(second.documents.get(url)?.bytes).toBe(trace.bytes)
+  expect(JSON.stringify(second.projection)).not.toContain("traceMemo")
+
+  // Explicit in-memory inputs remain mutable; a stored-reference memo must not attach to them.
+  const [raw] = loadStoredRuns(f.content, f.manifest.catalogIds!)
+  if (!raw) throw new Error("Missing mutable run fixture")
+  const mutable = projectResults([raw], f.manifest.catalogIds!, { currentProbeHash: f.manifest.probeHash }, [])
+  const before = publicResults(mutable, new Map()).documents.get(url)
+  raw.identity = "unverified"
+  const after = publicResults(mutable, new Map()).documents.get(url)
+  if (!before || !after) throw new Error("Missing mutable trace fixture")
+  expect(after.document).not.toBe(before.document)
+  expect(JSON.parse(after.bytes)).toMatchObject({ identity: { recorded: "unverified" } })
 })
 
 // Stored suite filenames must identify their actual manifest; valid content under a wrong name is not trustworthy.

@@ -1,7 +1,7 @@
 import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
 import { ANSI_REGEX } from "@silvery/ansi"
 import {
@@ -12,6 +12,7 @@ import {
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -51,6 +52,45 @@ type AppSemanticCapability = {
 }
 
 const declarations: readonly AppSemanticCapability[] = [
+  // CTO316a2912: this Mac apparatus cannot observe these rows; no capability verdict.
+  ...[
+    ...promptFeatures,
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ].map((featureId) => ({
+    kind: "term",
+    id: "alacritty",
+    version: "0.17.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no way): The selected Alacritty IPC surface reads configuration, not the terminal's parsed feature state. It provides no App-owned readback for this probe's unknown, independently handled, and target controls. This observation route cannot grade the feature; declare it untestable through this apparatus.",
+  })),
+  // Remove when either route rule changes: hosted pointer helper installed or owned-host rule changes.
+  // These exact App routes are untestable under the current rules, not feature negatives (CTO2aabe241/fd05a5f1).
+  ...[
+    { id: "ghostty", version: "1.4.0" },
+    { id: "alacritty", version: "0.17.0" },
+    { id: "wezterm", version: "20240203-110809-5046fc22" },
+    { id: "cursor", version: "3.25.9" },
+    { id: "com.microsoft.VSCode", version: "1.142.0" },
+    { id: "cmux", version: "0.65.2" },
+    { id: "terminal-app", version: "2.15" },
+    { id: "iterm2", version: "3.6.11" },
+  ].flatMap((subject) =>
+    ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"].map((featureId) => ({
+      ...subject,
+      kind: "term",
+      os: "macos",
+      featureId,
+      reason: "no permitted pointer route: owned-host rule and hosted no-input rule",
+    })),
+  ),
   ...[
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
     { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
@@ -61,6 +101,22 @@ const declarations: readonly AppSemanticCapability[] = [
       outerCommands: true as const,
     })),
   ),
+  // 33630: tmux only. These five rows read the outer terminal's own command record; Screen's rows for the same
+  // features stay out of this slice and keep their existing arm.
+  ...[
+    "extensions.kitty-graphics",
+    "extensions.osc701-locale",
+    "extensions.osc702-version",
+    "extensions.osc776-cell-size",
+    "extensions.osc7770-font-size",
+  ].map((featureId) => ({
+    kind: "mux",
+    id: "tmux",
+    version: "3.8",
+    os: "linux",
+    featureId,
+    outerCommands: true as const,
+  })),
   {
     kind: "mux",
     id: "tmux",
@@ -913,7 +969,18 @@ const sgrPaintMatcher: OuterCommandMatcher = {
 }
 
 /**
- * A forwarding control carrying the invocation's nonce, then one target, as whole record lines.
+ * The outer record was read and carried no forwarding-control line. That is the one read failure a config that
+ * forwards no title explains, so the grade can tell it apart from a refused plan order, an unreadable call log or
+ * an unqualified reader, which each keep their own reason (#32593, @dev/15 peer read).
+ */
+class NoForwardingControl extends Error {}
+
+/**
+ * One target line, then a forwarding control carrying the invocation's nonce that closes its window, as whole
+ * record lines. The callback writes the target FIRST and the control second (@cto 33919 condition 3): a multiplexer
+ * forwards a title when it next redraws, never at the instant the pane writes it, so everything it forwarded before
+ * the control is already in the record when the control line arrives. A target line found before the control belongs
+ * to this invocation; one found after it is a later write's and cannot make this arm's negative sound.
  * Lines are copied verbatim from the bare Kitty 0.49.2 --dump-commands capture
  * /hh/var/@dev16/32593/kitty-dump/record.txt (sha256 a432e932819c98bfd7f5b41e0f76358f145a07a80691cbaa4bb8cb8c9355b49c),
  * retained as fixtures/kitty-osc2-osc22-commands.txt; nothing here is read from terminal source.
@@ -933,8 +1000,8 @@ function controlTargetMatcher(spec: {
         throw new Error(`Outer ${spec.label} trace has ${controls.length} forwarding control writes; one is required`)
       }
       const at = writes.findIndex((value) => spec.control.write.exec(value) !== null)
-      if (!writes.slice(at + 1).includes(spec.target.write)) {
-        throw new Error(`Outer ${spec.label} trace has no target write after its forwarding control`)
+      if (!writes.slice(0, at).includes(spec.target.write)) {
+        throw new Error(`Outer ${spec.label} trace has no target write before its forwarding control`)
       }
       const controlLine = spec.control.line(nonce)
       return {
@@ -944,32 +1011,36 @@ function controlTargetMatcher(spec: {
           const unknown: string[] = []
           let control: number | undefined
           let target: number | undefined
+          let targetAfterControl: number | undefined
           for (const match of text.matchAll(/([^\n]*)\n/g)) {
             const line = match[1] ?? ""
-            // This invocation's control opens its window: the callback sends the nonce title first, then the
-            // target, so a target or any other line before the control is an earlier invocation's (32593 peer).
-            if (control === undefined) {
-              if (line === controlLine) control = match.index
+            // The control closes this invocation's phase but does not end the read: the window runs to the deadline so
+            // a target line that arrives only AFTER the control is visible, and can be refused as a negative rather
+            // than counted as "the multiplexer did not send" (@cto 33919 condition 3, 33920 condition 2).
+            if (line === controlLine && control === undefined) {
+              control = match.index
               continue
             }
-            if (line === controlLine) continue
             if (line === spec.target.line) {
-              target = match.index
-              return {
-                commands: { control, target },
-                start: control,
-                end: match.index + match[0].length,
-                unknown: named(unknown),
+              if (control === undefined) {
+                if (target === undefined) target = match.index
+              } else if (targetAfterControl === undefined) {
+                targetAfterControl = match.index
               }
+              continue
             }
             unknown.push(line)
           }
-          return { commands: { control, target }, start: control, unknown: named(unknown) }
+          return {
+            commands: { control, target, targetAfterControl },
+            start: target ?? control,
+            unknown: named(unknown),
+          }
         },
         decide(scan) {
-          const seen = scan.commands as { control?: number; target?: number }
+          const seen = scan.commands as { control?: number; target?: number; targetAfterControl?: number }
           if (seen.control === undefined) {
-            throw new Error(`Outer command record has no forwarding control line: ${controlLine}`)
+            throw new NoForwardingControl(`Outer command record has no forwarding control line: ${controlLine}`)
           }
           // A target forwarded in another form (terminator, parameter, name) is not "did not send"
           // (@cto 18d11184). The command word is the declared target line's tokens before its value.
@@ -978,7 +1049,77 @@ function controlTargetMatcher(spec: {
           if (seen.target === undefined && other !== undefined) {
             throw new Error(`Outer command record has ${command} in another form than the target line: ${other}`)
           }
+          // A control that arrived before the target is not a negative (@cto 33919 condition 3, 33920 condition 2):
+          // whatever the multiplexer forwarded before it is already in the record, so a target line after the
+          // control is a later write's and shows nothing about this invocation.
+          if (seen.target === undefined && seen.targetAfterControl !== undefined) {
+            throw new Error(
+              `Outer command record carries ${spec.target.line} only after its forwarding control; this invocation's target must precede it`,
+            )
+          }
           return { target: spec.target.line, targetSent: seen.target !== undefined }
+        },
+      }
+    },
+  }
+}
+
+/**
+ * A row whose outer evidence is one report line inside the window opened by the DA1 control (33630, @cto ac738b73).
+ * The callback sends the target first and the DA1 second, so the window closes at the control line and a target line
+ * found before it belongs to this invocation. No control line in the slice is no window: that read fails by name.
+ * The line shapes come from the direct outer run that qualified the rows (`/hh/var/@dev2/33630/gate-table.md`).
+ */
+function windowedLineMatcher(spec: {
+  label: string
+  write: string
+  target: RegExp
+  otherForm: RegExp
+}): OuterCommandMatcher {
+  return {
+    label: spec.label,
+    artifact: "mux-outer-row",
+    plan(writes) {
+      if (!writes.includes(spec.write)) {
+        throw new Error(`Outer ${spec.label} trace has no target write for this row`)
+      }
+      return {
+        nonce: "",
+        window: "deadline",
+        scan(text) {
+          const unknown: string[] = []
+          let control: number | undefined
+          let target: number | undefined
+          for (const match of text.matchAll(/([^\n]*)\n/g)) {
+            const line = match[1] ?? ""
+            if (line === "report_device_attributes 0 0") {
+              control = match.index
+              return {
+                commands: { control, target },
+                start: target ?? control,
+                end: match.index + match[0].length,
+                unknown: named(unknown),
+              }
+            }
+            if (target === undefined && spec.target.test(line)) {
+              target = match.index
+              continue
+            }
+            // Only lines that look like this row's own report are kept: anything else in the window is
+            // another probe's traffic and is not evidence about this row.
+            if (spec.otherForm.test(line)) unknown.push(line)
+          }
+          return { commands: { control, target }, start: target, unknown: named(unknown) }
+        },
+        decide(scan) {
+          const seen = scan.commands as { control?: number; target?: number }
+          if (seen.control === undefined) {
+            throw new Error(`Outer command record has no device-attributes control line for ${spec.label}`)
+          }
+          if (seen.target === undefined && scan.unknown.lines.length > 0) {
+            throw new Error(`Outer command record has ${spec.label} in another form: ${scan.unknown.lines[0]}`)
+          }
+          return { target: spec.label, targetSent: seen.target !== undefined }
         },
       }
     },
@@ -992,6 +1133,36 @@ const outerCommandMatchers: Readonly<Record<string, OuterCommandMatcher>> = {
     control: { write: /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/, line: (nonce) => `set_title ${nonce}` },
     target: { write: "\x1b]22;pointer\x1b\\", line: "set_dynamic_color 22 pointer" },
   }),
+  "extensions.kitty-graphics": windowedLineMatcher({
+    label: "the Kitty graphics query",
+    write: "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+    target: /^graphics_command \{.*"action": "q".*"format": 24,.*"id": 31,/,
+    otherForm: /^(?:Malformed )?[Gg]raphics/,
+  }),
+  "extensions.osc701-locale": windowedLineMatcher({
+    label: "OSC 701",
+    write: "\x1b]701;?\x07",
+    target: /^\[[0-9.]+\] Ignoring OSC 701, used by mintty for locale$/,
+    otherForm: /OSC 701|escape code: 701/,
+  }),
+  "extensions.osc702-version": windowedLineMatcher({
+    label: "OSC 702",
+    write: "\x1b]702;?\x07",
+    target: /^\[[0-9.]+\] Unknown OSC escape code: 702;\?$/,
+    otherForm: /escape code: 702(?!;\?$)|OSC 702/,
+  }),
+  "extensions.osc776-cell-size": windowedLineMatcher({
+    label: "OSC 776",
+    write: "\x1b]776\x07",
+    target: /^\[[0-9.]+\] Unknown OSC escape code: 776$/,
+    otherForm: /escape code: 776(?!$)|OSC 776/,
+  }),
+  "extensions.osc7770-font-size": windowedLineMatcher({
+    label: "OSC 7770",
+    write: "\x1b]7770;?\x07",
+    target: /^\[[0-9.]+\] Ignoring OSC 7770, used by mintty for font size$/,
+    otherForm: /OSC 7770|escape code: 7770/,
+  }),
 }
 
 /** True when the one outer command reader has a matcher for this probe's callback writes. */
@@ -1000,14 +1171,45 @@ export function hasOuterCommandMatcher(featureId: string): boolean {
 }
 
 /** Collector-local outer command read for every per-probe matcher (the name predates the non-SGR matchers); ownership comes from the existing live terminal owner. */
+/**
+ * Does this run's mux config forward a title — the OSC 2 forwarding control — to the outer terminal? Declared per
+ * multiplexer: GNU Screen passes the pane's title through with any config (measured in the 32593 run-1112 screen
+ * record), while tmux forwards one only with its documented `set-titles` option on (off by default in 3.8). A
+ * profile's exact bytes come from the same table the placement check reads, so a label cannot drift from its file.
+ * Undefined when the mux or its recorded config is unknown, which leaves the reader's own reason in place.
+ */
+function muxForwardsTitle(mux: string | undefined, config: string | null | undefined): boolean | undefined {
+  if (mux === undefined) return undefined
+  if (mux !== "tmux") return true
+  if (config === null || config === undefined) return undefined
+  const profile = MUX_PROFILE_CONFIG_FILES[config]
+  return profile === undefined ? false : configSetsOptionOn(profile.content, "set-titles")
+}
+
+/**
+ * Reads one tmux option out of the bytes a profile starts the mux with, as tmux itself reads them (#33995): a
+ * `set`/`set-option` command, its flags, then the option name and value. A bare `set-titles on` line is not a
+ * command — tmux exits 0 having ignored it — so it does not count as setting anything.
+ */
+function configSetsOptionOn(content: string, option: string): boolean {
+  return content.split("\n").some((line) => {
+    const [command, ...words] = line.trim().split(/\s+/)
+    if (command !== "set" && command !== "set-option") return false
+    const [name, value] = words.filter((word) => !word.startsWith("-"))
+    return name === option && value === "on"
+  })
+}
+
 export function beginMuxSgrCommandRead(input: {
   featureId: string
-  subject: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal">>
+  subject: Pick<ProbeSubject, "kind"> &
+    Partial<Pick<ProbeSubject, "id" | "version" | "os" | "outerTerminal" | "config">>
   proof?: Pick<LinuxMuxAttachmentProof, "platform" | "mux" | "launchRunId" | "collector">
 }) {
   try {
     const { subject, proof } = input
     const env = process.env
+    const titlesForwarded = muxForwardsTitle(subject.id, subject.config)
     if (
       subject.kind !== "mux" ||
       !declarations.some(
@@ -1095,18 +1297,39 @@ export function beginMuxSgrCommandRead(input: {
           }
           detail.closedBy = reading.complete ? "match" : "deadline"
           const { target, targetSent } = plan.decide(parsed)
-          return { status: "measured" as const, target, targetSent, outer, detail }
+          // Custody of the retained window (33630): the digest and size of the bytes this read kept. The row's
+          // evidence stays the control and target lines; this only lets a reason name the trace it read.
+          const retained = Buffer.from(reading.text)
+          const trace = {
+            sha256: createHash("sha256").update(retained).digest("hex"),
+            lines:
+              retained.length === 0
+                ? 0
+                : retained
+                    .toString("utf8")
+                    .split("\n")
+                    .filter((line) => line.length > 0).length,
+            window: { offset, endOffset: reading.endOffset },
+          }
+          return { status: "measured" as const, target, targetSent, outer, trace, detail }
         } catch (error) {
           return {
             status: "unavailable" as const,
             reason: error instanceof Error ? error.message : String(error),
+            titlesForwarded,
+            noForwardingControl: error instanceof NoForwardingControl,
             detail,
           }
         }
       },
     }
   } catch (error) {
-    return { status: "unavailable" as const, reason: error instanceof Error ? error.message : String(error) }
+    return {
+      status: "unavailable" as const,
+      reason: error instanceof Error ? error.message : String(error),
+      titlesForwarded: muxForwardsTitle(input.subject.id, input.subject.config),
+      noForwardingControl: error instanceof NoForwardingControl,
+    }
   }
 }
 

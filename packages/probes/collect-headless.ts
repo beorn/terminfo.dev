@@ -30,8 +30,9 @@ import {
   type RunDraft,
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
-import { canonicalJson, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { parseRun } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
+import { retainSuiteManifest } from "../admin/suite-retention.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { unauditedAdapterSourceDiagnostic } from "../probe-defs/src/helpers.ts"
 import { collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
@@ -341,17 +342,8 @@ export async function collectHeadlessRuns(
   const directory = outputDirectory ?? mkdtempSync(join(tmpdir(), "terminfo-headless-v3-"))
   mkdirSync(directory, { recursive: true })
   if (readdirSync(directory).length > 0) throw new Error(`Headless output directory is not empty: ${directory}`)
-  const suiteManifest = `suites/${suite.probeHash}.json`
-  const suiteManifestPath = join(directory, suiteManifest)
-  const manifestBytes = `${canonicalJson(derivedSuiteManifest(suite))}\n`
-  const retainedManifest = parseSuiteManifest(suiteManifestPath, manifestBytes)
-  if (retainedManifest.probeHash !== suite.probeHash) {
-    throw new Error(
-      `${suiteManifestPath}: retained suite ${retainedManifest.probeHash} disagrees with producer suite ${suite.probeHash}`,
-    )
-  }
-  mkdirSync(dirname(suiteManifestPath))
-  writeFileSync(suiteManifestPath, manifestBytes, { flag: "wx" })
+  // 33987 (@cto ruling C): the one retention writer every collection route shares, beside the run it measures.
+  const suiteManifest = retainSuiteManifest(directory, suite)
   const runs: string[] = []
   const failures: HeadlessCollection["failures"] = []
 

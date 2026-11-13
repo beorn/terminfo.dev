@@ -4,11 +4,14 @@
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
  * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
+ * @reach fs-read vendor/terminfo.dev/content/probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json
+ * @reach fs-read vendor/terminfo.dev/content/suites/8533e1c9630b.json
  */
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
 import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
+import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -23,7 +26,7 @@ import {
   type AppSemanticReading,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
-import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -53,6 +56,154 @@ vi.mock("node:fs", async (importOriginal) => {
 })
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+
+// @failure A ruled Mac pointer row stays TODO, or the declaration leaks into Linux/new versions.
+// Generic declaration cases below have no exact Mac route table; exercise its real selection and fold.
+it.each([
+  ["wezterm", "20240203-110809-5046fc22"],
+  ["terminal-app", "2.15"],
+  ["iterm2", "3.6.11"],
+])(
+  "folds the exact ruled Mac pointer route for %s without changing other platforms or versions",
+  async (app, reviewedVersion) => {
+    const id = "input.kitty-click-events"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    const original = { term: definition.term, termWrites: definition.termWrites }
+    try {
+      definition.termWrites = "query"
+      definition.term = async () => notTestedResult("No owned pointer delivery", { input: false })
+      for (const [os, version, expected] of [
+        ["macos", reviewedVersion, "untestable"],
+        ["linux", reviewedVersion, "probe-todo"],
+        ["macos", "unreviewed", "probe-todo"],
+      ] as const) {
+        const declarations = appSemanticDeclarations({ kind: "term", id: app, version, os })
+        const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+        const row = batch.results.find((result) => result.featureId === id)
+        expect(row?.status).toBe(expected)
+        if (expected === "untestable") {
+          expect(row?.reason).toBe("no permitted pointer route: owned-host rule and hosted no-input rule")
+        }
+      }
+    } finally {
+      definition.term = original.term
+      definition.termWrites = original.termWrites
+    }
+  },
+)
+
+// @failure A declaration silently coexists with a measurement, hiding that its route ruling is stale.
+// Preserve the measured evidence while refusing the contradictory declaration by name (CTO1dbd273f).
+it("names a ruled pointer declaration collision and retains the actual measurement", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  try {
+    definition.termWrites = "query"
+    definition.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "input_bytes" },
+      tests: [{ id: "criterion", status: "supported", reason: "controlled actual input" }],
+    })
+    const declarations = appSemanticDeclarations({
+      kind: "term",
+      id: "wezterm",
+      version: "20240203-110809-5046fc22",
+      os: "macos",
+    })
+    const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+    expect(batch.observations).toContainEqual(
+      expect.objectContaining({ featureId: id, outcome: "supported", assertionType: "input_bytes" }),
+    )
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("supported")
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: expect.stringMatching(/declared.untestable.*collision/i),
+    })
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
+
+// @failure A current route declaration erases the old iTerm2 mode-query measurement (CTOfd05a5f1).
+// Use the real stored row and its assertions; this preserves the old claim, not a new encoding result.
+it("retains the stored iTerm2 1005 measurement and names its declaration collision", async () => {
+  const id = "modes.utf8-mouse-1005"
+  const url = new URL(
+    "../../../../content/probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json",
+    import.meta.url,
+  )
+  const suiteUrl = new URL("../../../../content/suites/8533e1c9630b.json", import.meta.url)
+  const suite = parseSuiteManifest(suiteUrl.pathname, readFileSync(suiteUrl, "utf8"))
+  const bytes = readFileSync(url, "utf8")
+  const stored = parseRun(url.pathname, bytes, suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
+  const row = stored.results!.find((entry) => entry.featureId === id)!
+  expect(row).toMatchObject({
+    status: "supported",
+    assertionType: "query_reply",
+    reason: "DECRPM mode 1005: reset (Ps 2)",
+  })
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsDisposable: definition.termNeedsDisposable,
+  }
+  try {
+    definition.termWrites = "query"
+    // Replay the retained query evidence only; the stub performs no live terminal mutation.
+    definition.termNeedsDisposable = undefined
+    definition.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "query_reply", note: row.reason },
+      tests: row.tests.map(({ id, status, reason }) => ({ id, status, reason })),
+      assertions: stored.assertions
+        .filter((entry) => entry.featureId === id)
+        .map(({ featureId: _featureId, assertionType, ...assertion }) => {
+          if (assertionType !== "query_reply") throw new Error("Stored iTerm2 1005 fixture lost its query assertion")
+          return { ...assertion, assertionType }
+        }),
+    })
+    const batch = await runProbeBatch({ ids: [id], appDeclarations: appSemanticDeclarations(stored.subject) })
+    expect(batch.results.find((entry) => entry.featureId === id)).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      reason: row.reason,
+    })
+    expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual(
+      stored.assertions.filter((entry) => entry.featureId === id),
+    )
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      name: "DeclaredUntestableCollision",
+      message: expect.stringMatching(/declared.untestable.*collision/i),
+    })
+    // The finished collector uses these same raw replies; its reader must expose the warning
+    // without turning the retained historical measurement into a collector failure.
+    const captured = asRun(batch)
+    // Replay the real trace with the real query assertions; the callback stub sends no live query.
+    const trace = stored.rawReplies[id]
+    if (trace === undefined) throw new Error("Stored iTerm2 1005 fixture lost its query trace")
+    captured.rawReplies = { ...captured.rawReplies, [id]: trace }
+    const parsed = parseRun(
+      "pointer-collision-roundtrip.json",
+      JSON.stringify(captured),
+      [id],
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain("DeclaredUntestableCollision")
+    expect(parsed.rawReplies[`${id}.declarationCollision`]).toContain(id)
+    expect(parsed.results?.find((entry) => entry.featureId === id)).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      reason: row.reason,
+    })
+    expect(readFileSync(url, "utf8")).toBe(bytes)
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+    definition.termNeedsDisposable = original.termNeedsDisposable
+  }
+})
 
 // @failure An approved exact-version declaration is dropped by either unresolved callback path.
 // Existing native recording cases have no declaration map; both paths are used by prompt callbacks.
@@ -955,6 +1106,51 @@ afterEach(() => {
 function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
+
+// @failure The collector records "no pane read on this app", but the handoff into the probe source drops it,
+//   so every history row falls back to its screenshot arm and declares nothing (@dev/3 REVISE at b48438b96:
+//   0/12 through the faithful handoff, 12/12 only when the source was built by hand).
+// @level l1
+// @consumer App batch -> probe source handoff -> history rows.
+it("carries the owned collector's no-pane-read declaration into every history row", async () => {
+  verifiedBatchFixture()
+  const reason = "no pane read on this app"
+  const batch = await runProbeBatch({
+    ids: ["scrollback.accumulate", "scrollback.total-lines", "erase.screen.scrollback", "extensions.osc720-scroll-up"],
+    subject: { kind: "term", id: "cursor", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), scrollbackUnavailable: reason },
+  })
+  const rows = batch.results.filter((result) =>
+    [
+      "scrollback.accumulate",
+      "scrollback.total-lines",
+      "erase.screen.scrollback",
+      "extensions.osc720-scroll-up",
+    ].includes(result.featureId),
+  )
+  expect(rows).toHaveLength(4)
+  for (const row of rows) {
+    expect(row.tests, row.featureId).toHaveLength(1)
+    expect(row.tests?.[0], row.featureId).toMatchObject({ id: "declared-untestable", status: "untestable", reason })
+  }
+})
+
+// @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding
+//   that this run could not establish the grid its row needs (@cto 34005 ruling: the refusal wins).
+// @level l1
+// @consumer App batch geometry check -> declared-untestable row precedence.
+it("lets the geometry refusal win over the no-pane-read declaration when geometry is unavailable", async () => {
+  verifiedBatchFixture()
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc720-scroll-up"],
+    subject: { kind: "term", id: "cursor", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(noGeometry), scrollbackUnavailable: "no pane read on this app" },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc720-scroll-up")
+  expect(row?.status).toBe("probe-todo")
+  expect(row?.reason).toMatch(/^Grant geometry unavailable: /u)
+  expect(row?.tests?.map((item) => item.id)).toEqual(["geometry"])
+})
 
 // @failure The native focus recorder loses an enable-time report before it attaches stdin.
 // The mode-only fixtures emit during focusRoundTrip, after the listener is already attached.
@@ -3247,6 +3443,25 @@ it("stops the batch when modes.deccolm leaves a different stty size", async () =
   }
 })
 
+/**
+ * The OS word a Mac run records, taken from production's own function rather than typed here (#31741):
+ * serve.ts builds the subject from `terminal.os`, which detectOS() produces. The old gate compared this
+ * word against the literal "darwin", so a fixture-free test could keep it green while it admitted nothing.
+ */
+const MACOS = (() => {
+  const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin")
+  try {
+    return detectOS()
+  } finally {
+    platform.mockRestore()
+  }
+})()
+
+it("#31741 builds a Mac subject from the producer's os word, not the darwin literal", () => {
+  expect(MACOS).toBe("macos")
+  expect(MACOS).not.toBe("darwin")
+})
+
 const defaultClipboardCases: Array<{
   name: string
   featureId?: string
@@ -3260,6 +3475,10 @@ const defaultClipboardCases: Array<{
   refuseWrite?: boolean
   nullMode2004?: boolean
   pasteboard?: "darwin"
+  /** The app the recorded pasteboard belongs to; defaults to the subject's own id. */
+  pasteboardApp?: string
+  /** The declined row must name these, instead of claiming the run had no fixture (#31741). */
+  expectRefusalNames?: readonly string[]
   /** The receipt owns no PRIMARY baseline, so a PRIMARY route must refuse loudly. */
   noPrimary?: boolean
   eligible: boolean
@@ -3415,11 +3634,23 @@ const defaultClipboardCases: Array<{
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
   {
-    name: "hosted darwin OSC52 write",
+    // #31741: the OS word is the producer's (`macos`), never a hand-typed `darwin` — that literal is
+    // what let this gate read as working while admitting nothing in production.
+    name: "hosted darwin OSC52 write under the producer's os spelling",
     featureId: "extensions.osc52-write",
-    subject: { kind: "term", id: "iterm2", os: "darwin" },
+    subject: { kind: "term", id: "iterm2", os: MACOS },
     pasteboard: "darwin" as const,
     eligible: true,
+  },
+  {
+    // A pasteboard built for cmux must not admit an iTerm2 run: the binding is the field, not the sentence.
+    name: "hosted darwin pasteboard recorded for another app",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "term", id: "iterm2", os: MACOS },
+    pasteboard: "darwin" as const,
+    pasteboardApp: "cmux",
+    expectRefusalNames: ["belongs to", "cmux", "not to the run subject", "iterm2"],
+    eligible: false,
   },
   { name: "targetless receipt", targetless: true, eligible: false },
   {
@@ -3552,7 +3783,10 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     config: "fixture",
     permissions: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
     summary: "{}",
-    ...(scenario.pasteboard && { pasteboard: scenario.pasteboard }),
+    ...(scenario.pasteboard && {
+      pasteboard: scenario.pasteboard,
+      pasteboardApp: scenario.pasteboardApp ?? (subject.kind === "term" ? subject.id : "kitty"),
+    }),
     assertOwned: async () => {},
     readTitle: async () => {
       throw new Error("This clipboard fixture has no title reader")
@@ -3600,6 +3834,13 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
         ? "probe-invalid"
         : "probe-todo"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
+    if (scenario.expectRefusalNames !== undefined) {
+      // #31741: the declined row names what the gate found, never "no owned clipboard fixture" — the
+      // same artifact records the fixture as present.
+      const row = JSON.stringify(batch.results.find((result) => result.featureId === featureId))
+      for (const named of scenario.expectRefusalNames) expect(row).toContain(named)
+      expect(row).not.toContain("No owned clipboard fixture on this run for this probe")
+    }
     if (scenario.eligible) {
       const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
       expect(batch.observations).toContainEqual(
@@ -4707,70 +4948,6 @@ it("an 18t timeout aborts capture preparation instead of recording a terminal re
   ).rejects.toThrow(/18t.*timed out/)
   expect(painted).toBe(false)
 })
-
-// The unit owns mode classification; this boundary owns trace retention and gap
-// propagation to real protocol and region callbacks after preparation refuses.
-it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic timeout"])(
-  "a cursor-mode %s retains bytes and continues without pixel capture",
-  async (fault) => {
-    verifiedBatchFixture()
-    vi.useFakeTimers()
-    const da1 = "\x1b[?62;4c"
-    const raw = fault === "unknown reply" ? `\x1b[?25;0$y${da1}` : da1
-    const diagnostic = fault === "sentinel diagnostic reply" ? "\x1b[?25;1$y" : ""
-    vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
-      if (text === "\x1b[?25$p\x1b[c") process.stdin.emit("data", Buffer.from(raw))
-      if (text === "\x1b[?25$p" && diagnostic) process.stdin.emit("data", Buffer.from(diagnostic))
-      if (text === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
-      return true
-    }) as typeof process.stdout.write)
-    const capture = vi.fn()
-    const captureRaw = vi.fn()
-    const pending = runProbeBatch({
-      ids: ["device.primary-da", "erase.line.all"],
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      capture,
-      prepareCapture: async ({ source: probeSource }) => {
-        await calibrateCaptureOrigin({ ctx: probeSource, timeoutMs: 100, captureRaw })
-      },
-    })
-    const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
-    vi.useRealTimers()
-    expect(batch.observations).toContainEqual(
-      expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
-    )
-    expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({
-      status: "probe-todo",
-      reason: expect.stringMatching(/cursor visibility/),
-    })
-    const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
-    expect(trace).toMatchObject({
-      writes: [],
-      captures: [],
-      refusal: expect.stringMatching(/cursor visibility/),
-      queries: [
-        expect.objectContaining({
-          raw,
-          rawBase64: Buffer.from(raw).toString("base64"),
-          reason: fault === "unknown reply" ? "reply" : "sentinel",
-        }),
-        ...(fault === "unknown reply"
-          ? []
-          : [
-              expect.objectContaining({
-                sequence: "\x1b[?25$p",
-                raw: diagnostic,
-                rawBase64: Buffer.from(diagnostic).toString("base64"),
-                reason: diagnostic ? "reply" : "timeout",
-              }),
-            ]),
-      ],
-    })
-    expect(captureRaw).not.toHaveBeenCalled()
-    expect(capture).not.toHaveBeenCalled()
-    expect(batch.ungradedDiagnostics).toEqual({})
-  },
-)
 
 // 30035: unknown prior modes must retain the plain diagnostic outcomes through the actual
 // preparation owner, without painting or promoting their replies into qualification state.

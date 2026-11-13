@@ -203,7 +203,7 @@ export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
   const subjects = compatibilitySubjects(projection, contentDir)
-  const joined = joinedAppCells(projection, subjects)
+  const joined = joinedAppCells(projection, subjects, contentDir)
   const published = publicResults(projection, subjects, joined)
   const bySubject = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()

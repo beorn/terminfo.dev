@@ -218,6 +218,7 @@ function fixture(): void {
     join(shims, "bun"),
     [
       "#!/bin/sh",
+      'if [ "$1" = "--version" ] || [ "$1" = "--eval" ]; then exec "$REAL_BUN" "$@"; fi',
       'case "$*" in',
       '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
@@ -237,6 +238,9 @@ function fixture(): void {
   executable(join(root, "app", "kitty"), "#!/bin/sh\necho 'kitty 0.49.1'\n")
   executable(join(shims, "kitty"), "#!/bin/sh\necho 'kitty 0.0.0-decoy'\n")
 }
+
+/** #34018: the composer hands the run identity down; the driver never mints one. */
+const RUN_ID = "0123456789abcdef0123456789abcdef"
 
 function run(
   extraEnv: Record<string, string> = {},
@@ -271,6 +275,8 @@ function run(
       revision,
       "--context",
       context,
+      "--run-id",
+      RUN_ID,
       "--known-hosts",
       knownHosts,
       ...extraArgs,
@@ -322,6 +328,56 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  // #34018: the run identity belongs to the composer. The driver must carry it, never mint one —
+  // a fresh mint on the host is exactly what made the composed pass refuse the run it collected.
+  it("requires the composer's run id and refuses by name when it is absent or malformed", () => {
+    const absent = spawnSync(
+      process.execPath,
+      [
+        driver,
+        "--transport",
+        "ssh:fixture@fixture.invalid",
+        "--output",
+        output,
+        "--source-revision",
+        revision,
+        "--context",
+        "kitty",
+        "--known-hosts",
+        knownHosts,
+        "--",
+        "bun",
+        "packages/admin/src/index.ts",
+        "probe",
+        "app",
+        "kitty",
+      ],
+      { encoding: "utf8" },
+    )
+    expect(absent.status).toBe(2)
+    expect(absent.stderr).toMatch(/--run-id/)
+
+    const malformed = run({}, ["--run-id", "NOT-HEX"])
+    expect(malformed.status).not.toBe(0)
+    expect(malformed.stderr).toMatch(/invalid run id: run id "NOT-HEX" is not 32 lowercase hex characters/)
+  })
+
+  it("carries the handed run id in the explicit remote command, before the output directory", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const lines = readFileSync(sshLog, "utf8").split("\n")
+    const probe = lines.find((line) => line.includes("--run-id"))
+    expect(probe).toBeDefined()
+    // It travels as argv on the shell line the driver names, never through ssh environment forwarding:
+    // no ssh option forwards an environment variable, so the only way it can be here is as text.
+    // The driver shell-quotes every argv token, so the id carries its quotes on the remote line.
+    const flag = "--run-id '" + RUN_ID + "'"
+    expect(probe).toContain(flag)
+    expect(probe!.indexOf("--run-id")).toBeLessThan(probe!.indexOf("--output"))
+    expect(probe).toContain("probe")
+    expect(probe).toContain("app")
+  })
+
   // Real staging and receipt subprocesses exceeded the 5 s default under fleet load (7.04 s).
   it("stages portable resource modes without source-host privilege bits", () => {
     const resources = join(code, "node_modules", "portable-modes")
@@ -489,20 +545,47 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(stage, "source", "vendor", "terminfo.dev", "README.md"), "utf8")).toBe("second revision\n")
   }, 60_000)
 
-  it("refreshes a persistent stage at the same sha: every resource is sent again, so host drift is replaced or deleted", () => {
-    expect(run().status).toBe(0)
-    const staged = join(stage, "source", "vendor", "silvery")
-    writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
-    writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
-    const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
-    expect(again.status, again.stderr).toBe(0)
-    expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
-    expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
-    expect(existsSync(join(staged, "stray.ts"))).toBe(false)
-  }, 60_000)
+  it.each(["contents", "removed closure root"] as const)(
+    "refreshes a persistent stage at the same sha (%s), preserving earlier output",
+    (change) => {
+      expect(run().status).toBe(0)
+      const firstOutput = join(stage, "runs", `${revision.slice(0, 12)}-kitty`, "kitty-1.0-macos-run1.json")
+      const firstBytes = readFileSync(firstOutput)
+      const staged = join(stage, "source", "vendor", "silvery")
+      if (change === "contents") {
+        writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
+        writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
+      } else {
+        // 33797: deleting inside current roots cannot retire a former link-closure root.
+        rmSync(join(code, "node_modules", "@terminfo", "extra"))
+      }
+      const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
+      expect(again.status, again.stderr).toBe(0)
+      expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
+      expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
+      expect(existsSync(join(staged, "stray.ts"))).toBe(false)
+      if (change === "removed closure root") expect(existsSync(join(stage, "source", "extra"))).toBe(false)
+      expect(readFileSync(firstOutput)).toEqual(firstBytes)
+    },
+    60_000,
+  )
 
   it("does not stage or witness mutable test caches", () => {
-    const caches = [".vitest", ".cache"]
+    // 33797: the witness must not spawn readlink once per staged link. Count actual tool calls
+    // while retaining the existing transport/cache assertions; no production-only test seam.
+    const linkCalls = join(root, "resource-readlink-calls")
+    writeFileSync(linkCalls, "")
+    executable(
+      join(shims, "readlink"),
+      `#!${process.execPath}\n` +
+        `import { appendFileSync } from "node:fs"\n` +
+        `appendFileSync(${JSON.stringify(linkCalls)}, "readlink\\n")\n` +
+        `const result = Bun.spawnSync(["/usr/bin/readlink", ...process.argv.slice(2)], { stdout: "inherit", stderr: "inherit" })\n` +
+        `process.exit(result.exitCode)\n`,
+    )
+    writeFileSync(join(code, "node_modules", "resource with space.txt"), "same witnessed bytes\n")
+    symlinkSync("resource with space.txt", join(code, "node_modules", "link with space"))
+    const caches = [".vitest", ".cache", ".vitest-cache"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
       mkdirSync(directory, { recursive: true })
@@ -517,6 +600,7 @@ describe("owned-app ssh transport", () => {
     const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
     expect(again.status, again.stderr).toBe(0)
     expect(proof(again).resourceManifestSha256).toBe(proof(first).resourceManifestSha256)
+    expect(readFileSync(linkCalls, "utf8"), "resource witness spawned a child for a link").toBe("")
   }, 60_000)
 
   it("removes the stage only when asked", () => {
@@ -693,6 +777,7 @@ describe("owned-app ssh transport", () => {
     const result = run()
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("bun absent")
+    expect(existsSync(join(output, "transport"))).toBe(false)
   }, 60_000)
 
   it("refuses an argv that does not name the bun runtime token", () => {
@@ -743,6 +828,8 @@ describe("owned-app ssh transport", () => {
         revision,
         "--context",
         "kitty",
+        "--run-id",
+        RUN_ID,
         "--known-hosts",
         knownHosts,
         "--",
@@ -759,6 +846,7 @@ describe("owned-app ssh transport", () => {
           OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
           SHIM_SSH_LOG: sshLog,
           SHIM_RSYNC_LOG: rsyncLog,
+          REAL_BUN: process.execPath,
         },
       },
     )
@@ -1036,4 +1124,131 @@ describe("default stage", () => {
     expect(result.stderr).toContain("home with space")
     expect(result.stderr).toMatch(/--owned-app-stage|--stage/)
   })
+
+  // Requirement: an uncounted run must not pay for hashing and re-sending a node_modules tree an
+  // earlier full run already hashed, and its receipt must say so; a changed lock must restage it.
+  it("reuses a stage a full run hashed, re-sending no node_modules, and names the light check", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(proof(first).check).toBe("full")
+    const markerPath = join(stage, ".owned-app-transport-resources")
+    expect(existsSync(markerPath)).toBe(true)
+    const marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>
+    expect(marker.lockSha256).toBe(
+      createHash("sha256")
+        .update(readFileSync(join(code, "bun.lock")))
+        .digest("hex"),
+    )
+    expect(marker.manifestSha256).toBe(proof(first).resourceManifestSha256)
+
+    const before = lines(rsyncLog).length
+    const second = run({}, ["--check", "light"], undefined, "kitty-light")
+    expect(second.status, second.stderr).toBe(0)
+    const light = proof(second)
+    expect(light.check).toBe("light")
+    // The node_modules trees are what the marker stands for: no transfer and no hash this run.
+    const transferred = lines(rsyncLog).slice(before)
+    expect(transferred.filter((line) => line.includes("node_modules"))).toEqual([])
+    // The receipt still names the digest those trees last hashed to, and says where it came from.
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as Record<
+      string,
+      unknown
+    >
+    expect(receipt.check).toBe("light")
+    expect(receipt.resourceManifestSha256).toBe(marker.manifestSha256)
+    expect(receipt.resourceManifestBasis).toBe("stage marker from an earlier full run")
+    expect(typeof receipt.lightManifestSha256).toBe("string")
+    // The marker is not rewritten by a run that did not hash the trees it stands for.
+    expect(readFileSync(markerPath, "utf8")).toBe(JSON.stringify(marker, null, 2) + "\n")
+  }, 60_000)
+
+  it("restages fully when the lock is not the one the stage was hashed against", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    writeFileSync(join(code, "bun.lock"), "changed lock\n")
+    const second = run({}, ["--check", "light"], undefined, "kitty-restage")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
+
+  // Requirement: a `git status` that could not RUN is not a clean checkout. Before the exit witness,
+  // `|| true` turned git's exit 128 into empty stdout, and empty stdout read as clean.
+  it("declines the light check when the staged checkout's dirty state cannot be read", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(proof(first).check).toBe("full")
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    expect(existsSync(index)).toBe(true)
+    writeFileSync(index, "short")
+    const second = run({}, ["--check", "light"], undefined, "kitty-unreadable")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    // Pinned to the exit-128 branch, not the shared prefix: the no-exit-code branch says so instead.
+    expect(second.stderr).toMatch(/dirty state could not be read \(git status exited 128: fatal: \.git\/index/)
+    expect(second.stderr).toContain("restaging fully")
+    // The rebuild is named where the operator can read it, and the proof says the projection moved.
+    expect(second.stderr).toContain(
+      "the staged index is unreadable; the staged projection, including any tracked edits, is replaced",
+    )
+    expect(proof(second).check).toBe("full")
+    expect(proof(second).stageRebuild).toBe("index unreadable")
+  }, 60_000)
+
+  // Requirement: only a PROVEN index fault may rebuild the stage. A git that cannot read its own
+  // config refuses by name and leaves the index alone — deleting it there made the next run read a
+  // tree it could not describe, and only a hand repair could bring the stage back (@dev/15 R3).
+  it("refuses by name when git cannot read its config in the staged checkout, and keeps the index", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    const config = join(stage, "source", "vendor", "terminfo.dev", ".git", "config")
+    chmodSync(config, 0o000)
+    const second = run({}, [], undefined, "kitty-refused-config")
+    chmodSync(config, 0o644)
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage git unusable")
+    expect(second.stderr).toContain("git cannot run in the staged checkout, so this is not an index fault")
+    expect(existsSync(index)).toBe(true)
+  }, 60_000)
+
+  // Requirement: a decision belongs to the run that made it. An interrupted run leaves the rebuild
+  // marker behind, and a later run that finds a READABLE dirty index must refuse that dirt instead of
+  // force-cleaning it on the previous run's decision (@dev/3 R4).
+  it("never rebuilds on a marker an earlier interrupted run left behind", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const checkout = join(stage, "source", "vendor", "terminfo.dev")
+    const marker = join(stage, ".owned-app-transport-rebuild")
+    writeFileSync(marker, "left-behind-by-an-interrupted-run\n")
+    const trackedName = spawnSync("git", ["-C", checkout, "ls-files"], { encoding: "utf8" })
+      .stdout.trim()
+      .split("\n")[0]!
+    const tracked = join(checkout, trackedName)
+    const original = readFileSync(tracked, "utf8")
+    writeFileSync(tracked, `${original}\nlocal edit nobody's revision names\n`)
+
+    const second = run()
+
+    // The readable index keeps its dirt: the run refuses the dirty stage, and the stale marker is gone.
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage dirty tree")
+    expect(existsSync(marker)).toBe(false)
+    expect(readFileSync(tracked, "utf8")).toContain("local edit nobody's revision names")
+  }, 60_000)
+
+  // Requirement: a marker that parses as JSON but is not an object must decline by name. JSON null
+  // parsed cleanly and then threw on `.version`, skipping the full-restage fallback entirely.
+  it("declines the light check by name when the stage's resource marker is JSON null", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    writeFileSync(join(stage, ".owned-app-transport-resources"), "null\n")
+    const second = run({}, ["--check", "light"], undefined, "kitty-null-marker")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toContain("not a JSON object")
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
 })

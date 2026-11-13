@@ -1,5 +1,6 @@
 import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
+import { withMuxOuterUnreadableRow } from "./mux-outer-rows.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
   beginCaptureLifecycle,
@@ -829,6 +830,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             compared: allFrames.map((frame) => ({
               role: frame.label,
               rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+              ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
             })),
           })
           if (cropRefusal) return cropRefusal
@@ -849,6 +851,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               screenshotRef: visibilityControl.ref,
               compared: [...allFrames, visibilityControl].map((frame) => ({
                 role: frame.label,
+                ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
                 rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
               })),
             })
@@ -1009,4 +1012,6 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const editingProbes: ProbeDefinition[] = editingProbeDefinitions
+export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map(
+  withMuxOuterUnreadableRow("editing.decrqcra", DECRQCRA_REQUEST),
+)

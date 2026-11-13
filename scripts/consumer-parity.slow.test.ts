@@ -20,7 +20,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -30,6 +30,7 @@ import type {
   SelectedProjection,
   SelectedVersion,
   SelectedContextSummary,
+  ProjectionRun,
 } from "../docs/data/selected-results.ts"
 import type { LoadedRun } from "@terminfo/run-parser"
 import { aggregateCurrentResults, rollupInputs } from "../docs/data/release-scope.ts"
@@ -197,6 +198,12 @@ vi.mock("../docs/data/current-results.ts", async () => {
     "../docs/data/current-results.ts",
   )
   const content = join(import.meta.dirname, "..", "content")
+  // The site reads each run's sourceRevision from this repository's git history (33587), so a
+  // fixture run names a commit that exists here: this checkout's own HEAD (33996).
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: join(import.meta.dirname, ".."),
+    encoding: "utf8",
+  }).trim()
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
@@ -235,7 +242,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
       probeHash: run.probeHash ?? "current",
-      sourceRevision: "a".repeat(40),
+      sourceRevision,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,
@@ -300,8 +307,11 @@ function originalRun(
 }
 
 // Re-enter the production composer after a fixture changes an original subject/run.
-function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] = []): SelectedProjection {
-  const runs = new Map(
+function recompose(
+  projection: SelectedProjection,
+  extra: readonly (LoadedRun | ProjectionRun)[] = [],
+): SelectedProjection {
+  const runs = new Map<string, LoadedRun | ProjectionRun>(
     Object.values(projection.contexts).flatMap((context) =>
       Object.values(context.cells).map((cell) => [cell.run.runId, cell.run] as const),
     ),
@@ -311,18 +321,11 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
     if (runs.has(version.runId)) continue
     runs.set(version.runId, {
       ...version,
-      schemaVersion: 4,
-      source: { kind: "live" },
       path: "/fixture/" + version.runId + ".json",
-      suiteComplete: true,
-      suiteProbeCount: version.catalogIds.length,
-      assertions: [],
-      observations: [],
+      assertions: version.readRaw().assertions,
+      attempt: undefined,
       screenshotRefs: [],
       textSnapshotRefs: [],
-      notTested: [],
-      ungradedDiagnostics: {},
-      legacy: false,
     })
   }
   for (const run of extra) runs.set(run.runId, run)
@@ -334,6 +337,12 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   )
 }
 
+function cloneFixtureRun(run: ProjectionRun): ProjectionRun {
+  const { readRaw, ...facts } = run
+  const raw = structuredClone(readRaw())
+  return { ...structuredClone(facts), readRaw: () => raw }
+}
+
 function addFixtureSubject(
   projection: SelectedProjection,
   kind: CurrentSelectedVersion["subject"]["kind"],
@@ -341,7 +350,7 @@ function addFixtureSubject(
 ) {
   const base = Object.values(projection.contexts).flatMap((context) => Object.values(context.cells))[0]?.run
   if (!base) throw new Error("Missing original run for subject fixture")
-  const run = structuredClone(base)
+  const run = cloneFixtureRun(base)
   run.subject = { ...run.subject, kind, id }
   run.runId = `${base.runId}-${kind}-${id}`
   run.sha256 = createHash("sha256").update(run.runId).digest("hex")
@@ -498,8 +507,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(keys(v3.history),[]);
         assert.ok(Object.values(analyses).every(entry=>!entry.sources?.length));
       }
-      for (const [key,{selected,routeKey}] of compatibility) {
-        assert.deepEqual(matrix.stats[key].score,selected.score);
+      for (const [key,{selected,routeKey,contextKey}] of compatibility) {
+        // Each consumer shows the number for ITS subject (@cto 921916bc, d321729a rule 5). Per app: the site
+        // matrix and the page header show the joined summary's count. Per context: the API shows that
+        // context's own count, which compatibilitySubjects selected. With one context the two are the same.
+        const app = site.selectedByBackend[key].selected;
+        assert.deepEqual(matrix.stats[key].score,app.score);
+        assert.deepEqual(v3.contexts[contextKey].score,selected.score);
+        if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
@@ -510,8 +525,8 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         // A shared route retains its legacy primary params; its other OS columns read the
         // same matrix checked above. They must not create duplicate public routes.
         if (page.params.backendId===key) {
-          assert.equal(page.params.total,String(selected.score.all));
-          assert.equal(page.params.yes,String(selected.score.supported));
+          assert.equal(page.params.total,String(app.score.all));
+          assert.equal(page.params.yes,String(app.score.supported));
         }
       }
       if (!v3.contextCount) {
@@ -959,8 +974,9 @@ describe("selected-run consumer parity", () => {
       current.suiteId = probeHash()
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-      current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
-      current.assertions = [
+      const raw = current.readRaw()
+      raw.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
+      raw.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
       const targets = new Map([
@@ -1582,7 +1598,7 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
 it("does not name a subject with no current run on the site", () => {
   // A subject absent from the selected projection gets no row or run data. The paired positive
   // control proves that a retained current run for the same named subject is named.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
@@ -1623,7 +1639,7 @@ it("does not name a subject with no current run on the site", () => {
     }
     // Non-vacuity control: when the same named subject IS current, the site does name it. Without
     // this, "absent" could mean the fixture never reaches the resolver at all.
-    const promoted = structuredClone(projection)
+    const promoted = recompose(projection)
     addFixtureSubject(promoted, "lib", "ghostty-native")
     selection.mockReturnValue({ projection: promoted })
     const controlData = loadFullProbes()
@@ -1640,11 +1656,11 @@ it("does not name a subject with no current run on the site", () => {
 it("uses explicit route and OS facts when display-column keys are opaque", () => {
   // #33854, CTO condition 1: renaming a display column must not rename the released URL or hide an OS.
   // The older route tests used app IDs as column keys, so parsing or reusing the key looked correct.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const original = requiredContext(projection, "term", "kitty")
   const source = Object.values(original.cells)[0]?.run
   if (!source) throw new Error("Missing original app fixture")
-  const linux = structuredClone(source)
+  const linux = cloneFixtureRun(source)
   linux.subject = { ...linux.subject, os: "linux" }
   linux.runId += "-linux-os-column"
   linux.sha256 = createHash("sha256").update(linux.runId).digest("hex")
@@ -1697,9 +1713,9 @@ it("uses explicit route and OS facts when display-column keys are opaque", () =>
 it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   // Guard 28047, rebuilt on the same current-row fixture the other parity tests use: two current
   // targets whose catalog names map to one slug must fail the build loudly, naming both rows.
-  // The loader memoizes on globalThis, so the rows below are written into a clone and cannot outlive
+  // The fixture loader above builds fresh runs on every call, so these rows cannot outlive
   // mockRestore into a later test.
-  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const projection = currentResults.loadCurrentResults("").projection
   const as = (_contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) =>
     addFixtureSubject(projection, kind, id)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })

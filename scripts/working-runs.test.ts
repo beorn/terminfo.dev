@@ -8,7 +8,16 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -19,6 +28,7 @@ import { rollupTerminalStatuses, storedRollup, type TerminalStatusRollup } from 
 import {
   RAW_LABEL,
   composeWorkingView,
+  loadAppWorkingRun,
   loadWorkingRun,
   newestCompleteRun,
   selectedSiteWorkingRun,
@@ -29,6 +39,7 @@ import {
   type LoadedWorkingRun,
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { fullContextCensus } from "../docs/data/full-census.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
@@ -211,6 +222,69 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     return { dir, rawPath, original }
   }
 
+  /**
+   * 33987 (@cto ruling C): the composed pin's suite — twelve synthetic hex characters no committed tree defines. The
+   * pass retains exactly that declaration, as every collection route now does.
+   */
+  const COMPOSED_SUITE = "0123456789ab"
+  function composedAppCollection(instrument: string, os: string, name = OLD) {
+    const made = appCollection(instrument, os, name)
+    const passDir = join(made.dir, "pass-fixture")
+    expect(existsSync(join(root, "content", "suites", `${COMPOSED_SUITE}.json`))).toBe(false)
+    const manifest = JSON.parse(
+      readFileSync(join(root, "content", "suites", `${made.original.probeHash}.json`), "utf8"),
+    ) as { probeHash: string }
+    manifest.probeHash = COMPOSED_SUITE
+    mkdirSync(join(passDir, "suites"))
+    writeFileSync(join(passDir, "suites", `${COMPOSED_SUITE}.json`), `${JSON.stringify(manifest)}\n`)
+    const capture = JSON.parse(readFileSync(made.rawPath, "utf8")) as {
+      probeHash: string
+      suiteId: string
+      provenance: { runtime: { suiteHash: string } }
+    }
+    capture.probeHash = COMPOSED_SUITE
+    capture.suiteId = COMPOSED_SUITE
+    capture.provenance.runtime.suiteHash = COMPOSED_SUITE
+    writeFileSync(made.rawPath, JSON.stringify(capture))
+    const passPath = join(passDir, "pass.json")
+    const pass = JSON.parse(readFileSync(passPath, "utf8")) as { probeHash: string; suiteManifest?: string }
+    pass.probeHash = COMPOSED_SUITE
+    pass.suiteManifest = `suites/${COMPOSED_SUITE}.json`
+    writeFileSync(passPath, JSON.stringify(pass))
+    return { ...made, passDir, retained: join(passDir, "suites", `${COMPOSED_SUITE}.json`) }
+  }
+
+  /** The app reader's two inputs, taken from this tree's census and from one app store's run directory. */
+  const selection = (instrument: string, name: string) => ({
+    id: name,
+    dir: join(instrument, "apps", "ghostty", "linux", "runs", name),
+    startedAt: "2026-11-02T19:34:05.072Z",
+  })
+  const linuxContext = () =>
+    fullContextCensus(join(root, "content")).contexts.find(
+      (row) => row.kind === "term" && row.terminalId === "ghostty" && row.os === "linux",
+    )!
+
+  it(
+    "reads an app working run through the declaration its pass retained, and refuses by name without that file",
+    { timeout: 30_000 },
+    () => {
+      const instrument = runsDir()
+      composedAppCollection(instrument, "linux", OLD)
+      const loaded = loadAppWorkingRun(selection(instrument, OLD), linuxContext(), join(instrument, "runs"), catalogIds)
+      // No committed registry file carries the composed suite, so only the pass's own declaration can read it.
+      expect(loaded.unreadable).toBeUndefined()
+      expect(loaded.runs.map((run) => run.suiteId)).toEqual([COMPOSED_SUITE])
+
+      // The declaration is mandatory and exclusive: the same pass without the file refuses by name.
+      const { retained } = composedAppCollection(instrument, "linux", PARTIAL)
+      rmSync(retained)
+      expect(() =>
+        loadAppWorkingRun(selection(instrument, PARTIAL), linuxContext(), join(instrument, "runs"), catalogIds),
+      ).toThrow(`suites/${COMPOSED_SUITE}.json is absent`)
+    },
+  )
+
   // Walking the live content tree passed the 5s default on CI (run 42830234597).
   // A local run was 3.5s; 30s leaves room when the host is busy.
   it(
@@ -299,15 +373,54 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     },
   )
 
-  // App fallback custody is not reached by the library collection's explicit-manifest tests.
-  // An exact retained declaration must work; a misnamed or contradictory one must never stand in for it.
-  it.each(["exact", "wrong filename", "wrong suite", "outside library run"])(
-    "reads an app's old suite with %s retained manifest custody",
+  // 33987 (@cto ruling C): an app pass reads only the declaration it retained beside its own runs. There is no
+  // cross-run library custody and no committed fallback once a pass records one; a missing or contradictory
+  // declaration leaves the collection visibly unreadable rather than read through something else.
+  it.each(["retained", "absent file", "misfiled"])(
+    "reads an app pass only through the retained declaration (%s)",
     (custody) => {
-      const warning =
-        custody === "wrong suite" || custody === "outside library run"
-          ? vi.spyOn(console, "warn").mockImplementation(() => {})
-          : undefined
+      const instrument = runsDir()
+      const app = appCollection(instrument, "linux")
+      const suiteId = "aaaaaaaaaaaa"
+      const manifest = JSON.parse(
+        readFileSync(join(root, "content", "suites", `${app.original.probeHash}.json`), "utf8"),
+      ) as { probeHash: string }
+      app.original.probeHash = app.original.suiteId = suiteId
+      if (app.original.provenance) app.original.provenance.runtime.suiteHash = suiteId
+      writeFileSync(app.rawPath, JSON.stringify(app.original))
+      const passPath = join(app.dir, "pass-fixture", "pass.json")
+      const pass = JSON.parse(readFileSync(passPath, "utf8")) as { probeHash: string; suiteManifest?: string }
+      pass.probeHash = suiteId
+      pass.suiteManifest = `suites/${suiteId}.json`
+      writeFileSync(passPath, JSON.stringify(pass))
+      const manifestDir = join(app.dir, "pass-fixture", "suites")
+      mkdirSync(manifestDir)
+      const retainedPath = join(manifestDir, `${suiteId}.json`)
+      if (custody !== "absent file") {
+        if (custody === "retained") manifest.probeHash = suiteId
+        writeFileSync(retainedPath, JSON.stringify(manifest))
+      }
+      const read = () =>
+        loadAppWorkingRun(selection(instrument, OLD), linuxContext(), join(instrument, "runs"), catalogIds)
+      if (custody === "retained") {
+        const loaded = read()
+        expect(loaded.unreadable).toBeUndefined()
+        expect(loaded.runs.map((run) => ({ suiteId: run.suiteId, runId: run.runId }))).toEqual([
+          { suiteId, runId: app.original.runId },
+        ])
+      } else {
+        expect(read).toThrow(
+          custody === "absent file" ? `suites/${suiteId}.json is absent` : `the manifest declares suite`,
+        )
+      }
+    },
+  )
+
+  // A pass written before suiteManifest existed keeps the custody it had: an exact retained declaration in the
+  // producer's library store, only when the pass names no declaration of its own (33987, @cto c11afb84 cure (a)).
+  it.each(["exact", "wrong filename", "wrong suite", "outside library run"])(
+    "reads a field-less app pass through %s library custody",
+    (custody) => {
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
       mkdirSync(libraries)
@@ -329,25 +442,20 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         writeFileSync(outside, JSON.stringify(manifest))
         symlinkSync(outside, manifestPath)
       } else writeFileSync(manifestPath, JSON.stringify(manifest))
-      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
-      const retained = siteWorkingHistory(join(root, "content"))!.find((view) =>
-        view.run.id.startsWith("apps/ghostty/linux/"),
-      )!
+      const read = () => loadAppWorkingRun(selection(instrument, OLD), linuxContext(), libraries, catalogIds)
       if (custody === "exact") {
-        expect(retained.unreadable).toBeUndefined()
-        expect(retained.contexts[0]).toMatchObject({
-          suiteId,
-          runId: app.original.runId,
-          states: { "text.basic": "supported" },
-        })
-      } else {
-        expect(retained.contexts).toEqual([])
-        expect(retained.unreadable?.reason).toContain(suiteId)
+        const loaded = read()
+        expect(loaded.unreadable).toBeUndefined()
+        expect(loaded.runs[0]).toMatchObject({ suiteId, runId: app.original.runId })
+        return
       }
-      if (warning) {
-        expect(warning).toHaveBeenCalledOnce()
-        expect(warning).toHaveBeenCalledWith(expect.stringContaining(suiteId))
+      if (custody === "wrong filename") {
+        expect(read().unreadable?.reason).toContain("no exact retained library manifest")
+        return
       }
+      expect(read).toThrow(
+        custody === "wrong suite" ? "the manifest declares suite" : "outside its retained library run",
+      )
     },
   )
 

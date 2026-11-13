@@ -133,7 +133,7 @@ test.each([
     try{
       const grant=await createOwnedTerminal({captureRunId:"d".repeat(32),expectedLaunchRunId:f.launchRunId,out:process.stdout,
         process:{asserter:"terminfo-admin",launchRunId:f.launchRunId,workerPid:self,provider:"cli-process",ownerPid:owner.pid,
-          executablePath:owner.kernelExecutable,marker,tty:"/dev/"+shell.tty,intendedVersion:"1.3.1"},
+          executablePath:owner.kernelExecutable,basis:{kind:"marker",marker},tty:"/dev/"+shell.tty,intendedVersion:"1.3.1"},
         ...(preflightOnly?{darwinPreflight:true}:{darwinMux:{subject:{kind:"mux",id:mux,mux,version:mux==="screen"?"4.00.03":"3.7",config,os:"macos"},
           outerApp:{rawReplies:{"collector.outerLaunch":launch,"collector.preflightIdentity":JSON.stringify({pid:preflight.pid,startedAtEpochSeconds:preflight.startedAtEpochSeconds,launchRunId:f.launchRunId})}}}})})
       if(preflightOnly){
@@ -190,7 +190,7 @@ const assertionFor = (input: {
   provider: input.provider,
   ownerPid: input.ownerPid,
   executablePath: input.executablePath,
-  marker: input.marker,
+  basis: { kind: "marker" as const, marker: input.marker },
   tty: input.tty ?? "/dev/ttys004",
   intendedVersion: "0.44.0",
 })
@@ -201,7 +201,9 @@ const assertionFor = (input: {
  * assertOwnedProcess, so a grant here is the same code path a Mac run takes.
  */
 function runDarwinArm(scenario: {
-  provider: "kitty" | "cli-process"
+  provider: "kitty" | "cli-process" | "iterm2"
+  /** iTerm2's claim: the sole-instance basis and its CG window id in place of the marker. */
+  soleInstance?: { windowId: number }
   launchRunId?: string
   workerPid?: number | "self"
   envRunId?: string
@@ -212,11 +214,15 @@ function runDarwinArm(scenario: {
   tty?: string
   /** The claim's own run id, when it differs from the worker's. */
   claimRunId?: string
+  /** The window server answering for a window this run no longer has (@cto 1c7e19df, condition 4). */
+  windowOwnership?: "refused"
   batch?: "process" | "terminal-app" | "disposed"
   /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
   comms?: Record<string, string>
   /** The Terminal ancestor's pid the terminal-app owner must adopt. */
   terminalAppPid?: number
+  /** TERMINFO_TARGET_ID for a run that owns an app's pane, with this run's own WezTerm pane variables. */
+  targetApp?: string
   text?: {
     stdout?: string | number[]
     socket?: string
@@ -250,7 +256,15 @@ function runDarwinArm(scenario: {
       process.env.KITTY_PID = scenario.text.pid ?? String(scenario.ownerPid)
       process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
     }
+    if (scenario.targetApp) {
+      process.env.TERMINFO_TARGET_ID = scenario.targetApp
+      // A real, readable absolute path, so the executable proof measures bytes and then the CLI's version.
+      process.env.WEZTERM_EXECUTABLE = process.execPath
+      process.env.WEZTERM_PANE = "17"
+      process.env.WEZTERM_UNIX_SOCKET = join(dirname(captureDirectory), "wezterm-" + launchRunId + ".sock")
+    }
     const reads = []
+    const pasteboardCalls = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     const realFs = await import("node:fs")
     const realOpenSync = realFs.openSync
@@ -295,12 +309,37 @@ function runDarwinArm(scenario: {
         if (command !== "/bin/ps") throw new Error("unexpected exec " + command)
         return ps(args)
       },
-      spawnSync: (command, args) => ({
-        status: 0,
-        stdout: command === "/bin/ps" ? ps(args) : "",
-        stderr: "",
-      }),
+      spawnSync: (command, args) => {
+        if (command === "osascript") {
+          if (scenario.windowOwnership === "refused") {
+            return { status: 1, stdout: "", stderr: "owned Terminal window no longer exists uniquely" }
+          }
+          return { status: 0, stdout: "0", stderr: "" }
+        }
+        return {
+          status: 0,
+          stdout: command === "/bin/ps" ? ps(args) : "",
+          stderr: "",
+        }
+      },
       spawn: (command, args) => {
+        // #31741 follow-on: an owned Terminal.app window now carries its own pasteboard fixture, so
+        // construction reads the pasteboard once. Nothing here writes the real one.
+        if (command === "/usr/bin/pbpaste" || command === "/usr/bin/pbcopy") {
+          pasteboardCalls.push(command)
+          const pasteboard = new EventEmitter()
+          Object.assign(pasteboard, {
+            stdout: new EventEmitter(),
+            stderr: new EventEmitter(),
+            stdin: { end: () => undefined },
+            kill: () => true,
+          })
+          queueMicrotask(() => {
+            if (command === "/usr/bin/pbpaste") (pasteboard.stdout as EventEmitter).emit("data", Buffer.from(""))
+            pasteboard.emit("close", 0)
+          })
+          return pasteboard
+        }
         if (!scenario.text) throw new Error("stty is not run in this fixture")
         assert.equal(command, "/bin/stty")
         assert.deepEqual(args, ["size"])
@@ -315,7 +354,7 @@ function runDarwinArm(scenario: {
         return child
       },
     }))
-    const { createOwnedTerminal, ownedTerminalVerifiedFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const { createOwnedTerminal, ownedTerminalVerifiedFor, ownedTerminalProcessBasisFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const assertion = {
       asserter: "terminfo-admin",
       launchRunId: scenario.claimRunId ?? launchRunId,
@@ -323,8 +362,9 @@ function runDarwinArm(scenario: {
       provider: scenario.provider,
       ownerPid: scenario.ownerPid,
       executablePath,
-      marker: scenario.marker,
+      basis: scenario.soleInstance ? { kind: "sole-instance", preflightAbsent: true } : { kind: "marker", marker: scenario.marker },
       tty: scenario.tty ?? "/dev/ttys004",
+      ...(scenario.soleInstance && { windowId: scenario.soleInstance.windowId }),
       intendedVersion: "0.44.0",
     }
     try {
@@ -352,7 +392,14 @@ function runDarwinArm(scenario: {
         const read = await owner.readCells()
         console.log("TEXT " + JSON.stringify({ read, reads }))
       } else if (!scenario.batch) {
-        console.log("GRANTED " + summary.outputBinding.tabTty)
+        const basis = ownedTerminalProcessBasisFor(owner, ${JSON.stringify(captureRunId)}, process.stdout)
+        console.log(
+          "GRANTED " + summary.outputBinding.tabTty + (basis ? "" : " no-disposable-basis") +
+            (scenario.targetApp
+              ? " history=" + typeof owner.getScrollback +
+                (summary.wezTermHistory?.unmeasured ? " unmeasured=" + summary.wezTermHistory.unmeasured : "")
+              : ""),
+        )
       } else {
         assert.equal(ownedTerminalVerifiedFor(owner, ${JSON.stringify(captureRunId)}, process.stdout), true)
         if (scenario.batch === "disposed") {
@@ -396,6 +443,8 @@ function runDarwinArm(scenario: {
       }
     } catch (error) {
       console.log("REFUSED " + error.message)
+      // Only the refusal fixture reports the count, so no other case changes shape.
+      if (scenario.windowOwnership === "refused") console.log("PASTEBOARD " + JSON.stringify(pasteboardCalls))
     }
   `
   return {
@@ -416,6 +465,35 @@ test("kitty is granted by the shared process proof: marker, executable, TTY and 
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
 })
 
+test("iTerm2's sole-instance basis is granted on the same pid, executable, TTY and ancestry, with no disposable claim", () => {
+  const result = runDarwinArm({
+    provider: "iterm2",
+    soleInstance: { windowId: 41 },
+    workerPid: "self",
+    ownerPid: 4444,
+    marker: { flag: "--unused", value: "unused" },
+    // iTerm2 carries no marker: its argv is only its executable.
+    command: process.execPath,
+    parent: { self: 4444, "4444": 1 },
+  })
+  expect(result.stderr).toBe("")
+  expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004 no-disposable-basis")
+})
+
+test("iTerm2's sole-instance basis still refuses a session TTY the worker does not own", () => {
+  const result = runDarwinArm({
+    provider: "iterm2",
+    soleInstance: { windowId: 41 },
+    workerPid: "self",
+    ownerPid: 4444,
+    marker: { flag: "--unused", value: "unused" },
+    command: process.execPath,
+    parent: { self: 4444, "4444": 1 },
+    tty: "/dev/ttys009",
+  })
+  expect(result.stdout).toMatch(/REFUSED .*TTY/)
+})
+
 test("cli-process is granted by the same arm, not by a second proof", () => {
   const result = runDarwinArm({
     provider: "cli-process",
@@ -427,6 +505,31 @@ test("cli-process is granted by the same arm, not by a second proof", () => {
   })
   expect(result.stderr).toBe("")
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
+})
+
+test("an owned WezTerm pane gets a history reader on the process arm; another app's pane does not", () => {
+  const owned = runDarwinArm({
+    provider: "cli-process",
+    workerPid: "self",
+    ownerPid: 4343,
+    marker: { flag: "--probe-run", value: `run-${launchRunId}` },
+    parent: { self: 4343, "4343": 1 },
+    targetApp: "wezterm",
+  })
+  // The CLI's version could not be read in this fixture, and the artifact says so rather than dropping it.
+  expect(owned.stdout).toContain("GRANTED /dev/ttys004 history=function unmeasured=")
+  expect(owned.stdout).toContain("reported no version")
+  expect(owned.stderr).toBe("")
+  const foreign = runDarwinArm({
+    provider: "cli-process",
+    workerPid: "self",
+    ownerPid: 4343,
+    marker: { flag: "--probe-run", value: `run-${launchRunId}` },
+    parent: { self: 4343, "4343": 1 },
+    targetApp: "alacritty",
+  })
+  expect(foreign.stdout.trim()).toBe("GRANTED /dev/ttys004 history=undefined")
+  expect(foreign.stderr).toBe("")
 })
 
 test.each([
@@ -678,7 +781,7 @@ test("terminalApp plus process is two arms, refused before any proof runs", asyn
   ).rejects.toThrow(/Owned terminal requires exactly one platform receipt/)
 })
 
-test("the process assertion has one strict shape: exact keys, known provider, absolute executable, no window id", () => {
+test("the process assertion has one strict shape: exact keys, known provider and basis, absolute executable, a window id only for iTerm2", () => {
   const valid = assertionFor({
     provider: "kitty",
     ownerPid: 4242,
@@ -686,7 +789,25 @@ test("the process assertion has one strict shape: exact keys, known provider, ab
     marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
   })
   expect(parseProcessOwnerAssertion(valid)).toEqual(valid)
+  const iterm2 = {
+    ...valid,
+    provider: "iterm2",
+    executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    basis: { kind: "sole-instance", preflightAbsent: true },
+    windowId: 41,
+  }
+  expect(parseProcessOwnerAssertion(iterm2)).toEqual(iterm2)
   for (const assertion of [
+    { ...iterm2, basis: { kind: "unknown", preflightAbsent: true } },
+    { ...iterm2, basis: { kind: "sole-instance", preflightAbsent: false } },
+    { ...iterm2, basis: { kind: "sole-instance" } },
+    { ...iterm2, basis: { kind: "sole-instance", preflightAbsent: true, extra: 1 } },
+    { ...iterm2, basis: valid.basis },
+    { ...valid, basis: iterm2.basis },
+    { ...iterm2, windowId: 0 },
+    Object.fromEntries(Object.entries(iterm2).filter(([key]) => key !== "windowId")),
+    Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "basis")),
+    { ...valid, marker: valid.basis.marker },
     null,
     { ...valid, asserter: "other" },
     { ...valid, launchRunId: "short" },
@@ -694,9 +815,10 @@ test("the process assertion has one strict shape: exact keys, known provider, ab
     { ...valid, provider: "terminal-app" },
     { ...valid, ownerPid: 0 },
     { ...valid, executablePath: "relative/kitty" },
-    { ...valid, marker: { flag: "", value: "x" } },
-    { ...valid, marker: { flag: "--instance-group", value: "has space" } },
-    { ...valid, marker: { flag: "--instance-group", value: "x", extra: true } },
+    { ...valid, basis: { kind: "marker", marker: { flag: "", value: "x" } } },
+    { ...valid, basis: { kind: "marker", marker: { flag: "--instance-group", value: "has space" } } },
+    { ...valid, basis: { kind: "marker", marker: { flag: "--instance-group", value: "x", extra: true } } },
+    { ...valid, basis: { ...valid.basis, extra: true } },
     { ...valid, tty: "/dev/tty" },
     { ...valid, intendedVersion: "" },
     { ...valid, windowId: 14 },
@@ -704,4 +826,25 @@ test("the process assertion has one strict shape: exact keys, known provider, ab
   ]) {
     expect(() => parseProcessOwnerAssertion(assertion)).toThrow(/Invalid process owner assertion/)
   }
+})
+
+// @cto 1c7e19df condition 4, as @dev/3 required: the owned arm shares the machine’s one pasteboard,
+// so the first write must be preceded by proof that the run still owns its Terminal.app window. A
+// run whose window is gone writes nothing at all - it never grades someone else’s clipboard.
+test("an owned Terminal.app run that no longer owns its window writes nothing to the shared pasteboard", () => {
+  const result = runDarwinArm({
+    provider: "kitty",
+    workerPid: "self",
+    ownerPid: 4242,
+    marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
+    // collector <- login shell 4242 <- Terminal 777 <- launchd: a real owned tab, then a window
+    // the window server says no longer exists.
+    parent: { self: 4242, "4242": 777, "777": 1, "1": 0 },
+    comms: { "777": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+    terminalAppPid: 777,
+    batch: "terminal-app",
+    windowOwnership: "refused",
+  })
+  expect(result.stdout).toMatch(/REFUSED .*owned Terminal window no longer exists uniquely/)
+  expect(result.stdout).toMatch(/PASTEBOARD \[\]/)
 })

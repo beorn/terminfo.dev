@@ -32,15 +32,50 @@ for verified owned Linux runs matching one of these routes:
 - **Direct Linux apps (`term/<id>/linux` with matching `app/<id>/linux` disposable target and no `muxAttachmentProof`)**:
   - `extensions.osc52-write` on all five apps (`kitty`, `ghostty`, `alacritty`, `wezterm`, `xterm`).
   - `extensions.clipboard-paste` through each app's default paste action, from the selection that action reads (`LINUX_PASTE_ROUTES` in `unified.ts`, each entry citing its source binding at the pinned version): `Ctrl+Shift+V` from `CLIPBOARD` on `kitty`, `ghostty`, `alacritty` and `wezterm`; `Shift+Insert` from `PRIMARY` on `xterm` 411 (`charproc.c:15024`), whose run alone also owns, restores and verifies a `PRIMARY` baseline. The launch refuses any resource that could rebind it.
-  - All ten desktop `extensions.osc52-read` and `extensions.osc52-clipboard` cells remain gated outside the default profile so unattended runs never trigger ask-first read prompts.
+  - `extensions.osc52-read` and `extensions.osc52-clipboard` stay outside the default profile, so an unattended default run never meets an ask-first read prompt. They run under the read-allowed route below.
 - **Verified Linux multiplexers (`mux/{tmux,screen}/linux` with matching `mux/<id>/linux` disposable target and matching `muxAttachmentProof`)**:
-  - `extensions.clipboard-paste`, `extensions.osc52-write`, `extensions.osc52-read`, and `extensions.osc52-clipboard`.
-  - On verified disposable `screen` 5.0.2 (`ansi.c:1186-1188` implements `2004` without `DECRQM`), `extensions.clipboard-paste` sets and restores `CSI ? 2004 l` blind in `finally` and records that blind setup in the observation; `modes.bracketed-paste` is unchanged.
+  - `extensions.clipboard-paste`, `modes.bracketed-paste`, `extensions.osc52-write`, `extensions.osc52-read`, and `extensions.osc52-clipboard`.
+  - On verified disposable `screen` 5.0.2 (`ansi.c:1186-1188` implements `2004` without `DECRQM`), `extensions.clipboard-paste` sets and restores `CSI ? 2004 l` blind in `finally` and records that blind setup in the observation.
+  - `modes.bracketed-paste` asks `DECRPM` first. With no usable reply, or `Ps 0`, it is decided by the same controlled paste read as `extensions.clipboard-paste`, with the same blind setup on Screen (#33058).
   - On `tmux` 3.8, `linux-clipboard.ts` reads `show-options -s -v set-clipboard`, snapshots `list-buffers -F "#{buffer_name}"`, deletes any callback-created paste buffers in `finally`, and verifies post-restore buffer state alongside OS `xclip` restoration; mux OSC52 negatives require default `set-clipboard=external` (`tmux`) or `screen` and record the measured setting.
 
 The focused [routing tests](../packages/terminfo.dev/src/probes/unified.test.ts) use the
 existing clipboard transaction with modeled input. They prove fixture selection and the
 callback path, including zero OSC52 output. They do not measure a live Kitty/XTEST session.
+
+## Read-allowed clipboard route
+
+A run launched with `--clipboard-profile allow` passes each App its own clipboard-read setting,
+read from the App's pinned version (`CLIPBOARD_ALLOW_ARGS` in `linux-clipboard.ts`, #33119):
+
+| App       | Read-allowed launch args                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| kitty     | `-o clipboard_control=write-clipboard read-clipboard`                                               |
+| ghostty   | `--clipboard-read=allow`                                                                            |
+| alacritty | `-o terminal.osc52="CopyPaste"`                                                                     |
+| xterm     | `-xrm '*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop'`                        |
+| wezterm   | none: WezTerm has no read setting, so it runs as shipped and its result is measured, never declared |
+
+`assertClipboardProfile` compares the terminal's actual argv, up to the collector's `bun`, with exactly
+these args, and `clipboard-allow-args.test.ts` keeps the launcher equal to the table. The receipt records
+`clipboard: read=allow,write=allow` (WezTerm: `read=no-setting,write=allow`). A `deny-read` profile exists
+for Kitty only. Under any profile other than `default`, the collector installs the clipboard transaction for
+every clipboard probe, including `extensions.osc52-read` and `extensions.osc52-clipboard`. Those results
+describe that non-default context, never the default one.
+
+## State a clipboard or title probe changes, and how it is put back
+
+| State                                          | Changed by                                                                                                                                          | Put back by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OS `CLIPBOARD` (xterm: `PRIMARY` too)          | OSC 52 writes and paste setup                                                                                                                       | `createClipboardTransaction`: ownership is checked before each read or write, the baseline is read back before the probe, and it is restored and read back at the end.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Selection owner                                | the pre-flight, when the baseline's helper is gone                                                                                                  | The baseline is re-owned only when `readSelectionTaker` proves the taker is this run's own outer terminal (same pid as the receipt, a client window equal to the receipt window; #33693, #33968). Any other taker refuses the row as probe-invalid by name, and the note says who took it.                                                                                                                                                                                                                                                                                                             |
+| tmux paste buffers                             | the callback                                                                                                                                        | `list-buffers` is snapshotted first; buffers the callback created are deleted in `finally` and the result is read back.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Screen mode `2004`                             | blind paste setup                                                                                                                                   | Restored blind in `finally`; the observation records the blind setup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Incoming mode `2004`                           | `extensions.clipboard-paste`                                                                                                                        | The mode is read first; if it was set, `CSI ? 2004 h` is written back at the end. An unreadable incoming mode is left untouched (#32607).                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| X input-event time                             | one real XTEST key press before an OSC 52 write (`pressRealKey`, #33145)                                                                            | Nothing to restore: the press must reach the application as zero bytes. It runs inside a PTY read, and any byte that arrives refuses the sample by name.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Window title                                   | OSC 2 title probes and the XTWINOPS 22/23 fixture                                                                                                   | The title is read before the probe and set back in `finally`, then read again; a mismatch throws an error naming both titles.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Icon title (XTWINOPS)                          | the XTWINOPS 22/23 fixture (`titleStackApp`) and the `device.xtwinops-20` icon-label probe in `device.ts` write an empty OSC 1 (`CLEAR_ICON_TITLE`) | **Not restored (known).** The fixture starts from a fixed empty icon title so a leftover one cannot hide its OSC 2 controls, and the icon-label probe ends on it (#33035). Neither reads the prior icon title, so nothing is put back to it.                                                                                                                                                                                                                                                                                                                                                           |
+| Icon name and window title (App OSC 0 / OSC 1) | `extensions.osc0-icon-title` and `extensions.osc1-icon` on a direct App, through `withIconNameFixture` in `linux-clipboard.ts`                      | The fixture reads `_NET_WM_ICON_NAME` / `WM_ICON_NAME` and the window title first, writes the icon back with OSC 1 and the title with OSC 2 (OSC 0 when the App keeps the title on the OSC 1 payload, as WezTerm does, #32998), then reads both again; a title that differs fails the row. OSC cannot reproduce a property exactly: an icon property absent before is not deleted, a legacy `WM_ICON_NAME` value or type is not reproduced, and after an OSC 0 restore the icon property may differ. Each case is a note beside the retained before/after snapshots. A mux subject has no such reader. |
 
 ## OSC52 is a separate route
 
@@ -71,13 +106,17 @@ The qualified source facts below are scoped to the inspected versions, not live-
 
 Declare the route actually used. Changing passthrough, permissions or system configuration
 is a context change, not a repair of evidence collected under unchanged defaults.
-Restoration covers every state the chosen operation can mutate, not just the OS selection.
+Restoration covers every state the chosen operation can mutate, not just the OS selection;
+the Linux states and their restore are listed above.
 
 ## Title: a deciding observer remains separate
 
 The title criterion concerns the terminal window title, including its title-bar or tab
-presentation. A stored application title or a mux pane title is not automatically that
-presentation target. Select the deciding native target before implementing its observer.
+presentation. For an App that is the OS window; a stored application title is not automatically it.
+For a mux subject the terminal under test is the mux, so the mux's own pane title is the deciding
+target for its OSC 2 title rows. Whether the mux forwards that title to the outer window is a
+different fact, a forwarding row, and is never decided from the pane title.
+Select the deciding native target before implementing its observer.
 
 A qualifying route needs an independent baseline read, a known control, the title operation,
 an observation that distinguishes the control from the requested effect, and verified
@@ -87,10 +126,15 @@ An application's cached title getter alone is not an independent OS-window oracl
 The Linux owned adapter now exposes one optional public-title read through the existing
 window receipt or mux attachment proof. The collector installs it only for the verified
 run/output owner and retains raw reads and read errors. Direct Apps use `xdotool
-getwindowname`; tmux reads its recorded session's pane title; Screen's own query needs
-passing controls and never falls back to the outer window. The OSC 7 title-fallback
-route is installed only for Linux Ghostty. Its launcher permits application titles;
-that launch change requires its separately authorized before/after measurement.
+getwindowname`; tmux reads its recorded session's pane title (`display-message -p '#{pane_title}'`);
+Screen's own query (`-Q title`) needs passing controls and never falls back to the outer window.
+tmux's forwarding of the pane title to the outer window is what the `set-titles` mux profile
+is for; no forwarding result exists yet, because that profile's configuration was found inert (#33995).
+The reader is installed for every probe that reads a title wherever the owned run has one (#33375);
+no subject name chooses it. Only on Linux Ghostty does the absence of a title change decide
+`extensions.osc7-cwd` (`titleAbsenceDecides`); elsewhere the OSC 7 arm's own OSC 2 controls qualify
+the reading. Ghostty's launcher permits application titles; that launch change requires its
+separately authorized before/after measurement.
 
 The existing title callback and application source facts do not establish that this complete
 native control/read/restore path has been implemented or measured. A real criterion or API

@@ -4,18 +4,59 @@ import type { WorkingContext } from "../../data/working-runs"
 import type { ClientProbeData, ClientWorkingView } from "../../data/probes.data"
 import { evidenceStatus } from "./evidence-status"
 
-const props = defineProps<{ history: ClientWorkingView[]; states?: ClientProbeData["workingStates"]; originals?: ClientProbeData["workingOriginals"]; featureId?: string; subjects?: Array<Pick<WorkingContext, "engine" | "kind">> }>()
-const matches = (row: Pick<WorkingContext, "engine" | "kind">) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)
-const originalEntries = computed(() => Object.entries(props.originals ?? {}).flatMap(([contextKey, originals]) => originals
-  .filter(original => matches({engine: original.subject.id, kind: original.subject.kind}))
-  .map(original => ({key: contextKey + "/" + original.sha256, contextKey, original})))
-  .sort((left, right) => left.original.measuredAt.localeCompare(right.original.measuredAt) || left.key.localeCompare(right.key)))
+const props = defineProps<{
+  history: ClientWorkingView[]
+  states?: ClientProbeData["workingStates"]
+  originals?: ClientProbeData["workingOriginals"]
+  featureId?: string
+  subjects?: Array<Pick<WorkingContext, "engine" | "kind">>
+}>()
+const matches = (row: Pick<WorkingContext, "engine" | "kind">) =>
+  !props.subjects || props.subjects.some((subject) => subject.engine === row.engine && subject.kind === row.kind)
+const originalEntries = computed(() =>
+  Object.entries(props.originals ?? {})
+    .flatMap(([contextKey, originals]) =>
+      originals
+        .filter((original) => matches({ engine: original.subject.id, kind: original.subject.kind }))
+        .map((original) => ({ key: contextKey + "/" + original.sha256, contextKey, original })),
+    )
+    .sort(
+      (left, right) =>
+        left.original.measuredAt.localeCompare(right.original.measuredAt) || left.key.localeCompare(right.key),
+    ),
+)
 const originalKey = ref(originalEntries.value.at(-1)?.key ?? "")
-const originalEntry = computed(() => originalEntries.value.find(entry => entry.key === originalKey.value))
-const originalCells = computed(() => Object.entries(originalEntry.value?.original.states ?? {}).filter(([id]) => !props.featureId || id === props.featureId))
-const collectionId = ref([...props.history].reverse().find(view => view.contexts.some(matches) || (view.unreadable && (!props.subjects || props.subjects.some(subject => subject.kind === "lib" ? !view.run.id.startsWith("apps/") : view.run.id.startsWith(`apps/${subject.engine}/`)))))?.run.id ?? props.history.at(-1)?.run.id ?? "")
+const originalEntry = computed(() => originalEntries.value.find((entry) => entry.key === originalKey.value))
+const originalCells = computed(() =>
+  Object.entries(originalEntry.value?.original.states ?? {}).filter(
+    ([id]) => !props.featureId || id === props.featureId,
+  ),
+)
+const collectionId = ref(
+  [...props.history]
+    .reverse()
+    .find(
+      (view) =>
+        view.contexts.some(matches) ||
+        (view.unreadable &&
+          (!props.subjects ||
+            props.subjects.some((subject) =>
+              subject.kind === "lib"
+                ? !view.run.id.startsWith("apps/")
+                : view.run.id.startsWith(`apps/${subject.engine}/`),
+            ))),
+    )?.run.id ??
+    props.history.at(-1)?.run.id ??
+    "",
+)
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
-const contexts = computed(() => selected.value?.contexts.filter((row) => !props.subjects || props.subjects.some(subject => subject.engine === row.engine && subject.kind === row.kind)) ?? [])
+const contexts = computed(
+  () =>
+    selected.value?.contexts.filter(
+      (row) =>
+        !props.subjects || props.subjects.some((subject) => subject.engine === row.engine && subject.kind === row.kind),
+    ) ?? [],
+)
 const contextKey = ref(contexts.value[0]?.contextKey ?? "")
 const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
 // #33037: a context names its shared status map; a name with no map is a broken payload, never "no statuses".
@@ -23,14 +64,33 @@ const contextStates = computed(() => {
   const ref = context.value?.statesRef
   if (ref === undefined) return {}
   const states = props.states?.[ref]
-  if (!states) throw new Error(`Run history context ${context.value?.contextKey} names status map ${ref}, which the page data lacks`)
+  if (!states)
+    throw new Error(
+      `Run history context ${context.value?.contextKey} names status map ${ref}, which the page data lacks`,
+    )
   return states
 })
-const cells = computed(() => Object.entries(contextStates.value).filter(([id]) => !props.featureId || id === props.featureId))
-const kindLabel = (kind: string) => kind === "lib" ? "Library" : kind === "mux" ? "Multiplexer" : kind === "term" ? "Application" : kind
-const gaps = computed(() => props.history.flatMap(view => view.unmeasured).filter(gap => !props.subjects || props.subjects.some(subject => gap.engine === subject.engine || (subject.kind !== "lib" && gap.engine.startsWith(subject.engine + "/")))))
+const cells = computed(() =>
+  Object.entries(contextStates.value).filter(([id]) => !props.featureId || id === props.featureId),
+)
+const kindLabel = (kind: string) =>
+  kind === "lib" ? "Library" : kind === "mux" ? "Multiplexer" : kind === "term" ? "Application" : kind
+const gaps = computed(() =>
+  props.history
+    .flatMap((view) => view.unmeasured)
+    .filter(
+      (gap) =>
+        !props.subjects ||
+        props.subjects.some(
+          (subject) =>
+            gap.engine === subject.engine || (subject.kind !== "lib" && gap.engine.startsWith(subject.engine + "/")),
+        ),
+    ),
+)
 </script>
 
+<!-- oxfmt would add spaces inside this template's text nodes, which changes rendered spacing (33975). -->
+<!-- prettier-ignore -->
 <template>
 <section id="run-history" class="run-history">
   <div v-if="originalEntries.length" id="selected-original-history">
@@ -100,8 +160,24 @@ const gaps = computed(() => props.history.flatMap(view => view.unmeasured).filte
 </template>
 
 <style scoped>
-.run-history { margin: 2rem 0; padding-top: 1rem; border-top: 1px solid var(--vp-c-divider); }
-label { display: block; margin: 1rem 0; }
-select { display: block; max-width: 100%; padding: .35rem; border: 1px solid var(--vp-c-divider); border-radius: 4px; background: var(--vp-c-bg); }
-code { overflow-wrap: anywhere; }
+.run-history {
+  margin: 2rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--vp-c-divider);
+}
+label {
+  display: block;
+  margin: 1rem 0;
+}
+select {
+  display: block;
+  max-width: 100%;
+  padding: 0.35rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: var(--vp-c-bg);
+}
+code {
+  overflow-wrap: anywhere;
+}
 </style>

@@ -65,7 +65,16 @@ it.each(["tmux", "screen", "darwin-screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,hasBinary=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    let suppliedTarget=target,hasAttachment=true,hasBinary=true,historyThroughCli=false,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    // 31741 cmux record boundary (@dev/1 peer verdict, F2): the arm's evidence must reach the run the
+    // collector persists, so this models the owner's own shape - a live lastRead getter over the last CLI
+    // read - and switches arms between collects below.
+    const cmuxExecutable="/Applications/cmux.app/Contents/MacOS/cmux"
+    const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
+    let cmuxArm,cmuxLast
+    const cmuxHistory=()=>cmuxArm==="grant-failed"
+      ? {executable:cmuxExecutable,surface:null,grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -80,8 +89,12 @@ it.each(["tmux", "screen", "darwin-screen"])(
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>{cmuxLast=JSON.stringify({surface:"surface-uuid-1",ownership:"surface",markers:null,extras:null,totalLines:73});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
+        ...(cmuxArm===undefined?{}:{cmuxHistory:cmuxHistory(),historyReadsThroughCli:true,historyExecutable:{path:cmuxExecutable,sha256:"ab".repeat(32),version:"cmux 0.65.2"}}),
+        // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
+        // binary's proof; this flag models that arm with no measured CLI proof.
+        ...(historyThroughCli?{historyReadsThroughCli:true}:{}),
         ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
@@ -93,6 +106,9 @@ it.each(["tmux", "screen", "darwin-screen"])(
       else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
       try{if(!darwin)await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
+      // The history probe reads through the owner before the run record exists; a record serialized at
+      // grant would carry the grant receipt as its last read (@dev/1 peer verdict, F2).
+      if(cmuxArm==="success"||cmuxArm==="config-absent")await options.ownedTerminal.getScrollback()
       // Batch-only coverage cannot see the producer overwrite its persisted collection custody.
       const readDraft=()=>JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY||join(process.env.HOME,".terminfo-dev","http-responses"),options.captureRunId+".draft.json"),"utf8"))
       collectionAttempt=readDraft().rawReplies["collector.collectionAttempt"]
@@ -108,7 +124,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     if(darwin)process.env.TERMINFO_CAPTURE_DIRECTORY=join(process.env.HOME,"capture")
-    const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",marker:{flag:"--run",value:"a".repeat(32)},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
+    const collect=()=>collectProbeRun({ids:["device.xtversion"],...(darwin?{processOwner:{asserter:"terminfo-admin",launchRunId:"a".repeat(32),workerPid:process.pid,provider:"cli-process",ownerPid:123,executablePath:"/fixture/kitty",basis:{kind:"marker",marker:{flag:"--run",value:"a".repeat(32)}},tty:"/dev/ttys000",intendedVersion:"0.49.2"}}:{})})
     const run=await collect()
     const {decodeCollectorDraft}=await import("./packages/run-parser/src/index.ts")
     assert.equal(decodeCollectorDraft("owned-history fixture",JSON.stringify(run),globalThis.__TERMINFO_BUNDLED_SUITE__.manifest,revision).kind,"captured")
@@ -116,6 +132,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.deepEqual(JSON.parse(run.rawReplies["collector.historyIdentityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
+    assert.equal(run.rawReplies["collector.cmuxHistory"],undefined,"a run with no cmux arm writes no history evidence")
     if(!darwin){
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
@@ -128,6 +145,12 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.equal(unverified.identity,"unverified")
     assert.match(JSON.parse(unverified.rawReplies["collector.historyIdentityCheck"]).reason,/binary path, sha256 and version unavailable/)
     hasBinary=true
+    historyThroughCli=true
+    const cliArm=await collect()
+    const cliCheck=JSON.parse(cliArm.rawReplies["collector.historyIdentityCheck"])
+    assert.equal(cliCheck.executable,undefined,"a CLI arm never names the mux or provenance binary")
+    assert.match(cliCheck.reason,/CLI proof unmeasured/)
+    historyThroughCli=false
     assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)
@@ -146,6 +169,27 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=true;writeFileSync(path,JSON.stringify(outerApp.provenance))
       const outer=await collect()
       assert.deepEqual(JSON.parse(outer.rawReplies["collector.preflightIdentity"]),{...preflight,launchRunId:"a".repeat(32)})
+      // F2: collect through serve.ts's own record construction and read what the collector persists, so
+      // deleting the assignment at serve.ts:1319 fails here instead of leaving a helper test green.
+      preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
+      cmuxArm="success"
+      const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(cmuxRecord.executable,cmuxExecutable)
+      assert.equal(cmuxRecord.surface,"surface-uuid-1")
+      assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
+      assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
+      assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
+      assert.equal(JSON.parse(cmuxRecord.lastRead).totalLines,73)
+      cmuxArm="grant-failed";cmuxLast=undefined
+      const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(failedRecord.surface,null)
+      assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
+      assert.match(failedRecord.grantProof,/published no CMUX_SURFACE_ID/)
+      cmuxArm="config-absent";cmuxLast=undefined
+      const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.deepEqual(JSON.parse(absentRecord.grantProof).config,{read:"absent"},"a launch with no config keeps the absence in the record")
+      assert.equal(JSON.parse(absentRecord.lastRead).ownership,"surface")
+      cmuxArm=undefined
     }
   `,
       ],
@@ -544,7 +588,7 @@ describe("daemon HTTP boundary", () => {
         const {requestDaemonProbe}=await import("./packages/terminfo.dev/src/daemon-client.ts")
         const processOwner={asserter:"terminfo-admin",launchRunId:registration.runId,workerPid:registration.pid,
           provider:"kitty",ownerPid:900,executablePath:"/Applications/kitty.app/Contents/MacOS/kitty",
-          marker:{flag:"--instance-group",value:"terminfo-"+registration.runId},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
+          basis:{kind:"marker",marker:{flag:"--instance-group",value:"terminfo-"+registration.runId}},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
         try {await requestDaemonProbe(registration,{process:processOwner})}
         catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
           message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
@@ -619,7 +663,7 @@ describe("daemon HTTP boundary", () => {
       provider: "kitty",
       ownerPid: 900,
       executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-      marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` },
+      basis: { kind: "marker", marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` } },
       tty: "/dev/ttys004",
       intendedVersion: "0.44.0",
     }
@@ -763,7 +807,7 @@ function runHostedDarwinFixture(script: string, timeoutMs = 10_000) {
  * script reports which app PID the adapter was installed for, how often calibration ran, and any
  * refusal. `ownerPid` is the pid the verified owner reports; undefined is an owner with none.
  */
-function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
+function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwner?: Record<string, unknown>) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
   const ownerPidField = ownerPid === undefined ? "" : `appPid: ${ownerPid},`
   const script = `
@@ -773,6 +817,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const geometry = { status: "measured", rows: 24, cols: 80 }
     const appPids = []
+    const captureOptions = []
     let calibrationCalls = 0
     mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
       detectTerminal: () => ({ name: "ghostty", version: "1.3.1", os: "macos", osVersion: "fixture" })
@@ -795,6 +840,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
       createDarwinCapture: async (_directory, options) => {
         appPids.push(options.appPid)
+        captureOptions.push({ expectedWindowId: options.expectedWindowId ?? null, ownedHost: options.ownedHost })
         const refuse = async () => { throw new Error("capture must retain the calibration refusal") }
         return { capture: refuse, captureRaw: refuse }
       }
@@ -815,11 +861,11 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     let refusal
     try {
-      await collectProbeRun({ ids: ["extensions.truecolor", "erase.line.all"], processOwner: { provider: "ghostty" } })
+      await collectProbeRun({ ids: ["extensions.truecolor", "erase.line.all"], processOwner: ${JSON.stringify(processOwner ?? { provider: "ghostty" })} })
     } catch (error) {
       refusal = error.message
     }
-    console.log("RESULT " + JSON.stringify({ appPids, calibrationCalls, refusal }))
+    console.log("RESULT " + JSON.stringify({ appPids, calibrationCalls, refusal, ...(${processOwner !== undefined} && { captureOptions }) }))
   `
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: packageRoot,
@@ -956,6 +1002,15 @@ describe("private finite daemon startup", () => {
     const { stderr, observed } = runDarwinProcessCaptureFixture(4242)
     expect(observed).toEqual({ appPids: [4242], calibrationCalls: 1 })
     expect(stderr).toBe("")
+  })
+
+  // 33845: the owned iTerm2 arm pins the capture to the CG window its owner census proved new, as
+  // Terminal.app pins its asserted window, and stays window-only on the owned host.
+  it("pins the owned iTerm2 capture to its asserted CG window on the owned host", () => {
+    const { observed } = runDarwinProcessCaptureFixture(4242, { provider: "iterm2", windowId: 41 })
+    expect(observed).toMatchObject({ appPids: [4242], captureOptions: [{ expectedWindowId: 41, ownedHost: true }] })
+    const other = runDarwinProcessCaptureFixture(4242, { provider: "kitty" })
+    expect(other.observed).toMatchObject({ captureOptions: [{ expectedWindowId: null, ownedHost: true }] })
   })
 
   it("refuses an owned-process capture by name when the verified owner reports no pid", () => {

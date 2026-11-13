@@ -85,6 +85,17 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
   },
+  // termless 1738b811 (vs 343c2e5d): layout.json moves only nativeModuleSha256 and the receipt only its build
+  // record (sha256, recipe and flake-lock hashes, gcc 16.2.0, python 3.14.10); offsets, widths and adapter code
+  // are unchanged (@cto bef7054c condition 4).
+  kitty1738b811: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "b131e26069edf2129b4ff70aa2ce88c154dea811",
+    "packages/kitty/build/native-mode-layout.receipt.json": "3e2dfd878a701eba5430a31948bc26a372ebdcfc",
+  },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
     "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
@@ -100,6 +111,25 @@ export const ADAPTER_SOURCE_AUDITS = {
   xtermjs: {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
     "packages/xtermjs/src/backend.ts": "72dc827b2026af7736de722f7ff986a04f3fe883",
+  },
+  // These four backends were rebuilt at Termless 74b5c9c8 (#33939): each now declares
+  // adapter-sources, osc-metadata and paste-encoding, and reply-delivery is gone. The cohorts above
+  // stay declared so a run recorded before that pin still binds one.
+  xtermjsAt74b5c9c8: {
+    "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
+    "packages/xtermjs/src/backend.ts": "82aac9a4eba3e3c013c587081853d0ddff4828db",
+  },
+  vt100At74b5c9c8: {
+    "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+    "packages/vt100/src/backend.ts": "0368b2926f6bb8007a610a0a0e19f4f0cd86030e",
+  },
+  vt220At74b5c9c8: {
+    "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+    "packages/vt220/src/backend.ts": "1bbbbc6f44f99171bddd08d0a0731199be84684e",
+  },
+  vtermAt74b5c9c8: {
+    "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+    "packages/vterm/src/backend.ts": "57f73e60c2a52c16147a6000b7c823be66afbd95",
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
@@ -234,6 +264,23 @@ export function auditedAdapterSources(
   return (
     sources?.length === expected.length &&
     expected.every(([path, blobOid]) => sources.some((source) => source.path === path && source.blobOid === blobOid))
+  )
+}
+
+/**
+ * The audited kitty 0.49.2 library: the engine version, the upstream commit the run read from the loaded binary
+ * (KITTY_VCS_REV), and an audited adapter cohort. kitty-official is upstream's prebuilt archive with only
+ * interpreter and runpath fixups, so its binary bytes move with every derivation edit while the engine does not;
+ * the binary sha stays in the record and decides nothing (@cto bef7054c, the vt100-rust shape of 90d6183a).
+ */
+export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]): boolean {
+  return (
+    identity?.kind === "native" &&
+    identity.engineVersion === "0.49.2" &&
+    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
+    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811"] as const).some((cohort) =>
+      auditedAdapterSources(identity, cohort),
+    )
   )
 }
 
@@ -1426,12 +1473,16 @@ export function withUnhandledSgrReport(
     const selected = reported ?? result
     // Retain selected colour bytes beside the measured report, including normalized RGB codes.
     if (target === undefined && (id !== "sgr.underline-color-reset" || result.note === undefined)) return selected
+    // A declared Untestable result is terminal, so it never takes the Open clause (#34000).
+    const openClause = isDeclaredUntestable(result)
+      ? undefined
+      : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
     const reportNote =
       target === undefined
         ? reported?.note
         : reported
           ? `measured: library reported the code unhandled; ${reported.note}`
-          : "Open: no qualified unhandled report for the selected codes; a handled SGR 1 must apply without a report and the target must add exactly the expected codes, with no missing, different or extra entries"
+          : openClause
     const note = [result.note, reportNote].filter(Boolean).join("; ")
     if (selected.notTested) {
       return { ...selected, note, notTested: { ...selected.notTested, noObservable: note } }

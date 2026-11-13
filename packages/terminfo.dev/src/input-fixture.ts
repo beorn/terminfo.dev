@@ -57,6 +57,7 @@ export function createInjectedInput(mechanism: InputMechanism, label: string): I
   }
 
   return {
+    mechanism: label,
     async injectKey(keys: string) {
       if (keys.length === 0) throw new Error(`${label} key injection requires a nonempty keysym`)
       await mechanism.focus()

@@ -117,8 +117,15 @@ describe("one real disagreement renders instead of stopping the build", () => {
 })
 
 describe("the build's own chain, from the join to what a page reads", () => {
-  it("renders one disagreement from two joined contexts instead of failing the bar", () => {
-    const cell = (status: FeatureResultStatus, runId: string) => ({ status, version: "1.0", suite: "suite-a", runId })
+  it("renders two joined contexts' disagreement as one open PROBE CONFLICT naming both (33587)", () => {
+    const cell = (status: FeatureResultStatus, runId: string) => ({
+      status,
+      version: "1.0",
+      suite: "suite-a",
+      entryHash: "entry-a",
+      sourceRevision: "a".repeat(40),
+      runId,
+    })
     const primary: ContextFacts = {
       key: "term:codimac",
       cells: { "sgr.bold": cell("supported", "run-primary"), "sgr.italic": cell("supported", "run-primary") },
@@ -127,17 +134,18 @@ describe("the build's own chain, from the join to what a page reads", () => {
       key: "term:mac-mini",
       cells: { "sgr.bold": cell("unsupported", "run-other"), "sgr.italic": cell("supported", "run-other") },
     }
-    const joined = joinContextCells(primary, [other], [...CATALOG], [...CATALOG])
+    const joined = joinContextCells(primary, [other], [...CATALOG], () => null, [...CATALOG])
     const summary = {
       featureResults: Object.fromEntries(
         Object.entries(joined.cells).map(([featureId, entry]) => [featureId, { featureId, status: entry.status }]),
       ),
     } as never
     const aggregate = aggregateCurrentResults(rollupInputs("codimac", summary), [...CATALOG])
-    expect(aggregate.counts[DIFFERS_BY_CONTEXT]).toBe(1)
+    expect(aggregate.counts[DIFFERS_BY_CONTEXT]).toBe(0)
+    expect(aggregate.counts["probe-conflict"]).toBe(1)
     expect(currentSupportedShare(aggregate)).toBe("1/2 supported (50%)")
-    // The page points a reader at the disagreeing cell; the row itself names both contexts and grades.
-    expect(aggregate.idsByState[DIFFERS_BY_CONTEXT]).toEqual(["sgr.bold"])
+    // The page points a reader at the open cell; the row itself names both contexts and grades.
+    expect(aggregate.idsByState["probe-conflict"]).toEqual(["sgr.bold"])
     expect(joined.cells["sgr.bold"]?.from).toEqual([
       { context: "term:codimac", status: "supported", runId: "run-primary" },
       { context: "term:mac-mini", status: "unsupported", runId: "run-other" },

@@ -365,6 +365,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * named no colour, or when the arm could not decode its frame; undefined is never read as null.
    */
   located?: CaptureLocated | null
+  /**
+   * What this frame measured about the grid its rectangle was mapped from (33982). Present exactly
+   * when the frame carries a `regionRectangle`, which the arm maps from that origin. A comparison
+   * that needs a proved grid move reads it here; a frame without it refuses as before.
+   */
+  cellCrop?: PixelCellCrop
 }
 
 /**
@@ -381,6 +387,7 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   controlRegionDigest?: never
   controlRegionRectangle?: never
   located?: never
+  cellCrop?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -496,6 +503,47 @@ export interface CapturePixelGeometry {
 }
 
 /**
+ * What one pixel frame measured about the grid its region rectangle was mapped from (33982). Carried
+ * beside `regionRectangle` so a later frame's crop that differs from the first by WHOLE ROWS reads as
+ * the grid moving — Warp repaints its text area 35 rows lower after a reset — instead of as two
+ * frames cropped from unrelated positions. Absent on a hand-built frame, and a comparison over such
+ * frames refuses exactly as it did before this field existed.
+ */
+export interface PixelCellCrop {
+  /** The text-area origin this frame's rectangle was mapped from, in the captured image's pixels. */
+  origin: { x: number; y: number }
+  /**
+   * How the origin was measured, as a short settled name, and the arm's own prose beside it. Two
+   * frames are compared only when the NAME agrees: a calibrated origin and a sentinel-derived one are
+   * different measurements, and treating them as one would count one measurement twice (33982, @cto).
+   */
+  basis?: string
+  basisDetail?: string
+  /** The measured surface the text area sits on, when the arm names one. */
+  surface?: CaptureRectangle
+  /** The cell pitch the rectangle was mapped at. */
+  cell: { width: number; height: number }
+  /**
+   * The measured text-area grid, in cells. A move that comes with a resize refuses: the same rows at
+   * a different column count is a different screen, not the same screen further down.
+   */
+  grid?: { columns: number; rows: number }
+  /** The captured image's own size, so a moved rectangle is checked against pixels that exist. */
+  image: { width: number; height: number }
+  /**
+   * The sentinel pair this frame located: the two painted cells and the boxes they actually changed.
+   * The origin is derived from ONE of these boxes, so "the origins differ by N rows" alone is that
+   * one measurement restated. The PAIR is the independent half: its two boxes must sit exactly one
+   * cell pitch apart per row and column their cells differ by, which is what proves this frame's cell
+   * size and that the origin it implies lands on the grid the read asked for.
+   */
+  witness?: {
+    a: { cell: { row: number; col: number }; box: { x: number; y: number } }
+    b: { cell: { row: number; col: number }; box: { x: number; y: number } }
+  }
+}
+
+/**
  * A capture checkpoint. `cells` asks the collector to digest one cell-aligned region of the same
  * capture; `ref`, `sourceRef`, `capturedAt` and `label` keep their shape either way, so a request
  * without `cells` is byte for byte the previous path.
@@ -512,6 +560,12 @@ export interface CaptureRequest {
    * frame without the control digest, and the consumer names that absence.
    */
   controlCells?: CaptureCells
+  /**
+   * Cells the probe's own output may cover beyond what it digests (an inline image's footprint,
+   * 33985). A read that paints calibration's sentinel never paints it here: a terminal that draws the
+   * image over text hides the sentinel, and the crop cannot be anchored.
+   */
+  avoid?: CaptureCells
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
   /**
@@ -1232,6 +1286,12 @@ export interface NotificationFixture {
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
+  /**
+   * The injection mechanism this adapter drives, as the adapter's own label: "XTEST" on X11 and
+   * "CGEvent" on macOS. A row that names a mechanism must name this one — "OS-level XTEST" on a Mac
+   * named a thing the run never used (#31741 item 4).
+   */
+  readonly mechanism?: string
   injectKey(keys: string): Promise<void>
   /**
    * Move focus to the owned helper window and back, verifying every X focus read. The middle read
@@ -1278,9 +1338,23 @@ export type OuterCommandRead =
       target: string
       targetSent: boolean
       outer: { app: string; version: string }
+      /** Custody of the retained window: the bytes this read kept, never the row's evidence by itself. */
+      trace?: { sha256: string; lines: number; window: { offset: number; endOffset?: number } }
       detail: object
     }
-  | { status: "unavailable"; reason: string; detail?: object }
+  | {
+      status: "unavailable"
+      reason: string
+      /**
+       * Whether this run's mux config forwards a title to the outer terminal at all. `false` (the empty default tmux
+       * config) means no forwarding control can reach the record, so a row that needs one is untestable here, not
+       * probe-invalid (@cto 33919 condition 2). Absent when the reader cannot tell.
+       */
+      titlesForwarded?: boolean
+      /** The record was read and carried no forwarding-control line; only a config that forwards no title explains it. */
+      noForwardingControl?: boolean
+      detail?: object
+    }
 
 /** Same-row observations from the owned App reader; no App identity enters probe definitions. */
 export type AppSemanticReading =
@@ -1384,6 +1458,29 @@ export interface TermProbeSource {
   withClipboardFixture?: (
     work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>,
   ) => Promise<ProbeCallbackResult>
+  /**
+   * Present exactly when this run RECORDED a clipboard fixture and the admission gate declined to hand
+   * it to this subject (#31741). A row that finds no fixture names this cause instead of claiming the
+   * run had none — the same shape as `captureGeometryRefusal`, and for the same reason: the old text
+   * named a missing thing that the run's own artifact recorded as present.
+   */
+  clipboardFixtureRefusal?: string
+  /**
+   * Present exactly when the collector knows this run's subject app exposes no permitted read of its own
+   * pane — the app was measured and none exists, not "the first route failed" (#31741, @cto 20b9ffed).
+   * The history rows return this as their declared Untestable reason instead of falling back to a
+   * screenshot arm that cannot read retained history. A later app version that grows a read removes the
+   * field, which is what makes the declaration reversible.
+   */
+  scrollbackUnavailable?: string
+  /**
+   * Present when this arm cannot reach an owned read the app may well expose — a missing prerequisite on the
+   * collector's side, not a measured absence of a read (8c084f05, A0). The history rows return it as their
+   * PROBE TODO reason, so the row names what is missing instead of silently falling back to a screenshot arm.
+   * Distinct from `scrollbackUnavailable`: that one declares the app unreadable and is reversible by app
+   * version; this one says the arm, not the app, is the obstacle.
+   */
+  scrollbackProbeTodo?: string
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
@@ -1404,8 +1501,13 @@ export interface TermProbeSource {
    * no adapter is installed, and absent in every run recorded before text frames existed, where the
    * only adapter that could have been installed was a pixel one. */
   captureKind?: "pixels" | "text-cells"
-  /** Present only when an owned OS XTEST adapter is installed for this run. */
+  /** Present only when an owned OS input adapter is installed for this run. */
   input?: InputFixture
+  /**
+   * The mechanism this platform's owned input route uses, present even when no input adapter was
+   * installed, so a row never names another platform's mechanism (#31741 item 4).
+   */
+  inputMechanism?: string
   /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */
   readInput?: (pattern: RegExp, timeoutMs?: number, inject?: () => Promise<void>) => Promise<string[] | null>
   /** Like readInput, but returns the raw bytes. The listener is armed before inject runs. */

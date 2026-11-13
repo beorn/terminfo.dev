@@ -9,6 +9,7 @@ export type {
   RetainedHostRecipeCause,
   ProbeDefinition,
   ProbeCallbackResult,
+  PixelCellCrop,
   MeasuredProbeCallbackResult,
   ExecutionOnlyProbeCallbackResult,
   ProbeSourceKind,
@@ -131,6 +132,15 @@ export {
   collectorRegionRead,
   queryPixelGeometry,
   DEFAULT_TIMEOUT_MS,
+  originFromSentinel,
+  witnessCellFor,
+  witnessCellsFor,
+  sentinelBlockRefusal,
+  cropPositionRefusal,
+  gridMoveExemption,
+  CELL_EDGE_TOLERANCE_PX,
+  type GridMove,
+  type ComparedCrop,
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,
@@ -238,6 +248,18 @@ export {
   charsetsProbes,
   unicodeProbes,
 }
+
+export {
+  MUX_OUTER_DECRQ_UNREADABLE,
+  MUX_OUTER_DECRQ_UNREADABLE_BRANCH,
+  MUX_OUTER_NO_RECORD,
+  MUX_OUTER_ROWS,
+  MUX_OUTER_ROW_CONTROL_WRITE,
+  muxOuterRowGrade,
+  withMuxOuterRows,
+  withMuxOuterUnreadableRow,
+  type MuxOuterRow,
+} from "./mux-outer-rows.ts"
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"

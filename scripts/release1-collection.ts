@@ -42,9 +42,11 @@ import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
+import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { assertTerminalWindowRecord } from "../packages/admin/src/terminal-window-record.ts"
 import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { retainSuiteManifest } from "../packages/admin/suite-retention.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
@@ -164,10 +166,17 @@ const engineRow = (id: string): CollectionContext => ({
 /**
  * macOS apps the admin launches and owns on this host. kitty is not one of them: its owned codimac
  * run was unadmitted for the missing capture adapter, and @cto then recorded it as not measurable on
- * the hosted runner (see UNMEASURABLE_MAC_APPS). The route stays live for a codimac-only app that
- * the hosted runner cannot run and that qualifies.
+ * the hosted runner (see UNMEASURABLE_MAC_APPS).
+ *
+ * An app enters this set only when its owned arm proves the window is ours before every touch, and
+ * then with its own entry and its own after-merge read (@cto 33963 condition, verdict 2026-11-12).
+ * Terminal.app checks its owned window before clipboard reads, writes and clears (7814de87,
+ * @cto 77adaf80). iTerm2 checks its owned process/window before each request (614e7982,
+ * @cto after-merge f44b2171); its owned arm supplies no clipboard fixture or hosted API-text reader.
+ * Those observations remain unmeasured, without inheriting historical hosted results. Warp still
+ * needs its own admitted proof before it can enter this set.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>(["terminal-app", "iterm2"])
 
 /**
  * A macOS row with a measured reason it cannot be collected at all, kept as a named fact instead of
@@ -216,7 +225,10 @@ function hostedAppRows(os: "macos" | "windows"): Array<{ id: string; [key: strin
   return rows as Array<{ id: string; [key: string]: unknown }>
 }
 
-function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {
+export function collectionRoutes(
+  expected: readonly CensusContext[],
+  ownedMacApps: ReadonlySet<string> = LOCAL_OWNED_MAC_APPS,
+): CollectionContext[] {
   const hosted = {
     macos: new Set(hostedAppRows("macos").map((row) => row.id)),
     windows: new Set(hostedAppRows("windows").map((row) => row.id)),
@@ -260,8 +272,10 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
         sourceRun: fact.runId,
         uncollectable: fact.reason,
       })
-    } else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
-    else if (os === "macos" && LOCAL_OWNED_MAC_APPS.has(id)) contexts.push(localOwnedAppRow(id))
+      // Owned membership wins over the hosted matrix: a context whose arm can prove ownership is sent to
+      // that route only, never to both (@cto 33963 condition 1).
+    } else if (os === "macos" && ownedMacApps.has(id)) contexts.push(localOwnedAppRow(id))
+    else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
     else if (os === "windows" && hosted.windows.has(id)) {
       contexts.push({
         id,
@@ -316,6 +330,8 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
 export interface CollectionPass {
   directory: string
   probeHash: string
+  /** Relative name of the suite declaration this pass retained beside its runs (33987); absent on passes written before it. */
+  suiteManifest?: string
   sourceRevision: string
   inputSha256: Record<string, string>
   catalogIds: string[]
@@ -358,6 +374,12 @@ export interface CollectionPass {
     transport?: CollectionPass["transport"]
     error?: string
     reason?: string
+    /**
+     * Named when this host cannot start the row at all: the row is reported "not run" with this reason
+     * and the pass stays green. It is never an error, because a Mac-only arm measured on Linux is a
+     * fact about the host, not a failure of the collection (@cto 33963 condition 2).
+     */
+    notRun?: string
     /** Every declared supplement of this row, run or not, so a missing one is visible and never read as no result. */
     supplements?: SupplementRow[]
   }>
@@ -394,15 +416,110 @@ export interface OwnedAppTransportOptions {
 
 /** The one owned-app argv both runners start from; the ssh runner hands the probe to the transport
  * driver, which runs exactly these arguments on the host. */
+function contextNameOf(context: CollectionContext): string {
+  return context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
+}
+
+/**
+ * An owned-app transport names where owned rows start. A selection holding no owned row would have the
+ * flag silently ignored, and a mixed selection would have it ignored for every routed row, so both are
+ * refused by name: the flag is used or refused, never accepted and ignored (@cto 33963 condition 3).
+ */
+export function assertOwnedTransportApplies(contexts: readonly CollectionContext[], runner: string): void {
+  if (runner === "local") return
+  const unowned = contexts.filter((context) => context.route !== "local-owned-app")
+  if (unowned.length === 0) return
+  throw new Error(
+    `--owned-app-transport ${runner} starts owned-app rows on a host, but these selected contexts do not route there: ` +
+      `${unowned.map(contextNameOf).join(", ")}. Select only owned contexts, or omit the transport flag; ` +
+      `it is refused rather than accepted and ignored.`,
+  )
+}
+
+/**
+ * Whether this host can start an owned-app row. @cto 33963 condition 2: the owned route starts the app
+ * on the host that owns it, so a local runner starts it only on macOS. An ssh runner starts it on the
+ * host the caller named, which is that host's choice. A host that cannot start it says so by name and
+ * the pass records the row "not run" instead of turning a host fact into a red collection.
+ */
+export function ownedRowVerdict(
+  context: CollectionContext,
+  runner: string,
+  platform: string,
+  explicitlySelected: boolean,
+): { start: true } | { start: false; reason: string } {
+  if (context.route !== "local-owned-app") return { start: true }
+  // An owned transport names the host that owns the app, so it is that host's choice to start the row.
+  if (runner !== "local") return { start: true }
+  // @cto 33963 condition 3: an owned row never starts merely because the collection runs on a Mac.
+  // The default pass is a census, so it reports the row instead of launching someone's app.
+  if (!explicitlySelected) {
+    return {
+      start: false,
+      reason:
+        `not run: ${context.id}/${context.os} starts only when it is selected explicitly or an owned transport names its host; ` +
+        `a default collection never starts an owned row`,
+    }
+  }
+  if (platform === "darwin") return { start: true }
+  return {
+    start: false,
+    reason:
+      `not run: ${context.id}/${context.os} starts through the owned route on the host that owns it, and this host is ${platform}; ` +
+      `run it on that host or pass --owned-app-transport ssh:<host>`,
+  }
+}
+
+/**
+ * A selection that NAMES an owned row this host cannot start is refused by name: it cannot measure it,
+ * and returning a pass that quietly skipped the row it was asked for is the silent fallback this rule
+ * exists to prevent. A selection that does not name it records the row "not run" instead.
+ */
+export function assertOwnedRowsStartable(
+  contexts: readonly CollectionContext[],
+  selected: readonly string[] | undefined,
+  runner: string,
+  platform: string,
+): void {
+  for (const context of contexts) {
+    if (selected?.includes(contextNameOf(context)) !== true) continue
+    const verdict = ownedRowVerdict(context, runner, platform, true)
+    if (verdict.start) continue
+    throw new Error(
+      `${contextNameOf(context)} was selected explicitly, but ${verdict.reason}. ` +
+        `Selecting it here cannot measure it, so the selection is refused rather than returning a pass that never ran it.`,
+    )
+  }
+}
+
 export function ownedAppCommand(
   context: CollectionContext,
   output: string,
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
+  runId: string,
+  probeIds?: string[],
 ): { argv: string[]; label: string } {
-  const probe = ["bun", "packages/admin/src/index.ts", "probe", "term", context.id]
+  // An unknown id is refused here, against the catalogue already in this tree, before any host is
+  // contacted. The daemon refuses it with the same sentence, but on the ssh route that arrives only
+  // after the source copy (@cto 737a99e3 condition 2).
+  if (probeIds !== undefined) selectAppProbes(probeIds)
+  // `probe term` was never a registered verb, so no caller could have succeeded before this head.
+  const probe = [
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    context.id,
+    ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]),
+  ]
+  // #34018: the run identity is the composer's, on BOTH routes. The local route hands it to the same
+  // admin flag the transport sets on the host, so a pass compares one identity either way.
   if (transport.runner === "local") {
-    return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
+    return {
+      argv: [...probe, "--run-id", runId, "--output", output],
+      label: `${labelOf(context)} owned-app collection`,
+    }
   }
   if (!transport.knownHosts) {
     throw new Error(
@@ -422,6 +539,8 @@ export function ownedAppCommand(
       sourceRevision,
       "--context",
       context.id,
+      "--run-id",
+      runId,
       "--known-hosts",
       transport.knownHosts,
       ...(transport.removeStage ? ["--remove-stage"] : []),
@@ -473,6 +592,7 @@ export function readOwnedAppTransportProof(
     hostKeyFingerprint?: unknown
     resourceManifestSha256?: unknown
     resourceFiles?: unknown
+    check?: unknown
     output?: { directory?: unknown }
   }
   if (receipt.schemaVersion !== 1 || receipt.kind !== TRANSPORT_RECEIPT_KIND) {
@@ -481,6 +601,15 @@ export function readOwnedAppTransportProof(
   if (receipt.grants !== "nothing") {
     throw new Error(
       `owned-app transport receipt at ${path} claims ${JSON.stringify(receipt.grants)}; this kind grants nothing`,
+    )
+  }
+  // The check depth is part of what a run is. A light transport check never hashed the staged
+  // node_modules trees: it trusts them through the stage's marker, so its receipt can describe them
+  // only by reference and cannot stand for bytes this corpus counts. A receipt written before the
+  // field existed hashed everything, which is what a missing field means.
+  if (receipt.check !== undefined && receipt.check !== "full") {
+    throw new Error(
+      `owned-app transport receipt at ${path} records a ${JSON.stringify(receipt.check)} check; only a full check may be placed`,
     )
   }
   if (receipt.sourceRevision !== expectedRevision) {
@@ -528,6 +657,9 @@ export async function collectPass(
   const output = realpathSync(outputDirectory)
   const directory = mkdtempSync(join(output, "pass-"))
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+  // 33987 (@cto ruling C): an app, hosted or owned-app pass carries its own declaration, named the same way a
+  // headless collection names its own, so every reader of an unplaced run reads the file beside the run.
+  const suiteManifest = retainSuiteManifest(directory, snapshot)
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
@@ -556,23 +688,40 @@ export async function collectPass(
         }
       : context,
   )
-  const contextName = (context: CollectionContext): string =>
-    context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
-  const requestedContexts = selection?.contexts ?? declared.map(contextName)
+  const requestedContexts = selection?.contexts ?? declared.map(contextNameOf)
   for (const context of requestedContexts) {
     if (!canonical.some((row) => row.context === context)) throw new Error(`Unknown collection context ${context}`)
   }
-  const selectedContexts = declared.filter((context) => requestedContexts.includes(contextName(context)))
+  const selectedContexts = declared.filter((context) => requestedContexts.includes(contextNameOf(context)))
   const census = selectedContexts
+  assertOwnedTransportApplies(census, ownedApp.runner)
+  // @cto 33963 condition 2: an owned row is started by the host that owns the app. On a host that
+  // cannot start it the row is recorded "not run" with the reason by name and the pass stays green;
+  // a selection that names nothing this host CAN start refuses by name instead, because a request
+  // that measures nothing must not come back looking like a pass.
+  const explicitlySelected = (context: CollectionContext): boolean =>
+    selection?.contexts?.includes(contextNameOf(context)) === true
+  const verdictOf = (context: CollectionContext) =>
+    ownedRowVerdict(context, ownedApp.runner, process.platform, explicitlySelected(context))
+  const cannotStartOwned = (context: CollectionContext): boolean => verdictOf(context).start === false
+  const notRunReason = (context: CollectionContext): string => {
+    const verdict = verdictOf(context)
+    if (verdict.start) {
+      throw new Error(`internal: ${context.id}/${context.os} was asked for a not-run reason it does not have`)
+    }
+    return verdict.reason
+  }
+  assertOwnedRowsStartable(selectedContexts, selection?.contexts, ownedApp.runner, process.platform)
   const pass: CollectionPass = {
     directory,
     probeHash: snapshot.probeHash,
+    suiteManifest,
     sourceRevision,
     inputSha256,
     catalogIds,
     ...(selection && {
       selection: {
-        contexts: selectedContexts.map(contextName),
+        contexts: selectedContexts.map(contextNameOf),
         ...(probeIds === undefined ? {} : { ids: probeIds }),
       },
     }),
@@ -687,6 +836,11 @@ export async function collectPass(
     pass.contexts.push(row)
     const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
     if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
+    if (cannotStartOwned(context)) {
+      row.notRun = notRunReason(context)
+      row.reason = row.notRun
+      continue
+    }
     row.rawRun = handed.path
     try {
       let path: string
@@ -721,7 +875,7 @@ export async function collectPass(
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        const command = ownedAppCommand(context, output, ownedApp, sourceRevision)
+        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, handed.draft.runId, probeIds)
         runChild(
           command.argv,
           command.label,
@@ -926,7 +1080,10 @@ export async function collectPass(
     // every declared id is a reason, never an error.
     for (const supplement of row.supplements) if (supplement.error) pass.errors.push(supplement.error)
   }
-  const eligible = pass.contexts
+  // A row this host cannot start is accounted for by name, not counted as measured: it carries
+  // `notRun` and is excluded from the completeness test, so a Linux pass is complete for what Linux
+  // can measure instead of red for a Mac arm it was never able to run.
+  const eligible = pass.contexts.filter((row) => row.notRun === undefined)
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
       if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {

@@ -20,7 +20,7 @@ import {
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
-import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -176,7 +176,7 @@ it.each([false, true])("composes current methods without losing conflicts (selec
     conflictingProbes: [`${featureId}:output`, `${featureId}:end-to-end`],
   })
   expect(cell.result).toBe(interaction.results?.[0])
-  expect(cell.run).toBe(interaction)
+  expect(cell.run.readRaw()).toBe(interaction)
   expect(conflicted.contexts["term:kitty"]?.contributingRunIds).toEqual([output.runId, interaction.runId])
   expect(
     publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId]?.status,
@@ -188,13 +188,13 @@ it.each([false, true])("composes current methods without losing conflicts (selec
     conflictingProbes: [],
   })
   expect(agreeing.result).toBe(interaction.results?.[0])
-  expect(agreeing.run).toBe(interaction)
+  expect(agreeing.run.readRaw()).toBe(interaction)
   expect(agreeing.origin.runId).toBe(interaction.runId)
   const withInvalid = compose([output, interaction, invalid])
   const decided = withInvalid.contexts["term:kitty"]!.cells[featureId]!
   expect(decided.featureResult).toMatchObject({ status: "supported", strength: 5, probeId: `${featureId}:end-to-end` })
   expect(decided.result).toBe(interaction.results?.[0])
-  expect(decided.run).toBe(interaction)
+  expect(decided.run.readRaw()).toBe(interaction)
   const published = publicResults(withInvalid, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
   expect(published).toMatchObject({ status: "supported", origin: { runId: interaction.runId } })
   expect(published.tests.map((test) => test.status)).toEqual(["supported"])
@@ -225,6 +225,30 @@ it.each([
     states: {},
   }
   expect(() => pickContextRun([candidate])).toThrow(/invalid-evidence-context/)
+})
+
+// @failure A run that measured a selection (--probe-ids) is picked as a context's summary while a full run
+// stands, so the site shows a mostly-todo terminal as if the partial had covered the whole suite.
+// @level l2 @consumer run-selection pickContextRun and its site/projection callers.
+it("ranks a full run above a selected run, and names the partial summary when none is full", () => {
+  const candidate = (key: string, measuredAt: string, partial: boolean): HistoricalContextCandidate => ({
+    key,
+    kind: "term",
+    terminalId: "kitty",
+    os: "macos",
+    permissions: null,
+    states: {},
+    cells: {},
+    sources: [{ runId: key, measuredAt, suiteId: suite.probeHash, suiteRelation: "tree", partial }],
+  })
+  const full = candidate("kitty/full", "2026-11-12T00:00:00Z", false)
+  const partial = candidate("kitty/partial", "2026-11-13T00:00:00Z", true)
+  expect(pickContextRun([partial, full])).toMatchObject({ run: { key: "kitty/full" } })
+  expect(pickContextRun([full, partial])).toMatchObject({ run: { key: "kitty/full" } })
+  expect(pickContextRun([partial])).toMatchObject({
+    run: { key: "kitty/partial" },
+    selection: "latest partial selection",
+  })
 })
 
 // Current selection reads the stored five statuses and frozen denominator
@@ -528,8 +552,8 @@ describe("current execution projection", () => {
       expect(current.cells[ids[1]!]!.result).toBe(prior.results?.[1])
       expect(current.cells[ids[2]!]!.result).toBe(prior.results?.[2])
       expect(current.cells[ids[3]!]!.result).toBe(latest.results?.[3])
-      expect(current.cells[ids[1]!]!.run).toBe(prior)
-      expect(current.cells[ids[1]!]!.run.rawReplies[ids[1]!]).toBe("ACK")
+      expect(current.cells[ids[1]!]!.run.readRaw()).toBe(prior)
+      expect(current.cells[ids[1]!]!.run.readRaw().rawReplies[ids[1]!]).toBe("ACK")
       expect(current.cells[ids[1]!]!.run.assertions[1]?.featureId).toBe(ids[1])
       expect(current.cells[ids[2]!]!.run.measuredAt).toBe(prior.measuredAt)
       expect(current.attempts).toMatchObject([

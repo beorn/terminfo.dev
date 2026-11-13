@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { CaptureLocated, CaptureRectangle } from "@terminfo/probe-defs"
+import type { CaptureLocated, CaptureRectangle, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -253,12 +253,24 @@ export interface CaptureSource {
 export interface NamedTextOrigin {
   origin: { x: number; y: number }
   basis: string
+  /**
+   * The settled name of the measurement behind `origin` (33982): `basis` is prose that names this
+   * frame's own noise, so two frames of one read can never compare equal on it. Equality of THIS name
+   * is what lets a comparison treat two frames as measured one way rather than two.
+   */
+  basisKind?: string
   surface?: CaptureRectangle
   /** The measured text-area pixels when a window edge clips the last row or column. */
   visible?: { width: number; height: number }
+  /**
+   * The sentinel pair this read located, cells and boxes. The origin above is derived from one box,
+   * so a later comparison of origins is that one measurement restated; the pair is the independent
+   * half and must travel with the frame for a grid move to be proved (33982).
+   */
+  witness?: NonNullable<PixelCellCrop["witness"]>
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
-type OriginResolver = (input: {
+export type OriginResolver = (input: {
   frame: CapturedFrame
   pixelGeometry: NonNullable<Checkpoint["pixelGeometry"]>
 }) => NamedTextOrigin | Promise<NamedTextOrigin>
@@ -370,6 +382,7 @@ export async function finishCapture(input: {
   let controlRegionDigest: string | undefined
   let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
+  let cellCrop: PixelCellCrop | undefined
   const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
@@ -414,6 +427,20 @@ export async function finishCapture(input: {
     ]
     regionDigest = region.digest
     regionRectangle = rectangle
+    const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
+    const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
+    cellCrop = {
+      origin: placement.origin,
+      ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+      basisDetail: placement.basis,
+      ...(placement.surface !== undefined ? { surface: placement.surface } : {}),
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
+        ? { grid: { columns, rows } }
+        : {}),
+      image: { width, height },
+      ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+    }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle
     regionTrace = {
@@ -454,7 +481,99 @@ export async function finishCapture(input: {
       ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
       ...(controlRegionRectangle !== undefined ? { controlRegionRectangle } : {}),
       ...(located !== undefined ? { located } : {}),
+      ...(cellCrop !== undefined ? { cellCrop } : {}),
     },
     trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }
+}
+
+/**
+ * Where one exact colour sits in the pixels that CHANGED between two frames of the same window (33981).
+ *
+ * The sentinel this read paints is located by what changed, never by the colour alone: a probe that
+ * paints the same colour itself, or a previous read's restore still rendering, is a fact the
+ * difference keeps out of the answer instead of a case rule (33981, @cto 41cd2559). `ignoredPixels`
+ * counts the changed pixels that do NOT carry the colour — cursor blink, a clock, a late render — so
+ * a noisy terminal is visible in the evidence rather than filtered away.
+ *
+ * Changed pixels carrying the colour come back as SEPARATE regions, one per connected patch, in
+ * reading order: two cells painted the sentinel colour are two boxes the caller can name and refuse,
+ * never one bounding box spanning the space between them.
+ */
+export function locateChangedColour(
+  before: CapturedFrame,
+  after: CapturedFrame,
+  rgb: readonly [number, number, number],
+): { regions: CaptureLocated[]; ignoredPixels: number } {
+  if (before.width !== after.width || before.height !== after.height) {
+    throw new Error(
+      `Frame difference needs two frames of one window; got ${before.width}x${before.height} and ${after.width}x${after.height}`,
+    )
+  }
+  if (!rgb.every((channel) => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255)) {
+    throw new Error(`Frame difference needs an integer RGB colour 0..255; got ${JSON.stringify(rgb)}`)
+  }
+  const { width, height } = after
+  const carries = new Uint8Array(width * height)
+  let ignoredPixels = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4
+      const changed =
+        before.rgba[offset] !== after.rgba[offset] ||
+        before.rgba[offset + 1] !== after.rgba[offset + 1] ||
+        before.rgba[offset + 2] !== after.rgba[offset + 2]
+      if (!changed) continue
+      if (after.rgba[offset] !== rgb[0] || after.rgba[offset + 1] !== rgb[1] || after.rgba[offset + 2] !== rgb[2]) {
+        ignoredPixels++
+        continue
+      }
+      carries[y * width + x] = 1
+    }
+  }
+  const regions: CaptureLocated[] = []
+  const stack = new Int32Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const seed = y * width + x
+      if (carries[seed] !== 1) continue
+      let left = x
+      let right = x
+      let top = y
+      let bottom = y
+      let pixels = 0
+      let depth = 0
+      stack[depth++] = seed
+      carries[seed] = 2
+      while (depth > 0) {
+        depth -= 1
+        const at = stack[depth] as number
+        const px = at % width
+        const py = (at - px) / width
+        pixels++
+        if (px < left) left = px
+        if (px > right) right = px
+        if (py < top) top = py
+        if (py > bottom) bottom = py
+        if (px > 0 && carries[at - 1] === 1) {
+          carries[at - 1] = 2
+          stack[depth++] = at - 1
+        }
+        if (px + 1 < width && carries[at + 1] === 1) {
+          carries[at + 1] = 2
+          stack[depth++] = at + 1
+        }
+        if (py > 0 && carries[at - width] === 1) {
+          carries[at - width] = 2
+          stack[depth++] = at - width
+        }
+        if (py + 1 < height && carries[at + width] === 1) {
+          carries[at + width] = 2
+          stack[depth++] = at + width
+        }
+      }
+      regions.push({ box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels })
+    }
+  }
+  return { regions, ignoredPixels }
 }

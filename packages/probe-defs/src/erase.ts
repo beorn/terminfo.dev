@@ -8,7 +8,14 @@ import type {
 } from "./types.ts"
 import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { beginCaptureLifecycle, endCaptureLifecycle } from "./region-readback.ts"
-import { probe, parserStateResult, notTestedResult, libvtermHistoryReview, sameFrame } from "./helpers.ts"
+import {
+  probe,
+  parserStateResult,
+  notTestedResult,
+  declaredUntestableResult,
+  libvtermHistoryReview,
+  sameFrame,
+} from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
@@ -425,6 +432,8 @@ function muxScrollbackResult(
  * Multiplexers decide from their own history count instead (muxScrollbackResult); their frames only corroborate.
  */
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+  if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
     return {
       pass: false,

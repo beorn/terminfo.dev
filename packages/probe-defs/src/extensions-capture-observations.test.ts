@@ -19,7 +19,14 @@ import { finalizeVisualResult, fontLigatureMuxCoverage } from "./sgr.ts"
 import { assertCalibratedCaptureGeometry } from "./calibrated-capture-geometry.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import { cellRectangle } from "../../terminfo.dev/src/capture-core.ts"
-import type { ObservationFrame, ProbeSuiteManifest, TermProbeSource } from "./types.ts"
+import type {
+  CaptureRequest,
+  ObservationFrame,
+  ProbeCallbackResult,
+  ProbeSuiteManifest,
+  TermProbeSource,
+} from "./types.ts"
+import { witnessCellsFor } from "./region-readback.ts"
 
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
@@ -77,6 +84,15 @@ function calibratedIterm2Arm(
     captureKind?: "pixels" | "text-cells"
     colour?: { applies?: boolean; unknownApplies?: boolean; sentinel?: boolean; resetRestores?: boolean }
     effect?: "cursor" | "progress" | "flash"
+    progress?:
+      | "values"
+      | "ignored"
+      | "same-values"
+      | "unstable"
+      | "replay-mismatch"
+      | "clear-fails"
+      | "text-notification"
+      | "made-up"
     blind?: boolean
     /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
     resetRegionShift?: { x: number; y: number }
@@ -95,6 +111,8 @@ function calibratedIterm2Arm(
   let reads = 0
   let defaultColour = "initial"
   let cursorShown = true
+  let progress = "none"
+  let progress37Writes = 0
   const context = {
     kind: "live" as const,
     rows: 24,
@@ -112,6 +130,25 @@ function calibratedIterm2Arm(
         if (bytes.includes("\x1b[?25l")) cursorShown = false
         if (bytes.includes("\x1b[2;2HX") && !options.blind) plane = "damage"
         if (bytes.includes("\x1b[2;2H ")) plane = "blank"
+      }
+      if (options.progress) {
+        if (bytes.includes("\x1b]9;4;0\x07") && !(options.progress === "clear-fails" && progress37Writes > 1)) {
+          progress = "none"
+        }
+        const value = /\x1b\]9;4;1;(\d+)\x07/.exec(bytes)?.[1]
+        if (value && options.progress !== "ignored") {
+          if (value === "37") progress37Writes++
+          progress =
+            options.progress === "same-values"
+              ? "active"
+              : options.progress === "replay-mismatch" && value === "37" && progress37Writes > 1
+                ? "changed-replay"
+                : value
+        }
+        if (options.progress === "text-notification" && bytes.includes("\x1b]9;terminfo-progress-control-37\x07")) {
+          progress = "notification 37"
+        }
+        if (options.progress === "made-up" && bytes.includes("\x1b]9;99999\x07")) progress = "made-up"
       }
       if (options.colour) {
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
@@ -136,19 +173,24 @@ function calibratedIterm2Arm(
       const resetShift =
         options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
       const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
+      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}`
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
         label,
         capturedAt: ++reads,
-        ref: `sha256:frame${reads}`,
+        ref: options.progress
+          ? `sha256:${createHash("sha256").update(`frame${reads}`).digest("hex")}`
+          : `sha256:frame${reads}`,
         regionDigest:
           cells?.top === 1 && cells.left === 1
             ? `witness:${glyph}`
             : options.effect === "cursor"
               ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
               : `plane:${plane}`,
-        pixelsDigest: `window:${plane}:${glyph}`,
+        pixelsDigest: options.progress
+          ? `sha256:${createHash("sha256").update(progressPixels).digest("hex")}`
+          : `window:${plane}:${glyph}`,
         ...(cells &&
           !resetRegionMissing && {
             regionRectangle: {
@@ -251,6 +293,35 @@ test.each([
   expect(finalized.status).toBe(expectedStatus)
   if (expectedReason) {
     expect(finalized.reason).toBe(expectedReason)
+  }
+})
+
+test("an image row never paints the read's sentinel pair on the image it draws (33985)", async () => {
+  // Warp run 43386197195: the read painted its sentinel at cell 3,4, inside the 3x3 inline image the
+  // probe draws at 3;3, so the sentinel never showed and the row read probe-invalid. The image's
+  // footprint comes from the probe's own bytes, not from the code under test.
+  const { context, writes } = calibratedIterm2Arm()
+  const requests: CaptureRequest[] = []
+  const capture = context.capture
+  if (!capture) throw new Error("the calibrated arm has a capture adapter")
+  context.capture = (async (request: CaptureRequest) => {
+    requests.push(request)
+    return capture(request as Parameters<typeof capture>[0])
+  }) as typeof context.capture
+  await find("extensions.iterm2-images").term!(context)
+  expect(writes.some((write) => write.includes("\x1b[3;3H\x1b]1337;File=inline=1;width=3;height=3;"))).toBe(true)
+  const image = { top: 3, left: 3, bottom: 5, right: 5 }
+  const reads = requests.filter((request) => request.cells !== undefined)
+  expect(reads.length).toBeGreaterThan(0)
+  for (const request of reads) {
+    const regions = [request.cells!, ...(request.controlCells ? [request.controlCells] : [])]
+    const avoid = request.avoid ? [request.avoid] : []
+    const { a, b } = witnessCellsFor(regions, { rows: context.rows, cols: context.cols }, avoid)
+    for (const cell of [a, b]) {
+      const covered =
+        cell.row >= image.top && cell.row <= image.bottom && cell.col >= image.left && cell.col <= image.right
+      expect(covered, `${request.label}: sentinel cell ${cell.row},${cell.col} lies on the drawn image`).toBe(false)
+    }
   }
 })
 
@@ -599,6 +670,53 @@ test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence wit
   )
 })
 
+test("OSC 9;4 qualifies a repeatable value-dependent App effect and retains a parseable target citation", async () => {
+  const { context, writes } = calibratedIterm2Arm({ effect: "progress", progress: "values" })
+  const result = await find("extensions.osc9-progress").term!(context)
+  expect(result.observation?.outcome).toBe("supported")
+  const target = result.observation?.frames?.find((frame) => frame.ref === result.observation?.screenshotRef)
+  expect(target?.role).toBe("target")
+  expect(writes).toContain("\x1b]9;terminfo-progress-control-37\x07")
+  expectCapturedResultParses("extensions.osc9-progress", result)
+})
+
+test.each([
+  { name: "ignored progress", progress: "ignored" as const },
+  { name: "37 and 73 identical", progress: "same-values" as const },
+  { name: "unstable pair", progress: "unstable" as const },
+  { name: "replay 37 mismatch", progress: "replay-mismatch" as const },
+  { name: "final clear fails", progress: "clear-fails" as const },
+  { name: "numbered text notification changes the window", progress: "text-notification" as const },
+  { name: "made-up subcommand changes the window", progress: "made-up" as const },
+  { name: "blind plain paint", progress: "values" as const, blind: true },
+])("OSC 9;4 positive App criterion stays unresolved: $name", async ({ progress, blind }) => {
+  const { context, frames } = calibratedIterm2Arm({ effect: "progress", progress, blind })
+  const result = await find("extensions.osc9-progress").term!(context)
+  expect(result.pass).not.toBe(true)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  const recorded = recordExecutedProbe({
+    featureId: "extensions.osc9-progress",
+    attempt: { scope: "probe", startedAt: "2026-11-12T00:00:00.000Z" },
+    observation: result.observation && {
+      ...result.observation,
+      featureId: "extensions.osc9-progress",
+      rawReplyRef: "extensions.osc9-progress",
+    },
+    coverage: result.notTested && {
+      featureId: "extensions.osc9-progress",
+      ...result.notTested,
+      rawReplyRef: "extensions.osc9-progress",
+    },
+    assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: "extensions.osc9-progress" })),
+    tests: result.tests,
+  })
+  expect(["probe-todo", "probe-invalid", "untestable"]).toContain(recorded.status)
+  if (progress !== "ignored") {
+    expect(JSON.parse(result.response ?? "null")).toEqual(expect.objectContaining({ frames }))
+  }
+})
+
 test.each([
   { id: "extensions.osc112-reset-cursor", effect: "cursor" as const },
   { id: "extensions.osc9-progress", effect: "progress" as const },
@@ -630,10 +748,7 @@ test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not 
 // tmux 2026-11-11 07:51Z recorded every probe as supported and the collector then threw
 // "primary screenshotRef for extensions.osc112-reset-cursor must be a target frame". So this test parses
 // the supported observation through the same run parser the collector uses, at the rule that failed.
-test("extensions.osc112-reset-cursor's supported observation survives the run parser", async () => {
-  const featureId = "extensions.osc112-reset-cursor"
-  const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
-  const result = await find(featureId).term!(context)
+function expectCapturedResultParses(featureId: string, result: ProbeCallbackResult) {
   expect(result.observation?.outcome).toBe("supported")
   const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId, rawReplyRef: featureId }))
   const recorded = recordExecutedProbe({
@@ -732,6 +847,14 @@ test("extensions.osc112-reset-cursor's supported observation survives the run pa
       parsed.results?.[0]?.assertionType,
     ),
   ).not.toThrow()
+}
+
+test("extensions.osc112-reset-cursor's supported observation survives the run parser", async () => {
+  const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  expectCapturedResultParses(
+    "extensions.osc112-reset-cursor",
+    await find("extensions.osc112-reset-cursor").term!(context),
+  )
 })
 
 test("extensions.osc112-reset-cursor names a reset that did not restore the cursor colour", async () => {

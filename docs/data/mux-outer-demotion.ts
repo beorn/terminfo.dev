@@ -8,6 +8,10 @@
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { SelectedContextCell } from "./selected-results.ts"
 
+type OuterRun = Pick<LoadedRun, "subject" | "measuredAt" | "runId" | "path" | "results"> & {
+  outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
+}
+
 /** The outer terminal reading one demotion leans on, or the file that was asked for when there is none. */
 export type OuterTerminalLookup = Readonly<{
   /** What this lookup asked for: a cells path or last.json (instrument), or the placed runs searched (site). */
@@ -124,7 +128,7 @@ export interface OuterAbsentMarker {
  * demotion refuses by naming both versions. Only placed observable results are read (@cto 0f1274ed condition 4).
  */
 export function placedOuterTerminalRun(
-  runs: readonly LoadedRun[],
+  runs: readonly OuterRun[],
   terminalId: string,
   os: string | null | undefined,
   version: string | null | undefined,
@@ -156,9 +160,9 @@ export function placedOuterTerminalRun(
 export function applyOuterAbsent(
   contextKey: string,
   cells: Record<string, SelectedContextCell>,
-  placedRuns: readonly LoadedRun[],
+  placedRuns: readonly OuterRun[],
 ): string[] {
-  const byRun = new Map<LoadedRun, string[]>()
+  const byRun = new Map<SelectedContextCell["run"], string[]>()
   for (const [featureId, cell] of Object.entries(cells)) {
     if (cell.run.subject.kind !== "mux" || cell.featureResult === undefined) continue
     const ids = byRun.get(cell.run) ?? []

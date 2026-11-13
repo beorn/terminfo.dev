@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
+import { MUX_OUTER_ROWS, withMuxOuterRows } from "./mux-outer-rows.ts"
 import type {
   ProbeDefinition,
   ProbeCallbackResult,
@@ -41,6 +42,7 @@ import {
   completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  auditedKittyIdentity,
   sameFrame,
   sameRgb as sameRgbCells,
   fencedSilenceResult,
@@ -189,15 +191,7 @@ export function hasAuditedOscInterfaceAbsence(
               auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
       )
     }
-    return (
-      ctx.backendName === "kitty" &&
-      identity.engineVersion === "0.49.2" &&
-      identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886" &&
-      identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-      (auditedAdapterSources(identity, "kittyH4") ||
-        auditedAdapterSources(identity, "kittyPixel") ||
-        auditedAdapterSources(identity, "kittyF8c227b9"))
-    )
+    return ctx.backendName === "kitty" && auditedKittyIdentity(identity)
   }
   if (cohort === "wezterm-d2") {
     return (
@@ -1549,7 +1543,11 @@ async function cursorColorSetupAppCapture(
     const state = { initial: fallback.response, cursor, stability: pair.stability, frames }
     const cropped = cropPositionRefusal({
       id,
-      compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: frames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(state),
       frames,
       screenshotRef: target.frame.ref,
@@ -1594,7 +1592,11 @@ async function cursorColorSetupAppCapture(
     const comparedFrames = [...frames, ...resetReads.map((entry) => entry.frame)]
     const resetCropped = cropPositionRefusal({
       id,
-      compared: comparedFrames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+      compared: comparedFrames.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+      })),
       response: JSON.stringify(afterReset),
       frames: comparedFrames,
       screenshotRef: target.frame.ref,
@@ -1855,6 +1857,70 @@ async function wholeWindowOscAppCapture(
     }
     ctx.write(clear)
     const cleared = await shoot("effect cleared")
+    if (
+      kind === "progress" &&
+      ctx.mux === undefined &&
+      cleared.pixelsDigest === baseline &&
+      targets.some((digest) => digest !== baseline)
+    ) {
+      // OSC9 also carries text notifications. A numbered text payload must not explain this image change.
+      ctx.write("\x1b]9;terminfo-progress-control-37\x07")
+      const notification = await shoot("numbered text-notification control")
+      if (notification.pixelsDigest !== baseline) {
+        return notTestedResult(`${id}: numbered OSC9 text notification changed the captured window`, state())
+      }
+      const samples: { frame: ObservationFrame; pixelsDigest: string }[] = []
+      for (const [index, value] of [37, 73, 37].entries()) {
+        const phase = `normal ${value}${index === 2 ? " replay" : ""}`
+        ctx.write(`\x1b]9;4;1;${value}\x07`)
+        const sample = await captureStabilityPair(
+          id,
+          "screenshot",
+          () => shoot(`${phase} first`, "target"),
+          () => shoot(`${phase} second`, "target"),
+        )
+        ctx.write(clear)
+        const restored = await shoot(`${phase} cleared`)
+        if (sample.refusal) {
+          return notTestedResult(`${id}: ${phase} captures were not byte-stable`, state())
+        }
+        if (restored.pixelsDigest !== baseline) {
+          return notTestedResult(`${id}: ${phase} clear did not restore the exact baseline`, state())
+        }
+        samples.push(sample.second)
+      }
+      const [first, second, replay] = samples
+      if (
+        first === undefined ||
+        second === undefined ||
+        replay === undefined ||
+        first.pixelsDigest === baseline ||
+        second.pixelsDigest === baseline ||
+        first.pixelsDigest === second.pixelsDigest ||
+        replay.pixelsDigest !== first.pixelsDigest
+      ) {
+        return notTestedResult(`${id}: normal 37/73/37 did not produce distinct, repeatable window images`, state())
+      }
+      return {
+        pass: true,
+        response: JSON.stringify(state()),
+        observation: {
+          outcome: "supported",
+          assertionType: "screenshot",
+          frames,
+          screenshotRef: first.frame.ref,
+        },
+        assertions: [
+          {
+            assertionType: "screenshot",
+            kind: "positive",
+            expected:
+              "OSC9 normal 37/73/37 produces stable, distinct and repeatable captured-window changes after paint, made-up and numbered text-notification controls, with exact clear restoration",
+            observed: JSON.stringify(state()),
+          },
+        ],
+      }
+    }
     if (cleared.pixelsDigest !== baseline || targets.some((digest) => digest !== baseline)) {
       return notTestedResult(
         `${id}: the whole-window effect changed or did not restore its baseline; this no-change branch does not decide that effect`,
@@ -3277,6 +3343,10 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
     return notTestedResult(OSC720_SCREEN_OPEN, { reading })
   }
   if (ctx.mux === "tmux") return osc720ScrollUpTmux(ctx)
+  // The subject app itself has no permitted read of its pane (#31741, @cto 20b9ffed): the wheel arm
+  // below reads the viewport it moved, and this app cannot report where that viewport went.
+  if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+  if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
 
   const capture = ctx.capture
   const input = ctx.input
@@ -4486,8 +4556,8 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
   }
 }
 
-function liveClipboardNotTested(): ProbeCallbackResult {
-  const note = "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
+function liveClipboardNotTested(refusal?: string): ProbeCallbackResult {
+  const note = refusal ?? "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
   return {
     pass: false,
     note,
@@ -4806,7 +4876,7 @@ async function liveClipboardProbe(
   ctx: TermProbeSource,
   kind: "write" | "read" | "roundtrip",
 ): Promise<ProbeCallbackResult> {
-  if (!ctx.withClipboardFixture) return liveClipboardNotTested()
+  if (!ctx.withClipboardFixture) return liveClipboardNotTested(ctx.clipboardFixtureRefusal)
   return ctx.withClipboardFixture(async (fixture) => {
     const mux = ctx.mux
     if (
@@ -4880,8 +4950,8 @@ async function liveClipboardProbe(
                 outcome: "unsupported",
                 assertionType: "clipboard",
                 note: muxContextNote
-                  ? `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote})`
-                  : "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+                  ? `OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline: the application did not write under this configuration (${muxContextNote})`
+                  : "OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline: the application did not write under this configuration",
               },
               assertions: [
                 {
@@ -4900,24 +4970,32 @@ async function liveClipboardProbe(
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
                 assertionType: "clipboard",
-                note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
+                note: `OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline, but this configuration's set-clipboard is not the default required for a negative grade (${muxContextNote}; default set-clipboard=external required)`,
               },
             }
+          }
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "clipboard",
+              note: "OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline, but a roundtrip negative needs a mux selection owner and this subject has none",
+            },
           }
         }
         const byteLength = Buffer.byteLength(measured)
         const sha256 = createHash("sha256").update(measured).digest("hex")
+        // @cto 41cd2559 condition 5: a pasteboard that now holds a value this run wrote NEITHER as its
+        // baseline NOR as its payload cannot be graded at all - the apparatus can no longer attribute
+        // the selection - so it is probe-invalid with the reason, never "did not write".
+        const unattributable =
+          `Independent clipboard read returned neither the OSC 52 write nonce nor the run's own baseline ` +
+          `(length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            assertionType: "clipboard",
-            note:
-              kind === "write"
-                ? `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`
-                : `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
-          },
+          note: unattributable,
+          tests: [{ id: "criterion", status: "probe-invalid" as const, reason: unattributable }],
         }
       }
     }
@@ -5891,7 +5969,10 @@ const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 /**
  * Through a multiplexer, OSC 22 reads only the outer terminal's command record (@cto 5c25b17f, 1818f9ec):
- * the pane sends an OSC 2 forwarding control carrying this invocation's nonce, then plain OSC 22 pointer.
+ * the pane sends plain OSC 22 pointer, then an OSC 2 forwarding control carrying this invocation's nonce.
+ * The target goes first because a multiplexer forwards a title when it next redraws, never at the instant the
+ * pane writes it (@cto 33919 condition 3): only a control that arrives AFTER the target proves that anything
+ * the multiplexer forwarded before it is already in the record, so a missing target line is a real negative.
  * No made-up name, put-back write or shape query runs on this arm.
  */
 export const OSC22_MUX_OUTER_BRANCH = "osc22-mux-outer-command"
@@ -5907,8 +5988,22 @@ export function osc22MuxSent(outer: string): string {
 }
 export const OSC22_MUX_NO_RECORD =
   "No command record from the outer terminal, or the forwarding control is missing from it, so what the multiplexer sent was not read."
+/**
+ * The declared untestable reason for a run whose mux config forwards no title (the empty default tmux config):
+ * no forwarding control can appear, so the record can never decide this row there (@cto 33919 condition 2).
+ */
+export const OSC22_MUX_NO_CONTROL_DEFAULT =
+  "No forwarding control reaches the outer record under the default config, so what the multiplexer sent for OSC 22 was not read."
 
-/** Grades only the outer command reading; a missing control or record arrives as `unavailable`. */
+/**
+ * Grades only the outer command reading; a missing control or record arrives as `unavailable`. Three outcomes:
+ * the target line means the multiplexer forwarded it (Open); a measured record with the control and no target is
+ * the criterion's Unsupported; an unmeasured record is declared untestable only when this run's config forwards no
+ * title AND a missing forwarding control is why it was unread, and probe-invalid with the reader's own reason
+ * otherwise. The decided negative asserts on the outer command record
+ * (`buffer_state`, the kind every outer-record grade in this package uses), never on query bytes this arm
+ * never asks for (@cto 33920).
+ */
 export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
   const state = { outerCommands: read }
   const open = (status: "probe-todo" | "probe-invalid", reason: string): ProbeCallbackResult => ({
@@ -5917,16 +6012,19 @@ export function osc22MuxGrade(read: OuterCommandRead): ProbeCallbackResult {
     criterionBranch: OSC22_MUX_OUTER_BRANCH,
     tests: [{ id: "outer-command-record", status, reason }],
   })
-  if (read.status !== "measured") return open("probe-invalid", OSC22_MUX_NO_RECORD)
+  if (read.status !== "measured") {
+    if (read.titlesForwarded === false && read.noForwardingControl === true) {
+      return declaredUntestableResult(OSC22_MUX_NO_CONTROL_DEFAULT, state)
+    }
+    return open("probe-invalid", OSC22_MUX_NO_RECORD + " " + read.reason)
+  }
   if (read.targetSent) return open("probe-todo", osc22MuxSent(`${read.outer.app} ${read.outer.version}`))
   return {
     ...parserStateResult(
       false,
-      `outer command record carries the forwarding control and ${read.target}`,
+      `the outer terminal's command record shows the forwarding control arriving after the target write and no ${read.target} line`,
       state,
       OSC22_MUX_NOT_SENT,
-      undefined,
-      "query_reply",
     ),
     criterionBranch: OSC22_MUX_OUTER_BRANCH,
   }
@@ -6285,8 +6383,20 @@ const extensionDefinitions: ProbeDefinition[] = [
             const moved = cropPositionRefusal({
               id,
               compared: [
-                { role: "isolated character", rectangle: control.frame.regionRectangle },
-                { role: sample.phase, rectangle: sample.frame.regionRectangle },
+                {
+                  role: "isolated character",
+                  rectangle: control.frame.regionRectangle,
+                  ...(control.frame.kind === "text-cells" || control.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: control.frame.cellCrop }),
+                },
+                {
+                  role: sample.phase,
+                  rectangle: sample.frame.regionRectangle,
+                  ...(sample.frame.kind === "text-cells" || sample.frame.cellCrop === undefined
+                    ? {}
+                    : { crop: sample.frame.cellCrop }),
+                },
               ],
               response: JSON.stringify({ samples }),
               frames,
@@ -8735,8 +8845,10 @@ const extensionDefinitions: ProbeDefinition[] = [
       async (ctx) => {
         if (ctx.mux !== undefined) {
           const controlWrite = osc22MuxControlWrite(randomUUID().replaceAll("-", "").slice(0, 24))
-          ctx.write(controlWrite)
+          // Target first, control second: the control's arrival after it is what makes a missing target line mean
+          // the multiplexer did not forward the target (@cto 33919 condition 3, 33920 condition 2).
           ctx.write(OSC22_MUX_TARGET_WRITE)
+          ctx.write(controlWrite)
           // The collector's outer command read grades this branch; without it the cell stays open.
           return {
             ...notTestedResult(osc22SilentMultiplexer(ctx.mux), { controlWrite, targetWrite: OSC22_MUX_TARGET_WRITE }),
@@ -9106,7 +9218,9 @@ const extensionDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const extensionsProbes: ProbeDefinition[] = extensionDefinitions.map(withAppSemanticObservation)
+export const extensionsProbes: ProbeDefinition[] = extensionDefinitions
+  .map(withAppSemanticObservation)
+  .map(withMuxOuterRows(MUX_OUTER_ROWS))
 
 // Operator D2 / CTO Nov 5 11:16: these exact feeds and normalized codes were
 // measured on the audited real addon. Delivery effects and OSC52 read are not negatives.
@@ -9986,10 +10100,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
                 }
               : vt100Audited
                 ? vt100Target
-                : ctx.backendName === "kitty" &&
-                    identity?.kind === "native" &&
-                    identity.engineVersion === "0.49.2" &&
-                    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+                : ctx.backendName === "kitty" && auditedKittyIdentity(identity)
                   ? kittyTarget
                   : undefined
       if (!target) return lib(ctx)

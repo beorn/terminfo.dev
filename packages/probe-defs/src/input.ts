@@ -122,12 +122,17 @@ const SGR_MOTION_OR_RELEASE =
   /\x1b\[<(?:(?:3[2-9]|[45]\d|6[0-3]|9[6-9]|1[01]\d|12[0-7]|1[6-8]\d|19[01]|22[4-9]|2[34]\d|25[0-5]);\d+;\d+M|\d+;\d+;\d+m)/
 const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
-function xtestCoverage(kind?: string): ProbeCallbackResult {
+function xtestCoverage(kind?: string, mechanism = "XTEST"): ProbeCallbackResult {
   if (!kind) {
     // @chief ab9fa8aa: these cells are untestable. Do not add a CGEvent capture system.
     return declaredUntestableResult("real-surface input injection (XTEST/CGEvent)", { input: false })
   }
-  return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
+  return notTestedResult(`OS-level ${mechanism} ${kind}`, { input: false })
+}
+
+/** The run's own input mechanism: the installed adapter's label, else the platform's route (#31741). */
+function inputMechanism(ctx: TermProbeSource): string {
+  return ctx.input?.mechanism ?? ctx.inputMechanism ?? "XTEST"
 }
 
 /**
@@ -385,7 +390,7 @@ async function withModifyOtherKeys<T>(ctx: TermProbeSource, enable: string, work
 async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   return withModifyOtherKeys(ctx, MODIFY_OTHER_KEYS_2, async () => {
     const control = await deliveryControl(
       () => input.injectKey("a"),
@@ -409,7 +414,7 @@ async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResu
 async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -433,7 +438,7 @@ async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResu
 export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -469,7 +474,7 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
 export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip")
+  if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip", inputMechanism(ctx))
   const focusRoundTrip = input.focusRoundTrip.bind(input)
   const decrpm = await queryDecrpm(ctx, 1004)
   const readArm = async () => {
@@ -531,7 +536,7 @@ export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCall
 
 export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
-  if (!input?.resizeWindow) return xtestCoverage("owned mouse position and window resize")
+  if (!input?.resizeWindow) return xtestCoverage("owned mouse position and window resize", inputMechanism(ctx))
   const resizeWindow = input.resizeWindow.bind(input)
   const decrpm = await queryDecrpm(ctx, 1005)
   const size = async (timeout = 1000) => {
@@ -867,7 +872,7 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
 export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const control = await withMouseModes(ctx, async () =>
     deliveryControl(
       () => input.injectClick(1),
@@ -907,7 +912,7 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
 async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -998,7 +1003,7 @@ function isButtonEventMotion(report: string): boolean {
 async function urxvtMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -1029,7 +1034,7 @@ async function urxvtMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   // #32582 (@cto d590724a): the control leaves 1000 and 1006 before mode 9 is set; with 1006 still on, a terminal
   // honouring 9 answers in SGR form.
   const control = await withMouseModes(ctx, () =>
@@ -1062,9 +1067,9 @@ async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const injectDrag = input.injectDrag
-  if (!injectDrag) return xtestCoverage("drag injection")
+  if (!injectDrag) return xtestCoverage("drag injection", inputMechanism(ctx))
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -1096,7 +1101,7 @@ async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResu
 async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -1158,7 +1163,7 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -1185,7 +1190,7 @@ async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage()
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -1222,7 +1227,7 @@ async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage("click injection", inputMechanism(ctx))
   const control = await withMouseModes(ctx, () =>
     deliveryControl(
       () => input.injectClick(1),

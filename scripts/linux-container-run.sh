@@ -389,6 +389,13 @@ mux_profile_config() {
       fi
       printf '%s\n' 'screen: defscrollback 1000; truecolor on'
       ;;
+    set-titles)
+      if [[ "$mux" != tmux ]]; then
+        echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
+        return 2
+      fi
+      printf '%s\n' 'tmux: set-titles on; set-titles-string "#T"'
+      ;;
     *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
   esac
 }
@@ -400,6 +407,16 @@ mux_profile_config() {
 screen_config_content() {
   printf 'defscrollback 1000\n'
   if [[ "$1" == truecolor ]]; then printf 'truecolor on\n'; fi
+}
+
+# The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919): the default profile's file stays
+# empty, and set-titles is the profile's one documented option, so tmux forwards a pane title to the outer terminal.
+# set-titles-string "#T" keeps that forwarded title the pane title itself, nonce included, rather than tmux's default
+# "#S:#I:#W - ..." wrapper.
+# The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
+# accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
+tmux_config_content() {
+  if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
@@ -446,6 +463,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
       mux_socket="$HOME/$mux_session.sock"
       printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
+      tmux_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"
       tmux -D -S "$mux_socket" -f "$mux_config" </dev/null >"$mux_output/mux-server.log" 2>&1 &
       mux_server=$!
       for _ in $(seq 1 100); do
@@ -1249,7 +1267,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2

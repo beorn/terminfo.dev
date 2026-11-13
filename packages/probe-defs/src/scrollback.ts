@@ -12,6 +12,7 @@ import {
   parserStateResult,
   replyFailure,
   notTestedResult,
+  declaredUntestableResult,
   productViewportAbsenceResult,
   tooSmall,
   validSize,
@@ -653,7 +654,10 @@ export function unavailableScrollbackReading(error: unknown): NotTestedCoverageR
 
 /** The App reader uses the existing library history criteria, with same-path controls. */
 async function appHistory(ctx: TermProbeSource, total: boolean): Promise<ProbeCallbackResult> {
-  if (!ctx.getScrollback) return notTestedResult("owned scrollback history reader", {})
+  if (!ctx.getScrollback) {
+    if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+    return notTestedResult("owned scrollback history reader", {})
+  }
   try {
     return await appHistoryReadings(ctx, ctx.getScrollback, total)
   } catch (error) {
@@ -801,6 +805,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+        if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, false)
         const capture = ctx.capture
         if (capture) {
@@ -916,6 +922,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
+        if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, true)
         const capture = ctx.capture
         if (capture) {

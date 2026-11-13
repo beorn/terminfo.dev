@@ -38,6 +38,7 @@ import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
+import { launchIterm2Window, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -49,7 +50,7 @@ import {
   type KittyWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import type { ProcessOwnerAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
-import { runScopedMarker, type ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
+import { runScopedMarker, tty, type ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 
@@ -308,6 +309,7 @@ const APPS: AppDef[] = [
         writeFileSync(
           join(user, "settings.json"),
           JSON.stringify({
+            "update.mode": "none",
             // Documented since 1.104: https://code.visualstudio.com/docs/copilot/setup
             "chat.disableAIFeatures": true,
             "workbench.startupEditor": "none",
@@ -382,8 +384,9 @@ export interface AppLaunch {
   proc: ChildProcess | null
   /** Actual spawn input, in memory only until the receipt owner transforms it. */
   invocation?: readonly string[]
-  windowId?: number
   terminalWindow?: OwnedTerminalWindow
+  /** The owned iTerm2 launch record, resolved into its window once the daemon registers. */
+  iterm2?: Iterm2Launch
   identityPath?: string
   /** The run-scoped kitty instance group, and the detached launcher's retained stderr. */
   instanceGroup?: string
@@ -511,20 +514,23 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 
 function launchWithServe(app: AppDef, run: Run): AppLaunch {
   const captureDirectory =
-    app.id === "kitty" || app.id === "terminal-app" || app.cliLaunch?.capture === "artifact-directory"
+    app.id === "kitty" ||
+    app.id === "terminal-app" ||
+    app.id === "iterm2" ||
+    app.cliLaunch?.capture === "artifact-directory"
       ? join(run.directory, "artifacts")
       : undefined
   const serveCmd = serveCommand(run, captureDirectory)
   const identityPath =
     app.id === "kitty"
       ? join(run.directory, "owner-identity.txt")
-      : app.cliLaunch
+      : app.cliLaunch || app.id === "iterm2"
         ? join(run.directory, "owner-tty.txt")
         : undefined
   const identityWrite =
     identityPath === undefined
       ? ""
-      : app.cliLaunch
+      : app.cliLaunch || app.id === "iterm2"
         ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
         : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
   const retainedStderr = app.id === "terminal-app" ? ` 2> ${shellQuote(join(run.directory, "worker.stderr.log"))}` : ""
@@ -573,20 +579,12 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
   }
 
   if (app.id === "iterm2") {
-    const output = execFileSync(
-      "osascript",
-      [
-        "-e",
-        `tell application "iTerm"
-  set w to create window with default profile command ${JSON.stringify(run.scriptPath)}
-  return id of w
-end tell`,
-      ],
-      { encoding: "utf8", timeout: 15_000 },
-    ).trim()
-    const windowId = Number(output)
-    if (!Number.isInteger(windowId)) throw new Error(`iTerm did not return the launched window ID: ${output}`)
-    return { proc: null, windowId }
+    // The one Apple event iTerm2 receives (@cto 493ddb28); the owner is resolved after the daemon registers.
+    return {
+      proc: null,
+      identityPath,
+      iterm2: launchIterm2Window(run.scriptPath, join(app.appPath, "Contents", "MacOS", "iTerm2")),
+    }
   }
 
   if (app.id === "terminal-app") {
@@ -594,6 +592,31 @@ end tell`,
   }
 
   throw new Error(`${app.name} requires manually starting the probe server`)
+}
+
+/**
+ * The one owned-window admission: a run may only be collected when the launch it made carries a proof
+ * this probe can re-verify (a Terminal.app window, a marker-owned process, an iTerm2 sole instance, or
+ * kitty's run-local socket window). It reads the launch record and nothing else, so it is called once,
+ * right after the launch, and a test can prove both outcomes with synthetic records.
+ *
+ * It cannot be hoisted above staging on the ssh route: the ssh route runs this whole process on the
+ * target host after the source copy, and before a launch there is no launch record to judge. The
+ * static refusals that ARE reachable before any copy are the app's own route refusals (an unknown app,
+ * a manual-server app such as Warp, and an unknown probe selection) — see the selection check in
+ * release1-collection.ts, which runs before the transport argv exists (@cto 737a99e3 condition 4).
+ */
+export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): void {
+  if (
+    launch.terminalWindow === undefined &&
+    app.id !== "kitty" &&
+    launch.marker === undefined &&
+    launch.iterm2 === undefined
+  ) {
+    throw new Error(
+      `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
+    )
+  }
 }
 
 export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
@@ -609,17 +632,17 @@ export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLau
     )
     return
   }
-  if (launch.proc) {
-    launch.proc.kill("SIGTERM")
+  // An iTerm2 launch whose owner was never resolved has no proven pid, and no Apple event may follow
+  // the launch (@cto 11983ea0, condition 3), so nothing is signaled or closed; say so.
+  if (launch.iterm2 !== undefined) {
+    console.error(
+      `  WARNING: ${app.name} launched (TTY ${launch.iterm2.tty}) but its owner was never resolved; no process was signaled. A window may still be open — quit iTerm2 by hand.`,
+    )
     return
   }
-  if (launch.windowId === undefined) return
-  const application = app.id === "iterm2" ? "iTerm" : "Terminal"
-  execFileSync(
-    "osascript",
-    ["-e", `tell application "${application}" to close (first window whose id is ${launch.windowId})`],
-    { timeout: 5000 },
-  )
+  if (launch.proc) {
+    launch.proc.kill("SIGTERM")
+  }
 }
 
 // ── Probe a daemon ──
@@ -628,6 +651,8 @@ interface ProbeOptions {
   captureBundleRoot?: string
   appId: string
   version: string
+  /** The exact probe ids this run asked for; absent means the whole app suite (#mac-probe-selection). */
+  ids?: string[]
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
   ownedWindow: OwnedTerminalWindow
   invocation?: readonly string[]
@@ -644,7 +669,7 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch } = options
+  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
   const appLaunch =
     invocation === undefined
       ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
@@ -668,6 +693,7 @@ async function probeDaemon(
       : {
           process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
         },
+    ids,
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
@@ -751,25 +777,60 @@ export function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | 
   })
 }
 
-/** A process-backed window's claim: the shared proof's observables, with kitty's instance group as its
- * marker. Terminal.app's window id is not part of it — the worker cannot check one. */
+/** The iTerm2 window record, once the daemon registers and the run script has recorded its TTY. */
+function ownedIterm2Window(launch: AppLaunch & { iterm2: Iterm2Launch }): OwnedTerminalWindow {
+  if (launch.identityPath === undefined) throw new Error("iTerm2 launch recorded no owner TTY path")
+  return resolveIterm2Window(launch.iterm2, tty(readFileSync(launch.identityPath, "utf8")))
+}
+
+/** A process-backed window's claim: the shared proof's observables and its ownership basis, kitty's
+ * instance group as its marker. Terminal.app's window id is not part of it — the worker cannot check
+ * one; iTerm2's CG window id is, because the worker's capture pins that window. */
 function processOwnerAssertion(
   window: Exclude<OwnedTerminalWindow, { provider: "terminal-app" }>,
   launchRunId: string,
   workerPid: number,
   intendedVersion: string,
 ): ProcessOwnerAssertion {
-  const owned = window.provider === "kitty" ? kittyOwnedProcess(window) : window
-  return {
-    asserter: "terminfo-admin",
-    launchRunId,
-    workerPid,
-    provider: window.provider,
-    ownerPid: owned.ownerPid,
-    executablePath: owned.executablePath,
-    marker: owned.marker,
-    tty: owned.tty,
-    intendedVersion,
+  const claim = { asserter: "terminfo-admin", launchRunId, workerPid } as const
+  switch (window.provider) {
+    case "kitty": {
+      const owned = kittyOwnedProcess(window)
+      return {
+        ...claim,
+        provider: "kitty",
+        ownerPid: owned.ownerPid,
+        executablePath: owned.executablePath,
+        basis: owned.basis,
+        tty: owned.tty,
+        intendedVersion,
+      }
+    }
+    case "cli-process":
+      return {
+        ...claim,
+        provider: "cli-process",
+        ownerPid: window.ownerPid,
+        executablePath: window.executablePath,
+        basis: { kind: "marker", marker: window.marker },
+        tty: window.tty,
+        intendedVersion,
+      }
+    case "iterm2":
+      return {
+        ...claim,
+        provider: "iterm2",
+        ownerPid: window.ownerPid,
+        executablePath: window.executablePath,
+        basis: { kind: "sole-instance", preflightAbsent: true },
+        tty: window.tty,
+        windowId: window.windowId,
+        intendedVersion,
+      }
+    default: {
+      const unreachable: never = window
+      throw new Error(`Process owner assertion has no provider arm: ${JSON.stringify(unreachable)}`)
+    }
   }
 }
 
@@ -849,7 +910,7 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
 
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean; output?: string },
+  opts: { force?: boolean; output?: string; probeIds?: string[]; runId?: string },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -857,7 +918,16 @@ async function runApp(
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
 
-  const run = createProbeRun()
+  // #34018: a run identity handed in must be free before anything is launched. A daemon already
+  // registered under it is an earlier run of that name, and binding to it would grade one run's
+  // daemon as another's. Refuse by name and write nothing (single check, no wait: timeout 0).
+  if (opts.runId !== undefined && (await findOwnedDaemon(opts.runId, DAEMON_DIR, app.id, 0)) !== null) {
+    return {
+      success: false,
+      error: `run id ${opts.runId} is already registered by a live daemon; a handed identity names one run and is never reused`,
+    }
+  }
+  const run = createProbeRun(opts.runId)
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
   let daemonStopAttempted = false
@@ -866,16 +936,17 @@ async function runApp(
   try {
     console.log(`  Launching ${app.name} v${version}...`)
     launch = launchWithServe(app, run)
-    if (launch.terminalWindow === undefined && app.id !== "kitty" && launch.marker === undefined) {
-      throw new Error(
-        `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
-      )
-    }
+    assertOwnedWindowAssertion(app, launch)
     console.log(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
+    const iterm2Launch = launch.iterm2
     const ownedWindow =
-      app.id === "kitty" ? ownedKittyWindow(app, launch) : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
+      app.id === "kitty"
+        ? ownedKittyWindow(app, launch)
+        : iterm2Launch !== undefined
+          ? ownedIterm2Window({ ...launch, iterm2: iterm2Launch })
+          : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
     const outerLaunch =
@@ -902,6 +973,7 @@ async function runApp(
       ownedWindow,
       invocation: launch.invocation,
       outputDirectory: opts.output,
+      ids: opts.probeIds,
       launcherStderr: launch.launcherStderr,
       outerLaunch,
       ...(ownedWindow.provider === "terminal-app" && {
@@ -955,6 +1027,14 @@ async function runApp(
           cleanupErrors.push(`window: could not adopt the launched kitty window for close: ${String(err)}`)
         }
       }
+      const iterm2Launch = launch.iterm2
+      if (iterm2Launch !== undefined && launch.terminalWindow === undefined) {
+        try {
+          launch.terminalWindow = ownedIterm2Window({ ...launch, iterm2: iterm2Launch })
+        } catch (err) {
+          cleanupErrors.push(`window: could not adopt the launched iTerm2 window for close: ${String(err)}`)
+        }
+      }
       try {
         if (!windowCloseAttempted) stopLaunchedApp(app, launch)
       } catch (err) {
@@ -984,7 +1064,7 @@ async function runApp(
 
 export async function handleApp(
   terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean; output?: string },
+  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[]; runId?: string },
 ): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
@@ -1018,9 +1098,21 @@ export async function handleApp(
 
   const results: Array<{ app: AppDef; result: Awaited<ReturnType<typeof runApp>> }> = []
 
+  // One identity names one run and one run measures one app: a handed id with a multi-app selection
+  // would have to be reused, so it refuses by name before any launch (#34018).
+  if (opts.runId !== undefined && appsToRun.length > 1) {
+    throw new Error(
+      `--run-id names one run and ${appsToRun.length} apps would run; pass --run-id only with a single app selection`,
+    )
+  }
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force, output: opts.output })
+    const result = await runApp(app, {
+      force: opts.force,
+      output: opts.output,
+      probeIds: opts.probeIds,
+      runId: opts.runId,
+    })
     results.push({ app, result })
 
     if (result.skipped) {

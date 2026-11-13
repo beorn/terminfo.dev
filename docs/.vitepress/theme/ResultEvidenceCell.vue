@@ -105,7 +105,9 @@ const joinedGrades = computed(() => {
   const uniform = new Set(grades.map((grade) => grade.status)).size === 1
   if (uniform && every.length > 0 && grades.length === every.length) return undefined
   const named = grades.map((grade) => `${contextLabel(grade.context)} — ${STATUS_WORD[grade.status] ?? grade.status}`)
-  return joined.value?.status === DIFFERS_BY_CONTEXT ? `Differs by context: ${named.join(" · ")}` : `Context: ${named.join(" · ")}`
+  return joined.value?.status === DIFFERS_BY_CONTEXT
+    ? `Differs by context: ${named.join(" · ")}`
+    : `Context: ${named.join(" · ")}`
 })
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>

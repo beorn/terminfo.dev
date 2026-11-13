@@ -357,6 +357,31 @@ describe("collected current runs", () => {
     expect(() =>
       parseV4({ ...query, rawReplies: { alpha: JSON.stringify({ events: [], queries: [], writes: ["query"] }) } }),
     ).toThrow(/returned query bytes/)
+    // The OSC 22 mux arm writes a target and a forwarding control and asks no query, so the same
+    // write-only envelope is evidence for a buffer_state assertion and stays refused as query_reply (@cto 33920).
+    const writeOnly = {
+      events: [{ kind: "write", sequence: "\u001b]2;tdv-title-x\u001b\\" }],
+      queries: [],
+      writes: ["\u001b]2;tdv-title-x\u001b\\", "\u001b]22;pointer\u001b\\"],
+    }
+    const bufferState = {
+      ...query,
+      assertions: [
+        {
+          ...raw.assertions[0],
+          assertionType: "buffer_state",
+          observed: JSON.stringify({ outerCommands: { status: "measured", targetSent: false } }),
+        },
+      ],
+      rawReplies: { alpha: JSON.stringify(writeOnly) },
+    }
+    expect(parseV4(bufferState).results?.[0]?.status).toBe("supported")
+    expect(() =>
+      parseV4({
+        ...bufferState,
+        assertions: [{ ...bufferState.assertions[0], assertionType: "query_reply" }],
+      }),
+    ).toThrow(/returned query bytes/)
   })
 
   it("decodes suite wire versions without rewriting historical marker absence", () => {

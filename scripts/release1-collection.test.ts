@@ -21,12 +21,15 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  copyFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
+import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
 import * as catalog from "@terminfo/catalog"
@@ -35,6 +38,7 @@ import * as versions from "../packages/admin/versions.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
@@ -47,8 +51,12 @@ import {
 } from "@terminfo/probe-defs"
 import {
   assertHostedWindowCustody,
+  assertOwnedTransportApplies,
+  ownedRowVerdict,
+  assertOwnedRowsStartable,
   childExitWords,
   collectPass,
+  collectionRoutes,
   ownedAppCommand,
   ownedAppRunsDirectory,
   readOwnedAppTransportProof,
@@ -268,16 +276,16 @@ it.each([
           : undefined
     const catalogSelection =
       inputChange === "hosted-census-one"
-        ? vi
-            .spyOn(catalog, "loadTerminals")
-            .mockReturnValue(
-              Object.fromEntries(
-                Object.entries(catalog.loadTerminals(CONTENT)).map(([id, terminal]) => [
-                  id,
-                  id === "terminal-app" ? terminal : { ...terminal, historical: true },
-                ]),
-              ),
-            )
+        ? vi.spyOn(catalog, "loadTerminals").mockReturnValue(
+            Object.fromEntries(
+              Object.entries(catalog.loadTerminals(CONTENT)).map(([id, terminal]) => [
+                id,
+                // Terminal.app is owned (33963) and cannot be hosted, so the one-live-app census
+                // case keeps a hosted terminal live instead: the point is one dispatched row.
+                id === "ghostty" ? terminal : { ...terminal, historical: true },
+              ]),
+            ),
+          )
         : undefined
     const textCase = inputChange.startsWith("text-")
     // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
@@ -485,8 +493,10 @@ it.each([
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
           if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
+          // The foreign-attempt cases deliberately retain an old Terminal.app artifact too; it is
+          // historical downloaded evidence, never a context admitted to the current hosted matrix.
           for (const id of mac
-            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
+            ? ["terminal-app", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
             : ["windows-terminal", "alacritty"]) {
             const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-${cohort ? 2 : 1}`)
             mkdirSync(folder, { recursive: true })
@@ -520,7 +530,7 @@ it.each([
             } else writeFileSync(join(folder, "run.json"), "{}")
             // 30035: exercise the actual development collection boundary, including its retained bytes.
             // The recipe itself is tested independently; this case proves the caller passes verified context.
-            if (textCase && id === "terminal-app") {
+            if (textCase && id === "ghostty") {
               const fixtureRows = textQualificationFixtures(4, 12)
               if (typeof fixtureRows === "string") throw new Error(fixtureRows)
               const artifactsDirectory = join(folder, "artifacts")
@@ -616,7 +626,10 @@ it.each([
             }
             writeFileSync(
               join(folder, "collector-bun.lock"),
-              id === "terminal-app" && !textCase && !cohort ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+              // Keep the lock failure on a hosted row; neither owned app downloads an artifact.
+              id === "ghostty" && !textCase && !cohort && !inputChange.startsWith("macos-")
+                ? "wrong lock"
+                : readFileSync(join(CONTENT, "../bun.lock")),
             )
             writeFileSync(
               join(folder, "collector-build.json"),
@@ -665,15 +678,15 @@ it.each([
     try {
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
       const selection = cohort
-        ? { contexts: ["terminal-app/macos"], ids: ["sgr.bold"] }
+        ? { contexts: ["ghostty/macos"], ids: ["sgr.bold"] }
         : inputChange.startsWith("macos-")
           ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
           : inputChange === "hosted-selected"
-            ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
+            ? { contexts: ["ghostty/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
             : inputChange === "hosted-one-os"
               ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
               : inputChange === "hosted-contexts" || inputChange.startsWith("hosted-ref-")
-                ? { contexts: ["terminal-app/macos"] }
+                ? { contexts: ["ghostty/macos"] }
                 : inputChange === "selected" || inputChange === "completed-collector-error"
                   ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
                   : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
@@ -684,7 +697,9 @@ it.each([
                         ? { contexts: ["alacritty/linux"], ids: [] }
                         : undefined
       // Requirement: private release collection leaves corpus bytes untouched. The old admission
-      // mocks could miss a direct corpus write, so compare the actual placement directories.
+      // mocks could miss a direct corpus write, so compare the actual placement directories. The witness is
+      // each file's size, inode and change time: any write, replace or rename moves ctime, which nothing can set
+      // back. Hashing the bytes read the whole placed corpus twice (24k files, ~1.2 GB) and timed out (33989).
       const corpusSnapshot = () =>
         ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"]
           .flatMap((dir) =>
@@ -692,7 +707,8 @@ it.each([
               .filter((entry) => entry.isFile())
               .map((entry) => {
                 const path = join(entry.parentPath, entry.name)
-                return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
+                const { size, ino, ctimeNs } = statSync(path, { bigint: true })
+                return [relative(CONTENT, path), `${String(size)}:${String(ino)}:${String(ctimeNs)}`]
               }),
           )
           .sort((a, b) => a[0]!.localeCompare(b[0]!))
@@ -829,7 +845,7 @@ it.each([
         const dispatches = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
         expect(dispatches).toHaveLength(1)
         expect(dispatches[0]?.[1]).toContain(
-          `context_matrix=${JSON.stringify({ include: [{ id: "terminal-app", bundle: "/System/Applications/Utilities/Terminal.app" }] })}`,
+          `context_matrix=${JSON.stringify({ include: [{ id: "ghostty", bundle: "/Applications/Ghostty.app" }] })}`,
         )
         expect(dispatches[0]?.[1]?.some((argument) => String(argument).startsWith("probe_ids="))).toBe(false)
         return
@@ -894,9 +910,7 @@ it.each([
               : {
                   id: row.context.id,
                   bundle:
-                    row.context.id === "terminal-app"
-                      ? "/System/Applications/Utilities/Terminal.app"
-                      : "/Applications/Visual Studio Code.app",
+                    row.context.id === "ghostty" ? "/Applications/Ghostty.app" : "/Applications/Visual Studio Code.app",
                 },
           )
           expect(launcher).toHaveBeenCalledWith(
@@ -1017,7 +1031,7 @@ it.each([
 
       if (textCase) {
         const terminal = pass.contexts.find(
-          (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
+          (row) => row.context.kind === "term" && row.context.id === "ghostty" && row.context.os === "macos",
         )
         expect(terminal?.status).toBe("not-started")
         expect(terminal?.error).toMatch(/Collector changed logical runId/)
@@ -1045,9 +1059,16 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119), and
-      // Screen's truecolor-on supplement (33151).
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(13)
+      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119),
+      // Screen's truecolor-on supplement (33151), and the tmux set-titles-on supplement (32593).
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(14)
+      // The tmux set-titles-on profile launches as its own context, with the one declared option.
+      expect(
+        launcher.mock.calls.some(
+          ([command, args]) =>
+            command === "bash" && Array.isArray(args) && args.includes("--mux-profile") && args.includes("set-titles"),
+        ),
+      ).toBe(true)
       // Both Linux mux rows run inside the Kitty container through the launcher's --mux arm.
       for (const id of ["tmux", "screen"]) {
         const row = pass.contexts.find(
@@ -1074,7 +1095,7 @@ it.each([
         expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
       }
       // 33151: Screen's truecolor-on supplement is the same Kitty --mux launch with the mux profile added and only its
-      // three ids; tmux declares none.
+      // three ids.
       const screenRow = pass.contexts.find(
         (entry) => entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux",
       )
@@ -1118,6 +1139,43 @@ it.each([
       ).toBe(true)
       expect(supplementRow?.error?.split(SCREEN_SUPPLEMENT_ERROR)).toHaveLength(2)
       expect(pass.errors).toContain(supplementRow?.error)
+      // 32593: tmux's set-titles-on supplement is the same Kitty --mux launch with the one declared profile option
+      // added and only its own feature id, and the failure stays on the default tmux row.
+      const tmuxRow = pass.contexts.find(
+        (entry) => entry.context.kind === "mux" && entry.context.id === "tmux" && entry.context.os === "linux",
+      )
+      const setTitlesOutput = join(pass.directory, "linux", "tmux.set-titles-on")
+      expect(launcher).toHaveBeenCalledWith(
+        "bash",
+        [
+          "scripts/linux-container-run.sh",
+          "--target",
+          "kitty",
+          "--preset",
+          "current",
+          "--clipboard-profile",
+          "default",
+          "--mux-profile",
+          "set-titles",
+          "--mux",
+          "tmux",
+          "--ids",
+          "extensions.osc22-pointer",
+          setTitlesOutput,
+        ],
+        expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
+      )
+      expect(tmuxRow?.supplements).toHaveLength(1)
+      expect(tmuxRow?.supplements?.[0]).toMatchObject({
+        name: "set-titles-on",
+        featureIds: ["extensions.osc22-pointer"],
+        status: "failed",
+        directory: setTitlesOutput,
+      })
+      expect(tmuxRow?.supplements?.[0]?.error).toMatch(
+        /^tmux\/linux set-titles-on supplement: .*exited 17; logs retained at /,
+      )
+      expect(pass.errors).toContain(tmuxRow?.supplements?.[0]?.error)
       for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === id && entry.context.os === "linux",
@@ -1183,7 +1241,11 @@ it.each([
       for (const row of pass.contexts.filter(
         (entry) =>
           (entry.context.kind !== "term" || entry.context.os !== "linux") &&
-          !(entry.context.kind === "mux" && entry.context.id === "screen" && entry.context.os === "linux"),
+          !(
+            entry.context.kind === "mux" &&
+            (entry.context.id === "screen" || entry.context.id === "tmux") &&
+            entry.context.os === "linux"
+          ),
       )) {
         expect(row.supplements, `${row.context.id}/${row.context.os}`).toBeUndefined()
       }
@@ -1193,7 +1255,8 @@ it.each([
           (row) =>
             row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
         )
-        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 12 : 9)
+        // Both owned apps left the hosted matrix: 10 hosted rows across both platforms, 7 on macOS.
+        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 10 : 7)
         expect(affected.every((row) => row.status === "not-started" && row.error?.includes("EEXIST"))).toBe(true)
         expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
           inputChange === "blocked-hosted" ? 0 : 1,
@@ -1231,7 +1294,7 @@ it.each([
           expect.anything(),
         )
         const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-        expect(hosted).toHaveLength(os === "macos" ? 9 : 3)
+        expect(hosted).toHaveLength(os === "macos" ? 7 : 3)
         if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
       }
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -1260,8 +1323,14 @@ it.each([
         expect(pass.errors.some((error) => error.includes("windows-measurement") && error.includes("exited 1"))).toBe(
           true,
         )
-        const mac = pass.contexts.find((row) => row.context.id === "terminal-app")
+        // A hosted row reports the lock refusal; each owned app stays named and never launches by default.
+        const mac = pass.contexts.find((row) => row.context.id === "ghostty" && row.context.os === "macos")
         if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
+        for (const id of ["terminal-app", "iterm2"]) {
+          const owned = pass.contexts.find((row) => row.context.id === id && row.context.os === "macos")
+          expect(owned?.notRun).toContain(`not run: ${id}/macos starts only when it is selected explicitly`)
+          expect(owned?.error).toBeUndefined()
+        }
         const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
         expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
         expect(windows?.error).toMatch(/schemaVersion/)
@@ -1357,17 +1426,11 @@ describe("release 1 collection census", () => {
     const missing = census().filter((entry) => entry.route === null)
     expect(missing).toHaveLength(1)
     expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(0)
-    for (const id of [
-      "terminal-app",
-      "iterm2",
-      "ghostty",
-      "alacritty",
-      "wezterm",
-      "cursor",
-      "com.microsoft.VSCode",
-      "warp",
-      "cmux",
-    ]) {
+    // Terminal.app and iTerm2 have owned window routes; neither may also dispatch a hosted window.
+    for (const id of ["terminal-app", "iterm2"]) {
+      expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("local-owned-app")
+    }
+    for (const id of ["ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty", "wezterm"]) {
@@ -1470,21 +1533,204 @@ const ownedAppContext: CollectionContext = {
   uncollectable: null,
 }
 const ownedAppRevision = "c".repeat(40)
+// #34018: the composer hands the run identity down; the owned routes never mint their own.
+const ownedAppRunId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 // The local route must stay byte-identical to the argv it always ran; the ssh route hands the
 // SAME probe arguments to the transport driver after its own transport flags, never a second probe.
 it("starts an owned-app row locally with the probe argv it always ran", () => {
-  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
   expect(command.label).toBe("kitty/macos owned-app collection")
+  // #34018 is the addition: the run identity the composer handed down. Everything else is the argv
+  // this route always ran, in the same order.
   expect(command.argv).toEqual([
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "term",
+    "app",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--output",
     "/private/kitty",
   ])
+})
+
+it("forwards an explicit probe selection through the app route on both runners", () => {
+  const selected = selectAppProbes()
+    .expected.slice(0, 2)
+    .map((probe) => probe.id)
+  const local = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+    selected,
+  )
+  expect(local.argv.slice(3, 7)).toEqual(["app", "kitty", "--probe-ids", JSON.stringify(selected)])
+  const remote = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      removeStage: true,
+    },
+    ownedAppRevision,
+    ownedAppRunId,
+    selected,
+  )
+  const probeStart = remote.argv.indexOf("--") + 1
+  expect(remote.argv.slice(probeStart)).toEqual([
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+    "--probe-ids",
+    JSON.stringify(selected),
+  ])
+})
+
+it("refuses an unknown selected id locally, with the daemon's own sentence, before any ssh argv exists", () => {
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      {
+        runner: "ssh:fixture@fixture.invalid",
+        stage: "/remote/stage",
+        knownHosts: "/home/fixture/.ssh/known_hosts",
+        removeStage: true,
+      },
+      ownedAppRevision,
+      ownedAppRunId,
+      ["not-a-probe"],
+    ),
+  ).toThrow(/Unknown or inapplicable app probe not-a-probe/)
+})
+
+// 33954: the rename to canonical run vocabulary changed this argv to `probe term`, a subcommand the
+// admin CLI never had, and the assertion above cemented it: every owned-app row died on the host with
+// "unknown command 'term'" while the suite stayed green. The argv is only correct if the CLI it names
+// registers that subcommand, so this reads the CLI's own command list instead of trusting the name.
+it("names a probe subcommand the admin CLI registers", () => {
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "local" },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
+  const probe = command.argv.indexOf("probe")
+  const subcommand = command.argv[probe + 1]
+  expect(subcommand).toBeDefined()
+  const help = spawnSync(process.execPath, ["packages/admin/src/index.ts", "probe", "--help"], {
+    cwd: dirname(CONTENT),
+    encoding: "utf8",
+  })
+  expect(help.stdout).toContain("Commands:")
+  const registered = [...help.stdout.matchAll(/^\s{2}([a-z][a-z-]*)\s/gm)].map((match) => match[1])
+  expect(registered).toContain(subcommand)
+})
+
+// 33963 (@cto A): a Mac app whose owned arm proves window ownership routes to the owned route only,
+// and the owned transport is used or refused, never accepted for rows it cannot start.
+it("routes an owned app away from the hosted matrix, and refuses a transport for routed contexts", () => {
+  const apps = [
+    "terminal-app",
+    "iterm2",
+    "ghostty",
+    "warp",
+    "cursor",
+    "com.microsoft.VSCode",
+    "cmux",
+    "alacritty",
+    "wezterm",
+  ]
+  const expected = apps.map((terminalId) => ({
+    context: `${terminalId}/macos`,
+    terminalId,
+    os: "macos" as const,
+    kind: "term" as const,
+  }))
+  const routeOf = (contexts: readonly CollectionContext[], id: string): string | null | undefined =>
+    contexts.find((context) => context.id === id)?.route
+
+  const withEntry = collectionRoutes(expected, new Set(["terminal-app", "iterm2"]))
+  for (const id of ["terminal-app", "iterm2"]) {
+    expect(routeOf(withEntry, id)).toBe("local-owned-app")
+  }
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app" && candidate !== "iterm2")) {
+    expect(routeOf(withEntry, id)).toBe("hosted-workflow")
+  }
+
+  const withEmptySet = collectionRoutes(expected, new Set<string>())
+  // Missing owned entries stay named as uncollectable rather than falling back to hosted dispatch.
+  for (const id of ["terminal-app", "iterm2"]) expect(routeOf(withEmptySet, id)).toBeNull()
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app" && candidate !== "iterm2")) {
+    expect(routeOf(withEmptySet, id)).toBe("hosted-workflow")
+  }
+
+  const ownedOnly = withEntry.filter((context) => context.id === "terminal-app" || context.id === "iterm2")
+  expect(() => assertOwnedTransportApplies(ownedOnly, "ssh:codi@codimac")).not.toThrow()
+  expect(() => assertOwnedTransportApplies(withEmptySet, "ssh:codi@codimac")).toThrow(
+    /do not route there: terminal-app\/macos, iterm2\/macos/,
+  )
+  expect(() => assertOwnedTransportApplies(withEntry, "ssh:codi@codimac")).toThrow(/ghostty\/macos/)
+  expect(() => assertOwnedTransportApplies(withEmptySet, "local")).not.toThrow()
+})
+
+// 33963 (@cto A, condition 2): a host that cannot start an owned row records it "not run" by name and
+// the collection stays green; only a selection that can measure nothing is refused.
+it("records an owned row as not run on a host that cannot start it, and starts it where it can", () => {
+  const owned = collectionRoutes(
+    [{ context: "terminal-app/macos", terminalId: "terminal-app", os: "macos" as const, kind: "term" as const }],
+    new Set(["terminal-app"]),
+  )[0]!
+  const hosted = collectionRoutes(
+    [{ context: "ghostty/macos", terminalId: "ghostty", os: "macos" as const, kind: "term" as const }],
+    new Set(["terminal-app"]),
+  )[0]!
+
+  // @cto 33963 condition 3: the default pass never starts an owned row, on ANY host. A Mac default is
+  // the dangerous one, because it is the host where the launch would succeed.
+  const defaultOnDarwin = ownedRowVerdict(owned, "local", "darwin", false)
+  expect(defaultOnDarwin.start).toBe(false)
+  expect(defaultOnDarwin.start === false && defaultOnDarwin.reason).toMatch(
+    /^not run: terminal-app\/macos starts only when it is selected explicitly or an owned transport names its host; a default collection never starts an owned row$/,
+  )
+  const defaultOnLinux = ownedRowVerdict(owned, "local", "linux", false)
+  expect(defaultOnLinux.start).toBe(false)
+  expect(defaultOnLinux.start === false && defaultOnLinux.reason).toMatch(
+    /a default collection never starts an owned row/,
+  )
+  // An explicit selection of the row starts it on the host that owns it...
+  expect(ownedRowVerdict(owned, "local", "darwin", true).start).toBe(true)
+  // ...and the same selection on a host that cannot start it refuses by name below.
+  const selectedOnLinux = ownedRowVerdict(owned, "local", "linux", true)
+  expect(selectedOnLinux.start).toBe(false)
+  expect(selectedOnLinux.start === false && selectedOnLinux.reason).toMatch(
+    /^not run: terminal-app\/macos starts through the owned route on the host that owns it, and this host is linux/,
+  )
+  // An owned transport names the host, so it starts there regardless of this host's platform.
+  expect(ownedRowVerdict(owned, "ssh:codi@codimac", "linux", false).start).toBe(true)
+  // A hosted row is the host's business, never the owned route's.
+  expect(ownedRowVerdict(hosted, "local", "linux", false).start).toBe(true)
+  // ...and a selection that NAMES it is refused by name rather than skipped.
+  expect(() => assertOwnedRowsStartable([owned], ["terminal-app/macos"], "local", "linux")).toThrow(
+    /terminal-app\/macos was selected explicitly, but not run: .*this host is linux/,
+  )
+  expect(() => assertOwnedRowsStartable([owned], undefined, "local", "linux")).not.toThrow()
+  expect(() => assertOwnedRowsStartable([owned], ["terminal-app/macos"], "local", "darwin")).not.toThrow()
 })
 
 it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
@@ -1498,9 +1744,10 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
       removeStage: true,
     },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.label).toBe("kitty/macos owned-app transport")
-  expect(command.argv.slice(0, 13)).toEqual([
+  expect(command.argv.slice(0, 15)).toEqual([
     "bun",
     "scripts/owned-app-remote-run.ts",
     "--transport",
@@ -1513,6 +1760,8 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     ownedAppRevision,
     "--context",
     "kitty",
+    "--run-id",
+    ownedAppRunId,
     "--known-hosts",
   ])
   expect(command.argv).toContain("--remove-stage")
@@ -1521,7 +1770,7 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "term",
+    "app",
     "kitty",
   ])
 })
@@ -1532,6 +1781,7 @@ it("hands the ssh transport no stage when none is supplied, so the driver derive
     "/private/kitty",
     { runner: "ssh:fixture@fixture.invalid", knownHosts: "/home/fixture/.ssh/known_hosts" },
     ownedAppRevision,
+    ownedAppRunId,
   )
   expect(command.argv).not.toContain("--stage")
   expect(command.argv.slice(0, 8)).toEqual([
@@ -1553,6 +1803,7 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
       "/private/kitty",
       { runner: "ssh:fixture@fixture.invalid", stage: "/remote/stage" },
       ownedAppRevision,
+      ownedAppRunId,
     ),
   ).toThrow(/requires --owned-app-known-hosts/)
 })
@@ -1629,12 +1880,16 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     "bun",
     [
       "#!/bin/sh",
+      // The resource witness runs as `bun --eval` on the remote (774639a6f): it is real work, so the real Bun runs it.
+      'if [ "$1" = "--eval" ]; then exec "$REAL_BUN" "$@"; fi',
       'case "$*" in',
       "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
       "  --version) echo '1.2.3' ;;",
-      "  *) out=''",
-      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     cp "$PRODUCER_RUN" "$out/kitty-current-todo.json" ;;',
+      "  *) out=''; id=''",
+      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; --run-id) shift; id="$1" ;; esac; shift; done',
+      '     [ -n "$id" ] || { echo "host stub: no --run-id reached the host command" >&2; exit 9; }',
+      '     printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      '     sed \'s/"runId":"[^"]*"/"runId":"\'"$id"\'"/\' "$PRODUCER_RUN" > "$out/kitty-current-todo.json" ;;',
       "esac",
     ].join("\n"),
   )
@@ -1643,7 +1898,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   const producerDraft = initializeRunDraft({
     runId: "transport-kitty-current-todo",
     sourceRevision: revision,
-    manifest: { ...currentManifest, schemaVersion: 4 },
+    // The current derived suite: placement verifies an App run against the trusted current snapshot,
+    // so a historical fixture manifest would be refused before the identity is ever read.
+    manifest: { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 },
     source: { kind: "live" },
     intendedSubject: { kind: "term", id: "kitty" },
   })
@@ -1661,6 +1918,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   producerDraft.identity = "unverified"
   producerDraft.origin = { kind: "collector" }
   producerDraft.measuredAt = "2026-10-06T23:41:34.869Z"
+  // #34018 R1: the measured identity replies a real kitty run carries, so the transported original is
+  // a record the place path can accept — the point of the route is a run, not a JSON shape.
+  producerDraft.rawReplies["collector.xtversion"] = "\x1bP>|kitty(0.48.2)\x1b\\\x1b[?62;22c"
   writeFileSync(producerRun, JSON.stringify(finalizeCollectedDraft(producerDraft as CapturedRunDraft)))
   const producerBytes = readFileSync(producerRun)
   try {
@@ -1669,6 +1929,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       output,
       { runner: "ssh:fixture@fixture.invalid", stage, knownHosts },
       revision,
+      ownedAppRunId,
     )
     // argv[0] is the `bun` token the collector resolves from PATH; here the runner is this process,
     // so only the driver path and its arguments are passed.
@@ -1682,7 +1943,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
         OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
         PRODUCER_RUN: producerRun,
+        INBOUND_ID_FILE: join(directory, "inbound-run-id.txt"),
         REAL_RSYNC: "/usr/bin/rsync",
+        REAL_BUN: process.execPath,
       },
     })
     expect(result.status, result.stderr).toBe(0)
@@ -1699,22 +1962,154 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     // collector classifies a run after transport.
     const runPath = join(transport, "kitty-current-todo.json")
     const runBytes = readFileSync(runPath)
+    // The host rewrote the identity and nothing else: the transported bytes are the producer's with
+    // the composer's id in place of the placeholder, which is what "one run, composer-named" means.
+    const expectedBytes = producerBytes.toString("utf8").replace(/"runId":"[^"]*"/, `"runId":"${ownedAppRunId}"`)
+    expect(runBytes.toString("utf8")).toBe(expectedBytes)
     expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
-      createHash("sha256").update(producerBytes).digest("hex"),
+      createHash("sha256").update(expectedBytes).digest("hex"),
     )
     const raw = runBytes.toString("utf8")
     const probeHash = (JSON.parse(raw) as { probeHash: string }).probeHash
-    const suitePath = join(CONTENT, "suites", `${probeHash.slice(0, 12)}.json`)
-    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const manifest = { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 as const }
     const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
     expect(run.results?.every((result) => result.status === "probe-todo")).toBe(true)
+    // #34018 R1 (@dev/17 peer REVISE): the SAME App original this route produced is one the place
+    // path accepts, under the identity the composer handed down — not a separate fixture run.
+    expect(readFileSync(join(directory, "inbound-run-id.txt"), "utf8")).toBe(ownedAppRunId)
+    const content = mkdtempSync(join(directory, "content"))
+    copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
+    for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
+    const placed = placeCollectedRun(runPath, manifest, content)
+    expect(basename(placed)).toContain(ownedAppRunId)
+    expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([{ runId: ownedAppRunId }])
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
 }, 60_000)
+
+// #34018 R1 (@dev/17 peer REVISE): the composed owned route, driven through the real pass. The host
+// stub consumes the inbound `--run-id` as the identity of the run it hands back — which is what the
+// admin does with `createProbeRun(runId)` — so the only way the assertions below can hold is if the
+// composer's identity really crossed to the host and came back as the run's own identity.
+async function composedOwnedPass(hostRunId?: string) {
+  const directory = mkdtempSync(join(tmpdir(), "composed-owned-"))
+  const shims = join(directory, "shims")
+  const output = join(directory, "output")
+  const witness = join(directory, "inbound-run-id.txt")
+  const producer = join(directory, "producer.json")
+  mkdirSync(shims, { recursive: true })
+  mkdirSync(output, { recursive: true })
+  writeFileSync(
+    join(shims, "bun"),
+    [
+      "#!/bin/sh",
+      'out=""; id=""',
+      "while [ $# -gt 0 ]; do",
+      '  case "$1" in',
+      '    --run-id) shift; id="$1" ;;',
+      '    --output) shift; out="$1" ;;',
+      "  esac",
+      "  shift",
+      "done",
+      '[ -n "$id" ] || { echo "host stub: no --run-id crossed the compose boundary" >&2; exit 9; }',
+      'printf "%s" "$id" > "$INBOUND_ID_FILE"',
+      'write="$id"',
+      '[ -n "$HOST_RUN_ID" ] && write="$HOST_RUN_ID"',
+      'sed \'s/"runId":"[^"]*"/"runId":"\'"$write"\'"/\' "$PRODUCER_RUN" > "$out/terminal-app-current-todo.json"',
+    ].join("\n"),
+    { mode: 0o755 },
+  )
+  const snapshot = versions.probeSuiteSnapshot()
+  const manifest = versions.derivedSuiteManifest(snapshot)
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    encoding: "utf8",
+  }).trim()
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "00000000000000000000000000000000",
+    sourceRevision,
+    manifest: { ...manifest, schemaVersion: 4 },
+    intendedSubject: { kind: "term", id: "terminal-app", os: "macos" },
+  })
+  draft.subject = {
+    kind: "term",
+    id: "terminal-app",
+    version: "2.15",
+    os: "macos",
+    osVersion: "26.6.2",
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.identity = "unverified"
+  draft.origin = { kind: "collector" }
+  draft.measuredAt = "2026-10-06T23:41:34.869Z"
+  writeFileSync(producer, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
+  const environment = {
+    PATH: `${shims}:/usr/bin:/bin`,
+    PRODUCER_RUN: producer,
+    INBOUND_ID_FILE: witness,
+    HOST_RUN_ID: hostRunId ?? "",
+  }
+  const previous = Object.entries(environment).map(([key, value]) => [key, process.env[key]] as const)
+  Object.assign(process.env, environment)
+  // The local owned route starts only on the host that owns the app (@cto 33963 condition 3), so the
+  // pass is driven as it would run on the Mac, without pretending this machine launched the app.
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
+  try {
+    const pass = await collectPass(output, { runner: "local" }, { contexts: ["terminal-app/macos"] })
+    return { pass, witness, manifest, directory }
+  } finally {
+    if (platform) Object.defineProperty(process, "platform", platform)
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
+it("admits the identity the host consumed, not a fixture identity", async () => {
+  // Placement of the same App original is proven on the ssh route below, where the transported run
+  // carries the measured identity replies a real kitty run does; here the subject is the census's
+  // terminal-app row, which has no placement identity profile of its own to satisfy.
+  const { pass, witness, directory } = await composedOwnedPass()
+  try {
+    expect(pass.contexts).toHaveLength(1)
+    const row = pass.contexts[0]!
+    expect(row.error).toBeUndefined()
+    expect(row.status).toBe("classified")
+    expect(row.summary).toBeDefined()
+    const draftPath = join(pass.directory, "term-terminal-app-macos.draft.json")
+    const handed = parseJsonStrict(draftPath, readFileSync(draftPath, "utf8")) as { runId: string }
+    // The identity the host was given, the identity it handed back, and the identity the pass graded
+    // are one run — not a fixture that was minted before the pass and could never disagree.
+    expect(readFileSync(witness, "utf8")).toBe(handed.runId)
+    const original = JSON.parse(readFileSync(row.rawRun!, "utf8")) as { runId: string }
+    expect(original.runId).toBe(handed.runId)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
+
+it("refuses by name when the host hands back an identity it was not given", async () => {
+  const { pass, directory } = await composedOwnedPass("ffffffffffffffffffffffffffffffff")
+  try {
+    const row = pass.contexts[0]!
+    // The pass leaves the row unstarted and names the substitution: the host was given one identity
+    // and handed back another, and the composer refuses rather than grading one run as the other.
+    expect(row.error).toMatch(/terminal-app\/macos: Collector changed logical runId/)
+    expect(pass.complete).toBe(false)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 120_000)
 
 it("records the host-written transport receipt as evidence and refuses anything else", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))
@@ -1751,6 +2146,12 @@ it("records the host-written transport receipt as evidence and refuses anything 
     // A receipt for another revision cannot stand in for the bytes this pass measured.
     writeFileSync(path, JSON.stringify({ ...receipt, sourceRevision: "e".repeat(40) }))
     expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/names source/)
+    // A light transport check never hashed the node_modules trees, so it can never be placed.
+    writeFileSync(path, JSON.stringify({ ...receipt, check: "light" }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/only a full check may be placed/)
+    // A full one, and a receipt written before the field existed, are both placed.
+    writeFileSync(path, JSON.stringify({ ...receipt, check: "full" }))
+    expect(readOwnedAppTransportProof(path, ownedAppRevision).resourceFiles).toBe(42)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -1988,6 +2389,23 @@ it.each([
     })
   try {
     const pass = await collectPass(directory, { runner: "local" })
+    // 33963 (@cto A, conditions 2 and 3): a default collection NEVER starts an owned row, on any
+    // host — including the Mac, which is the host where the implicit launch would have succeeded. The
+    // row is named "not run", never an error, so the pass stays green for what the host can measure.
+    const ownedRow = pass.contexts.find((entry) => entry.context.id === "terminal-app" && entry.context.os === "macos")!
+    expect(ownedRow.status, ownedRow.error).toBe("not-started")
+    expect(ownedRow.notRun).toMatch(
+      /^not run: terminal-app\/macos (starts only when it is selected explicitly|starts through the owned route)/,
+    )
+    expect(ownedRow.error).toBeUndefined()
+    expect(ownedRow.directory, "the default pass launched nothing for the owned row").toBeUndefined()
+    expect(pass.errors.filter((error) => error.includes("terminal-app"))).toEqual([])
+    // 33987 (@cto ruling C): every pass carries the declaration it retained beside its own runs.
+    expect(pass.suiteManifest).toBe(`suites/${pass.probeHash}.json`)
+    const retainedPath = join(pass.directory, pass.suiteManifest ?? "")
+    expect(parseJsonStrict(retainedPath, readFileSync(retainedPath, "utf8"))).toMatchObject({
+      probeHash: pass.probeHash,
+    })
     if (fault === "linux-receipt") {
       const linux = pass.contexts.find(
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
