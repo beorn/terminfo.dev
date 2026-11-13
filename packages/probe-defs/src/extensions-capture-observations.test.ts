@@ -667,14 +667,17 @@ test.each([
       featureId: "extensions.osc9-progress",
       rawReplyRef: "extensions.osc9-progress",
     },
-    coverage: result.notTested && { featureId: "extensions.osc9-progress", ...result.notTested },
+    coverage: result.notTested && {
+      featureId: "extensions.osc9-progress",
+      ...result.notTested,
+      rawReplyRef: "extensions.osc9-progress",
+    },
     assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: "extensions.osc9-progress" })),
     tests: result.tests,
   })
   expect(["probe-todo", "probe-invalid", "untestable"]).toContain(recorded.status)
   if (progress !== "ignored") {
-    expect(result.response).toBeDefined()
-    expect(JSON.parse(result.response!).frames).toHaveLength(frames.length)
+    expect(JSON.parse(result.response ?? "null")).toEqual(expect.objectContaining({ frames }))
   }
 })
 
