@@ -273,6 +273,7 @@ test.each([
   "unsafe-uri",
   "wrong-pane",
   "malformed-json",
+  "semantic-fallbacks",
 ])("hosted WezTerm CWD uses its owned private port; mode=%s", (mode) => {
   const loseOwner = mode === "lost-owner"
   const directory = mkdtempSync(join(tmpdir(), "terminfo-owned-cwd-"))
@@ -353,6 +354,34 @@ test.each([
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: artifact => retained.push(artifact) })
     assert.equal(typeof owner.readAppSemanticState, "function", "hosted owner must install the CWD reader")
+    if (${mode === "semantic-fallbacks"}) {
+      const { ALL_PROBES } = await import("./packages/probe-defs/src/index.ts")
+      const { withAppSemanticObservation } = await import("./packages/probe-defs/src/app-semantic-state.ts")
+      const { runProbeBatch } = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const { ownedTerminalVerifiedFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      assert.equal(ownedTerminalVerifiedFor(owner, "a".repeat(32), process.stdout), true)
+      const features = ["extensions.osc1-icon", "extensions.osc133-a", "extensions.osc8", "extensions.osc176-app-id"]
+      const called = []
+      for (const id of features) {
+        const definition = ALL_PROBES.find(probe => probe.id === id)
+        assert.ok(definition, id)
+        definition.termNeedsGeometry = false
+        definition.term = withAppSemanticObservation({ id, lib: null, term: async () => {
+          called.push(id)
+          return { pass: false, note: "original term " + id,
+            tests: [{ id: "criterion", status: "probe-todo", reason: "original term " + id }] }
+        } }).term
+      }
+      const batch = await runProbeBatch({ ids: features, ownedTerminal: owner, captureRunId: "a".repeat(32),
+        subject: { kind: "term", id: "wezterm", os: "macos", version: "20240203-110809-5046fc22" } })
+      for (const id of features) {
+        assert.ok(called.includes(id), "original term did not run: " + id + " " + JSON.stringify(batch.results.find(row => row.featureId === id)))
+        assert.equal(batch.results.find(row => row.featureId === id)?.reason, "original term " + id,
+          "wrapper replaced the original term result: " + id)
+      }
+      await owner.dispose()
+      process.stdout.write = realWrite
+    } else {
     const result = await owner.readAppSemanticState("extensions.osc7-cwd", () => { throw new Error("public writer leaked restoration") })
       .then((value) => value, (error) => ({ status: "run-error", reason: error.message }))
     if (${mode !== "steady" && mode !== "lost-owner"}) {
@@ -384,6 +413,7 @@ test.each([
     }
     await owner.dispose()
     process.stdout.write = realWrite
+    }
   `
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: join(import.meta.dirname, "../../.."),
