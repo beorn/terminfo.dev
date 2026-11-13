@@ -848,6 +848,7 @@ test.each([
     if (prefix === "vscode") {
       expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
       expect(JSON.parse(String(settings?.[1]))).toEqual({
+        "update.mode": "none",
         "chat.disableAIFeatures": true,
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,

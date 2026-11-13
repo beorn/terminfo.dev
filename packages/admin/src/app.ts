@@ -309,6 +309,7 @@ const APPS: AppDef[] = [
         writeFileSync(
           join(user, "settings.json"),
           JSON.stringify({
+            "update.mode": "none",
             // Documented since 1.104: https://code.visualstudio.com/docs/copilot/setup
             "chat.disableAIFeatures": true,
             "workbench.startupEditor": "none",
