@@ -722,7 +722,7 @@ export const TMUX_SET_TITLES_CONFIG = 'tmux: set-titles on; set-titles-string "#
  */
 export const MUX_PROFILE_CONFIG_FILES: Readonly<Record<string, { readonly mux: string; readonly content: string }>> = {
   [SCREEN_TRUECOLOR_CONFIG]: { mux: "screen", content: "defscrollback 1000\ntruecolor on\n" },
-  [TMUX_SET_TITLES_CONFIG]: { mux: "tmux", content: 'set-titles on\nset-titles-string "#T"\n' },
+  [TMUX_SET_TITLES_CONFIG]: { mux: "tmux", content: 'set -g set-titles on\nset -g set-titles-string "#T"\n' },
 }
 
 /**
