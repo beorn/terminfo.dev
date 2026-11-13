@@ -444,8 +444,8 @@ test("unreadable bytes on the silent clause stay our failure even when the other
   expect(result.criterionBranch).toBeUndefined()
 })
 
-// #34012: the wait ran out, but something arrived that the pattern could not read. That is an answer we
-// failed to read, so the row must stay probe-invalid — the same rule the headless clipboard read applies
+// #34012: the wait ran out, but something arrived that the pattern could not read. That is an answer
+// we failed to read, so the row must stay probe-invalid — the same rule the headless clipboard read applies
 // when it treats only a timeout with nothing on the wire as silence.
 test("a timeout that still carried unreadable bytes stays our failure, not a measured silence", async () => {
   const source = Object.assign(terminal({}), {

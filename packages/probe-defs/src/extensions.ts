@@ -7695,10 +7695,18 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
           if (state.restored !== before) {
-            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+            // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+            // either. `result` is undefined here only because the try threw; a plain return added inside that try
+            // would leave neither, so this branch names that invariant instead of assuming it.
             const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
             if (result) result = cleanupReading(result, cleanup)
-            else failure = withCleanupDetail(failure, cleanup)
+            else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+            else {
+              throw withCleanupDetail(
+                new Error("cleanup ran with neither a reading nor a propagating failure"),
+                cleanup,
+              )
+            }
           }
         }
         return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -7920,10 +7928,18 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
               const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
-              else failure = withCleanupDetail(failure, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+              else {
+                throw withCleanupDetail(
+                  new Error("cleanup ran with neither a reading nor a propagating failure"),
+                  cleanup,
+                )
+              }
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }
@@ -8101,10 +8117,18 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
             if (state.restored !== before) {
-              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
+              // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+              // either. `result` is undefined here only because the try threw; a plain return added inside that try
+              // would leave neither, so this branch names that invariant instead of assuming it.
               const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
               if (result) result = cleanupReading(result, cleanup)
-              else failure = withCleanupDetail(failure, cleanup)
+              else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+              else {
+                throw withCleanupDetail(
+                  new Error("cleanup ran with neither a reading nor a propagating failure"),
+                  cleanup,
+                )
+              }
             }
           }
           return { ...callbackReading(result), response: JSON.stringify(state) }
