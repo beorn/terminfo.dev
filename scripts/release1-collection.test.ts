@@ -1319,7 +1319,7 @@ it.each([
         const mac = pass.contexts.find((row) => row.context.id === "iterm2" && row.context.os === "macos")
         if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
         const owned = pass.contexts.find((row) => row.context.id === "terminal-app" && row.context.os === "macos")
-        expect(owned?.notRun).toMatch(/^not run: terminal-app\/macos starts through the owned route/)
+        expect(owned?.notRun).toMatch(/^not run: terminal-app\/macos starts only when it is selected explicitly/)
         expect(owned?.error).toBeUndefined()
         const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
         expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
@@ -1662,16 +1662,30 @@ it("records an owned row as not run on a host that cannot start it, and starts i
     new Set(["terminal-app"]),
   )[0]!
 
-  const onLinux = ownedRowVerdict(owned, "local", "linux")
-  expect(onLinux.start).toBe(false)
-  expect(onLinux.start === false && onLinux.reason).toMatch(
+  // @cto 33963 condition 3: the default pass never starts an owned row, on ANY host. A Mac default is
+  // the dangerous one, because it is the host where the launch would succeed.
+  const defaultOnDarwin = ownedRowVerdict(owned, "local", "darwin", false)
+  expect(defaultOnDarwin.start).toBe(false)
+  expect(defaultOnDarwin.start === false && defaultOnDarwin.reason).toMatch(
+    /^not run: terminal-app\/macos starts only when it is selected explicitly or an owned transport names its host; a default collection never starts an owned row$/,
+  )
+  const defaultOnLinux = ownedRowVerdict(owned, "local", "linux", false)
+  expect(defaultOnLinux.start).toBe(false)
+  expect(defaultOnLinux.start === false && defaultOnLinux.reason).toMatch(
+    /a default collection never starts an owned row/,
+  )
+  // An explicit selection of the row starts it on the host that owns it...
+  expect(ownedRowVerdict(owned, "local", "darwin", true).start).toBe(true)
+  // ...and the same selection on a host that cannot start it refuses by name below.
+  const selectedOnLinux = ownedRowVerdict(owned, "local", "linux", true)
+  expect(selectedOnLinux.start).toBe(false)
+  expect(selectedOnLinux.start === false && selectedOnLinux.reason).toMatch(
     /^not run: terminal-app\/macos starts through the owned route on the host that owns it, and this host is linux/,
   )
-  // The same row starts where it belongs, and an ssh runner starts it on the host the caller named.
-  expect(ownedRowVerdict(owned, "local", "darwin").start).toBe(true)
-  expect(ownedRowVerdict(owned, "ssh:codi@codimac", "linux").start).toBe(true)
+  // An owned transport names the host, so it starts there regardless of this host's platform.
+  expect(ownedRowVerdict(owned, "ssh:codi@codimac", "linux", false).start).toBe(true)
   // A hosted row is the host's business, never the owned route's.
-  expect(ownedRowVerdict(hosted, "local", "linux").start).toBe(true)
+  expect(ownedRowVerdict(hosted, "local", "linux", false).start).toBe(true)
   // ...and a selection that NAMES it is refused by name rather than skipped.
   expect(() => assertOwnedRowsStartable([owned], ["terminal-app/macos"], "local", "linux")).toThrow(
     /terminal-app\/macos was selected explicitly, but not run: .*this host is linux/,
@@ -2187,17 +2201,17 @@ it.each([
     })
   try {
     const pass = await collectPass(directory, { runner: "local" })
-    // 33963 (@cto A, condition 2): on a host that cannot start the owned row, the row is named "not
-    // run" and the pass is not failed by it — a Mac-only arm measured on Linux is a host fact.
+    // 33963 (@cto A, conditions 2 and 3): a default collection NEVER starts an owned row, on any
+    // host — including the Mac, which is the host where the implicit launch would have succeeded. The
+    // row is named "not run", never an error, so the pass stays green for what the host can measure.
     const ownedRow = pass.contexts.find((entry) => entry.context.id === "terminal-app" && entry.context.os === "macos")!
-    if (process.platform === "darwin") {
-      expect(ownedRow.notRun).toBeUndefined()
-    } else {
-      expect(ownedRow.status, ownedRow.error).toBe("not-started")
-      expect(ownedRow.notRun).toMatch(/^not run: terminal-app\/macos .*this host is /)
-      expect(ownedRow.error).toBeUndefined()
-      expect(pass.errors.filter((error) => error.includes("terminal-app"))).toEqual([])
-    }
+    expect(ownedRow.status, ownedRow.error).toBe("not-started")
+    expect(ownedRow.notRun).toMatch(
+      /^not run: terminal-app\/macos (starts only when it is selected explicitly|starts through the owned route)/,
+    )
+    expect(ownedRow.error).toBeUndefined()
+    expect(ownedRow.directory, "the default pass launched nothing for the owned row").toBeUndefined()
+    expect(pass.errors.filter((error) => error.includes("terminal-app"))).toEqual([])
     if (fault === "linux-receipt") {
       const linux = pass.contexts.find(
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",

@@ -441,8 +441,22 @@ export function ownedRowVerdict(
   context: CollectionContext,
   runner: string,
   platform: string,
+  explicitlySelected: boolean,
 ): { start: true } | { start: false; reason: string } {
-  if (context.route !== "local-owned-app" || runner !== "local" || platform === "darwin") return { start: true }
+  if (context.route !== "local-owned-app") return { start: true }
+  // An owned transport names the host that owns the app, so it is that host's choice to start the row.
+  if (runner !== "local") return { start: true }
+  // @cto 33963 condition 3: an owned row never starts merely because the collection runs on a Mac.
+  // The default pass is a census, so it reports the row instead of launching someone's app.
+  if (!explicitlySelected) {
+    return {
+      start: false,
+      reason:
+        `not run: ${context.id}/${context.os} starts only when it is selected explicitly or an owned transport names its host; ` +
+        `a default collection never starts an owned row`,
+    }
+  }
+  if (platform === "darwin") return { start: true }
   return {
     start: false,
     reason:
@@ -464,7 +478,7 @@ export function assertOwnedRowsStartable(
 ): void {
   for (const context of contexts) {
     if (selected?.includes(contextNameOf(context)) !== true) continue
-    const verdict = ownedRowVerdict(context, runner, platform)
+    const verdict = ownedRowVerdict(context, runner, platform, true)
     if (verdict.start) continue
     throw new Error(
       `${contextNameOf(context)} was selected explicitly, but ${verdict.reason}. ` +
@@ -669,7 +683,10 @@ export async function collectPass(
   // cannot start it the row is recorded "not run" with the reason by name and the pass stays green;
   // a selection that names nothing this host CAN start refuses by name instead, because a request
   // that measures nothing must not come back looking like a pass.
-  const verdictOf = (context: CollectionContext) => ownedRowVerdict(context, ownedApp.runner, process.platform)
+  const explicitlySelected = (context: CollectionContext): boolean =>
+    selection?.contexts?.includes(contextNameOf(context)) === true
+  const verdictOf = (context: CollectionContext) =>
+    ownedRowVerdict(context, ownedApp.runner, process.platform, explicitlySelected(context))
   const cannotStartOwned = (context: CollectionContext): boolean => verdictOf(context).start === false
   const notRunReason = (context: CollectionContext): string => {
     const verdict = verdictOf(context)
