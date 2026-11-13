@@ -291,14 +291,34 @@ test("screen keeps no reader for these rows in this slice", () => {
   expect((reader as { reason: string }).reason).toMatch(/No qualified outer command reader/)
 })
 
-test.each(ROWS)("%s: on Screen the collector's outer-command grade is never reached", async (id) => {
+test.each(ROWS)("%s: on Screen the collector's outer-command grade is never invoked", async (id) => {
   const row = MUX_OUTER_ROWS[id]!
-  const definition = extensionsProbes.find((probe) => probe.id === id)!
+  const registered = extensionsProbes.find((probe) => probe.id === id)!
   const subject = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux", outerTerminal: "kitty" }
+  // The real wrapper around a sentinel callback, carrying the REGISTERED definition's own grade, so the guard below
+  // runs the same comparison unified.ts runs and a spy can see whether the grade was reached.
+  const grade = vi.fn(registered.outerCommands!.grade)
+  const wrapped = withMuxOuterRows(MUX_OUTER_ROWS)({ id, term: async () => ({ pass: false, reason: "own" }) } as never)
+  const definition = { ...wrapped, outerCommands: { branch: registered.outerCommands!.branch, grade } }
+  const writes: string[] = []
+  let result = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    mux: "screen",
+    write: (text: string) => void writes.push(text),
+  } as unknown as TermProbeSource)
+  expect(writes).toEqual([])
+  if (
+    definition.outerCommands &&
+    subject.kind === "mux" &&
+    result.criterionBranch === definition.outerCommands.branch
+  ) {
+    result = grade({ status: "unavailable", reason: "no trace" })
+  }
+  expect(grade).not.toHaveBeenCalled()
+  // And the reader refuses Screen by name, so even a reached grade could not invent a trace result.
   const reader = beginMuxSgrCommandRead({ featureId: id, subject })
-  // unified.ts grades from the outer record only for the tmux branch, and the reader refuses Screen by name, so no
-  // Screen row can be graded from a trace this slice never qualified.
-  expect(definition.outerCommands?.branch).toBe(row.branch)
   expect(reader.status).toBe("unavailable")
   expect((reader as { reason: string }).reason).toMatch(/No qualified outer command reader/)
   expect(row.branch).not.toBe(MUX_OUTER_DECRQ_UNREADABLE_BRANCH)
