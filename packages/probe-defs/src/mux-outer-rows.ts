@@ -1,11 +1,12 @@
 /**
  * Rows whose evidence is the OUTER terminal's own command record (33630, @cto ac738b73 / 5c25b17f).
  *
- * A multiplexer forwards bytes or drops them, and nothing inside its pane shows which. So on a mux subject these
- * rows do not grade the inner reply at all: the callback writes the row's target and the primary device attributes
- * request (DA1) as the window control, returns a criterion branch, and the collector's one outer command reader
- * decides from the outer terminal's trace — the control line present, and the target line present or absent inside
- * that invocation's window.
+ * tmux forwards bytes or drops them, and nothing inside its pane shows which. So on a tmux subject these rows do not
+ * grade the inner reply at all: the callback writes the row's target and the primary device attributes request (DA1)
+ * as the window control, returns a criterion branch, and the collector's one outer command reader decides from the
+ * outer terminal's trace — the control line present, and the target line present or absent inside that invocation's
+ * window. tmux only: the collector has no qualified outer command reader for any other mux, so every other subject
+ * (Screen included) keeps the callback it had.
  *
  * The line shapes are the ones a direct outer kitty 0.49.2 run produced for each row
  * (`/hh/var/@dev2/33630/gate-table.md`), never a reading of terminal source. `editing.decrqcra` has no entry here:
@@ -120,7 +121,7 @@ export function withMuxOuterRows(
     return {
       ...definition,
       term: async (ctx) => {
-        if (ctx.mux === undefined) return term(ctx)
+        if (ctx.mux !== "tmux") return term(ctx)
         ctx.write(row.write)
         ctx.write(MUX_OUTER_ROW_CONTROL_WRITE)
         return {
@@ -141,8 +142,9 @@ export function withMuxOuterRows(
 }
 
 /**
- * `editing.decrqcra` on a mux subject: the same bytes as every other run, and the gate's finding as the row's
- * reason. No outer command read is registered for it, because the qualified run showed the record cannot carry it.
+ * `editing.decrqcra` on a tmux subject: the same bytes as every other run, and the gate's finding as the row's reason.
+ * No outer command read is registered for it, because the qualified run showed the record cannot carry it. Every other
+ * subject, Screen included, keeps the callback it had.
  */
 export function withMuxOuterUnreadableRow(
   featureId: string,
@@ -154,7 +156,7 @@ export function withMuxOuterUnreadableRow(
     return {
       ...definition,
       term: async (ctx) => {
-        if (ctx.mux === undefined) return term(ctx)
+        if (ctx.mux !== "tmux") return term(ctx)
         ctx.write(write)
         ctx.write(MUX_OUTER_ROW_CONTROL_WRITE)
         return {

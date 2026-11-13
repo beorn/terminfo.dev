@@ -19,6 +19,8 @@ import {
   editingProbes,
   extensionsProbes,
   muxOuterRowGrade,
+  withMuxOuterRows,
+  withMuxOuterUnreadableRow,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { beginMuxSgrCommandRead, hasOuterCommandMatcher } from "./app-semantic-state.ts"
@@ -105,12 +107,35 @@ test.each(ROWS)("%s: the mux arm sends its target, then the DA1 control, and nam
   const row = MUX_OUTER_ROWS[id]!
   const definition = extensionsProbes.find((probe) => probe.id === id)!
   expect(hasOuterCommandMatcher(id)).toBe(true)
-  for (const mux of ["tmux", "screen"] as const) {
-    const arm = await muxArm(definition, mux)
-    expect(arm.writes, mux).toEqual([row.write, "\u001b[c"])
-    expect(arm.result.criterionBranch, mux).toBe(row.branch)
-  }
+  const arm = await muxArm(definition, "tmux")
+  expect(arm.writes).toEqual([row.write, "\u001b[c"])
+  expect(arm.result.criterionBranch).toBe(row.branch)
   expect(window(name).length).toBeGreaterThan(0)
+})
+
+test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps tmux", async (id) => {
+  const row = MUX_OUTER_ROWS[id]!
+  const seen: Array<string | undefined> = []
+  const original = async (ctx: TermProbeSource) => {
+    seen.push(ctx.mux)
+    return { pass: false, reason: "the row's own callback" }
+  }
+  const definition = withMuxOuterRows(MUX_OUTER_ROWS)({ id, term: original } as never)
+  const screenWrites: string[] = []
+  const screenResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)(
+    { kind: "live", cols: 80, rows: 24, mux: "screen", write: (text: string) => void screenWrites.push(text) } as unknown as TermProbeSource,
+  )
+  expect(seen).toEqual(["screen"])
+  expect(screenWrites).toEqual([])
+  expect(screenResult.criterionBranch).toBeUndefined()
+
+  const tmuxWrites: string[] = []
+  const tmuxResult = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)(
+    { kind: "live", cols: 80, rows: 24, mux: "tmux", write: (text: string) => void tmuxWrites.push(text) } as unknown as TermProbeSource,
+  )
+  expect(seen).toEqual(["screen"])
+  expect(tmuxWrites).toEqual([row.write, "\u001b[c"])
+  expect(tmuxResult.criterionBranch).toBe(row.branch)
 })
 
 test("editing.decrqcra keeps its bytes, has no reader, and stays open by name on a mux subject", async () => {
@@ -123,6 +148,28 @@ test("editing.decrqcra keeps its bytes, has no reader, and stays open by name on
     criterionBranch: MUX_OUTER_DECRQ_UNREADABLE_BRANCH,
     tests: [{ id: "outer-command-record", status: "probe-todo", reason: MUX_OUTER_DECRQ_UNREADABLE }],
   })
+})
+
+test("editing.decrqcra keeps its own callback on Screen", async () => {
+  const seen: Array<string | undefined> = []
+  const definition = withMuxOuterUnreadableRow("editing.decrqcra", "\u001b[1;1;1;1;1;5*y")({
+    id: "editing.decrqcra",
+    term: async (ctx: TermProbeSource) => {
+      seen.push(ctx.mux)
+      return { pass: false, reason: "the row's own callback" }
+    },
+  } as never)
+  const writes: string[] = []
+  const result = await (definition.term as (ctx: TermProbeSource) => Promise<{ criterionBranch?: string }>)({
+    kind: "live",
+    cols: 80,
+    rows: 24,
+    mux: "screen",
+    write: (text: string) => void writes.push(text),
+  } as unknown as TermProbeSource)
+  expect(seen).toEqual(["screen"])
+  expect(writes).toEqual([])
+  expect(result.criterionBranch).toBeUndefined()
 })
 
 test.each(ROWS)("%s: the captured window reads the row's own line as sent", async (id, name) => {
@@ -220,4 +267,17 @@ test("screen keeps no reader for these rows in this slice", () => {
   })
   expect(reader.status).toBe("unavailable")
   expect((reader as { reason: string }).reason).toMatch(/No qualified outer command reader/)
+})
+
+test.each(ROWS)("%s: on Screen the collector's outer-command grade is never reached", async (id) => {
+  const row = MUX_OUTER_ROWS[id]!
+  const definition = extensionsProbes.find((probe) => probe.id === id)!
+  const subject = { kind: "mux" as const, id: "screen", version: "5.0.2", os: "linux", outerTerminal: "kitty" }
+  const reader = beginMuxSgrCommandRead({ featureId: id, subject })
+  // unified.ts grades from the outer record only for the tmux branch, and the reader refuses Screen by name, so no
+  // Screen row can be graded from a trace this slice never qualified.
+  expect(definition.outerCommands?.branch).toBe(row.branch)
+  expect(reader.status).toBe("unavailable")
+  expect((reader as { reason: string }).reason).toMatch(/No qualified outer command reader/)
+  expect(row.branch).not.toBe(MUX_OUTER_DECRQ_UNREADABLE_BRANCH)
 })
