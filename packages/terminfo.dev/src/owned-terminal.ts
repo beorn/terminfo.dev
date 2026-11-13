@@ -1310,6 +1310,7 @@ export async function createOwnedTerminal(options: {
     } else if (darwinHosted && hostedApp) {
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
+        appId: hostedApp.id,
         titleRead: hostedApp.titleRead,
         ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
         assertOwned: async () => {

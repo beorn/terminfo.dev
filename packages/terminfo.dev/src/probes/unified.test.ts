@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
 import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
+import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -3247,6 +3248,25 @@ it("stops the batch when modes.deccolm leaves a different stty size", async () =
   }
 })
 
+/**
+ * The OS word a Mac run records, taken from production's own function rather than typed here (#31741):
+ * serve.ts builds the subject from `terminal.os`, which detectOS() produces. The old gate compared this
+ * word against the literal "darwin", so a fixture-free test could keep it green while it admitted nothing.
+ */
+const MACOS = (() => {
+  const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin")
+  try {
+    return detectOS()
+  } finally {
+    platform.mockRestore()
+  }
+})()
+
+it("#31741 builds a Mac subject from the producer's os word, not the darwin literal", () => {
+  expect(MACOS).toBe("macos")
+  expect(MACOS).not.toBe("darwin")
+})
+
 const defaultClipboardCases: Array<{
   name: string
   featureId?: string
@@ -3260,6 +3280,10 @@ const defaultClipboardCases: Array<{
   refuseWrite?: boolean
   nullMode2004?: boolean
   pasteboard?: "darwin"
+  /** The app the recorded pasteboard belongs to; defaults to the subject's own id. */
+  pasteboardApp?: string
+  /** The declined row must name these, instead of claiming the run had no fixture (#31741). */
+  expectRefusalNames?: readonly string[]
   /** The receipt owns no PRIMARY baseline, so a PRIMARY route must refuse loudly. */
   noPrimary?: boolean
   eligible: boolean
@@ -3415,11 +3439,23 @@ const defaultClipboardCases: Array<{
   { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
   { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
   {
-    name: "hosted darwin OSC52 write",
+    // #31741: the OS word is the producer's (`macos`), never a hand-typed `darwin` — that literal is
+    // what let this gate read as working while admitting nothing in production.
+    name: "hosted darwin OSC52 write under the producer's os spelling",
     featureId: "extensions.osc52-write",
-    subject: { kind: "term", id: "iterm2", os: "darwin" },
+    subject: { kind: "term", id: "iterm2", os: MACOS },
     pasteboard: "darwin" as const,
     eligible: true,
+  },
+  {
+    // A pasteboard built for cmux must not admit an iTerm2 run: the binding is the field, not the sentence.
+    name: "hosted darwin pasteboard recorded for another app",
+    featureId: "extensions.osc52-write",
+    subject: { kind: "term", id: "iterm2", os: MACOS },
+    pasteboard: "darwin" as const,
+    pasteboardApp: "cmux",
+    expectRefusalNames: ["belongs to", "cmux", "not to the run subject", "iterm2"],
+    eligible: false,
   },
   { name: "targetless receipt", targetless: true, eligible: false },
   {
@@ -3552,7 +3588,10 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
     config: "fixture",
     permissions: "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run",
     summary: "{}",
-    ...(scenario.pasteboard && { pasteboard: scenario.pasteboard }),
+    ...(scenario.pasteboard && {
+      pasteboard: scenario.pasteboard,
+      pasteboardApp: scenario.pasteboardApp ?? (subject.kind === "term" ? subject.id : "kitty"),
+    }),
     assertOwned: async () => {},
     readTitle: async () => {
       throw new Error("This clipboard fixture has no title reader")
@@ -3600,6 +3639,13 @@ it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name"
         ? "probe-invalid"
         : "probe-todo"
     expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(expectedStatus)
+    if (scenario.expectRefusalNames !== undefined) {
+      // #31741: the declined row names what the gate found, never "no owned clipboard fixture" — the
+      // same artifact records the fixture as present.
+      const row = JSON.stringify(batch.results.find((result) => result.featureId === featureId))
+      for (const named of scenario.expectRefusalNames) expect(row).toContain(named)
+      expect(row).not.toContain("No owned clipboard fixture on this run for this probe")
+    }
     if (scenario.eligible) {
       const expectedAssertionType = isOsc52Read ? "query_reply" : isOsc52WriteOrRoundtrip ? "clipboard" : "input_bytes"
       expect(batch.observations).toContainEqual(

@@ -78,6 +78,13 @@ export interface LinuxClipboardAdapter {
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   /** Set only by the hosted Darwin pasteboard. Linux receipts leave it absent. */
   readonly pasteboard?: "darwin"
+  /**
+   * The app this pasteboard belongs to, as the receipt's launched executable resolves it
+   * (`HOSTED_DARWIN_EXECUTABLE`). A FIELD, because a gate that binds a fixture to a run must not
+   * read the human sentence in `summary` (#31741, @cto a6f2b5fd: matched by field, never by parsing
+   * that sentence). Set only by the hosted Darwin pasteboard; Linux leaves it absent.
+   */
+  readonly pasteboardApp?: string
   readonly config: string | null
   readonly profile: ClipboardReceipt["profile"]
   readonly permissions: string

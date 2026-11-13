@@ -217,7 +217,8 @@ function getMacOSAppVersion(terminalName: string): string {
   }
 }
 
-function detectOS(): string {
+/** The OS word production records: the same function serve.ts builds a subject from (#31741). */
+export function detectOS(): string {
   switch (process.platform) {
     case "darwin":
       return "macos"

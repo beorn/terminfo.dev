@@ -15,6 +15,7 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
   }
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
+    appId: "iterm2",
     titleRead: "none",
     assertOwned: async () => {},
     run,
@@ -48,6 +49,7 @@ test("a system-events declaration reads the window name and does not depend on t
   }
   const adapter = await createDarwinClipboardAdapter({
     appComm: "stable",
+    appId: "iterm2",
     titleRead: "system-events",
     assertOwned: async () => {},
     run,
@@ -67,6 +69,7 @@ test("a measured title refusal is thrown verbatim and never spawns a reader", as
     "Hosted Darwin title read unavailable for cmux: the window server reports the app's own window title (\"Terminal\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43327254711: read-failed with that name observed)"
   const adapter = await createDarwinClipboardAdapter({
     appComm: "cmux",
+    appId: "iterm2",
     titleRead: "system-events",
     titleUnavailable,
     assertOwned: async () => {},

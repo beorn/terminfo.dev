@@ -1232,6 +1232,12 @@ export interface NotificationFixture {
 
 /** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
+  /**
+   * The injection mechanism this adapter drives, as the adapter's own label: "XTEST" on X11 and
+   * "CGEvent" on macOS. A row that names a mechanism must name this one — "OS-level XTEST" on a Mac
+   * named a thing the run never used (#31741 item 4).
+   */
+  readonly mechanism?: string
   injectKey(keys: string): Promise<void>
   /**
    * Move focus to the owned helper window and back, verifying every X focus read. The middle read
@@ -1384,6 +1390,13 @@ export interface TermProbeSource {
   withClipboardFixture?: (
     work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>,
   ) => Promise<ProbeCallbackResult>
+  /**
+   * Present exactly when this run RECORDED a clipboard fixture and the admission gate declined to hand
+   * it to this subject (#31741). A row that finds no fixture names this cause instead of claiming the
+   * run had none — the same shape as `captureGeometryRefusal`, and for the same reason: the old text
+   * named a missing thing that the run's own artifact recorded as present.
+   */
+  clipboardFixtureRefusal?: string
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
@@ -1404,8 +1417,13 @@ export interface TermProbeSource {
    * no adapter is installed, and absent in every run recorded before text frames existed, where the
    * only adapter that could have been installed was a pixel one. */
   captureKind?: "pixels" | "text-cells"
-  /** Present only when an owned OS XTEST adapter is installed for this run. */
+  /** Present only when an owned OS input adapter is installed for this run. */
   input?: InputFixture
+  /**
+   * The mechanism this platform's owned input route uses, present even when no input adapter was
+   * installed, so a row never names another platform's mechanism (#31741 item 4).
+   */
+  inputMechanism?: string
   /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */
   readInput?: (pattern: RegExp, timeoutMs?: number, inject?: () => Promise<void>) => Promise<string[] | null>
   /** Like readInput, but returns the raw bytes. The listener is armed before inject runs. */

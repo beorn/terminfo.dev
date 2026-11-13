@@ -4486,8 +4486,10 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
   }
 }
 
-function liveClipboardNotTested(): ProbeCallbackResult {
-  const note = "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
+function liveClipboardNotTested(
+  refusal?: string,
+): ProbeCallbackResult {
+  const note = refusal ?? "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
   return {
     pass: false,
     note,
@@ -4806,7 +4808,7 @@ async function liveClipboardProbe(
   ctx: TermProbeSource,
   kind: "write" | "read" | "roundtrip",
 ): Promise<ProbeCallbackResult> {
-  if (!ctx.withClipboardFixture) return liveClipboardNotTested()
+  if (!ctx.withClipboardFixture) return liveClipboardNotTested(ctx.clipboardFixtureRefusal)
   return ctx.withClipboardFixture(async (fixture) => {
     const mux = ctx.mux
     if (

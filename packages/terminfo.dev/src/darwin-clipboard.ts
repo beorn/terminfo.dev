@@ -44,6 +44,12 @@ function pasteboardText(raw: string): string {
  */
 export async function createDarwinClipboardAdapter(input: {
   appComm: string
+  /**
+   * The app id this pasteboard belongs to — the same id the run's subject carries, resolved from the
+   * receipt's executable path before the receipt is trusted. Reaching the pasteboard at all proves the
+   * run owns this app, so the binding a gate needs is this field, not the summary sentence (#31741).
+   */
+  appId: string
   titleRead: DarwinTitleRead
   /**
    * The named refusal this route returns instead of a title, when the window-title instrument cannot
@@ -74,6 +80,7 @@ export async function createDarwinClipboardAdapter(input: {
   return {
     profile: "default",
     pasteboard: "darwin",
+    pasteboardApp: input.appId,
     config: null,
     permissions: "clipboard: read=allow,write=allow",
     summary: `darwin hosted pasteboard for ${input.appComm}`,

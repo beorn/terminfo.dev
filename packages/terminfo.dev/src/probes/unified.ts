@@ -55,7 +55,7 @@ import {
   type TTYTraceEvent,
   type TTYTraceScope,
 } from "../tty.ts"
-import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipboard.ts"
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
@@ -293,6 +293,25 @@ export function captureAdapterEligible(
 
 /** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
 const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
+
+/** Why this run's recording pasteboard did not admit a clipboard row (#31741). */
+function clipboardGateRefusal(
+  clipboard: LinuxClipboardAdapter,
+  subject: { kind: "term" | "lib" | "mux"; id: string; os: string } | undefined,
+): string {
+  if (!clipboard) return "this run records no clipboard fixture"
+  if (!subject) return "this run records a clipboard fixture but declares no subject to bind it to"
+  if (clipboard.pasteboard === "darwin") {
+    const app = clipboard.pasteboardApp
+    if (app !== subject.id) {
+      return `this run's Darwin pasteboard belongs to ${app === undefined ? "no recorded app" : JSON.stringify(app)}, not to the run subject ${JSON.stringify(subject.id)}`
+    }
+    if (subject.kind !== "term") {
+      return `this run's Darwin pasteboard is bound to ${JSON.stringify(subject.id)} but the subject is a ${subject.kind}, and only an owned app takes a direct pasteboard route`
+    }
+  }
+  return `this run's clipboard fixture (${JSON.stringify(clipboard.profile)} profile${clipboard.muxAttachmentProof ? `, mux ${clipboard.muxAttachmentProof.mux}` : ""}) does not admit this subject`
+}
 
 /**
  * Direct Linux Apps whose default paste action is reviewed (@cto 73d66ae2, a4ec8fe2); any other App stays gated.
@@ -833,13 +852,18 @@ export async function runProbeBatch(
       disposable.declaredTarget.os === "linux" &&
       clipboard?.muxAttachmentProof?.platform === "linux" &&
       clipboard.muxAttachmentProof.mux === options.subject.id
+    // #31741: this gate admitted nothing on a Mac for two independent reasons. Production spells the OS
+    // `macos` (detect.ts detectOS over process.platform), and a github-hosted-runner receipt is the one
+    // kind a hosted Mac run can carry while carrying no declaredTarget by design (disposable-receipt.ts) —
+    // so `os === "darwin"` and the target clause were both unreachable. @cto a6f2b5fd chose the binding
+    // proof over a receipt-format change: the adapter that owns this run's pasteboard is built from the
+    // receipt's launched executable and now carries that app's id, so the gate matches the FIELD and a
+    // pasteboard built for app A cannot admit a run of app B.
     const isDirectDarwinApp =
       clipboard?.pasteboard === "darwin" &&
       options.subject?.kind === "term" &&
-      options.subject.os === "darwin" &&
-      disposable?.declaredTarget?.kind === "app" &&
-      disposable.declaredTarget.id === options.subject.id &&
-      disposable.declaredTarget.os === "darwin" &&
+      options.subject.os === "macos" &&
+      clipboard.pasteboardApp === options.subject.id &&
       !clipboard.muxAttachmentProof
     if (
       clipboard &&
@@ -889,6 +913,15 @@ export async function runProbeBatch(
           (event) => clipboardEvents.push(event),
           verify,
         )
+    } else if (clipboard && verify) {
+      // #31741: the run HAS a pasteboard, so the row must not be told it has no fixture — that reason
+      // named a thing the same artifact records as present. Say what the gate actually found instead.
+      probeSource.clipboardFixtureRefusal = clipboardGateRefusal(clipboard, options.subject)
+    }
+    if (options.subject?.os === "macos" || options.subject?.os === "linux") {
+      // #31741 item 4: the row names the mechanism this platform's owned route drives — CGEvent on a
+      // Mac (darwin-input.ts), XTEST on X11 — never the other platform's name.
+      probeSource.inputMechanism = options.subject.os === "macos" ? "CGEvent" : "XTEST"
     }
     if (options.input) {
       const input = options.input
