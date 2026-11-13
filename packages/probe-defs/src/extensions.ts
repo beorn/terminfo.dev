@@ -4486,9 +4486,7 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
   }
 }
 
-function liveClipboardNotTested(
-  refusal?: string,
-): ProbeCallbackResult {
+function liveClipboardNotTested(refusal?: string): ProbeCallbackResult {
   const note = refusal ?? "No owned clipboard fixture on this run for this probe; OSC 52 was not sent"
   return {
     pass: false,
