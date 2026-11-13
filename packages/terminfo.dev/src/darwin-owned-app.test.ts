@@ -121,6 +121,16 @@ describe("the owned-Mac app arm claims only the window this run opened", () => {
     )
   })
 
+  it("ignores a launch's offscreen window instead of reading one launch as two windows", async () => {
+    const after = [
+      { id: 1, ownerPid: 111, layer: 0, onscreen: true, namePresent: true, name: "before" },
+      { id: 2, ownerPid: 4242, layer: 0, onscreen: false, namePresent: true, name: "hh-run-1 placeholder" },
+      { id: 3, ownerPid: 4242, layer: 0, onscreen: true, namePresent: true, name: "hh-run-1" },
+    ]
+    const record = await proveOwnedAppLaunch(spec, options({ census: staged([], after), ttyOf: () => "/dev/ttys009" }))
+    expect(record.windowId).toBe(3)
+  })
+
   it("measures the pid, window and tty of the one new window the run opened", async () => {
     const rows = [
       { id: 1, ownerPid: 111, layer: 0, namePresent: true, name: "before" },
