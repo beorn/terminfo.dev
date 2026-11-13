@@ -1848,9 +1848,11 @@ describe("private finite daemon startup", () => {
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
       const closure = expectation.startsWith("closure")
-      const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length) : undefined
+      const nativeQualification = closure || ["non-windows", "pending-write", "write-error"].includes(expectation)
+      const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length)
+        : nativeQualification && !closure ? "kitty" : undefined
       // Existing xterm adapter supplies the substituted native screen; collection/retention stay real.
-      const screen = closure ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
+      const screen = nativeQualification ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
       screen?.init({ rows: 24, cols: 80 })
       const hosted = expectation !== "refusal"
       let reads = 0
@@ -1859,6 +1861,7 @@ describe("private finite daemon startup", () => {
       const darwin = closure || ["pending-write", "write-error", "non-windows", "final-custody"].includes(expectation)
       let text = "stale"
       let finishWrite
+      let selectedWriteFailure
       const out = new Writable({
         write(chunk, encoding, done) {
           writes.push(chunk.toString())
@@ -1922,7 +1925,7 @@ describe("private finite daemon startup", () => {
           summary: "owned fixture",
           ...(darwin && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1;
-            if (closure) { return { status: "read", app: pixelApp ?? "kitty", cells: {
+            if (nativeQualification) { return { status: "read", app: pixelApp ?? "kitty", cells: {
               cols: 80, rows: 24, text: Array.from({length: 24}, (_, row) => Array.from({length: 80}, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")), paddedRows: [], droppedLines: 0
             } } }
             return ({
@@ -1936,8 +1939,8 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async callback => callback(), drainStdin: async () => {},
-        queryMode: closure ? async () => "set" : tty.queryMode,
-        queryCursorPosition: closure ? async () => [1, 1] : tty.queryCursorPosition,
+        queryMode: nativeQualification ? async () => "set" : tty.queryMode,
+        queryCursorPosition: nativeQualification ? async () => [1, 1] : tty.queryCursorPosition,
         queryWithSentinelOutcome: async (sequence, pattern) => {
           const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t"
             : pixelApp === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
@@ -1949,6 +1952,28 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (expectation === "pending-write" || expectation === "write-error") {
+            // Text now serves qualification beside primary pixels. Its reads still wait for output completion.
+            options.out.write("queued-clear")
+            const pending = actualBatch(options)
+            pending.catch(() => {})
+            await Promise.resolve()
+            assert.equal(reads, 0, "qualification readback ran before the selected output completed")
+            assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
+            if (expectation === "write-error") {
+              selectedWriteFailure = new Error("selected output completion failed")
+              const errorSeen = new Promise(resolve => out.once("error", resolve))
+              finishWrite(selectedWriteFailure)
+              const refused = await pending
+              assert.equal(reads, 0)
+              assert.equal(await errorSeen, selectedWriteFailure)
+              assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)))
+              return refused
+            }
+            finishWrite()
+            return pending
+          }
+          if (pixelApp && !closure) return actualBatch(options)
           if (expectation === "timeout" || closure) {
             return actualBatch(options)
           }
@@ -1998,7 +2023,14 @@ describe("private finite daemon startup", () => {
           /Controlled Linux collection requires runtime provenance/u,
         )
       } else {
-        const run = await collectProbeRun({ ids: [expectation === "timeout" || closure ? "erase.character" : "device.xtversion"], out })
+        if (expectation === "write-error") {
+          const refused = await collectProbeRun({ ids: ["erase.character"], out })
+          assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)))
+          assert.equal(reads, 0)
+          assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
+          process.exit(0)
+        }
+        const run = await collectProbeRun({ ids: [expectation === "timeout" || nativeQualification ? "erase.character" : "device.xtversion"], out })
         if (pixelApp) {
           assert.equal(captureKind, "absent", "qualification replaced the primary pixel adapter")
           assert.equal(calibrations, 1, "text qualification skipped pixel calibration")
