@@ -1856,6 +1856,70 @@ async function wholeWindowOscAppCapture(
     }
     ctx.write(clear)
     const cleared = await shoot("effect cleared")
+    if (
+      kind === "progress" &&
+      ctx.mux === undefined &&
+      cleared.pixelsDigest === baseline &&
+      targets.some((digest) => digest !== baseline)
+    ) {
+      // OSC9 also carries text notifications. A numbered text payload must not explain this image change.
+      ctx.write("\x1b]9;terminfo-progress-control-37\x07")
+      const notification = await shoot("numbered text-notification control")
+      if (notification.pixelsDigest !== baseline) {
+        return notTestedResult(`${id}: numbered OSC9 text notification changed the captured window`, state())
+      }
+      const samples: { frame: ObservationFrame; pixelsDigest: string }[] = []
+      for (const [index, value] of [37, 73, 37].entries()) {
+        const phase = `normal ${value}${index === 2 ? " replay" : ""}`
+        ctx.write(`\x1b]9;4;1;${value}\x07`)
+        const sample = await captureStabilityPair(
+          id,
+          "screenshot",
+          () => shoot(`${phase} first`, "target"),
+          () => shoot(`${phase} second`, "target"),
+        )
+        ctx.write(clear)
+        const restored = await shoot(`${phase} cleared`)
+        if (sample.refusal) {
+          return notTestedResult(`${id}: ${phase} captures were not byte-stable`, state())
+        }
+        if (restored.pixelsDigest !== baseline) {
+          return notTestedResult(`${id}: ${phase} clear did not restore the exact baseline`, state())
+        }
+        samples.push(sample.second)
+      }
+      const [first, second, replay] = samples
+      if (
+        first === undefined ||
+        second === undefined ||
+        replay === undefined ||
+        first.pixelsDigest === baseline ||
+        second.pixelsDigest === baseline ||
+        first.pixelsDigest === second.pixelsDigest ||
+        replay.pixelsDigest !== first.pixelsDigest
+      ) {
+        return notTestedResult(`${id}: normal 37/73/37 did not produce distinct, repeatable window images`, state())
+      }
+      return {
+        pass: true,
+        response: JSON.stringify(state()),
+        observation: {
+          outcome: "supported",
+          assertionType: "screenshot",
+          frames,
+          screenshotRef: first.frame.ref,
+        },
+        assertions: [
+          {
+            assertionType: "screenshot",
+            kind: "positive",
+            expected:
+              "OSC9 normal 37/73/37 produces stable, distinct and repeatable captured-window changes after paint, made-up and numbered text-notification controls, with exact clear restoration",
+            observed: JSON.stringify(state()),
+          },
+        ],
+      }
+    }
     if (cleared.pixelsDigest !== baseline || targets.some((digest) => digest !== baseline)) {
       return notTestedResult(
         `${id}: the whole-window effect changed or did not restore its baseline; this no-change branch does not decide that effect`,
@@ -4884,8 +4948,8 @@ async function liveClipboardProbe(
                 outcome: "unsupported",
                 assertionType: "clipboard",
                 note: muxContextNote
-                  ? `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote})`
-                  : "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+                  ? `OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline: the application did not write under this configuration (${muxContextNote})`
+                  : "OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline: the application did not write under this configuration",
               },
               assertions: [
                 {
@@ -4904,24 +4968,32 @@ async function liveClipboardProbe(
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
                 assertionType: "clipboard",
-                note: `Independent clipboard selection remained at the owned baseline through the post-CPR deadline (${muxContextNote}; default set-clipboard=external required for negative grade)`,
+                note: `OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline, but this configuration's set-clipboard is not the default required for a negative grade (${muxContextNote}; default set-clipboard=external required)`,
               },
             }
+          }
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "clipboard",
+              note: "OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline, but a roundtrip negative needs a mux selection owner and this subject has none",
+            },
           }
         }
         const byteLength = Buffer.byteLength(measured)
         const sha256 = createHash("sha256").update(measured).digest("hex")
+        // @cto 41cd2559 condition 5: a pasteboard that now holds a value this run wrote NEITHER as its
+        // baseline NOR as its payload cannot be graded at all - the apparatus can no longer attribute
+        // the selection - so it is probe-invalid with the reason, never "did not write".
+        const unattributable =
+          `Independent clipboard read returned neither the OSC 52 write nonce nor the run's own baseline ` +
+          `(length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            assertionType: "clipboard",
-            note:
-              kind === "write"
-                ? `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`
-                : `Independent clipboard read did not equal the OSC 52 write nonce (length=${byteLength}, sha256=${sha256})${muxContextNote ? ` (${muxContextNote})` : ""}`,
-          },
+          note: unattributable,
+          tests: [{ id: "criterion", status: "probe-invalid" as const, reason: unattributable }],
         }
       }
     }

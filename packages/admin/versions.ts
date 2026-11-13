@@ -87,6 +87,7 @@ const ADAPTER_SOURCE_PATHS = [
   "scripts/release1-collection.ts",
   "scripts/linux-container-run.sh",
   "scripts/owned-app-remote-run.ts",
+  "scripts/owned-app-resource-manifest.ts",
   "scripts/hosted-runner-receipt.ts",
   "packages/terminfo.dev/src/daemon-client.ts",
   "packages/terminfo.dev/src/capture-writer.ts",

@@ -225,7 +225,7 @@ describe("live OSC 52 write ordering", () => {
     expect(result.observation).toMatchObject({
       outcome: "unsupported",
       assertionType: "clipboard",
-      note: "Independent clipboard selection remained at the owned baseline through the post-CPR deadline",
+      note: "OSC 52 bytes went to the run's own session PTY and the selection still held the run's own sentinel unchanged through the post-CPR deadline: the application did not write under this configuration",
     })
     expect(result.assertions).toEqual([
       {
@@ -415,6 +415,9 @@ describe("live OSC 52 write ordering", () => {
     expect(timeoutMuxRead.tests?.[0]?.status).toBe("probe-invalid")
   })
 
+  // @cto 41cd2559 condition 5: a pasteboard that holds a value this run wrote neither as its
+  // baseline nor as its payload cannot be graded - the selection is no longer attributable - so it
+  // refuses the sample by name instead of reading as "did not write".
   test.each([
     {
       label: "empty",
@@ -429,7 +432,7 @@ describe("live OSC 52 write ordering", () => {
       expectedSha256: "f09cfdf97ba152527dcb4eb9dc5341e60a589b00a40f8ab41c6d4bc39961775c",
     },
   ])(
-    "$label clipboard value after CPR decides inconclusive with length and sha256",
+    "$label clipboard value after CPR is probe-invalid with length and sha256",
     async ({ value, expectedLength, expectedSha256 }) => {
       let reads = 0
       const result = await writeProbe()(
@@ -452,13 +455,10 @@ describe("live OSC 52 write ordering", () => {
         }),
       )
       expect(reads).toBe(1)
-      expect(result.observation).toEqual({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        assertionType: "clipboard",
-        note: `Independent clipboard read returned neither the OSC 52 write nonce nor the owned baseline (length=${expectedLength}, sha256=${expectedSha256})`,
-      })
+      const reason = `Independent clipboard read returned neither the OSC 52 write nonce nor the run's own baseline (length=${expectedLength}, sha256=${expectedSha256})`
+      expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
+      expect(result.tests).toEqual([{ id: "criterion", status: "probe-invalid", reason }])
     },
   )
 

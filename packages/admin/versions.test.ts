@@ -3,6 +3,7 @@
  * @level l1
  * @consumer Headless probe cache and selected-run suite identity
  * @testonly none
+ * @reach fs-walk vendor/terminfo.dev/scripts/owned-app-resource-manifest.ts
  * @reach fs-walk vendor/terminfo.dev/content/features.json vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/** vendor/terminfo.dev/packages/terminfo.dev/src/** vendor/terminfo.dev/packages/run-parser/src/** vendor/terminfo.dev/packages/admin/**
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
@@ -112,6 +113,8 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/run-parser/src/index.ts",
     "packages/run-parser/src/app-launch.ts",
     "scripts/release1-collection.ts",
+    // This checker also executes remotely from trusted local text; its bytes define the run.
+    "scripts/owned-app-resource-manifest.ts",
     "packages/terminfo.dev/src/daemon-client.ts",
     "packages/probe-defs/src/helpers.ts",
   ]) {
@@ -129,6 +132,7 @@ test("suite identity changes with executable collection, ownership, capture and 
   expect(snapshot.probes.term).toEqual([...snapshot.probes.term].sort())
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/tty.ts")
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/linux-input.ts")
+  expect(snapshot.sourcePaths).toContain("scripts/owned-app-resource-manifest.ts")
 })
 
 /**

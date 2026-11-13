@@ -75,3 +75,35 @@ test("an app that can read its own pane is never pre-empted by the declaration p
   expect(reads).toBeGreaterThan(0)
   expect(result?.tests?.some((entry) => entry.id === DECLARED_UNTESTABLE_TEST) ?? false).toBe(false)
 })
+/**
+ * @failure A definition the collector's no-pane-read declaration must cover loses its static geometry row, so a
+ *   declared-untestable app would drop one of the feature's rows. The runner side — that the row still reads the
+ *   declaration when geometry is measured, and the geometry refusal when it is not — is covered by
+ *   `packages/terminfo.dev/src/probes/unified.test.ts` through the real batch handoff (@dev/18 peer read, 34005).
+ * @level l1
+ * @consumer The definition-level row set behind a declared-untestable app.
+ * @testonly none
+ */
+test("the declaration covers exactly the approved rows, and each keeps its static geometry row", async () => {
+  // Derived, not typed in: every scrollback, erase and extensions definition runs against the declared source, and
+  // the set that declares must be the approved scope. A definition that starts or stops declaring changes this set.
+  const defs = [...scrollbackProbes, ...eraseProbes, ...extensionsProbes].filter((entry) => entry.term !== undefined)
+  const declared: string[] = []
+  for (const entry of defs) {
+    const result = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
+    const named = result?.tests?.some((item) => item.id === DECLARED_UNTESTABLE_TEST && item.reason === NO_PANE_READ)
+    if (named) declared.push(entry.id)
+  }
+  expect(declared.sort()).toEqual([...ROWS].sort())
+
+  // Each covered definition still carries the static geometry fact (@cto 34005 shape 2), and its own text is the
+  // named declaration and nothing else: named with the collector's reason, never blank.
+  for (const id of ROWS) {
+    const entry = definition(id)
+    expect(entry.termNeedsGeometry, `${id} lost its static geometry row`).toBe(true)
+    const result = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
+    expect(result?.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(result?.tests, id).toEqual([{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", reason: NO_PANE_READ }])
+    expect(result?.note, id).toBe(NO_PANE_READ)
+  }
+})
