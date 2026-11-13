@@ -55,6 +55,67 @@ vi.mock("node:fs", async (importOriginal) => {
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
 
+// @failure A ruled Mac pointer row stays TODO, or the declaration leaks into Linux/new versions.
+// Generic declaration cases below have no exact Mac route table; exercise its real selection and fold.
+it("folds the exact ruled Mac pointer route without changing other platforms or versions", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  try {
+    definition.termWrites = "query"
+    definition.term = async () => notTestedResult("No owned pointer delivery", { input: false })
+    for (const [os, version, expected] of [
+      ["macos", "20240203-110809-5046fc22", "untestable"],
+      ["linux", "20240203-110809-5046fc22", "probe-todo"],
+      ["macos", "unreviewed", "probe-todo"],
+    ] as const) {
+      const declarations = appSemanticDeclarations({ kind: "term", id: "wezterm", version, os })
+      const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+      const row = batch.results.find((result) => result.featureId === id)
+      expect(row?.status).toBe(expected)
+      if (expected === "untestable") {
+        expect(row?.reason).toBe("no permitted pointer route: owned-host rule and hosted no-input rule")
+      }
+    }
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
+
+// @failure A declaration silently coexists with a measurement, hiding that its route ruling is stale.
+// Preserve the measured evidence while refusing the contradictory declaration by name (CTO1dbd273f).
+it("names a ruled pointer declaration collision and retains the actual measurement", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  try {
+    definition.termWrites = "query"
+    definition.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "input_bytes" },
+      tests: [{ id: "criterion", status: "supported", reason: "controlled actual input" }],
+    })
+    const declarations = appSemanticDeclarations({
+      kind: "term",
+      id: "wezterm",
+      version: "20240203-110809-5046fc22",
+      os: "macos",
+    })
+    const batch = await runProbeBatch({ ids: [id], appDeclarations: declarations })
+    expect(batch.observations).toContainEqual(
+      expect.objectContaining({ featureId: id, outcome: "supported", assertionType: "input_bytes" }),
+    )
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("supported")
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: expect.stringMatching(/declared.untestable.*collision/i),
+    })
+  } finally {
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
+
 // @failure An approved exact-version declaration is dropped by either unresolved callback path.
 // Existing native recording cases have no declaration map; both paths are used by prompt callbacks.
 // @level l1
