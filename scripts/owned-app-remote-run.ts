@@ -563,6 +563,9 @@ function hostKeyOf(verboseStderr: string): { algorithm: string; fingerprint: str
   return { algorithm: match[1], fingerprint: match[2] }
 }
 
+/** The light check's exit witness: a `git status` that could not run must never read as clean. */
+const LIGHT_STATUS_WITNESS = "__terminfo_git_status_exit="
+
 /** What a light run checks before it may skip the node_modules hashing: the stage's resource
  * marker still names the lock this machine holds, and the staged checkout still holds the named
  * revision's own tree. Every failure is a reason to restage fully, never a silent shorter check. */
@@ -586,6 +589,14 @@ function readLightStage(
     return {
       ok: false,
       reason: `the stage's resource marker is not JSON (${JSON.stringify(raw.trim().slice(0, 80))})`,
+    }
+  }
+  // JSON parses `null` and every scalar, and reading `.version` off those throws instead of taking
+  // the named full-restage fallback. Only an object can hold a marker.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      reason: `the stage's resource marker is not a JSON object (${JSON.stringify(raw.trim().slice(0, 80))})`,
     }
   }
   const marker = parsed as Partial<ResourceMarker>
@@ -621,12 +632,31 @@ function readLightStage(
     "stage source mismatch",
     `git -C ${shq(checkout)} rev-parse ${shq("HEAD^{tree}")} || true`,
   ).stdout.trim()
-  const status = sshRun(
+  // The exit witness is part of the answer, never a decoration: a status that could not RUN (an
+  // unreadable index, a locked ref store) exits non-zero with empty stdout, and empty stdout read as
+  // "clean" would trust a checkout whose dirt was never observed.
+  const statusProbe = sshRun(
     options,
     "staged source clean",
     "stage source mismatch",
-    `git -C ${shq(checkout)} status --porcelain || true`,
-  ).stdout.trim()
+    `git -C ${shq(checkout)} status --porcelain; printf '\\n${LIGHT_STATUS_WITNESS}%s\\n' "$?"`,
+  )
+  const witness = new RegExp(`(?:^|\\n)${LIGHT_STATUS_WITNESS}(\\d+)\\s*$`).exec(statusProbe.stdout)
+  if (witness === null) {
+    return {
+      ok: false,
+      reason: "the staged checkout's dirty state could not be read (the probe answered no exit code)",
+    }
+  }
+  const statusExit = Number(witness[1])
+  if (statusExit !== 0) {
+    const detail = statusProbe.stderr.trim().split("\n")[0] ?? ""
+    return {
+      ok: false,
+      reason: `the staged checkout's dirty state could not be read (git status exited ${String(statusExit)}${detail === "" ? "" : `: ${detail.slice(0, 120)}`})`,
+    }
+  }
+  const status = statusProbe.stdout.slice(0, witness.index).trim()
   if (head !== options.sourceRevision) {
     return {
       ok: false,
@@ -971,9 +1001,16 @@ function main(options: Parsed): OwnedAppTransportProof {
           `set -e`,
           `mkdir -p ${shq(`${source}/vendor`)}`,
           `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
+          // The checkout is a projection of the named revision, never an authoring tree, so an index
+          // git cannot READ is stale state to rebuild rather than a condition to fail on: without
+          // this, a light run's named "restaging fully" fallback dies on the same index it declined.
+          // The test is the read itself, so a readable index keeps its dirty state for the refusal,
+          // and only the rebuild takes the forcing checkout that replaces the projection.
+          `rebuild=0`,
+          `if ! git -C ${shq(checkout)} status --porcelain >/dev/null 2>&1; then rm -f ${shq(`${checkout}/.git/index`)}; rebuild=1; fi`,
           `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
           `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
-          `git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
+          `if [ "$rebuild" = 1 ]; then git -C ${shq(checkout)} checkout --detach -f ${shq(options.sourceRevision)}; else git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}; fi`,
           `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
         ].join("\n"),
       )

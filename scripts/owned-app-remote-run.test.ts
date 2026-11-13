@@ -1084,4 +1084,35 @@ describe("default stage", () => {
     expect(second.stderr).toContain("restaging fully")
     expect(proof(second).check).toBe("full")
   }, 60_000)
+
+  // Requirement: a `git status` that could not RUN is not a clean checkout. Before the exit witness,
+  // `|| true` turned git's exit 128 into empty stdout, and empty stdout read as clean.
+  it("declines the light check when the staged checkout's dirty state cannot be read", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(proof(first).check).toBe("full")
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    expect(existsSync(index)).toBe(true)
+    writeFileSync(index, "short")
+    const second = run({}, ["--check", "light"], undefined, "kitty-unreadable")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toMatch(/dirty state could not be read/)
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
+
+  // Requirement: a marker that parses as JSON but is not an object must decline by name. JSON null
+  // parsed cleanly and then threw on `.version`, skipping the full-restage fallback entirely.
+  it("declines the light check by name when the stage's resource marker is JSON null", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    writeFileSync(join(stage, ".owned-app-transport-resources"), "null\n")
+    const second = run({}, ["--check", "light"], undefined, "kitty-null-marker")
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stderr).toContain("light check declined")
+    expect(second.stderr).toContain("not a JSON object")
+    expect(second.stderr).toContain("restaging fully")
+    expect(proof(second).check).toBe("full")
+  }, 60_000)
 })
