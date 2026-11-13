@@ -91,9 +91,7 @@ test("the declaration covers exactly the approved rows, and each keeps its stati
   const declared: string[] = []
   for (const entry of defs) {
     const result = await entry.term?.(source({ scrollbackUnavailable: NO_PANE_READ }))
-    const named = result?.tests?.some(
-      (item) => item.id === DECLARED_UNTESTABLE_TEST && item.reason === NO_PANE_READ,
-    )
+    const named = result?.tests?.some((item) => item.id === DECLARED_UNTESTABLE_TEST && item.reason === NO_PANE_READ)
     if (named) declared.push(entry.id)
   }
   expect(declared.sort()).toEqual([...ROWS].sort())
