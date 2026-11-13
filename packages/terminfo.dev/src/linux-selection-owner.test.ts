@@ -66,6 +66,26 @@ test("no owner, a crashed child and unreadable output are named reads that faile
   })
 })
 
+test("child JSON with a missing or malformed field is a named read that failed, never a TypeError", async () => {
+  for (const printed of [
+    { owner: "12" },
+    { owner: "twelve", mask: "1", children: [] },
+    { owner: "12", mask: "1", children: ["zz"] },
+    { owner: "12", mask: "1", children: "13" },
+    null,
+  ]) {
+    const io: SelectionOwnerIo = {
+      child: async () => ({ code: 0, signal: null, stdout: JSON.stringify(printed), stderr: "" }),
+      xprop: async () => "",
+    }
+    expect(await readSelectionTaker("clipboard", "/lib/x", io)).toEqual({
+      read: false,
+      at: expect.any(String),
+      reason: `taker child printed JSON without a numeric owner, mask and children list: ${JSON.stringify(JSON.stringify(printed))}`,
+    })
+  }
+})
+
 test("the real child fails alone when its library cannot load, and the read names its exit", async () => {
   const io = selectionOwnerIo({ ...process.env, DISPLAY: ":0" }, async () => "")
   const read = await readSelectionTaker("clipboard", "/nonexistent/libX11.so.6", io, 10_000)
