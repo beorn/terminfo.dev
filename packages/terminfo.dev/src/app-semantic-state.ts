@@ -1163,7 +1163,22 @@ function muxForwardsTitle(mux: string | undefined, config: string | null | undef
   if (mux === undefined) return undefined
   if (mux !== "tmux") return true
   if (config === null || config === undefined) return undefined
-  return MUX_PROFILE_CONFIG_FILES[config]?.content.split("\n").includes("set-titles on") ?? false
+  const profile = MUX_PROFILE_CONFIG_FILES[config]
+  return profile === undefined ? false : configSetsOptionOn(profile.content, "set-titles")
+}
+
+/**
+ * Reads one tmux option out of the bytes a profile starts the mux with, as tmux itself reads them (#33995): a
+ * `set`/`set-option` command, its flags, then the option name and value. A bare `set-titles on` line is not a
+ * command — tmux exits 0 having ignored it — so it does not count as setting anything.
+ */
+function configSetsOptionOn(content: string, option: string): boolean {
+  return content.split("\n").some((line) => {
+    const [command, ...words] = line.trim().split(/\s+/)
+    if (command !== "set" && command !== "set-option") return false
+    const [name, value] = words.filter((word) => !word.startsWith("-"))
+    return name === option && value === "on"
+  })
 }
 
 export function beginMuxSgrCommandRead(input: {

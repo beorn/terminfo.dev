@@ -416,7 +416,7 @@ screen_config_content() {
 # The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
 # accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
 tmux_config_content() {
-  if [[ "$1" == set-titles ]]; then printf 'set-titles on\nset-titles-string "#T"\n'; fi
+  if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,

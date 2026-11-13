@@ -1958,6 +1958,31 @@ describe("mux profile configs", () => {
       'tmux_config_content "${TERMINFO_MUX_PROFILE:-default}" > "$mux_config"',
     )
   })
+
+  // #33995: tmux reads a bare option line as a command name, ignores it, and starts with set-titles off — which is
+  // how the supplement reached its readiness gate with titles off and a "[tmux]" window name. The profile's bytes
+  // must therefore be tmux commands, and this reads the option back out of a real server started from them.
+  // A host without tmux reports the case as skipped, never as a pass: the point of the case is the server's own
+  // answer, so an unasked question must stay visible in the report.
+  it.skipIf(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status !== 0)(
+    "starts tmux with set-titles on from the profile's own bytes",
+    () => {
+      const scratch = mkdtempSync(join(tmpdir(), "set-titles-profile-"))
+      const config = join(scratch, "tmux.conf")
+      writeFileSync(config, MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content ?? "")
+      const socket = join(scratch, "server.sock")
+      try {
+        const shown = spawnSync("tmux", ["-S", socket, "-f", config, "start-server", ";", "show", "-g", "set-titles"], {
+          encoding: "utf8",
+        })
+        expect(shown.stderr).toBe("")
+        expect(shown.stdout.trim()).toBe("set-titles on")
+      } finally {
+        spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
+        rmSync(scratch, { recursive: true, force: true })
+      }
+    },
+  )
 })
 
 /**
