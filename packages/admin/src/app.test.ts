@@ -1167,7 +1167,14 @@ test.each(["vscode", "cursor"] as const)(
       expect(fs.existsSync(activationPath), "generated extension must retain its own activation before requests").toBe(
         true,
       )
-      const activation = JSON.parse(fs.readFileSync(activationPath, "utf8"))
+      const activation = JSON.parse(fs.readFileSync(activationPath, "utf8")) as {
+        runId: string
+        activationNonce: string
+        extensionPid: number
+        app: { name: string; version: string }
+        requestPath: string
+        replyDirectory: string
+      }
       expect(activation).toMatchObject({
         runId: "private-run",
         extensionPid: process.pid,
@@ -1193,7 +1200,15 @@ test.each(["vscode", "cursor"] as const)(
         await intervals[0]!()
         const replyPath = join(activation.replyDirectory, `${request.nonce}.json`)
         await vi.waitFor(() => expect(fs.existsSync(replyPath)).toBe(true))
-        const reply = JSON.parse(fs.readFileSync(replyPath, "utf8"))
+        const reply = JSON.parse(fs.readFileSync(replyPath, "utf8")) as {
+          evaluatedAt: number
+          sequence: number
+          terminal: {
+            name: string
+            processId: { present: boolean; value?: number }
+            shellIntegrationCwd: { present: boolean; value?: string; reason?: string }
+          }
+        }
         expect(reply).toMatchObject({
           ...request,
           activationNonce: activation.activationNonce,
@@ -1213,8 +1228,11 @@ test.each(["vscode", "cursor"] as const)(
         replies.push(reply)
       }
       expect(nativeReads - nativeReadsBeforeRequests).toBe(3)
-      expect(replies[0].terminal).toEqual(replies[1].terminal)
-      expect(replies[0].sequence).not.toBe(replies[1].sequence)
+      const first = replies[0]
+      const second = replies[1]
+      if (first === undefined || second === undefined) throw new Error("Fixture did not return two native replies")
+      expect(first.terminal).toEqual(second.terminal)
+      expect(first.sequence).not.toBe(second.sequence)
       if (prefix === "cursor") {
         rejectPanel = true
         await expect(exported.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
