@@ -150,7 +150,16 @@ export async function readThroughSentinel<T>(input: {
       Math.abs(impliedPitch.y - size.height) <= slack
     ) {
       const aBox = direction > 0 ? first : second
-      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}` }
+      const bBox = direction > 0 ? second : first
+      // 34015: a box the size of the cell that is one or two pixels short is ACCEPTED, and says so
+      // here — the basis travels on the frame, so a reader can count how many reads leaned on the
+      // slack instead of inferring it from a silence.
+      const short = [aBox, bBox]
+        .map((entry) => sentinelBoxDeficit(entry))
+        .filter((entry): entry is { pixels: number; area: number; short: number } => entry !== undefined)
+        .map((entry) => `${entry.pixels} of ${entry.area} px`)
+      const fill = short.length === 0 ? "" : `; sentinel box accepted short of its area (${short.join(", ")})`
+      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}${fill}` }
     }
     throw wrong(
       `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`,

@@ -22,9 +22,7 @@ describe("34015 sentinel box fill", () => {
   })
 
   it("refuses a box one pixel shorter than the slack allows", () => {
-    expect(sentinelBlockRefusal(box(area - SENTINEL_BOX_SLACK_PX - 1), cell)).toMatch(
-      /against a 8x16 cell/,
-    )
+    expect(sentinelBlockRefusal(box(area - SENTINEL_BOX_SLACK_PX - 1), cell)).toMatch(/against a 8x16 cell/)
   })
 
   it("refuses a box carrying more pixels than its own area", () => {
