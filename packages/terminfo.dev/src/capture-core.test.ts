@@ -86,6 +86,54 @@ test.each(["png", "xwd"] as const)(
   },
 )
 
+test("capture finalizer writes the grid measurement beside the rectangle it mapped (#33982)", async () => {
+  const witness = {
+    a: { cell: { row: 1, col: 2 }, box: { x: 1, y: 0 } },
+    b: { cell: { row: 2, col: 1 }, box: { x: 0, y: 1 } },
+  }
+  const input = {
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png" as const, width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: {
+      origin: { x: 0, y: 0 },
+      basis: "measured fixture",
+      basisKind: "sentinel pair located by frame difference",
+      witness,
+    },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture",
+      role: "target" as const,
+      label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  }
+  const result = await finishCapture(input)
+  // Every field a later comparison needs to recognise one whole-row grid move, and nothing else: the
+  // rectangle alone cannot say whether two frames cropped the same cells (33982).
+  expect(result.frame.cellCrop).toEqual({
+    origin: { x: 0, y: 0 },
+    basis: "sentinel pair located by frame difference",
+    basisDetail: "measured fixture",
+    cell: { width: 1, height: 1 },
+    grid: { columns: 4, rows: 3 },
+    image: { width: 4, height: 3 },
+    witness,
+  })
+  const unmeasured = await finishCapture({
+    ...input,
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+  })
+  // A placement that names no measurement keeps its origin on the frame but cannot be exempted:
+  // `basis` is absent, so `gridMoveExemption` refuses rather than guessing the two were one reading.
+  expect(unmeasured.frame.cellCrop).toMatchObject({ origin: { x: 0, y: 0 }, basisDetail: "measured fixture" })
+  expect(unmeasured.frame.cellCrop?.basis).toBeUndefined()
+})
+
 test("capture finalizer crops the same-shot control region from the same decoded frame (#33117)", async () => {
   const result = await finishCapture({
     directory: directory(),
