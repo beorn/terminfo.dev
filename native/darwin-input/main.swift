@@ -317,13 +317,63 @@ func requireSelectedTab(_ target: Int, _ tty: String) -> String {
 /// The run's own window as the app reports it NOW: the row must still belong to `pid`. Returns the
 /// proof line and the frame from that ONE read, so a coordinate transform and the ownership proof can
 /// never be taken from different reads (@cto cbc34e67 condition 2).
+/// The run's own window's bounds as the window server reports them: floating, unrounded, layer 0, this pid.
+/// Read separately from windowRows because the census row is integer-shaped for its published output and
+/// the safety checks must not inherit that rounding (@dev/17 P1.2).
+func ownedWindowFrame(_ pid: pid_t, _ target: Int) -> CGRect? {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+        return nil
+    }
+    for entry in list {
+        guard (entry[kCGWindowOwnerPID as String] as? Int) == Int(pid) else { continue }
+        guard (entry[kCGWindowLayer as String] as? Int) == 0 else { continue }
+        guard (entry[kCGWindowNumber as String] as? Int) == target else { continue }
+        guard let bounds = entry[kCGWindowBounds as String] as? [String: Any] else { continue }
+        return CGRect(
+            x: number(bounds["X"]), y: number(bounds["Y"]),
+            width: number(bounds["Width"]), height: number(bounds["Height"]))
+    }
+    return nil
+}
+
+/// CGWindowBounds are top-left origin with Y down, measured from the main display; AppKit screen points
+/// are bottom-left origin with Y up. The conversion is one subtraction about the main display's height,
+/// and it is the only one this helper applies — so it is checked by the selftest rather than assumed
+/// (@dev/17 P1.1).
+func appKitPoint(_ point: CGPoint, mainDisplayHeight: CGFloat) -> CGPoint {
+    CGPoint(x: point.x, y: mainDisplayHeight - point.y)
+}
+
+/// The window the window server itself says receives a mouse-down at `point`, from the top down. Unlike a
+/// rectangle walk it skips transparent pixels and windows that ignore mouse events, which is why it is the
+/// decision and the rectangle list is only the naming evidence (@dev/17 P1.1). 0 means no receiver.
+func hitTestWindowNumber(_ point: CGPoint) -> Int {
+    guard let main = NSScreen.screens.first, main.frame.height > 0 else {
+        fail("no main-display geometry is available, so the mouse-down hit test cannot be converted to screen " +
+            "coordinates; refusing to post where no receiver can be proved")
+    }
+    return NSWindow.windowNumber(
+        at: appKitPoint(point, mainDisplayHeight: main.frame.height), belowWindowWithWindowNumber: 0)
+}
+
+/// A drag is a press in one call and a release in the next; this helper's lock covers one invocation and
+/// there is no run-level custody to span the sequence, so a refused middle event would strand an unmatched
+/// press (@dev/17 P1.3, @cto 1ca329e6 carry). Refuse by name instead of half-posting, and post no up into
+/// a window that was never verified.
+func requireDragCustody(_ verb: String) {
+    fail("mouse \(verb) is part of a drag, and this helper has no run-level custody spanning press, move and " +
+        "release; refusing it rather than leaving an unmatched press, so no drag row can be graded here yet")
+}
+
 func requireOwnedWindow(_ pid: pid_t, _ target: Int) -> (proof: String, frame: CGRect) {
-    guard let row = windowRows(pid).first(where: { $0["id"] == target }) else {
+    guard windowRows(pid).contains(where: { $0["id"] == target }) else {
         fail("window \(target) does not belong to pid \(pid) any more, so a posting there could not be this " +
             "run's own window")
     }
-    let frame = CGRect(
-        x: row["x"] ?? 0, y: row["y"] ?? 0, width: row["width"] ?? 0, height: row["height"] ?? 0)
+    guard let frame = ownedWindowFrame(pid, target) else {
+        fail("window \(target) of pid \(pid) reports bounds this helper cannot read, so no point could be " +
+            "proved inside it; refusing to post")
+    }
     guard frame.width >= 1, frame.height >= 1 else {
         fail("window \(target) of pid \(pid) reports no usable size (\(describe(frame)))")
     }
@@ -365,10 +415,12 @@ func screenWindows() -> [ScreenWindow] {
 }
 
 func number(_ value: Any?) -> CGFloat {
-    // Rounded exactly as windowRows rounds its bounds, so the frame a mouse verb checked the point
-    // against and the frame the topmost rule compares are the same rectangle, never one pixel apart.
+    // Authoritative floating bounds, unrounded. Rounding each edge independently can shrink a blocker or
+    // expand permission by up to half a point per edge, which is enough to hide a covering window
+    // (@dev/17 P1.2, 2026-11-13): a foreign window at x=0.49 width 99.49 contains x=99, its rounded
+    // bounds (0...99) do not. Integer consumers round at their own boundary; nothing on the safety path does.
     if let int = value as? Int { return CGFloat(int) }
-    if let double = value as? Double { return CGFloat(Int(double.rounded())) }
+    if let double = value as? Double { return CGFloat(double) }
     return 0
 }
 
@@ -387,14 +439,30 @@ func coveringWindow(_ rows: [ScreenWindow], _ point: CGPoint) -> ScreenWindow? {
 /// post, immediately before it, so nothing separates the proof from the event. The refusal names the
 /// covering window's owner pid and layer — never its title, which is the app's text.
 func requireTopmost(_ point: CGPoint, _ pid: pid_t, _ target: Int, _ operation: String) {
-    let where_ = "point \(Int(point.x)),\(Int(point.y))"
-    guard let covering = coveringWindow(screenWindows(), point) else {
-        fail("no on-screen window contains \(where_), so a mouse \(operation) could not land in the run's " +
-            "own window \(target); refusing it")
+    let where_ = "point \(point.x),\(point.y)"
+    let rows = screenWindows()
+    let covering = coveringWindow(rows, point)
+    let hit = hitTestWindowNumber(point)
+    if hit == 0 {
+        let rect = covering.map {
+            ", although window \($0.id) owned by pid \($0.ownerPid) at layer \($0.layer) lists it in its bounds"
+        } ?? ", and no listed window contains it"
+        fail("the window server reports no window accepts a mouse event at \(where_)\(rect); refusing the mouse " +
+            "\(operation) rather than posting where nothing proved a receiver")
     }
-    if covering.id == target && covering.ownerPid == Int(pid) { return }
-    fail("\(where_) is covered by window \(covering.id) owned by pid \(covering.ownerPid) at layer " +
-        "\(covering.layer), not the run's own window \(target) of pid \(pid); refusing the mouse \(operation)")
+    guard let hitRow = rows.first(where: { $0.id == hit }) else {
+        fail("the mouse-down hit test at \(where_) names window \(hit), which the on-screen list does not carry, " +
+            "so its owner cannot be proved; refusing the mouse \(operation)")
+    }
+    if hit != target || hitRow.ownerPid != Int(pid) {
+        fail("\(where_) hit-tests to window \(hit) owned by pid \(hitRow.ownerPid) at layer \(hitRow.layer), " +
+            "not the run's own window \(target) of pid \(pid); refusing the mouse \(operation)")
+    }
+    if let covering, covering.id != hit {
+        fail("the hit test names window \(hit) while the front-to-back rectangle walk names window " +
+            "\(covering.id) owned by pid \(covering.ownerPid) at layer \(covering.layer); the two readings " +
+            "disagree at \(where_), so the receiver is not proved; refusing the mouse \(operation)")
+    }
 }
 
 /// The topmost rule's own test, on synthetic rows. No window server read, no event, no app, no trust.
@@ -402,8 +470,8 @@ func requireTopmost(_ point: CGPoint, _ pid: pid_t, _ target: Int, _ operation: 
 func selftest() {
     let point = CGPoint(x: 50, y: 50)
     let own = ScreenWindow(id: 7, ownerPid: 100, layer: 0, frame: CGRect(x: 0, y: 0, width: 100, height: 100))
-    func outcome(_ rows: [ScreenWindow]) -> String {
-        guard let row = coveringWindow(rows, point) else { return "none" }
+    func outcome(_ rows: [ScreenWindow], _ at: CGPoint? = nil) -> String {
+        guard let row = coveringWindow(rows, at ?? point) else { return "none" }
         return "window=\(row.id) pid=\(row.ownerPid) layer=\(row.layer)"
     }
     let cases: [(String, String, String)] = [
@@ -437,8 +505,54 @@ func selftest() {
             out("selftest=FAIL case=\(name) got=\(got) want=\(want)")
         }
     }
+    // The arithmetic the hit test stands on, checked here because the platform call itself cannot be
+    // exercised without a window server (@dev/17 P1.1, P1.2).
+    let conversions: [(String, CGPoint, CGFloat, CGPoint)] = [
+        ("appkit-flip-mid", CGPoint(x: 10, y: 90), 100, CGPoint(x: 10, y: 10)),
+        ("appkit-flip-origin", CGPoint(x: 0, y: 0), 900, CGPoint(x: 0, y: 900)),
+        ("appkit-flip-bottom", CGPoint(x: 5, y: 900), 900, CGPoint(x: 5, y: 0)),
+    ]
+    for (name, cg, height, want) in conversions {
+        let got = appKitPoint(cg, mainDisplayHeight: height)
+        if got == want {
+            out("selftest=ok case=\(name)")
+        } else {
+            failed += 1
+            out("selftest=FAIL case=\(name) got=\(got.x),\(got.y) want=\(want.x),\(want.y)")
+        }
+    }
+    // Rounding each edge independently hides this blocker: raw bounds contain x=99, rounded (0...99) do not.
+    let fractional: [(String, [ScreenWindow], CGPoint, String)] = [
+        ("fractional-blocker-not-hidden", [
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 0.49, y: 0, width: 99.49, height: 100)),
+            ScreenWindow(id: 7, ownerPid: 100, layer: 0, frame: CGRect(x: 0, y: 0, width: 200, height: 200)),
+        ], CGPoint(x: 99, y: 50), "window=9 pid=200 layer=0"),
+        ("fractional-far-edge-excluded", [
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 0, y: 0, width: 99.5, height: 100)),
+        ], CGPoint(x: 99.5, y: 50), "none"),
+        ("fractional-origin-inside", [
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 0.5, y: 0, width: 99.5, height: 100)),
+        ], CGPoint(x: 99.9, y: 50), "window=9 pid=200 layer=0"),
+        ("fractional-before-origin", [
+            ScreenWindow(id: 9, ownerPid: 200, layer: 0,
+                         frame: CGRect(x: 0.5, y: 0, width: 99.5, height: 100)),
+        ], CGPoint(x: 0.25, y: 50), "none"),
+    ]
+    for (name, rows, at, want) in fractional {
+        let got = outcome(rows, at)
+        if got == want {
+            out("selftest=ok case=\(name)")
+        } else {
+            failed += 1
+            out("selftest=FAIL case=\(name) got=\(got) want=\(want)")
+        }
+    }
+    let total = cases.count + conversions.count + fractional.count
     if failed > 0 { fail("\(failed) topmost-window selftest case(s) failed") }
-    out("selftest=ok cases=\(cases.count)")
+    out("selftest=ok cases=\(total)")
 }
 
 /// One posted event at a time across processes. The proof and the post must be atomic, or a second run
@@ -539,6 +653,7 @@ case "mouse":
             fail("usage: darwin-input-helper mouse move <pid> <window-id> <plain|dragged> <x> <y>")
         }
         let dragged = arguments[5] == "dragged"
+        if dragged { requireDragCustody("move dragged") }
         guard let x = Double(arguments[6]), let y = Double(arguments[7]) else {
             fail("mouse move requires finite window-relative coordinates; got \(arguments[6]),\(arguments[7])")
         }
@@ -559,6 +674,10 @@ case "mouse":
         guard let button = Int(arguments[5]), [1, 4, 5].contains(button) else {
             fail("mouse \(operation) requires button 1, 4 or 5; got \(arguments[5])")
         }
+        // A left press and its matching release are two invocations: one half can be refused, and then an
+        // unmatched press is live. Refuse both by name until run custody exists (@dev/17 P1.3). Click posts
+        // its own up in the same call; wheel is not a drag.
+        if button == 1 && operation != "click" { requireDragCustody(operation) }
         // A click, press or wheel acts where the pointer IS, so the pointer is proved inside the
         // window that was just proved to be this run's. Nothing here moves it: a caller that has not
         // placed it inside its own window gets a refusal, never a click somewhere else.
