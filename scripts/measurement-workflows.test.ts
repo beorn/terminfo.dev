@@ -682,7 +682,7 @@ test.each([
         // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
-      // Cursor retains its title-timeout diagnostic even when the collector exits successfully.
+      // Editors and cmux retain hand-read evidence on both outcomes, before owned cleanup.
       // Evaluate the workflow's existing boolean expression with a successful collect step;
       // executing the body alone would miss a GitHub condition that skips all this evidence.
       expect(
@@ -692,7 +692,7 @@ test.each([
           matrix: { id: appId },
           steps: { collect: { outputs: { iterm_failure: "" } } },
         }),
-      ).toBe(terminal || appId === "cursor")
+      ).toBe(terminal || editor || appId === "cmux")
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
