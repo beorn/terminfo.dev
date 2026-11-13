@@ -775,6 +775,7 @@ function runHostedDarwinFixture(script: string, timeoutMs = 10_000) {
 function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwner?: Record<string, unknown>) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
   const ownerPidField = ownerPid === undefined ? "" : `appPid: ${ownerPid},`
+  const windowIdField = processOwner?.provider === "iterm2" ? `expectedWindowId: ${processOwner.windowId},` : ""
   const script = `
     import { mock } from "bun:test"
     Object.defineProperty(process, "platform", { value: "darwin" })
@@ -789,7 +790,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwn
     }))
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
       ownedTerminalVerifiedFor: () => true,
-      createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField}
+      createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField} ${windowIdField}
         summary: JSON.stringify({preflightIdentity:{pid:process.pid,startedAtEpochSeconds:1792698257,launchRunId:"a".repeat(32)}}), readGeometry: async () => geometry, dispose: async () => {} })
     }))
     mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
@@ -1587,7 +1588,14 @@ describe("private finite daemon startup", () => {
     { arm: "windowsHosted", app: "kitty", route: "absent", retained: false, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "absent", retained: false, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
-    { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
+    { arm: "darwinHosted", app: "kitty", route: "pixels", retained: true, pid: true },
+    ...["ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"].map((app) => ({
+      arm: "darwinHosted",
+      app,
+      route: "pixels",
+      retained: true,
+      pid: true,
+    })),
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "pixels", retained: true, pid: true },
@@ -1641,6 +1649,8 @@ describe("private finite daemon startup", () => {
           return {
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           ...(arm !== "terminalApp" && { hostedAppId: app }),
+          ...(arm === "terminalApp" && { expectedWindowId: options.terminalApp.windowId }),
+          captureWindowSelection: app === "terminal-app" || app === "iterm2" ? "largest" : "unique",
           ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
           summary: "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
@@ -1659,6 +1669,8 @@ describe("private finite daemon startup", () => {
             : sequence === "\\x1b[16t" ? "\\x1b[6;17;8t"
             : sequence === "\\x1b[14t" ? "\\x1b[4;408;640t"
             : app === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
+            : app === "ghostty" ? "\\x1bP>|ghostty 1.3.1\\x1b\\\\"
+            : app === "wezterm" ? "\\x1bP>|WezTerm 20240203-110809-5046fc22\\x1b\\\\"
             : app === "kitty" ? "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c" : "\\x1b[?1;2c"
           return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
         }
@@ -1666,6 +1678,7 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
         createDarwinCapture: async (_directory, options) => {
           assert.equal(options.appPid, 5705)
+          assert.equal(options.windowSelection, app === "terminal-app" || app === "iterm2" ? "largest" : "unique")
           if (arm === "terminalApp") {
             assert.equal(options.expectedWindowId, 791, "Pixels must come from the asserted Terminal.app window")
             assert.equal(options.ownedHost, true, "An owned Mac must retain window-only capture")
@@ -1683,6 +1696,10 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (!retained && arm !== "windowsHosted") {
+            await assert.rejects(capture({ role: "witness", label: "missing retention" }), /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/)
+            assert.equal(reads, 0, "Missing pixel retention must not select text")
+          }
           if (route === "pixels") {
             assert.equal(typeof capture, "function", "Mac route must attempt a pixel frame")
             assert.equal(captureKind, "absent", "Mac route must not install text-cells")
@@ -1740,7 +1757,7 @@ describe("private finite daemon startup", () => {
         assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
       } else assert.equal(run.rawReplies["collector.windowDisposal"], undefined)
-      assert.equal(typeof capture, retained ? "function" : "undefined")
+      assert.equal(typeof capture, retained || arm !== "windowsHosted" ? "function" : "undefined")
       assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
       assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
@@ -1781,17 +1798,17 @@ describe("private finite daemon startup", () => {
       )
       const lines = stderrWithoutInputInstall(result.stderr)
       expect(result.status, result.stderr).toBe(0)
-      expect(lines, result.stderr).toHaveLength(retained ? 0 : 1)
+      expect(lines, result.stderr).toHaveLength(!retained && arm === "windowsHosted" ? 1 : 0)
       // 33587: an owned Terminal.app run installs keyboard input too, so with a pid and no helper it
       // reaches the adapter and refuses there by name. A refused platform or owner stops the run first.
-      if (arm === "terminalApp" && pid && (route === "absent" || route === "text-cells")) {
+      if (retained && arm === "terminalApp" && pid && (route === "absent" || route === "text-cells")) {
         expect(result.stderr).toContain(
           "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset",
         )
       }
       // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line.
       if (arm !== "terminalApp") expect(result.stderr).not.toContain("collector.inputInstall")
-      if (!retained) {
+      if (!retained && arm === "windowsHosted") {
         expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
         expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
         expect(lines[0]).toMatch(/no-capture branch$/u)
