@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 /**
  * The owned-Mac app arm's REQUIRED proofs, one app at a time (#34012, @cto 47b187f6 + 9f889378).
  *
@@ -73,14 +75,29 @@ export interface LaunchCensusWindow {
   readonly name: string | null
 }
 
+/** Every row the census emitted, before the layer/onscreen filter that selects gradable windows. */
+interface CensusRow extends LaunchCensusWindow {
+  readonly layer: number
+  readonly onscreen: boolean
+}
+
 /**
- * The layer-0, onscreen windows in one census read. Offscreen windows are skipped: a launch builds its
- * window in stages and the window server lists the placeholders too, so counting them would read one
- * launch as two windows (@cto cbc34e67 conditions apply to what is graded, not to what is built).
+ * A window title or a census row must never reach a published record, so a refusal names it by digest and
+ * length instead of embedding it (@cto 7f227fa9 carry a). The grader still gets something to compare.
  */
-export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
+function digestOf(text: string): string {
+  const digest = createHash("sha256").update(text).digest("hex").slice(0, 16)
+  return `sha256:${digest} (${String(text.length)} chars)`
+}
+
+/**
+ * Every row of one census read, WITH its layer and onscreen flag. Rows keep their identity here even when
+ * they are not gradable candidates: whether a process or a window existed before the launch is a question
+ * about all rows, not only about the layer-0 onscreen ones.
+ */
+function censusRows(rows: unknown): CensusRow[] {
   if (!Array.isArray(rows)) throw new Error("the owned-Mac app launch census must be a window list")
-  const out: LaunchCensusWindow[] = []
+  const out: CensusRow[] = []
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw new Error("the owned-Mac app launch census contains a non-object row")
@@ -89,13 +106,15 @@ export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
     // A row that is an object but lacks the identity keys is not one of ours to skip: the census script
     // always emits them, so a missing one means this is not that script's output and nothing here is read.
     if (typeof value.id !== "number" || typeof value.ownerPid !== "number" || typeof value.layer !== "number") {
-      throw new Error(`the owned-Mac app launch census row lacks id, owner or layer: ${JSON.stringify(value)}`)
+      throw new Error(
+        `the owned-Mac app launch census row lacks id, owner or layer: ${digestOf(JSON.stringify(value))}`,
+      )
     }
-    if (value.layer !== 0) continue
-    if (value.onscreen === false) continue
     out.push({
       id: value.id,
       ownerPid: value.ownerPid,
+      layer: value.layer,
+      onscreen: value.onscreen !== false,
       name: value.namePresent === true && typeof value.name === "string" ? value.name : null,
     })
   }
@@ -103,11 +122,25 @@ export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
 }
 
 /**
+ * The layer-0, onscreen windows in one census read. Offscreen windows are skipped: a launch builds its
+ * window in stages and the window server lists the placeholders too, so counting them would read one
+ * launch as two windows (@cto cbc34e67 conditions apply to what is graded, not to what is built).
+ */
+export function launchCensusWindows(rows: unknown): LaunchCensusWindow[] {
+  return censusRows(rows)
+    .filter((row) => row.layer === 0 && row.onscreen)
+    .map((row) => ({ id: row.id, ownerPid: row.ownerPid, name: row.name }))
+}
+
+/**
  * The windows this launch created: not present before it, and owned by a process that was not there
  * either. A window the app already had is never claimed, however well its title matches the marker.
  */
 export function newWindowsForLaunch(before: readonly unknown[], after: readonly unknown[]): LaunchCensusWindow[] {
-  const beforeRows = launchCensusWindows(before)
+  // EVERY row of the before census, any layer and onscreen or not. A process already running with only
+  // offscreen or non-layer-0 windows existed before the launch, and so did a window id already listed
+  // offscreen: filtering the before set would let this launch claim either (@cto 7f227fa9 required 1).
+  const beforeRows = censusRows(before)
   const ids = new Set(beforeRows.map((row) => row.id))
   const pids = new Set(beforeRows.map((row) => row.ownerPid))
   return launchCensusWindows(after).filter((row) => !ids.has(row.id) && !pids.has(row.ownerPid))
@@ -172,22 +205,23 @@ export function proveTtyByTitleEcho(options: TitleEchoOptions): string {
   const attempts = options.attempts ?? 20
   try {
     options.writeTitle(title)
+    let lastSeen: string | null = null
     for (let attempt = 0; attempt < attempts; attempt++) {
       const seen = options.readTitle()
       if (seen !== null) {
-        if (!seen.includes(title)) {
-          throw new Error(
-            `the claimed window ${String(options.windowId)} shows a title that is not this run's echo ` +
-              `(${JSON.stringify(seen)}); the tty is not drawing in the claimed window`,
-          )
+        // A title that does not carry the echo yet is not a refusal: title updates reach the window server
+        // asynchronously, so the old title is expected on the first read or two (@cto 7f227fa9 required 2).
+        if (seen.includes(title)) {
+          return `tty=title-echo window=${String(options.windowId)} nonce=${options.nonce}`
         }
-        return `tty=title-echo window=${String(options.windowId)} nonce=${options.nonce}`
+        lastSeen = seen
       }
       options.wait?.()
     }
     throw new Error(
-      `the claimed window ${String(options.windowId)} reported no title through the census in ${String(attempts)} ` +
-        "attempts, so the title-echo proof cannot show this tty is drawn there",
+      `the claimed window ${String(options.windowId)} did not carry this run's echo in ${String(attempts)} ` +
+        `attempts (last title seen: ${lastSeen === null ? "none, the census withheld it" : digestOf(lastSeen)}), ` +
+        "so the title-echo proof cannot show this tty is drawn there",
     )
   } finally {
     options.restoreTitle()

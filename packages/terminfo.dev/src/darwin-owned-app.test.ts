@@ -69,6 +69,18 @@ describe("the launched window is the one the census did not have before", () => 
     expect(newWindowsForLaunch(before, [row(40, 111), row(42, 111)])).toEqual([])
   })
 
+  it("counts a process that existed only offscreen or on another layer as already there", () => {
+    // The before census holds EVERY row: a pid already running with only offscreen or non-layer-0 windows
+    // existed before this launch, so its new window is not ours to claim.
+    expect(
+      newWindowsForLaunch([row(70, 555, { onscreen: false })], [row(70, 555, { onscreen: false }), row(71, 555)]),
+    ).toEqual([])
+    expect(newWindowsForLaunch([row(72, 556, { layer: 3 })], [row(72, 556, { layer: 3 }), row(73, 556)])).toEqual([])
+    // The same for a window id that was already listed, however it was listed: it did not appear now,
+    // even when the pid it now shows was not in the before census.
+    expect(newWindowsForLaunch([row(74, 557, { onscreen: false })], [row(74, 558)])).toEqual([])
+  })
+
   it("refuses zero new windows and refuses several, instead of picking the larger", () => {
     const before = [row(1, 111)]
     expect(() => oneNewWindowForLaunch(before, before, { value: "hh-run-1", required: false })).toThrow(
@@ -125,17 +137,47 @@ describe("the title echo proves the run's own tty is drawn in the claimed window
     expect(restored).toBe(1)
   })
 
-  it("refuses a window whose title is not this run's echo, and still restores", () => {
+  it("keeps polling while the window still shows the old title, because title updates arrive late", () => {
     let restored = 0
-    expect(() =>
+    let reads = 0
+    const proof = proveTtyByTitleEcho({
+      ...base,
+      readTitle: () => (++reads < 4 ? "hh — the old title" : "hh-tty-echo-abcdefgh1234"),
+      restoreTitle: () => {
+        restored++
+      },
+      wait: () => {},
+      attempts: 6,
+    })
+    expect(proof).toBe("tty=title-echo window=33 nonce=abcdefgh1234")
+    expect(reads).toBe(4)
+    expect(restored).toBe(1)
+  })
+
+  it("refuses only when the echo never arrives, and names the title by digest rather than publishing it", () => {
+    let restored = 0
+    let waits = 0
+    let message = ""
+    try {
       proveTtyByTitleEcho({
         ...base,
-        readTitle: () => "somebody else's title",
+        readTitle: () => "somebody else's secret title",
         restoreTitle: () => {
           restored++
         },
-      }),
-    ).toThrow(/shows a title that is not this run's echo/)
+        wait: () => {
+          waits++
+        },
+        attempts: 3,
+      })
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toMatch(/did not carry this run's echo in 3 attempts/)
+    expect(message).toMatch(/last title seen: sha256:[0-9a-f]{16} \(28 chars\)/)
+    // The observed title must not reach a published record.
+    expect(message).not.toContain("somebody else's secret title")
+    expect(waits).toBe(3)
     expect(restored).toBe(1)
   })
 
@@ -154,7 +196,7 @@ describe("the title echo proves the run's own tty is drawn in the claimed window
         },
         attempts: 3,
       }),
-    ).toThrow(/reported no title through the census in 3 attempts/)
+    ).toThrow(/did not carry this run's echo in 3 attempts \(last title seen: none, the census withheld it\)/)
     expect(waits).toBe(3)
     expect(restored).toBe(1)
   })
