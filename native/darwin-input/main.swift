@@ -14,12 +14,16 @@
 // window) and, when a tab tty is given, the selected tab (Terminal's selected tab of that window has
 // the run's own tty, read by Apple events to Terminal). A key can still reach whatever that tab runs;
 // nothing here proves more than those three facts at post time (@cto 75732b9d,
-// 60e39dfc, 33587: codimac's console has other people's apps open). Mouse and wheel events still use
-// the HID tap; they land by screen position, and the collector never posts them on an owned host. A
-// posting the app ignores is not detectable here: the collector installs this helper only after one
-// injected key comes back through the app's own TTY.
+// 60e39dfc, 33587: codimac's console has other people's apps open). Mouse and wheel events go through
+// the HID tap, which lands by screen position, so every mouse verb now NAMES the pid and window and
+// proves that window is still this pid's, with the point inside its re-read frame, in the same call as
+// the post (@cto cbc34e67). Every posting verb also holds one exclusive lock for the length of its own
+// invocation, so two runs cannot interleave a proof with someone else's focus change. A posting the app
+// ignores is not detectable here: the collector installs this helper only after one injected key comes
+// back through the app's own TTY.
 
 import AppKit
+import Darwin
 import ApplicationServices
 import CoreGraphics
 import Foundation
@@ -181,14 +185,14 @@ func postMouse(_ type: CGEventType, at point: CGPoint) {
     event.post(tap: .cghidEventTap)
 }
 
-func postWheel(_ notches: Int32) {
+func postWheel(_ notches: Int32, at point: CGPoint) {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         fail("the WindowServer returned no HID event source")
     }
     guard let event = CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1, wheel1: notches, wheel2: 0, wheel3: 0) else {
         fail("CGEventCreateScrollWheelEvent returned nil")
     }
-    event.location = currentPointer()
+    event.location = point
     event.post(tap: .cghidEventTap)
 }
 
@@ -271,12 +275,7 @@ func requireKeyWindow(_ pid: pid_t, _ target: Int) -> String {
     }
     // Front is not key: an app can be frontmost with a different one of its windows focused, and a
     // posting then lands there. Refuse by name rather than let that silence be read as the app's.
-    guard let targetRow = windowRows(pid).first(where: { $0["id"] == target }) else {
-        fail("window \(target) of pid \(pid) disappeared between the census and the key-window check")
-    }
-    let targetFrame = CGRect(
-        x: targetRow["x"] ?? 0, y: targetRow["y"] ?? 0,
-        width: targetRow["width"] ?? 0, height: targetRow["height"] ?? 0)
+    let targetFrame = requireOwnedWindow(pid, target).frame
     guard let keyFrame = focusedWindowFrame(pid) else {
         fail("pid \(pid) reported no focused window through the accessibility layer, so the helper cannot " +
             "prove the run's own window \(target) is the key window; refusing to post into a window it " +
@@ -311,6 +310,42 @@ func requireSelectedTab(_ target: Int, _ tty: String) -> String {
             "would reach another tab's shell")
     }
     return "tab=\(tty)"
+}
+
+/// The run's own window as the app reports it NOW: the row must still belong to `pid`. Returns the
+/// proof line and the frame from that ONE read, so a coordinate transform and the ownership proof can
+/// never be taken from different reads (@cto cbc34e67 condition 2).
+func requireOwnedWindow(_ pid: pid_t, _ target: Int) -> (proof: String, frame: CGRect) {
+    guard let row = windowRows(pid).first(where: { $0["id"] == target }) else {
+        fail("window \(target) does not belong to pid \(pid) any more, so a posting there could not be this " +
+            "run's own window")
+    }
+    let frame = CGRect(
+        x: row["x"] ?? 0, y: row["y"] ?? 0, width: row["width"] ?? 0, height: row["height"] ?? 0)
+    guard frame.width >= 1, frame.height >= 1 else {
+        fail("window \(target) of pid \(pid) reports no usable size (\(describe(frame)))")
+    }
+    return ("owned=true pid=\(pid) window=\(target)", frame)
+}
+
+/// Screen points and frames are half-open: a point on the far edge is outside the window it borders.
+func insideWindow(_ point: CGPoint, _ frame: CGRect) -> Bool {
+    point.x >= frame.minX && point.y >= frame.minY && point.x < frame.maxX && point.y < frame.maxY
+}
+
+/// One posted event at a time across processes. The proof and the post must be atomic, or a second run
+/// can move focus between them and the posting lands in another window with its silence read as the
+/// app's (@cto cbc34e67 point 4). One fixed file, exclusive, released when this process exits. The
+/// run-level "one run at a time" is custody, not this lock, and is not built here.
+func holdInputLock() {
+    let path = "/tmp/darwin-input-helper.input.lock"
+    let descriptor = open(path, O_CREAT | O_RDWR, 0o600)
+    if descriptor < 0 {
+        fail("the input lock \(path) could not be opened, so no posting may be proved atomic; refusing to post")
+    }
+    if flock(descriptor, LOCK_EX) != 0 {
+        fail("the input lock \(path) could not be taken, so no posting may be proved atomic; refusing to post")
+    }
 }
 
 func windowId(_ raw: String, _ verb: String) -> Int {
@@ -353,6 +388,7 @@ case "key":
     let pid = processId(arguments[2])
     let target = windowId(arguments[3], "key")
     let posted = keysym(arguments[4])
+    holdInputLock()
     // The process, window and tab proofs and the post share one process call, so nothing can take
     // focus between a separate check and the post.
     let proof = requireKeyWindow(pid, target)
@@ -360,38 +396,64 @@ case "key":
     postKey(posted, to: pid)
     out("posted=key route=pid \(proof)\(tab) code=\(posted.keyCode) unicode=\(posted.unicode.count)")
 case "mouse":
-    guard arguments.count >= 4 else { fail("usage: darwin-input-helper mouse <move|press|release|click> ...") }
+    guard arguments.count >= 6 else {
+        fail("usage: darwin-input-helper mouse <move|press|release|click> <pid> <window-id> ...")
+    }
     requireTrust()
     let operation = arguments[2]
+    let pid = processId(arguments[3])
+    let target = windowId(arguments[4], operation)
+    holdInputLock()
     switch operation {
     case "move":
-        guard arguments.count == 6 else { fail("usage: darwin-input-helper mouse move <plain|dragged> <x> <y>") }
-        let dragged = arguments[3] == "dragged"
-        guard let x = Double(arguments[4]), let y = Double(arguments[5]) else {
-            fail("mouse move requires finite screen coordinates; got \(arguments[4]),\(arguments[5])")
+        guard arguments.count == 8 else {
+            fail("usage: darwin-input-helper mouse move <pid> <window-id> <plain|dragged> <x> <y>")
         }
-        postMouse(dragged ? .leftMouseDragged : .mouseMoved, at: CGPoint(x: x, y: y))
-        out("posted=\(dragged ? "dragged" : "move")")
+        let dragged = arguments[5] == "dragged"
+        guard let x = Double(arguments[6]), let y = Double(arguments[7]) else {
+            fail("mouse move requires finite window-relative coordinates; got \(arguments[6]),\(arguments[7])")
+        }
+        // Window-relative in, screen point out, from the frame proved in this same call.
+        let owned = requireOwnedWindow(pid, target)
+        let point = CGPoint(x: owned.frame.minX + x, y: owned.frame.minY + y)
+        guard insideWindow(point, owned.frame) else {
+            fail("mouse move \(x),\(y) is outside the run's own window \(target) at \(describe(owned.frame)); " +
+                "refusing the move")
+        }
+        postMouse(dragged ? .leftMouseDragged : .mouseMoved, at: point)
+        out("posted=\(dragged ? "dragged" : "move") \(owned.proof) point=\(x),\(y)")
     case "press", "release", "click":
-        guard arguments.count == 4 else { fail("usage: darwin-input-helper mouse \(operation) <button>") }
-        guard let button = Int(arguments[3]), [1, 4, 5].contains(button) else {
-            fail("mouse \(operation) requires button 1, 4 or 5; got \(arguments[3])")
+        guard arguments.count == 6 else {
+            fail("usage: darwin-input-helper mouse \(operation) <pid> <window-id> <button>")
+        }
+        guard let button = Int(arguments[5]), [1, 4, 5].contains(button) else {
+            fail("mouse \(operation) requires button 1, 4 or 5; got \(arguments[5])")
+        }
+        // A click, press or wheel acts where the pointer IS, so the pointer is proved inside the
+        // window that was just proved to be this run's. Nothing here moves it: a caller that has not
+        // placed it inside its own window gets a refusal, never a click somewhere else.
+        let owned = requireOwnedWindow(pid, target)
+        let pointer = currentPointer()
+        guard insideWindow(pointer, owned.frame) else {
+            fail("the pointer is at \(pointer.x),\(pointer.y), outside the run's own window \(target) at " +
+                "\(describe(owned.frame)); refusing the \(operation)")
         }
         switch button {
         case 4, 5:
             // Wheel 4 scrolls up and 5 scrolls down: one line notch per click, the same shape a
             // Linux XTEST button-4/5 click produces.
-            postWheel(button == 4 ? 1 : -1)
+            postWheel(button == 4 ? 1 : -1, at: pointer)
         default:
             switch operation {
-            case "press": postMouse(.leftMouseDown, at: currentPointer())
-            case "release": postMouse(.leftMouseUp, at: currentPointer())
+            case "press": postMouse(.leftMouseDown, at: pointer)
+            case "release": postMouse(.leftMouseUp, at: pointer)
             default:
-                postMouse(.leftMouseDown, at: currentPointer())
-                postMouse(.leftMouseUp, at: currentPointer())
+                postMouse(.leftMouseDown, at: pointer)
+                postMouse(.leftMouseUp, at: pointer)
             }
         }
-        out("posted=\(operation) button=\(button)")
+        out("posted=\(operation) button=\(button) \(owned.proof) point=\(Int(pointer.x - owned.frame.minX))," +
+            "\(Int(pointer.y - owned.frame.minY))")
     default:
         fail("unknown mouse operation: \(operation)")
     }

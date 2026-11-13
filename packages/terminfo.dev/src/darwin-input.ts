@@ -163,24 +163,23 @@ export function selectDarwinInputWindow(rows: unknown, appPid: number, expectedW
 const SELF_TEST_KEYS: readonly string[] = [DARWIN_INPUT_SELF_TEST_KEYSYM, DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM]
 
 /**
- * The owned-host limits over any mechanism (@cto 60e39dfc): pointer events land by screen position,
- * not pid, so they are refused; and a key is posted before delivery is proven only when it is one of
- * the fixed self-test keys, so nothing that could act elsewhere is typed first.
+ * The owned-host limit over any mechanism (@cto 60e39dfc c): a key is posted before delivery is proven
+ * only when it is one of the fixed self-test keys, so nothing that could act elsewhere is typed first.
+ *
+ * Pointer verbs are NOT refused here any more. They were, for the right reason — a pointer event lands
+ * by screen position, not by pid — and that reason is now answered where it belongs: the helper names
+ * the pid and window, re-reads that window's frame in the same call as the post, refuses a point outside
+ * it, and holds one lock across proof and post (@cto cbc34e67). A refusal here would have kept the
+ * proven path and the unproven one in the same shape.
  */
 export function ownedHostMechanism(mechanism: InputMechanism, delivered: () => boolean): InputMechanism {
-  const pointer = (what: string): never => {
-    throw new Error(
-      `macOS ${what} is not posted on an owned host: pointer events land by screen position, not by pid, ` +
-        "so they could reach another app on this console (@cto 60e39dfc d)",
-    )
-  }
   return {
     focus: () => mechanism.focus(),
     geometry: () => mechanism.geometry(),
-    moveTo: () => pointer("pointer movement"),
-    click: () => pointer("click or wheel"),
-    press: () => pointer("button press"),
-    release: () => pointer("button release"),
+    moveTo: (x, y, options) => mechanism.moveTo(x, y, options),
+    click: (button) => mechanism.click(button),
+    press: (button) => mechanism.press(button),
+    release: (button) => mechanism.release(button),
     async key(keys: string) {
       if (!delivered() && !SELF_TEST_KEYS.includes(keys)) {
         throw new Error(
@@ -210,14 +209,22 @@ function helperMechanism(
     if (printed && args[0] !== "windows") log?.(printed)
     return printed
   }
-  let frame: DarwinWindowFrame | undefined
-  const ownedFrame = async (): Promise<DarwinWindowFrame> => {
-    frame ??= selectDarwinInputWindow(JSON.parse(await run("windows", String(appPid))), appPid, target.windowId)
-    return frame
-  }
-  const globalPoint = async (x: number, y: number): Promise<{ x: number; y: number }> => {
-    const window = await ownedFrame()
-    return { x: window.x + x, y: window.y + y }
+  // Read, never memoized: a frame cached at install is a frame that can be stale by the time an event
+  // is posted, and "re-read before every event" is the condition that makes the pointer route provable
+  // (@cto cbc34e67 condition 2). The helper re-reads for itself in the posting call; this one exists for
+  // the caller's own bounds check.
+  const ownedFrame = async (): Promise<DarwinWindowFrame> =>
+    selectDarwinInputWindow(JSON.parse(await run("windows", String(appPid))), appPid, target.windowId)
+  // No derived substitute: a mouse verb names the run's own window, and a mechanism built without one
+  // refuses by name rather than falling back to "the largest window of that pid" — the fallback is how a
+  // posting lands in a window nobody proved (@cto cbc34e67 condition 3, no compatibility arm). In the
+  // shipped path this cannot fire: createDarwinInput refuses an owned host without the window id below.
+  const targetWindow = (verb: string): number => {
+    const windowId = target.windowId
+    if (windowId === undefined || !Number.isSafeInteger(windowId) || windowId <= 0) {
+      throw new Error(`macOS ${verb} needs the run's own window id; got ${String(windowId)}`)
+    }
+    return windowId
   }
   return {
     async focus() {
@@ -228,19 +235,33 @@ function helperMechanism(
     async geometry() {
       return ownedFrame()
     },
+    /**
+     * Window-relative coordinates go to the helper, which re-reads that window's frame and does the
+     * transform itself: the point and the proof then come from ONE read, so a window that moved
+     * between them cannot produce a click at the old place.
+     */
     async moveTo(x: number, y: number, options: { verifyPointer: boolean; dragged: boolean }) {
-      const point = await globalPoint(x, y)
-      await run("mouse", "move", options.dragged ? "dragged" : "plain", String(point.x), String(point.y))
+      const windowId = targetWindow("pointer movement")
+      await run(
+        "mouse",
+        "move",
+        String(appPid),
+        String(windowId),
+        options.dragged ? "dragged" : "plain",
+        String(x),
+        String(y),
+      )
     },
-    /** The shared body has already placed the pointer; clip/wheel act where it landed. */
+    /** The shared body has already placed the pointer; clip/wheel act where it landed, and the helper
+     * proves that place is still inside the run's own window before it posts. */
     async click(button: InputButton) {
-      await run("mouse", "click", String(button))
+      await run("mouse", "click", String(appPid), String(targetWindow("a click")), String(button))
     },
     async press(button: InputButton) {
-      await run("mouse", "press", String(button))
+      await run("mouse", "press", String(appPid), String(targetWindow("a button press")), String(button))
     },
     async release(button: InputButton) {
-      await run("mouse", "release", String(button))
+      await run("mouse", "release", String(appPid), String(targetWindow("a button release")), String(button))
     },
     async key(keys: string) {
       // The helper re-proves the frontmost app, the key window and (with a tab tty) the selected tab
@@ -313,9 +334,16 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
   }
   proven = true
   options.report?.(
-    `darwin input installed${options.ownedHost ? " (owned host: keys to pid only)" : ""}: ` +
+    `darwin input installed${options.ownedHost ? " (owned host: keys and pointer addressed to the run's own window, one posting at a time)" : ""}: ` +
       `pid ${options.appPid}, window ${options.windowId ?? "largest"}, ` +
-      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}`,
+      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}` +
+      // The permission is not ours on an owned host: it belongs to the ssh session's parent, so a
+      // rebuilt machine loses it and every input row fails for a reason nothing in the app explains
+      // (@cto cbc34e67). Recorded here because this string already reaches the run record.
+      (options.ownedHost
+        ? ", permission: inherited from the ssh session's /usr/libexec/sshd-keygen-wrapper Accessibility grant" +
+          " (a rebuilt host must re-create it)"
+        : ""),
   )
   return input
 }
