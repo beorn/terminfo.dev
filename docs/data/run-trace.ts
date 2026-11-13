@@ -12,7 +12,7 @@
  * no path, so no path reaches a trace.
  */
 import { createHash } from "node:crypto"
-import type { ProbeResult, Observation, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
+import type { ProbeResult, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentSelectedVersion, SelectedVersion } from "./selected-results.ts"
 
 /**
