@@ -23,11 +23,11 @@ test("the record carries the read that happened, not the grant it started from",
     },
   }
   const before = cmuxHistoryEvidence(history)
-  const beforeRecord = JSON.parse(before?.["collector.cmuxHistory"] ?? "{}")
+  const beforeRecord = JSON.parse(before?.["collector.cmuxHistory"] ?? "{}") as { lastRead: string }
   expect(JSON.parse(beforeRecord.lastRead)).toMatchObject({ ownership: "nonce", totalLines: 41 })
   current = later
   const after = cmuxHistoryEvidence(history)
-  const afterRecord = JSON.parse(after?.["collector.cmuxHistory"] ?? "{}")
+  const afterRecord = JSON.parse(after?.["collector.cmuxHistory"] ?? "{}") as { lastRead: string }
   expect(JSON.parse(afterRecord.lastRead)).toMatchObject({ ownership: "surface", totalLines: 73 })
 })
 
@@ -56,9 +56,8 @@ test("a launch with no config file keeps the absence in the receipt instead of d
     grantProof: receipt,
     lastRead: null,
   })
-  expect(JSON.parse(JSON.parse(evidence?.["collector.cmuxHistory"] ?? "{}").grantProof).config).toEqual({
-    read: "absent",
-  })
+  const recorded = JSON.parse(evidence?.["collector.cmuxHistory"] ?? "{}") as { grantProof: string }
+  expect((JSON.parse(recorded.grantProof) as { config: unknown }).config).toEqual({ read: "absent" })
 })
 
 test("a run with no cmux arm writes no cmux evidence at all", () => {
