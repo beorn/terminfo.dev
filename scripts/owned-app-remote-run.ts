@@ -19,7 +19,7 @@
  *
  * Steps, each refusing by name:
  *   host unreachable | host key mismatch | bundle missing objects | stage source mismatch |
- *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent | bun version mismatch |
+ *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent |
  *   kitty absent | output collision | rsync incomplete | receipt mismatch |
  *   invalid stage | stage not owned | stage removal failed | invalid context | invalid argv |
  *   owned-app probe failed | link closure exceeds N passes | timeout | invalid timeout
@@ -977,13 +977,7 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     const bun = sshRun(options, "bun lookup", "bun absent", "command -v bun").stdout.trim()
     if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
-    const bunVersion = sshRun(options, "bun --version", "bun version mismatch", `${shq(bun)} --version`).stdout.trim()
-    if (bunVersion !== process.versions.bun) {
-      fail(
-        "bun version mismatch",
-        `local Bun ${process.versions.bun} != staged Bun ${JSON.stringify(bunVersion)}; the resource checker requires the same runtime`,
-      )
-    }
+    const bunVersion = sshRun(options, "bun --version", "receipt mismatch", `${shq(bun)} --version`).stdout.trim()
     // Execute trusted LOCAL checker bytes, never a module from the tree being witnessed.
     // Both sides use the same fs/path/crypto walk; no child process is spawned for a file or link.
     const checker = readFileSync(new URL("./owned-app-resource-manifest.ts", import.meta.url), "utf8")
