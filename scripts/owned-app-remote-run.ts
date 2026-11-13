@@ -979,16 +979,25 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
     const bunVersion = sshRun(options, "bun --version", "bun version mismatch", `${shq(bun)} --version`).stdout.trim()
     if (bunVersion !== process.versions.bun) {
-      fail("bun version mismatch", `local Bun ${process.versions.bun} != staged Bun ${JSON.stringify(bunVersion)}; the resource checker requires the same runtime`)
+      fail(
+        "bun version mismatch",
+        `local Bun ${process.versions.bun} != staged Bun ${JSON.stringify(bunVersion)}; the resource checker requires the same runtime`,
+      )
     }
     // Execute trusted LOCAL checker bytes, never a module from the tree being witnessed.
     // Both sides use the same fs/path/crypto walk; no child process is spawned for a file or link.
     const checker = readFileSync(new URL("./owned-app-resource-manifest.ts", import.meta.url), "utf8")
     const invocation = `\nconsole.log(JSON.stringify(manifestScan(${JSON.stringify(source)}, ${JSON.stringify(light ? checked : [])}, "resource manifest mismatch").lines))`
-    const witnessed = sshRun(options, "remote resource witness", "resource manifest mismatch",
-      `${shq(bun)} --eval ${shq(checker + invocation)}`).stdout
+    const witnessed = sshRun(
+      options,
+      "remote resource witness",
+      "resource manifest mismatch",
+      `${shq(bun)} --eval ${shq(checker + invocation)}`,
+    ).stdout
     let remoteLines: unknown
-    try { remoteLines = JSON.parse(witnessed) } catch {
+    try {
+      remoteLines = JSON.parse(witnessed)
+    } catch {
       fail("resource manifest mismatch", `remote witness returned invalid JSON: ${JSON.stringify(witnessed)}`)
     }
     if (!Array.isArray(remoteLines) || !remoteLines.every((line): line is string => typeof line === "string")) {
