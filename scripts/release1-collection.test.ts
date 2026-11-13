@@ -2216,6 +2216,12 @@ it.each([
     expect(ownedRow.error).toBeUndefined()
     expect(ownedRow.directory, "the default pass launched nothing for the owned row").toBeUndefined()
     expect(pass.errors.filter((error) => error.includes("terminal-app"))).toEqual([])
+    // 33987 (@cto ruling C): every pass carries the declaration it retained beside its own runs.
+    expect(pass.suiteManifest).toBe(`suites/${pass.probeHash}.json`)
+    const retainedPath = join(pass.directory, pass.suiteManifest ?? "")
+    expect(parseJsonStrict(retainedPath, readFileSync(retainedPath, "utf8"))).toMatchObject({
+      probeHash: pass.probeHash,
+    })
     if (fault === "linux-receipt") {
       const linux = pass.contexts.find(
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",

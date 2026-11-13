@@ -19,6 +19,7 @@ function stageRepo(root: string): void {
   symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
   symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
   symlinkSync(join(source, "packages", "admin", "suite-manifest.ts"), join(admin, "suite-manifest.ts"))
+  symlinkSync(join(source, "packages", "admin", "suite-retention.ts"), join(admin, "suite-retention.ts"))
   symlinkSync(join(source, "packages", "admin", "raw-capture.ts"), join(admin, "raw-capture.ts"))
   symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
   symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")

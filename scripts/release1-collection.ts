@@ -46,6 +46,7 @@ import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { assertTerminalWindowRecord } from "../packages/admin/src/terminal-window-record.ts"
 import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { retainSuiteManifest } from "../packages/admin/suite-retention.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
@@ -327,6 +328,8 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
 export interface CollectionPass {
   directory: string
   probeHash: string
+  /** Relative name of the suite declaration this pass retained beside its runs (33987); absent on passes written before it. */
+  suiteManifest?: string
   sourceRevision: string
   inputSha256: Record<string, string>
   catalogIds: string[]
@@ -644,6 +647,9 @@ export async function collectPass(
   const output = realpathSync(outputDirectory)
   const directory = mkdtempSync(join(output, "pass-"))
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+  // 33987 (@cto ruling C): an app, hosted or owned-app pass carries its own declaration, named the same way a
+  // headless collection names its own, so every reader of an unplaced run reads the file beside the run.
+  const suiteManifest = retainSuiteManifest(directory, snapshot)
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
@@ -699,6 +705,7 @@ export async function collectPass(
   const pass: CollectionPass = {
     directory,
     probeHash: snapshot.probeHash,
+    suiteManifest,
     sourceRevision,
     inputSha256,
     catalogIds,

@@ -31,6 +31,7 @@ import {
 } from "@terminfo/probe-defs"
 import { parseJsonStrict, storedProbeStatus, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
+import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
 import { rollupTerminalStatuses, type TerminalStatusRollup } from "./release-scope.ts"
@@ -539,7 +540,7 @@ export function readCollectionPassRow(
   path: string,
   context?: { kind: string; id: string; os: string },
   supplement?: string,
-): { path: string; row: Record<string, unknown> } {
+): { path: string; row: Record<string, unknown>; suiteManifest?: unknown } {
   const pass = parseJsonStrict(path, readFileSync(path, "utf8"))
   if (!record(pass) || !Array.isArray(pass.contexts)) throw new Error(`${path}: missing retained contexts`)
   const rows = pass.contexts.filter(
@@ -573,11 +574,14 @@ export function readCollectionPassRow(
   if (!physical.startsWith(realpathSync(dirname(path)) + sep)) {
     throw new Error(`${path}: rawRun ${rawPath} is outside its pass directory`)
   }
-  return { path: physical, row }
+  return { path: physical, row, suiteManifest: pass.suiteManifest }
 }
 
-/** App passes retain their own index; capture decoding and status folding keep their existing owners. */
-function loadAppWorkingRun(
+/**
+ * App passes retain their own index; capture decoding and status folding keep their existing owners. Exported for the
+ * preview's own reader test (33987); the site reaches it through `siteWorkingHistory` and no other caller exists.
+ */
+export function loadAppWorkingRun(
   selection: WorkingRunSelection,
   context: CensusContext,
   librariesDir: string,
@@ -591,26 +595,36 @@ function loadAppWorkingRun(
     throw new Error(`${selection.dir}: expected one retained pass; found ${passes.length}`)
   }
   const path = join(selection.dir, passName, "pass.json")
-  const { path: rawPath, row } = readCollectionPassRow(path, {
+  const {
+    path: rawPath,
+    row,
+    suiteManifest,
+  } = readCollectionPassRow(path, {
     id: context.terminalId,
     kind: context.kind,
     os: context.os,
   })
   if (row.status !== "classified") throw new Error(`${path}: ${context.context} has no single classified raw capture`)
   const options = { root: REPO_ROOT, catalogIds }
+  // 33987 (@cto ruling C): a pass carries its own declaration; read that file and nothing else. A pass written before
+  // the field existed keeps the committed/current-tree trust it was measured under.
+  const retained =
+    suiteManifest === undefined ? undefined : retainedSuiteManifestPath(dirname(path), suiteManifest, path)
   let run: LoadedRun
   try {
-    run = loadRawCapture(rawPath, options)
+    run = loadRawCapture(rawPath, retained === undefined ? options : { ...options, manifestPath: retained })
   } catch (error) {
     if (!(error instanceof UntrustedSuiteError)) throw error
-    // Only an exact named manifest in the configured producer's library store supplies custody.
+    // A pass written before the field existed (33987) keeps the custody it had: an exact retained declaration in the
+    // configured producer's library store, where a headless collection keeps suites beside its own runs. This route
+    // dies with the last field-less pass; a pass that carries `suiteManifest` never reaches it.
     const manifestPath = readdirSync(librariesDir)
       .filter((name) => RUN_DIR.test(name))
       .sort()
       .reverse()
       .map((name) => join(librariesDir, name, "headless", "suites", `${error.suiteId}.json`))
       .find((candidate) => existsSync(candidate))
-    if (!manifestPath) {
+    if (manifestPath === undefined) {
       return {
         ...selection,
         runs: [],

@@ -224,6 +224,7 @@ function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
     "packages/run-parser/package.json",
     "scripts/build-cli.ts",
     "packages/admin/suite-manifest.ts",
+    "packages/admin/suite-retention.ts",
     "bun.lock",
   ]
 }

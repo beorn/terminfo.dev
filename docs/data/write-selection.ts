@@ -2,12 +2,14 @@
  * Write the current selection to a caller-given path. The file is never committed and is not under content/.
  * Placed runs come from content/. Each --working-run is passed through the existing workingRuns input.
  */
-import { writeFileSync } from "node:fs"
-import { isAbsolute, relative, resolve, sep } from "node:path"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
+import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
 import { loadRawCapture } from "../../packages/admin/raw-capture.ts"
+import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.ts"
 import {
   loadSelectedResults,
   suiteRelationOf,
@@ -139,11 +141,39 @@ export function parseSelectionArgs(argv: readonly string[]): {
   return { out, content, workingRuns }
 }
 
+/**
+ * 33987 (@cto ruling C): a working run is read through the suite declaration its collection retained beside it
+ * (`collection.json` for a headless collection, `pass.json` for an app pass). A run beside no collection record is a
+ * placed corpus original, whose committed manifest is its own trust source.
+ */
+function readWorkingRun(rawPath: string, root: string, catalogIds: readonly string[]): LoadedRun {
+  const directory = dirname(rawPath)
+  const records = ["collection.json", "pass.json"]
+    .map((name) => join(directory, name))
+    .filter((path) => existsSync(path))
+  if (records.length > 1) {
+    throw new Error(`${directory}: a working run's collection carries one record; found ${records.join(", ")}`)
+  }
+  const recordPath = records[0]
+  if (recordPath === undefined) return loadRawCapture(rawPath, { root, catalogIds })
+  const record: unknown = parseJsonStrict(recordPath, readFileSync(recordPath, "utf8"))
+  if (typeof record !== "object" || record === null || Array.isArray(record)) {
+    throw new Error(`${recordPath}: a collection record is a JSON object`)
+  }
+  if (!("suiteManifest" in record)) return loadRawCapture(rawPath, { root, catalogIds })
+  const manifestPath = retainedSuiteManifestPath(
+    directory,
+    (record as Record<string, unknown>).suiteManifest,
+    recordPath,
+  )
+  return loadRawCapture(rawPath, { root, catalogIds, manifestPath })
+}
+
 export function writeSelection(options: { out: string; content: string; workingRuns: readonly string[] }): number {
   refuseOutputUnderContent(options.out, options.content)
   const catalog = Object.keys(loadFeatures(options.content))
   const root = resolve(options.content, "..")
-  const loaded = options.workingRuns.map((path) => loadRawCapture(path, { root, catalogIds: catalog }))
+  const loaded = options.workingRuns.map((path) => readWorkingRun(path, root, catalog))
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
   const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
   const apps = appSections(projection, compatibilitySubjects(projection, options.content), options.content)
