@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import type { ProbeSuiteSnapshot } from "./versions.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot, type ProbeSuiteSnapshot } from "./versions.ts"
 import { parseSuiteManifest, canonicalJson } from "@terminfo/run-parser"
 
 const KINDS = ["term", "lib", "mux"] as const
@@ -52,8 +52,13 @@ export type ExplicitSuiteTarget = Readonly<{ suiteId: string; path: string; mani
  * Read a suite the caller named instead of the live collector suite (28018). A ruling can name an
  * older suite the registry still carries, and no collector can be made to re-derive it.
  * The target is therefore read, never assumed: the id must be shaped like a suite id, a manifest must
- * carry it, and that manifest must declare the id it is filed under. The live snapshot is not consulted
- * and no live-suite comparison runs, because the named suite is deliberately not the live one.
+ * carry it, and that manifest must declare the id it is filed under.
+ *
+ * The one live-suite exception (@cto 70719828 rule 1): `content/suites` is retention, so a suite with
+ * no placed run is correctly absent from it. When the named id IS this tree's live suite, the target
+ * is derived from the measured tree by the one existing deriver instead of refused. Every other
+ * absent id still refuses by name, because a derived declaration never stands in for an older suite
+ * (rule 3), and that is the property 28018 exists to keep.
  */
 export function readExplicitSuiteTarget(root: string, suiteId: string): ExplicitSuiteTarget {
   if (!SUITE_ID_RE.test(suiteId)) {
@@ -63,6 +68,10 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
   }
   const path = join(root, "content", "suites", `${suiteId}.json`)
   if (!existsSync(path)) {
+    const tree = probeSuiteSnapshot(root)
+    if (tree.probeHash === suiteId) {
+      return { suiteId, path: `${suiteId} (derived from this tree)`, manifest: derivedSuiteManifest(tree) }
+    }
     throw new Error(
       `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
     )
