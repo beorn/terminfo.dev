@@ -124,6 +124,7 @@ test("persists and reloads exact bytes, idempotently, refusing conflicts", () =>
 // Existing placement conflicts happen before projection; they cannot catch a subsequent file change.
 test("publication names a stored run changed after projection loaded", () => {
   const f = fixture()
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
   const destination = placeCollectedRun(f.source, f.manifest, f.content)
   const projection = loadSelectedResults(f.content, f.manifest.probeHash)
   expect(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds)).toContain(f.run.runId)
