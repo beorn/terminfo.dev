@@ -33,6 +33,7 @@ import {
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
+import { ownedHistoryReceipt } from "./owned-history-receipt.ts"
 import {
   cmuxConfigPath,
   cmuxHistoryIdentity,
@@ -1643,18 +1644,26 @@ export async function createOwnedTerminal(options: {
                       rows: geometry.rows,
                       startLine: -2147483648,
                     })
-                    return rows.status === "refused"
-                      ? rows
-                      : {
-                          status: "read" as const,
-                          totalLines: rows.rows.length,
-                          screenLines: geometry.rows,
-                          receipt: rows.receipt,
-                        }
+                    if (rows.status === "refused") return rows
+                    // Windows has no pane list and no tty to compare, so the record names the pane and the
+                    // socket's presence and leaves the two tty fields absent rather than guessing one.
+                    const identity = ownedHistoryReceipt({
+                      surface: "wezterm",
+                      pane,
+                      socketPresent: socket !== undefined && socket.trim() !== "",
+                      executable: ownedWezTermCli,
+                    })
+                    if (identity.status === "refused") return { status: "refused" as const, reason: identity.reason }
+                    return {
+                      status: "read" as const,
+                      totalLines: rows.rows.length,
+                      screenLines: geometry.rows,
+                      receipt: identity.receipt,
+                    }
                   })()
             await wezTermOwnerCheck()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
           }
         : undefined
     // A cmux surface answers history through its own CLI, and the collector runs INSIDE that surface: the
@@ -1757,7 +1766,15 @@ export async function createOwnedTerminal(options: {
               throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
             }
             cmuxLastReceipt = read.receipt
-            return read.reading
+            // cmux's own command receipt stays in the grant; the count carries the surface by id, and its
+            // surface id is the pane this run proved at grant.
+            const identity = ownedHistoryReceipt({
+              surface: "cmux",
+              pane: cmuxSurface,
+              executable: ownedCmuxCli,
+            })
+            if (identity.status === "refused") throw new ScrollbackReadingUnavailable(identity.reason)
+            return { ...read.reading, receipt: identity.receipt }
           }
         : undefined
     const readScrollback =
@@ -1768,14 +1785,18 @@ export async function createOwnedTerminal(options: {
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
-            const read = readLinuxKittyScrollback({
-              kitten: join(dirname(linux.executable.path), "kitten"),
-              socket: kittySocket,
-              window: kittyWindow,
-            })
+            const kitten = join(dirname(linux.executable.path), "kitten")
+            const read = readLinuxKittyScrollback({ kitten, socket: kittySocket, window: kittyWindow })
             await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            const identity = ownedHistoryReceipt({
+              surface: "kitty",
+              pane: kittyWindow,
+              socketPresent: kittySocket.trim() !== "",
+              executable: kitten,
+            })
+            if (identity.status === "refused") throw new Error(identity.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: identity.receipt }
           }
         : undefined) ??
       ownedWezTermHistory ??
