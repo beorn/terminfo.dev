@@ -65,6 +65,7 @@ function storedRunReader(path: string, runId: string, sha256: string): () => Run
   // Capture only immutable references and parser inputs, never the loaded run whose payload can be large.
   return () => {
     // The previous trace's raw parse is unreachable now; keep only one run live while rereading.
+    // Once per run, never per cell; full-build tradeoff measured 140 to 189 opens and 98.5 to 106.8 seconds.
     collectGarbage()
     let bytes: string
     try {
