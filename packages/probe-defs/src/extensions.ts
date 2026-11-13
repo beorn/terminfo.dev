@@ -37,6 +37,8 @@ import {
   replyFailure,
   methodUnavailable,
   cancelReplyFailure,
+  cleanupReading,
+  callbackReading,
   reviewResult,
   declaredUntestableResult,
   isDeclaredUntestable,
@@ -7623,7 +7625,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         ]
         const readings: string[] = []
         const state = { before, values, readings, negative: "", restored: "" }
-        let result: ProbeCallbackResult
+        let result: ProbeCallbackResult | undefined
         try {
           for (const value of values) {
             ctx.write(`\x1b]2;${value}\x07`)
@@ -7656,9 +7658,13 @@ const extensionDefinitions: ProbeDefinition[] = [
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
           state.restored = await read()
-          if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+          if (state.restored !== before) {
+            // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+            const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+            if (result) result = cleanupReading(result, cleanup)
+          }
         }
-        return { ...result, response: JSON.stringify(state) }
+        return { ...callbackReading(result), response: JSON.stringify(state) }
       },
       "buffer_state",
     ),
@@ -7816,7 +7822,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controls = ["terminfo-osc0-control-A", "terminfo-osc0-control-B"]
           const readings: string[] = []
           const state = { before, controls, readings, title: "", icon: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -7868,9 +7874,13 @@ const extensionDefinitions: ProbeDefinition[] = [
           } finally {
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
@@ -7994,7 +8004,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const controlReadings: string[] = []
           const readings: string[] = []
           const state = { before, controls, controlReadings, paths, readings, empty: "", negative: "", restored: "" }
-          let result: ProbeCallbackResult
+          let result: ProbeCallbackResult | undefined
           try {
             for (const control of controls) {
               ctx.write(`\x1b]2;${control}\x07`)
@@ -8036,9 +8046,13 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write("\x1b]7;\x07")
             ctx.write(`\x1b]2;${before}\x07`)
             state.restored = await read()
-            if (state.restored !== before) throw new Error(`OSC 7 title restoration mismatch: ${JSON.stringify(state)}`)
+            if (state.restored !== before) {
+              // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+              const cleanup = `OSC 7 title restoration mismatch: ${JSON.stringify(state)}`
+              if (result) result = cleanupReading(result, cleanup)
+            }
           }
-          return { ...result, response: JSON.stringify(state) }
+          return { ...callbackReading(result), response: JSON.stringify(state) }
         }
         const note = "No working-directory metadata readback for OSC 7"
         return {

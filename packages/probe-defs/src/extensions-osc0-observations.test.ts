@@ -158,6 +158,25 @@ test("App OSC 0 with an owned title read still decides supported when the icon r
   expect(title).toBe("incoming App title")
 })
 
+// #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+test("App OSC 0 keeps its decided reading when the owned title cleanup does not restore", async () => {
+  let title = "incoming App title"
+  let reads = 0
+  const source = Object.assign(terminal(exactReplies), {
+    // The last read is the owned-title restore; it answers a title this surface never shows.
+    readTitle: async () => (++reads === 5 ? "leaked-title" : title),
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[2]!
+    },
+  })
+  const result = await termCallback()(source)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  expect(result.note).toMatch(/Owned title restoration mismatch/)
+  expect(result.tests?.some((one) => one.status === "probe-invalid")).toBeFalsy()
+  expect(title).toBe("incoming App title")
+})
+
 // #30559: "sentinel" also covers bytes the terminal did say ahead of the DA1 answer. A reply the label
 // pattern cannot read is not an answer we may call missing, so that shape keeps the old refusal.
 test("App OSC 0 keeps the refusal when a reply precedes the fence but does not match the label pattern", async () => {

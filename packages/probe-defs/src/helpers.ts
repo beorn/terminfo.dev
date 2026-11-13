@@ -359,6 +359,22 @@ export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackRe
   return result
 }
 
+/**
+ * A fixture that could not restore the surface after its controls records that on the reading it produced
+ * (@cto 1676cf8a, slice 2): the reading is the measurement, the restore is our own hygiene. The cleanup
+ * supersedes reply absence, so a reply marker is never attached to a failure the probe caused itself.
+ */
+export function cleanupReading(result: ProbeCallbackResult, cleanup: string): ProbeCallbackResult {
+  const carried = cancelReplyFailure({ ...result })
+  return { ...carried, note: carried.note ? `${carried.note}; ${cleanup}` : cleanup }
+}
+
+/** The reading a callback produced. Reaching a callback's return without one is a bug in its control flow. */
+export function callbackReading(result: ProbeCallbackResult | undefined): ProbeCallbackResult {
+  if (result === undefined) throw new Error("A probe callback reached its return without a reading")
+  return result
+}
+
 /** Add completed producer evidence only where the callback explicitly requested it. */
 export function withReplyFailureEvidence(
   featureId: string,
