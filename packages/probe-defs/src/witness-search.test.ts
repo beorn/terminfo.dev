@@ -48,9 +48,24 @@ describe("34040 the pair search reaches a free cell outside the old fixed list",
 
 describe("34040 a pair that cannot exist refuses and names the screen's limit", () => {
   const recorded = [
-    { arm: "warp modes.decsscls", grid: { rows: 39, cols: 123 }, region: { top: 1, left: 1, bottom: 38, right: 123 }, keep: 39 },
-    { arm: "kitty modes.decsscls", grid: { rows: 20, cols: 61 }, region: { top: 1, left: 1, bottom: 19, right: 61 }, keep: 20 },
-    { arm: "ghostty modes.decsscls", grid: { rows: 21, cols: 61 }, region: { top: 1, left: 1, bottom: 20, right: 61 }, keep: 21 },
+    {
+      arm: "warp modes.decsscls",
+      grid: { rows: 39, cols: 123 },
+      region: { top: 1, left: 1, bottom: 38, right: 123 },
+      keep: 39,
+    },
+    {
+      arm: "kitty modes.decsscls",
+      grid: { rows: 20, cols: 61 },
+      region: { top: 1, left: 1, bottom: 19, right: 61 },
+      keep: 20,
+    },
+    {
+      arm: "ghostty modes.decsscls",
+      grid: { rows: 21, cols: 61 },
+      region: { top: 1, left: 1, bottom: 20, right: 61 },
+      keep: 21,
+    },
   ]
   for (const { arm, grid, region, keep } of recorded) {
     it(`${arm}: one clear row, named`, () => {
@@ -97,7 +112,13 @@ describe("34040 the first cell gets the same search, not a second fixed list", (
   })
 
   it("keeps 33000's preference: directly above the region, then below it", () => {
-    expect(witnessCellFor([{ top: 3, left: 1, bottom: 5, right: 10 }], { rows: 24, cols: 80 })).toEqual({ row: 2, col: 1 })
-    expect(witnessCellFor([{ top: 1, left: 1, bottom: 4, right: 10 }], { rows: 24, cols: 80 })).toEqual({ row: 5, col: 1 })
+    expect(witnessCellFor([{ top: 3, left: 1, bottom: 5, right: 10 }], { rows: 24, cols: 80 })).toEqual({
+      row: 2,
+      col: 1,
+    })
+    expect(witnessCellFor([{ top: 1, left: 1, bottom: 4, right: 10 }], { rows: 24, cols: 80 })).toEqual({
+      row: 5,
+      col: 1,
+    })
   })
 })

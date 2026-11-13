@@ -167,9 +167,9 @@ test("the sentinel cell is one clear of every digested region, and a crowded gri
     ),
   ).toEqual({ row: 24, col: 1 })
   // A footprint that really does use every row still refuses, and now says why in plain words.
-  expect(() =>
-    witnessCellFor([{ top: 1, left: 1, bottom: 22, right: 10 }], { rows: 22, cols: 80 }),
-  ).toThrow(/every row of this 22x80 screen is inside a digested region/)
+  expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 22, right: 10 }], { rows: 22, cols: 80 })).toThrow(
+    /every row of this 22x80 screen is inside a digested region/,
+  )
 })
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {
