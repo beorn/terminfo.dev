@@ -1671,7 +1671,7 @@ export async function createOwnedTerminal(options: {
                   })()
             await wezTermOwnerCheck()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
           }
         : undefined
     // A cmux surface answers history through its own CLI, and the collector runs INSIDE that surface: the
@@ -1792,7 +1792,7 @@ export async function createOwnedTerminal(options: {
             })
             await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
           }
         : undefined) ??
       ownedWezTermHistory ??

@@ -364,7 +364,13 @@ type MuxHistory = number | { reason: ObservationReason; note: string }
  * cursor-position round-trip so the multiplexer has consumed the preceding PTY write (`seed` or `ED3`).
  */
 type FencedHistory =
-  | { readonly status: "read"; readonly lines: number; readonly fence: { readonly row: number; readonly col: number } }
+  | {
+      readonly status: "read"
+      readonly lines: number
+      readonly fence: { readonly row: number; readonly col: number }
+      /** The reader's own pane identity, carried so the artifact shows which pane this count came from. */
+      readonly receipt?: string
+    }
   | { readonly status: "refused"; readonly reason: ObservationReason; readonly note: string }
 
 async function historyLinesFenced(
@@ -396,7 +402,12 @@ async function historyLinesFenced(
       note: `${label} gave no history count: ${JSON.stringify(reading)}`,
     }
   }
-  return { status: "read", lines, fence: { row: fence.row, col: fence.col } }
+  return {
+    status: "read",
+    lines,
+    fence: { row: fence.row, col: fence.col },
+    ...(reading.receipt === undefined ? {} : { receipt: reading.receipt }),
+  }
 }
 
 async function muxHistoryLines(
@@ -475,8 +486,19 @@ async function scrollbackEraseHistory(
     before: number | null
     after: number | null
     alive: number | null
+    receipts: { seed?: string; ED3?: string; alive?: string }
     fences: Array<{ stage: "seed" | "ED3" | "alive"; row: number; col: number }>
-  } = { rows, seeded, requiredHistory: required, refill, before: null, after: null, alive: null, fences: [] }
+  } = {
+    rows,
+    seeded,
+    requiredHistory: required,
+    refill,
+    before: null,
+    after: null,
+    alive: null,
+    receipts: {},
+    fences: [],
+  }
   const invalid = (reason: ObservationReason, note: string): ProbeCallbackResult => ({
     pass: false,
     response: JSON.stringify(state),
@@ -491,6 +513,7 @@ async function scrollbackEraseHistory(
   const before = await historyLinesFenced(ctx, "owned terminal history", read, "seed")
   if (before.status === "refused") return invalid(before.reason, before.note)
   state.before = before.lines
+  if (before.receipt !== undefined) state.receipts.seed = before.receipt
   state.fences.push({ stage: "seed", ...before.fence })
   // Seeding rows+30 lines must leave at least the 30 the criterion writes past the screen; anything
   // less proves the seed never filled history and says nothing about ED3 (@cto 8511f7e3 condition a).
@@ -504,6 +527,7 @@ async function scrollbackEraseHistory(
   const after = await historyLinesFenced(ctx, "owned terminal history", read, "ED3")
   if (after.status === "refused") return invalid(after.reason, after.note)
   state.after = after.lines
+  if (after.receipt !== undefined) state.receipts.ED3 = after.receipt
   state.fences.push({ stage: "ED3", ...after.fence })
   // Both counts are recorded and a non-zero after is a plain fail, never a partial grade
   // (@cto 8511f7e3 condition c).
@@ -521,6 +545,7 @@ async function scrollbackEraseHistory(
   const alive = await historyLinesFenced(ctx, "owned terminal history", read, "alive")
   if (alive.status === "refused") return invalid(alive.reason, alive.note)
   state.alive = alive.lines
+  if (alive.receipt !== undefined) state.receipts.alive = alive.receipt
   state.fences.push({ stage: "alive", ...alive.fence })
   if (alive.lines === 0) {
     return invalid(

@@ -1338,6 +1338,11 @@ export type TerminalScrollbackReading = Readonly<{
   viewportOffset?: number
   /** Maximum retained scrollback history lines, when known by the reader. */
   capacity?: number
+  /**
+   * The reader's own identity receipt, when it produces one: which pane or surface this count came from.
+   * A count without it says which program ran, not which pane was read (@cto 238ed303).
+   */
+  receipt?: string
 }>
 
 /** Post-reset receipt from an owned multiplexer window history reset (#32874). */

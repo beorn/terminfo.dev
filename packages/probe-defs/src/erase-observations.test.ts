@@ -924,6 +924,43 @@ test("erase.screen.scrollback hands the decision to the reader when ANY of captu
   )
 })
 
+/**
+ * @failure The erase arm reads a count through an owned reader and drops the reader's own pane identity, so
+ *   the artifact can only show which program ran, not which pane was read (@cto 238ed303).
+ * @level l1
+ * @consumer erase.screen.scrollback owned-reader arm through the public asynchronous source.
+ * @testonly none
+ */
+test("erase.screen.scrollback carries the reader's pane receipt into its own evidence", async () => {
+  const { ctx } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    readInput: undefined,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return {
+        viewportOffset: 0,
+        totalLines,
+        screenLines: ctx.rows,
+        receipt: JSON.stringify({ pane: readerCalls, tty: "/dev/ttys000" }),
+      }
+    },
+  }
+  const result = (await byId("erase.screen.scrollback").term(withReader)) as ProbeCallbackResult
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  const observed = JSON.parse(String(result.assertions?.[0]?.observed ?? "{}")) as {
+    receipts?: Record<string, string>
+  }
+  const receipts = observed.receipts ?? {}
+  expect(Object.keys(receipts)).toEqual(["seed", "ED3", "alive"])
+  expect(receipts.seed).toContain('"pane":1')
+  expect(receipts.ED3).toContain('"pane":2')
+  expect(receipts.alive).toContain('"pane":3')
+})
+
 test("multiplexer erase.screen.scrollback decides from tmux and screen history counts before and after ED3 (#32774, #32784, @cto e078c568, addfd7b2)", async () => {
   const featureId = "erase.screen.scrollback"
   const sourceRevision = "a".repeat(40)
