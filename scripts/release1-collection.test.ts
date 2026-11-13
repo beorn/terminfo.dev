@@ -491,8 +491,10 @@ it.each([
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
           if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
+          // The foreign-attempt cases deliberately retain an old Terminal.app artifact too; it is
+          // historical downloaded evidence, never a context admitted to the current hosted matrix.
           for (const id of mac
-            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
+            ? ["terminal-app", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
             : ["windows-terminal", "alacritty"]) {
             const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-${cohort ? 2 : 1}`)
             mkdirSync(folder, { recursive: true })
@@ -622,9 +624,10 @@ it.each([
             }
             writeFileSync(
               join(folder, "collector-bun.lock"),
-              // terminal-app is owned (33963) and never reaches a hosted artifact on this host, so the
-              // wrong-lock fixture hangs on a hosted row that does.
-              id === "iterm2" && !textCase && !cohort ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+              // Keep the lock failure on a hosted row; neither owned app downloads an artifact.
+              id === "ghostty" && !textCase && !cohort && !inputChange.startsWith("macos-")
+                ? "wrong lock"
+                : readFileSync(join(CONTENT, "../bun.lock")),
             )
             writeFileSync(
               join(folder, "collector-build.json"),
@@ -1250,8 +1253,8 @@ it.each([
           (row) =>
             row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
         )
-        // Terminal.app left the hosted matrix with 33963: 11 hosted rows across both platforms, 8 on macOS.
-        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 11 : 8)
+        // Both owned apps left the hosted matrix: 10 hosted rows across both platforms, 7 on macOS.
+        expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 10 : 7)
         expect(affected.every((row) => row.status === "not-started" && row.error?.includes("EEXIST"))).toBe(true)
         expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
           inputChange === "blocked-hosted" ? 0 : 1,
@@ -1289,7 +1292,7 @@ it.each([
           expect.anything(),
         )
         const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-        expect(hosted).toHaveLength(os === "macos" ? 8 : 3)
+        expect(hosted).toHaveLength(os === "macos" ? 7 : 3)
         if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
       }
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -1318,13 +1321,14 @@ it.each([
         expect(pass.errors.some((error) => error.includes("windows-measurement") && error.includes("exited 1"))).toBe(
           true,
         )
-        // A hosted macOS row reports the lock refusal; terminal-app is owned now, so on this host it
-        // is recorded "not run" by name and never carries a hosted error.
-        const mac = pass.contexts.find((row) => row.context.id === "iterm2" && row.context.os === "macos")
+        // A hosted row reports the lock refusal; each owned app stays named and never launches by default.
+        const mac = pass.contexts.find((row) => row.context.id === "ghostty" && row.context.os === "macos")
         if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
-        const owned = pass.contexts.find((row) => row.context.id === "terminal-app" && row.context.os === "macos")
-        expect(owned?.notRun).toMatch(/^not run: terminal-app\/macos starts only when it is selected explicitly/)
-        expect(owned?.error).toBeUndefined()
+        for (const id of ["terminal-app", "iterm2"]) {
+          const owned = pass.contexts.find((row) => row.context.id === id && row.context.os === "macos")
+          expect(owned?.notRun).toContain(`not run: ${id}/macos starts only when it is selected explicitly`)
+          expect(owned?.error).toBeUndefined()
+        }
         const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
         expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
         expect(windows?.error).toMatch(/schemaVersion/)
@@ -1420,10 +1424,11 @@ describe("release 1 collection census", () => {
     const missing = census().filter((entry) => entry.route === null)
     expect(missing).toHaveLength(1)
     expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(0)
-    // Terminal.app is the owned route (33963): it is measured on the host that owns it, never by the
-    // hosted matrix, and the rest of the macOS terminals stay hosted.
-    expect(census().find((entry) => entry.id === "terminal-app" && entry.os === "macos")?.route).toBe("local-owned-app")
-    for (const id of ["iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"]) {
+    // Terminal.app and iTerm2 have owned window routes; neither may also dispatch a hosted window.
+    for (const id of ["terminal-app", "iterm2"]) {
+      expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("local-owned-app")
+    }
+    for (const id of ["ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty", "wezterm"]) {
@@ -1631,26 +1636,27 @@ it("routes an owned app away from the hosted matrix, and refuses a transport for
   const routeOf = (contexts: readonly CollectionContext[], id: string): string | null | undefined =>
     contexts.find((context) => context.id === id)?.route
 
-  const withEntry = collectionRoutes(expected, new Set(["terminal-app"]))
-  expect(routeOf(withEntry, "terminal-app")).toBe("local-owned-app")
-  for (const id of apps.filter((candidate) => candidate !== "terminal-app")) {
+  const withEntry = collectionRoutes(expected, new Set(["terminal-app", "iterm2"]))
+  for (const id of ["terminal-app", "iterm2"]) {
+    expect(routeOf(withEntry, id)).toBe("local-owned-app")
+  }
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app" && candidate !== "iterm2")) {
     expect(routeOf(withEntry, id)).toBe("hosted-workflow")
   }
 
   const withEmptySet = collectionRoutes(expected, new Set<string>())
-  // Terminal.app left the hosted matrix with this change, so an empty owned set must leave it NAMED as
-  // uncollectable, never quietly hosted-dispatched as if the owned route had never existed.
-  expect(routeOf(withEmptySet, "terminal-app")).toBeNull()
-  for (const id of apps.filter((candidate) => candidate !== "terminal-app")) {
+  // Missing owned entries stay named as uncollectable rather than falling back to hosted dispatch.
+  for (const id of ["terminal-app", "iterm2"]) expect(routeOf(withEmptySet, id)).toBeNull()
+  for (const id of apps.filter((candidate) => candidate !== "terminal-app" && candidate !== "iterm2")) {
     expect(routeOf(withEmptySet, id)).toBe("hosted-workflow")
   }
 
-  const ownedOnly = withEntry.filter((context) => context.id === "terminal-app")
+  const ownedOnly = withEntry.filter((context) => context.id === "terminal-app" || context.id === "iterm2")
   expect(() => assertOwnedTransportApplies(ownedOnly, "ssh:codi@codimac")).not.toThrow()
   expect(() => assertOwnedTransportApplies(withEmptySet, "ssh:codi@codimac")).toThrow(
     /do not route there: terminal-app\/macos, iterm2\/macos/,
   )
-  expect(() => assertOwnedTransportApplies(withEntry, "ssh:codi@codimac")).toThrow(/iterm2\/macos/)
+  expect(() => assertOwnedTransportApplies(withEntry, "ssh:codi@codimac")).toThrow(/ghostty\/macos/)
   expect(() => assertOwnedTransportApplies(withEmptySet, "local")).not.toThrow()
 })
 

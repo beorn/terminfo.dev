@@ -4,12 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       context_matrix:
-        description: "Collection target rows; defaults to every hosted macOS terminal (Terminal.app is owned, not hosted)"
+        description: "Collection target rows; defaults to every hosted macOS terminal (Terminal.app and iTerm2 use owned routes)"
         type: string
         required: false
         default: >-
           {"include":[
-            {"id":"iterm2","bundle":"/Applications/iTerm.app"},
             {"id":"ghostty","bundle":"/Applications/Ghostty.app"},
             {"id":"alacritty","bundle":"/Applications/Alacritty.app"},
             {"id":"wezterm","bundle":"/Applications/WezTerm.app"},
