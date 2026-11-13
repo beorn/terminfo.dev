@@ -23,6 +23,7 @@ import {
   stackStateResult,
   cleanupReading,
   callbackReading,
+  withCleanupDetail,
 } from "./helpers.ts"
 
 /**
@@ -350,6 +351,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   let pushed = false
   const state: Record<string, unknown> = { before }
   let result: ProbeCallbackResult | undefined
+  let failure: unknown
   try {
     const fixture = async (originalTitle: string, changedTitle: string) => {
       set(saved)
@@ -380,6 +382,9 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
         )
       : { ...methodUnavailable("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
     if (!controlled) result.criterionBranch = "app-title-control"
+  } catch (error) {
+    failure = error
+    throw error
   } finally {
     try {
       if (pushed) ctx.write("\x1b[23;0t")
@@ -387,9 +392,10 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
       set(before)
       state.restored = await read()
       if (state.restored !== before) {
-        // A cleanup failure is recorded on the reading, never instead of it (@cto 1676cf8a, slice 2).
+        // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of either.
         const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
         if (result) result = cleanupReading(result, cleanup)
+        else failure = withCleanupDetail(failure, cleanup)
       }
     }
   }
