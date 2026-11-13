@@ -42,6 +42,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
+import { selectAppProbes } from "../packages/terminfo.dev/src/probes/unified.ts"
 import { assertTerminalWindowRecord } from "../packages/admin/src/terminal-window-record.ts"
 import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -399,8 +400,21 @@ export function ownedAppCommand(
   output: string,
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
+  probeIds?: string[],
 ): { argv: string[]; label: string } {
-  const probe = ["bun", "packages/admin/src/index.ts", "probe", "term", context.id]
+  // An unknown id is refused here, against the catalogue already in this tree, before any host is
+  // contacted. The daemon refuses it with the same sentence, but on the ssh route that arrives only
+  // after the source copy (@cto 737a99e3 condition 2).
+  if (probeIds !== undefined) selectAppProbes(probeIds)
+  // `probe term` was never a registered verb, so no caller could have succeeded before this head.
+  const probe = [
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    context.id,
+    ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]),
+  ]
   if (transport.runner === "local") {
     return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
   }
@@ -731,7 +745,7 @@ export async function collectPass(
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        const command = ownedAppCommand(context, output, ownedApp, sourceRevision)
+        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, probeIds)
         runChild(
           command.argv,
           command.label,
