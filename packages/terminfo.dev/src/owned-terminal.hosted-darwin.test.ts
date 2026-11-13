@@ -196,6 +196,14 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
     process.env.WEZTERM_UNIX_SOCKET = "/private/tmp/term-31741/wezterm.sock"
     let appPid = 4242
     const wezTermCalls = []
+    const kernelPids = []
+    mock.module("./packages/terminfo.dev/src/darwin-kernel-exec.ts", () => ({
+      kernelExecPath: (pid) => {
+        kernelPids.push(pid)
+        return { path: pid === appPid ? executable : pid === 1 ? "/sbin/launchd" : "/bin/zsh",
+          reader: "fixture", error: null, attempts: [] }
+      }
+    }))
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
@@ -242,11 +250,14 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, "wezterm")
     assert.equal(owner.appPid, 4242)
+    // Hosted evidence names the measured kernel path; argv0 alone is not that path (#30392).
+    assert.equal(JSON.parse(owner.summary).darwinHosted.ancestor.kernelExecutable, executable)
     assert.equal(typeof owner.getScrollback, "function")
     const atGrant = wezTermCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
     assert.equal(error?.message, "Hosted WezTerm ancestor is now pid 5555, not pid 4242 measured at grant")
+    assert.ok(kernelPids.includes(5555), "the read-time ancestry recheck also measures the new hop's kernel path")
     assert.equal(wezTermCalls.length, atGrant, "no WezTerm CLI read may follow the refusal")
     await owner.dispose()
   `
