@@ -411,6 +411,15 @@ export interface PreparedCliLaunch {
   marker: ProcessMarker
 }
 
+/**
+ * The bundle id this app registry names for `id`, or undefined when it has no row — the ONE place a bundle id
+ * comes from, so a caller that needs to bind a running bundle to an app refuses by name instead of guessing
+ * (@cto 2026-11-13: no fallback string anywhere else).
+ */
+export function appBundleId(id: string): string | undefined {
+  return APPS.find((candidate) => candidate.id === id)?.bundleId
+}
+
 /** Prepare the existing CLI recipe without writing the caller's command or starting a daemon. */
 export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
   const app = APPS.find((candidate) => candidate.id === appId)

@@ -73,6 +73,13 @@ import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibr
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
+import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
+import {
+  ordinaryOpenReceiptPath,
+  ordinaryOpenRecord,
+  resolveOrdinaryOpenRun,
+  type OrdinaryOpenRun,
+} from "./ordinary-open-run.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   buildDarwinInputHelper,
@@ -1081,6 +1088,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const clipboard = ownedTerminal?.clipboard
     const attachment = ownedTerminal?.muxAttachmentProof
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
+    // Set only when this run was handed an ordinary-open receipt: the app a person opened themselves
+    // (@cto 2026-11-13). It grants the three OSC 52 rows and nothing else.
+    let ordinaryOpen: OrdinaryOpenRun | undefined
     try {
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
@@ -1197,6 +1207,24 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
               const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
+              // A person's own window (@cto 2026-11-13 PLAN GO): the receipt binds THIS run or the run refuses
+              // here, before a single row exists. No owned terminal is involved, so the version it binds is the
+              // one these rows will carry, resolved exactly as the subject below resolves it.
+              const ordinaryOpenReceipt = ordinaryOpenReceiptPath()
+              if (ordinaryOpenReceipt !== undefined) {
+                ordinaryOpen = await resolveOrdinaryOpenRun({
+                  receiptPath: ordinaryOpenReceipt,
+                  runId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+                  subject: {
+                    id: measuredTerminal.name,
+                    os: terminal.os,
+                    version: declaredAppVersion(
+                      resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, draft.rawReplies),
+                      process.env.TERMINFO_TARGET_VERSION,
+                    ),
+                  },
+                })
+              }
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,
@@ -1239,6 +1267,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(ownedTerminal && { ownedTerminal }),
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
+                ...(ordinaryOpen && {
+                  ordinaryOpen: {
+                    receipt: ordinaryOpen.receipt,
+                    expectedBundleId: ordinaryOpen.expectedBundleId,
+                    clipboard: ordinaryOpen.clipboard,
+                  },
+                }),
                 ...(prepareCapture && { prepareCapture }),
                 ...(finishCapture && { finishCapture }),
               })
@@ -1268,6 +1303,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
+    if (ordinaryOpen) batch.rawReplies[ORDINARY_OPEN_COLLECTOR_KEY] = ordinaryOpenRecord(ordinaryOpen)
     const measuredVersion =
       (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
         ? batch.appLaunch.productVersion
