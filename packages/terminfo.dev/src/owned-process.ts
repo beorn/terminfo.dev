@@ -11,8 +11,8 @@ export interface ProcessMarker {
 }
 
 /**
- * Why the recorded pid is this run's. A run-scoped argv marker names it directly. iTerm2 takes no argv
- * marker, so its basis is the launch preflight: no instance of its binary ran under this account before
+ * Why the recorded pid is this run's. A run-scoped argv marker names it directly. iTerm2 retains its
+ * sole-instance preflight independently of its isolation marker: no instance ran under this account before
  * the launch, and exactly one, started after the preflight, ran after it (@cto 11983ea0, condition 1).
  */
 export type ProcessOwnerBasis =
@@ -211,7 +211,7 @@ export function assertOwnedProcess(owned: OwnedProcess, daemonPid: number, who: 
       break
     }
     case "sole-instance":
-      // No argv marker exists to read. The launch preflight is the basis; the pid, binary, TTY and
+      // The launch preflight is the basis; the pid, binary, TTY and
       // ancestry checks around this switch are the live proof.
       break
     default: {

@@ -38,7 +38,7 @@ import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
-import { launchIterm2Window, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
+import { prepareIterm2Launch, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -200,8 +200,16 @@ const APPS: AppDef[] = [
     name: "iTerm2",
     id: "iterm2",
     appPath: "/Applications/iTerm.app",
-    binaryPath: "", // iTerm2 uses AppleScript (its own API, not System Events)
+    binaryPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     bundleId: "com.googlecode.iterm2",
+    // The suite isolates startup state; the iTerm-specific arm still proves the exact CG window.
+    cliLaunch: {
+      spawnPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+      executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+      markerFlag: "-suite",
+      markerValue: (run) => `dev.terminfo.iterm2.${run.id}`,
+      args: (script, markerValue) => ["-suite", markerValue, `--command=${script}`],
+    },
   },
   {
     name: "Terminal.app",
@@ -542,7 +550,10 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
     // launch to an already-running instance. The marker is what survives, so the owner is resolved
     // from it once the daemon has registered, never from this child handle.
-    return launchPreparedCli(prepareCliLaunch(app.id, run))
+    const prepared = prepareCliLaunch(app.id, run)
+    const iterm2 = app.id === "iterm2" ? prepareIterm2Launch(run.scriptPath, prepared.executablePath) : undefined
+    const launched = launchPreparedCli(prepared)
+    return iterm2 === undefined ? launched : { ...launched, iterm2 }
   }
 
   if (app.id === "kitty" && existsSync(app.binaryPath)) {
@@ -574,15 +585,6 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
       identityPath,
       instanceGroup,
       launcherStderr: String(launched.stderr ?? ""),
-    }
-  }
-
-  if (app.id === "iterm2") {
-    // The one Apple event iTerm2 receives (@cto 493ddb28); the owner is resolved after the daemon registers.
-    return {
-      proc: null,
-      identityPath,
-      iterm2: launchIterm2Window(run.scriptPath, join(app.appPath, "Contents", "MacOS", "iTerm2")),
     }
   }
 
