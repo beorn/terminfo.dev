@@ -334,6 +334,8 @@ export function createClipboardTransaction(
   options?: {
     readonly writeDeadlineMs?: number
     readonly writePollMs?: number
+    /** @cto 2026-11-13: the clipboard-read setting this run applied, so a profile reading names itself. */
+    readonly readProfile?: { readonly profile: string; readonly setting: string }
     /**
      * An owned host's pasteboard is shared with everything else on that machine (@cto 1c7e19df):
      * the sha256 of foreign text in a diagnostic is a guessable fingerprint of a short secret, so
@@ -401,6 +403,7 @@ export function createClipboardTransaction(
       const realKeyEvent = io.realKeyEvent
       const fixture: ClipboardFixture = {
         baseline,
+        ...(options?.readProfile && { readProfile: options.readProfile }),
         ...(muxSnapshot?.tmuxSetClipboard !== undefined && { tmuxSetClipboard: muxSnapshot.tmuxSetClipboard }),
         ...(options?.writeDeadlineMs !== undefined && { writeDeadlineMs: options.writeDeadlineMs }),
         ...(options?.writePollMs !== undefined && { writePollMs: options.writePollMs }),
@@ -1143,44 +1146,50 @@ export async function createLinuxClipboardAdapter(
       realKeyEvent: (trace, verify) =>
         pressRealKey(receipt.terminal.windowId, (file, args) => command(file, args, env), xServerTimeMs, trace, verify),
     },
-    tmuxTarget
-      ? {
-          muxState: {
-            async snapshot() {
-              await assertOwned()
-              const rawOption = await command(
-                tmuxTarget.executable.path,
-                ["-S", tmuxTarget.socketPath, "show-options", "-s", "-v", "set-clipboard"],
-                env,
-              )
-              await assertOwned()
-              const tmuxSetClipboard = rawOption.trim()
-              if (!tmuxSetClipboard) throw new Error("Owned tmux set-clipboard option readback was empty")
-              const buffers = await listTmuxBuffers(tmuxTarget)
-              return { tmuxSetClipboard, buffers }
-            },
-            async restore(before) {
-              const keep = new Set(before)
-              const current = await listTmuxBuffers(tmuxTarget)
-              for (const name of current) {
-                if (!keep.has(name)) {
-                  await assertOwned()
-                  await command(
-                    tmuxTarget.executable.path,
-                    ["-S", tmuxTarget.socketPath, "delete-buffer", "-b", name],
-                    env,
-                  )
-                  await assertOwned()
-                }
-              }
-              const restored = await listTmuxBuffers(tmuxTarget)
-              if (JSON.stringify(restored) !== JSON.stringify(before)) {
-                throw new Error("Owned tmux paste buffer restoration verification failed")
-              }
-            },
+    {
+      // @cto 2026-11-13: a profile reading names its profile and its exact setting; a default-configuration reading
+      // names nothing, and that absence is what tells the two apart downstream.
+      ...(receipt.profile !== "default" &&
+        CLIPBOARD_ALLOW_ARGS[app].length > 0 && {
+          readProfile: { profile: receipt.profile, setting: `${app} ${CLIPBOARD_ALLOW_ARGS[app].join(" ")}` },
+        }),
+      ...(tmuxTarget && {
+        muxState: {
+          async snapshot() {
+            await assertOwned()
+            const rawOption = await command(
+              tmuxTarget.executable.path,
+              ["-S", tmuxTarget.socketPath, "show-options", "-s", "-v", "set-clipboard"],
+              env,
+            )
+            await assertOwned()
+            const tmuxSetClipboard = rawOption.trim()
+            if (!tmuxSetClipboard) throw new Error("Owned tmux set-clipboard option readback was empty")
+            const buffers = await listTmuxBuffers(tmuxTarget)
+            return { tmuxSetClipboard, buffers }
           },
-        }
-      : undefined,
+          async restore(before) {
+            const keep = new Set(before)
+            const current = await listTmuxBuffers(tmuxTarget)
+            for (const name of current) {
+              if (!keep.has(name)) {
+                await assertOwned()
+                await command(
+                  tmuxTarget.executable.path,
+                  ["-S", tmuxTarget.socketPath, "delete-buffer", "-b", name],
+                  env,
+                )
+                await assertOwned()
+              }
+            }
+            const restored = await listTmuxBuffers(tmuxTarget)
+            if (JSON.stringify(restored) !== JSON.stringify(before)) {
+              throw new Error("Owned tmux paste buffer restoration verification failed")
+            }
+          },
+        },
+      }),
+    },
   )
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
   let screenRead = 0

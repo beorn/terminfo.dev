@@ -1407,3 +1407,65 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
     })
   })
 })
+
+// @cto 2026-11-13: a read's feature is the query, so the read leg carries a control. No control reply is a named
+// probe-todo (nothing measured the channel); a control reply with a silent query is unsupported (the feature is
+// absent in this configuration); and a profile reading names its profile and exact setting so it can never be read
+// as the default configuration a person gets when they open the app.
+describe("OSC 52 read leg control and profile naming", () => {
+  function readCallback() {
+    const found = ALL_PROBES.find((item) => item.id === "extensions.osc52-read")?.term
+    if (!found) throw new Error("OSC 52 read callback is missing")
+    return found
+  }
+
+  test("no control reply is probe-todo naming the control, never unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        queryCursorPosition: async () => undefined,
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "cursor-position control before the OSC 52 read",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("control answered and the query silent is unsupported, and the record names no profile on a default reading", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toBe("cursor-position control answered; OSC 52 c returned no reply")
+  })
+
+  test("an answered query passes and its note carries the profile and exact setting", async () => {
+    let seeded = ""
+    const result = await readCallback()(
+      termSource({
+        queryOutcome: async () => {
+          const raw = `\x1b]52;c;${btoa(seeded)}\x07`
+          return { match: [raw, btoa(seeded)], reason: "reply" as const, raw, rawBase64: "" }
+        },
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async (text) => {
+              seeded = text
+            },
+            readProfile: { profile: "allow", setting: "kitty clipboard_control=write-clipboard read-clipboard" },
+          }),
+      }),
+    )
+    expect(result.pass).toBe(true)
+    expect(result.observation?.note).toContain("allow: kitty clipboard_control=write-clipboard read-clipboard")
+  })
+})

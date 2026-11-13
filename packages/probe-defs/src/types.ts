@@ -1179,6 +1179,13 @@ export interface PasteRoute {
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
   readonly baseline?: string
+  /**
+   * The clipboard-read setting this run's owned configuration applied, when it applied one (@cto 2026-11-13): a
+   * record names its profile and the exact setting, so a profile reading is never mistaken for the default
+   * configuration a person gets when they open the app. Absent on a default-configuration reading, and absent on a
+   * Mac ordinary-open run, where the app keeps its own settings.
+   */
+  readonly readProfile?: { readonly profile: string; readonly setting: string }
   /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
   readonly disposableSession?: boolean
   /** Verified tmux server `set-clipboard` option read before the callback (#32164). */
