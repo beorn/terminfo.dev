@@ -473,6 +473,7 @@ export function readOwnedAppTransportProof(
     hostKeyFingerprint?: unknown
     resourceManifestSha256?: unknown
     resourceFiles?: unknown
+    check?: unknown
     output?: { directory?: unknown }
   }
   if (receipt.schemaVersion !== 1 || receipt.kind !== TRANSPORT_RECEIPT_KIND) {
@@ -481,6 +482,15 @@ export function readOwnedAppTransportProof(
   if (receipt.grants !== "nothing") {
     throw new Error(
       `owned-app transport receipt at ${path} claims ${JSON.stringify(receipt.grants)}; this kind grants nothing`,
+    )
+  }
+  // The check depth is part of what a run is. A light transport check never hashed the staged
+  // node_modules trees: it trusts them through the stage's marker, so its receipt can describe them
+  // only by reference and cannot stand for bytes this corpus counts. A receipt written before the
+  // field existed hashed everything, which is what a missing field means.
+  if (receipt.check !== undefined && receipt.check !== "full") {
+    throw new Error(
+      `owned-app transport receipt at ${path} records a ${JSON.stringify(receipt.check)} check; only a full check may be placed`,
     )
   }
   if (receipt.sourceRevision !== expectedRevision) {
