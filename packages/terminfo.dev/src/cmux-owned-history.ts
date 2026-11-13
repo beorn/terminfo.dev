@@ -5,8 +5,8 @@
  * the fleet Mac 2026-11-13 with the config file byte-identical before and after — so a read from a command
  * the run typed into its own surface reaches this instance and no other. Four further facts make it a
  * reading of THIS surface rather than "a cmux on this Mac": the run's nonce brackets the block it wrote, the
- * markers come back complete and in order, the config hash the run recorded at launch is unchanged, and no
- * cmux process outlives the run. Every refusal is named and none of them is a grade.
+ * markers come back complete and in order, the config hash the run recorded at launch is unchanged, and the
+ * surface id it acquired at grant. Every refusal is named and none of them is a grade.
  */
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
@@ -22,7 +22,7 @@ export function cmuxConfigPath(home: string): string {
   return join(home, ".config", "cmux", "cmux.json")
 }
 
-/** The six refusals of the cmux arm (@cto af8608c3 condition 2). Each is a probe failure, never a grade. */
+/** The five refusals the cmux arm can raise (@cto af8608c3 condition 2). Each is a probe failure, never a grade. */
 export type CmuxRefusal =
   | "cmux-surface-not-owned"
   | "cmux-read-empty"

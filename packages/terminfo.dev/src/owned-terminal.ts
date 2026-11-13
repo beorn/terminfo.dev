@@ -356,6 +356,17 @@ export interface OwnedTerminal {
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant,
+   * the grant receipt or the failure that replaced it, and the last read's receipt. `lastRead` is a
+   * getter, so a record built after the probes sees the latest read rather than the grant (@cto 81073ae1).
+   */
+  readonly cmuxHistory?: {
+    readonly executable: string
+    readonly surface: string | null
+    readonly grantProof: string
+    readonly lastRead: string | null
+  }
+  /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
    * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
    * where the history rows read it as their declared Untestable reason. Absent where the app has a read;
@@ -1706,32 +1717,40 @@ export async function createOwnedTerminal(options: {
     let cmuxLastReceipt: string | undefined
     if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
       const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
-      if (published !== "") cmuxSurface = published
-      out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const proof = readOwnedCmuxHistory({
-          executable: ownedCmuxCli,
-          ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
-          ownership: { kind: "nonce", nonce: captureRunId },
-          configAtLaunch: cmuxConfigAtLaunch,
-          observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
-        })
-        if (proof.status === "read") {
-          cmuxGrantReceipt = proof.receipt
-          cmuxLastReceipt = proof.receipt
-          break
+      if (published === "") {
+        // Without a published id every later read would have to let the CLI pick "whatever surface is
+        // current", which is the unnamed read this arm must never make: a second surface in the same
+        // instance could then answer for ours (@dev/1 peer read 2026-11-13). Refuse at grant instead.
+        cmuxGrantFailure =
+          "cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired"
+      } else {
+        cmuxSurface = published
+        out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const proof = readOwnedCmuxHistory({
+            executable: ownedCmuxCli,
+            surface: published,
+            ownership: { kind: "nonce", nonce: captureRunId },
+            configAtLaunch: cmuxConfigAtLaunch,
+            observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+          })
+          if (proof.status === "read") {
+            cmuxGrantReceipt = proof.receipt
+            cmuxLastReceipt = proof.receipt
+            break
+          }
+          if (proof.refusal !== "cmux-surface-not-owned") {
+            cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
+            break
+          }
+          // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
+          await new Promise((resolve) => {
+            setTimeout(resolve, 250)
+          })
         }
-        if (proof.refusal !== "cmux-surface-not-owned") {
-          cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
-          break
+        if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
+          cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
         }
-        // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
-        await new Promise((resolve) => {
-          setTimeout(resolve, 250)
-        })
-      }
-      if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
-        cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
       }
     }
     const ownedCmuxHistory =

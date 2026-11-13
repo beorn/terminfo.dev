@@ -100,6 +100,87 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
   expect(result.status, result.stderr).toBe(0)
 })
 
+// An app that publishes no surface id leaves nothing to name, so the grant must refuse rather than let a
+// later read fall back to "whatever surface is current" (@dev/1 peer read 2026-11-13).
+test("a hosted cmux arm with no published surface id refuses at grant and writes nothing", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    delete process.env.CMUX_SURFACE_ID
+    const cmuxCalls = []
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    const realReadFileSync = fs.readFileSync
+    mock.module("node:fs", () => ({
+      ...fs,
+      fstatSync: () => device,
+      statSync: () => device,
+      openSync: () => 7,
+      closeSync: () => {},
+      readFileSync: (path) => (String(path) === executable ? Buffer.from("cmux-binary") : realReadFileSync(path)),
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      spawn: (file) => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from("24 80\\n"))
+            child.emit("close", 0)
+          })
+        }
+        return child
+      },
+      execFileSync: (command, args) => {
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawnSync: (file, args) => {
+        if (String(file).includes("cmux")) {
+          cmuxCalls.push(String(file) + " " + args.join(" "))
+          return { status: 0, stdout: "$ prompt\\nCMUX-" + "a".repeat(32) + "-BEGIN", stderr: "" }
+        }
+        return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const writes = []
+    const realWrite = process.stdout.write.bind(process.stdout)
+    process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    process.stdout.write = realWrite
+    assert.equal(writes.length, 0, "a grant that cannot name a surface must not write into one")
+    assert.equal(owner.cmuxHistory?.surface ?? null, null)
+    assert.match(owner.cmuxHistory.grantProof, /published no CMUX_SURFACE_ID/u)
+    const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.match(error?.message ?? "", /published no CMUX_SURFACE_ID/u)
+    assert.equal(cmuxCalls.filter((call) => call.includes("read-screen")).length, 0, "no read may run without an acquired id")
+    await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
 // Condition 1 of @cto 8c084f05, through the real owner: a hosted WezTerm whose ancestor is a different
 // process at read time must refuse by pid before any WezTerm CLI read, not merely match the app's name.
 test("a hosted WezTerm ancestor that changed pid refuses the read by name and reads nothing", () => {
@@ -784,6 +865,9 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
       ...fs,
       fstatSync: () => device,
       statSync: () => device,
+      // The grid read reopens the selected fd; a test runner's stdout is a pipe, so the reopen is faked.
+      openSync: () => 7,
+      closeSync: () => {},
       readFileSync: (path) => (String(path) === executable ? Buffer.from("cmux-binary") : realReadFileSync(path)),
     }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
@@ -796,12 +880,19 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
         return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
           : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
       },
-      spawn: () => {
+      spawn: (file) => {
         const child = new EventEmitter()
         child.stdout = new EventEmitter()
         child.stderr = new EventEmitter()
         child.kill = () => true
         child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        // The owning arm reads its grid from stty on the bound pty; a successful read needs a real size.
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from("24 80\\n"))
+            child.emit("close", 0)
+          })
+        }
         return child
       },
       spawnSync: (file, args) => {
@@ -846,11 +937,21 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
     assert.equal(error?.message, "Hosted cmux ancestor is now pid 5555, not pid 4242 measured at launch")
     assert.equal(cmuxCalls.length, atGrant, "no cmux read may follow the refusal")
-    const readsBefore = cmuxCalls.length
-    await owner.getScrollback().then(() => undefined, () => undefined)
-    await owner.getScrollback().then(() => undefined, () => undefined)
-    assert.equal(writes.length, 1, "a later read must not write to the surface")
-    assert.ok(readsBefore >= atGrant)
+    // A refusal alone would let a broken success path pass, so restore the owner and read twice for real
+    // (@dev/1 peer read 2026-11-13).
+    appPid = 4242
+    const first = await owner.getScrollback()
+    const second = await owner.getScrollback()
+    assert.deepEqual(second, first, "two reads of an unchanged surface report the same history")
+    assert.equal(cmuxCalls.length, atGrant + 2, "each later read runs its own CLI read")
+    for (const call of cmuxCalls.slice(atGrant)) {
+      assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
+    }
+    assert.equal(writes.length, 1, "no read may write to the surface")
+    const readReceipt = JSON.parse(owner.cmuxHistory.lastRead)
+    assert.equal(readReceipt.ownership, "surface")
+    assert.equal(readReceipt.surface, "surface-uuid-1")
+    assert.equal(readReceipt.screenLines, 24)
     process.stdout.write = realWrite
     await owner.dispose()
   `
