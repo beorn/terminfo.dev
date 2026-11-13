@@ -1,7 +1,7 @@
 /**
- * @failure A cell two same-suite contexts disagree on never appears on the real terminal page: the bar
- *   draws no differs segment, the coverage sentence omits the bucket, or the segment names no context —
- *   so a reader cannot tell a measured disagreement from Supported, Unsupported or silence.
+ * @failure A cell two joined contexts decided differently reads decided on the real terminal page (a differs
+ *   segment, or Supported/Unsupported) instead of the open PROBE CONFLICT the join gives it (33587), so a
+ *   reader cannot tell a measured disagreement from a decided grade.
  * @level l2
  * @consumer terminfo.dev /terminals/<app> (docs/terminals/[id].md)
  * @source-grep the bar, its title and the coverage sentence are written in the page's VitePress
@@ -50,6 +50,8 @@ const cell = (status: "supported" | "unsupported", runId: string) => ({
   status,
   version: "1.2.3",
   suite: "suite-a",
+  entryHash: "entry-a",
+  sourceRevision: "a".repeat(40),
   runId,
 })
 
@@ -63,7 +65,7 @@ function joinedRow(): Record<string, unknown> {
     key: OTHER,
     cells: { "sgr.bold": cell("unsupported", "run-other"), "sgr.italic": cell("supported", "run-other") },
   }
-  const joined = joinContextCells(primary, [other], CATALOG, CATALOG)
+  const joined = joinContextCells(primary, [other], CATALOG, () => null, CATALOG)
   const featureResults = Object.fromEntries(
     Object.entries(joined.cells).map(([featureId, entry]) => [
       featureId,
@@ -174,15 +176,12 @@ async function renderTerminalPage(selected: Record<string, unknown>): Promise<st
 }
 
 describe("the real terminal page renders one joined disagreement", () => {
-  it("draws the differs segment, names both contexts and their grades, and keeps it out of the numerator", async () => {
+  it("reads the disagreement as one open PROBE CONFLICT, draws no differs segment, and keeps it out of the numerator", async () => {
     const rendered = await renderTerminalPage(selectionOf(joinedRow().featureResults as Record<string, unknown>))
-    expect(rendered).toContain('class="result-share-differs"')
+    expect(rendered).not.toContain('class="result-share-differs"')
+    expect(rendered).not.toContain("Differs by context")
     expect(rendered).toContain(
-      "Differs by context: sgr.bold — macos 25.4.0 · default profile · no permissions supported" +
-        " vs macos 26.0.0 · default profile · no permissions unsupported",
-    )
-    expect(rendered).toContain(
-      "1 Supported · 0 Unsupported · 1 Differs by context · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT",
+      "1 Supported · 0 Unsupported · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 1 PROBE CONFLICT",
     )
     expect(rendered).toContain("1/2 supported (50%)")
   }, 60_000)

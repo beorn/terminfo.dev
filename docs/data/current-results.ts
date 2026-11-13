@@ -13,8 +13,10 @@ import {
   type SelectedContextSummary,
   statesFor,
 } from "./selected-results.ts"
-import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
+import { candidateFromSelected, pickContextRun, type LineageRun } from "./run-selection.ts"
 import { joinContextCells, type ContextCellFacts, type ContextFacts, type JoinedApp } from "./app-cells.ts"
+import { definitionDiffers, gitSourceHistory, type SourceHistory } from "./source-history.ts"
+import { suiteEntryHashes } from "./legacy-entry-hashes.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import { loadTerminals } from "@terminfo/catalog"
@@ -167,13 +169,33 @@ export function loadCurrentResults(
   return results
 }
 
+/** Every run that contributed a cell to `summary`, with the app version and source revision the pick orders by. */
+function contributingRuns(summary: SelectedContextSummary): LineageRun[] {
+  const runs = new Map<string, LineageRun>()
+  for (const cell of Object.values(summary.cells)) {
+    runs.set(cell.run.runId, {
+      runId: cell.run.runId,
+      version: cell.run.subject.version || null,
+      sourceRevision: cell.run.sourceRevision || null,
+    })
+  }
+  return [...runs.values()]
+}
+
 /**
  * Select one primary per (kind, id, OS), retaining every projected context. The released key belongs
  * to the first measured OS in a fixed order: Linux, macOS, Windows, other OS lexical, missing OS last.
  * A newer measurement on another machine never changes which OS owns that key (@cto ad37642d).
  * Additional columns carry the same explicit routeKey; their keys are never parsed downstream.
+ *
+ * Within one (app, OS) the primary is chosen by app version, then source-revision ancestry (33587, @cto d805d1af),
+ * so the arrival order of runs never changes which context's observation a row the join refuses shows.
  */
-export function compatibilitySubjects(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
+export function compatibilitySubjects(
+  projection: SelectedProjection,
+  contentDir: string,
+  history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
+): Map<string, CurrentResult> {
   const catalog = loadCatalogKeys(contentDir)
   type SubjectResult = CurrentResult
   const groups = new Map<string, Map<string | null, SubjectResult[]>>()
@@ -207,6 +229,14 @@ export function compatibilitySubjects(projection: SelectedProjection, contentDir
           )
           return candidate ? [candidate] : []
         }),
+        {
+          runs: (candidate) => {
+            const entry = byKey.get(candidate.key)
+            if (!entry) throw new Error(`Candidate ${candidate.key} is not among ${subjectKey} current contexts`)
+            return contributingRuns(entry.selected)
+          },
+          history,
+        },
       )
       if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
       // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
@@ -222,15 +252,21 @@ export function compatibilitySubjects(projection: SelectedProjection, contentDir
 }
 
 /** One context reduced to the facts the join compares and names (`app-cells.ts`). */
-function contextFacts(summary: SelectedContextSummary): ContextFacts {
+function contextFacts(
+  summary: SelectedContextSummary,
+  entryHashes: (suiteId: string) => Readonly<Record<string, string>> | undefined,
+): ContextFacts {
   const cells: Record<string, ContextCellFacts | undefined> = {}
   for (const [featureId, cell] of Object.entries(summary.cells)) {
+    const suite = cell.run.probeHash || null
     cells[featureId] = {
       status: cell.featureResult?.status ?? cell.result.status,
-      // A missing app version or suite hash stays absent in the facts, so it can never equal another
-      // context's absence and join on it (@cto c5ddabf3).
+      // A missing app version, suite hash, entry hash or source revision stays absent in the facts, so it can
+      // never equal another context's absence and join on it (@cto c5ddabf3).
       version: cell.run.subject.version || null,
-      suite: cell.run.probeHash || null,
+      suite,
+      entryHash: (suite === null ? undefined : entryHashes(suite)?.[featureId]) ?? null,
+      sourceRevision: cell.run.sourceRevision || null,
       runId: cell.run.runId,
       ...(cell.reopened !== undefined && { reopened: true }),
     }
@@ -239,16 +275,22 @@ function contextFacts(summary: SelectedContextSummary): ContextFacts {
 }
 
 /**
- * Every chosen subject's cells, joined with the contexts that measured the same app version and the
- * same probe suite (@cto d321729a). A context on another suite or version is history: it never joins,
- * so it can never change a grade, an undecided label or a count.
+ * Every chosen subject's cells, joined row by row with the other contexts of the same (app, OS) whose cell
+ * passes the three join tests in app-cells.ts: equal app version, equal catalogue entry hash, and a byte-equal
+ * defining probe-defs file at both source revisions (33587, @cto d805d1af). A refused cell never changes a
+ * grade, an undecided label or a count; the row names it and why.
  *
  * Keyed like `compatibilitySubjects`, whose primary pick this function leaves untouched.
  */
 export function joinedAppCells(
   projection: SelectedProjection,
   subjects: ReadonlyMap<string, { contextKey: string }>,
+  contentDir: string,
+  history: SourceHistory = gitSourceHistory(),
 ): Map<string, JoinedApp> {
+  const entryHashes = suiteEntryHashes(contentDir)
+  const definition = (featureId: string, left: string, right: string): string | null =>
+    definitionDiffers(history, featureId, left, right)
   const bySubject = new Map<string, SelectedContextSummary[]>()
   for (const summary of Object.values(projection.contexts)) {
     if (summary.contributingRunIds.length === 0) continue
@@ -268,9 +310,10 @@ export function joinedAppCells(
     joined.set(
       key,
       joinContextCells(
-        contextFacts(primary),
-        others.map(contextFacts),
+        contextFacts(primary, entryHashes),
+        others.map((other) => contextFacts(other, entryHashes)),
         primary.catalogIds,
+        definition,
         scoredFeatureIds(primary.catalogIds),
       ),
     )
