@@ -117,10 +117,10 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
       assert.equal(nativeReads.length, 1)
       assert.equal(nativeReads[0].editor.appId, app, "receipt, not launcher environment, selects the native reader")
       assert.deepEqual(captures, [{ featureId: "extensions.osc633-p", phase: "target" }])
-      await assert.rejects(nativeReads[0].editor.assertProcess(999999), /ancestor|owned|pid/i)
+      await assert.rejects(async () => nativeReads[0].editor.assertProcess(999999), /ancestor|owned|pid/i)
       await nativeReads[0].editor.assertProcess(5488, true)
       await nativeReads[0].editor.assertProcess(7777)
-      await assert.rejects(nativeReads[0].editor.assertProcess(7777, true), /collector.*ancestor|ancestor.*collector/i)
+      await assert.rejects(async () => nativeReads[0].editor.assertProcess(7777, true), /collector.*ancestor|ancestor.*collector/i)
       appPid = 5555
       await assert.rejects(owner.readAppSemanticState("extensions.osc633-p", () => {}), /5555|4242/)
       assert.equal(nativeReads.length, 1, "a changed App must refuse before native API evaluation")

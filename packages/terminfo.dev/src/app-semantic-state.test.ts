@@ -123,8 +123,9 @@ test.each([
     if (
       answered.has(request.nonce) ||
       (mode !== "unchanged-target" && request.expectedCwd !== undefined && request.expectedCwd !== nativeCwd)
-    )
+    ) {
       return
+    }
     answered.add(request.nonce)
     writeFileSync(
       join(replyDirectory, `${request.nonce}.json`),
@@ -163,8 +164,9 @@ test.each([
             expect(collectorAncestor).toBe(true)
             return
           }
-          if (pid !== extensionPid && pid !== process.pid)
+          if (pid !== extensionPid && pid !== process.pid) {
             throw new Error("Native reply process is outside the owned App")
+          }
         },
         capture: async (featureId: string, phase: string) => {
           captures.push({ featureId, phase, cwd: nativeCwd })

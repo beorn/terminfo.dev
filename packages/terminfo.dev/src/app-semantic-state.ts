@@ -1340,7 +1340,7 @@ export function beginMuxSgrCommandRead(input: {
 
 type NativeEditorSource = {
   appId: "com.microsoft.VSCode" | "cursor"
-  assertProcess: (pid: number, collectorAncestor?: boolean) => Promise<void>
+  assertProcess: (pid: number, collectorAncestor?: boolean) => void | Promise<void>
   capture: (featureId: string, phase: string) => Promise<unknown>
 }
 
@@ -1386,8 +1386,9 @@ async function readNativeEditorState(input: {
     nativeFailure?: string
   } = { nativeObservations: [], captures: [] }
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
-  if (!captureDirectory || !isAbsolute(captureDirectory))
+  if (!captureDirectory || !isAbsolute(captureDirectory)) {
     throw new Error("Native editor read has no owned capture directory")
+  }
   // The owned Darwin receipt selected this App; the Linux launcher's environment is not a second authority.
   const directory = process.env.TERMINFO_EDITOR_RUN_DIRECTORY
   if (!directory || !isAbsolute(directory)) throw new Error("Native editor read has no private launch directory")
@@ -1429,8 +1430,9 @@ async function readNativeEditorState(input: {
       current.dev !== activationIdentity.dev ||
       current.ino !== activationIdentity.ino ||
       readFileSync(activationPath, "utf8") !== activationRaw
-    )
+    ) {
       throw new Error("Native editor activation changed during the row")
+    }
     const nonce = randomUUID()
     const replyPath = join(activation.replyDirectory, `${nonce}.json`)
     try {

@@ -1518,7 +1518,7 @@ export async function createOwnedTerminal(options: {
       (ownedAppId === "cursor" || ownedAppId === "com.microsoft.VSCode")
         ? ownedAppId
         : undefined
-    const assertNativeEditorProcess = async (pid: number, collectorAncestor = false) => {
+    const assertNativeEditorProcess = (pid: number, collectorAncestor = false) => {
       if (!hostedApp || !hostedAncestor) throw new Error("Native editor read has no measured hosted App ancestor")
       const actual = requireHostedDarwinAppAncestor(
         hostedApp.comm,
@@ -1840,10 +1840,11 @@ export async function createOwnedTerminal(options: {
             return { status: "invalid" as const, reason: "Native editor read has no live owned terminal" }
           }
           const capture = options.appSemanticCapture
-          if (!capture)
+          if (!capture) {
             return { status: "unavailable" as const, reason: "Native editor read has no owned window capture" }
+          }
           await owner.readGeometry()
-          await assertNativeEditorProcess(process.pid)
+          assertNativeEditorProcess(process.pid)
           return readAppSemanticState({
             featureId,
             write,
