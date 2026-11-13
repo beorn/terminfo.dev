@@ -159,7 +159,7 @@ it("retains the stored iTerm2 1005 measurement and names its declaration collisi
       tests: row.tests.map(({ id, status, reason }) => ({ id, status, reason })),
       assertions: stored.assertions
         .filter((entry) => entry.featureId === id)
-        .map(({ featureId: _featureId, rawReplyRef: _rawReplyRef, assertionType, ...assertion }) => {
+        .map(({ featureId: _featureId, assertionType, ...assertion }) => {
           if (assertionType !== "query_reply") throw new Error("Stored iTerm2 1005 fixture lost its query assertion")
           return { ...assertion, assertionType }
         }),
