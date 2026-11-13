@@ -957,7 +957,9 @@ try {
       ["\x1b[5;5R", "\x1b[1;1R"])
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
     assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "No owned clipboard fixture on this run for this probe; OSC 52 was not sent")
+    // #31741: an owned run now carries its own recording pasteboard, so a run that names no subject
+    // is refused for the missing binding rather than for a missing fixture. The row is still not sent.
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "this run records a clipboard fixture but declares no subject to bind it to")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })

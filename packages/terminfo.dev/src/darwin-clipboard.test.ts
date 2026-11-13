@@ -84,6 +84,81 @@ test("an owned-host pasteboard is never read: the run writes its own sentinel fi
   expect(pasteboard).toBe("")
 })
 
+// @cto 1c7e19df on the owned host: foreign text can be a password or a one-time code, and the
+// sha256 of a short value is a guessable fingerprint. The diagnostic keeps the length and drops it.
+test("an owned host records the length of foreign text, never its digest", async () => {
+  let pasteboard = ""
+  const run: DarwinCommand = async (file, _args, stdin) => {
+    if (file.endsWith("pbcopy")) {
+      pasteboard = stdin ?? ""
+      return ""
+    }
+    if (file.endsWith("pbpaste")) return pasteboard + "\n"
+    throw new Error("unexpected " + file)
+  }
+  const adapter = await createDarwinClipboardAdapter({
+    appComm: "Terminal",
+    appId: "terminal-app",
+    titleRead: "none",
+    ownedHost: true,
+    assertOwned: async () => {},
+    run,
+  })
+  // Something else on the shared machine copies between our sentinel and the callback.
+  pasteboard = "FOREIGN SECRET"
+  const failure = await adapter
+    .withClipboardFixture(
+      async () => ({ pass: true, note: "never reached" }) as ProbeCallbackResult,
+      () => {},
+      async () => {},
+    )
+    .then(
+      () => "",
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    )
+  expect(failure).toMatch(/baseline changed/)
+  expect(failure).toMatch(/read length 14/)
+  expect(failure).not.toMatch(/sha256/)
+  expect(failure).not.toMatch(/[a-f0-9]{32}/)
+})
+
+// @dev/3 R2 at 2fe85988d106b: emptying the pasteboard is a write like any other. A run that has lost
+// its window must leave the value it can no longer vouch for rather than empty someone else's.
+test("an owned host whose window is gone clears nothing on dispose, and says so", async () => {
+  const calls: { file: string; stdin: string | undefined }[] = []
+  let owned = true
+  const errors: string[] = []
+  const originalError = console.error
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map(String).join(" "))
+  }
+  try {
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "Terminal",
+      appId: "terminal-app",
+      titleRead: "none",
+      ownedHost: true,
+      assertOwned: async () => {
+        if (!owned) throw new Error("owned Terminal window no longer exists uniquely")
+      },
+      run: async (file, _args, stdin) => {
+        calls.push({ file, stdin })
+        return ""
+      },
+    })
+    // Construction wrote the sentinel while the window was still ours.
+    expect(calls.filter((call) => call.file.endsWith("pbcopy"))).toHaveLength(1)
+    owned = false
+    const before = calls.length
+    await adapter.dispose()
+    expect(calls.slice(before)).toEqual([])
+    expect(errors.join("\n")).toContain("not cleared")
+    expect(errors.join("\n")).toContain("owned Terminal window no longer exists uniquely")
+  } finally {
+    console.error = originalError
+  }
+})
+
 test("a system-events declaration reads the window name and does not depend on the app id", async () => {
   const scripts: string[] = []
   const run: DarwinCommand = async (file, args) => {
