@@ -1097,9 +1097,32 @@ describe("default stage", () => {
     const second = run({}, ["--check", "light"], undefined, "kitty-unreadable")
     expect(second.status, second.stderr).toBe(0)
     expect(second.stderr).toContain("light check declined")
-    expect(second.stderr).toMatch(/dirty state could not be read/)
+    // Pinned to the exit-128 branch, not the shared prefix: the no-exit-code branch says so instead.
+    expect(second.stderr).toMatch(/dirty state could not be read \(git status exited 128: fatal: \.git\/index/)
     expect(second.stderr).toContain("restaging fully")
+    // The rebuild is named where the operator can read it, and the proof says the projection moved.
+    expect(second.stderr).toContain(
+      "the staged index is unreadable; the staged projection, including any tracked edits, is replaced",
+    )
     expect(proof(second).check).toBe("full")
+    expect(proof(second).stageRebuild).toBe("index unreadable")
+  }, 60_000)
+
+  // Requirement: only a PROVEN index fault may rebuild the stage. A git that cannot read its own
+  // config refuses by name and leaves the index alone — deleting it there made the next run read a
+  // tree it could not describe, and only a hand repair could bring the stage back (@dev/15 R3).
+  it("refuses by name when git cannot read its config in the staged checkout, and keeps the index", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const index = join(stage, "source", "vendor", "terminfo.dev", ".git", "index")
+    const config = join(stage, "source", "vendor", "terminfo.dev", ".git", "config")
+    chmodSync(config, 0o000)
+    const second = run({}, [], undefined, "kitty-refused-config")
+    chmodSync(config, 0o644)
+    expect(second.status).not.toBe(0)
+    expect(second.stderr).toContain("stage git unusable")
+    expect(second.stderr).toContain("git cannot run in the staged checkout, so this is not an index fault")
+    expect(existsSync(index)).toBe(true)
   }, 60_000)
 
   // Requirement: a marker that parses as JSON but is not an object must decline by name. JSON null
