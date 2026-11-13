@@ -1,5 +1,6 @@
 import {
   CALIBRATION_SOLID_PAINT,
+  beginCaptureLifecycle,
   type CalibrationSentinel,
   type CapturePixelGeometry,
   type CaptureRectangle,
@@ -507,7 +508,7 @@ export async function calibrateCaptureOrigin({
   pixelGeometry?: CapturePixelGeometry
   timeoutMs: number
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>
-  /** Verified collector-owned disposable session: set visibility before painting and restore set. */
+  /** Verified collector-owned disposable session: it clears its own rows, and the cursor is restored set either way. */
   collectorLaunched?: boolean
   /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
@@ -532,24 +533,6 @@ export async function calibrateCaptureOrigin({
   }
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("Capture calibration requires the oracle's positive timeoutMs")
-  }
-  let visibility: "set" | "reset" = "set"
-  if (!collectorLaunched) {
-    const visibilityReport = await ctx.queryWithSentinelOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/)
-    if (visibilityReport.reason === "timeout") {
-      throw new Error(`Capture calibration cursor visibility query timed out: ${JSON.stringify(visibilityReport)}`)
-    }
-    const status = visibilityReport.match?.[1]
-    if (visibilityReport.reason === "sentinel" && visibilityReport.match === null) {
-      // Retain the alternate exchange; it cannot establish the unowned session's prior state.
-      await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/, 5000)
-    }
-    if (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2")) {
-      throw refusal(
-        `Capture calibration cannot restore cursor visibility: ${status === "3" || status === "4" ? "permanent mode" : "unreported mode"}; ${JSON.stringify(visibilityReport)}`,
-      )
-    }
-    visibility = status === "1" ? "set" : "reset"
   }
   const capture = async (label: string, deadline: number) => {
     if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`)
@@ -623,8 +606,8 @@ export async function calibrateCaptureOrigin({
     : "\x1b[2J\x1b[H"
   try {
     // Normalization and every later mutation are inside the same restoration transaction.
-    if (collectorLaunched) ctx.write("\x1b[?25h")
-    ctx.write(`\x1b[?25l\x1b[0m${eraseVisibleGrid}`)
+    beginCaptureLifecycle(ctx)
+    ctx.write(eraseVisibleGrid)
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
     let solid: CapturedFrame | undefined
@@ -862,10 +845,10 @@ export async function calibrateCaptureOrigin({
         surfaceFailure = cause
       }
       try {
-        ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
-        if (!collectorLaunched && (await ctx.queryMode(25)) !== visibility) {
-          throw new Error("Restored cursor visibility differs from its prior mode")
-        }
+        // DECTCEM stays the shared lifecycle's promise — set, for every arm — and this is its one write. The
+        // shared close (`endCaptureLifecycle`) is not used here because it ends with a screen clear, and this
+        // function's contract is that the screen it returns is the one it witnessed restored.
+        ctx.write("\x1b[?25h")
       } catch (cause) {
         if (surfaceFailure !== undefined) {
           throw new AggregateError([surfaceFailure, cause], "Surface and cursor restoration failed", {

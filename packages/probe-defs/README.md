@@ -354,11 +354,13 @@ Every confirmation compares consecutive complete frames under one fixed deadline
 Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;
 the chosen form and attempt outcomes are retained, and stripe colors come from the captured pixels.
 Both forms missing leaves a named no-capture outcome; complete geometry and restoration checks still apply.
-For a verified collector-launched disposable session on Darwin or Linux, including a Linux mux,
-calibration explicitly sets cursor visibility before painting and restores that set state.
-It does not infer the prior state from a launch default or DA1. The retained raster basis names the
-explicit setup; identical restoration concerns surface pixels without a cursor-mode readback claim.
-Sessions the collector did not launch require a reported original visibility and restore it unchanged.
+Every session, launched by the collector or not, runs the shared capture lifecycle: SGR reset and
+DECTCEM off before the first paint, DECTCEM restored set on the way out, because a hidden cursor is
+what keeps consecutive frames equal. Calibration asks for no cursor mode first, so a terminal that
+never answers DECRQM `?25$p` still calibrates — Terminal.app does not, and asking cost it every
+pixel cell. A cursor the operator had hidden comes back visible, exactly as after every other pixel
+arm. The retained raster basis names the shared setup; identical restoration concerns surface pixels,
+not a cursor-mode readback claim.
 Native capture-command failures during installation retain their primary command evidence and
 secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
