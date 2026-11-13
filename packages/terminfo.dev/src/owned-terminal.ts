@@ -688,8 +688,8 @@ function readProcessAncestry(startPid: number, stopPid?: number, kernelIdentity 
     }
     const row: AncestryRow = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
     if (kernelIdentity && process.platform === "darwin") {
-      // The tmux attachment needs kernel identity as well as argv0. Measure inside the same birth check;
-      // ordinary app/preflight ancestry does not consume this mux-specific evidence.
+      // Tmux attachment and hosted ancestry evidence both need kernel paths, never argv0 as a substitute.
+      // The measured mux walk keeps this read inside its existing birth check.
       const kernel = kernelExecPath(row.pid)
       row.kernelExecutable = kernel.path
       row.kernelExecutableReader = kernel.reader
@@ -1340,7 +1340,7 @@ export async function createOwnedTerminal(options: {
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
     hostedAppExecutablePath = executablePath
     binding = darwinHostedOutput(out)
-    const ancestry = readProcessAncestry(process.pid)
+    const ancestry = readProcessAncestry(process.pid, undefined, true)
     // Prints before the app check, so a refusal by requireHostedDarwinAppAncestor still leaves the
     // measured chain in the artifact; the binding itself runs earlier, on darwinHostedOutput.
     process.stderr.write(`Hosted Darwin measured process ancestry: ${formatHostedDarwinAncestry(ancestry)}\n`)
@@ -1567,7 +1567,7 @@ export async function createOwnedTerminal(options: {
               readAncestorPid: () =>
                 requireHostedDarwinAppAncestor(
                   hostedApp.comm,
-                  readProcessAncestry(process.pid),
+                  readProcessAncestry(process.pid, undefined, true),
                   hostedAppExecutablePath,
                 ).pid,
               measuredPid: hostedAncestor?.pid,
