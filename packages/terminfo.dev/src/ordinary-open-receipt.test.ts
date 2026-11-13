@@ -238,6 +238,40 @@ test("the reader refuses a missing receipt loudly instead of returning a default
   expect(() => readOrdinaryOpenReceipt("/nonexistent/ordinary-open.json")).toThrow(/unreadable at/)
 })
 
+// @cto 2026-11-13: "no measured version" is not agreement. A row that cannot name the version it measured cannot
+// bind the ancestry app's version, so the refusal is unprovable rather than a skip.
+test("a row with no measured version is refused, not skipped", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  expect(
+    ordinaryOpenAdmission({
+      receipt: parsed,
+      probeId: "extensions.osc52-read",
+      subject: { id: "iterm2", os: "macos", kind: "term" },
+      measuredVersion: undefined,
+      expectedBundleId: "com.googlecode.iterm2",
+    }),
+  ).toMatchObject({
+    admit: false,
+    unprovable: true,
+    refusal: "row has no measured version, so the ancestry app version 3.5.14 cannot be bound",
+  })
+})
+
+test("the live walk refuses when no registry bundle id is named, rather than comparing pids only", () => {
+  const parsed = parseOrdinaryOpenReceipt(receipt())
+  expect(
+    checkOrdinaryOpenLiveAncestry({
+      receipt: parsed,
+      expectedBundleId: undefined,
+      probePid: 4802,
+      reader: table({ 4802: { pid: 4790, executable: "zsh" }, 4790: { pid: 4711, executable: "iTerm2" } }),
+    }),
+  ).toMatchObject({
+    ok: false,
+    probeTodo: expect.stringContaining("no bundle id is named for this app in the registry"),
+  })
+})
+
 /** A synthetic process table: pid -> parent link, so the walk is proved without a Mac or a real process tree. */
 function table(entries: Record<number, { pid: number; executable: string }>): LiveAncestryReader {
   return { parent: (pid) => entries[pid] }

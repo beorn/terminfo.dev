@@ -324,7 +324,16 @@ export function ordinaryOpenAdmission(input: {
       refusal: `ancestry bundle id ${receipt.subject.bundleId} is not the bundle ${subject.id} names (${expectedBundleId})`,
     }
   }
-  if (measuredVersion !== undefined && receipt.subject.version !== measuredVersion) {
+  // @cto 2026-11-13: a row with no measured version cannot bind the ancestry app's version, so it is refused
+  // as unprovable rather than skipped — "no measured version" is not agreement.
+  if (measuredVersion === undefined) {
+    return {
+      admit: false,
+      unprovable: true,
+      refusal: `row has no measured version, so the ancestry app version ${receipt.subject.version} cannot be bound`,
+    }
+  }
+  if (receipt.subject.version !== measuredVersion) {
     return {
       admit: false,
       unprovable: false,
@@ -359,7 +368,8 @@ export interface LiveAncestryReader {
 /**
  * The POSIX reader: `ps -o ppid= -p <pid>` for the parent and `ps -o comm=` for its basename. No host path is
  * recorded — `comm` is the executable's own name, the same vocabulary the receipt's chain uses. A `ps` that fails
- * is `undefined`, which the caller turns into a named probe-todo rather than a grade.
+ * THROWS: `walkProcessAncestry` lets it through and `checkOrdinaryOpenLiveAncestry` catches it into a named
+ * probe-todo, never a grade.
  */
 export const posixAncestryReader: LiveAncestryReader = {
   parent(pid) {
@@ -407,11 +417,24 @@ export type OrdinaryOpenLiveVerdict =
  */
 export function checkOrdinaryOpenLiveAncestry(input: {
   readonly receipt: OrdinaryOpenReceipt
-  readonly expectedBundleId: string
+  /**
+   * The registry's bundle id for this subject. Required: without it the walk would compare pids and basenames
+   * only, and a dead app's pid reused by another process would pass. Missing = probe-todo, never a pass
+   * (@cto 2026-11-13).
+   */
+  readonly expectedBundleId: string | undefined
   readonly probePid: number
   readonly reader?: LiveAncestryReader
 }): OrdinaryOpenLiveVerdict {
   const { receipt, expectedBundleId, probePid } = input
+  if (expectedBundleId === undefined) {
+    return {
+      ok: false,
+      probeTodo:
+        "read method unavailable here: no bundle id is named for this app in the registry, so the live ancestry " +
+        "cannot be bound to a bundle",
+    }
+  }
   let live: OrdinaryOpenAncestryLink[]
   try {
     live = walkProcessAncestry(probePid, input.reader ?? posixAncestryReader)
@@ -451,6 +474,9 @@ export function checkOrdinaryOpenLiveAncestry(input: {
       }
     }
   }
+  // The walk compares pids and basenames, not bundle ids; the receipt binds that pid to the bundle it recorded,
+  // and admission already compared the recorded bundle id with the registry. That is why the success line below
+  // may name the bundle id without reading it from `ps`.
   return {
     ok: true,
     reason: `ordinary-open re-check: live ancestry still reaches ${expectedBundleId} pid ${String(appPid)}`,

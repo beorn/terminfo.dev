@@ -1128,6 +1128,39 @@ it("keeps an OSC 52 row probe-todo when the live ancestry no longer reaches the 
   expect(row?.reason).toContain("read method unavailable here: the live ancestry from pid")
 })
 
+// @cto 2026-11-13 fail-open path 1: the fixture clause must key on an explicit admission, not on "no refusal was
+// computed". A row that does not need ownership must still get no adapter, and a missing bundle id must never pass.
+it("gives no clipboard fixture to an OSC 52 row that does not need ownership when no bundle id is named", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  const originalWrites = definition.termWrites
+  const seen: unknown[] = []
+  try {
+    definition.termWrites = "query"
+    definition.term = async (probeSource) => {
+      seen.push(probeSource.withClipboardFixture)
+      return { pass: true, observation: { outcome: "unsupported", assertionType: "query_reply" } }
+    }
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: undefined,
+        readAncestry: liveAncestryToApp(),
+      },
+    })
+    expect(seen).toEqual([undefined])
+    expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toBeDefined()
+  } finally {
+    definition.term = originalTerm
+    definition.termWrites = originalWrites
+  }
+})
+
 // A caller cannot manufacture ownership by satisfying the owner's public TypeScript shape.
 it("refuses a structural terminal owner even with the same claimed capture ID", async () => {
   const writes: string[] = []

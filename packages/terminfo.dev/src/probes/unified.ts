@@ -520,14 +520,13 @@ export async function runProbeBatch(
   // chain that reached it. This is NOT ownership and never enters `authorizedToWrite`; it grants only the three
   // OSC 52 rows, and each of those still has to pass a LIVE ancestry walk at the moment it runs.
   const ordinaryOpen = options.ordinaryOpen
+  // Never a pass when the registry names no bundle: the live walk refuses that case itself, so this wrapper
+  // cannot turn a missing bundle id into admission (@cto 2026-11-13).
   const ordinaryOpenLiveRefusal = (): string | undefined => {
     if (!ordinaryOpen) return undefined
-    // Admission already refuses a receipt with no registry bundle id; the walk needs that id to compare against.
-    const expectedBundleId = ordinaryOpen.expectedBundleId
-    if (expectedBundleId === undefined) return undefined
     const verdict = checkOrdinaryOpenLiveAncestry({
       receipt: ordinaryOpen.receipt,
-      expectedBundleId,
+      expectedBundleId: ordinaryOpen.expectedBundleId,
       probePid: process.pid,
       ...(ordinaryOpen.readAncestry && { reader: ordinaryOpen.readAncestry }),
     })
@@ -760,29 +759,40 @@ export async function runProbeBatch(
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
-    // A row the ordinary-open receipt does not admit is refused BY NAME: on such a run the receipt is the only grant
-    // on offer, and staying silent would tell the row it needs ownership without saying what was actually presented.
-    const ordinaryOpenRefusal =
-      ordinaryOpen && needsOwnership
-        ? (() => {
-            const subject = options.subject
-            if (!subject) {
-              return "an ordinary-open receipt binds an app by name, and this run names no subject"
+    // Admission runs on EVERY row of an ordinary-open run, not only rows that need ownership, and the fixture
+    // hand-out below keys on an explicit `admitted: true`. Otherwise a row that is not marked as needing ownership
+    // would be handed the adapter unadmitted, and with no registry bundle id it would also skip the walk
+    // (@cto 2026-11-13, fail-open path 1). A row the receipt does not admit is refused BY NAME, never silently.
+    const ordinaryOpenGrant = ordinaryOpen
+      ? (() => {
+          const subject = options.subject
+          if (!subject) {
+            return {
+              admitted: false as const,
+              unprovable: true,
+              refusal: "an ordinary-open receipt binds an app by name, and this run names no subject",
             }
-            const admission = ordinaryOpenAdmission({
-              receipt: ordinaryOpen.receipt,
-              probeId: probe.id,
-              subject,
-              measuredVersion: subject.version,
-              expectedBundleId: ordinaryOpen.expectedBundleId,
-            })
-            return admission.admit ? ordinaryOpenLiveRefusal() : admission.refusal
-          })()
-        : undefined
+          }
+          const admission = ordinaryOpenAdmission({
+            receipt: ordinaryOpen.receipt,
+            probeId: probe.id,
+            subject,
+            measuredVersion: subject.version,
+            expectedBundleId: ordinaryOpen.expectedBundleId,
+          })
+          if (!admission.admit) return admission
+          const liveRefusal = ordinaryOpenLiveRefusal()
+          return liveRefusal === undefined
+            ? { admitted: true as const }
+            : { admitted: false as const, unprovable: true, refusal: liveRefusal }
+        })()
+      : undefined
     const refusedBecause = !needsOwnership
       ? undefined
       : ordinaryOpen !== undefined && !authorizedToWrite
-        ? ordinaryOpenRefusal
+        ? ordinaryOpenGrant?.admitted === true
+          ? undefined
+          : (ordinaryOpenGrant?.refusal ?? "an ordinary-open receipt was not admitted for this row")
         : !authorizedToWrite
           ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
           : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
@@ -992,7 +1002,7 @@ export async function runProbeBatch(
           (event) => clipboardEvents.push(event),
           verify,
         )
-    } else if (ordinaryOpen && ordinaryOpenVerify && ordinaryOpenRefusal === undefined) {
+    } else if (ordinaryOpen && ordinaryOpenVerify && ordinaryOpenGrant?.admitted === true) {
       // @cto 2026-11-13: this adapter was built by the collector's Mac run path from the receipt's own subject, and
       // the gate only admits it. The live ancestry walk in `ordinaryOpenVerify` repeats on every fixture use.
       const ordinaryOpenClipboard = ordinaryOpen.clipboard
