@@ -961,6 +961,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       // A former closure root is outside every current per-root --delete. Reconcile the owned
       // source projection against the archived source list, protecting current resources and Git
       // metadata. Existing tracked bytes stay with the verified checkout; runs/ is outside source/.
+      // Archive equals the tracked tree here; adding export-ignore attributes breaks that assumption.
       rsync(options, "resource root reconciliation", `${archive}/`, `${userAndHost}:${source}/`, [
         "--delete",
         "--existing",
