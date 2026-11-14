@@ -175,6 +175,26 @@ export function markerText(marker: ProcessMarker): string {
 }
 
 /**
+ * Every Darwin claim arm binds its assertion to THIS worker: the launch run id it was started with, that
+ * same id in its environment, and its own pid. One check, so the arms cannot drift apart on what "this
+ * run" means. It lives beside the marker primitives because it is about the claim's identity, not about
+ * any one provider's window.
+ */
+export function requireOwnWorker(
+  claim: { launchRunId: string; workerPid: number },
+  expectedLaunchRunId: string,
+  who: string,
+): void {
+  if (
+    claim.launchRunId !== expectedLaunchRunId ||
+    process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+    claim.workerPid !== process.pid
+  ) {
+    throw new Error(`${who} owner assertion differs from this worker launch run or PID`)
+  }
+}
+
+/**
  * The one process proof every process-backed arm shares. The pid must still run the launched binary,
  * still carry the run-scoped marker as an exact argv token (marker basis only), own the daemon's controlling TTY, and be an
  * ancestor of the daemon. Every check reads the live process table; the launch record supplies only the
