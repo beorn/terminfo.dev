@@ -281,11 +281,17 @@ function onSettledOrigin(input: {
   // of changed pixels is the bound (@cto 2026-11-13), and it is the only signature of a move the
   // read can observe: the frame's pixel geometry cannot differ from the settled one here, because
   // assertCalibratedCaptureGeometry refused that request before this resolver ran.
+  //
+  // PROVISIONAL (@cto 2026-11-13): both sides of the bound are printed by the refusal and by the
+  // reanchored record, so the first real hold run and the first real Warp run give the two numbers
+  // that set it. Until one run of each is on record, treat "one text row" as a guess with a reason,
+  // not as a measured separation. Both misclassifications stay visible rather than silent: a hold
+  // read as a move re-anchors and records reanchored, a move read as a hold refuses by name.
   const movedFrameBound = settled.pixelGeometry.textWidth
   const reanchored: NamedTextOrigin = {
     ...settled,
     origin: derived,
-    basis: `${input.basis}; re-anchored from the pair after the frame moved, by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(dx / size.width) ? `${dx / size.width} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y} (33000)`,
+    basis: `${input.basis}; re-anchored from the pair after the frame moved, by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(dx / size.width) ? `${dx / size.width} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y}; ${input.changedOutside} px changed outside the pair against the ${movedFrameBound} px one-text-row bound (33000)`,
     basisKind: settled.basisKind,
     witness: input.witness,
     changedOutside: input.changedOutside,
