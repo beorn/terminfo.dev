@@ -587,7 +587,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         },
         capture: async (checkpoint, origin) => {
           assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
-          assert.strictEqual(origin, measured, "every graded capture receives the unchanged measured origin")
+          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
           capturedCheckpoints.push(checkpoint)
           return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
@@ -595,6 +595,14 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         }
       }
     } }))
+    // Same cell and text dimensions every time, distinct origins: the shape a block terminal makes
+    // when it re-lays-out its text area by whole rows, which dimensions alone cannot tell apart.
+    const grantedReadings: Array<typeof measured> = []
+    const readingAt = index => {
+      const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+      grantedReadings.push(stable)
+      return stable
+    }
     mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
       calibrations++
       if (calibrations === 1) {
@@ -603,7 +611,9 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       }
       if (calibrationFailure) throw calibrationFailure
       assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
-      return measured
+      // Numbered by SUCCESSFUL installs, so a refused attempt does not consume an origin and the
+      // fixture's y values stay one whole-row step apart regardless of how many attempts failed.
+      return readingAt(grantedReadings.length + 1)
     } }))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified, runProbeBatch: async options => {
       assert.equal(typeof options.prepareCapture, "function", "Linux serve installation must prepare capture before probe callbacks")
@@ -679,11 +689,16 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     // calibration fact; it must survive, not just the last renewal of the run.
     // The second entry is the row that asked through the preparation production itself uses, and it
     // must survive the refused attempt before it (from is the origin the last successful install left).
+    // Dimensions never move here; only the measured y does, by whole rows. So every entry below is
+    // unreadable from from/to alone and readable exactly once fromOrigin/toOrigin is present.
+    const at = y => ({ x: 13, y })
     const expectedRenewals = proofState === "source-capable"
-      ? [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry },
-         { row: "sgr.bg.default", from: pixelGeometry, to: pixelGeometry },
-         { row: "editing.delete-chars", from: pixelGeometry, to: pixelGeometry }]
-      : [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry }]
+      ? [
+          { row: "reset.sgr-0", from: pixelGeometry, fromOrigin: at(57), to: pixelGeometry, toOrigin: at(597) },
+          { row: "sgr.bg.default", from: pixelGeometry, fromOrigin: at(597), to: pixelGeometry, toOrigin: at(1137) },
+          { row: "editing.delete-chars", from: pixelGeometry, fromOrigin: at(1137), to: pixelGeometry, toOrigin: at(1677) },
+        ]
+      : [{ row: "reset.sgr-0", from: pixelGeometry, fromOrigin: at(57), to: pixelGeometry, toOrigin: at(597) }]
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, expectedRenewals)
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))

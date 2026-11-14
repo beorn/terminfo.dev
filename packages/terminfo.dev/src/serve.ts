@@ -472,8 +472,21 @@ interface CaptureCalibrationFact {
    * rows before it were graded against, and the origin every later row is graded against. A run that
    * never renewed carries none, and a run that did renew names each one so no grade stands on an
    * origin the artifact does not state (#34306 AC1). */
-  renewals?: Array<{ row: string; from: PixelGeometry; to: PixelGeometry }>
+  renewals?: Array<{
+    row: string
+    /** `null` exactly when this run had no successful install to read the outgoing side from; a
+     * moved window can keep identical cell and text dimensions (Warp: 35 rows), so dimensions alone
+     * never state an origin and each side carries its measured `x`/`y` beside them (@cto 34306). */
+    from: PixelGeometry | null
+    to: PixelGeometry
+    fromOrigin: CaptureOriginCoordinate | null
+    toOrigin: CaptureOriginCoordinate
+    fromAbsent?: string
+  }>
 }
+
+/** The measured top-left of the grid in the captured frame, beside the dimensions it was measured with. */
+type CaptureOriginCoordinate = { x: number; y: number }
 
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
 function ownedTerminalKind(input: {
@@ -787,7 +800,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     let captureCalibration: CaptureCalibrationFact | undefined
     /** The origin the last SUCCESSFUL install left behind. Kept across a refused attempt, so a row
      * that retries a renewal still records the origin it left rather than losing the pair (#34306).*/
-    let installedOrigin: PixelGeometry | undefined
+    let installedOrigin: { pixelGeometry: PixelGeometry; origin: CaptureOriginCoordinate } | undefined
     let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
@@ -897,9 +910,27 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // never drops the renewals a later row or the hook already named.
             const carriedRenewals = captureCalibration?.renewals ?? []
             const renewals =
-              previousOrigin === undefined
+              row === undefined
                 ? carriedRenewals
-                : [...carriedRenewals, { row: row ?? featureId, from: previousOrigin, to: textOrigin.pixelGeometry }]
+                : [
+                    ...carriedRenewals,
+                    previousOrigin === undefined
+                      ? {
+                          row,
+                          from: null,
+                          fromOrigin: null,
+                          fromAbsent: "no earlier successful installation in this run",
+                          to: textOrigin.pixelGeometry,
+                          toOrigin: textOrigin.origin,
+                        }
+                      : {
+                          row,
+                          from: previousOrigin.pixelGeometry,
+                          fromOrigin: previousOrigin.origin,
+                          to: textOrigin.pixelGeometry,
+                          toOrigin: textOrigin.origin,
+                        },
+                  ]
             const installedCalibration: CaptureCalibrationFact = {
               outcome: "installed",
               basis: probeSource.captureGeometry.source,
@@ -910,7 +941,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(renewals.length > 0 && { renewals }),
             }
             captureCalibration = installedCalibration
-            installedOrigin = textOrigin.pixelGeometry
+            installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
              * row 35 lower, footprint unchanged), so the probe asks for the origin again instead of
@@ -925,6 +956,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // Read before the re-measure: this is the origin the rows before this one were graded
               // against, and the pair is what a reader needs to place the renewal in run order.
               const from = textOrigin.pixelGeometry
+              const fromOrigin = textOrigin.origin
               textOrigin = await calibrateCaptureOrigin({
                 ctx: probeSource,
                 pixelGeometry: reportedGeometry,
@@ -941,7 +973,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 source: "measured by complete raster calibration",
                 sentinel: textOrigin.sentinel,
               }
-              ;(installedCalibration.renewals ??= []).push({ row, from, to: textOrigin.pixelGeometry })
+              // The hook is an install too: it moves the live origin, so a preparation that follows
+              // it must read the origin the hook left, not the one before the hook ran (#34306).
+              installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }
+              ;(installedCalibration.renewals ??= []).push({
+                row,
+                from,
+                fromOrigin,
+                to: textOrigin.pixelGeometry,
+                toOrigin: textOrigin.origin,
+              })
               return probeSource.captureGeometry
             }
           } catch (cause) {
