@@ -1610,8 +1610,9 @@ export async function readAppSemanticState(input: {
       return await readCwdPhases(
         initial,
         sample,
-        async () => {
+        () => {
           detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+          return Promise.resolve()
         },
         pathValue,
       )
