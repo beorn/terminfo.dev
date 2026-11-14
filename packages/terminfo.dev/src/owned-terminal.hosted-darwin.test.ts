@@ -1161,15 +1161,17 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
     const directory = ${JSON.stringify(directory)}
-    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    delete process.env.TERMINFO_CAPTURE_DIRECTORY
     const retained = []
     Object.defineProperty(process, "platform", { value: "darwin" })
     let appPid = 4242
     const cmuxCalls = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
-    const realReadFileSync = fs.readFileSync, realStatSync = fs.statSync
+    const realReadFileSync = fs.readFileSync, realStatSync = fs.statSync, realExistsSync = fs.existsSync
+    const realSpawnSync = cp.spawnSync
     mock.module("node:fs", () => ({
       ...fs,
+      existsSync: (path) => String(path) === "/Applications/cmux.app" || realExistsSync(path),
       fstatSync: () => device,
       statSync: () => device,
       // The grid read reopens the selected fd; a test runner's stdout is a pipe, so the reopen is faked.
@@ -1180,6 +1182,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
     mock.module("node:child_process", () => ({ ...cp,
       execFileSync: (command, args) => {
+        if (command === "/usr/libexec/PlistBuddy") return "0.65.2"
         assert.equal(command, "/bin/ps")
         const pid = Number(args[args.indexOf("-p") + 1])
         if (args.includes("tty=")) return "ttys004"
@@ -1225,6 +1228,28 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
       ...receipt,
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
     }))
+    // Exercise the actual app selection and serve script before the existing owned-reader journey.
+    // Stop at the native launcher boundary: no app, daemon or config mutation runs in this fixture.
+    const daemon = await import("./packages/terminfo.dev/src/daemon-client.ts")
+    mock.module("./packages/terminfo.dev/src/daemon-client.ts", () => ({ ...daemon,
+      createProbeRun: () => ({ id: "b".repeat(32), directory, scriptPath: directory + "/serve.sh" }),
+    }))
+    mock.module("./packages/admin/versions.ts", () => ({
+      sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" }),
+    }))
+    mock.module("./packages/terminfo.dev/src/cmux-initial-command-launch.ts", () => ({
+      launchCmuxInitialCommand: async () => { throw new Error("fixture native launch boundary") },
+    }))
+    const { handleApp } = await import("./packages/admin/src/app.ts")
+    await assert.rejects(handleApp("cmux", {}), /fixture native launch boundary/)
+    // Let the shell evaluate the emitted command's environment, replacing only its final exec.
+    // The owner below must retain its real grant/read artifacts using this delivered directory.
+    const delivered = realSpawnSync("/bin/bash", ["--noprofile", "--norc", "-c",
+      'exec() { /usr/bin/printenv TERMINFO_CAPTURE_DIRECTORY; }\\n' + realReadFileSync(directory + "/serve.sh", "utf8")
+    ], { encoding: "utf8", env: process.env })
+    process.env.TERMINFO_CAPTURE_DIRECTORY = delivered.stdout.trim()
+    // collectProbeRun creates its private draft/artifact directory before constructing the owner.
+    fs.mkdirSync(directory + "/artifacts", { mode: 0o700 })
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     process.env.CMUX_SURFACE_ID = "surface-uuid-1"
     const writes = []
@@ -1235,6 +1260,8 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
     assert.equal(owner.hostedAppId, "cmux")
+    assert.equal(delivered.status, 0)
+    assert.equal(process.env.TERMINFO_CAPTURE_DIRECTORY, directory + "/artifacts")
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.getScrollback, "function")
     assert.equal(owner.historyReadsThroughCli, true)

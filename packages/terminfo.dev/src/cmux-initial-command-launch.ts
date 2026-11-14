@@ -110,7 +110,10 @@ function defaultDeps(): CmuxLaunchDeps {
         throw new Error(`cmux-open-failed: open -a ${appBundle} exited ${result.status ?? result.error?.message}`)
       }
     },
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sleep: (ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms)
+      }),
     parentChain: (pid) => {
       const chain: number[] = []
       let current = pid

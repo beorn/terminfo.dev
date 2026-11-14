@@ -628,6 +628,7 @@ async function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read
     app.id === "kitty" ||
     app.id === "terminal-app" ||
     app.id === "iterm2" ||
+    app.id === "cmux" ||
     app.cliLaunch?.capture === "artifact-directory"
       ? join(run.directory, "artifacts")
       : undefined
