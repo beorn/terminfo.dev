@@ -438,9 +438,20 @@ describe("WezTerm cli-process arm", () => {
         ? "private-run\n/private/run/wezterm.sock\n4\n"
         : "/dev/ttys009\n",
     )
-    const stdout = '[{"pane_id":4,"cwd":"file:///private/app-reported"}]\n'
+    const stdout = '[{"pane_id":4,"cwd":"file:///private/app-reported","size":{"rows":2,"cols":24}}]\n'
+    const text = "owned fixture text\n\n"
     const previous = vi.mocked(spawnSync).getMockImplementation()!
     vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("get-text")) {
+        return {
+          pid: 9,
+          status: 0,
+          signal: null,
+          stdout: Buffer.from(text),
+          stderr: Buffer.alloc(0),
+          output: [null, Buffer.from(text), Buffer.alloc(0)],
+        }
+      }
       if (String(file).endsWith("/wezterm") && args?.includes("list")) {
         return { pid: 8, status: 0, signal: null, stdout, stderr: "", output: [null, stdout, ""] }
       }
@@ -470,6 +481,20 @@ describe("WezTerm cli-process arm", () => {
       ])
       expect(reads[0]?.[2]?.env?.WEZTERM_UNIX_SOCKET).toBe("/private/run/wezterm.sock")
       expect(reads[0]?.[2]?.env?.WEZTERM_PANE).toBe("4")
+      // B2: the list-only journey cannot prove this bound pane was read before its owner closed.
+      const textReads = vi
+        .mocked(spawnSync)
+        .mock.calls.flatMap((call, index) => (call[1]?.includes("get-text") ? [{ call, index }] : []))
+      expect(textReads).toHaveLength(1)
+      const textRead = textReads[0]!
+      expect(textRead.call[0]).toBe("/private/VerifiedWezTerm.app/Contents/MacOS/wezterm")
+      expect(textRead.call[1]).not.toContain("--start-line")
+      expect(textRead.call[1]?.[textRead.call[1].indexOf("--pane-id") + 1]).toBe("4")
+      expect(textRead.call[2]?.env?.WEZTERM_UNIX_SOCKET).toBe("/private/run/wezterm.sock")
+      expect(textRead.call[2]?.env?.WEZTERM_PANE).toBe("4")
+      const textOrder = vi.mocked(spawnSync).mock.invocationCallOrder[textRead.index]!
+      expect(textOrder).toBeLessThan(vi.mocked(stopOwnedDaemon).mock.invocationCallOrder[0]!)
+      expect(textOrder).toBeLessThan(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]!)
       expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
       expect(closeOwnedTerminalWindow).toHaveBeenCalledExactlyOnceWith(ownedWindow)
       const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
@@ -481,6 +506,7 @@ describe("WezTerm cli-process arm", () => {
         read: { stdout, pane: { pane_id: 4, cwd: "file:///private/app-reported" } },
         cleanup: { errors: [] },
       })
+      expect(JSON.stringify(diagnostic)).toContain(Buffer.from(text).toString("base64"))
       expect(diagnostic).not.toHaveProperty("results")
       expect(JSON.stringify(diagnostic)).not.toContain('"featureId"')
       expect(JSON.stringify(diagnostic)).not.toContain('"grade"')
