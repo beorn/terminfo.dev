@@ -1790,6 +1790,13 @@ export async function createOwnedTerminal(options: {
     let cmuxGrantReceipt: string | undefined
     let cmuxGrantFailure: string | undefined
     let cmuxLastRead: CmuxLastRead | undefined
+    const retainCmuxTranscript = (stdout: string): string => {
+      const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
+      if (!directory || !isAbsolute(directory) || options.onRetained === undefined) {
+        throw new Error("Owned cmux native evidence needs a private capture directory and its artifact observer")
+      }
+      return retain(directory, Buffer.from(stdout), "bin", options.onRetained)
+    }
     if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
       const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
       if (published === "") {
@@ -1805,6 +1812,7 @@ export async function createOwnedTerminal(options: {
           const proof = readOwnedCmuxHistory({
             executable: ownedCmuxCli,
             surface: published,
+            retainTranscript: retainCmuxTranscript,
             ownership: { kind: "nonce", nonce: captureRunId },
             configAtLaunch: cmuxConfigAtLaunch,
             observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
@@ -1840,6 +1848,7 @@ export async function createOwnedTerminal(options: {
             const read = readOwnedCmuxHistory({
               executable: ownedCmuxCli,
               ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+              retainTranscript: retainCmuxTranscript,
               rows: geometry.rows,
               ownership: { kind: "surface" },
               configAtLaunch: cmuxConfigAtLaunch,

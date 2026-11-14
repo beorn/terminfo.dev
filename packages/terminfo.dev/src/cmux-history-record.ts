@@ -31,7 +31,8 @@ export function cmuxHistoryEvidence(history: OwnedTerminal["cmuxHistory"]): Cmux
     lastRead: history.lastRead,
     nativeEditorFields: {
       status: "inapplicable",
-      reason: "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence comes from its owned surface",
+      reason:
+        "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence comes from its owned surface",
     },
   })
   // The fields above are each reduced by construction; this is the fence on the whole record, so a value

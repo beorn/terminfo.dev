@@ -94,8 +94,10 @@ Those ordinary files establish activation correlation, not process-writer attest
 Controlled CWD changes can qualify a positive reading; API absence never supplies an Unsupported grade.
 Owned-window screenshots and generated private config/read evidence are retained before restoration
 and cleanup on both success and failure, without copying the inherited environment or user profile.
-cmux instead retains its concrete owned surface and raw read-screen response in its existing receipt;
-the persisted record names editor API fields inapplicable rather than inventing values.
+cmux retains raw read-screen responses through the same private content-addressed capture writer,
+including refused responses. Its public record carries the acquired surface, read facts and transcript
+hash reference; the receipt contains no rawScreen field. The persisted record names editor API fields
+inapplicable rather than inventing values and rejects any surviving host path separator.
 Actual per-App native compatibility and non-author raw/screenshot review remain separate from fixture tests.
 
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties

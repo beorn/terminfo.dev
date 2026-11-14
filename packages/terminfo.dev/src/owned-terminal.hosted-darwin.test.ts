@@ -1080,6 +1080,8 @@ test.each([
 // The cmux arm through the real owner: the receipt names the app, the collector runs inside its surface, and
 // a changed ancestor must refuse by pid before any cmux read (@cto plan GO af8608c3, nonce arm ba9e117fd).
 test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by name first", () => {
+  const directory = mkdtempSync(join(tmpdir(), "cmux-private-evidence-"))
+  directories.push(directory)
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
@@ -1087,11 +1089,14 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    const directory = ${JSON.stringify(directory)}
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    const retained = []
     Object.defineProperty(process, "platform", { value: "darwin" })
     let appPid = 4242
     const cmuxCalls = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
-    const realReadFileSync = fs.readFileSync
+    const realReadFileSync = fs.readFileSync, realStatSync = fs.statSync
     mock.module("node:fs", () => ({
       ...fs,
       fstatSync: () => device,
@@ -1156,7 +1161,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const realWrite = process.stdout.write.bind(process.stdout)
     process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
-      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
     assert.equal(owner.hostedAppId, "cmux")
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.getScrollback, "function")
@@ -1167,6 +1172,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(writes.length, 1)
     assert.match(writes[0], /CMUX-a{32}-BEGIN/)
     const grant = JSON.parse(owner.cmuxHistory.grantProof)
+    assert.equal("rawScreen" in grant, false, "raw screen bytes stay out of the receipt")
     assert.equal(grant.ownership, "nonce")
     assert.equal(grant.surface, "surface-uuid-1")
     assert.equal(owner.cmuxHistory.surface, "surface-uuid-1")
@@ -1179,6 +1185,11 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(JSON.stringify(grantRecord).includes("/Users/x"), false, "the pane transcript never reaches the record")
     assert.equal(JSON.stringify(grantRecord).includes("/"), false, "no path separator reaches the record")
     assert.equal(grantRecord.grantRefusal, undefined, "a proved grant records no refusal")
+    assert.match(grantRecord.lastRead.transcript, /^sha256:[a-f0-9]{64}$/)
+    assert.equal(retained.length, 1, "the grant retains its native bytes before publishing a reference")
+    assert.equal(grantRecord.lastRead.transcript, "sha256:" + retained[0].sha256)
+    assert.equal(realReadFileSync(retained[0].path, "utf8"), "$ /Users/x\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ /Users/x")
+    assert.equal(Number(realStatSync(retained[0].path).mode) & 0o777, 0o600, "raw transcript is private")
     const atGrant = cmuxCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
@@ -1208,6 +1219,10 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const readRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
     assert.equal(readRecord.pane, "surface-uuid-1", "the record still names the surface the run acquired")
     assert.equal(JSON.stringify(readRecord).includes("/"), false, "no path separator reaches the record")
+    assert.equal(retained.length, 3, "the grant and both native reads are observed by the artifact writer")
+    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[2].sha256)
+    await assert.rejects(createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } }), /private capture directory and its artifact observer/)
     process.stdout.write = realWrite
     await owner.dispose()
   `
