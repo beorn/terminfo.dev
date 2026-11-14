@@ -893,6 +893,42 @@ test("an undeclared whole-row move refuses and names the declaration the probe o
   ).rejects.toThrow(/did not declare a viewport hold.*must declare it on the capture request \(34163\)/)
 })
 
+// @cto's condition on the 33981 x 34163 composition: the cells were chosen against a frame at
+// `reading`, so a frame that moves afterwards puts them somewhere else — a chosen cell can end up on
+// ink the read never saw, and the paint then covers it. That harm is INVISIBLE after the fact (the
+// sentinel colour sits where the ink was), which is precisely why the pair may not be trusted to
+// carry the read's origin: a re-anchor computed from it is a crop nobody can vouch for. So the read
+// refuses BY NAME. The displacement here is two whole rows of a 2x6 cell, well past the blend slack,
+// so no tolerance can absorb it.
+test("refuses by name when the frame moved out from under the cells it chose, and never re-anchors (33981 x 34163)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  // One whole row (6 px) of displacement: past the 2 px blend slack, and inside the 30 px frame.
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  const writes = source()
+  const read = () =>
+    readThroughSentinel({
+      source: writes.source,
+      prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+      capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell,
+      settled: settledAt({ x: 0, y: 0 }, geometry),
+      // Past the deadline: nothing may retry into a pass, and no retry may repaint those cells.
+      deadline: Date.now() - 1,
+    })
+  await expect(read()).rejects.toThrow(
+    /the frame moved after cells .* were chosen at 0,0 .* the pair landed 0,6 px from it/,
+  )
+  // Not a re-anchor: the refusal says so in words, so no caller can read it as one.
+  await expect(read()).rejects.toThrow(/will not re-anchor from a pair that may have covered ink/)
+})
+
 // The frame pair here is SYNTHETIC: the retained lane runs in this estate carry no Warp run and no
 // per-frame crop records (the census on the bead names what was searched), so no real Warp pair exists
 // to replay. The shape replayed is the one the 33000 comment names: a text area that moved while the

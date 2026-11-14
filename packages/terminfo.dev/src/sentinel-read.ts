@@ -218,6 +218,32 @@ export async function readThroughSentinel<T>(input: {
         b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
       }
       const basisText = `${basis}${oneAxis ? " (one-axis pair: both cells on one row, so it measures the column pitch only)" : ""}${noise}${sentinelFillClause([aBox, bBox])}`
+      // 33981 x 34163, @cto's condition on the composition: the cells were chosen against a frame at
+      // `input.reading`, so a frame that moved since then put those cells somewhere else, and this
+      // read cannot show they were blank in the frame it painted — the paint may have landed on ink
+      // it never saw. A re-anchor computed from such a pair would carry the 33981 defect in through
+      // the other door, and RE-CHOOSING cannot rescue it either: the origin it would have to re-choose
+      // against is only knowable from the pair it just mistrusts, and a raw pre-paint capture cannot
+      // map cells before a named origin at all (linux-capture's captureRaw says so outright). So the
+      // read refuses by name instead of anchoring on a crop it cannot vouch for. This is a plain
+      // Error, not a SentinelNotOnFrame: retrying repaints cells that may already have been damaged.
+      //
+      // A DECLARED hold is the one displacement this does not cover, and only while that arm exists:
+      // a hold scrolls the viewport, so the text area moves N rows under cells the read chose at the
+      // grid position they still occupy, and the pair is expected to land there (34163 records the
+      // rows). @cto's cut removes the hold arm — every declared hold becomes CaptureHoldUnresolved —
+      // and this exception is removed with it; the guard then applies to every read.
+      const holdExplainsTheMove = input.scroll !== undefined
+      if (
+        !holdExplainsTheMove &&
+        (Math.abs(derived.x - input.reading.x) > slack || Math.abs(derived.y - input.reading.y) > slack)
+      ) {
+        const dx = derived.x - input.reading.x
+        const dy = derived.y - input.reading.y
+        throw new Error(
+          `${input.label}: the frame moved after ${where()} were chosen at ${input.reading.x},${input.reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
+        )
+      }
       if (input.settled !== undefined) {
         return onSettledOrigin({
           label: input.label,
