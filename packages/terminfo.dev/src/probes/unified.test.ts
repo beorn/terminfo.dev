@@ -2320,6 +2320,7 @@ it.each([
   const order: string[] = []
   const observedWrites: string[] = []
   const handedSources: TermProbeSource[] = []
+  const preparedRows: Array<string | undefined> = []
   const resets = sequence === "\x1bc"
   let preparations = 0
   process.stdout.write = (() => true) as typeof process.stdout.write
@@ -2343,8 +2344,9 @@ it.each([
       ids,
       ownedTerminal: geometryOwner(measured(24, 80)),
       onWrite: (text) => observedWrites.push(text),
-      prepareCapture: async ({ source, featureId, recordCapture }) => {
+      prepareCapture: async ({ source, featureId, recordCapture, row }) => {
         preparations++
+        preparedRows.push(row)
         order.push(`prepare:${preparations}`)
         expect(source.captureGeometry).toBeUndefined()
         expect(source.captureGeometryRefusal).toBeUndefined()
@@ -2383,6 +2385,11 @@ it.each([
       resets
         ? ["prepare:1", "callback:0", "prepare:2", "callback:1", "finish"]
         : ["prepare:1", "callback:0", "callback:1", "finish"],
+    )
+    // 34306 AC1: the recursion that renews is the later ROW's read, so the preparation must name
+    // that row. Without it the published fact can only name the pass number, never the row.
+    expect(preparedRows).toEqual(
+      resets ? [undefined, ids[1]] : [undefined],
     )
     expect(observedWrites.filter((text) => text === sequence)).toEqual([sequence])
     expect(handedSources[0]?.captureGeometry).toEqual(initialRefusal ? undefined : initial)
