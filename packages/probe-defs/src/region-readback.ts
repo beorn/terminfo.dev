@@ -715,13 +715,17 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
  * - `same-row`: only when no such diagonal pair exists, the second cell sits on the first cell's own
  *   row at least `SAME_ROW_MIN_COLUMN_GAP` columns away. The pair then measures the COLUMN pitch
  *   alone, and the reader says so rather than implying both pitches were measured.
- * There is no third tier, and that is a finding rather than an omission: the geometry picker had a
- * `no-clear-row` tier that moved both cells to columns two cells clear of every region's edge. Under
- * the frame rule that tier cannot fire. A tier-3 cell must be blank (so it is not the probe's ink)
- * and inside a digested region (or it would be a tier-1 cell), and a cell inside region R at column
- * c has R.left <= c <= R.right, so it can never satisfy c <= R.left-2 or c >= R.right+2. Building it
- * anyway would ship a branch no frame can reach, which is worse than a smaller vocabulary that says
- * what it does.
+ * There is no third tier, and the reason is CONSOLIDATION, not unreachability (@dev/10's peer read,
+ * 33981): the geometry picker had a `no-clear-row` tier for frames with no free ROW, which moved both
+ * cells to columns two clear of every region's edge. Every cell that tier could offer is outside every
+ * region's rectangle by construction — c <= R.left-2 or c >= R.right+2 puts c outside R, not inside it
+ * — so under the frame rule those same cells are ordinary `region-free` candidates, and the old name
+ * described the CONSTRAINT that made them choosable (a clear column, no free row) rather than a third
+ * geometry. Two things therefore change when an old tier-3 frame arrives: a cell that was blank is
+ * chosen by tiers 1/2 with no further rule, and a cell that carries ink is REFUSED, where the geometry
+ * picker would have painted over it. The tier's label is gone; its answers are the frame rule's, and
+ * what decides the rest is ink, never row geometry. Keeping a third branch would ship a vocabulary
+ * that says a different thing from the rule it applies.
  *
  * `reading` is where cell 1,1 sits in the frame, in pixels. A frame too short to hold the whole grid
  * at that origin cannot be used to choose cells, and says so rather than guessing.

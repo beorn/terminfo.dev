@@ -451,9 +451,11 @@ probe's own output footprint. The record names the tier that chose them, first m
 so one stray patch or a full-line repaint cannot satisfy the pair) and `same-row` (no such diagonal
 pair exists, so the second cell sits on the first cell's own row, never adjacent, at least
 `SAME_ROW_MIN_COLUMN_GAP` columns away, and the pair measures the column pitch alone). There is no
-third `no-clear-row` tier, and that is a finding rather than an omission: a cell inside a digested
-region R at column c always satisfies R.left <= c <= R.right, so it can never be two columns clear
-of R's own edge, and a cell outside R is a `region-free` cell. `readThroughSentinel` accepts a one-row pair on the column pitch
+third `no-clear-row` tier, and that is consolidation rather than unreachability (@dev/10's peer read):
+a cell two columns clear of every region's edge is OUTSIDE every region, so it is an ordinary
+`region-free` candidate under the frame rule. The old tier named the constraint that made such a cell
+choosable (a clear column, no free row), not a third geometry; where such a cell carries ink the frame
+rule now refuses it instead of painting over it. `readThroughSentinel` accepts a one-row pair on the column pitch
 and on the two boxes sharing a row, and its basis says so: `(one-axis pair: both cells on one row,
 so it measures the column pitch only)`. A pair that proves no row height never authorizes a
 vertical move — `gridMoveExemption` grants nothing from such a seed and `cropPositionRefusal` names
