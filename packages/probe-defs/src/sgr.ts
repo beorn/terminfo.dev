@@ -175,6 +175,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const { sequence, sample, row, col } = fixture
   const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
   const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
+  const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
   const geometry = ctx.captureGeometry?.geometry
   const shoot = (
     role: "control" | "target",
@@ -213,7 +214,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const screen = (styled: string) =>
     `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${styled}\x1b[0m\x1b[2;1H`
   ctx.write(screen(sample))
-  const control = await shoot("control", "Unstyled text sample", styledCells, plainCells)
+  const control = await shoot("control", "Unstyled text sample", styledCells, plainCells, [paintCells])
   const controlPlain = geometry ? plainFrameOf(control, "Plain line, control") : undefined
   type Focus = Awaited<ReturnType<NonNullable<NonNullable<TermProbeSource["input"]>["focusRoundTrip"]>>>
   let focusBefore: Focus | undefined
@@ -243,7 +244,6 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     }
   }
   ctx.write(screen(sequence + sample))
-  const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
   const textRows = [plainCells, styledCells]
   const paintBefore =
     geometry && focusBefore
@@ -265,6 +265,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
       styledCells,
       plainCells,
+      [paintCells],
     )
     const plain = geometry ? plainFrameOf(styled, `Plain line, sample requested at +${String(offsetMs)} ms`) : undefined
     samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
