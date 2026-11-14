@@ -69,12 +69,13 @@ The Mac WezTerm owner declares the two CWD rows its reader serves; the collector
 rows on their existing terminal callbacks. OSC633 P reuses the owned pane read behind same-pane text checkpoints,
 compares decoded paths with retained raw URI/host and records an undetermined initial source kind. Its unknown,
 OSC7 handled and OSC633 P target phases run last among directory/prompt rows; the disposable pane stays pinned
-until its normal end-of-run close. Clipboard and consent retain their later positions. This is one Mac position;
+until its normal end-of-run close. Its raw reading and process cwd are retained privately; published phases
+carry hashes and nonce control/target paths only, including invalid results. Clipboard and consent retain their later positions. This is one Mac position;
 the other prompt/metadata positions and native qualification retain their own prerequisites.
 The measured CLI version and launch version must match the reviewed Linux
 `0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
 Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
-and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
+and a safe literal public directory URI. For OSC7, fresh inert, handled and target controls precede exact
 restoration of the initial URI. The private capture retains the initial/restored values and feed/text
 trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
 An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference

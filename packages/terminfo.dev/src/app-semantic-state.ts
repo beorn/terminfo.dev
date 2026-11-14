@@ -1459,6 +1459,7 @@ export async function readAppSemanticState(input: {
   withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
   /** Private port supplied only by the verified owner; the checkpoint fences the same pane's writes. */
   readCwd?: (checkpoint?: { row: number; marker: string }) => Promise<{ uri: string; detail: object }>
+  onRetained?: Parameters<typeof retainCaptureArtifact>[3]
 }): Promise<AppSemanticReading> {
   const detail: { commands: Array<{ argv: string[]; stdout: string }>; phases: object[]; identity?: object } = {
     commands: [],
@@ -1579,6 +1580,7 @@ export async function readAppSemanticState(input: {
       ) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
+      const observe = async (): Promise<AppSemanticReading> => {
       const pathValue = (value: string) =>
         value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
       const get = async (checkpoint?: { row: number; marker: string }) => {
@@ -1616,6 +1618,53 @@ export async function readAppSemanticState(input: {
         },
         pathValue,
       )
+      }
+      let reading: AppSemanticReading
+      try {
+        reading = await observe()
+      } catch (error) {
+        detail.phases.push({ error: error instanceof Error ? error.message : String(error) })
+        reading = { status: "invalid", reason: "Owned cwd observation failed; see private evidence" }
+      }
+      const bytes = Buffer.from(JSON.stringify({ reading, detail, processCwd: process.cwd() }))
+      // The shared phase reader is private. Clear its diagnostic carrier before any
+      // retention failure reaches the outer, publishable error result.
+      detail.commands.length = 0
+      detail.phases.length = 0
+      delete detail.identity
+      let privateEvidence: string | undefined
+      try {
+        if (input.onRetained === undefined) throw new Error("Missing owned artifact observer")
+        retainCaptureArtifact(capture, bytes, "json", artifact => {
+          input.onRetained!(artifact)
+          privateEvidence = basename(artifact.path)
+        })
+      } catch {
+        throw new Error("Owned cwd private evidence retention failed")
+      }
+      const publicDetail = { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
+      if (reading.status !== "measured" || reading.reader !== "state") {
+        return { status: "invalid", reason: "Owned cwd observation failed; see private evidence", detail: publicDetail }
+      }
+      const publicValue = (value: string) =>
+        value === `/terminfo-control-${nonce}` || value === `/terminfo-target-${nonce}`
+          ? value
+          : createHash("sha256").update(value).digest("hex")
+      return {
+        ...reading,
+        unknown: { before: publicValue(reading.unknown.before), after: publicValue(reading.unknown.after) },
+        handled: {
+          before: publicValue(reading.handled.before),
+          after: publicValue(reading.handled.after),
+          expected: publicValue(reading.handled.expected),
+        },
+        target: {
+          before: publicValue(reading.target.before),
+          after: publicValue(reading.target.after),
+          expected: publicValue(reading.target.expected),
+        },
+        detail: publicDetail,
+      }
     }
     const mux = input.mux === "tmux"
     let pane: string | undefined

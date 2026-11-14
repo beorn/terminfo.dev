@@ -2119,6 +2119,7 @@ export async function createOwnedTerminal(options: {
                 }
                 return await readAppSemanticState({
                   featureId,
+                  onRetained,
                   runId: expectedLaunchRunId,
                   executable: ownedWezTermIdentity.historyExecutable,
                   write,
