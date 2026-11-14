@@ -1255,8 +1255,14 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])(
       if (fault === "owned") { assert.equal(reading.status, "measured", JSON.stringify(reading)); assert.equal(reading.target.after, reading.target.expected) }
       else {
         assert.equal(reading.status, "invalid", JSON.stringify(reading))
-        assert.match(reading.reason, fault === "wrong socket" ? /socket/ : fault === "wrong pane" ? /pane/ : /bundle/)
-        if (fault === "wrong bundle") assert.equal(cliCalls, 0)
+        if (fault === "wrong bundle") {
+          assert.match(reading.reason, /bundle/)
+          assert.equal(cliCalls, 0)
+        } else {
+          assert.equal(reading.reason, "Owned cwd observation failed; see private evidence")
+          const privateEvidence = fs.readFileSync(${JSON.stringify(captureDirectory)} + "/" + reading.detail.privateEvidence, "utf8")
+          assert.match(privateEvidence, fault === "wrong socket" ? /socket/ : /pane/)
+        }
       }
     } finally { await owner.dispose() }
   `

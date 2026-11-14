@@ -1609,7 +1609,7 @@ export async function readAppSemanticState(input: {
         }
         return reading
       }
-      return await readCwdPhases(
+      return readCwdPhases(
         initial,
         sample,
         () => {
@@ -1634,13 +1634,14 @@ export async function readAppSemanticState(input: {
       delete detail.identity
       let privateEvidence: string | undefined
       try {
-        if (input.onRetained === undefined) throw new Error("Missing owned artifact observer")
+        const onRetained = input.onRetained
+        if (onRetained === undefined) throw new Error("Missing owned artifact observer")
         retainCaptureArtifact(capture, bytes, "json", artifact => {
-          input.onRetained!(artifact)
+          onRetained(artifact)
           privateEvidence = basename(artifact.path)
         })
-      } catch {
-        throw new Error("Owned cwd private evidence retention failed")
+      } catch (error) {
+        throw new Error("Owned cwd private evidence retention failed", { cause: error })
       }
       const publicDetail = { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
       if (reading.status !== "measured" || reading.reader !== "state") {
