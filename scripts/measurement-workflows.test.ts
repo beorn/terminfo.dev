@@ -682,7 +682,7 @@ test.each([
         // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
-      // Cursor retains its title-timeout diagnostic even when the collector exits successfully.
+      // Editors and cmux retain hand-read evidence on both outcomes, before owned cleanup.
       // Evaluate the workflow's existing boolean expression with a successful collect step;
       // executing the body alone would miss a GitHub condition that skips all this evidence.
       expect(
@@ -692,7 +692,7 @@ test.each([
           matrix: { id: appId },
           steps: { collect: { outputs: { iterm_failure: "" } } },
         }),
-      ).toBe(terminal || appId === "cursor")
+      ).toBe(terminal || editor || appId === "cmux")
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
@@ -1315,6 +1315,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   expect(cleanup, "the production owned close caller exists").toBeDefined()
   const closed: unknown[] = []
   const copies: string[] = []
+  const retainedFiles = new Map<string, string>()
   await runInNewContext(`(async () => {${cleanup}\n})()`, {
     process: { cwd: () => root, env: { RUNNER_TEMP: "/runner" } },
     console,
@@ -1326,11 +1327,13 @@ test("hosted editor caller writes the TTY command before launch and retains no i
       },
     },
     require: (id: string) => {
+      if (id === "node:crypto") return { createHash }
       if (id === "node:path") return { basename, join, dirname }
       if (id === "node:fs") {
         return {
           existsSync: () => true,
           readFileSync: () => JSON.stringify(retained),
+          writeFileSync: (path: string, content: string) => retainedFiles.set(path, content),
           mkdirSync: () => {},
           copyFileSync: (_source: string, target: string) => {
             copies.push(target)
@@ -1351,6 +1354,22 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   })
   expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/serve-fixture-id.sh")
   expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/cursor-profile/logs/exthost.log")
+  for (const path of [
+    "editor-activation.json",
+    "editor-request.json",
+    "editor-evaluations.jsonl",
+    "editor-reader-errors.jsonl",
+    "cursor-" + run.id + "/User/settings.json",
+  ]) {
+    expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/" + path)
+  }
+  const files = JSON.parse(retainedFiles.get("/runner/measurement-artifacts/editor-files.json") ?? "null") as {
+    files: Array<{ path: string; sha256: string }>
+  }
+  expect(files.files).toContainEqual({
+    path: "cursor-" + run.id + "/User/settings.json",
+    sha256: createHash("sha256").update(JSON.stringify(retained)).digest("hex"),
+  })
   expect(closed).toEqual([window])
   expect(events.at(-1)).toBe("close")
 })
