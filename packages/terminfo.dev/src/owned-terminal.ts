@@ -17,6 +17,7 @@ import { dirname, isAbsolute, join, win32 } from "node:path"
 import type {
   DarwinMuxAttachmentProof,
   MuxAttachmentProof,
+  OwnerBasisScope,
   OuterAppProof,
   ProbeSubject,
   TerminalScrollbackReading,
@@ -1222,7 +1223,17 @@ async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>
 
 const verifiedTerminalOwners = new WeakMap<
   OwnedTerminal,
-  { captureRunId: string; out: NodeJS.WriteStream; processOwnerBasis?: string }
+  {
+    captureRunId: string
+    out: NodeJS.WriteStream
+    processOwnerBasis?: string
+    /**
+     * What the basis covers. The process arm covers the whole app instance ("process"); a window arm
+     * covers only the window it opened ("window"). A basis that names no scope covers nothing, and
+     * admission refuses it rather than guessing (#34148, @cto condition 1 as revised).
+     */
+    processOwnerBasisScope?: OwnerBasisScope
+  }
 >()
 
 export function ownedTerminalVerifiedFor(
@@ -1234,15 +1245,30 @@ export function ownedTerminalVerifiedFor(
   return grant !== undefined && grant.captureRunId === captureRunId && grant.out === out
 }
 
-/** The verified process arm's lifetime basis, bound to the same live capture grant. */
+/**
+ * A verified owner basis: the sentence a run carries AND what it covers, returned together so the two
+ * can never disagree. A basis without a scope does not exist by construction (#34148, @cto revise).
+ */
+export interface OwnedTerminalBasis {
+  readonly basis: string
+  readonly scope: OwnerBasisScope
+}
+
+/** The verified process arm's lifetime basis and scope, bound to the same live capture grant. */
 export function ownedTerminalProcessBasisFor(
   owner: OwnedTerminal | undefined,
   captureRunId: string,
   out: NodeJS.WriteStream,
-): string | undefined {
-  return owner && ownedTerminalVerifiedFor(owner, captureRunId, out)
-    ? verifiedTerminalOwners.get(owner)?.processOwnerBasis
-    : undefined
+): OwnedTerminalBasis | undefined {
+  if (!owner || !ownedTerminalVerifiedFor(owner, captureRunId, out)) return undefined
+  const grant = verifiedTerminalOwners.get(owner)
+  if (grant?.processOwnerBasis === undefined) return undefined
+  // The scope is recorded by whichever arm issued the basis. An arm that issued one without naming
+  // its scope is a defect, not a default: refuse loudly rather than guess a coverage.
+  if (grant.processOwnerBasisScope === undefined) {
+    throw new Error(`owner basis ${JSON.stringify(grant.processOwnerBasis)} was issued without a scope`)
+  }
+  return { basis: grant.processOwnerBasis, scope: grant.processOwnerBasisScope }
 }
 
 /**
@@ -1314,6 +1340,8 @@ export async function createOwnedTerminal(options: {
   let terminalAppPid: number | undefined
   let expectedWindowId: number | undefined
   let processOwnerBasis: string | undefined
+  /** The process arm issues a basis that covers its whole instance; a window arm would issue "window". */
+  let processOwnerBasisScope: OwnerBasisScope | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
   /** The owned-process arm's own proof, re-run before a later history read (31741). */
   let processOwnerRecheck: (() => void) | undefined
@@ -1395,6 +1423,9 @@ export async function createOwnedTerminal(options: {
     // claims (31741).
     processOwnerRecheck = () => assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
     processOwnerBasis = disposableBasis
+    // This arm started the terminal process and owns its whole instance, which is what the 8 colour
+    // resets and the pasteboard cell are admitted under today. Unchanged by #34148.
+    processOwnerBasisScope = "process"
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
@@ -2470,7 +2501,11 @@ export async function createOwnedTerminal(options: {
         await clipboard?.dispose()
       },
     }
-    verifiedTerminalOwners.set(owner, { captureRunId, out, ...(processOwnerBasis && { processOwnerBasis }) })
+    verifiedTerminalOwners.set(owner, {
+      captureRunId,
+      out,
+      ...(processOwnerBasis && { processOwnerBasis, processOwnerBasisScope: processOwnerBasisScope }),
+    })
     return owner
   } catch (error) {
     await clipboard?.dispose()

@@ -1633,6 +1633,12 @@ export interface ProbeDefinition {
    * ownership alone never authorizes it; absent, forged or foreign authority leaves the terminal untouched.
    */
   termNeedsDisposable?: true
+  /**
+   * What this mutation may touch. A window-scoped owner basis admits `window` only; `app-instance`
+   * and `machine` refuse by name, and an absence refuses as undeclared (#34148). Populated from
+   * `term-footprints.ts`, so the 27 declarations stay one reviewable table.
+   */
+  termFootprint?: import("./term-footprints.ts").TermFootprint
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
   /** This callback decides at least one row through the region readback, so a text-cells run hands

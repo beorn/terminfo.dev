@@ -36,6 +36,8 @@ import {
   type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
+  basisScopeAdmits,
+  basisScopeRefusal,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -816,7 +818,12 @@ export async function runProbeBatch(
           ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
           : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
             ? "no verified disposable-ownership receipt was presented"
-            : undefined
+            : probe.termNeedsDisposable === true &&
+                !disposable &&
+                processOwnerBasis &&
+                !basisScopeAdmits(processOwnerBasis.scope, probe.id)
+              ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
+              : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -1568,7 +1575,7 @@ export async function runProbeBatch(
     } finally {
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       if (probe.termNeedsDisposable && !disposable && processOwnerBasis && observation) {
-        observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis}`
+        observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis.basis}`
       }
       const trace = JSON.stringify({
         writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
