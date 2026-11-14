@@ -486,6 +486,16 @@ process-only today: no window-scoped basis is granted at runtime, so a `window` 
 a cell would need, not a permission it has. Granting one at runtime stays blocked on the restore-abort
 proof and the per-cell cross-window spillover read.
 
+The restore-abort proof is built in `packages/terminfo.dev/src/probes/attribute-ledger.ts` and is
+inert until a window-scoped basis exists. On that scope the collector reads the SGR pen state through
+DECRQSS `$ q m` and the pointer shape through OSC 22's current-shape query before the cell's first
+write, takes every other pre-state from the cell's own readback reply, and reads every touched
+attribute back after the callback. A touched attribute with no query, or whose query drew no reply,
+refuses as "restore unprovable"; a divergence or an unclassifiable write refuses by name; either one
+throws `MutationRestoreRefused` outside the per-probe catch, so the run stops with the diff kept in
+`rawReplies["<cell>.ledger"]` and nothing after it is graded. The queries are the bytes probe-defs
+already sends (`DECRQSS_SGR_QUERY`, `OSC22_CURRENT_QUERY`), not a second parser.
+
 The SGR colour capture owner supplies an explicit pending review test when its observation is
 inconclusive, including equal references and a witness timeout. It retains the observation's reason,
 frames and response; the result writer publishes PROBE TODO without changing its global status ladder.
