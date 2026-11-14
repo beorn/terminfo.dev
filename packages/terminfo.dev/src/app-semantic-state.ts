@@ -1581,43 +1581,45 @@ export async function readAppSemanticState(input: {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
       const observe = async (): Promise<AppSemanticReading> => {
-      const pathValue = (value: string) =>
-        value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
-      const get = async (checkpoint?: { row: number; marker: string }) => {
-        const read = await ownedCwd(checkpoint)
-        const uri = new URL(read.uri)
-        if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
-        const reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
-        detail.phases.push({ ...(checkpoint && { checkpoint }), reading, receipt: read.detail })
-        return reading
-      }
-      const initial = await get()
-      const processCwd = process.cwd()
-      const freshPaths = [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
-      if (freshPaths.includes(processCwd) || freshPaths.includes(initial.cwd)) {
-        throw new Error("Owned cwd control/target must differ from process and baseline cwd")
-      }
-      detail.identity = { executable: input.executable, runId: input.runId, processCwd }
-      let serial = 0
-      const sample = async (number: number, feed: string) => {
-        const marker = `Q-${nonce}-${serial++}`
-        input.write(`\x1b[${number};1H${feed}${marker}`)
-        const reading = await get({ row: number, marker })
-        const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
-        if (reading.host !== expectedHost) {
-          throw new Error(`Owned cwd host mismatch: expected ${expectedHost}, read ${reading.host}; ${reading.rawUri}`)
+        const pathValue = (value: string) =>
+          value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+        const get = async (checkpoint?: { row: number; marker: string }) => {
+          const read = await ownedCwd(checkpoint)
+          const uri = new URL(read.uri)
+          if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
+          const reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
+          detail.phases.push({ ...(checkpoint && { checkpoint }), reading, receipt: read.detail })
+          return reading
         }
-        return reading
-      }
-      return readCwdPhases(
-        initial,
-        sample,
-        () => {
-          detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
-          return Promise.resolve()
-        },
-        pathValue,
-      )
+        const initial = await get()
+        const processCwd = process.cwd()
+        const freshPaths = [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
+        if (freshPaths.includes(processCwd) || freshPaths.includes(initial.cwd)) {
+          throw new Error("Owned cwd control/target must differ from process and baseline cwd")
+        }
+        detail.identity = { executable: input.executable, runId: input.runId, processCwd }
+        let serial = 0
+        const sample = async (number: number, feed: string) => {
+          const marker = `Q-${nonce}-${serial++}`
+          input.write(`\x1b[${number};1H${feed}${marker}`)
+          const reading = await get({ row: number, marker })
+          const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
+          if (reading.host !== expectedHost) {
+            throw new Error(
+              `Owned cwd host mismatch: expected ${expectedHost}, read ${reading.host}; ${reading.rawUri}`,
+            )
+          }
+          return reading
+        }
+        return readCwdPhases(
+          initial,
+          sample,
+          () => {
+            detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+            return Promise.resolve()
+          },
+          pathValue,
+        )
       }
       let reading: AppSemanticReading
       try {
@@ -1636,7 +1638,7 @@ export async function readAppSemanticState(input: {
       try {
         const onRetained = input.onRetained
         if (onRetained === undefined) throw new Error("Missing owned artifact observer")
-        retainCaptureArtifact(capture, bytes, "json", artifact => {
+        retainCaptureArtifact(capture, bytes, "json", (artifact) => {
           onRetained(artifact)
           privateEvidence = basename(artifact.path)
         })
