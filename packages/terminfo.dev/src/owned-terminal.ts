@@ -94,13 +94,15 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
-import { assertOwnedTerminalWindow } from "./terminal-app-window.ts"
+import { assertOwnedAppOwner, assertOwnedTerminalWindow, ownedAppProbes } from "./terminal-app-window.ts"
 import {
   assertOwnedProcess,
   runScopedMarker,
   processCommand,
   argvCarriesMarker,
+  requireOwnWorker,
   type ProcessOwnerBasis,
+  type ProcessMarker,
 } from "./owned-process.ts"
 import {
   createLineRenditionTracker,
@@ -172,6 +174,31 @@ export interface ProcessOwnerAssertion {
   tty: string
   /** iTerm2 only, and required there: the CG window id. Refused on every other provider. */
   windowId?: number
+  intendedVersion: string
+}
+
+/**
+ * The admin's claim for an OWNED-MAC APP launch (#34012, @cto 9f889378): the app it launched, the pid it
+ * measured, the one window its before/after census diff proved new AND owned by that pid, the run's TTY,
+ * and the run-scoped argv marker. Same family as the two assertions above — the admin names the
+ * expectation and the worker re-proves every observable live — but the pid here is the app's own, spawned
+ * by the launcher, so the shared `assertOwnedProcess` is NOT used: it requires the owner to descend from
+ * the daemon, which a launch by another process does not satisfy (@dev/luna3 → @cto, 2026-11-13).
+ */
+export interface OwnedAppOwnerAssertion {
+  asserter: "terminfo-admin"
+  launchRunId: string
+  workerPid: number
+  /** The app identity the launcher opened; a window whose owner runs another app is not this run's. */
+  appId: string
+  ownerPid: number
+  /** The CG id of the one new layer-0 window the launcher's census diff attributed to this launch. */
+  windowId: number
+  /** The app's realpath executable, so a pid reused by another binary is a refusal. */
+  executablePath: string
+  /** The run-scoped argv token the launcher passed; the live pid must still carry it. */
+  marker: ProcessMarker
+  tty: string
   intendedVersion: string
 }
 
@@ -270,22 +297,6 @@ export function parseProcessOwnerAssertion(value: unknown): ProcessOwnerAssertio
   }
 }
 
-/** Both Darwin claim arms bind the assertion to THIS worker: the launch run id it was started with,
- * that same id in its environment, and its own pid. One check, so the two arms cannot drift. */
-function requireOwnWorker(
-  claim: { launchRunId: string; workerPid: number },
-  expectedLaunchRunId: string,
-  who: string,
-): void {
-  if (
-    claim.launchRunId !== expectedLaunchRunId ||
-    process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
-    claim.workerPid !== process.pid
-  ) {
-    throw new Error(`${who} owner assertion differs from this worker launch run or PID`)
-  }
-}
-
 /** The request is an admin assertion; the worker independently verifies every observable field. */
 export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion {
   const invalid = () => new Error("Invalid Terminal.app owner assertion")
@@ -316,6 +327,79 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
     workerPid: object.workerPid,
     windowId: object.windowId,
     tabTty: object.tabTty,
+    intendedVersion: object.intendedVersion,
+  }
+}
+
+/**
+ * The request is an admin assertion; the worker independently re-proves the pid, the marker and the
+ * window live. Structural only, like its two siblings: a well-formed claim is still a claim.
+ */
+export function parseOwnedAppOwnerAssertion(value: unknown): OwnedAppOwnerAssertion {
+  const invalid = () => new Error("Invalid owned-Mac app owner assertion")
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid()
+  const object = value as Record<string, unknown>
+  const keys = [
+    "asserter",
+    "launchRunId",
+    "workerPid",
+    "appId",
+    "ownerPid",
+    "windowId",
+    "executablePath",
+    "marker",
+    "tty",
+    "intendedVersion",
+  ]
+  if (!exactKeys(object, keys)) throw invalid()
+  const marker = object.marker
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) throw invalid()
+  const markerObject = marker as Record<string, unknown>
+  if (
+    !exactKeys(markerObject, ["flag", "value"]) ||
+    typeof markerObject.flag !== "string" ||
+    markerObject.flag.length === 0 ||
+    /\s/.test(markerObject.flag) ||
+    typeof markerObject.value !== "string" ||
+    markerObject.value.length === 0 ||
+    /\s/.test(markerObject.value)
+  ) {
+    throw invalid()
+  }
+  if (
+    object.asserter !== "terminfo-admin" ||
+    typeof object.launchRunId !== "string" ||
+    !/^[0-9a-f]{32}$/.test(object.launchRunId) ||
+    typeof object.workerPid !== "number" ||
+    !Number.isSafeInteger(object.workerPid) ||
+    object.workerPid < 1 ||
+    typeof object.appId !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(object.appId) ||
+    typeof object.ownerPid !== "number" ||
+    !Number.isSafeInteger(object.ownerPid) ||
+    object.ownerPid < 2 ||
+    typeof object.windowId !== "number" ||
+    !Number.isSafeInteger(object.windowId) ||
+    object.windowId < 1 ||
+    typeof object.executablePath !== "string" ||
+    !object.executablePath.startsWith("/") ||
+    typeof object.tty !== "string" ||
+    !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(object.tty) ||
+    typeof object.intendedVersion !== "string" ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}$/.test(object.intendedVersion)
+  ) {
+    throw invalid()
+  }
+  return {
+    asserter: object.asserter,
+    launchRunId: object.launchRunId,
+    workerPid: object.workerPid,
+    appId: object.appId,
+    ownerPid: object.ownerPid,
+    windowId: object.windowId,
+    executablePath: object.executablePath,
+    marker: { flag: markerObject.flag, value: markerObject.value },
+    tty: object.tty,
     intendedVersion: object.intendedVersion,
   }
 }
@@ -1305,6 +1389,7 @@ export async function createOwnedTerminal(options: {
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
   process?: ProcessOwnerAssertion
+  ownedApp?: OwnedAppOwnerAssertion
   darwinMux?: DarwinMuxInput
   /** Retain this outer collector's identity before the launcher attaches a mux. */
   darwinPreflight?: boolean
@@ -1320,6 +1405,7 @@ export async function createOwnedTerminal(options: {
     linux,
     terminalApp,
     process: processOwner,
+    ownedApp,
     darwinMux,
     darwinPreflight,
     darwinHosted,
@@ -1327,7 +1413,7 @@ export async function createOwnedTerminal(options: {
   } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  const armCount = [linux, terminalApp, processOwner, darwinHosted, windowsHosted].filter(Boolean).length
+  const armCount = [linux, terminalApp, processOwner, ownedApp, darwinHosted, windowsHosted].filter(Boolean).length
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
@@ -1428,6 +1514,28 @@ export async function createOwnedTerminal(options: {
     processOwnerBasisScope = "process"
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
+    if (darwinPreflight) {
+      const collector = readProcessAncestry(process.pid, process.pid)[0]
+      if (!collector || collector.startedAtEpochSeconds === undefined) {
+        throw new Error("Darwin outer collector birth could not be measured")
+      }
+      preflightIdentity = {
+        pid: collector.pid,
+        startedAtEpochSeconds: collector.startedAtEpochSeconds,
+        launchRunId: expectedLaunchRunId,
+      }
+    }
+  } else if (ownedApp) {
+    if (process.platform !== "darwin") throw new Error("Owned app launch requires Darwin")
+    const assertion = parseOwnedAppOwnerAssertion(ownedApp)
+    // The arm's whole proof: proof entry, this worker's run, live bundle, worker TTY, the one pid that
+    // carries the marker, and the census showing it owns the recorded window.
+    assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    // A read that happens later re-runs the same proof rather than trusting the grant: the app may quit
+    // and its pid be reused while the grant is alive.
+    processOwnerRecheck = () => assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    processOwnerPid = assertion.ownerPid
+    binding = darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
       const collector = readProcessAncestry(process.pid, process.pid)[0]
       if (!collector || collector.startedAtEpochSeconds === undefined) {

@@ -91,8 +91,10 @@ import {
 } from "./darwin-input.ts"
 import {
   createOwnedTerminal,
+  parseOwnedAppOwnerAssertion,
   parseProcessOwnerAssertion,
   parseTerminalAppOwner,
+  type OwnedAppOwnerAssertion,
   type OwnedTerminal,
   type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
@@ -406,7 +408,16 @@ export function frameUnavailableCapture(): ProbeCapture {
   }
 }
 
-type OwnedTerminalKind = "linux" | "terminalApp" | "process" | "darwinHosted" | "windowsHosted"
+type OwnedTerminalKind = "linux" | "terminalApp" | "process" | "ownedApp" | "darwinHosted" | "windowsHosted"
+
+/**
+ * The arms that carry a Darwin owner claim: one launcher-asserted window, re-proved here before any row is
+ * graded. One predicate, so the exclusivity, capture-directory and launch checks cannot drift apart, and
+ * step 2's fold of `terminalApp` into the owned-app shape is one place rather than ten edits (@cto 9f889378).
+ */
+function isDarwinClaimKind(kind: OwnedTerminalKind | undefined): boolean {
+  return kind === "terminalApp" || kind === "process" || kind === "ownedApp"
+}
 
 /** One geometry query the capture pre-flight asked, kept with its raw reply. The refusal of a
  * terminal that cannot be calibrated is re-derivable from these bytes, never from a summary. */
@@ -452,22 +463,24 @@ function ownedTerminalKind(input: {
   hostedReceipt: string | undefined
   terminalAppOwner: unknown
   processOwner: unknown
+  ownedAppOwner: unknown
   platform: NodeJS.Platform
 }): OwnedTerminalKind | undefined {
-  const { clipboardReceipt, hostedReceipt, terminalAppOwner, processOwner, platform } = input
-  const claimed = Boolean(terminalAppOwner) && Boolean(processOwner)
-  if (claimed) {
-    throw new Error("Collection cannot have both Terminal.app and process owners")
+  const { clipboardReceipt, hostedReceipt, terminalAppOwner, processOwner, ownedAppOwner, platform } = input
+  const claims = [terminalAppOwner, processOwner, ownedAppOwner].filter(Boolean).length
+  if (claims > 1) {
+    throw new Error("Collection cannot have more than one owner claim")
   }
-  if (clipboardReceipt && (terminalAppOwner || processOwner)) {
+  if (clipboardReceipt && claims > 0) {
     throw new Error("Collection cannot have both Linux and a Darwin claim owner")
   }
-  if ((terminalAppOwner || processOwner) && hostedReceipt && (platform === "darwin" || platform === "win32")) {
+  if (claims > 0 && hostedReceipt && (platform === "darwin" || platform === "win32")) {
     throw new Error("Collection cannot have both a Darwin claim owner and a hosted-runner owner")
   }
   if (clipboardReceipt) return "linux"
   if (terminalAppOwner) return "terminalApp"
   if (processOwner) return "process"
+  if (ownedAppOwner) return "ownedApp"
   if (platform === "darwin" && hostedReceipt) return "darwinHosted"
   if (platform === "win32" && hostedReceipt) return "windowsHosted"
   return undefined
@@ -491,6 +504,7 @@ type ProbeCollectionOptions = {
   out?: NodeJS.WriteStream
   terminalAppOwner?: TerminalAppOwnerAssertion
   processOwner?: ProcessOwnerAssertion
+  ownedAppOwner?: OwnedAppOwnerAssertion
   expectedLaunchRunId?: string
   captureRunId?: string
   intendedSubject?: Partial<ProbeSubject>
@@ -555,17 +569,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       hostedReceipt,
       terminalAppOwner: options.terminalAppOwner,
       processOwner: options.processOwner,
+      ownedAppOwner: options.ownedAppOwner,
       platform: process.platform,
     })
-    if (
-      process.platform === "darwin" &&
-      captureDirectory &&
-      kind !== "darwinHosted" &&
-      kind !== "process" &&
-      kind !== "terminalApp"
-    ) {
+    if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted" && !isDarwinClaimKind(kind)) {
       throw new Error(
-        "Darwin capture directory requires a verified hosted-runner receipt, owned process or Terminal.app owner",
+        "Darwin capture directory requires a verified hosted-runner receipt, owned process, owned app or Terminal.app owner",
       )
     }
     // A hosted capture is a runner-owned terminal and a Darwin owned-process capture is an app the
@@ -575,7 +584,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       Boolean(captureDirectory) &&
       (kind === "darwinHosted" ||
         kind === "windowsHosted" ||
-        ((kind === "process" || kind === "terminalApp") && process.platform === "darwin"))
+        (isDarwinClaimKind(kind) && process.platform === "darwin"))
     const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
     if ((captureDirectory || clipboardReceipt) && !provenancePath && !nonLinuxCapture) {
       throw new Error("Controlled Linux collection requires runtime provenance")
@@ -843,7 +852,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(chromeBand ? { chromeBand } : {}),
               collectorLaunched:
                 kind === "darwinHosted" ||
-                (kind === "process" && process.platform === "darwin") ||
+                // NOT terminalApp: that arm's value is unchanged by this head. The collector launches the
+                // owned app and the process arm; Terminal.app is asserted, not launched, here (@cto fa402ac27).
+                ((kind === "process" || kind === "ownedApp") && process.platform === "darwin") ||
                 (process.platform === "linux" && kind === "linux"),
               captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
             })
@@ -999,12 +1010,19 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
+      // Main's structure: a pixel adapter stays primary, and the text recipe is a per-app
+      // qualification on top of it. The owned-app arm is excluded: an owned-Mac app is pixel-first
+      // always, and a text route there would be a declared field in its proof entry, never a fallback
+      // (@cto 9f889378). A native app read (nativeEditorRead, or the cmux hosted app) installs no text
+      // capture either: that app's own capture is primary.
       if (!nativeEditorRead && terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) {
         installTextCapture(terminal)
       }
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
-        expectedWindowId: terminal.expectedWindowId,
+        // The owned-app arm (34107) names its own window: it is not on OwnedTerminal yet, so it comes
+        // from the owner assertion here; every other kind reads the field main sets on the receipt.
+        expectedWindowId: kind === "ownedApp" ? options.ownedAppOwner?.windowId : terminal.expectedWindowId,
         windowSelection: terminal.captureWindowSelection ?? "unique",
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
@@ -1064,6 +1082,19 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         process: options.processOwner,
         ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
         darwinPreflight: !muxSubject,
+      })
+      await installDarwinCapture(ownedTerminal)
+    } else if (kind === "ownedApp") {
+      if (!options.ownedAppOwner) throw new Error("Owned-Mac app collection lacks its launch record")
+      ownedTerminal = await createOwnedTerminal({
+        onRetained,
+        captureRunId,
+        out,
+        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+        ownedApp: options.ownedAppOwner,
+        // The launcher asserts the window; the worker proves it again before any row is graded, and
+        // there is no mux to attach, so the outer collector's identity is always retained.
+        darwinPreflight: true,
       })
       await installDarwinCapture(ownedTerminal)
     } else if (kind === "darwinHosted") {
@@ -1622,6 +1653,7 @@ export function startDaemon(port = 0): void {
         let requestedIds = ids
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
         let processOwner: ProcessOwnerAssertion | undefined
+        let ownedAppOwner: OwnedAppOwnerAssertion | undefined
         if (req.method === "POST") {
           try {
             const body: unknown = JSON.parse(await readBody(req))
@@ -1629,8 +1661,11 @@ export function startDaemon(port = 0): void {
               !body ||
               typeof body !== "object" ||
               Array.isArray(body) ||
-              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner" && key !== "ids") ||
-              ("terminalAppOwner" in body && "processOwner" in body)
+              Object.keys(body).some(
+                (key) =>
+                  key !== "terminalAppOwner" && key !== "processOwner" && key !== "ownedAppOwner" && key !== "ids",
+              ) ||
+              ["terminalAppOwner", "processOwner", "ownedAppOwner"].filter((key) => key in body).length > 1
             ) {
               throw new Error("Invalid probe request shape")
             }
@@ -1645,6 +1680,12 @@ export function startDaemon(port = 0): void {
               processOwner = parseProcessOwnerAssertion(body.processOwner)
               if (processOwner.launchRunId !== runId || processOwner.workerPid !== process.pid) {
                 throw new Error("Process owner assertion differs from this daemon's launch run or PID")
+              }
+            }
+            if ("ownedAppOwner" in body) {
+              ownedAppOwner = parseOwnedAppOwnerAssertion(body.ownedAppOwner)
+              if (ownedAppOwner.launchRunId !== runId || ownedAppOwner.workerPid !== process.pid) {
+                throw new Error("Owned-app owner assertion differs from this daemon's launch run or PID")
               }
             }
           } catch (error) {
@@ -1664,6 +1705,7 @@ export function startDaemon(port = 0): void {
           ...(requestedIds !== undefined && { ids: requestedIds }),
           terminalAppOwner,
           processOwner,
+          ownedAppOwner,
           expectedLaunchRunId: runId,
         })
         if (!run.rawReplies["collector.windowDisposal"]) {
