@@ -888,7 +888,8 @@ test("the adapter boundary keeps the {frame} result shape and refuses a declared
         origin: { x: number; y: number }
       },
     ) => {
-      resolved = resolve({ frame: heldWindow({ origin, shift: { y: 2 } }), pixelGeometry }).origin
+      resolved = (await Promise.resolve(resolve({ frame: heldWindow({ origin, shift: { y: 2 } }), pixelGeometry })))
+        .origin
       return {
         frame: { role: "control" as const, label: "cells 1,1-2,2", capturedAt: 1, ref: "sha256:" + "a".repeat(64) },
         trace: {},
