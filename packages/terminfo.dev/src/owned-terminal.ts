@@ -1284,6 +1284,8 @@ export async function createOwnedTerminal(options: {
   darwinPreflight?: boolean
   darwinHosted?: { receiptPath: string }
   windowsHosted?: { receiptPath: string }
+  /** The collector's already-owned window capture, called before native semantic fixture restoration. */
+  appSemanticCapture?: (featureId: string, phase: string) => Promise<unknown>
 }): Promise<OwnedTerminal> {
   const {
     captureRunId,
@@ -1574,6 +1576,26 @@ export async function createOwnedTerminal(options: {
       hostedAppId: hostedApp?.id,
       launcherAppId,
     })
+    const nativeEditorId =
+      binding.platform === "darwin" &&
+      !muxAttachmentProof &&
+      (ownedAppId === "cursor" || ownedAppId === "com.microsoft.VSCode")
+        ? ownedAppId
+        : undefined
+    const assertNativeEditorProcess = (pid: number, collectorAncestor = false) => {
+      if (!hostedApp || !hostedAncestor) throw new Error("Native editor read has no measured hosted App ancestor")
+      const actual = requireHostedDarwinAppAncestor(
+        hostedApp.comm,
+        readProcessAncestry(pid),
+        hostedAppExecutablePath,
+      ).pid
+      if (actual !== hostedAncestor.pid) {
+        throw new Error(`Native editor ancestor is now pid ${actual}, not pid ${hostedAncestor.pid} measured at launch`)
+      }
+      if (collectorAncestor && !readProcessAncestry(process.pid).some((ancestor) => ancestor.pid === pid)) {
+        throw new Error(`Native terminal pid ${pid} is not an ancestor of this collector`)
+      }
+    }
     // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the
     // launcher variable exactly as before: it is a Linux-arm ownership proof and never a Darwin one (8c084f05).
     const appClipboard =
@@ -1768,6 +1790,13 @@ export async function createOwnedTerminal(options: {
     let cmuxGrantReceipt: string | undefined
     let cmuxGrantFailure: string | undefined
     let cmuxLastRead: CmuxLastRead | undefined
+    const retainCmuxTranscript = (stdout: string): string => {
+      const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
+      if (!directory || !isAbsolute(directory) || options.onRetained === undefined) {
+        throw new Error("Owned cmux native evidence needs a private capture directory and its artifact observer")
+      }
+      return retain(directory, Buffer.from(stdout), "bin", options.onRetained)
+    }
     if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
       const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
       if (published === "") {
@@ -1783,6 +1812,7 @@ export async function createOwnedTerminal(options: {
           const proof = readOwnedCmuxHistory({
             executable: ownedCmuxCli,
             surface: published,
+            retainTranscript: retainCmuxTranscript,
             ownership: { kind: "nonce", nonce: captureRunId },
             configAtLaunch: cmuxConfigAtLaunch,
             observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
@@ -1818,6 +1848,7 @@ export async function createOwnedTerminal(options: {
             const read = readOwnedCmuxHistory({
               executable: ownedCmuxCli,
               ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+              retainTranscript: retainCmuxTranscript,
               rows: geometry.rows,
               ownership: { kind: "surface" },
               configAtLaunch: cmuxConfigAtLaunch,
@@ -2020,6 +2051,25 @@ export async function createOwnedTerminal(options: {
               ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
               : binding.controllingTty
           return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
+        },
+      }),
+      ...(nativeEditorId !== undefined && {
+        async readAppSemanticState(featureId: string, write: (text: string) => void) {
+          if (!verifiedTerminalOwners.has(owner)) {
+            return { status: "invalid" as const, reason: "Native editor read has no live owned terminal" }
+          }
+          const capture = options.appSemanticCapture
+          if (!capture) {
+            return { status: "unavailable" as const, reason: "Native editor read has no owned window capture" }
+          }
+          await owner.readGeometry()
+          assertNativeEditorProcess(process.pid)
+          return readAppSemanticState({
+            featureId,
+            write,
+            runId: expectedLaunchRunId,
+            editor: { appId: nativeEditorId, assertProcess: assertNativeEditorProcess, capture },
+          })
         },
       }),
       ...(linux && {

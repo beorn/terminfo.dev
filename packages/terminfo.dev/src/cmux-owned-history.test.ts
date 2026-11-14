@@ -210,6 +210,7 @@ test("the config observation separates absent from unreadable", () => {
 
 test("the reader names the surface it reads and returns retained lines, not the viewport", () => {
   const calls: string[][] = []
+  const transcripts: string[] = []
   const read = readOwnedCmuxHistory({
     executable,
     surface: "surface:1000070000",
@@ -217,6 +218,10 @@ test("the reader names the surface it reads and returns retained lines, not the 
     ownership: { kind: "markers" as const, prefix: "INSIDE-", count: 12, nonce },
     configAtLaunch: { read: "present" as const, sha256: configSha256 },
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
+    retainTranscript: (stdout) => {
+      transcripts.push(stdout)
+      return `sha256:${configSha256}`
+    },
     spawn: (args) => {
       calls.push([...args])
       return { status: 0, stdout: transcriptOf(12), stderr: "" }
@@ -226,12 +231,16 @@ test("the reader names the surface it reads and returns retained lines, not the 
   expect(read.status).toBe("read")
   expect(read.status === "read" && read.reading.totalLines).toBe(16)
   expect(read.status === "read" && read.reading.screenLines).toBe(50)
+  expect(read.status === "read" && "rawScreen" in JSON.parse(read.receipt)).toBe(false)
+  expect(transcripts).toEqual([transcriptOf(12)])
+  expect(read.status === "read" && read.facts.transcript).toBe(`sha256:${configSha256}`)
   // Unreported stays absent: cmux answers no viewport offset and no capacity, and both stay unclaimed.
   expect(read.status === "read" && read.reading.viewportOffset).toBeUndefined()
   expect(read.status === "read" && read.reading.capacity).toBeUndefined()
 })
 
 test("a surface read proves nothing per call and refuses only an empty read or a moved guard", () => {
+  const retained: string[] = []
   const base = {
     executable,
     rows: 50,
@@ -239,6 +248,10 @@ test("a surface read proves nothing per call and refuses only an empty read or a
     configAtLaunch: { read: "present" as const, sha256: configSha256 },
     spawn: () => ({ status: 0, stdout: transcriptOf(12, measuredExtra, false), stderr: "" }),
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
+    retainTranscript: (stdout: string) => {
+      retained.push(stdout)
+      return `sha256:${configSha256}`
+    },
   }
   const read = readOwnedCmuxHistory(base)
   expect(read.status).toBe("read")
@@ -251,6 +264,15 @@ test("a surface read proves nothing per call and refuses only an empty read or a
     observeConfig: () => ({ read: "present" as const, sha256: "f".repeat(64) }),
   })
   expect(moved.status === "refused" && moved.refusal).toBe("cmux-config-hash-changed")
+  expect(retained).toEqual([transcriptOf(12, measuredExtra, false), "", transcriptOf(12, measuredExtra, false)])
+  expect(() =>
+    readOwnedCmuxHistory({
+      ...base,
+      retainTranscript: () => {
+        throw new Error("private artifact write failed")
+      },
+    }),
+  ).toThrow("private artifact write failed")
   // cmux's own denial phrase goes to the collector's stderr log, never into the published reason
   // (the sibling WezTerm arm proves the same split), so the read is taken with the log captured.
   const stderrLog: string[] = []
