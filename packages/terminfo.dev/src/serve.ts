@@ -22,6 +22,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
+import { resolveCaptureRunId } from "./run-identity.ts"
 import {
   assertCalibratedCaptureGeometry,
   type CaptureCells,
@@ -531,8 +532,7 @@ export function collectProbeRun(
 export function collectProbeRun(options: ProbeCollectionOptions): Promise<RunDraft | CapturedRunDraft>
 export async function collectProbeRun(options: ProbeCollectionOptions = {}): Promise<RunDraft | CapturedRunDraft> {
   const out = options.out ?? process.stdout
-  const captureRunId =
-    options.captureRunId ?? (process.env.TERMINFO_CAPTURE_RUN_ID || undefined) ?? randomBytes(16).toString("hex")
+  const captureRunId = resolveCaptureRunId(options)
   if (!/^[a-zA-Z0-9._-]+$/.test(captureRunId)) throw new Error("Unsafe capture runId")
   const { manifest, collectorRevision: sourceRevision } = getTrustedSuiteReceipt()
   const draft = initializeRunDraft({
@@ -1605,6 +1605,43 @@ export function listDaemons(): DaemonInfo[] {
   })
 }
 
+/**
+ * A handed run identity is the draft's identity, so a capture identity naming another run is refused by
+ * name before any collection, rather than discovered by the composer a pass later (#34018). A daemon
+ * started by hand serves many runs, so each of its collections mints its own identity instead.
+ */
+function daemonCaptureIdentity(launchedRunId: string | undefined): { captureRunId: string } | { refusal: string } {
+  const captureRunId = resolveCaptureRunId({ expectedLaunchRunId: launchedRunId })
+  if (launchedRunId === undefined || captureRunId === launchedRunId) return { captureRunId }
+  return {
+    refusal: `Capture identity ${captureRunId} differs from this daemon's launch run ${launchedRunId}; TERMINFO_CAPTURE_RUN_ID must name the same run or the draft cannot carry the run's identity`,
+  }
+}
+
+/**
+ * A draft is created with `wx`: one run holds one draft. A second collection under the same run would
+ * fork that custody, so name the second attempt and say what to do about it, instead of surfacing the
+ * filesystem's EEXIST and an internal absolute draft path.
+ */
+async function collectOrRefuseRepeatedRun<T>(
+  res: ServerResponse,
+  captureRunId: string,
+  collect: () => Promise<T>,
+): Promise<T | undefined> {
+  try {
+    return await collect()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error
+    res.statusCode = 409
+    res.end(
+      JSON.stringify({
+        error: `Run ${captureRunId} already holds a draft; a second collection in the same run would fork its custody — start a new run (a new daemon) instead of collecting again`,
+      }),
+    )
+    return undefined
+  }
+}
+
 export function startDaemon(port = 0): void {
   let ids: string[] | undefined
   if (process.env.TERMINFO_PROBE_IDS !== undefined) {
@@ -1625,10 +1662,14 @@ export function startDaemon(port = 0): void {
   }
   const terminal = detectTerminal()
   const token = randomBytes(32).toString("hex")
-  const runId =
+  // A launcher hands the run's identity; a daemon started by hand serves as many collections as the
+  // operator asks for, and each of those is its own run. Which one this is decides whether a draft may
+  // be named by the launch identity at all (#34018).
+  const launchedRunId =
     process.env.TERMINFO_RUN_ID && /^[0-9a-f]{32}$/.test(process.env.TERMINFO_RUN_ID)
       ? process.env.TERMINFO_RUN_ID
-      : randomBytes(16).toString("hex")
+      : undefined
+  const runId = launchedRunId ?? randomBytes(16).toString("hex")
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
@@ -1667,6 +1708,7 @@ export function startDaemon(port = 0): void {
 
       if (url.pathname === "/probe") {
         let requestedIds = ids
+        let captureRunId: string | undefined
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
         let processOwner: ProcessOwnerAssertion | undefined
         let ownedAppOwner: OwnedAppOwnerAssertion | undefined
@@ -1714,16 +1756,28 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
           return
         }
+        const identity = daemonCaptureIdentity(launchedRunId)
+        if ("refusal" in identity) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: identity.refusal }))
+          return
+        }
+        captureRunId = identity.captureRunId
         console.log(
           s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`),
         )
-        const run = await collectProbeRun({
-          ...(requestedIds !== undefined && { ids: requestedIds }),
-          terminalAppOwner,
-          processOwner,
-          ownedAppOwner,
-          expectedLaunchRunId: runId,
-        })
+        const collected = await collectOrRefuseRepeatedRun(res, captureRunId, () =>
+          collectProbeRun({
+            ...(requestedIds !== undefined && { ids: requestedIds }),
+            terminalAppOwner,
+            processOwner,
+            ownedAppOwner,
+            expectedLaunchRunId: runId,
+            captureRunId,
+          }),
+        )
+        if (collected === undefined) return
+        const run = collected
         if (!run.rawReplies["collector.windowDisposal"]) {
           console.log(
             s.dim(
@@ -1752,7 +1806,17 @@ export function startDaemon(port = 0): void {
           return
         }
 
-        res.end(JSON.stringify(await collectProbeRun({ ids: [probeId] })))
+        const identity = daemonCaptureIdentity(launchedRunId)
+        if ("refusal" in identity) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: identity.refusal }))
+          return
+        }
+        const collected = await collectOrRefuseRepeatedRun(res, identity.captureRunId, () =>
+          collectProbeRun({ ids: [probeId], expectedLaunchRunId: launchedRunId, captureRunId: identity.captureRunId }),
+        )
+        if (collected === undefined) return
+        res.end(JSON.stringify(collected))
         return
       }
 

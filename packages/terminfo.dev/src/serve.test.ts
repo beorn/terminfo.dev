@@ -6,7 +6,7 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-serve-*>
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
@@ -715,17 +715,28 @@ async function startTestDaemon(
     env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "", ...environment },
     stdio: ["pipe", "ignore", "pipe"],
   })
+  // A daemon that dies before registering used to surface only as "ENOENT: daemons", naming neither
+  // the seal nor the line that refused; its stderr belongs in that failure.
+  let stderr = ""
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString()
+    if (process.env.DEBUG_DAEMON_STDERR) process.stderr.write(chunk)
+  })
   let filename!: string
   let registration!: { port: number; token?: string; runId: string; pid: number }
-  await vi.waitFor(
-    () => {
-      const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
-      expect(files).toHaveLength(1)
-      filename = join(home!, ".terminfo-dev/daemons", files[0]!)
-      registration = JSON.parse(readFileSync(filename, "utf8")) as typeof registration
-    },
-    { timeout: 2000 },
-  )
+  try {
+    await vi.waitFor(
+      () => {
+        const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
+        expect(files).toHaveLength(1)
+        filename = join(home!, ".terminfo-dev/daemons", files[0]!)
+        registration = JSON.parse(readFileSync(filename, "utf8")) as typeof registration
+      },
+      { timeout: 2000 },
+    )
+  } catch (error) {
+    throw new Error(`${(error as Error).message}\nDaemon stderr:\n${stderr}`)
+  }
   return { filename, registration }
 }
 
@@ -740,6 +751,122 @@ afterEach(async () => {
 })
 
 describe("daemon HTTP boundary", () => {
+  // The smallest daemon that can answer /probe: a bundled suite to read, a detached terminal to name,
+  // and an empty selection so no probe ever runs. Used by the run-identity rows (#34018).
+  const suiteDaemon = String.raw`
+    import {mock} from "bun:test"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12), sourceRevision:"b".repeat(40), generatedAt:"2026-09-28T00:00:00Z", adapterVersion:"test", probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(), lib: [], mux: []}}, collectorRevision:"b".repeat(40)}
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
+    const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
+    await startDaemon()
+  `
+  const suiteDaemonEnvironment = {
+    TERMINFO_PROBE_HASH: "",
+    TERMINFO_SOURCE_REVISION: "",
+    TERMINFO_CAPTURE_DIRECTORY: "",
+    TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+    TERMINFO_DISPOSABLE_RECEIPT: "",
+    TERMINFO_RUNTIME_PROVENANCE: "",
+  }
+  // The same daemon, with the probe batch substituted so /probe/single answers in milliseconds.
+  const answeringDaemon = String.raw`
+    import {mock} from "bun:test"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12), sourceRevision:"b".repeat(40), generatedAt:"2026-09-28T00:00:00Z", adapterVersion:"test", probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(), lib: [], mux: []}}, collectorRevision:"b".repeat(40)}
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty, withRawMode:async callback=>callback(), drainStdin:async()=>{}}))
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified, runProbeBatch:async options=>({results: options.draft.results, rawReplies: {}, observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false})}))
+    const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
+    await startDaemon()
+  `
+
+  // The daemon minted a second identity for its own draft, so the run the composer handed never reached
+  // the draft and the composer refused a complete run one stage later (#34018).
+  it("names the draft by the launch identity the run handed it (34018)", async () => {
+    const handed = "d".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, { ...suiteDaemonEnvironment, TERMINFO_RUN_ID: handed })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    expect(registration.runId).toBe(handed)
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [] }),
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(200)
+    expect((JSON.parse(text) as { runId: string }).runId).toBe(handed)
+    expect(readdirSync(join(home, ".terminfo-dev", "http-responses"))).toContain(`${handed}.draft.json`)
+  })
+
+  it("refuses a capture identity naming another run before any collection (34018)", async () => {
+    const handed = "d".repeat(32)
+    const other = "e".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      TERMINFO_CAPTURE_RUN_ID: other,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [] }),
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(400)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(other)
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("TERMINFO_CAPTURE_RUN_ID")
+    // Named, not "empty as far as I looked": neither run has a draft, and the directory itself was
+    // observed rather than assumed absent.
+    const drafts = join(home, ".terminfo-dev", "http-responses")
+    expect(existsSync(drafts), `draft directory ${drafts} was never created`).toBe(false)
+  })
+
+  it("refuses /probe/single a capture identity naming another run before collecting (34018)", async () => {
+    const handed = "d".repeat(32)
+    const other = "e".repeat(32)
+    const { registration } = await startTestDaemon(answeringDaemon, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      TERMINFO_CAPTURE_RUN_ID: other,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe/single?id=sgr.bold`, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(400)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(other)
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("TERMINFO_CAPTURE_RUN_ID")
+    expect(existsSync(join(home, ".terminfo-dev", "http-responses", `${other}.draft.json`))).toBe(false)
+    expect(existsSync(join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`))).toBe(false)
+  })
+
+  it("names a second collection in one run instead of surfacing the filesystem's EEXIST (34018)", async () => {
+    const handed = "d".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, { ...suiteDaemonEnvironment, TERMINFO_RUN_ID: handed })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const url = `http://127.0.0.1:${registration.port}/probe`
+    const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
+    const body = JSON.stringify({ ids: [] })
+    const first = await fetch(url, { method: "POST", headers, body })
+    expect(first.status, await first.clone().text()).toBe(200)
+    const second = await fetch(url, { method: "POST", headers, body })
+    const text = await second.text()
+    expect(second.status, text).toBe(409)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("already holds a draft")
+    expect(failure.error).not.toContain(".terminfo-dev")
+    expect(failure.error).not.toContain(".draft.json")
+  })
+
   // A generic helper test misses both serialization and the client's early non-OK rejection.
   // Only the OS command is substituted: the Darwin census, command callback, HTTP handler and
   // client are real. This fixture establishes byte custody, never a native macOS failure cause.
