@@ -49,6 +49,7 @@ import {
   readbackFor,
   touchedAttributes,
 } from "./attribute-ledger.ts"
+import { SpilloverRefused, spilloverVerdict, witnessAdmission } from "./spillover-witness.ts"
 import {
   query,
   queryOutcome,
@@ -459,6 +460,16 @@ export async function runProbeBatch(
     }
     ownedTerminal?: OwnedTerminal
     /**
+     * Fold 3's witness window (#34148): a second window the SAME run opened in the SAME app instance and
+     * never writes to. Present only when the grant covers two windows; `read` asks that window the same
+     * query the cell's own attribute uses. Absent means every window cell refuses by name — there is no
+     * "assume window" path (@cto e6ae2880 condition 5).
+     */
+    witnessWindow?: {
+      readonly app: string
+      read(attribute: LedgerAttribute): Promise<string | undefined>
+    }
+    /**
      * An app a person opened normally (@cto 2026-11-13): the receipt that names it and the adapter the Mac run
      * path built from the receipt's own subject. This grants NOTHING beyond the three OSC 52 rows — it is never
      * OR'd into `authorizedToWrite` — and every probe it might cover has to pass a LIVE ancestry walk first.
@@ -783,6 +794,9 @@ export async function runProbeBatch(
     }
   }
   let sizeLeftBehind: string | undefined
+  // Fold 3's witness readings, kept across cells: the witness is never written by this run, so a value
+  // that changes between two cells is the spill, and the cell that just ran is the one that caused it.
+  const witnessBefore = new Map<string, string>()
   for (const probe of selected) {
     if (sizeLeftBehind) {
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -809,6 +823,12 @@ export async function runProbeBatch(
     // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
     // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
     const windowBasis = processOwnerBasis?.scope === "window"
+    const witness = windowBasis
+      ? witnessAdmission({
+          app: options.witnessWindow?.app ?? options.subject?.id,
+          witness: options.witnessWindow !== undefined,
+        })
+      : undefined
     // Admission runs on EVERY row of an ordinary-open run, not only rows that need ownership, and the fixture
     // hand-out below keys on an explicit `admitted: true`. Otherwise a row that is not marked as needing ownership
     // would be handed the adapter unadmitted, and with no registry bundle id it would also skip the walk
@@ -856,7 +876,9 @@ export async function runProbeBatch(
                 processOwnerBasis &&
                 !basisScopeAdmits(processOwnerBasis.scope, probe.id)
               ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
-              : undefined
+              : witness?.admitted === false
+                ? witness.refusal
+                : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -933,6 +955,14 @@ export async function runProbeBatch(
     // write. A reply that does not come back is absent from the ledger, and that attribute then refuses
     // as "no pre-state" instead of being assumed restored (@cto e6ae2880 conditions 1 and 3).
     const ledgerPreReads = new Map<string, string>()
+    if (windowBasis && options.witnessWindow && witnessBefore.size === 0) {
+      // The attributes no probe reads for itself are read in the witness first, so its first cell has a
+      // pre-state to compare against. Every other attribute refuses on its first touch by name.
+      for (const attribute of [{ kind: "sgr" }, { kind: "pointer-shape" }] as const) {
+        const value = await options.witnessWindow.read(attribute)
+        if (value !== undefined) witnessBefore.set(attributeKey(attribute), value)
+      }
+    }
     if (windowBasis) {
       for (const attribute of [{ kind: "sgr" }, { kind: "pointer-shape" }] as const) {
         const readback = readbackFor(attribute)
@@ -1416,6 +1446,22 @@ export async function runProbeBatch(
           ),
           omega,
         })
+        if (options.witnessWindow && witness?.admitted === true) {
+          // Fold 3: the witness is never written by this run, so any change in it is this cell's spill.
+          const witnessReads: Record<string, { before: string | null; after: string | null }> = {}
+          for (const attribute of attributes) {
+            const key = attributeKey(attribute)
+            const after = await options.witnessWindow.read(attribute)
+            const verdict = spilloverVerdict({ attribute, before: witnessBefore.get(key), after })
+            witnessReads[key] = { before: witnessBefore.get(key) ?? null, after: after ?? null }
+            if (verdict.status !== "unchanged") {
+              batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict })
+              throw new SpilloverRefused(probe.id, verdict)
+            }
+            witnessBefore.set(key, after)
+          }
+          batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict: "unchanged" })
+        }
         if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
       }
       result = withReplyFailureEvidence(probe.id, result, {
