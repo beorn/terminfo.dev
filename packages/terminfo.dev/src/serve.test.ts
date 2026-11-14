@@ -887,8 +887,12 @@ assert.ok(Object.keys(run.rawReplies).includes("collector.captureCalibration.ren
 const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
 assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,
   JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals)
-// Every graded capture after the renewal used the index the renewal installed, never the first one.
-assert.deepEqual([...new Set(granted.map(entry => entry.origin.origin.y))], [57, 597])
+// Each row was graded against ITS OWN install, not merely somewhere: the first row never saw the
+// renewal's origin and the row that asked never fell back to the first one.
+for (const [id, expected] of [["sgr.fg.default", 57], ["sgr.bg.default", 597]]) {
+  const origins = [...new Set(granted.filter(entry => entry.featureId === id).map(entry => entry.origin.origin.y))]
+  assert.deepEqual(origins, [expected], id + " was graded against an origin it did not install")
+}
 
 `,
     ],
