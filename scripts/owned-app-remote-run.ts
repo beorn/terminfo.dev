@@ -1010,7 +1010,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     // Execute trusted LOCAL checker bytes, never a module from the tree being witnessed.
     // Both sides use the same fs/path/crypto walk; no child process is spawned for a file or link.
     const checker = readFileSync(new URL("./owned-app-resource-manifest.ts", import.meta.url), "utf8")
-    const invocation = `\nconsole.log(JSON.stringify(manifestScan(${JSON.stringify(source)}, ${JSON.stringify(light ? checked : [])}, "resource manifest mismatch").lines))`
+    const invocation = `\nconsole.log(JSON.stringify(manifestScan(${JSON.stringify(source)}, ${JSON.stringify(light ? [...checked, ...extras] : [])}, "resource manifest mismatch").lines))`
     const witnessed = sshRun(
       options,
       "remote resource witness",
