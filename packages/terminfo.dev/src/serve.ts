@@ -785,6 +785,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
+    /** The origin the last SUCCESSFUL install left behind. Kept across a refused attempt, so a row
+     * that retries a renewal still records the origin it left rather than losing the pair (#34306).*/
+    let installedOrigin: PixelGeometry | undefined
     let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
@@ -859,9 +862,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           })
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture, row }) => {
-          // 34306 AC1: the origin the rows before this one were graded against. Read before the
-          // re-measure, because a renewal replaces `textOrigin` with the reading this install makes.
-          const previousOrigin = textOrigin?.pixelGeometry
+          // 34306 AC1: the origin the rows before this one were graded against. This is the last
+          // install that succeeded, not `textOrigin`, which a refused attempt clears.
+          const previousOrigin = installedOrigin
           textOrigin = undefined
           calibrationError = undefined
           pixelSource = probeSource
@@ -907,6 +910,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(renewals.length > 0 && { renewals }),
             }
             captureCalibration = installedCalibration
+            installedOrigin = textOrigin.pixelGeometry
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
              * row 35 lower, footprint unchanged), so the probe asks for the origin again instead of
