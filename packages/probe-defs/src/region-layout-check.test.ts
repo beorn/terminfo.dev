@@ -40,9 +40,13 @@ function blockAt(dy: number): CaptureLocated {
  * glyph written, so editing.delete-chars reaches the same-cells reason; a locate request (no cells)
  * answers `located`.
  */
-function calibratedSource(located: Located | ((paintedCell: string) => Located)) {
+function calibratedSource(
+  located: Located | ((paintedCell: string) => Located),
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+) {
   const writes: string[] = []
   const locates: CaptureRequest[] = []
+  const cellReads: string[] = []
   let reads = 0
   const context: TermProbeSource = {
     kind: "live",
@@ -92,20 +96,36 @@ function calibratedSource(located: Located | ((paintedCell: string) => Located))
     }
     const region = request.cells!
     const key = `${region.top},${region.left},${region.bottom},${region.right}`
+    cellReads.push(request.label)
+    const witness = key === "3,1,3,1"
     const witnessWrite = writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1)
-    const content = key === "3,1,3,1" ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    const content = witness ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    // The guard's frame and the restore's frame read the same cell, so they agree unless the fixture
+    // says the clear did not reproduce it.
+    const afterRestore = request.label.endsWith("witness restored")
+    const digestContent = witness && afterRestore && fixture.restoreDiffers ? "damaged" : content
+    const inkCount = witness && fixture.witnessInk ? 12 : 0
     return {
       ...frame,
-      regionDigest: `sha256:${key}|${content}`,
-      pixelsDigest: `sha256:frame|${content}`,
+      regionDigest: `sha256:${key}|${digestContent}`,
+      pixelsDigest: `sha256:frame|${digestContent}`,
+      rendering: {
+        background: "#1a1a1a",
+        inkColour: inkCount > 0 ? "#ffffff" : "#1a1a1a",
+        inkCount,
+        contrast: inkCount > 0 ? 200 : 0,
+      },
       regionRectangle: crop(region),
     }
   }
-  return { context, writes, locates }
+  return { context, writes, locates, cellReads }
 }
 
-async function sameCellsNote(located: Located | ((paintedCell: string) => Located)) {
-  const source = calibratedSource(located)
+async function sameCellsNote(
+  located: Located | ((paintedCell: string) => Located),
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+) {
+  const source = calibratedSource(located, fixture)
   const probe = editingProbes.find((entry) => entry.id === "editing.delete-chars")!
   const result = await probe.term!(source.context)
   return { result, note: String(result.observation?.note), ...source }
@@ -138,6 +158,52 @@ test("a same-cells read on a window whose layout moved after calibration names t
   const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
   expect(paint).toBeGreaterThan(-1)
   expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+})
+
+test("a witness cell that already holds ink is not painted, and the reason says so (34243)", async () => {
+  // The witness cell is the probe's own output, so the old check painted over the glyph and then
+  // restored a blank: damage the reason never named. Now the cell is read first and the check declines.
+  const { result, note, writes, locates } = await sameCellsNote(blockAt(0), { witnessInk: true })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(note).toContain("layout not re-checked: the witness cell holds ink")
+  // Nothing was painted: no sentinel locate was asked for and no calibration paint or clear was written.
+  expect(locates).toEqual([])
+  expect(writes.some((entry) => entry.includes("\x1b[45m"))).toBe(false)
+})
+
+test("a witness cell the check painted is read back after the clear and restored byte-identically (34243)", async () => {
+  const { note, cellReads, writes } = await sameCellsNote(blockAt(WARP_SHIFT))
+  // The cell is read before the paint and again after the clear, so the restore is proved, not assumed.
+  expect(cellReads.filter((label) => label.includes("witness before paint"))).toHaveLength(1)
+  expect(cellReads.filter((label) => label.includes("witness restored"))).toHaveLength(1)
+  // The check itself still says what it said about the moved window.
+  expect(note).toContain("window layout moved since calibration")
+  const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+})
+
+test("the check writes no cursor-visibility sequence of its own: the capture lifecycle owns it (34243)", async () => {
+  // The run's lifecycle hides the cursor once before any crop and shows it once at the end. A second
+  // writer here could not see that state: hiding again is redundant, and showing it on return
+  // re-exposes the cursor for every capture the probe still has ahead (@dev/11 peer read).
+  const { writes } = await sameCellsNote(blockAt(WARP_SHIFT))
+  expect(writes.filter((entry) => entry === "\x1b[?25l")).toHaveLength(1)
+  expect(writes.filter((entry) => entry === "\x1b[?25h")).toHaveLength(1)
+})
+
+test("a failed locate skips the restore read: an unknown window cannot prove a restore (34243)", async () => {
+  // The restore comparison only means something on a window whose sentinel was found; after a failed
+  // locate the crop measures the move, not the clear, so the check spends no second shot on it.
+  const { note, cellReads } = await sameCellsNote(null)
+  expect(note).toContain("probe text not in view")
+  expect(cellReads.filter((label) => label.includes("witness before paint"))).toHaveLength(1)
+  expect(cellReads.filter((label) => label.includes("witness restored"))).toEqual([])
+}, 20_000)
+
+test("a witness cell that did not come back byte-identically is named, never assumed (34243)", async () => {
+  const { result, note } = await sameCellsNote(blockAt(0), { restoreDiffers: true })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(note).toContain("was not restored byte-identically")
 })
 
 test("on a window that did not move, the same-cells sentence is today's, unchanged (33000 control)", async () => {

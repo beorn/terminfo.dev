@@ -1047,6 +1047,19 @@ export function sentinelCellsInFrame(input: {
  * calibrated crop, so an unmoved window keeps today's sentence. It changes reason text only: it
  * can never decide a cell. It repaints one cell and restores it to a blank default cell, with the
  * cursor and rendition saved and restored around both writes; the probe's own teardown follows.
+ *
+ * IT READS THE CELL BEFORE IT PAINTS IT (34243, @cto a5f7b29c): the witness cell is the probe's own
+ * output, so painting first and restoring a blank erased whatever ink sat there. A frame it takes
+ * itself must report the cell as background; when it holds ink the check paints nothing and says so
+ * in the reason, so a refused check costs a diagnostic and never a glyph. After the restore the same
+ * crop is read once more, and a cell that did not come back byte-identical is named rather than
+ * assumed.
+ *
+ * It DOES NOT TOUCH CURSOR VISIBILITY: every witness crop is taken inside the run's capture
+ * lifecycle, which already hides the cursor (beginCaptureLifecycle) and shows it once at the end, so
+ * the cell cannot hold the cursor's own ink. A second writer here would not see the first's state:
+ * hiding again is redundant, and showing it on the way out re-exposes the cursor for every capture
+ * the probe still has ahead, manufacturing exactly the ink this check exists to explain (/11).
  */
 export async function layoutSinceCalibration(check: {
   ctx: Pick<TermProbeSource, "write" | "capture" | "captureKind" | "captureGeometry">
@@ -1060,14 +1073,35 @@ export async function layoutSinceCalibration(check: {
   const { ctx, label, cell, calibratedCrop: crop, timeoutMs, pollMs } = check
   const sentinel = ctx.captureGeometry?.sentinel
   if (!ctx.capture || ctx.captureKind === "text-cells" || !sentinel) return undefined
+  const capture = ctx.capture
+  const geometry = ctx.captureGeometry?.geometry
   const at = `\x1b[${cell.row};${cell.col}H`
   const where = `cell ${cell.row},${cell.col}`
+  if (!geometry) {
+    return `layout not re-checked: this run has no pixel geometry, so the witness ${where} cannot be read before painting`
+  }
+  // The cell as one crop: what the guard reads before the paint and what proves the restore after it.
+  const witnessShot = (suffix: string) =>
+    capture({
+      role: "control",
+      label: `${label} — layout check, witness ${suffix}`,
+      cells: { top: cell.row, left: cell.col, bottom: cell.row, right: cell.col },
+      pixelGeometry: geometry,
+    })
+  const before = await witnessShot("before paint")
+  const inkCount = before.rendering?.inkCount
+  if (inkCount === undefined) {
+    return `layout not re-checked: the capture arm returned no rendering for the witness ${where}, so whether it holds ink is unmeasured`
+  }
+  if (inkCount > 0) {
+    return `layout not re-checked: the witness cell holds ink (${String(inkCount)} px differ from its ${before.rendering?.background ?? "unrecorded"} background) at ${where}, so calibration's sentinel was not painted there`
+  }
   let located: ObservationFrame["located"]
   ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`)
   try {
     const deadline = Date.now() + timeoutMs
     for (;;) {
-      const frame = await ctx.capture({
+      const frame = await capture({
         role: "control",
         label: `${label} — layout check`,
         locate: { rgb: sentinel.rgb },
@@ -1087,12 +1121,31 @@ export async function layoutSinceCalibration(check: {
   if (located === null) {
     return `probe text not in view: calibration's sentinel painted at ${where} is nowhere in the window within ${timeoutMs} ms`
   }
+  // The restore is a claim about the cell, so it is read back rather than assumed: the same crop,
+  // one shot after the blank write, must reproduce the digest the guard measured before the paint.
+  // Only when the sentinel was actually found: after a failed locate the window is in an unknown
+  // state, so a byte comparison against the pre-paint crop would measure the move, not the restore,
+  // and the check is already refusing by name (@dev/11 peer read, 34243).
+  let restored: ObservationFrame | undefined
+  let restoreError: string | undefined
+  try {
+    restored = await witnessShot("restored")
+  } catch (error) {
+    restoreError = String(error)
+  }
   const { box, pixels } = located
   // The ONE spelling of the block test (its own comment says so): the post-hoc layout check and the
   // per-read derivation must agree, or a frame one accepts is a frame the other refuses (@dev/10).
   const blockRefusal = sentinelBlockRefusal({ box, pixels }, crop)
   if (blockRefusal !== undefined) {
     return `sentinel found but not as one cell block: ${pixels} px in a ${box.width}x${box.height} box at ${box.x},${box.y}, against a ${crop.width}x${crop.height} cell painted at ${where}`
+  }
+  const restoredDigest = restored?.regionDigest
+  if (restoreError !== undefined) {
+    return `layout check unverified: the witness ${where} could not be re-read after calibration's sentinel was cleared: ${restoreError}`
+  }
+  if (restoredDigest !== before.regionDigest) {
+    return `layout check unverified: the witness ${where} was not restored byte-identically, reading ${String(restoredDigest)} after the clear against ${String(before.regionDigest)} before the paint`
   }
   if (
     box.x >= crop.x &&

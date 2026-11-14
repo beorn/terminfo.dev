@@ -433,6 +433,10 @@ uses a fresh preparation; the resetting row's own captures and refusal stay unch
 Each renewal retains a separate `collector.captureCalibration.renewal.N` trace beside the initial and finish traces.
 Preparation discards the prior attempt's origin and refusal; a refused renewal cannot reuse stale geometry.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
+The post-hoc layout check that runs after an undecided pixel read reads the witness cell in a frame of its own
+before painting calibration's sentinel there, and paints nothing when the cell holds ink (34243): a refused check
+costs a reason clause, never the probe's own glyph. The same crop is read once more after the clearing write, and a
+cell that did not come back byte-identical is named rather than assumed.
 Every confirmation compares consecutive complete frames under one fixed deadline.
 Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;
 the chosen form and attempt outcomes are retained, and stripe colors come from the captured pixels.
