@@ -176,10 +176,23 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
   const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
   const geometry = ctx.captureGeometry?.geometry
-  const shoot = (role: "control" | "target", label: string, cells: CaptureCells, controlCells?: CaptureCells) =>
+  const shoot = (
+    role: "control" | "target",
+    label: string,
+    cells: CaptureCells,
+    controlCells?: CaptureCells,
+    keepClear?: readonly CaptureCells[],
+  ) =>
     capture(
       geometry
-        ? { role, label, cells, ...(controlCells ? { controlCells } : {}), pixelGeometry: geometry }
+        ? {
+            role,
+            label,
+            cells,
+            ...(controlCells ? { controlCells } : {}),
+            ...(keepClear !== undefined && keepClear.length > 0 ? { keepClear } : {}),
+            pixelGeometry: geometry,
+          }
         : { role, label },
     )
   // The plain line beside the styled text, cropped from the SAME shot: one window capture per
@@ -231,8 +244,11 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   }
   ctx.write(screen(sequence + sample))
   const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
+  const textRows = [plainCells, styledCells]
   const paintBefore =
-    geometry && focusBefore ? await shoot("control", "Third-region repaint baseline", paintCells) : undefined
+    geometry && focusBefore
+      ? await shoot("control", "Third-region repaint baseline", paintCells, undefined, textRows)
+      : undefined
   const samples: Array<{
     offsetMs: number
     invokedMs: number
@@ -466,7 +482,13 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     )
   }
   ctx.write(`\x1b[0m\x1b[2;${String(col)}H${sample}\x1b[2;1H`)
-  const paintAfter = await shoot("target", "Third-region handled repaint after blink samples", paintCells)
+  const paintAfter = await shoot(
+    "target",
+    "Third-region handled repaint after blink samples",
+    paintCells,
+    undefined,
+    textRows,
+  )
   frames.push(paintAfter)
   const paintObserved = JSON.stringify({
     samples: JSON.parse(witnessed),

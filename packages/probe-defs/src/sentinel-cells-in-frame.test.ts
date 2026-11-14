@@ -89,6 +89,11 @@ test("keeps the pair outside the digested regions and the probe's avoid footprin
   for (const chosen of [a, b]) expect(chosen.row).toBeGreaterThan(4)
 })
 
+test("refuses when the only clear cells would put the mark's space inside a digested region", () => {
+  const regions = [{ top: 1, left: 2, bottom: 24, right: 8 }]
+  expect(() => selection([], { regions })).toThrow(/No sentinel pair can be anchored/)
+})
+
 test("anchors on a lone blank row, a whole cell apart, and says it measured one axis (34040)", () => {
   // Row 24 is the only blank row: the pre-34040 picker refused this frame because it demanded a pair
   // that differed on both axes, and the read lost a gradeable row to a rule it did not need. The
@@ -234,5 +239,5 @@ test("refuses by name when a pitch leaves a cell no whole pixel to read", () => 
       grid: { rows: 2, cols: 2 },
       regions: [],
     }),
-  ).toThrow(/cannot judge the ink on cell 1,\d: .*covers no whole pixel/)
+  ).toThrow(/cannot judge the ink on cell \d+,\d+: .*covers no whole pixel/)
 })

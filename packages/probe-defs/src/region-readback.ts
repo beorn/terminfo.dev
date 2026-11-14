@@ -844,9 +844,17 @@ export function sentinelCellsInFrame(input: {
         cellAt.col >= region.left &&
         cellAt.col <= region.right,
     )
-  /** Tier 1 and 2: blank, and on no digested region. */
+  /**
+   * The mark writes a space in the next cell (sentinel-read paint). That cell has to be in the grid,
+   * outside every digested region, and blank, or the space erases the probe's own glyph (34240).
+   */
+  const spaceClear = (cellAt: { row: number; col: number }): boolean => {
+    const right = { row: cellAt.row, col: cellAt.col + 1 }
+    return inGrid(right) && !digested(right)
+  }
+  /** Tier 1 and 2: blank, and on no digested region, and the same for the cell the space lands in. */
   const regionFree = (cellAt: { row: number; col: number }): boolean =>
-    inGrid(cellAt) && !digested(cellAt) && blank(cellAt.row, cellAt.col)
+    inGrid(cellAt) && !digested(cellAt) && spaceClear(cellAt) && blank(cellAt.row, cellAt.col)
   const first = input.regions[0]
   // The band every compared region occupies, plus the avoid band where it overlaps the regions' rows:
   // "above" and "below" are asked of the WHOLE footprint, not of the first region, or a second region

@@ -10,6 +10,7 @@
 import { sentinelCellsInFrame } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
+import { chooserRegions } from "./serve.ts"
 import { readThroughSentinel } from "./sentinel-read.ts"
 
 const sentinel = { form: "basic" as const, rgb: [255, 136, 255] as const }
@@ -923,4 +924,48 @@ test("the adapter boundary keeps the {frame} result shape and refuses a declared
   await expect(
     readThroughSentinel({ ...adapter(), scroll: { direction: "up" as const, notches: 1, maxRows: 4 } }),
   ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
+})
+
+test("serve's chooser regions keep a blank pre-paint frame from writing inside keep-clear rows (34240)", async () => {
+  const dims = { rows: 8, cols: 10 }
+  const cell = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
+  const keepClear = [
+    { top: 1, left: 1, bottom: 1, right: 8 },
+    { top: 3, left: 1, bottom: 3, right: 8 },
+  ]
+  const regions = chooserRegions({
+    cells: { top: 2, left: 2, bottom: 2, right: 5 },
+    keepClear,
+  })
+  expect(regions).toEqual([{ top: 2, left: 2, bottom: 2, right: 5 }, ...keepClear])
+  const painted = source(dims)
+  const frame = blankFrame(dims, cell)
+  await readThroughSentinel({
+    source: painted.source,
+    prePaint: async () => frame,
+    capture: async (resolve) => resolve({ frame, pixelGeometry }),
+    label: "keep-clear",
+    sentinel,
+    regions,
+    reading: { x: 0, y: 0 },
+    cell,
+    deadline: Date.now(),
+  }).catch(() => undefined)
+  const addressed = painted.writes.flatMap((write) =>
+    [...write.matchAll(/\x1b\[(\d+);(\d+)H/g)].map((match) => ({
+      row: Number(match[1]),
+      col: Number(match[2]),
+    })),
+  )
+  expect(addressed.length).toBeGreaterThan(0)
+  for (const cellAt of addressed) {
+    for (const region of keepClear) {
+      const inside =
+        cellAt.row >= region.top &&
+        cellAt.row <= region.bottom &&
+        cellAt.col >= region.left &&
+        cellAt.col <= region.right
+      expect(inside).toBe(false)
+    }
+  }
 })

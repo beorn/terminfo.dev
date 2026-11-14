@@ -621,6 +621,12 @@ export interface CaptureRequest {
    */
   controlCells?: CaptureCells
   /**
+   * Regions this shot measures elsewhere and the calibration mark must not paint on, including the
+   * cell the mark's trailing space lands in. They are not cropped and not digested. Optional: a
+   * request without the list is the previous path (34240, @cto 55e9ad34).
+   */
+  keepClear?: readonly CaptureCells[]
+  /**
    * Cells the probe's own output may cover beyond what it digests (an inline image's footprint,
    * 33985). A read that paints calibration's sentinel never paints it here: a terminal that draws the
    * image over text hides the sentinel, and the crop cannot be anchored.

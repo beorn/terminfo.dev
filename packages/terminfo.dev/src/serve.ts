@@ -106,6 +106,20 @@ import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 /**
+ * Every region the sentinel chooser must stay out of for this shot: the digested crop, its same-shot
+ * control, and the probe's keep-clear rows. Keep-clear is not cropped (34240).
+ */
+export function chooserRegions(checkpoint: {
+  cells?: CaptureCells
+  controlCells?: CaptureCells
+  keepClear?: readonly CaptureCells[]
+}): CaptureCells[] {
+  return [checkpoint.cells, checkpoint.controlCells, ...(checkpoint.keepClear ?? [])].filter(
+    (region): region is CaptureCells => region !== undefined,
+  )
+}
+
+/**
  * The checkpoint's cells as rows of the read, or a refusal. A checkpoint that names cells the read
  * does not cover is refused BY NAME: silently cropping it would digest less than the row asked for.
  */
@@ -808,9 +822,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             return result.result
           }
           const sentinel = calibrated.sentinel
-          const regions = [checkpoint.cells, checkpoint.controlCells].filter(
-            (region): region is CaptureCells => region !== undefined,
-          )
+          const regions = chooserRegions(checkpoint)
           const source = pixelSource
           if (sentinel === undefined || source === undefined || regions.length === 0) {
             return adapter.capture(checkpoint, calibrated)
