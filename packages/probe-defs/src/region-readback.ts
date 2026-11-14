@@ -823,8 +823,7 @@ export function sentinelCellsInFrame(input: {
     for (const cellAt of cellsNearestFirst(anchor, grid, accepts)) return cellAt
     return undefined
   }
-  const limit = (need: "a cell" | "a second cell"): string =>
-    spelledLimit(clearExtent(input.regions, grid), grid, need)
+  const limit = (need: "a cell" | "a second cell"): string => spelledLimit(clearExtent(input.regions, grid), grid, need)
   const spelledLimitFor = (need: "a cell" | "a second cell", why: string): string =>
     `: ${limit(need)}${why}, so this frame's crop cannot be anchored`
   // Where the search looked, spelled the same way in both refusals: an empty region list must not
@@ -1153,9 +1152,10 @@ export function cropPositionRefusal(input: {
   // every other difference still refuses below, with the sentence it always used.
   if (gridMoveExemption(cropped).length > 0) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
-  const rowHeight = seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
-    ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
-    : ""
+  const rowHeight =
+    seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
+      ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
+      : ""
   return {
     pass: false,
     response,

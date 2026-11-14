@@ -169,9 +169,11 @@ describe("34040 the frame rule leaves two tiers, and both are reachable", () => 
     // This screen is the closest thing to that shape: every row is inside the region and every column
     // outside it carries the probe's own band, so the frame refuses rather than inventing a tier.
     expect(() =>
-      pairOn({ rows: 20, cols: 61 }, [{ top: 1, left: 1, bottom: 20, right: 61 }], [
-        { top: 1, left: 1, bottom: 20, right: 61 },
-      ]),
+      pairOn(
+        { rows: 20, cols: 61 },
+        [{ top: 1, left: 1, bottom: 20, right: 61 }],
+        [{ top: 1, left: 1, bottom: 20, right: 61 }],
+      ),
     ).toThrow(/cannot be anchored/)
   })
 
@@ -190,9 +192,11 @@ describe("34040 the pair's refusal does not blame the probe's own output", () =>
     // that: both cells come from outside the region, so nothing the pair says can blame the compared
     // region for rows it does not use (@dev/15 peer read). Row 2 carries the region only in columns
     // 1-5, so column 7 on that row is free screen and the pair stays region-free.
-    const pair = pairOn({ rows: 3, cols: 10 }, [{ top: 2, left: 1, bottom: 2, right: 5 }], [
-      { top: 3, left: 1, bottom: 3, right: 10 },
-    ])
+    const pair = pairOn(
+      { rows: 3, cols: 10 },
+      [{ top: 2, left: 1, bottom: 2, right: 5 }],
+      [{ top: 3, left: 1, bottom: 3, right: 10 }],
+    )
     expect(pair).toEqual({ a: { row: 1, col: 1 }, b: { row: 2, col: 7 }, tier: "region-free" })
   })
 })
@@ -215,9 +219,12 @@ describe("34040 the first cell gets the same search, not a second fixed list", (
     // two runs of the same terminal then disagree. The order is fixed instead — the cell above the
     // region's first cell, then above its right edge, then directly below, then nearest first — so
     // row 1 carrying Warp's command header sends the pair under the region, to 4,1.
-    const pair = pairOn({ rows: 10, cols: 20 }, [{ top: 2, left: 1, bottom: 3, right: 5 }], [], [
-      { top: 1, left: 1, bottom: 1, right: 20 },
-    ])
+    const pair = pairOn(
+      { rows: 10, cols: 20 },
+      [{ top: 2, left: 1, bottom: 3, right: 5 }],
+      [],
+      [{ top: 1, left: 1, bottom: 1, right: 20 }],
+    )
     expect(pair.a).toEqual({ row: 4, col: 1 })
     expect(pair.tier).toBe("region-free")
   })
