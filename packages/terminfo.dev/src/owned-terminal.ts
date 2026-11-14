@@ -2415,9 +2415,13 @@ export async function createOwnedTerminal(options: {
             }
             if (ownedPromptCwd) {
               try {
+                const appExecutablePath =
+                  ownedAppId === "wezterm" && processOwner?.provider === "cli-process"
+                    ? processOwner.executablePath
+                    : hostedAppExecutablePath
                 if (
-                  hostedAppExecutablePath === undefined ||
-                  realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(hostedAppExecutablePath)), "wezterm")
+                  appExecutablePath === undefined ||
+                  realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(appExecutablePath)), "wezterm")
                 ) {
                   throw new Error("WezTerm cwd CLI is outside the verified App bundle")
                 }

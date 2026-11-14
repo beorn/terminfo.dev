@@ -1309,12 +1309,18 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
 
 // The state-domain getter fixture cannot prove which bundle/socket/pane the real owner reads.
 // @failure A Mac cwd observation comes from a different GUI, pane or bundle despite a valid output binding.
-test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated process launch"])(
-  "hosted WezTerm cwd reader binds custody: %s",
-  (fault) => {
-    const captureDirectory = mkdtempSync(join(tmpdir(), "owned-wezterm-cwd-"))
-    directories.push(captureDirectory)
-    const script = `
+test.each([
+  "owned",
+  "wrong socket",
+  "wrong pane",
+  "wrong bundle",
+  "generated process launch",
+  "generated process wrong bundle",
+  "generated process wrong owner",
+])("hosted WezTerm cwd reader binds custody: %s", (fault) => {
+  const captureDirectory = mkdtempSync(join(tmpdir(), "owned-wezterm-cwd-"))
+  directories.push(captureDirectory)
+  const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { EventEmitter } from "node:events"
@@ -1322,6 +1328,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const fault = ${JSON.stringify(fault)}
+    const processLaunch = fault.startsWith("generated process")
     const executable = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui", cli = "/Applications/WezTerm.app/Contents/MacOS/wezterm"
     const version = "20240203-110809-5046fc22"
     Object.defineProperty(process, "platform", { value: "darwin" })
@@ -1334,7 +1341,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
       existsSync: path => path === "/Applications/WezTerm.app" || realExistsSync(path),
       openSync: () => 7, closeSync: () => {},
       readFileSync: (path, ...args) => path === executable ? Buffer.from("gui") : path === cli ? Buffer.from("cli") : realReadFileSync(path, ...args),
-      realpathSync: path => fault === "wrong bundle" && path === cli ? "/outside/wezterm" : path }))
+      realpathSync: path => fault.endsWith("wrong bundle") && path === cli ? "/outside/wezterm" : path }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
     let uri = "file://localhost/original", cliCalls = 0, pasteboard = ""
     const rows = Array(24).fill("")
@@ -1358,7 +1365,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
         return JSON.stringify([{ pane_id: fault === "wrong pane" ? 2 : 1, tty_name: "/dev/ttys004", cwd: uri }])
       },
       spawnSync: (command, args, options) => {
-        if (command === "/bin/ps" && fault === "generated process launch") {
+        if (command === "/bin/ps" && processLaunch) {
           const pid = Number(args[args.indexOf("-p") + 1])
           const value = args.includes("tty=") ? "ttys004"
             : args.includes("comm=") ? executable
@@ -1397,7 +1404,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
     mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: {
         executablePath: executable, executableSha256: createHash("sha256").update("gui").digest("hex") } }) }))
-    if (fault === "generated process launch") {
+    if (processLaunch) {
       // Native e8 reached this reader with no explicit artifact binding. Drive the real launch
       // recipe rather than injecting the directory that the older owner fixture assumed.
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
@@ -1418,13 +1425,21 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
     }
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const retained = []
-    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32), out: process.stdout,
-      ...(fault === "generated process launch" ? { process: {
-        asserter: "terminfo-admin", launchRunId: "b".repeat(32), workerPid: process.pid,
+    const pendingOwner = createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32), out: process.stdout,
+      ...(processLaunch ? { process: {
+        asserter: "terminfo-admin", launchRunId: "b".repeat(32),
+        workerPid: fault === "generated process wrong owner" ? process.pid + 1 : process.pid,
         provider: "cli-process", ownerPid: 4242, executablePath: executable,
         basis: { kind: "marker", marker: { flag: "--config-file", value: marker } },
         tty: "/dev/ttys004", intendedVersion: version,
       } } : { darwinHosted: { receiptPath: "fixture" } }), onRetained: artifact => retained.push(artifact) })
+    if (fault === "generated process wrong owner") {
+      await assert.rejects(pendingOwner, /worker/i)
+      assert.equal(retained.length, 0)
+      process.exit(0)
+    }
+    const owner = await pendingOwner
+    const cliCallsAtGrant = cliCalls
     try {
       assert.equal(typeof owner.readAppSemanticState, "function")
       const reading = await owner.readAppSemanticState("extensions.osc633-p", text => {
@@ -1445,9 +1460,9 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
       }
       else {
         assert.equal(reading.status, "invalid", JSON.stringify(reading))
-        if (fault === "wrong bundle") {
+        if (fault.endsWith("wrong bundle")) {
           assert.match(reading.reason, /bundle/)
-          assert.equal(cliCalls, 0)
+          assert.equal(cliCalls, cliCallsAtGrant, "no semantic CLI read may follow a rejected bundle")
         } else {
           assert.equal(reading.reason, "Owned cwd observation failed; see private evidence")
           const privateEvidence = fs.readFileSync(${JSON.stringify(captureDirectory)} + "/" + reading.detail.privateEvidence, "utf8")
@@ -1456,11 +1471,10 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle", "generated pro
       }
     } finally { await owner.dispose() }
   `
-    const result = spawnSync(process.execPath, ["-e", script], {
-      cwd: join(import.meta.dirname, "../../.."),
-      encoding: "utf8",
-      timeout: 20_000,
-    })
-    expect(result.status, result.stderr).toBe(0)
-  },
-)
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
