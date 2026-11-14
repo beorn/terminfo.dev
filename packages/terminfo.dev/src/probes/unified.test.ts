@@ -2926,9 +2926,9 @@ it.each([
   verifiedBatchFixture()
   if (id === "modes.auto-wrap") {
     vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
-    basis: "owned disposable regression process",
-    scope: "process",
-  })
+      basis: "owned disposable regression process",
+      scope: "process",
+    })
   }
   const definition = ALL_PROBES.find((item) => item.id === id)!
   const original = definition.termNeedsGeometry
