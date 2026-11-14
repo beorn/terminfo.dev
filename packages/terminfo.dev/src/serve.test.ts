@@ -71,10 +71,14 @@ it.each(["tmux", "screen", "darwin-screen"])(
     // read - and switches arms between collects below.
     const cmuxExecutable="/Applications/cmux.app/Contents/MacOS/cmux"
     const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
+    // The owner publishes the last read as facts, never the receipt text: a receipt carries the pane
+    // transcript (@cto REVISE 2026-11-13). "grant-only" models a run whose only read was the grant.
+    const cmuxFacts=(over)=>({kind:"read",receiptSha256:"cd".repeat(32),receiptLength:120,ownership:"surface",markers:null,extras:1,totalLines:73,screenLines:24,config:{read:"present",sha256:"ef".repeat(32)},...over})
     let cmuxArm,cmuxLast
     const cmuxHistory=()=>cmuxArm==="grant-failed"
-      ? {executable:cmuxExecutable,surface:null,grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
-      : {executable:cmuxExecutable,surface:"surface-uuid-1",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
+      ? {executable:cmuxExecutable,surface:null,grant:"failed",grantRefusal:"cmux-surface-not-owned (reason withheld: names a host path)",grantProof:"cmux-surface-not-owned: cmux CLI /Applications/cmux.app/Contents/MacOS/cmux answered nothing this run may read (exit 1)",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grant:"proved",grantRefusal:null,grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),
+        get lastRead(){return cmuxArm==="grant-only"?cmuxFacts({kind:"grant",ownership:"nonce",extras:2}):(cmuxLast??null)}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -89,7 +93,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>{cmuxLast=JSON.stringify({surface:"surface-uuid-1",ownership:"surface",markers:null,extras:null,totalLines:73});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>{cmuxLast=cmuxFacts(cmuxArm==="config-absent"?{config:{read:"absent"}}:{});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
         ...(cmuxArm===undefined?{}:{cmuxHistory:cmuxHistory(),historyReadsThroughCli:true,historyExecutable:{path:cmuxExecutable,sha256:"ab".repeat(32),version:"cmux 0.65.2"}}),
         // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
@@ -178,21 +182,36 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
       cmuxArm="success"
       const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(cmuxRecord.executable,cmuxExecutable)
-      assert.equal(cmuxRecord.surface,"surface-uuid-1")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
-      assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
-      assert.equal(JSON.parse(cmuxRecord.lastRead).totalLines,73)
+      assert.equal(cmuxRecord.executable,"cmux","the record names the executable by basename, never the host path")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/Applications/"),false,"no host path reaches the record")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/"),false,"no path separator reaches the record at all")
+      assert.equal(cmuxRecord.surface,"cmux")
+      assert.equal(cmuxRecord.pane,"surface-uuid-1")
+      assert.equal(cmuxRecord.grant,"proved","the grant's outcome is recorded as a status")
+      assert.equal("grantProof" in cmuxRecord,false,"the grant proof stays out of the record")
+      assert.equal("grantRefusal" in cmuxRecord,false,"a proved grant has no refusal to record")
+      assert.equal(cmuxRecord.lastRead.kind,"read","the record carries the read that happened, not the grant")
+      assert.equal(cmuxRecord.lastRead.ownership,"surface")
+      assert.equal(cmuxRecord.lastRead.totalLines,73)
+      assert.equal(typeof cmuxRecord.lastRead,"object","the last read is facts, never the receipt text")
+      cmuxArm="grant-only";cmuxLast=undefined
+      const grantOnlyRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(grantOnlyRecord.lastRead.kind,"grant","a run with no later read shows the grant read, not nothing")
+      assert.equal(grantOnlyRecord.lastRead.extras,2,"extras is published as a count")
+      assert.equal(JSON.stringify(grantOnlyRecord).includes("/"),false,"the grant receipt never reaches the record")
       cmuxArm="grant-failed";cmuxLast=undefined
       const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(failedRecord.surface,null)
+      assert.equal(failedRecord.pane,null)
+      assert.equal(failedRecord.grant,"failed")
+      assert.equal(failedRecord.grantRefusal,"cmux-surface-not-owned (reason withheld: names a host path)","a failed grant keeps its code and withholds a reason that names a path")
+      assert.equal(JSON.stringify(failedRecord).includes("/"),false,"the withheld reason's path stays out")
       assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
-      assert.match(failedRecord.grantProof,/published no CMUX_SURFACE_ID/)
+      assert.equal("grantProof" in failedRecord,false)
       cmuxArm="config-absent";cmuxLast=undefined
       const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.deepEqual(JSON.parse(absentRecord.grantProof).config,{read:"absent"},"a launch with no config keeps the absence in the record")
-      assert.equal(JSON.parse(absentRecord.lastRead).ownership,"surface")
+      assert.equal(absentRecord.grant,"proved","a launch with no config still shows the grant's outcome")
+      assert.equal(absentRecord.lastRead.ownership,"surface")
+      assert.equal(absentRecord.lastRead.config.read,"absent","a launch with no config keeps the absence in the record")
       cmuxArm=undefined
     }
   `,
