@@ -161,8 +161,14 @@ export function cellRectangle(input: {
   windowHeight: number
   /** The measured pixels of the text area, when a window edge clips its last row or column. */
   visible?: { width: number; height: number }
+  /**
+   * The settled name of the measurement behind `textOrigin` (`NamedTextOrigin.basisKind`). A
+   * rectangle that cannot fit the frame refuses by name; without this the reader learns only that a
+   * number was too large, never which measurement produced it (34163).
+   */
+  basis?: string
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible } = input
+  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible, basis } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -222,7 +228,10 @@ export function cellRectangle(input: {
     rectangle.y + rectangle.height > windowHeight
   ) {
     throw new Error(
-      `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}`,
+      `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}: ` +
+        `${geometry.cellWidth}x${geometry.cellHeight} cells from text origin ${textOrigin.x},${textOrigin.y} ` +
+        `(${basis ? `origin basis: ${basis}` : "origin basis unnamed, so no measurement can be blamed"}) ` +
+        `over a ${geometry.textWidth}x${geometry.textHeight} text area`,
     )
   }
   return rectangle
@@ -473,6 +482,7 @@ export async function finishCapture(input: {
         windowWidth: width,
         windowHeight: height,
         ...(placement.visible ? { visible: placement.visible } : {}),
+        ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
       })
       const cropExpected = rectangle.width * rectangle.height * 4
       const cropped = Buffer.alloc(cropExpected)
