@@ -1,3 +1,10 @@
+/**
+ * @failure The cmux launcher can overwrite a foreign initial command, fail to restore its own line,
+ *   or accept a started process outside the acquired cmux ancestry.
+ * @level l1
+ * @consumer Shared cmux initial-command launcher used by admin and measurement workflows.
+ * @testonly none
+ */
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
