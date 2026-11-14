@@ -543,13 +543,13 @@ test.each(["paint", "capture", "cleanup", "paint+cleanup", "capture+cleanup"])(
       deadline: Date.now() + 1_000,
     })
     const original = fault.startsWith("paint") ? paintFailure : captureFailure
-    if (fault.includes("+"))
+    if (fault.includes("+")) {
       await expect(operation).rejects.toMatchObject({
         name: "AggregateError",
         cause: original,
         errors: [original, cleanupFailure],
       })
-    else await expect(operation).rejects.toBe(fault === "cleanup" ? cleanupFailure : original)
+    } else await expect(operation).rejects.toBe(fault === "cleanup" ? cleanupFailure : original)
     expect(writes).toHaveLength(2)
     expect(writes.every((write) => !write.includes("\x1b7") && write.endsWith(restoreAfterPaint))).toBe(true)
   },

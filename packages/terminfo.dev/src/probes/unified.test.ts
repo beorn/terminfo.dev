@@ -640,7 +640,10 @@ it("retains owner restoration through capture and strict call-log replay", async
   const callback = async (ctx: TermProbeSource) => {
     if (!ctx.capture) throw new Error("Missing collector capture wrapper")
     await ctx.capture({ role: "control", label: "owner transport", restoreAfterPaint })
-    return { pass: false, tests: [{ id: "criterion", status: "probe-todo" as const, reason: "transport fixture" }] }
+    return {
+      pass: false as const,
+      tests: [{ id: "criterion", status: "probe-todo" as const, reason: "transport fixture" }],
+    }
   }
   let observed: string | undefined
   try {
