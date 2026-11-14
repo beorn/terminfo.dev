@@ -1,3 +1,9 @@
+/**
+ * @failure A cell's write is left behind, or a class with no readback is graded as restored.
+ * @level l0
+ * @consumer The window-scoped restore abort
+ * @testonly none
+ */
 import { describe, expect, it } from "vitest"
 import { MutationRestoreRefused, attributeKey, classifyWrite, ledgerOmega, readbackFor } from "./attribute-ledger"
 
