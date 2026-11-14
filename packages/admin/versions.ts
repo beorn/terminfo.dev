@@ -35,6 +35,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/probe-output.ts",
   "packages/admin/corpus-placement.ts",
   "packages/admin/suite-retention.ts",
+  "packages/terminfo.dev/src/probes/attribute-ledger.ts",
+  "packages/terminfo.dev/src/probes/spillover-witness.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/clipboard-config.ts",

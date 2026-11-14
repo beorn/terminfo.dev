@@ -39,6 +39,18 @@ import {
   basisScopeAdmits,
   basisScopeRefusal,
 } from "@terminfo/probe-defs"
+
+import {
+  MutationRestoreRefused,
+  type AttributeReads,
+  type LedgerAttribute,
+  attributeKey,
+  ledgerOmega,
+  readbackFor,
+  touchedAttributes,
+} from "./attribute-ledger.ts"
+import { SpilloverRefused, spilloverVerdict, witnessAdmission } from "./spillover-witness.ts"
+import { windowBasisAdmission } from "./window-basis-admission.ts"
 import {
   query,
   queryOutcome,
@@ -94,6 +106,26 @@ export interface Probe {
 }
 
 /** Build a TermProbeSource from the tty.ts helpers */
+/**
+ * The cell's own reply to the readback query for `attribute`, taken from the last such query recorded
+ * before the first write that touched it. A probe that reads its pre-state itself (DECRQM, OSC 4) needs
+ * no pre-pass entry: that reply IS the pre-state (@cto e6ae2880 condition 3).
+ */
+function priorReply(events: readonly TTYTraceEvent[], attribute: LedgerAttribute, pattern: RegExp): string | undefined {
+  const key = attributeKey(attribute)
+  const writes: string[] = []
+  let candidate: string | undefined
+  for (const event of events) {
+    if (event.kind === "query") {
+      if (pattern.test(event.raw)) candidate = event.raw
+      continue
+    }
+    writes.push(event.sequence)
+    if (touchedAttributes(writes).attributes.some((touched) => attributeKey(touched) === key)) return candidate
+  }
+  return candidate
+}
+
 export function createTermProbeSource({
   probe,
   geometry,
@@ -429,6 +461,16 @@ export async function runProbeBatch(
     }
     ownedTerminal?: OwnedTerminal
     /**
+     * Fold 3's witness window (#34148): a second window the SAME run opened in the SAME app instance and
+     * never writes to. Present only when the grant covers two windows; `read` asks that window the same
+     * query the cell's own attribute uses. Absent means every window cell refuses by name — there is no
+     * "assume window" path (@cto e6ae2880 condition 5).
+     */
+    witnessWindow?: {
+      readonly app: string
+      read(attribute: LedgerAttribute): Promise<string | undefined>
+    }
+    /**
      * An app a person opened normally (@cto 2026-11-13): the receipt that names it and the adapter the Mac run
      * path built from the receipt's own subject. This grants NOTHING beyond the three OSC 52 rows — it is never
      * OR'd into `authorizedToWrite` — and every probe it might cover has to pass a LIVE ancestry walk first.
@@ -753,6 +795,9 @@ export async function runProbeBatch(
     }
   }
   let sizeLeftBehind: string | undefined
+  // Fold 3's witness readings, kept across cells: the witness is never written by this run, so a value
+  // that changes between two cells is the spill, and the cell that just ran is the one that caused it.
+  const witnessBefore = new Map<string, string>()
   for (const probe of selected) {
     if (sizeLeftBehind) {
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -776,6 +821,15 @@ export async function runProbeBatch(
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
+    // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
+    const windowBasis = processOwnerBasis?.scope === "window"
+    const witness = windowBasis
+      ? witnessAdmission({
+          app: options.witnessWindow?.app ?? options.subject?.id,
+          witness: options.witnessWindow !== undefined,
+        })
+      : undefined
     // Admission runs on EVERY row of an ordinary-open run, not only rows that need ownership, and the fixture
     // hand-out below keys on an explicit `admitted: true`. Otherwise a row that is not marked as needing ownership
     // would be handed the adapter unadmitted, and with no registry bundle id it would also skip the walk
@@ -808,6 +862,12 @@ export async function runProbeBatch(
             : { admitted: false as const, unprovable: true, refusal: liveRefusal }
         })()
       : undefined
+    // A `window` footprint says how far a cell's effect reaches; it does not say the reach is provable.
+    // The admission table decides that here, before any byte: a ruling exclusion (DECSTR, the cells with
+    // no retained trace) or a write only the tokenizer can name refuses by name rather than being graded
+    // on a restore nothing can read back (@cto 69ad9f37, 0.29.2 ruling point 2).
+    const windowAdmission = windowBasis ? windowBasisAdmission(probe.id) : undefined
+    const windowRefusal = windowAdmission?.admitted === false ? windowAdmission.reason : undefined
     const refusedBecause = !needsOwnership
       ? undefined
       : ordinaryOpen !== undefined && !authorizedToWrite
@@ -816,14 +876,18 @@ export async function runProbeBatch(
           : (ordinaryOpenGrant?.refusal ?? "an ordinary-open receipt was not admitted for this row")
         : !authorizedToWrite
           ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
-          : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
-            ? "no verified disposable-ownership receipt was presented"
-            : probe.termNeedsDisposable === true &&
-                !disposable &&
-                processOwnerBasis &&
-                !basisScopeAdmits(processOwnerBasis.scope, probe.id)
-              ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
-              : undefined
+          : windowRefusal !== undefined
+            ? windowRefusal
+            : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
+              ? "no verified disposable-ownership receipt was presented"
+              : probe.termNeedsDisposable === true &&
+                  !disposable &&
+                  processOwnerBasis &&
+                  !basisScopeAdmits(processOwnerBasis.scope, probe.id)
+                ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
+                : witness?.admitted === false
+                  ? witness.refusal
+                  : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -896,6 +960,91 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    // Fold 2's pre-pass: exactly the attributes this cell may touch, read before its first write. The
+    // list is derived from the cell's own retained trace (scripts/generate-window-basis-table.ts), so a
+    // class nobody reads for itself still has a pre-state, and one that does not come back is absent
+    // from the ledger rather than assumed restored (@cto e6ae2880 conditions 1 and 3).
+    const ledgerPreReads = new Map<string, string>()
+    const preStateGaps = new Map<string, string>()
+    if (windowAdmission?.admitted === true) {
+      for (const attribute of windowAdmission.preSeed) {
+        const key = attributeKey(attribute)
+        if (options.witnessWindow) {
+          // The witness baseline is taken immediately before THIS cell, so its verdict is about this
+          // cell's effect and not about drift between earlier cells. A reading it cannot take is removed,
+          // and the cell then ungrades by name instead of being graded against a reading nobody took
+          // (@cto 34148 REVISE 2).
+          const value = await options.witnessWindow.read(attribute)
+          if (value === undefined) witnessBefore.delete(key)
+          else witnessBefore.set(key, value)
+        }
+        const readback = readbackFor(attribute)
+        if ("unprovable" in readback) continue
+        const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+        const parsed = outcome?.reason === "reply" ? readback.read(outcome.raw) : null
+        if (outcome !== undefined && parsed !== null) ledgerPreReads.set(key, outcome.raw)
+        else {
+          // Three different facts, and the fixer needs to be told which one: the terminal answered DA1 and
+          // stayed silent on this query, nothing arrived before the wall, or what arrived could not be read
+          // as this attribute's state.
+          preStateGaps.set(
+            key,
+            outcome === undefined
+              ? "the probe source recorded no outcome for the query"
+              : outcome.reason === "sentinel"
+                ? "the terminal answered the sentinel but not this query"
+                : outcome.reason === "timeout"
+                  ? "no reply arrived before the query's wall"
+                  : "the reply could not be read as this attribute's state",
+          )
+        }
+      }
+    }
+    // Two ways an admitted cell can still be unprovable, both decided HERE, before its first byte, so
+    // neither ever becomes the run-fatal ledger refusal (@dev/brain d5b4517c6 review, @cto 06:41).
+    // (1) No pre-read at all. The ledger's own fallback is consulted first, so a state the probe already
+    // answered earlier in the run still counts and a cell the ledger COULD prove is not refused.
+    // (2) A pre-read that differs from the value this cell's own cleanup writes: a probe resets to the
+    // DEFAULT, not to the state it found, so a terminal already in the non-default state cannot be
+    // restored by it.
+    if (windowAdmission?.admitted === true) {
+      const refusals = windowAdmission.preSeed
+        .map((attribute) => {
+          const key = attributeKey(attribute)
+          const readback = readbackFor(attribute)
+          if ("unprovable" in readback) return `${key} has no readback at all`
+          const raw = ledgerPreReads.get(key) ?? priorReply(events, attribute, readback.pattern)
+          if (raw === undefined) {
+            const gap = preStateGaps.get(key) ?? "no earlier reply for this attribute was recorded"
+            return `the terminal did not answer the pre-read for ${key} before this cell (${gap}), so the restore cannot be proven`
+          }
+          const value = readback.read(raw)
+          if (value === null) {
+            return `the reply for ${key} could not be read as its state, so the restore cannot be proven`
+          }
+          const target = windowAdmission.restoreTarget[key]
+          if (target === undefined) return `${key} has no derived cleanup target, so the restore cannot be proven`
+          return value === target
+            ? undefined
+            : `${key} is ${value} (already non-default) and this cell's cleanup writes ${target}`
+        })
+        .filter((entry): entry is string => entry !== undefined)
+      if (refusals.length > 0) {
+        const reason =
+          `${probe.id} is not admitted on a window basis: this terminal cannot be restored by it — ` +
+          `${refusals.join("; ")}. A cell is never graded on a restore it cannot prove.`
+        batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
+        const pending = batch.results.find((result) => result.featureId === probe.id)
+        if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
+        pending.reason = reason
+        pending.rawReplyRef = probe.id
+        pending.tests = [
+          { id: "prerequisite", status: "probe-todo", attempt: { scope: "none" }, reason, rawReplyRef: probe.id },
+        ]
+        options.onCheckpoint?.(batch)
+        continue
+      }
+    }
     if (ownsTerminal) {
       // The verified owner knows which rows its reader observes. Other rows retain their original term
       // callbacks, including wrappers whose unavailable reading does not fall back.
@@ -1341,6 +1490,77 @@ export async function runProbeBatch(
         // after it is what the timed-out row is judged against (#33431).
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
+      if (windowBasis) {
+        // Fold 2's verdict: every attribute this cell's own writes touched is read back now and compared
+        // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the
+        // run stops with the diff retained and nothing after it is graded (@cto e6ae2880 conditions 1, 3, 4).
+        const writes = events.filter((event) => event.kind === "write").map((event) => event.sequence)
+        const { attributes, unclassified } = touchedAttributes(writes)
+        const reads = new Map<string, AttributeReads>()
+        for (const attribute of attributes) {
+          const key = attributeKey(attribute)
+          const readback = readbackFor(attribute)
+          if ("unprovable" in readback) continue
+          const before = ledgerPreReads.get(key) ?? priorReply(events, attribute, readback.pattern)
+          const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+          reads.set(key, {
+            ...(before === undefined ? {} : { before }),
+            ...(outcome?.reason === "reply" ? { after: outcome.raw } : {}),
+          })
+        }
+        const omega = ledgerOmega({ writes, reads })
+        batch.rawReplies[`${probe.id}.ledger`] = JSON.stringify({
+          basis: "window",
+          touched: omega.touched,
+          unclassified,
+          reads: Object.fromEntries(
+            [...reads].map(([key, value]) => [key, { before: value.before ?? null, after: value.after ?? null }]),
+          ),
+          omega,
+        })
+        // The restore ledger is run-fatal FIRST: a state that may be left behind must not be graded,
+        // nor may the next cell run against it (@cto 34148 REVISE blocking 1).
+        if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
+        if (options.witnessWindow && witness?.admitted === true) {
+          // Fold 3: the witness is never written by this run, so any change in it is this cell's spill.
+          const witnessReads: Record<string, { before: string | null; after: string | null }> = {}
+          let ungraded: string | undefined
+          for (const attribute of attributes) {
+            const key = attributeKey(attribute)
+            const before = witnessBefore.get(key)
+            const after = await options.witnessWindow.read(attribute)
+            const verdict = spilloverVerdict({ attribute, before, after })
+            witnessReads[key] = { before: before ?? null, after: after ?? null }
+            // A spill is run-fatal: the declaration is wrong and the app instance has changed.
+            if (verdict.status === "spilled") {
+              batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict })
+              throw new SpilloverRefused(probe.id, verdict)
+            }
+            // No reading before this cell is NOT a spill and not a pass: the restore is proved, so the
+            // cell is ungraded by name and the reading it did get seeds later cells (@cto REVISE 2).
+            if (verdict.status === "refused") {
+              ungraded ??= verdict.reason
+              if (after !== undefined) witnessBefore.set(key, after)
+              continue
+            }
+            if (after === undefined) throw new Error(`witness unchanged verdict for ${key} carried no reading`)
+            witnessBefore.set(key, after)
+          }
+          batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({
+            reads: witnessReads,
+            verdict: ungraded === undefined ? "unchanged" : { status: "refused", reason: ungraded },
+          })
+          // The restore is proved, so nothing was leaked; the reach is unmeasured. That is coverage,
+          // not a run failure: record the cell as PROBE TODO naming the missing reading (@cto REVISE 2).
+          if (ungraded !== undefined) {
+            result = {
+              pass: false,
+              notTested: { reason: "no-semantic-observable", noObservable: ungraded },
+              ...(result.response === undefined ? {} : { response: result.response }),
+            }
+          }
+        }
+      }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
         attempts: queries.map((query) => ({
@@ -1549,6 +1769,12 @@ export async function runProbeBatch(
     } catch (error) {
       if (custody.failure) throw custody.failure.error
       const name = error instanceof Error ? error.name : "Error"
+      // #34148 fold 2 and fold 3: a restore that cannot be proved, and a cell that changed the app
+      // instance, both leave state behind. Grading the next cell against it would launder that state
+      // into that cell's result, so both stop the RUN here rather than becoming this cell's
+      // collector-error (@cto 34148 REVISE blocking 1). Their `.ledger` / `.spillover` record is
+      // written before the throw, so the failure draft keeps the diff.
+      if (name === "MutationRestoreRefused" || name === "SpilloverRefused") throw error
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).
