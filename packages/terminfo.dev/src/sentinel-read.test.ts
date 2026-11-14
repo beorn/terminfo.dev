@@ -9,7 +9,7 @@
  */
 import { sentinelCellsInFrame } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
-import type { CapturedFrame } from "./capture-core.ts"
+import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
 import { readThroughSentinel } from "./sentinel-read.ts"
 
 const sentinel = { form: "basic" as const, rgb: [255, 136, 255] as const }
@@ -883,11 +883,7 @@ test("the adapter boundary keeps the {frame} result shape and refuses a declared
     prePaint: async () => before(origin),
     // The real adapter calls the resolver it is handed, then returns a frame: the origin never
     // rides at the top level of the result.
-    capture: async (
-      resolve: (input: { frame: CapturedFrame; pixelGeometry: typeof pixelGeometry }) => {
-        origin: { x: number; y: number }
-      },
-    ) => {
+    capture: async (resolve: OriginResolver) => {
       resolved = (await Promise.resolve(resolve({ frame: heldWindow({ origin, shift: { y: 2 } }), pixelGeometry })))
         .origin
       return {
