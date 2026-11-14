@@ -13,6 +13,7 @@ import type { CurrentResult } from "./current-results.ts"
 import type { AppCellStatus, JoinedApp } from "./app-cells.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
+import { publicDeclaredReason } from "./declared-untestable.ts"
 import { publicDerivedReason } from "./derived-cells.ts"
 import { publicHeldReason } from "./held-negatives.ts"
 import {
@@ -204,6 +205,8 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       derived?: SelectedContextCell["derived"]
       /** Present only when a held negative waits for a Supported reading in its suite (#33034); `reason` says so. */
       held?: SelectedContextCell["held"]
+      /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
+      declared?: SelectedContextCell["declared"]
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -433,6 +436,7 @@ export function publicResults(
                 reason: publicDerivedReason(cell.derived),
               }),
               ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
+              ...(cell.declared && { declared: cell.declared, reason: publicDeclaredReason(cell.declared) }),
             },
           ]
         }),

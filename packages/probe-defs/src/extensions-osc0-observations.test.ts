@@ -158,6 +158,25 @@ test("App OSC 0 with an owned title read still decides supported when the icon r
   expect(title).toBe("incoming App title")
 })
 
+// #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+test("App OSC 0 keeps its decided reading when the owned title cleanup does not restore", async () => {
+  let title = "incoming App title"
+  let reads = 0
+  const source = Object.assign(terminal(exactReplies), {
+    // The last read is the owned-title restore; it answers a title this surface never shows.
+    readTitle: async () => (++reads === 5 ? "leaked-title" : title),
+    write: (bytes: string) => {
+      const match = /^\x1b\](0|2);([^\x07]*)\x07$/.exec(bytes)
+      if (match) title = match[2]!
+    },
+  })
+  const result = await termCallback()(source)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  expect(result.note).toMatch(/Owned title restoration mismatch/)
+  expect(result.tests?.some((one) => one.status === "probe-invalid")).toBeFalsy()
+  expect(title).toBe("incoming App title")
+})
+
 // #30559: "sentinel" also covers bytes the terminal did say ahead of the DA1 answer. A reply the label
 // pattern cannot read is not an answer we may call missing, so that shape keeps the old refusal.
 test("App OSC 0 keeps the refusal when a reply precedes the fence but does not match the label pattern", async () => {
@@ -278,7 +297,7 @@ test.each([
       expect(result!.observation?.outcome).not.toBe("unsupported")
       expect(result!.observation?.outcome).not.toBe("supported")
       expect(result!.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
-      expect(result!.tests).toMatchObject([{ status: "probe-invalid", reason: expect.any(String) }])
+      expect(result!.tests).toMatchObject([{ status: "probe-todo", reason: expect.any(String) }])
     } else {
       expect(result!.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       expect(result!.assertions?.map(({ kind }) => kind)).toContain(outcome === "supported" ? "positive" : "negative")
@@ -381,11 +400,66 @@ test("the sentinel app arm reads a complete wrong title payload as unsupported",
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "negative"])
 })
 
-test("the sentinel app arm names a missing icon reply as a test failure", async () => {
+// @cto 1676cf8a Q3, slice 3: the target queries are this surface's read-back instrument, so a measured
+// silence says we could not read the label, not that OSC 0 failed. The clause we did read stays evidence.
+test("the sentinel app arm keeps a row open when one target query is measured silent", async () => {
   const result = await termCallback()(terminal({ [TITLE_QUERY]: `\x1b]l${PAYLOAD}\x07` }))
   expect(result.tests).toMatchObject([
-    { status: "probe-invalid", reason: expect.stringContaining("icon label (CSI 20 t): timeout") },
+    { status: "probe-todo", reason: expect.stringContaining("icon label (CSI 20 t): timeout") },
   ])
-  expect(result.replyFailureTestIds).toEqual(["criterion"])
+  expect(result.criterionBranch).toBe("app-query-instrument")
   expect(result.observation).toBeUndefined()
+  expect(result.response).toContain(PAYLOAD)
+})
+
+test("the sentinel app arm keeps a row open when both target queries are measured silent", async () => {
+  const result = await termCallback()(terminal({}))
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
+  expect(result.criterionBranch).toBe("app-query-instrument")
+  expect(result.note).toContain("icon label (CSI 20 t): timeout")
+  expect(result.note).toContain("window title (CSI 21 t): timeout")
+  expect(result.observation).toBeUndefined()
+})
+
+test("unreadable bytes on the silent clause stay our failure even when the other clause answers", async () => {
+  const source = Object.assign(terminal({}), {
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) =>
+      sequence === ICON_QUERY
+        ? {
+            raw: "\x1b]Lsome-unreadable-form\x07\x1b[?1;2c",
+            rawBase64: "",
+            match: null,
+            reason: "sentinel" as const,
+            sentinel: { atMs: 1, graceMs: 250 },
+          }
+        : {
+            raw: `\x1b]l${PAYLOAD}\x07`,
+            rawBase64: "",
+            match: pattern.exec(`\x1b]l${PAYLOAD}\x07`),
+            reason: "reply" as const,
+          },
+  })
+  const result = await termCallback()(source)
+  expect(result.tests).toMatchObject([{ status: "probe-invalid" }])
+  expect(result.criterionBranch).toBeUndefined()
+})
+
+// #34012: the wait ran out, but something arrived that the pattern could not read. That is an answer
+// we failed to read, so the row must stay probe-invalid — the same rule the headless clipboard read applies
+// when it treats only a timeout with nothing on the wire as silence.
+test("a timeout that still carried unreadable bytes stays our failure, not a measured silence", async () => {
+  const source = Object.assign(terminal({}), {
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) =>
+      sequence === ICON_QUERY
+        ? { raw: "\x1b]Lsome-unreadable-form\x07", rawBase64: "", match: null, reason: "timeout" as const }
+        : {
+            raw: `\x1b]l${PAYLOAD}\x07`,
+            rawBase64: "",
+            match: pattern.exec(`\x1b]l${PAYLOAD}\x07`),
+            reason: "reply" as const,
+          },
+  })
+  const result = await termCallback()(source)
+  expect(result.tests).toMatchObject([{ status: "probe-invalid" }])
+  expect(result.criterionBranch).toBeUndefined()
 })

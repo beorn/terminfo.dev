@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { mkdirSync, readFileSync, unlinkSync } from "node:fs"
+import { join } from "node:path"
 import {
   capturePixels,
   command,
@@ -78,6 +78,7 @@ export function censusDarwinWindows(
   appPid: number,
   /** The window id the launch receipt recorded for THIS run, when the arm has one. */
   expectedWindowId?: number,
+  windowSelection: "largest" | "unique" = "largest",
 ): DarwinWindowCensus {
   if (!Number.isSafeInteger(appPid) || appPid < 2 || !Array.isArray(rows)) {
     throw new Error("Darwin owned window census requires a measured app PID and window list")
@@ -165,7 +166,7 @@ export function censusDarwinWindows(
   // Two equal windows are indistinguishable only when nothing named one of them.
   const tied =
     expected === undefined && best !== undefined && visible.some((row) => row !== best && area(row) === area(best))
-  if (!best || tied) {
+  if (!best || tied || (expected === undefined && windowSelection === "unique" && visible.length !== 1)) {
     // The macOS workflow greps collector.log for this wording (30624; scripts/measurement-workflows.test.ts pins it).
     throw new Error(
       `Darwin capture requires one owned visible window for app PID ${appPid}; found ${visible.length} candidates (owned, layer 0, onscreen, alpha > 0)${tied ? " sharing the largest area" : ""}; owned layer-0 windows with point bounds, alpha, onscreen, sharingState and memoryUsage: ${JSON.stringify(owned)}`,
@@ -239,8 +240,8 @@ export async function createDarwinCapture(
   directory: string,
   {
     appPid,
-    hostedAppId,
     expectedWindowId,
+    windowSelection,
     ownedHost,
     onRetained,
   }: {
@@ -250,15 +251,14 @@ export async function createDarwinCapture(
      * so a refused window image never falls back to a region of the screen (@cto 730017b6).
      */
     ownedHost?: boolean
-    /** The app identity the arm detected, so an arm that can have a rival window can name its own. */
-    hostedAppId?: string
     /** The launch receipt window id this run owns, when the caller already resolved it. */
     expectedWindowId?: number
+    /** PID-only routes that cannot prove one launch window require a unique visible owned window. */
+    windowSelection?: "largest" | "unique"
     onRetained: Parameters<typeof finishCapture>[0]["onRetained"]
   },
 ) {
-  const targetWindowId =
-    expectedWindowId ?? (hostedAppId === "terminal-app" ? readTerminalLaunchWindowId(dirname(directory)) : undefined)
+  const targetWindowId = expectedWindowId
   /**
    * `windowId` pins the selection to one identity instead of re-selecting by size: a measurement poll
    * that re-ran the size rule could follow a rival window that grew after install and record ITS name
@@ -268,7 +268,7 @@ export async function createDarwinCapture(
     const rows: unknown = JSON.parse(
       (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
     )
-    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, windowId)
+    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, windowId, windowSelection)
     const { window, alpha, onscreen, sharingState, memoryUsage, name } = selected
     return {
       window,
@@ -436,33 +436,3 @@ export async function createDarwinCapture(
  * startup window at the same place, so a size-based census either ties and refuses or photographs a
  * window this run never created. An absent or foreign record refuses by name rather than falling back.
  */
-export function readTerminalLaunchWindowId(artifactDirectory: string): number {
-  const record = join(artifactDirectory, "terminal-launch.json")
-  if (!existsSync(record)) {
-    throw new Error(
-      `Terminal.app capture requires the launch receipt ${record} that names the owned window id; that record is absent`,
-    )
-  }
-  const raw = readFileSync(record, "utf8")
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch (cause) {
-    // A malformed receipt is the operator's evidence to read, never a bare parser error.
-    throw new Error(
-      `Terminal.app launch receipt ${record} is not JSON: ${cause instanceof Error ? cause.message : String(cause)}: ${raw}`,
-    )
-  }
-  const row = parsed as { appId?: unknown; terminalWindow?: { provider?: unknown; windowId?: unknown } }
-  const windowId = row.terminalWindow?.windowId
-  if (
-    row.appId !== "terminal-app" ||
-    row.terminalWindow?.provider !== "terminal-app" ||
-    typeof windowId !== "number" ||
-    !Number.isSafeInteger(windowId) ||
-    windowId < 1
-  ) {
-    throw new Error(`Terminal.app launch receipt ${record} names no owned window id: ${raw}`)
-  }
-  return windowId
-}

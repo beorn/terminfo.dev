@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   replyFailure,
+  methodUnavailable,
   decrpmResult,
   unmeasuredCellResult,
   withReplyFailureEvidence,
@@ -403,12 +404,15 @@ it.each([
           attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
         })
   const stored = record(result)
+  // #34012 slice 3 (@cto 1676cf8a Q3): on the term arm the OSC 0 target queries are the read-back instrument,
+  // so a measured silence is an open row that still carries its attempt evidence, not a reply failure.
+  const measuredSilenceOsc0Term = kind === "term" && id === "extensions.osc0-icon-title" && !rawOverride
   if (!expectedReplyFailure) {
     expect(result).toBe(callback)
     expect(stored).toEqual(record(callback))
     return
   }
-  expect(stored.status).toBe("probe-invalid")
+  expect(stored.status).toBe(measuredSilenceOsc0Term ? "probe-todo" : "probe-invalid")
   for (const entry of captures) {
     expect(stored.reason).toContain(
       `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
@@ -567,7 +571,7 @@ it("retains erased DECAWM evidence when wrap cursor controls cannot qualify", as
       attempts: [{ sequence: "\x1b[?7$p", received: "\x1b?", timeoutMs: 37, match: null, reason: "timeout" }],
     }),
   )
-  expect(stored.status).toBe("probe-invalid")
+  expect(stored.status).toBe("probe-todo")
   expect(stored.reason).toContain("Auto-wrap cursor control did not measure home and ordinary text")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
@@ -718,18 +722,15 @@ it.each([
 })
 
 it("names a callback defect instead of ignoring an invalid reply marker", () => {
-  const callback = replyFailure("No cursor reply")
-  callback.tests[0].status = "probe-todo"
-  expect(() => withReplyFailureEvidence("cursor.position-report", callback, { producer: "TTY", attempts: [] })).toThrow(
-    /cursor\.position-report.*criterion.*probe-invalid/,
-  )
+  // An execution-only callback can only name an open or invalid test, so the marker check is proved through a
+  // measured result that carries no tests at all: the marker must name a row that exists.
   const measured = {
     pass: false,
     observation: { outcome: "inconclusive" as const, assertionType: "query_reply" as const },
     replyFailureTestIds: ["criterion"],
   }
   expect(() => withReplyFailureEvidence("device.geometry", measured, { producer: "TTY", attempts: [] })).toThrow(
-    /device\.geometry.*criterion.*probe-invalid/,
+    /device\.geometry.*criterion.*open or invalid/,
   )
   const markedCoverage = {
     pass: false,
@@ -739,6 +740,36 @@ it("names a callback defect instead of ignoring an invalid reply marker", () => 
   // @ts-expect-error Coverage cannot carry failure-evidence intent, even via structural assignment.
   const forbiddenCoverage: NotTestedCoverageResult = markedCoverage
   void forbiddenCoverage
+})
+
+// An unavailable read method stays open (@cto 91ec1211): the probe ran and nothing was readable here, so the row
+// must not count as a broken probe. The formatter still attaches the producer's evidence, and fixture breakage
+// keeps probe-invalid, so the two classes never merge.
+it("keeps a read-method gap open while a broken fixture stays invalid", () => {
+  const gap = withReplyFailureEvidence(
+    "input.mouse-1000",
+    methodUnavailable("Mouse tracking effect needs owned click injection and input readback"),
+    {
+      producer: "TTY",
+      attempts: [{ sequence: "\x1b[?1000h", received: "", timeoutMs: 37, match: null, reason: "timeout" }],
+    },
+  )
+  const open = recordExecutedProbe({
+    featureId: "input.mouse-1000",
+    assertions: [],
+    tests: gap.tests,
+    attempt: { scope: "probe", startedAt: "2026-11-13T00:00:00.000Z" },
+  })
+  expect(open.status).toBe("probe-todo")
+  expect(open.reason).toContain("needs owned click injection")
+  expect(open.reason).toContain('sent "\\u001b[?1000h"; received ""; timeout 37 ms')
+  const broken = recordExecutedProbe({
+    featureId: "input.mouse-1000",
+    assertions: [],
+    tests: replyFailure("Cursor shape fixture CPR did not locate row 2 column 3").tests,
+    attempt: { scope: "probe", startedAt: "2026-11-13T00:00:00.000Z" },
+  })
+  expect(broken.status).toBe("probe-invalid")
 })
 
 // CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.

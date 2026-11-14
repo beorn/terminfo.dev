@@ -73,6 +73,15 @@ import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibr
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
+import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
+import {
+  assertOneProofPerRun,
+  assertOrdinaryOpenVersionBound,
+  ordinaryOpenReceiptPath,
+  ordinaryOpenRecord,
+  resolveOrdinaryOpenRun,
+  type OrdinaryOpenRun,
+} from "./ordinary-open-run.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   buildDarwinInputHelper,
@@ -88,6 +97,7 @@ import {
   type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
+import { cmuxHistoryEvidence } from "./cmux-history-record.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
@@ -667,12 +677,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         }
       }
       capture = async (checkpoint) => {
+        // Preserve the failed selected write; a later empty write would replace it with stream-destroyed.
+        if (out.errored) throw out.errored
         if (process.platform === "win32") {
           await consoleBarrier(checkpoint.label)
         } else {
           await new Promise<void>((resolve, reject) => {
             out.write("", (error) => {
-              if (error) reject(error)
+              if (error) reject(out.errored ?? error)
               else resolve()
             })
           })
@@ -741,6 +753,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
+    let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
      * What happened when the Darwin input adapter was installed, so the run record carries it:
@@ -975,27 +988,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      // Hosted runners install no input in this head (@cto 75732b9d P2-3): only the owned Terminal.app
-      // arm does, with the owned-host limits.
-      // iTerm2 and both Terminal.app arms use pixels; Kitty keeps its qualified text route.
-      // Without retention, still name the missing directory through the existing text adapter.
-      const textFirst =
-        !captureDirectory ||
-        (kind !== "terminalApp" && terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
-      if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
+      if (!captureDirectory) {
+        captureInstallationRefusal = `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`
+        return
+      }
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      if (!textFirst && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
+      if (terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
-        hostedAppId: terminal.hostedAppId,
-        // Terminal.app's asserted window, or the CG window the iTerm2 owner census proved new (33845).
-        expectedWindowId:
-          kind === "terminalApp"
-            ? options.terminalAppOwner?.windowId
-            : kind === "process" && options.processOwner?.provider === "iterm2"
-              ? options.processOwner.windowId
-              : undefined,
+        expectedWindowId: terminal.expectedWindowId,
+        windowSelection: terminal.captureWindowSelection ?? "unique",
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
         // No `measureWindowName` for a hosted runner (33821): the apps that need a title declare a measured
@@ -1085,6 +1088,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     const clipboard = ownedTerminal?.clipboard
     const attachment = ownedTerminal?.muxAttachmentProof
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
+    // Set only when this run was handed an ordinary-open receipt: the app a person opened themselves
+    // (@cto 2026-11-13). It grants the three OSC 52 rows and nothing else.
+    let ordinaryOpen: OrdinaryOpenRun | undefined
     try {
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
@@ -1201,6 +1207,31 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightPixelCapture) await preflightPixelCapture()
               const sessionBus = terminal.os === "linux" ? readSessionBus() : undefined
+              // A person's own window (@cto 2026-11-13 PLAN GO, F3): one proof per run, so an owned terminal and an
+              // ordinary-open receipt refuse together instead of OR-ing two ownership claims into one artifact.
+              const ordinaryOpenReceipt = ordinaryOpenReceiptPath()
+              assertOneProofPerRun(ordinaryOpenReceipt !== undefined, ownedTerminal ? kind : undefined)
+              if (ordinaryOpenReceipt !== undefined) {
+                // The version bound here is what the run knows before its first probe; the subject below publishes
+                // what the probes measured, and `assertOrdinaryOpenVersionBound` refuses if the two disagree.
+                const beforeProbes = resolveMeasuredAppVersion(
+                  measuredTerminal.name,
+                  measuredTerminal.version,
+                  draft.rawReplies,
+                )
+                const beforeProbesVersion = declaredAppVersion(beforeProbes, process.env.TERMINFO_TARGET_VERSION)
+                ordinaryOpen = await resolveOrdinaryOpenRun({
+                  receiptPath: ordinaryOpenReceipt,
+                  runId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+                  subject: {
+                    id: measuredTerminal.name,
+                    os: terminal.os,
+                    // @dev/16 12:26: the declaration is applied FIRST, so a declared target still binds; only an
+                    // answer that is still "unknown" after it becomes the no-measured-version refusal.
+                    version: beforeProbesVersion === "unknown" ? undefined : beforeProbesVersion,
+                  },
+                })
+              }
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,
@@ -1237,12 +1268,20 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                         sessionBus,
                       ),
                 ...(capture && { capture }),
+                ...(captureInstallationRefusal && { captureGeometryRefusal: captureInstallationRefusal }),
                 ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
                 ...(ownedTerminal && { ownedTerminal }),
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
+                ...(ordinaryOpen && {
+                  ordinaryOpen: {
+                    receipt: ordinaryOpen.receipt,
+                    expectedBundleId: ordinaryOpen.expectedBundleId,
+                    clipboard: ordinaryOpen.clipboard,
+                  },
+                }),
                 ...(prepareCapture && { prepareCapture }),
                 ...(finishCapture && { finishCapture }),
               })
@@ -1272,6 +1311,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     }
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
+    if (ordinaryOpen) batch.rawReplies[ORDINARY_OPEN_COLLECTOR_KEY] = ordinaryOpenRecord(ordinaryOpen)
     const measuredVersion =
       (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
         ? batch.appLaunch.productVersion
@@ -1298,6 +1338,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           config: null,
           permissions: null,
         }
+    // @dev/16 12:22 R1: START binds the pre-probe version, the subject above carries the measured one. If the
+    // probes turned out to measure a different build, these rows are about another app and are refused, not published.
+    if (ordinaryOpen) assertOrdinaryOpenVersionBound(ordinaryOpen, subject.version)
     const provenance =
       provenancePath && !muxSubject
         ? parseRunProvenance(provenanceSource, subject, { probeHash, sourceRevision }, provenancePath)
@@ -1316,6 +1359,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       : undefined
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
+    // The cmux arm's own proof belongs in the persisted run, not only on the object the collector keeps
+    // (@dev/1 peer read 2026-11-13): the grant receipt, or the failure that replaced it, and the last
+    // read. Serializing here evaluates the live getter, so the record carries the read that happened.
+    const cmuxEvidence = cmuxHistoryEvidence(ownedTerminal?.cmuxHistory)
+    if (cmuxEvidence !== undefined) Object.assign(batch.rawReplies, cmuxEvidence)
     // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched
     // shell's bytes cannot explain a count the terminal's own CLI produced — and when that CLI's proof was
     // not measured, naming the shell's binary instead would be the silent substitution this comment

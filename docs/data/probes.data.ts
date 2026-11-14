@@ -23,7 +23,7 @@ import {
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
-import { type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
+import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
@@ -126,8 +126,66 @@ interface CurrentStats {
   differs: number
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
   derived: number
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
+  byReview: number
   complete: boolean
   pct: number | null
+}
+
+type JoinedApp = NonNullable<ReturnType<ReturnType<typeof joinedAppCells>["get"]>>
+
+/**
+ * One subject's site stats, as the OS table and the matrix read them: its joined app's counts when contexts joined,
+ * else its own. A reviewed declaration covers every context of its app on its OS, so a declared cell is counted by
+ * review wherever its counted status reads untestable.
+ */
+export function subjectStats(selected: PublicCurrentResult["selected"], app: JoinedApp | undefined): CurrentStats {
+  // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
+  // bucket here, and a disagreement lands in its own `differs-by-context` bucket instead of Supported or
+  // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets; a stored-only context
+  // has no disagreement, and its reader supplies that bucket at zero.
+  const counts: RollupCounts = app ? { ...app.counts } : selected.counts
+  const supported = app ? app.counts.supported : selected.score.supported
+  const byReview = scoredFeatureIds(selected.catalogIds).filter(
+    (id) =>
+      selected.featureResults[id]?.declared !== undefined &&
+      (app?.cells[id]?.status ?? selected.featureResults[id]?.status) === "untestable",
+  ).length
+  return {
+    score: { supported, all: selected.score.all },
+    counts: { ...counts },
+    differs: counts[DIFFERS_BY_CONTEXT],
+    derived: selected.derivedIds.length,
+    byReview,
+    complete: selected.complete,
+    // #30784: a run that decided nothing has no percentage to print; every reader shows the
+    // not-measured words instead of a measured-looking 0%.
+    pct: runDecidedNothing(counts, selected.derivedIds.length)
+      ? null
+      : Math.round((100 * supported) / selected.score.all),
+  }
+}
+
+/** One subject's stats over one baseline's features, as the baseline page reads them. */
+export function baselineStat(
+  name: string,
+  selected: PublicCurrentResult["selected"],
+  ids: readonly string[],
+): CurrentStats {
+  const wanted = new Set(ids)
+  const bar = aggregateCurrentResults(
+    rollupInputs(name, selected).filter((result) => wanted.has(result.featureId)),
+    ids,
+  )
+  return {
+    score: { supported: bar.supported, all: bar.denominator },
+    counts: bar.counts,
+    differs: 0,
+    derived: bar.derived,
+    byReview: bar.byReview,
+    complete: bar.complete,
+    pct: Math.round((100 * bar.supported) / bar.denominator),
+  }
 }
 
 function loadFeatureDescriptions(): FeatureCatalog {
@@ -273,24 +331,7 @@ export function loadFullProbes(): ProbeData {
         result.reason ? [[result.featureId, result.reason]] : [],
       ),
     )
-    // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
-    // bucket here, and a disagreement lands in its own `differs-by-context` bucket instead of Supported or
-    // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets; a stored-only context
-    // has no disagreement, and its reader supplies that bucket at zero.
-    const counts: RollupCounts = app ? { ...app.counts } : selected.counts
-    const supported = app ? app.counts.supported : selected.score.supported
-    stats[key] = {
-      score: { supported, all: selected.score.all },
-      counts: { ...counts },
-      differs: counts[DIFFERS_BY_CONTEXT],
-      derived: selected.derivedIds.length,
-      complete: selected.complete,
-      // #30784: a run that decided nothing has no percentage to print; every reader shows the
-      // not-measured words instead of a measured-looking 0%.
-      pct: runDecidedNothing(counts, selected.derivedIds.length)
-        ? null
-        : Math.round((100 * supported) / selected.score.all),
-    }
+    stats[key] = subjectStats(selected, app)
   }
   backends.sort(
     (a, b) =>
@@ -413,19 +454,7 @@ function computeBaselines(data: ProbeData): void {
       const group = new Set(baselines[bl] ?? [])
       const ids = selected.catalogIds.filter((id) => group.has(id))
       if (!ids.length) continue
-      const wanted = new Set(ids)
-      const bar = aggregateCurrentResults(
-        rollupInputs(backend.name, selected).filter((result) => wanted.has(result.featureId)),
-        ids,
-      )
-      backendStats[bl] = {
-        score: { supported: bar.supported, all: bar.denominator },
-        counts: bar.counts,
-        differs: 0,
-        derived: bar.derived,
-        complete: bar.complete,
-        pct: Math.round((100 * bar.supported) / bar.denominator),
-      }
+      backendStats[bl] = baselineStat(backend.name, selected, ids)
     }
   }
 

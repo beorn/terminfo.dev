@@ -1,10 +1,11 @@
 import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
-import { dirname, isAbsolute, join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
 import { ANSI_REGEX } from "@silvery/ansi"
 import {
+  MUX_TITLE_CONTROL_WRITE,
   sgrProbes,
   type AppSemanticReading,
   type LinuxMuxAttachmentProof,
@@ -14,6 +15,7 @@ import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
+import { retain as retainCaptureArtifact } from "./capture-core.ts"
 
 // Reviewed declarations match the exact App/mux version.
 // This is also the collector-side home for the owned semantic reader's App selection.
@@ -52,6 +54,25 @@ type AppSemanticCapability = {
 }
 
 const declarations: readonly AppSemanticCapability[] = [
+  // CTO316a2912: this Mac apparatus cannot observe these rows; no capability verdict.
+  ...[
+    ...promptFeatures,
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ].map((featureId) => ({
+    kind: "term",
+    id: "alacritty",
+    version: "0.17.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no way): The selected Alacritty IPC surface reads configuration, not the terminal's parsed feature state. It provides no App-owned readback for this probe's unknown, independently handled, and target controls. This observation route cannot grade the feature; declare it untestable through this apparatus.",
+  })),
   // Remove when either route rule changes: hosted pointer helper installed or owned-host rule changes.
   // These exact App routes are untestable under the current rules, not feature negatives (CTO2aabe241/fd05a5f1).
   ...[
@@ -64,13 +85,16 @@ const declarations: readonly AppSemanticCapability[] = [
     { id: "terminal-app", version: "2.15" },
     { id: "iterm2", version: "3.6.11" },
   ].flatMap((subject) =>
-    ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"].map((featureId) => ({
-      ...subject,
-      kind: "term",
-      os: "macos",
-      featureId,
-      reason: "no permitted pointer route: owned-host rule and hosted no-input rule",
-    })),
+    ["extensions.osc22-pointer", "input.kitty-click-events", "modes.utf8-mouse-1005"]
+      // A measured result beats a declaration (@cto b0de55c0): iTerm2's UTF-8 mouse mode read Supported on 26.6.2.
+      .filter((featureId) => !(subject.id === "iterm2" && featureId === "modes.utf8-mouse-1005"))
+      .map((featureId) => ({
+        ...subject,
+        kind: "term",
+        os: "macos",
+        featureId,
+        reason: "no permitted pointer route: owned-host rule and hosted no-input rule",
+      })),
   ),
   ...[
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
@@ -969,11 +993,22 @@ class NoForwardingControl extends Error {}
 function controlTargetMatcher(spec: {
   label: string
   control: { write: RegExp; line: (nonce: string) => string }
-  target: { write: string; line: string }
+  /** An exact record line (OSC 22) or a pattern for the rows whose qualified line is shape-dependent (`[1.000] …`). */
+  target: { write: string; line?: string; match?: RegExp }
+  otherForm?: RegExp
+  artifact?: string
 }): OuterCommandMatcher {
+  const { line: targetLine, match: targetPattern } = spec.target
+  if (targetLine === undefined && targetPattern === undefined) {
+    throw new Error(`Outer ${spec.label} matcher has neither a target line nor a target pattern`)
+  }
+  const isTargetLine = (line: string): boolean =>
+    targetLine === undefined ? targetPattern?.test(line) === true : line === targetLine
+  // The command word an exact target line names, or the row's own name when the line is shape-dependent.
+  const targetName = targetLine === undefined ? spec.label : targetLine.slice(0, targetLine.lastIndexOf(" "))
   return {
     label: spec.label,
-    artifact: "mux-commands",
+    artifact: spec.artifact ?? "mux-commands",
     plan(writes) {
       const controls = writes.flatMap((value) => spec.control.write.exec(value)?.[1] ?? [])
       const nonce = controls[0]
@@ -1002,7 +1037,7 @@ function controlTargetMatcher(spec: {
               control = match.index
               continue
             }
-            if (line === spec.target.line) {
+            if (isTargetLine(line)) {
               if (control === undefined) {
                 if (target === undefined) target = match.index
               } else if (targetAfterControl === undefined) {
@@ -1024,83 +1059,24 @@ function controlTargetMatcher(spec: {
             throw new NoForwardingControl(`Outer command record has no forwarding control line: ${controlLine}`)
           }
           // A target forwarded in another form (terminator, parameter, name) is not "did not send"
-          // (@cto 18d11184). The command word is the declared target line's tokens before its value.
-          const command = spec.target.line.slice(0, spec.target.line.lastIndexOf(" "))
-          const other = scan.unknown.lines.find((line) => line.startsWith(`${command} `))
+          // (@cto 18d11184). For an exact line the command word is its tokens before the value; a pattern row
+          // names its own other form.
+          const other =
+            targetLine === undefined
+              ? scan.unknown.lines.find((line) => spec.otherForm?.test(line) ?? false)
+              : scan.unknown.lines.find((line) => line.startsWith(`${targetName} `))
           if (seen.target === undefined && other !== undefined) {
-            throw new Error(`Outer command record has ${command} in another form than the target line: ${other}`)
+            throw new Error(`Outer command record has ${targetName} in another form than the target line: ${other}`)
           }
           // A control that arrived before the target is not a negative (@cto 33919 condition 3, 33920 condition 2):
           // whatever the multiplexer forwarded before it is already in the record, so a target line after the
           // control is a later write's and shows nothing about this invocation.
           if (seen.target === undefined && seen.targetAfterControl !== undefined) {
             throw new Error(
-              `Outer command record carries ${spec.target.line} only after its forwarding control; this invocation's target must precede it`,
+              `Outer command record carries ${targetLine ?? spec.label} only after its forwarding control; this invocation's target must precede it`,
             )
           }
-          return { target: spec.target.line, targetSent: seen.target !== undefined }
-        },
-      }
-    },
-  }
-}
-
-/**
- * A row whose outer evidence is one report line inside the window opened by the DA1 control (33630, @cto ac738b73).
- * The callback sends the target first and the DA1 second, so the window closes at the control line and a target line
- * found before it belongs to this invocation. No control line in the slice is no window: that read fails by name.
- * The line shapes come from the direct outer run that qualified the rows (`/hh/var/@dev2/33630/gate-table.md`).
- */
-function windowedLineMatcher(spec: {
-  label: string
-  write: string
-  target: RegExp
-  otherForm: RegExp
-}): OuterCommandMatcher {
-  return {
-    label: spec.label,
-    artifact: "mux-outer-row",
-    plan(writes) {
-      if (!writes.includes(spec.write)) {
-        throw new Error(`Outer ${spec.label} trace has no target write for this row`)
-      }
-      return {
-        nonce: "",
-        window: "deadline",
-        scan(text) {
-          const unknown: string[] = []
-          let control: number | undefined
-          let target: number | undefined
-          for (const match of text.matchAll(/([^\n]*)\n/g)) {
-            const line = match[1] ?? ""
-            if (line === "report_device_attributes 0 0") {
-              control = match.index
-              return {
-                commands: { control, target },
-                start: target ?? control,
-                end: match.index + match[0].length,
-                unknown: named(unknown),
-              }
-            }
-            if (target === undefined && spec.target.test(line)) {
-              target = match.index
-              continue
-            }
-            // Only lines that look like this row's own report are kept: anything else in the window is
-            // another probe's traffic and is not evidence about this row.
-            if (spec.otherForm.test(line)) unknown.push(line)
-          }
-          return { commands: { control, target }, start: target, unknown: named(unknown) }
-        },
-        decide(scan) {
-          const seen = scan.commands as { control?: number; target?: number }
-          if (seen.control === undefined) {
-            throw new Error(`Outer command record has no device-attributes control line for ${spec.label}`)
-          }
-          if (seen.target === undefined && scan.unknown.lines.length > 0) {
-            throw new Error(`Outer command record has ${spec.label} in another form: ${scan.unknown.lines[0]}`)
-          }
-          return { target: spec.label, targetSent: seen.target !== undefined }
+          return { target: targetLine ?? spec.label, targetSent: seen.target !== undefined }
         },
       }
     },
@@ -1111,38 +1087,46 @@ const outerCommandMatchers: Readonly<Record<string, OuterCommandMatcher>> = {
   ...Object.fromEntries(sgrProbes.map(({ id }) => [id, sgrPaintMatcher])),
   "extensions.osc22-pointer": controlTargetMatcher({
     label: "OSC 22",
-    control: { write: /^\x1b\]2;(tdv-title-[0-9a-f]{24})\x1b\\$/, line: (nonce) => `set_title ${nonce}` },
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
     target: { write: "\x1b]22;pointer\x1b\\", line: "set_dynamic_color 22 pointer" },
   }),
-  "extensions.kitty-graphics": windowedLineMatcher({
+  "extensions.kitty-graphics": controlTargetMatcher({
     label: "the Kitty graphics query",
-    write: "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
-    target: /^graphics_command \{.*"action": "q".*"format": 24,.*"id": 31,/,
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
+    target: {
+      write: "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+      match: /^graphics_command \{.*"action": "q".*"format": 24,.*"id": 31,/,
+    },
     otherForm: /^(?:Malformed )?[Gg]raphics/,
+    artifact: "mux-outer-row",
   }),
-  "extensions.osc701-locale": windowedLineMatcher({
+  "extensions.osc701-locale": controlTargetMatcher({
     label: "OSC 701",
-    write: "\x1b]701;?\x07",
-    target: /^\[[0-9.]+\] Ignoring OSC 701, used by mintty for locale$/,
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
+    target: { write: "\x1b]701;?\x07", match: /^\[[0-9.]+\] Ignoring OSC 701, used by mintty for locale$/ },
     otherForm: /OSC 701|escape code: 701/,
+    artifact: "mux-outer-row",
   }),
-  "extensions.osc702-version": windowedLineMatcher({
+  "extensions.osc702-version": controlTargetMatcher({
     label: "OSC 702",
-    write: "\x1b]702;?\x07",
-    target: /^\[[0-9.]+\] Unknown OSC escape code: 702;\?$/,
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
+    target: { write: "\x1b]702;?\x07", match: /^\[[0-9.]+\] Unknown OSC escape code: 702;\?$/ },
     otherForm: /escape code: 702(?!;\?$)|OSC 702/,
+    artifact: "mux-outer-row",
   }),
-  "extensions.osc776-cell-size": windowedLineMatcher({
+  "extensions.osc776-cell-size": controlTargetMatcher({
     label: "OSC 776",
-    write: "\x1b]776\x07",
-    target: /^\[[0-9.]+\] Unknown OSC escape code: 776$/,
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
+    target: { write: "\x1b]776\x07", match: /^\[[0-9.]+\] Unknown OSC escape code: 776$/ },
     otherForm: /escape code: 776(?!$)|OSC 776/,
+    artifact: "mux-outer-row",
   }),
-  "extensions.osc7770-font-size": windowedLineMatcher({
+  "extensions.osc7770-font-size": controlTargetMatcher({
     label: "OSC 7770",
-    write: "\x1b]7770;?\x07",
-    target: /^\[[0-9.]+\] Ignoring OSC 7770, used by mintty for font size$/,
+    control: { write: MUX_TITLE_CONTROL_WRITE, line: (nonce) => `set_title ${nonce}` },
+    target: { write: "\x1b]7770;?\x07", match: /^\[[0-9.]+\] Ignoring OSC 7770, used by mintty for font size$/ },
     otherForm: /OSC 7770|escape code: 7770/,
+    artifact: "mux-outer-row",
   }),
 }
 
@@ -1314,6 +1298,156 @@ export function beginMuxSgrCommandRead(input: {
   }
 }
 
+/** The existing bounded semantic read loop, shared by native readers without another polling mechanism. */
+async function untilAppSemanticRead(
+  read: () => string | Promise<string>,
+  complete: (value: string) => boolean,
+  name: string,
+  phases: object[],
+): Promise<string> {
+  const deadline = Date.now() + 5000
+  let last = ""
+  do {
+    last = await read()
+    if (complete(last)) return last
+    await Bun.sleep(25)
+  } while (Date.now() < deadline)
+  phases.push({ name, incomplete: last })
+  throw new Error(`App semantic reader did not observe ${name} completion`)
+}
+
+/**
+ * One controlled WezTerm CWD observation for the existing platform owners. The capabilities must bracket each
+ * command with their live owner check. `write` is the owner's private TTY writer: restoration must not put the
+ * initial host URI into the probe source's publishable write trace (CTO6a2de139).
+ */
+export async function readWezTermCwd(input: {
+  runId: string
+  captureDirectory: string
+  onRetained: Parameters<typeof retainCaptureArtifact>[3]
+  write: (text: string) => void | Promise<void>
+  readPane: () => Promise<string>
+  readText: () => Promise<string>
+}): Promise<AppSemanticReading> {
+  const nonce = randomUUID().slice(0, 8)
+  const phases: object[] = []
+  const privateRecord: { initial?: string; restored?: string; phases: object[] } = { phases }
+  const detail: {
+    privateEvidence?: string
+    initialProtocolPresence: string
+    initialSha256?: string
+    restoredSha256?: string
+    restoredEqual?: boolean
+  } = { initialProtocolPresence: "unreported" }
+  const retain = () => {
+    try {
+      retainCaptureArtifact(input.captureDirectory, Buffer.from(JSON.stringify(privateRecord)), "json", (artifact) => {
+        detail.privateEvidence = basename(artifact.path)
+        input.onRetained(artifact)
+      })
+    } catch (error) {
+      throw new Error("WezTerm OSC7 private evidence retention failed", { cause: error })
+    }
+  }
+  const digest = (value: string) => createHash("sha256").update(value).digest("hex")
+  const control = `file:///terminfo-control-${nonce}`
+  const target = `file:///terminfo-target-${nonce}`
+  let initial: string | undefined
+  let mutated = false
+  let privateReady = false
+  let serial = 0
+  let phase = "setup"
+  const sample = async (name: string, uri: string, command: "7" | "77") => {
+    phase = name
+    const marker = `Q-${nonce}-${serial++}`
+    const feed = `\x1b[1;1H\x1b[2K\x1b]${command};${uri}\x07${marker}`
+    phases.push({ name, feed, marker })
+    await input.write(feed)
+    const text = await untilAppSemanticRead(input.readText, (value) => value.includes(marker), `${name} marker`, phases)
+    phases.push({ name, text })
+  }
+  try {
+    if (!/^[0-9a-f]{32}$/.test(input.runId) || !isAbsolute(input.captureDirectory)) {
+      throw new Error("WezTerm OSC7 has no owned run/private capture directory")
+    }
+    privateReady = true
+    retain()
+    for (const path of [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]) {
+      try {
+        statSync(path)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue
+        throw error
+      }
+      throw new Error("WezTerm OSC7 control paths are not fresh nonexistent paths")
+    }
+    phase = "initial owned directory"
+    initial = await input.readPane()
+    privateRecord.initial = initial
+    if (
+      !initial.startsWith("file://") ||
+      /[\x00-\x1f\x7f]/.test(initial) ||
+      initial === control ||
+      initial === target
+    ) {
+      throw new Error("WezTerm OSC7 initial public URI cannot be safely restored")
+    }
+    retain()
+    detail.initialSha256 = digest(initial)
+    mutated = true
+    await sample("inert control", target, "77")
+    const unknown = await input.readPane()
+    phases.push({ name: phase, cwd: unknown })
+    if (unknown !== initial) throw new Error("WezTerm OSC77 changed the public directory")
+    await sample("handled control", control, "7")
+    await untilAppSemanticRead(input.readPane, (value) => value === control, "OSC7 handled control", phases)
+    await sample("target", target, "7")
+    await untilAppSemanticRead(input.readPane, (value) => value === target, "OSC7 target", phases)
+    return {
+      status: "measured",
+      reader: "state",
+      runId: input.runId,
+      unknown: { before: digest(initial), after: digest(unknown) },
+      handled: { before: digest(initial), after: control, expected: control },
+      target: { before: control, after: target, expected: target },
+      detail,
+    }
+  } catch (error) {
+    phases.push({ name: phase, error: error instanceof Error ? error.message : String(error) })
+    return {
+      status: "invalid",
+      reason: `WezTerm OSC7 ${phase}: read method unavailable here`,
+      detail,
+    }
+  } finally {
+    if (mutated && initial !== undefined) {
+      try {
+        await sample("restoration", initial, "7")
+        privateRecord.restored = await untilAppSemanticRead(
+          input.readPane,
+          (value) => value === initial,
+          "OSC7 public directory restoration",
+          phases,
+        )
+        detail.restoredSha256 = digest(privateRecord.restored)
+        detail.restoredEqual = privateRecord.restored === initial
+      } catch (error) {
+        phases.push({ name: "restoration", error: error instanceof Error ? error.message : String(error) })
+        try {
+          retain()
+        } catch (retentionError) {
+          throw new AggregateError(
+            [error, retentionError],
+            "WezTerm OSC7 restoration failed: the pane's reported directory was left changed; private evidence retention also failed",
+          )
+        }
+        throw new Error("WezTerm OSC7 restoration failed: the pane's reported directory was left changed")
+      }
+    }
+    if (privateReady) retain()
+  }
+}
+
 /** Owned Linux App/mux read, using only the public actions qualified by #32566. */
 export async function readAppSemanticState(input: {
   featureId: string
@@ -1389,17 +1523,8 @@ export async function readAppSemanticState(input: {
       detail.commands.push({ argv, stdout })
       return stdout
     }
-    const until = async (read: () => string, complete: (value: string) => boolean, name: string) => {
-      const deadline = Date.now() + 5000
-      let last = ""
-      do {
-        last = read()
-        if (complete(last)) return last
-        await Bun.sleep(25)
-      } while (Date.now() < deadline)
-      detail.phases.push({ name, incomplete: last })
-      throw new Error(`App semantic reader did not observe ${name} completion`)
-    }
+    const until = (read: () => string, complete: (value: string) => boolean, name: string) =>
+      untilAppSemanticRead(read, complete, name, detail.phases)
     const osc = (body: string) => `\x1b]${body}\x07`
     const nonce = randomUUID().slice(0, 8)
     const mux = input.mux === "tmux"

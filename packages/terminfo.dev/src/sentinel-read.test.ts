@@ -65,12 +65,42 @@ function windowAt(origin: { x: number; y: number }, options: { painted?: boolean
   return { width, height, rgba }
 }
 
-function source() {
+function source(dims: { rows: number; cols: number } = grid) {
   const writes: string[] = []
   return {
     writes,
-    source: { rows: grid.rows, cols: grid.cols, write: (text: string) => writes.push(text) },
+    source: { rows: dims.rows, cols: dims.cols, write: (text: string) => writes.push(text) },
   }
+}
+
+/** A frame of exactly `grid` cells at `cell` pixels, every pixel one colour: nothing drawn yet. */
+function blankFrame(
+  dims: { rows: number; cols: number },
+  cell = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+): CapturedFrame {
+  const width = dims.cols * cell.width
+  const height = dims.rows * cell.height
+  return { width, height, rgba: new Uint8Array(width * height * 4).fill(255) }
+}
+
+/**
+ * The pair the read's chooser picks on a frame with nothing drawn on it, for a grid and a set of
+ * digested regions. The same call the read makes, so a test's painted cells cannot drift from the
+ * cells the read chooses (33981, 34040).
+ */
+function pairOnBlankFrame(
+  dims: { rows: number; cols: number },
+  regions: readonly { top: number; left: number; bottom: number; right: number }[],
+  cell = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+) {
+  const frame = blankFrame(dims, cell)
+  return sentinelCellsInFrame({
+    ...frame,
+    reading: { x: 0, y: 0 },
+    cell,
+    grid: dims,
+    regions,
+  })
 }
 
 /** The pre-paint frame: one frame of the window as the route saw it, taken before the paint. */
@@ -200,6 +230,124 @@ test("a lone sentinel-coloured patch cannot stand in for the pair, and refuses b
   expect(painted.writes.at(-1)).toBe(CLEAR)
 })
 
+// @cto 34040 condition 1, carried to the read: the tier-2 pair sits on ONE row a whole cell apart, so
+// a run of sentinel colour along that row — a full-line repaint, a wide glyph erased with its
+// neighbour — arrives as one connected region. It must refuse by name, never pass as two cells.
+test("a sentinel-coloured run along a same-row pair reads as one wide box and refuses by name (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  // Rows 1-2 are the digested region, so row 3 is the frame's only free row and tier 2 is the only
+  // pair this frame can hold — the case 34040 exists for.
+  const digested = { top: 1, left: 1, bottom: 2, right: 6 }
+  const anchored = pairOnBlankFrame(sameRowGrid, [digested])
+  expect(anchored.tier).toBe("same-row")
+  const blank = blankFrame(sameRowGrid)
+  const frame: CapturedFrame = { width: blank.width, height: blank.height, rgba: Uint8Array.from(blank.rgba) }
+  // One continuous run of the sentinel's colour along the pair's row, spanning every column.
+  for (let y = (anchored.a.row - 1) * pixelGeometry.cellHeight; y < anchored.a.row * pixelGeometry.cellHeight; y += 1) {
+    for (let x = 0; x < sameRowGrid.cols * pixelGeometry.cellWidth; x += 1) {
+      frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+    }
+  }
+  const painted = source(sameRowGrid)
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => blank,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [digested],
+      reading: { x: 0, y: 0 },
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(
+    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: 1 connected regions changed into the sentinel colour — 24 px in a 12x2 box at 0,4 — where the two painted cells need exactly two; it did not settle before this read's deadline$/,
+  )
+  // Both cells are still restored, in the pair's own order.
+  expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
+})
+
+// @dev/10 peer read, 34040: the tier-2 pair is the reason the tiers exist, so the READ has to accept
+// one. Two isolated cell-sized boxes on the pair's shared row anchor the crop, and the basis says the
+// pair measured one axis; a pair whose boxes sit on different rows is refused in words.
+test("a same-row pair anchors on the column pitch and says it measured one axis (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  const digested = { top: 1, left: 1, bottom: 2, right: 6 }
+  const blank = blankFrame(sameRowGrid)
+  const frame: CapturedFrame = { width: blank.width, height: blank.height, rgba: Uint8Array.from(blank.rgba) }
+  for (const [col, row] of [
+    [1, 3],
+    [3, 3],
+  ] as const) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 2; dx += 1) {
+        const x = (col - 1) * 2 + dx
+        const y = (row - 1) * 2 + dy
+        frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+      }
+    }
+  }
+  const painted = source(sameRowGrid)
+  const origin = await readThroughSentinel({
+    source: painted.source,
+    prePaint: async () => blank,
+    capture: async (resolve) => resolve({ frame, pixelGeometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [digested],
+    reading: { x: 0, y: 0 },
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    deadline: Date.now() + 1_000,
+  })
+  expect(origin.origin).toEqual({ x: 0, y: 0 })
+  expect(origin.basis).toContain(
+    "sentinel re-located by frame difference at cells 3,1 and 3,3 (33000, 33981) (one-axis pair: both cells on one row, so it measures the column pitch only)",
+  )
+  expect(origin.witness).toEqual({
+    a: { cell: { row: 3, col: 1 }, box: { x: 0, y: 4 } },
+    b: { cell: { row: 3, col: 3 }, box: { x: 4, y: 4 } },
+  })
+  // The pair paints and restores the two cells this grid anchored on.
+  expect(painted.writes.at(0)).toBe("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[3;3H\x1b[45m \x1b[0m\x1b8")
+  expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
+})
+
+test("a same-row pair whose boxes sit on different rows is refused in words (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  const digested = { top: 1, left: 1, bottom: 2, right: 6 }
+  const blank = blankFrame(sameRowGrid)
+  const frame: CapturedFrame = { width: blank.width, height: blank.height, rgba: Uint8Array.from(blank.rgba) }
+  for (const [col, row] of [
+    [1, 3],
+    [3, 2],
+  ] as const) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 2; dx += 1) {
+        const x = (col - 1) * 2 + dx
+        const y = (row - 1) * 2 + dy
+        frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+      }
+    }
+  }
+  const painted = source(sameRowGrid)
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => blank,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [digested],
+      reading: { x: 0, y: 0 },
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(
+    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: their offset is -4,2: this pair is on one row, so it can only measure the column pitch, and these two boxes do not share a row — they sit 2 px apart vertically, more than the 2 px blend slack or half the 2 px cell; it did not settle before this read's deadline$/,
+  )
+})
+
 test("two changed cells at an offset the painted pair does not imply refuse by name (33981)", async () => {
   const frame = windowAt({ x: 0, y: 0 }, { painted: false })
   // Two cell-sized sentinel blocks one cell apart on BOTH axes would be the pair; these sit two cells
@@ -233,14 +381,16 @@ test("two changed cells at an offset the painted pair does not imply refuse by n
 
 test("a pair whose boxes are a blended edge short on each axis still anchors, because the offset follows the cell pitch (33981)", async () => {
   const pitch = { cellWidth: 12, cellHeight: 12, textWidth: 120, textHeight: 96 }
-  const frame: CapturedFrame = { width: 72, height: 48, rgba: new Uint8Array(72 * 48 * 4).fill(255) }
-  const pre: CapturedFrame = { width: 72, height: 48, rgba: new Uint8Array(72 * 48 * 4).fill(255) }
-  // Two 10x10 blocks one blended line in from a 12x12 pitch, in cells 1,3 and 2,4 of an all-blank
-  // frame: 12 px apart on each axis, which is exactly the pitch the two chosen cells imply.
-  for (const [x, y] of [
-    [25, 1],
-    [37, 13],
-  ] as const) {
+  const cell = { width: 12, height: 12 }
+  const pre = blankFrame(grid, cell)
+  const frame: CapturedFrame = { width: pre.width, height: pre.height, rgba: Uint8Array.from(pre.rgba) }
+  // Two 10x10 blocks one blended line in from a 12x12 pitch, in the two cells the chooser picks on
+  // this all-blank frame: 12 px apart on each axis, exactly the pitch those cells imply. The blocks
+  // are placed from the chooser's own answer, so a change of order cannot silently unpin the test.
+  const anchored = pairOnBlankFrame(grid, [cells], cell)
+  const blockAt = (cellAt: { row: number; col: number }) =>
+    [(cellAt.col - 1) * 12 + 1, (cellAt.row - 1) * 12 + 1] as const
+  for (const [x, y] of [blockAt(anchored.a), blockAt(anchored.b)]) {
     for (let dy = 0; dy < 10; dy += 1) {
       for (let dx = 0; dx < 10; dx += 1) frame.rgba.set([...sentinel.rgb, 255], ((y + dy) * 72 + (x + dx)) * 4)
     }
@@ -253,11 +403,11 @@ test("a pair whose boxes are a blended edge short on each axis still anchors, be
     sentinel,
     regions: [cells],
     reading: { x: 0, y: 0 },
-    cell: { width: 12, height: 12 },
+    cell,
     deadline: Date.now() + 1_000,
   })
-  // The chooser picks cells 1,3 and 2,4 of this all-blank frame, so the block at (25,1) implies an
-  // origin two pitches left of it: (25,1) - (2*12, 0).
+  // Each block is one blended line inside its cell, so the first block's own origin is one pitch
+  // right and one pitch down from the pair's first cell: origin = block origin - (col-1, row-1)*pitch.
   expect(origin.origin).toEqual({ x: 1, y: 1 })
 })
 
@@ -473,4 +623,30 @@ test("a sentinel pair that never appears refuses at the read's deadline and stil
   )
   expect(captures).toBe(1)
   expect(painted.writes).toEqual([paintOf(picked), clearOf(picked)])
+})
+
+// 34015, @dev/10 residual: the clause has to reach the basis this read RETURNS, not just the pure
+// function's return. One pixel knocked out of the second witness box is exactly the case a rendered
+// cell produces — an anti-aliased corner or the read's own restored pixel — and it must anchor here
+// and say so, rather than refusing or anchoring silently.
+test("a witness box one pixel short of its area anchors the read and says so in the basis it returns (34015)", async () => {
+  const drawnAt = { x: 2, y: 2 }
+  const frame = windowAt(drawnAt)
+  // Back to the probe's own pattern in b's bottom-right pixel: 3 of the box's 4 pixels carry the colour.
+  const boxX = drawnAt.x + (chosenPair.b.col - 1) * 2
+  const boxY = drawnAt.y + (chosenPair.b.row - 1) * 2
+  frame.rgba.set([1, 2, 90, 255], ((boxY + 1) * 16 + (boxX + 1)) * 4)
+  const origin = await readThroughSentinel({
+    source: source().source,
+    prePaint: async () => before(drawnAt),
+    capture: async (resolve) => resolve({ frame, pixelGeometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: drawnAt,
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    deadline: Date.now() + 1_000,
+  })
+  expect(origin.origin).toEqual(drawnAt)
+  expect(origin.basis).toContain("sentinel box accepted short of its area (3 of 4 px)")
 })

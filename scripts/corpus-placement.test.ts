@@ -48,7 +48,7 @@ function muxSpecimen() {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function fixture() {
+function fixture(runId = "fixture-run") {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-placement-"))
   dirs.push(dir)
   const content = join(dir, "content")
@@ -68,7 +68,7 @@ function fixture() {
     permissions: null,
   }
   const draft = initializeRunDraft({
-    runId: "fixture-run",
+    runId,
     sourceRevision: "a".repeat(40),
     manifest: currentManifest,
     source: { kind: "live" },
@@ -102,6 +102,17 @@ function fixture() {
 
 // Accepted: placement must retain exact run bytes and its trusted suite, and reads must bind them.
 // The retired admission tests never call the collection writer or reload what it actually persisted.
+// #34018: the composed owned route hands the run its identity, so the record the host produced and
+// the record the pass asked for are one run. The place path must accept that identity unchanged —
+// if placement only worked for a locally minted id, the handoff would be fixed and uncounted anyway.
+test("places a run whose identity the composer handed down", () => {
+  const handed = "0123456789abcdef0123456789abcdef"
+  const f = fixture(handed)
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  expect(destination).toBe(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-" + handed + ".json"))
+  expect(loadStoredRuns(f.content, f.manifest.catalogIds!)).toMatchObject([{ runId: handed }])
+})
+
 test("persists and reloads exact bytes, idempotently, refusing conflicts", () => {
   const f = fixture()
   const bytes = readFileSync(f.source)

@@ -315,6 +315,38 @@ export interface ObservationFrameBase {
  * A frame read from the screen's PIXELS. Its digests are over raw bytes, so two frames are
  * comparable only when their rectangles match.
  */
+/**
+ * The rendering axes of one cropped pixel frame, measured from the same bytes its `regionDigest`
+ * hashed (osc104). Two frames that agree on `background`, whose per-pixel coverage agrees within the
+ * tolerance the reader names, and whose ink colour differs, differ in INK COLOUR and nothing else —
+ * a result the terminal's colour rows can be graded on instead of refusing it as "some rendering
+ * axis differed".
+ *
+ * `coverage` is each pixel's distance from the frame's own modal background as a fraction of that
+ * frame's own modal ink distance, scaled to 0..255. Normalising by the frame's OWN ink is what keeps
+ * a brighter ink's footprint equal to a dimmer one's: at raw byte level one antialiasing pixel of the
+ * same glyph crosses the "differs from background" line when the ink colour changes (measured: 198
+ * vs 197 background pixels on Warp's retained osc104 pair).
+ */
+export interface CaptureRenderingAxes {
+  /** Modal background colour of the crop, as `#rrggbb`. */
+  background: string
+  /** Modal ink colour of the crop, as `#rrggbb`; equal to `background` when the crop carries no ink. */
+  inkColour: string
+  /** Pixels that differ from the modal background. A crop with no ink carries 0. */
+  inkCount: number
+  /** Largest channel distance between the modal ink and the modal background, 0..255. */
+  contrast: number
+  /**
+   * One byte per pixel, row-major, of the coverage these axes were measured from. IN MEMORY ONLY:
+   * the capture adapter defines it non-enumerable, so it never reaches a stored run record — a
+   * full-run record holds millions of compared pixels and the retained PNGs already carry them.
+   * Absent on every frame read back from a record, which is why the reader refuses rather than
+   * guesses when it is missing.
+   */
+  readonly coverage?: Uint8Array
+}
+
 export interface PixelObservationFrame extends ObservationFrameBase {
   /**
    * Optional HERE on purpose: every frame written before text frames existed is a pixel frame and every one of
@@ -346,6 +378,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    */
   regionRectangle?: CaptureRectangle
   /**
+   * The rendering axes of exactly this crop, taken from the same pixels as `regionDigest`. Present
+   * exactly when `regionDigest` is. Recorded whether or not a colour verdict is reached, so a reader
+   * of the record can see the background, ink colour, ink count and contrast the run measured.
+   */
+  rendering?: CaptureRenderingAxes
+  /**
    * Raw-pixel digest of the second cell-aligned region named by the request's `controlCells`,
    * cropped from the SAME captured image as `regionDigest` and `pixelsDigest`, so the two
    * regions are simultaneous rather than one capture apart. Present exactly when the request
@@ -365,6 +403,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * named no colour, or when the arm could not decode its frame; undefined is never read as null.
    */
   located?: CaptureLocated | null
+  /**
+   * What this frame measured about the grid its rectangle was mapped from (33982). Present exactly
+   * when the frame carries a `regionRectangle`, which the arm maps from that origin. A comparison
+   * that needs a proved grid move reads it here; a frame without it refuses as before.
+   */
+  cellCrop?: PixelCellCrop
 }
 
 /**
@@ -376,11 +420,13 @@ export interface PixelObservationFrame extends ObservationFrameBase {
 export interface TextCellsObservationFrame extends ObservationFrameBase {
   kind: "text-cells"
   regionDigest?: never
+  rendering?: never
   pixelsDigest?: never
   regionRectangle?: never
   controlRegionDigest?: never
   controlRegionRectangle?: never
   located?: never
+  cellCrop?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -493,6 +539,47 @@ export interface CapturePixelGeometry {
   cellHeight: number
   textWidth: number
   textHeight: number
+}
+
+/**
+ * What one pixel frame measured about the grid its region rectangle was mapped from (33982). Carried
+ * beside `regionRectangle` so a later frame's crop that differs from the first by WHOLE ROWS reads as
+ * the grid moving — Warp repaints its text area 35 rows lower after a reset — instead of as two
+ * frames cropped from unrelated positions. Absent on a hand-built frame, and a comparison over such
+ * frames refuses exactly as it did before this field existed.
+ */
+export interface PixelCellCrop {
+  /** The text-area origin this frame's rectangle was mapped from, in the captured image's pixels. */
+  origin: { x: number; y: number }
+  /**
+   * How the origin was measured, as a short settled name, and the arm's own prose beside it. Two
+   * frames are compared only when the NAME agrees: a calibrated origin and a sentinel-derived one are
+   * different measurements, and treating them as one would count one measurement twice (33982, @cto).
+   */
+  basis?: string
+  basisDetail?: string
+  /** The measured surface the text area sits on, when the arm names one. */
+  surface?: CaptureRectangle
+  /** The cell pitch the rectangle was mapped at. */
+  cell: { width: number; height: number }
+  /**
+   * The measured text-area grid, in cells. A move that comes with a resize refuses: the same rows at
+   * a different column count is a different screen, not the same screen further down.
+   */
+  grid?: { columns: number; rows: number }
+  /** The captured image's own size, so a moved rectangle is checked against pixels that exist. */
+  image: { width: number; height: number }
+  /**
+   * The sentinel pair this frame located: the two painted cells and the boxes they actually changed.
+   * The origin is derived from ONE of these boxes, so "the origins differ by N rows" alone is that
+   * one measurement restated. The PAIR is the independent half: its two boxes must sit exactly one
+   * cell pitch apart per row and column their cells differ by, which is what proves this frame's cell
+   * size and that the origin it implies lands on the grid the read asked for.
+   */
+  witness?: {
+    a: { cell: { row: number; col: number }; box: { x: number; y: number } }
+    b: { cell: { row: number; col: number }; box: { x: number; y: number } }
+  }
 }
 
 /**
@@ -1179,6 +1266,22 @@ export interface PasteRoute {
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
   readonly baseline?: string
+  /**
+   * The clipboard-read setting this run's owned configuration applied, when it applied one (@cto 2026-11-13): a
+   * record names its profile and the exact setting, so a profile reading is never mistaken for the default
+   * configuration a person gets when they open the app. Absent on a default-configuration reading, and absent on a
+   * Mac ordinary-open run, where the app keeps its own settings.
+   */
+  readonly readProfile?: { readonly profile: string; readonly setting: string }
+  /**
+   * The app's pinned default for a clipboard read at this run's version, with its source (@cto 2026-11-13): "ask"
+   * means a read waits on a person, so a silent query cannot tell "no" from "waiting" and grades nothing; "deny" or
+   * "absent" means the silence is the default answer, so it grades unsupported. Absent when the default is not pinned
+   * from the app's own documentation — a run then names that, never a guess.
+   */
+  readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  /** This tree's citation is for another app version: the row names both, and no default is applied. */
+  readonly readDefaultRefusal?: string
   /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
   readonly disposableSession?: boolean
   /** Verified tmux server `set-clipboard` option read before the callback (#32164). */
@@ -1338,6 +1441,13 @@ export type TerminalScrollbackReading = Readonly<{
   viewportOffset?: number
   /** Maximum retained scrollback history lines, when known by the reader. */
   capacity?: number
+  /**
+   * The reader's own identity receipt, when it produces one: which pane or surface this count came from,
+   * its listed tty, this run's measured tty and whether the two match, whether a socket was named, and the
+   * reader's executable — each by name or basename, never a path. A count without it says which program
+   * ran, not which pane was read (@cto 238ed303, 41fcd747).
+   */
+  receipt?: string
 }>
 
 /** Post-reset receipt from an owned multiplexer window history reset (#32874). */

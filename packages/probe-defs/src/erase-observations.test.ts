@@ -680,6 +680,9 @@ test.each([
   const writes: string[] = []
   const result = await byId("erase.screen.scrollback").term({
     ...app({ row: 5, col: 5 }),
+    // Only a run with NO observable at all keeps this verdict: an owned history reader decides the
+    // row instead of the wheel, so the reader is removed here and exercised below.
+    getScrollback: undefined,
     write: (text) => writes.push(text),
     ...(parts.capture
       ? {
@@ -707,6 +710,75 @@ test.each([
     noObservable: expect.stringMatching(/XTEST|wheel|scrollback|history/i),
   })
   expect(result.observation).toBeUndefined()
+})
+
+/** A run whose only observable is the owned history reader: each read takes the next scripted count
+ * of lines above the screen, and the base ctx has no capture, input or readInput at all. */
+function ownedHistoryApp(script: ReadonlyArray<number | Error>) {
+  const writes: string[] = []
+  let index = 0
+  const ctx = {
+    ...app({ row: 3, col: 6 }),
+    rows: 20,
+    cols: 40,
+    write: (text: string) => writes.push(text),
+    getScrollback: async () => {
+      const next = script[Math.min(index, script.length - 1)] ?? new Error("the script ran out of readings")
+      index += 1
+      if (next instanceof Error) throw next
+      return { viewportOffset: 0, totalLines: 20 + next, screenLines: 20 }
+    },
+  }
+  return { ctx, writes }
+}
+
+test("erase.screen.scrollback is decided by an owned history reader, without XTEST or capture", async () => {
+  const { ctx, writes } = ownedHistoryApp([30, 0, 5])
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(writes.join("")).toContain("\x1b[3J")
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  const recorded = JSON.parse(result.response ?? "{}") as {
+    rows: number
+    seeded: number
+    before: number
+    after: number
+    alive: number
+    fences: unknown[]
+  }
+  expect([recorded.rows, recorded.seeded, recorded.before, recorded.after, recorded.alive]).toEqual([20, 50, 30, 0, 5])
+  expect(recorded.fences).toHaveLength(3)
+  expect(result.note).toMatch(/owned history 30 -> 0 lines above a 20-line screen, and 5 after 25 more/)
+})
+
+test("erase.screen.scrollback refuses to grade a seed below the criterion's own 30 lines", async () => {
+  const { ctx, writes } = ownedHistoryApp([0])
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(writes.join("")).not.toContain("\x1b[3J")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.observation?.note).toMatch(/fewer than the 30 written past it/)
+})
+
+test("erase.screen.scrollback will not read an erase from a reader that stopped answering", async () => {
+  const { ctx } = ownedHistoryApp([30, 0, 0])
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.observation?.note).toMatch(/not answering/)
+})
+
+test("erase.screen.scrollback fails when ED3 leaves the owned history in place", async () => {
+  const { ctx } = ownedHistoryApp([30, 12])
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(result.pass).toBe(false)
+  expect(result.note).toMatch(/ED3 left the history in place/)
+})
+
+test("erase.screen.scrollback names a failing history reader rather than grading it", async () => {
+  const { ctx, writes } = ownedHistoryApp([new Error("cmux-read-empty: cmux read-screen returned no lines")])
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(writes.join("")).not.toContain("\x1b[3J")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "collector-error" })
+  expect(result.observation?.note).toMatch(/cmux-read-empty/)
 })
 
 test("erase.screen.scrollback aborts when plain a does not reach the app", async () => {
@@ -809,6 +881,84 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   }
   await expect(byId("erase.screen.scrollback").term(ctx)).rejects.toThrow(/finally wheel-down failed/)
   expect(clicks).toEqual([4, 5, 4, 5])
+})
+
+test("erase.screen.scrollback keeps its XTEST verdict when a history reader is also present (@cto 8511f7e3 condition e)", async () => {
+  const { ctx, keys, clicks } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const withReader: TermProbeSource = {
+    ...ctx,
+    getScrollback: async () => {
+      readerCalls += 1
+      throw new Error("the owned history reader must not decide a run that has capture, input and readInput")
+    },
+  }
+  const result = (await byId("erase.screen.scrollback").term(withReader)) as ProbeCallbackResult
+  expect(readerCalls).toBe(0)
+  expect(keys).toEqual(["a"])
+  expect(clicks).toEqual([4, 5, 4, 5])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+})
+
+test("erase.screen.scrollback hands the decision to the reader when ANY of capture, input and readInput is absent", async () => {
+  const { ctx, clicks } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    // Capture and XTEST input stay present: only the injected-input listener is gone, which is enough
+    // for the history reader to own the verdict (@cto 8511f7e3 condition e reads "any", not "all").
+    readInput: undefined,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return { viewportOffset: 0, totalLines, screenLines: ctx.rows }
+    },
+  }
+  const result = await byId("erase.screen.scrollback").term(withReader)
+  expect(readerCalls).toBe(3)
+  expect(clicks).toEqual([])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.note).toContain(
+    `owned history 37 -> 0 lines above a ${ctx.rows}-line screen, and 5 after ${ctx.rows + 5} more`,
+  )
+})
+
+/**
+ * @failure The erase arm reads a count through an owned reader and drops the reader's own pane identity, so
+ *   the artifact can only show which program ran, not which pane was read (@cto 238ed303).
+ * @level l1
+ * @consumer erase.screen.scrollback owned-reader arm through the public asynchronous source.
+ * @testonly none
+ */
+test("erase.screen.scrollback carries the reader's pane receipt into its own evidence", async () => {
+  const { ctx } = scrollbackApp({ clears: true })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    readInput: undefined,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return {
+        viewportOffset: 0,
+        totalLines,
+        screenLines: ctx.rows,
+        receipt: JSON.stringify({ pane: readerCalls, tty: "/dev/ttys000" }),
+      }
+    },
+  }
+  const result = (await byId("erase.screen.scrollback").term(withReader)) as ProbeCallbackResult
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  const observed = JSON.parse(String(result.assertions?.[0]?.observed ?? "{}")) as {
+    receipts?: Record<string, string>
+  }
+  const receipts = observed.receipts ?? {}
+  expect(Object.keys(receipts)).toEqual(["seed", "ED3", "alive"])
+  expect(receipts.seed).toContain('"pane":1')
+  expect(receipts.ED3).toContain('"pane":2')
+  expect(receipts.alive).toContain('"pane":3')
 })
 
 test("multiplexer erase.screen.scrollback decides from tmux and screen history counts before and after ED3 (#32774, #32784, @cto e078c568, addfd7b2)", async () => {

@@ -14,6 +14,7 @@ import {
   parserStateResult,
   probe,
   replyFailure,
+  methodUnavailable,
   queryDecrpm,
   type DecrpmPs,
 } from "./helpers.ts"
@@ -297,7 +298,11 @@ export const cursorProbes: ProbeDefinition[] = [
             }
             const cropRefusal = cropPositionRefusal({
               id: "cursor.hide",
-              compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+              compared: frames.map((frame) => ({
+                role: frame.label,
+                rectangle: frame.regionRectangle,
+                ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+              })),
               response: observed,
               frames,
               screenshotRef: hidden.ref,
@@ -513,7 +518,7 @@ export const cursorProbes: ProbeDefinition[] = [
             return replyFailure(`Cursor shape fixture CPR did not locate row 2 column 3: ${JSON.stringify(cursorCell)}`)
           }
           const read = collectorRegionRead(ctx)
-          if (!read) return replyFailure("Cursor shape has no owned region reader")
+          if (!read) return methodUnavailable("Cursor shape has no owned region reader")
           const region = { top: cursorCell.row, left: cursorCell.col, bottom: cursorCell.row, right: cursorCell.col }
           const capture = (label: string, role: "control" | "target" = "control") =>
             read({ role, label, region, pixelGeometry: measured.geometry })
@@ -548,7 +553,11 @@ export const cursorProbes: ProbeDefinition[] = [
           })
           const cropRefusal = cropPositionRefusal({
             id: "cursor.shape",
-            compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+            compared: frames.map((frame) => ({
+              role: frame.label,
+              rectangle: frame.regionRectangle,
+              ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
+            })),
             response,
             frames,
             screenshotRef: bar.frame.ref,

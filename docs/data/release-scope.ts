@@ -30,14 +30,14 @@ export function publicResultFor(
 export function rollupInputs(
   app: string,
   summary: Pick<PublicContextSummary, "featureResults">,
-): Array<{ featureId: string; status: AppCellStatus; derived?: unknown }> {
+): Array<{ featureId: string; status: AppCellStatus; derived?: unknown; declared?: unknown }> {
   return Object.values(summary.featureResults).map((result) => {
     if (!APP_CELL_STATUSES.includes(result.status)) {
       throw new Error(
         `${app}: ${result.featureId} has unknown feature status ${JSON.stringify(result.status)}; this bar cannot count it`,
       )
     }
-    return { featureId: result.featureId, status: result.status, derived: result.derived }
+    return { featureId: result.featureId, status: result.status, derived: result.derived, declared: result.declared }
   })
 }
 
@@ -174,6 +174,8 @@ export interface CurrentAggregate {
   counts: RollupCounts
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019); never a measurement. */
   derived: number
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto 82a54984); never a probe answer. */
+  byReview: number
   idsByState: Record<AppCellStatus, string[]>
   supported: number
   complete: boolean
@@ -195,6 +197,8 @@ export interface TerminalStatusRollup {
   readonly counts: RollupCounts
   /** Of `counts.unsupported`, the cells derived from a refused parent (#33019). */
   readonly derived: number
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto 82a54984). */
+  readonly byReview: number
   /** Supported plus directly measured Unsupported: derived cells are not measurements. */
   readonly decisive: number
   /** No longer open: decisive, derived and Untestable. */
@@ -224,6 +228,8 @@ export function rollupTerminalStatuses(
   catalogIds: readonly string[] = Object.keys(statuses),
   /** Cells whose Unsupported is derived from a refused parent (#33019); counted, never measured. */
   derivedIds: ReadonlySet<string> = new Set(),
+  /** Cells a reviewed declaration made untestable (@cto 82a54984); counted apart, never probe-answered. */
+  reviewedIds: ReadonlySet<string> = new Set(),
 ): TerminalStatusRollup {
   const counts = emptyRollupCounts()
   const familyAcc = new Map<string, { positions: number; environmentPositions: number; counts: RollupCounts }>()
@@ -263,6 +269,7 @@ export function rollupTerminalStatuses(
   const positions = gradedIds.length
   const environmentPositions = envIds.length
   const derived = gradedIds.filter((id) => derivedIds.has(id) && statuses[id] === "unsupported").length
+  const byReview = gradedIds.filter((id) => reviewedIds.has(id) && statuses[id] === "untestable").length
   const decisive = decisiveCells(counts, derived)
   // Differs is decided: two contexts measured the cell and disagreed. It is never supported, never
   // open, and never part of `decisive`, so neither percentage numerator can absorb it.
@@ -296,6 +303,7 @@ export function rollupTerminalStatuses(
     environmentPositions,
     counts,
     derived,
+    byReview,
     decisive,
     decided,
     open,
@@ -354,6 +362,7 @@ export function aggregateCurrentResults(
   results: readonly (Pick<FeatureResult, "featureId"> & {
     readonly status: AppCellStatus
     readonly derived?: unknown
+    readonly declared?: unknown
   })[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
@@ -376,7 +385,10 @@ export function aggregateCurrentResults(
     throw new Error("Current results differ from recorded catalogue membership")
   }
   const derivedIds = new Set(results.filter((result) => result.derived !== undefined).map((result) => result.featureId))
-  const rollup = rollupTerminalStatuses(statuses, catalogIds, derivedIds)
+  const reviewedIds = new Set(
+    results.filter((result) => result.declared !== undefined).map((result) => result.featureId),
+  )
+  const rollup = rollupTerminalStatuses(statuses, catalogIds, derivedIds, reviewedIds)
   for (const id of scoredFeatureIds(catalogIds)) {
     idsByState[statuses[id] as AppCellStatus].push(id)
   }
@@ -384,6 +396,7 @@ export function aggregateCurrentResults(
     denominator: rollup.positions,
     counts: rollup.counts,
     derived: rollup.derived,
+    byReview: rollup.byReview,
     idsByState,
     supported: rollup.counts.supported,
     complete: rollup.open === 0,
@@ -431,6 +444,7 @@ export function currentCoverageSentence(
   aggregate: {
     readonly counts: ReadableCounts
     readonly derived?: number
+    readonly byReview?: number
   },
   catalogIds?: readonly string[],
 ): string {
@@ -438,11 +452,14 @@ export function currentCoverageSentence(
   const conflict = counts["probe-conflict"] === undefined ? "" : ` · ${counts["probe-conflict"]} PROBE CONFLICT`
   // #33019: the derived share sits right beside the Unsupported count it is part of.
   const derived = aggregate.derived ? ` (of which derived: ${aggregate.derived})` : ""
+  // @cto b0d3cd4e condition 5: reviewed declarations sit beside the Untestable count they are part of, and a bar with
+  // none prints exactly what it printed before the table existed.
+  const byReview = aggregate.byReview ? ` (${aggregate.byReview} by review)` : ""
   // @cto c3c2f885: a bar with a disagreement names it, and a bar with none prints exactly what it printed
   // before this bucket existed, so today's corpus readouts stay byte-identical.
   const differsCount = counts[DIFFERS_BY_CONTEXT] ?? 0
   const differs = differsCount === 0 ? "" : ` · ${differsCount} Differs by context`
-  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived}${differs} · ${counts.untestable} Untestable · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
+  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived}${differs} · ${counts.untestable} Untestable${byReview} · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
   // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
   // that knows the run's catalogue names the environment groups it recorded as ungraded.
   const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0

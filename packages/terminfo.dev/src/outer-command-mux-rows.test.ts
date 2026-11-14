@@ -1,8 +1,10 @@
 /**
- * @failure A tmux row is graded without the outer terminal's command record, or a report line is counted outside
- *   its own invocation window: the five rows whose record line the qualifying run found must be decided by the
- *   DA1 control plus the row's own line, and `editing.decrqcra`, whose bytes produced no line on either channel,
- *   must stay open by name instead of grading silence (@cto ac738b73 / 5c25b17f, 33630).
+ * @failure A tmux row is graded without the outer terminal's command record, or a report line is counted outside its
+ *   own invocation window: the five rows whose record line the qualifying run found must be decided by the shared
+ *   title forwarding control plus the row's own line, and `editing.decrqcra`, whose bytes produced no line on either
+ *   channel, must stay open by name instead of grading silence (@cto ac738b73 / 5c25b17f / 60c52bf0, 33630). Under
+ *   the default tmux config, where no forwarding control can arrive, those five rows are declared untestable — never
+ *   probe-invalid and never Unsupported.
  * @level l2
  * @consumer The owned collector's outer command reader, the five mux arms and decrqcra's open arm.
  * @testonly none
@@ -15,15 +17,19 @@ import { createCallLog, withCallLog } from "viprobe"
 import {
   MUX_OUTER_DECRQ_UNREADABLE,
   MUX_OUTER_DECRQ_UNREADABLE_BRANCH,
+  MUX_OUTER_NO_RECORD,
   MUX_OUTER_ROWS,
   editingProbes,
   extensionsProbes,
+  isDeclaredUntestable,
+  muxOuterNoControlDefault,
   muxOuterRowGrade,
   withMuxOuterRows,
   withMuxOuterUnreadableRow,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { beginMuxSgrCommandRead, hasOuterCommandMatcher } from "./app-semantic-state.ts"
+import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -52,6 +58,20 @@ const ROWS = [
   ["extensions.osc7770-font-size", "osc7770"],
 ] as const
 
+const CONTROL = /^\u001b\]2;(tdv-title-[0-9a-f]{24})\u001b\\$/
+
+/** The one forwarding control this arm wrote, as the outer record line it produces. */
+function controlLine(writes: string[]): string {
+  const nonces = writes.flatMap((text) => CONTROL.exec(text)?.[1] ?? [])
+  if (nonces.length !== 1) throw new Error(`arm wrote ${nonces.length} forwarding controls; one is required`)
+  return `set_title ${nonces[0]}`
+}
+
+/** The qualified window plus the control this invocation wrote — what a set-titles run leaves in the record. */
+function withControl(record: string, writes: string[]): string {
+  return record + controlLine(writes) + "\n"
+}
+
 async function muxArm(definition: { id: string; term?: unknown }, mux: "tmux" | "screen") {
   const writes: string[] = []
   const source = { kind: "live", cols: 80, rows: 24, mux, write: (text: string) => void writes.push(text) }
@@ -64,7 +84,12 @@ async function muxArm(definition: { id: string; term?: unknown }, mux: "tmux" | 
   return { writes, result, callLog: JSON.stringify(log) }
 }
 
-async function read(featureId: string, mux: "tmux" | "screen", record: string) {
+async function read(
+  featureId: string,
+  mux: "tmux" | "screen",
+  record: string | ((writes: string[]) => string),
+  config?: string,
+) {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-rows-"))
   const artifacts = join(directory, "artifacts")
   const daemon = join(directory, "daemon.log")
@@ -77,15 +102,17 @@ async function read(featureId: string, mux: "tmux" | "screen", record: string) {
     vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
     vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
     vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", artifacts)
+    const subject = {
+      kind: "mux" as const,
+      id: mux,
+      version: mux === "tmux" ? "3.8" : "5.0.2",
+      os: "linux",
+      outerTerminal: "kitty",
+      ...(config === undefined ? {} : { config }),
+    }
     const reader = beginMuxSgrCommandRead({
       featureId,
-      subject: {
-        kind: "mux",
-        id: mux,
-        version: mux === "tmux" ? "3.8" : "5.0.2",
-        os: "linux",
-        outerTerminal: "kitty",
-      },
+      subject,
       proof: {
         platform: "linux",
         mux,
@@ -96,22 +123,27 @@ async function read(featureId: string, mux: "tmux" | "screen", record: string) {
     if (reader.status !== "ready") return reader
     const definition = extensionsProbes.find((probe) => probe.id === featureId)!
     const arm = await muxArm(definition, mux)
-    appendFileSync(daemon, record)
+    appendFileSync(daemon, typeof record === "function" ? record(arm.writes) : record)
     return await reader.read(arm.callLog)
   } finally {
     rmSync(directory, { recursive: true })
   }
 }
 
-test.each(ROWS)("%s: the mux arm sends its target, then the DA1 control, and names its branch", async (id, name) => {
-  const row = MUX_OUTER_ROWS[id]!
-  const definition = extensionsProbes.find((probe) => probe.id === id)!
-  expect(hasOuterCommandMatcher(id)).toBe(true)
-  const arm = await muxArm(definition, "tmux")
-  expect(arm.writes).toEqual([row.write, "\u001b[c"])
-  expect(arm.result.criterionBranch).toBe(row.branch)
-  expect(window(name).length).toBeGreaterThan(0)
-})
+test.each(ROWS)(
+  "%s: the mux arm sends its target, then the shared title control, and names its branch",
+  async (id, name) => {
+    const row = MUX_OUTER_ROWS[id]!
+    const definition = extensionsProbes.find((probe) => probe.id === id)!
+    expect(hasOuterCommandMatcher(id)).toBe(true)
+    const arm = await muxArm(definition, "tmux")
+    expect(arm.writes).toHaveLength(2)
+    expect(arm.writes[0]).toBe(row.write)
+    expect(arm.writes[1]).toMatch(CONTROL)
+    expect(arm.result.criterionBranch).toBe(row.branch)
+    expect(window(name).length).toBeGreaterThan(0)
+  },
+)
 
 test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps tmux", async (id) => {
   const row = MUX_OUTER_ROWS[id]!
@@ -153,7 +185,9 @@ test.each(ROWS)("%s: the wrapper leaves a Screen callback alone and only swaps t
     write: (text: string) => void tmuxWrites.push(text),
   } as unknown as TermProbeSource)
   expect(seen).toEqual(["screen", undefined])
-  expect(tmuxWrites).toEqual([row.write, "\u001b[c"])
+  expect(tmuxWrites).toHaveLength(2)
+  expect(tmuxWrites[0]).toBe(row.write)
+  expect(tmuxWrites[1]).toMatch(CONTROL)
   expect(tmuxResult.criterionBranch).toBe(row.branch)
 })
 
@@ -218,27 +252,43 @@ test("editing.decrqcra keeps its own callback on Screen", async () => {
   expect(result.criterionBranch).toBeUndefined()
 })
 
-test.each(ROWS)("%s: the captured window reads the row's own line as sent", async (id, name) => {
-  const result = await read(id, "tmux", window(name))
-  expect(result).toMatchObject({
-    status: "measured",
-    target: MUX_OUTER_ROWS[id]!.label,
-    targetSent: true,
-    outer: { app: "kitty", version: "0.49.2" },
-  })
-  expect((result as { trace?: { sha256?: string; lines?: number } }).trace?.sha256).toMatch(/^[0-9a-f]{64}$/)
-  expect((result as { trace?: { lines?: number } }).trace?.lines).toBeGreaterThan(0)
-})
+test.each(ROWS)(
+  "%s: the qualified window plus this invocation's control reads the row's own line as sent",
+  async (id, name) => {
+    const result = await read(id, "tmux", (writes) => withControl(window(name), writes), TMUX_SET_TITLES_CONFIG)
+    expect(result).toMatchObject({
+      status: "measured",
+      target: MUX_OUTER_ROWS[id]!.label,
+      targetSent: true,
+      outer: { app: "kitty", version: "0.49.2" },
+    })
+    expect((result as { trace?: { sha256?: string; lines?: number } }).trace?.sha256).toMatch(/^[0-9a-f]{64}$/)
+    expect((result as { trace?: { lines?: number } }).trace?.lines).toBeGreaterThan(0)
+  },
+  20_000,
+)
 
-test.each(ROWS)("%s: the control with the row's line removed reads the target as not sent", async (id, name) => {
-  const target = rowTargetLine(id)
-  const withoutTarget = window(name)
-    .split("\n")
-    .filter((line) => line !== target)
-    .join("\n")
-  const result = await read(id, "tmux", withoutTarget)
-  expect(result).toMatchObject({ status: "measured", targetSent: false })
-})
+test.each(ROWS)(
+  "%s: the control with the row's line removed reads the target as not sent",
+  async (id, name) => {
+    const target = rowTargetLine(id)
+    const result = await read(
+      id,
+      "tmux",
+      (writes) =>
+        withControl(
+          window(name)
+            .split("\n")
+            .filter((line) => line !== target)
+            .join("\n"),
+          writes,
+        ),
+      TMUX_SET_TITLES_CONFIG,
+    )
+    expect(result).toMatchObject({ status: "measured", targetSent: false })
+  },
+  20_000,
+)
 
 function rowTargetLine(id: string): string {
   const name = ROWS.find(([row]) => row === id)![1]
@@ -247,22 +297,46 @@ function rowTargetLine(id: string): string {
     .find((line) => line.length > 0 && line !== "report_device_attributes 0 0")!
 }
 
-test("a row line after the control is outside the window", async () => {
+test("a row line after the control is outside this invocation's window", async () => {
   const [target] = window("osc776").split("\n")
-  const result = await read("extensions.osc776-cell-size", "tmux", `report_device_attributes 0 0\n${target}\n`)
-  expect(result).toMatchObject({ status: "measured", targetSent: false })
-})
+  const result = await read(
+    "extensions.osc776-cell-size",
+    "tmux",
+    (writes) => `${controlLine(writes)}\n${target}\n`,
+    TMUX_SET_TITLES_CONFIG,
+  )
+  expect(result.status).toBe("unavailable")
+  expect((result as { reason: string }).reason).toMatch(/only after its forwarding control/)
+}, 20_000)
 
 test.each(ROWS)(
-  "%s: a window with no control line is a named invalid, never an empty negative",
+  "%s: a set-titles window with no control line is a named invalid, never an empty negative",
   async (id, name) => {
     const withoutControl = window(name)
       .split("\n")
       .filter((line) => line !== "report_device_attributes 0 0")
       .join("\n")
-    const result = await read(id, "tmux", withoutControl)
+    const result = await read(id, "tmux", withoutControl, TMUX_SET_TITLES_CONFIG)
     expect(result.status).toBe("unavailable")
-    expect((result as { reason: string }).reason).toMatch(/no device-attributes control line/)
+    expect((result as { reason: string }).reason).toMatch(/no forwarding control line/)
+    const graded = muxOuterRowGrade(MUX_OUTER_ROWS[id]!)(result)
+    expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  },
+  20_000,
+)
+
+test.each(ROWS)(
+  "%s: the default tmux config makes the row declared untestable, not invalid",
+  async (id, name) => {
+    const result = await read(id, "tmux", window(name), "/out/mux-empty.conf")
+    expect(result.status).toBe("unavailable")
+    expect(result).toMatchObject({ titlesForwarded: false, noForwardingControl: true })
+    const row = MUX_OUTER_ROWS[id]!
+    const graded = muxOuterRowGrade(row)(result)
+    expect(isDeclaredUntestable(graded)).toBe(true)
+    expect(graded.tests).toEqual([
+      { id: "declared-untestable", status: "untestable", reason: muxOuterNoControlDefault(row.label) },
+    ])
   },
   20_000,
 )
@@ -272,7 +346,12 @@ test("a row's code in another form is a named failure, not a did-not-forward gra
     /^\[[0-9.]+\] Ignoring OSC 701, used by mintty for locale$/m,
     "[1.000] Unknown OSC escape code: 701",
   )
-  const result = await read("extensions.osc701-locale", "tmux", other)
+  const result = await read(
+    "extensions.osc701-locale",
+    "tmux",
+    (writes) => withControl(other, writes),
+    TMUX_SET_TITLES_CONFIG,
+  )
   expect(result.status).toBe("unavailable")
   expect((result as { reason: string }).reason).toMatch(/in another form/)
 }, 20_000)
@@ -304,6 +383,20 @@ test("the grade reads only the outer record: sent is open, not sent is the crite
 
   const unreadable = grade({ status: "unavailable", reason: "no trace" })
   expect(unreadable.tests?.[0]).toMatchObject({ status: "probe-invalid" })
+  expect(unreadable.tests?.[0]?.reason).toBe(`${MUX_OUTER_NO_RECORD} no trace`)
+})
+
+test("the grade keeps a set-titles read's own failure reason when the control is missing", () => {
+  const row = MUX_OUTER_ROWS["extensions.osc701-locale"]!
+  const graded = muxOuterRowGrade(row)({
+    status: "unavailable",
+    reason: "Outer command record has no forwarding control line: set_title tdv-title-x",
+    titlesForwarded: true,
+    noForwardingControl: true,
+    detail: {},
+  })
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expect(graded.tests?.[0]?.reason).toMatch(/has no forwarding control line/)
 })
 
 test("screen keeps no reader for these rows in this slice", () => {

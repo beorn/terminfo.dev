@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { CaptureLocated, CaptureRectangle } from "@terminfo/probe-defs"
+import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -253,9 +253,21 @@ export interface CaptureSource {
 export interface NamedTextOrigin {
   origin: { x: number; y: number }
   basis: string
+  /**
+   * The settled name of the measurement behind `origin` (33982): `basis` is prose that names this
+   * frame's own noise, so two frames of one read can never compare equal on it. Equality of THIS name
+   * is what lets a comparison treat two frames as measured one way rather than two.
+   */
+  basisKind?: string
   surface?: CaptureRectangle
   /** The measured text-area pixels when a window edge clips the last row or column. */
   visible?: { width: number; height: number }
+  /**
+   * The sentinel pair this read located, cells and boxes. The origin above is derived from one box,
+   * so a later comparison of origins is that one measurement restated; the pair is the independent
+   * half and must travel with the frame for a grid move to be proved (33982).
+   */
+  witness?: NonNullable<PixelCellCrop["witness"]>
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -326,6 +338,81 @@ export function locateColour(frame: CapturedFrame, rgb: readonly [number, number
   return { box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }, pixels }
 }
 
+/**
+ * The frame's own view of the axes: what the run record carries, with the coverage array attached
+ * non-enumerably so it is readable in this process and invisible to JSON serialization.
+ */
+export function renderedAxes(axes: CaptureRenderingAxes): CaptureRenderingAxes {
+  const rendering: CaptureRenderingAxes = {
+    background: axes.background,
+    inkColour: axes.inkColour,
+    inkCount: axes.inkCount,
+    contrast: axes.contrast,
+  }
+  if (axes.coverage) Object.defineProperty(rendering, "coverage", { value: axes.coverage, enumerable: false })
+  return rendering
+}
+
+/**
+ * The rendering axes of one already-cropped RGBA frame, measured from the same bytes its
+ * `regionDigest` hashed, plus the per-pixel coverage they came from. Ties are broken on the lowest
+ * packed colour so two identical crops never disagree about which colour is modal.
+ */
+export function renderingAxes(cropped: Buffer): CaptureRenderingAxes {
+  const pixels = cropped.byteLength / 4
+  const counts = new Map<number, number>()
+  for (let index = 0; index < pixels; index++) {
+    const offset = index * 4
+    const packed = ((cropped[offset] ?? 0) << 16) | ((cropped[offset + 1] ?? 0) << 8) | (cropped[offset + 2] ?? 0)
+    counts.set(packed, (counts.get(packed) ?? 0) + 1)
+  }
+  let background = 0
+  let backgroundCount = -1
+  for (const [packed, count] of counts) {
+    if (count > backgroundCount || (count === backgroundCount && packed < background)) {
+      background = packed
+      backgroundCount = count
+    }
+  }
+  // The MODAL ink colour, and the count of every pixel that is not the background: the floor the
+  // reader applies is about how much ink the crop carries, not how much of it is the modal colour.
+  let ink = background
+  let inkMode = 0
+  let inkCount = 0
+  for (const [packed, count] of counts) {
+    if (packed === background) continue
+    inkCount += count
+    if (count > inkMode || (count === inkMode && packed < ink)) {
+      ink = packed
+      inkMode = count
+    }
+  }
+  const channel = (packed: number, shift: number) => (packed >> shift) & 0xff
+  const distance = (packed: number) =>
+    Math.max(
+      Math.abs(channel(packed, 16) - channel(background, 16)),
+      Math.abs(channel(packed, 8) - channel(background, 8)),
+      Math.abs(channel(packed, 0) - channel(background, 0)),
+    )
+  const contrast = distance(ink)
+  const coverage = new Uint8Array(pixels)
+  if (contrast > 0) {
+    for (let index = 0; index < pixels; index++) {
+      const offset = index * 4
+      const packed = ((cropped[offset] ?? 0) << 16) | ((cropped[offset + 1] ?? 0) << 8) | (cropped[offset + 2] ?? 0)
+      coverage[index] = Math.min(255, Math.round((255 * distance(packed)) / contrast))
+    }
+  }
+  const hex = (packed: number) => `#${packed.toString(16).padStart(6, "0")}`
+  return {
+    background: hex(background),
+    inkColour: hex(ink),
+    inkCount,
+    contrast,
+    coverage,
+  }
+}
+
 /** Finish one acquired frame; currency and capture scheduling belong to the caller. */
 export async function finishCapture(input: {
   directory: string
@@ -367,9 +454,11 @@ export async function finishCapture(input: {
   const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
   let regionRectangle: CaptureRectangle | undefined
+  let frameRendering: CaptureRenderingAxes | undefined
   let controlRegionDigest: string | undefined
   let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
+  let cellCrop: PixelCellCrop | undefined
   const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
@@ -397,7 +486,7 @@ export async function finishCapture(input: {
           `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
         )
       }
-      return { rectangle, digest: `sha256:${digest(cropped)}` }
+      return { rectangle, digest: `sha256:${digest(cropped)}`, rendering: renderingAxes(cropped) }
     }
     const region = cropRegion(cells)
     const rectangle = region.rectangle
@@ -413,7 +502,22 @@ export async function finishCapture(input: {
       "rgba:-",
     ]
     regionDigest = region.digest
+    frameRendering = renderedAxes(region.rendering)
     regionRectangle = rectangle
+    const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
+    const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
+    cellCrop = {
+      origin: placement.origin,
+      ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+      basisDetail: placement.basis,
+      ...(placement.surface !== undefined ? { surface: placement.surface } : {}),
+      cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+      ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
+        ? { grid: { columns, rows } }
+        : {}),
+      image: { width, height },
+      ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+    }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle
     regionTrace = {
@@ -450,10 +554,12 @@ export async function finishCapture(input: {
       sourceRef,
       pixelsDigest,
       ...(regionDigest !== undefined ? { regionDigest } : {}),
+      ...(frameRendering !== undefined ? { rendering: frameRendering } : {}),
       ...(regionRectangle !== undefined ? { regionRectangle } : {}),
       ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
       ...(controlRegionRectangle !== undefined ? { controlRegionRectangle } : {}),
       ...(located !== undefined ? { located } : {}),
+      ...(cellCrop !== undefined ? { cellCrop } : {}),
     },
     trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
   }

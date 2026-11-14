@@ -2,8 +2,9 @@ import {
   CALIBRATION_SOLID_PAINT,
   sentinelCellsInFrame,
   originFromSentinel,
-  CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
   sentinelBlockRefusal,
+  sentinelFillClause,
   type CalibrationSentinel,
   type CaptureCells,
 } from "@terminfo/probe-defs"
@@ -155,7 +156,7 @@ export async function readThroughSentinel<T>(input: {
     // axis and move its origin by the same, so "the same size" and "the offset the cells imply" are
     // both read with that tolerance — never with the box size in place of the cell PITCH, which a
     // blended edge would break on every read (@dev/10 peer read).
-    const slack = 2 * CELL_EDGE_TOLERANCE_PX
+    const slack = SENTINEL_BOX_SLACK_PX
     if (
       Math.abs(first.box.width - second.box.width) > slack ||
       Math.abs(first.box.height - second.box.height) > slack
@@ -166,22 +167,52 @@ export async function readThroughSentinel<T>(input: {
     }
     const offset = { x: second.box.x - first.box.x, y: second.box.y - first.box.y }
     const gap = { x: b.col - a.col, y: b.row - a.row }
-    const impliedPitch = { x: Math.abs(offset.x) / Math.abs(gap.x), y: Math.abs(offset.y) / Math.abs(gap.y) }
+    // 34040: a tier-2 pair sits on ONE row, so its row gap is zero and no row pitch can be divided
+    // out of it. It still anchors — on the column pitch and on the two boxes sharing a row within
+    // the blend slack — and says so, so no reader takes it for a pair that measured both pitches.
+    // The vertical move is refused elsewhere (`gridMoveExemption`), never granted from this pair.
+    const oneAxis = gap.y === 0
+    const impliedPitch = {
+      x: Math.abs(offset.x) / Math.abs(gap.x),
+      y: oneAxis ? 0 : Math.abs(offset.y) / Math.abs(gap.y),
+    }
     const basis = `sentinel re-located by frame difference at ${where()} (33000, 33981)`
-    const direction =
-      Math.sign(offset.x) * Math.sign(gap.x) === Math.sign(offset.y) * Math.sign(gap.y)
-        ? Math.sign(offset.x) * Math.sign(gap.x)
+    const basisKind = "sentinel pair located by frame difference"
+    const columnDirection = Math.sign(offset.x) * Math.sign(gap.x)
+    const direction = oneAxis
+      ? columnDirection
+      : columnDirection === Math.sign(offset.y) * Math.sign(gap.y)
+        ? columnDirection
         : 0
-    if (
-      direction !== 0 &&
-      Math.abs(impliedPitch.x - size.width) <= slack &&
-      Math.abs(impliedPitch.y - size.height) <= slack
-    ) {
+    // "One row" is not a free pass on the row: the two boxes' vertical origins may differ by the
+    // blend slack at most, and by less than half a cell — a whole-cell row apart is not one row.
+    const rowsAgree = oneAxis
+      ? Math.abs(offset.y) <= slack && Math.abs(offset.y) < size.height / 2
+      : Math.abs(impliedPitch.y - size.height) <= slack
+    if (direction !== 0 && Math.abs(impliedPitch.x - size.width) <= slack && rowsAgree) {
       const aBox = direction > 0 ? first : second
-      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}` }
+      const bBox = direction > 0 ? second : first
+      // 34015: a box the size of the cell that is one or two pixels short is ACCEPTED, and says so
+      // here — the basis travels on the frame, so a reader can count how many reads leaned on the
+      // slack instead of inferring it from a silence.
+      return {
+        origin: originFromSentinel(aBox, a, size),
+        basis: `${basis}${oneAxis ? " (one-axis pair: both cells on one row, so it measures the column pitch only)" : ""}${noise}${sentinelFillClause([aBox, bBox])}`,
+        basisKind,
+        // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
+        // pitch on its own rather than restating the one box it already reduced to an origin (33982).
+        witness: {
+          a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
+          b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
+        },
+      }
     }
     throw wrong(
-      `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`,
+      !oneAxis
+        ? `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`
+        : !rowsAgree
+          ? `their offset is ${offset.x},${offset.y}: this pair is on one row, so it can only measure the column pitch, and these two boxes do not share a row — they sit ${Math.abs(offset.y)} px apart vertically, more than the ${slack} px blend slack or half the ${size.height} px cell`
+          : `their offset is ${offset.x},${offset.y} across the ${gap.x} columns of one shared row, which is a column pitch of ${impliedPitch.x.toFixed(2)} px, not the ${size.width} px cell`,
     )
   }
   const paint = CALIBRATION_SOLID_PAINT[input.sentinel.form]

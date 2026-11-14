@@ -89,11 +89,20 @@ test("keeps the pair outside the digested regions and the probe's avoid footprin
   for (const chosen of [a, b]) expect(chosen.row).toBeGreaterThan(4)
 })
 
-test("refuses when the only blank cells share a row, since the pair must differ on both axes", () => {
+test("anchors on a lone blank row, a whole cell apart, and says it measured one axis (34040)", () => {
+  // Row 24 is the only blank row: the pre-34040 picker refused this frame because it demanded a pair
+  // that differed on both axes, and the read lost a gradeable row to a rule it did not need. The
+  // same-row tier exists for exactly this shape and the gap keeps the two cells from merging into
+  // one wide box under a single sentinel-coloured run; the tier is what tells the reader it measured
+  // the column pitch alone.
   const inked = Array.from({ length: 23 }, (_, row) =>
     Array.from({ length: 8 }, (_, col) => ({ row: row + 1, col: col + 1, half: true })),
   ).flat()
-  expect(() => selection(inked)).toThrow(/no second blank cell/)
+  const { a, b, tier } = selection(inked)
+  expect(tier).toBe("same-row")
+  expect(a.row).toBe(24)
+  expect(b.row).toBe(24)
+  expect(Math.abs(b.col - a.col)).toBeGreaterThanOrEqual(2)
 })
 
 // @dev/15's finding on the A+B head: a double-width glyph draws its ink in one half and can leave
@@ -101,16 +110,23 @@ test("refuses when the only blank cells share a row, since the pair must differ 
 // half and the restore would erase the glyph whole — @dev/10's rule. The cell a wide glyph could
 // straddle into is never eligible, however blank it looks.
 //
-// The fixture must actually reach that cell: rows 1-2 are inked edge to edge, so the row-major
-// search cannot answer above row 3, and every cell left of the region's right edge at 3,11 is
-// excluded by the region. The chooser's first eligible cell is therefore 3,12 on a rule-less
-// chooser (red on 9b4df8d9) and 3,13 with the neighbour rule in place.
+// The fixture must actually reach that cell: rows 1-2 AND rows 6-8 are inked edge to edge, so the
+// preferred cells above and below the region (2,1, 2,12, 6,1) are all ink and the search has to
+// answer inside the region's own band, on the only free cells it leaves: columns 12 onward of row 3.
+// Every cell left of the region's right edge at 3,11 is excluded by the region, so the first
+// eligible cell is 3,12 on a rule-less chooser (red on 9b4df8d9) and 3,13 with the neighbour rule.
 test("never uses the blank half of a wide glyph as a sentinel cell", () => {
   const wide = { grid: { rows: 8, cols: 24 }, cell: { width: 4, height: 6 } }
   const regions = [{ top: 3, left: 1, bottom: 5, right: 11 }]
-  const filledRows = Array.from({ length: 2 }, (_, row) =>
-    Array.from({ length: wide.grid.cols }, (_, col) => ({ row: row + 1, col: col + 1 })),
-  ).flat()
+  // The blocker rows carry a GLYPH's worth of ink, not a solid fill: a solid five-row band makes ink
+  // the frame's modal colour, and then every inked cell reads as "blank" and the fixture would be
+  // testing the opposite of what it says (the same trap that hid a bug in witness-search's helper).
+  // Every row but the region's own middle row, so the search cannot tie between a cell beside the
+  // glyph and one a row further out: row 3's columns 12 onward are the frame's only free cells and
+  // the neighbour rule is the only thing that can move the answer off 3,12.
+  const filledRows = [1, 2, 4, 5, 6, 7, 8].flatMap((row) =>
+    Array.from({ length: wide.grid.cols }, (_, col) => ({ row, col: col + 1, half: true })),
+  )
   const glyph = [{ row: 3, col: 11, leftHalf: true }]
   const { a } = sentinelCellsInFrame({
     ...frame({ ...wide, ink: [...filledRows, ...glyph] }),

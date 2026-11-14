@@ -201,16 +201,15 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
   },
 )
 
-test("nine fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
+test("seven fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
   const job = workflow.jobs["measure-macos"]
   const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
     include: Array<{ id: string }>
   }
+  // Terminal.app (0f93453ec) and iTerm2 (6f2bb1072) run on owned routes, never a hosted job.
   expect(matrix.include.map((row: { id: string }) => row.id)).toEqual([
-    "terminal-app",
-    "iterm2",
     "ghostty",
     "alacritty",
     "wezterm",
