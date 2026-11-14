@@ -176,6 +176,9 @@ export async function readThroughSentinel<T>(input: {
           a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
           b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
         },
+        // The pre-paint difference, counted: a held viewport moved by whole rows leaves this small,
+        // a re-anchored one leaves it large, and a refusal can then name which (34163).
+        changedOutside: ignoredPixels,
       }
     }
     throw wrong(

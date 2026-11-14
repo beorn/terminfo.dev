@@ -493,4 +493,16 @@ test("a region that leaves the frame refuses by name and never shrinks to fit (3
   ).toEqual({ x: 3, y: 5, width: 130, height: 440 })
   // An origin with no settled name says so, rather than leaving the reader to guess which measurement lied.
   expect(() => cellRectangle({ ...input, basis: undefined })).toThrow(/origin basis unnamed/)
+  // A located pair travels with the refusal: the cells the code believed it painted beside the boxes
+  // it found are the only record of a pair that slid down the grid.
+  expect(() =>
+    cellRectangle({
+      ...input,
+      witness: {
+        a: { cell: { row: 2, col: 3 }, box: { x: 29, y: 184 } },
+        b: { cell: { row: 1, col: 4 }, box: { x: 42, y: 155 } },
+      },
+      changedOutside: 7,
+    }),
+  ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155; 7 px changed outside those boxes/)
 })
