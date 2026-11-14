@@ -757,32 +757,56 @@ test("an undeclared whole-row move refuses and names the declaration the probe o
 // measured pixel geometry changed with it.
 test("33000 stays intact: an undeclared read whose frame moved re-anchors instead of refusing (34163)", async () => {
   const origin = { x: 2, y: 2 }
-  const moved = { cellWidth: 2, cellHeight: 2, textWidth: 10, textHeight: 8 }
+  // Constructed the way the route does it (@cto 2026-11-13): the SAME pixel geometry in both frames,
+  // because a differing one is refused before the resolver runs. The frame itself moved: pattern and
+  // pair both two rows down, which is what a moved text area looks like and what leaves thousands of
+  // changed pixels outside the pair.
   const result = await heldRead({
-    frame: heldWindow({ origin, shift: { y: 2 } }),
-    prePaint: before(origin),
+    frame: windowAt({ x: 2, y: 4 }),
+    prePaint: before({ x: 2, y: 2 }),
     settled: settledAt(origin),
-    geometry: moved,
   })
   expect(result.origin).toEqual({ x: 2, y: 4 })
-  expect(result.basis).toContain(
-    "re-anchored from the pair because the frame's own pixel geometry moved after calibration (33000)",
-  )
+  expect(result.basis).toContain("re-anchored from the pair after the frame moved, by 1 rows and 0 columns")
   // @cto 2026-11-13: the re-anchor is VISIBLE, not silent — how far it moved, beside the basis prose.
   expect(result.reanchored).toEqual({ rows: 1, columns: 0 })
   expect(result.scrolledRows).toBeUndefined()
 })
 
-test("a declared hold whose frame also changed geometry refuses: a hold plus a move is not one read (34163)", async () => {
+test("a declared hold whose frame MOVED refuses: a hold plus a move is not one read (34163)", async () => {
   const origin = { x: 2, y: 2 }
-  const moved = { cellWidth: 2, cellHeight: 2, textWidth: 10, textHeight: 8 }
   await expect(
     heldRead({
-      frame: heldWindow({ origin, shift: { y: 2 } }),
-      prePaint: before(origin),
+      frame: windowAt({ x: 2, y: 4 }),
+      prePaint: before({ x: 2, y: 2 }),
       settled: settledAt(origin),
       scroll: { direction: "up", notches: 1, maxRows: 4 },
-      geometry: moved,
     }),
-  ).rejects.toThrow(/a hold plus a geometry change is not one read's story/)
+  ).rejects.toThrow(/more than one 12 px text row, so the frame MOVED while it was supposed to be held still/)
+})
+
+test("an ordinary read crops at the settled origin and is not called a re-anchor (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: {} }),
+    prePaint: heldWindow({ origin, shift: {}, painted: false }),
+    settled: settledAt(origin),
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.reanchored).toBeUndefined()
+  expect(result.scrolledRows).toBeUndefined()
+  expect(result.basis).toContain("the pair landed on the settled calibrated origin, which is where this read crops")
+  expect(result.basis).not.toContain("re-anchored")
+})
+
+test("a declared hold may land within the read's own slack of a whole row (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: { y: 3 } }),
+    prePaint: heldWindow({ origin, shift: {}, painted: false }),
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.scrolledRows?.rows).toBe(2)
 })

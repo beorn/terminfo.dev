@@ -190,7 +190,6 @@ export async function readThroughSentinel<T>(input: {
         return onSettledOrigin({
           label: input.label,
           settled: input.settled,
-          pixelGeometry,
           derived,
           witness,
           size,
@@ -262,7 +261,6 @@ export async function readThroughSentinel<T>(input: {
 function onSettledOrigin(input: {
   label: string
   settled: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
-  pixelGeometry: CapturePixelGeometry
   derived: { x: number; y: number }
   witness: NonNullable<NamedTextOrigin["witness"]>
   size: { width: number; height: number }
@@ -272,41 +270,50 @@ function onSettledOrigin(input: {
   refuse: (reason: string) => Error
 }): NamedTextOrigin {
   const { settled, derived, size, scroll } = input
-  const settledGeometry = settled.pixelGeometry
-  const extentMoved =
-    input.pixelGeometry.cellWidth !== settledGeometry.cellWidth ||
-    input.pixelGeometry.cellHeight !== settledGeometry.cellHeight ||
-    input.pixelGeometry.textWidth !== settledGeometry.textWidth ||
-    input.pixelGeometry.textHeight !== settledGeometry.textHeight
   const dx = derived.x - settled.origin.x
   const dy = derived.y - settled.origin.y
   const slack = SENTINEL_BOX_SLACK_PX
   const rows = Math.round(dy / size.height)
   const wholeRows = Math.abs(dy - rows * size.height) <= slack
   const movedBy = `the pair landed ${dy} px (${wholeRows ? `${rows} rows` : "not a whole number of rows"}) off the settled origin at ${settled.origin.x},${settled.origin.y}, which puts its box at ${derived.x},${derived.y} against an expected ${settled.origin.x},${settled.origin.y} for a ${size.width}x${size.height} cell`
-  const columnMove = dx / size.width
+  // A held viewport is STATIC between the pre-paint frame and this one, so only the painted pair
+  // moves in the difference; a window that moved repaints at least the rows it shifted. One text row
+  // of changed pixels is the bound (@cto 2026-11-13), and it is the only signature of a move the
+  // read can observe: the frame's pixel geometry cannot differ from the settled one here, because
+  // assertCalibratedCaptureGeometry refused that request before this resolver ran.
+  const movedFrameBound = settled.pixelGeometry.textWidth
   const reanchored: NamedTextOrigin = {
     ...settled,
     origin: derived,
-    basis: `${input.basis}; re-anchored from the pair because the frame's own pixel geometry moved after calibration (33000), by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(columnMove) ? `${columnMove} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y}`,
+    basis: `${input.basis}; re-anchored from the pair after the frame moved, by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(dx / size.width) ? `${dx / size.width} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y} (33000)`,
     basisKind: settled.basisKind,
     witness: input.witness,
     changedOutside: input.changedOutside,
     reanchored: {
       rows: wholeRows ? rows : dy / size.height,
-      columns: Number.isInteger(columnMove) ? columnMove : dx / size.width,
+      columns: Number.isInteger(dx / size.width) ? dx / size.width : dx / size.width,
     },
   }
-  if (scroll === undefined) {
-    if (extentMoved || !wholeRows || Math.abs(dx) > slack || rows === 0) return reanchored
-    throw input.refuse(
-      `${input.label}: ${movedBy}, and this read did not declare a viewport hold. A probe whose viewport is held above the bottom must declare it on the capture request (34163); an undeclared move is not re-anchored, because re-anchoring it is exactly how a held read crops the wrong cells in silence`,
-    )
+  const onSettledGrid: NamedTextOrigin = {
+    ...settled,
+    origin: settled.origin,
+    basis: `${input.basis}; the pair landed on the settled calibrated origin, which is where this read crops (34163)`,
+    basisKind: settled.basisKind,
+    witness: input.witness,
+    changedOutside: input.changedOutside,
   }
-  if (extentMoved) {
-    throw input.refuse(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) but ${movedBy}, and the frame's pixel geometry differs from the settled one after calibration — a hold plus a geometry change is not one read's story`,
-    )
+  if (scroll === undefined) {
+    // The ordinary read, and it is most of them: no delta, so there is nothing to explain and
+    // nothing to call a re-anchor. One origin, the settled one.
+    if (wholeRows && Math.abs(dx) <= slack && rows === 0) return onSettledGrid
+    // A sideways or non-whole move is 33000's window move: re-anchor and say by how much.
+    if (!wholeRows || Math.abs(dx) > slack) return reanchored
+    if (input.changedOutside <= movedFrameBound) {
+      throw input.refuse(
+        `${input.label}: ${movedBy}, only ${input.changedOutside} px changed outside the pair (a move repaints at least one ${movedFrameBound} px text row), and this read did not declare a viewport hold. A probe whose viewport is held above the bottom must declare it on the capture request (34163); an undeclared hold is not re-anchored, because re-anchoring it is how a held read crops the wrong cells in silence`,
+      )
+    }
+    return reanchored
   }
   if (Math.abs(dx) > slack) {
     throw input.refuse(
@@ -332,6 +339,11 @@ function onSettledOrigin(input: {
   if (Math.abs(rows) > scroll.maxRows) {
     throw input.refuse(
       `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) that can have scrolled at most ${scroll.maxRows} rows on this screen, and the pair landed ${Math.abs(rows)} rows off the settled origin`,
+    )
+  }
+  if (input.changedOutside > movedFrameBound) {
+    throw input.refuse(
+      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) but ${input.changedOutside} px changed outside the pair, more than one ${movedFrameBound} px text row, so the frame MOVED while it was supposed to be held still — a hold plus a move is not one read's story`,
     )
   }
   return {
