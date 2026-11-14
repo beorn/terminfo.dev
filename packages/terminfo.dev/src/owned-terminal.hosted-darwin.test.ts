@@ -593,6 +593,7 @@ test("retains Terminal.app's refused text and history replies with their checkpo
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const directory = ${JSON.stringify(directory)}
     process.env.TERMINFO_CAPTURE_DIRECTORY = directory + "/artifacts"
+    fs.mkdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY)
     fs.writeFileSync(directory + "/terminal-launch.json", JSON.stringify({ appId: "terminal-app", terminalWindow: { provider: "terminal-app", windowId: 34 } }))
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
