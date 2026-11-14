@@ -59,6 +59,13 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
  * would have to equal the ceiling), and because the loop waits for each offset, so the achieved
  * span is never shorter than the requested one on any host. Earlier-return remains the first
  * positive route at any achieved rate. Focus-qualified fade also decides support.
+ *
+ * The ceiling is an integer-arithmetic conjunction, not a rounding detail: capturedAt is whole
+ * milliseconds, N frames carry only N-1 gaps, and 6000/(12-1) is 545.45, so twelve frames could
+ * reach at best 11 x 545 = 5995 ms and never the 6000 ms span — at least BLINK_MIN_FRAMES+1 frames
+ * are needed. Raising BLINK_MIN_FRAMES to 13 would move the ceiling itself to 500 ms (the divisor is
+ * frames-1), which grades differently instead of explaining, so the predicate, the number and the
+ * schedule stay as they are and only the refusal names the effective requirement (@cto 34261 ruling).
  */
 const BLINK_MIN_FRAMES = 12
 const BLINK_MIN_SPAN_MS = 6000
@@ -451,7 +458,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   }
   if (decision.kind === "open" && decision.reason === "capture-too-slow") {
     return inconclusive(
-      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same`,
+      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same, and with whole-millisecond capture times this conjunction needs at least ${String(BLINK_MIN_FRAMES + 1)} styled frames: ${String(BLINK_MIN_FRAMES)} frames carry only ${String(BLINK_MIN_FRAMES - 1)} gaps, so clearing the span would demand every one at the ceiling`,
       witnessed,
     )
   }

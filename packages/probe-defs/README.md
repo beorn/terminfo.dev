@@ -149,7 +149,9 @@ at least 6000 ms, and no interim gap above 6000/(12−1) ms — where at most on
 stillness decides Unsupported only with those focus reads, this row's literal `a` injected and read
 back, input age below 15000 ms at the last styled capture, and a changed third-region repaint
 after sampling. Below the gate the row stays PROBE TODO as capture too slow to decide blink,
-recording the achieved frame count, span and gap min/median/max; missing controls remain PROBE
+recording the achieved frame count, span and gap min/median/max, and stating that the
+integer-millisecond conjunction needs at least 13 styled frames (12 frames carry only 11 gaps, so
+the span would demand every one at the ceiling); missing controls remain PROBE
 TODO naming the condition. The negative reason states the measured span and gaps; the existing
 subject-aware finalizer keeps mux flat results PROBE TODO and names the recorded outer terminal.
 These controls use existing input and capture fixtures.

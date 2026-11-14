@@ -250,6 +250,9 @@ test("a one-way change achieved too slowly stays open: capture too slow to decid
     outcome: "inconclusive",
     note: expect.stringContaining("capture too slow to decide blink"),
   })
+  // The bound is a conjunction over whole milliseconds, so twelve frames cannot clear it: the
+  // refusal says which frame count can, without moving the predicate or the ceiling (@cto 34261).
+  expect(result.observation?.note).toContain("needs at least 13 styled frames")
 })
 
 test("equal blink samples without their live controls stay inconclusive, not Unsupported", async () => {
