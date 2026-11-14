@@ -585,7 +585,8 @@ describe("owned-app ssh transport", () => {
     )
     writeFileSync(join(code, "node_modules", "resource with space.txt"), "same witnessed bytes\n")
     symlinkSync("resource with space.txt", join(code, "node_modules", "link with space"))
-    const caches = [".vitest", ".cache", ".vitest-cache"]
+    // .vite and .vite-temp are the same class: vite writes them into node_modules during dev/build.
+    const caches = [".vitest", ".cache", ".vitest-cache", ".vite", ".vite-temp"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
       mkdirSync(directory, { recursive: true })
