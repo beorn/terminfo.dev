@@ -1216,6 +1216,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
             // would return the rival's three lines instead of our four (@dev/1 peer verdict, F3).
             const named = args[args.indexOf("--surface") + 1]
             if (named === "surface-uuid-1") {
+              if (!args.includes("--scrollback")) return { status: 0, stdout: "$ /Users/x", stderr: "" }
               // One non-sentinel line names a path, so the record can be proved not to carry the transcript.
               return { status: 0, stdout: "$ /Users/x\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ /Users/x", stderr: "" }
             }
@@ -1262,7 +1263,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(JSON.stringify(grantRecord).includes("/"), false, "no path separator reaches the record")
     assert.equal(grantRecord.grantRefusal, undefined, "a proved grant records no refusal")
     assert.match(grantRecord.lastRead.transcript, /^sha256:[a-f0-9]{64}$/)
-    assert.equal(retained.length, 1, "the grant retains its native bytes before publishing a reference")
+    assert.equal(retained.length, 2, "the grant retains both native responses before publishing a reference")
     assert.equal(grantRecord.lastRead.transcript, "sha256:" + retained[0].sha256)
     assert.equal(realReadFileSync(retained[0].path, "utf8"), "$ /Users/x\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ /Users/x")
     assert.equal(Number(realStatSync(retained[0].path).mode) & 0o777, 0o600, "raw transcript is private")
@@ -1277,30 +1278,28 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     // Focus moves to a second surface after grant; every later read must still name the acquired one
     // (@dev/1 peer verdict, F3).
     process.env.CMUX_SURFACE_ID = "surface-uuid-2"
-    // A real read now NAMES what it found instead of returning a count: the surface is still proved and still
-    // named, and the text it answers with is the screen's, not history (@dev/brain 46a8e182).
-    const firstError = await owner.getScrollback().then(() => undefined, (reason) => reason)
-    const secondError = await owner.getScrollback().then(() => undefined, (reason) => reason)
-    assert.match(String(firstError?.message), /^cmux-reader-is-screen-text: /u,
-      "a read of a proved surface names the screen-text fact rather than handing it on as a history count")
-    assert.equal(secondError?.message, firstError?.message, "two reads of an unchanged surface say the same thing")
-    assert.equal(cmuxCalls.length, atGrant + 2, "each later read still runs its own CLI read")
+    const firstRead = await owner.getScrollback()
+    const secondRead = await owner.getScrollback()
+    assert.equal(firstRead.totalLines, 4)
+    assert.equal(firstRead.screenLines, 1, "screen text comes from the paired read, not the grid")
+    assert.deepEqual(secondRead, firstRead, "unchanged paired responses produce the same reading")
+    assert.equal(cmuxCalls.length, atGrant + 4, "each later reading takes both CLI responses")
     for (const call of cmuxCalls.slice(atGrant)) {
-      assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
+      assert.match(call, /read-screen --surface surface-uuid-1/)
     }
     assert.equal(writes.length, 1, "no read may write to the surface")
     // The grant remains the proved ownership and the last thing the record shows: the count is unreadable, the
     // surface is not. Recording a failed grant here would leak an ownership failure that never happened.
     const readFacts = owner.cmuxHistory.lastRead
-    assert.equal(readFacts.kind, "grant", "a count that cannot be read is never recorded as a read")
-    assert.equal(readFacts.ownership, "nonce")
+    assert.equal(readFacts.kind, "read", "the successful latest pair is recorded as a read")
+    assert.equal(readFacts.ownership, "surface")
     assert.equal(owner.cmuxHistory.grant, "proved", "the grant is proved; only the count is unreadable")
     assert.equal(owner.cmuxHistory.grantRefusal, null)
     const readRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
     assert.equal(readRecord.pane, "surface-uuid-1", "the record still names the surface the run acquired")
     assert.equal(JSON.stringify(readRecord).includes("/"), false, "no path separator reaches the record")
-    assert.equal(retained.length, 3, "the grant and both native reads are observed by the artifact writer")
-    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[0].sha256, "the record keeps the grant read")
+    assert.equal(retained.length, 6, "the grant and both readings each retain both native responses")
+    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[4].sha256, "the record keeps the latest history response")
     await assert.rejects(createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } }), /private capture directory and its artifact observer/)
     process.stdout.write = realWrite
