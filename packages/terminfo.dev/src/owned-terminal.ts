@@ -1785,9 +1785,12 @@ export async function createOwnedTerminal(options: {
     // Terminal.app keeps its history on the owned tab: the same JXA read as its screen text (31741).
     let historyControl: TerminalHistoryControl | undefined
     let terminalAppHistory: (() => Promise<TerminalScrollbackReading>) | undefined
+    let lastHistoryReply: OsascriptReply | undefined
+    let retainHistoryFailure: ((reply: OsascriptReply) => void) | undefined
     const readTerminalAppHistoryReading =
       darwinTextApp === "terminal-app" && darwinTextTty !== undefined
         ? async () => {
+            lastHistoryReply = undefined
             if (!terminalAppHistory) {
               const geometry = await readBoundGeometry(binding, windowsKernel)
               if (geometry.status !== "measured") {
@@ -1797,23 +1800,25 @@ export async function createOwnedTerminal(options: {
               }
               const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
               const onRetained = options.onRetained
+              if (directory && onRetained) {
+                retainHistoryFailure = (reply) =>
+                  retainTextReply(
+                    captureRunId,
+                    darwinTextTty,
+                    geometry,
+                    { label: "Terminal.app history snapshot", directory, onRetained },
+                    Buffer.from(reply.stdout),
+                  )
+              }
               terminalAppHistory = terminalAppHistoryReader({
                 read: () =>
                   readTerminalAppHistory({
                     tty: darwinTextTty,
                     cols: geometry.cols,
                     rows: geometry.rows,
-                    ...(directory &&
-                      onRetained && {
-                        onReply: (reply: OsascriptReply) =>
-                          retainTextReply(
-                            captureRunId,
-                            darwinTextTty,
-                            geometry,
-                            { label: "Terminal.app history snapshot", directory, onRetained },
-                            Buffer.from(reply.stdout),
-                          ),
-                      }),
+                    onReply: (reply: OsascriptReply) => {
+                      lastHistoryReply = reply
+                    },
                   }),
                 write: (text) => {
                   out.write(text)
@@ -1825,7 +1830,14 @@ export async function createOwnedTerminal(options: {
                 },
               })
             }
-            return terminalAppHistory()
+            try {
+              return await terminalAppHistory()
+            } catch (error) {
+              if (lastHistoryReply !== undefined) retainHistoryFailure?.(lastHistoryReply)
+              throw error
+            } finally {
+              lastHistoryReply = undefined
+            }
           }
         : undefined
     // An owned WezTerm pane answers history on the owned-process arm too: that arm has no pasteboard

@@ -604,8 +604,9 @@ test("retains Terminal.app's refused text and history replies with their checkpo
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
     // Terminal.app's contents are logical lines: one wrapped 82-character line plus 23 rows is 24 lines on 25 rows.
     let contents = "W".repeat(80) + "XY\\n" + "r\\n".repeat(23)
+    let history, failBeforeReply = false
     const tab = { tty: () => "/dev/ttys004", contents: () => contents,
-      history: () => "H".repeat(310) + "\\n" + contents, numberOfRows: () => 25, numberOfColumns: () => 80 }
+      history: () => history ?? "H".repeat(310) + "\\n" + contents, numberOfRows: () => 25, numberOfColumns: () => 80 }
     const application = { running: () => true, frontmost: () => true, windows: [{ tabs: [tab] }] }
     const scriptReplies = []
     mock.module("node:child_process", () => ({ ...cp,
@@ -619,6 +620,7 @@ test("retains Terminal.app's refused text and history replies with their checkpo
       },
       spawnSync: (command, args) => {
         assert.equal(command, "/usr/bin/osascript")
+        if (failBeforeReply) throw new Error("history fixture failed before a native reply")
         const stdout = String(runInNewContext(args[args.length - 1] + "\\nrun()", { Application: () => application })) + "\\n"
         scriptReplies.push(stdout)
         return { stdout, stderr: "", status: 0, signal: null }
@@ -681,12 +683,38 @@ test("retains Terminal.app's refused text and history replies with their checkpo
         assert.deepEqual(diagnostic.lineLengths, [82, ...Array(23).fill(1)])
         assert.equal((await import("node:crypto")).createHash("sha256").update(bytes).digest("hex"), artifact.sha256)
       }
-      // 31741: the real reader refused a long history line before its marker control, losing that reply.
-      // A valid screen isolates the history refusal; retaining it must not turn it into a line count.
+      // Successful control and settlement polls must not retain history diagnostics (31741).
+      contents = "r\\n".repeat(25)
+      history = contents
+      const write = process.stdout.write
+      process.stdout.write = (chunk) => {
+        const text = String(chunk)
+        const prior = history.split("\\n"); prior.pop()
+        if (text.includes("terminfo history control")) {
+          while (prior.at(-1) === "") prior.pop()
+          const markers = text.split("\\r\\n"); markers.pop()
+          history = [...prior, ...markers].join("\\n") + "\\n"
+          contents = markers.slice(-25).join("\\n") + "\\n"
+        } else if (text.includes("\\x1b[2J")) {
+          contents = "\\n".repeat(25)
+          history = [...prior.slice(0, -25), ...Array(25).fill("")].join("\\n") + "\\n"
+        }
+        return true
+      }
+      const beforeSuccess = retained.length
+      try {
+        const first = await owner.getScrollback()
+        assert.deepEqual(await owner.getScrollback(), first)
+        assert.equal(owner.historyControl().status, "passed")
+        assert.equal(retained.length, beforeSuccess, "successful history polls retain no diagnostic artifacts")
+        assert.deepEqual(fs.readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY), [])
+      } finally { process.stdout.write = write }
+      // A later refused logical read retains its final actual stdout once, without changing the refusal.
+      history = undefined
       contents = "r\\n".repeat(25)
       const beforeHistory = retained.length
       await assert.rejects(owner.getScrollback(), /Terminal.app history holds a line of 310 characters on a 80-column grid/)
-      assert.equal(owner.historyControl(), undefined)
+      assert.equal(owner.historyControl().status, "passed")
       const historyArtifacts = retained.slice(beforeHistory)
       const historyEnvelopes = historyArtifacts.filter(artifact => artifact.path.endsWith(".json"))
       const historyReplies = historyArtifacts.filter(artifact => artifact.path.endsWith(".bin"))
@@ -701,6 +729,9 @@ test("retains Terminal.app's refused text and history replies with their checkpo
       const historyReply = fs.readFileSync(historyReplies[0].path, "utf8")
       assert.equal(historyReply, scriptReplies.at(-1))
       assert.equal(JSON.parse(historyReply).history, "H".repeat(310) + "\\n" + contents)
+      failBeforeReply = true
+      await assert.rejects(owner.getScrollback(), /history fixture failed before a native reply/)
+      assert.equal(retained.length, beforeHistory + 2, "a reply-less failure must not retain the previous call's stdout")
     } finally { await owner.dispose() }
   `
   const result = spawnSync(process.execPath, ["-e", script], {
