@@ -565,6 +565,10 @@ export async function finishCapture(input: {
         : {}),
       image: { width, height },
       ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+      // 33982: the count has to outlive the read that produced it. The type always declared this
+      // field, but the crop record never filled it, so every retained frame dropped the one number
+      // the row-move measurement needs. Absent, never 0, when the origin carried none.
+      ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
       ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
     }
     controlRegionDigest = control?.digest

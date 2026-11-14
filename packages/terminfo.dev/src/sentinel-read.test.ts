@@ -11,7 +11,7 @@ import { sentinelCellsInFrame } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
 import { chooserRegions } from "./serve.ts"
-import { readThroughSentinel } from "./sentinel-read.ts"
+import { SentinelFrameMoved, readThroughSentinel } from "./sentinel-read.ts"
 
 const sentinel = { form: "basic" as const, rgb: [255, 136, 255] as const }
 const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
@@ -858,6 +858,57 @@ test("refuses by name when the frame moved out from under the cells it chose, an
   )
   // Not a re-anchor: the refusal says so in words, so no caller can read it as one.
   await expect(read()).rejects.toThrow(/will not re-anchor from a pair that may have covered ink/)
+})
+
+// The refusal is the only record a moved read leaves: it throws before any frame is written. So the
+// evidence it measured has to travel on the error itself, and a whole-row displacement has to arrive
+// as rows rather than as a pixel count a later step would divide again (33982, @cto's step 1).
+test("a moved read carries the count it measured and names a whole-row shift in rows (33982)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  const writes = source()
+  const error = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+    capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell,
+    settled: settledAt({ x: 0, y: 0 }, geometry),
+    deadline: Date.now() - 1,
+  }).catch((failure: unknown) => failure as SentinelFrameMoved)
+  expect(error).toBeInstanceOf(SentinelFrameMoved)
+  expect(typeof error.changedOutside).toBe("number")
+  expect(error.rowShift).toEqual({ rows: 1, px: 6 })
+})
+
+test("a displacement that is not a whole number of rows names no row shift, rather than a fraction (33982)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  // Three pixels of a six-pixel cell: past the blend slack, and not a row anyone can align to.
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 3 }, cell, size, pair: painted })
+  const writes = source()
+  const error = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+    capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell,
+    settled: settledAt({ x: 0, y: 0 }, geometry),
+    deadline: Date.now() - 1,
+  }).catch((failure: unknown) => failure as SentinelFrameMoved)
+  expect(error).toBeInstanceOf(SentinelFrameMoved)
+  expect(error.rowShift).toBeUndefined()
 })
 
 test("an ordinary read crops at the settled origin and is not called a re-anchor (34163, @cto)", async () => {
