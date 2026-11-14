@@ -1924,17 +1924,34 @@ function observeThroughSentinel(terminal: StatefulTerminal, captureFailure?: Err
   }
 }
 
-test.each(["throw", "timeout"])("nested capture %s restores N through observer and recipe cleanup", async (fault) => {
-  const terminal = statefulTerminal(ALL_ATTRS)
-  const failure = new Error("owned capture failed")
-  observeThroughSentinel(terminal, fault === "timeout" ? "timeout" : failure)
-  const operation = resetProbes.find((probe) => probe.id === "reset.sgr")!.term!(terminal.ctx)
-  if (fault === "timeout") await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
-  else await expect(operation).rejects.toBe(failure)
-  expect(terminal.snapshot()).toEqual(new Set())
-  expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
-  expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
-})
+test.each(["throw", "timeout", "recipe-cleanup"])(
+  "nested capture %s restores N through observer and recipe cleanup",
+  async (fault) => {
+    const terminal = statefulTerminal(ALL_ATTRS)
+    const failure = new Error("owned capture failed")
+    const cleanupFailure = new Error("recipe cleanup failed")
+    if (fault === "recipe-cleanup") {
+      const write = terminal.ctx.write
+      terminal.ctx.write = (text) => {
+        write(text)
+        if (text === "\x1b8\x1b[2J\x1b[H") throw cleanupFailure
+      }
+    }
+    observeThroughSentinel(terminal, fault === "timeout" ? "timeout" : failure)
+    const operation = resetProbes.find((probe) => probe.id === "reset.sgr")!.term!(terminal.ctx)
+    if (fault === "recipe-cleanup")
+      await expect(operation).rejects.toMatchObject({
+        name: "AggregateError",
+        cause: failure,
+        errors: [failure, cleanupFailure],
+      })
+    else if (fault === "timeout") await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
+    else await expect(operation).rejects.toBe(failure)
+    expect(terminal.snapshot()).toEqual(new Set())
+    expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
+    expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+  },
+)
 
 // #32590: the immutable pre-setter reference must distinguish a complete reset from every
 // retained subset. The old tests only refused these captures and never exercised restoration.

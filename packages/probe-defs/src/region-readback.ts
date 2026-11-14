@@ -2238,6 +2238,8 @@ export async function captureRegionReadbackDecision(
   } = { qualified: false, checks: [] }
   let initialRenditionSaved = false
   let restoreAfterPaint: string | undefined
+  let readFailed = false
+  let readFailure: unknown
   // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
   // retain their existing observation-only result, including its historical timeout semantics.
   const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult => {
@@ -2979,9 +2981,21 @@ export async function captureRegionReadbackDecision(
         },
       ],
     }
+  } catch (error) {
+    readFailed = true
+    readFailure = error
+    throw error
   } finally {
-    // A failed reference must reach DECRQSS without sending the reset under test as cleanup.
-    // Before our save exists, leave rendition alone rather than borrowing another saved slot.
-    endCaptureLifecycle(ctx, spec.cleanup, savedRendition ? (initialRenditionSaved ? "\x1b8" : "") : undefined)
+    try {
+      // A failed reference must reach DECRQSS without sending the reset under test as cleanup.
+      // Before our save exists, leave rendition alone rather than borrowing another saved slot.
+      endCaptureLifecycle(ctx, spec.cleanup, savedRendition ? (initialRenditionSaved ? "\x1b8" : "") : undefined)
+    } catch (cleanup) {
+      if (readFailed)
+        throw new AggregateError([readFailure, cleanup], `${id}: capture and recipe cleanup failed`, {
+          cause: readFailure,
+        })
+      throw cleanup
+    }
   }
 }

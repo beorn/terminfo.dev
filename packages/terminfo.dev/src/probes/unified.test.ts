@@ -20,6 +20,7 @@ import {
   ALL_PROBES,
   initializeRunDraft,
   type ProbeSuiteManifest,
+  type ProbeCallbackResult,
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
@@ -637,7 +638,7 @@ it("retains owner restoration through capture and strict call-log replay", async
   if (!probe) throw new Error("Missing SGR transport fixture")
   const original = probe.term
   const restoreAfterPaint = "\x1b8\x1b[1;3;7m\x1b[4;1H"
-  const callback = async (ctx: TermProbeSource) => {
+  const callback = async (ctx: TermProbeSource): Promise<ProbeCallbackResult> => {
     if (!ctx.capture) throw new Error("Missing collector capture wrapper")
     await ctx.capture({ role: "control", label: "owner transport", restoreAfterPaint })
     return {
