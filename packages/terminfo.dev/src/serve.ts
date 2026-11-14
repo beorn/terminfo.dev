@@ -1386,9 +1386,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       : undefined
     const historyControl = ownedTerminal?.historyControl?.()
     if (historyControl) batch.rawReplies["collector.historyControl"] = JSON.stringify(historyControl)
-    // The cmux arm's own proof belongs in the persisted run, not only on the object the collector keeps
-    // (@dev/1 peer read 2026-11-13): the grant receipt, or the failure that replaced it, and the last
-    // read. Serializing here evaluates the live getter, so the record carries the read that happened.
+    // The cmux arm's evidence belongs in the persisted run, not only on the object the collector keeps
+    // (@dev/1 peer read 2026-11-13): the grant's outcome and the last read reduced to facts. Serializing
+    // here evaluates the live getter, so the record carries the read that happened — never its text, which
+    // is the pane transcript (@cto REVISE 2026-11-13).
     const cmuxEvidence = cmuxHistoryEvidence(ownedTerminal?.cmuxHistory)
     if (cmuxEvidence !== undefined) Object.assign(batch.rawReplies, cmuxEvidence)
     // An arm that reads through a separate CLI (WezTerm, 31741) names THAT program: the launched

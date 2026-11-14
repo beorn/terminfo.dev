@@ -7,6 +7,7 @@ import {
   fstatSync,
   openSync,
   readFileSync,
+  realpathSync,
   statSync,
   type BigIntStats,
 } from "node:fs"
@@ -22,7 +23,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
-import { readAppSemanticState, readWezTermCwd } from "./app-semantic-state.ts"
+import { readAppSemanticState, readWezTermCwd, untilAppSemanticRead } from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
@@ -48,6 +49,8 @@ import {
   cmuxHistoryIdentity,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
+  type CmuxLastRead,
+  type CmuxReadFacts,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
@@ -417,6 +420,8 @@ export interface OwnedTerminal {
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /** When present, only these rows consume this owner's reader; other rows retain their term callbacks. */
+  readonly appSemanticStateFeatures?: ReadonlySet<string>
   /**
    * The terminal process's own session bus, read from /proc rather than assumed from the collector's
    * environment (#33333). A mux reads the outer terminal, which is the process that would emit a Notify.
@@ -455,15 +460,21 @@ export interface OwnedTerminal {
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
-   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant,
-   * the grant receipt or the failure that replaced it, and the last read's receipt. `lastRead` is a
-   * getter, so a record built after the probes sees the latest read rather than the grant (@cto 81073ae1).
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant, the
+   * grant's outcome, and the last read reduced to facts. `lastRead` is a getter, so a record built after the
+   * probes sees the latest read rather than the grant (@cto 81073ae1) — and it publishes no receipt text at
+   * all, because that receipt carries the pane transcript (@cto REVISE 2026-11-13). The receipt and the
+   * grant proof stay on this object, which no run record serializes.
    */
   readonly cmuxHistory?: {
     readonly executable: string
     readonly surface: string | null
+    /** Whether the surface was proved at grant. The proof itself stays on this object, out of any record. */
+    readonly grant: "proved" | "failed" | "not attempted"
+    /** The path-free refusal code, with its reason only when the reason names no path. Null when proved. */
+    readonly grantRefusal: string | null
     readonly grantProof: string
-    readonly lastRead: string | null
+    readonly lastRead: CmuxLastRead | null
   }
   /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
@@ -1318,6 +1329,31 @@ export function ownedTerminalProcessBasisFor(
     : undefined
 }
 
+/**
+ * A read reduced to what a record may publish: which read it was, the receipt's hash and length so the
+ * receipt can be matched without being shown, and the counts it proved (@cto REVISE 2026-11-13).
+ */
+const cmuxReadRecord = (kind: "grant" | "read", receipt: string, facts: CmuxReadFacts): CmuxLastRead => ({
+  kind,
+  receiptSha256: createHash("sha256").update(receipt).digest("hex"),
+  receiptLength: receipt.length,
+  ...facts,
+})
+
+const pathSeparator = /[\\/]/u
+
+/**
+ * A refusal's code is always publishable; its reason is a diagnostic the CLI wrote and may name the path it
+ * failed on. A reason carrying a separator is withheld by name rather than published or silently dropped.
+ */
+const publishedRefusal = (failure: string): string => {
+  const split = failure.indexOf(": ")
+  const code = split === -1 ? failure : failure.slice(0, split)
+  const reason = split === -1 ? "" : failure.slice(split + 2)
+  if (reason === "") return code
+  return pathSeparator.test(reason) ? code + " (reason withheld: names a host path)" : failure
+}
+
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
 export async function createOwnedTerminal(options: {
   captureRunId: string
@@ -1839,7 +1875,7 @@ export async function createOwnedTerminal(options: {
     let cmuxSurface: string | undefined
     let cmuxGrantReceipt: string | undefined
     let cmuxGrantFailure: string | undefined
-    let cmuxLastReceipt: string | undefined
+    let cmuxLastRead: CmuxLastRead | undefined
     if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
       const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
       if (published === "") {
@@ -1861,7 +1897,7 @@ export async function createOwnedTerminal(options: {
           })
           if (proof.status === "read") {
             cmuxGrantReceipt = proof.receipt
-            cmuxLastReceipt = proof.receipt
+            cmuxLastRead = cmuxReadRecord("grant", proof.receipt, proof.facts)
             break
           }
           if (proof.refusal !== "cmux-surface-not-owned") {
@@ -1898,7 +1934,7 @@ export async function createOwnedTerminal(options: {
             if (read.status === "refused") {
               throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
             }
-            cmuxLastReceipt = read.receipt
+            cmuxLastRead = cmuxReadRecord("read", read.receipt, read.facts)
             // cmux's own command receipt stays in the grant; the count carries the surface by id, and its
             // surface id is the pane this run proved at grant.
             const identity = ownedHistoryReceipt({
@@ -2049,11 +2085,14 @@ export async function createOwnedTerminal(options: {
         cmuxHistory: {
           executable: ownedCmuxCli,
           surface: cmuxSurface ?? null,
+          grant:
+            cmuxGrantReceipt !== undefined ? "proved" : cmuxGrantFailure !== undefined ? "failed" : "not attempted",
+          grantRefusal: cmuxGrantFailure === undefined ? null : publishedRefusal(cmuxGrantFailure),
           grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
           // A getter, not a captured value: this object is built once at owner creation, so a snapshot
           // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
-          get lastRead(): string | null {
-            return cmuxLastReceipt ?? null
+          get lastRead(): CmuxLastRead | null {
+            return cmuxLastRead ?? null
           },
         },
       }),
@@ -2113,12 +2152,17 @@ export async function createOwnedTerminal(options: {
           }
         },
       }),
+      ...(binding.platform === "darwin" &&
+        ownedAppId === "wezterm" && {
+          appSemanticStateFeatures: new Set(["extensions.osc7-cwd", "extensions.osc633-p"]),
+        }),
       ...((linux || (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin"))) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
           }
-          if (ownedAppId === "wezterm" && featureId === "extensions.osc7-cwd") {
+          const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
+          if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd)) {
             const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
             if (
@@ -2168,6 +2212,78 @@ export async function createOwnedTerminal(options: {
                 throw new Error("WezTerm OSC7 native evidence retention failed", { cause: error })
               }
             }
+            const readPane = async () => {
+              await check()
+              const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.privateTranscript)
+              if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
+              if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
+                throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
+              }
+              if (
+                typeof read.cwd !== "string" ||
+                !read.cwd.startsWith("file://") ||
+                // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
+                /[\x00-\x1f\x7f]/.test(read.cwd)
+              ) {
+                throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
+              }
+              const identity = ownedHistoryReceipt({
+                surface: "wezterm",
+                pane,
+                listedTty: read.tty,
+                measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+                socketPresent: true,
+                executable: ownedWezTermCli,
+              })
+              if (identity.status === "refused") throw new Error(identity.reason)
+              ownershipReceipt = identity.receipt
+              return read.cwd
+            }
+            const readText = async () => {
+              await check()
+              const geometry = await owner.readGeometry()
+              await check()
+              if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
+              const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.receipt)
+              return read.rows.join("\n")
+            }
+            if (ownedPromptCwd) {
+              try {
+                if (
+                  hostedAppExecutablePath === undefined ||
+                  realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(hostedAppExecutablePath)), "wezterm")
+                ) {
+                  throw new Error("WezTerm cwd CLI is outside the verified App bundle")
+                }
+                return await readAppSemanticState({
+                  featureId,
+                  onRetained,
+                  runId: expectedLaunchRunId,
+                  executable: ownedWezTermIdentity.historyExecutable,
+                  write,
+                  async readCwd(checkpoint) {
+                    if (checkpoint !== undefined) {
+                      await untilAppSemanticRead(
+                        readText,
+                        (text) => (text.split("\n")[checkpoint.row - 1] ?? "").includes(checkpoint.marker),
+                        "owned cwd checkpoint",
+                        [],
+                      )
+                    }
+                    const uri = await readPane()
+                    return { uri, detail: { ownershipReceipt, nativeReads } }
+                  },
+                })
+              } catch (error) {
+                return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+              }
+            }
             const reading = await readWezTermCwd({
               runId: expectedLaunchRunId,
               captureDirectory,
@@ -2177,47 +2293,8 @@ export async function createOwnedTerminal(options: {
                 out.write(text)
                 await check()
               },
-              async readPane() {
-                await check()
-                const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
-                await check()
-                if (read.status === "refused") throw new Error(read.reason)
-                retainNative(read.privateTranscript)
-                if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
-                if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
-                  throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
-                }
-                if (
-                  typeof read.cwd !== "string" ||
-                  !read.cwd.startsWith("file://") ||
-                  // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
-                  /[\x00-\x1f\x7f]/.test(read.cwd)
-                ) {
-                  throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
-                }
-                const identity = ownedHistoryReceipt({
-                  surface: "wezterm",
-                  pane,
-                  listedTty: read.tty,
-                  measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
-                  socketPresent: true,
-                  executable: ownedWezTermCli,
-                })
-                if (identity.status === "refused") throw new Error(identity.reason)
-                ownershipReceipt = identity.receipt
-                return read.cwd
-              },
-              async readText() {
-                await check()
-                const geometry = await owner.readGeometry()
-                await check()
-                if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
-                const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
-                await check()
-                if (read.status === "refused") throw new Error(read.reason)
-                retainNative(read.receipt)
-                return read.rows.join("\n")
-              },
+              readPane,
+              readText,
             })
             if (ownershipReceipt !== undefined && typeof reading.detail === "object" && reading.detail !== null) {
               Object.assign(reading.detail, { ownershipReceipt, nativeReads })
