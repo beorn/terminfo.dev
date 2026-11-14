@@ -32,6 +32,24 @@ export class CaptureHoldUnresolved extends Error {
  */
 export class SentinelFrameMoved extends Error {
   override name = "SentinelFrameMoved"
+  /**
+   * Pixels that changed outside the located pair between this read's own pre-paint frame and the
+   * frame it located. Carried on the refusal because the throw happens before any frame record is
+   * written, so without it the evidence a moved read produced is discarded with the read (33982).
+   */
+  readonly changedOutside: number
+  /**
+   * The whole-row displacement that would align the pre-paint frame, present only when the pair
+   * landed an exact number of rows off with no horizontal component. Absent means no such shift was
+   * observed — never zero rows (33982, @cto).
+   */
+  readonly rowShift: { rows: number; px: number } | undefined
+
+  constructor(message: string, evidence: { changedOutside: number; rowShift?: { rows: number; px: number } }) {
+    super(message)
+    this.changedOutside = evidence.changedOutside
+    this.rowShift = evidence.rowShift
+  }
 }
 
 /**
@@ -257,14 +275,22 @@ export async function readThroughSentinel<T>(input: {
       //
       // A read that DECLARED a hold never reaches this point (it refused above), so there is no
       // exception here any more: every remaining read is judged, and a moved one refuses by name.
-      if (
-        Math.abs(derived.x - input.reading.x) > slack ||
-        Math.abs(derived.y - input.reading.y) > slack
-      ) {
+      if (Math.abs(derived.x - input.reading.x) > slack || Math.abs(derived.y - input.reading.y) > slack) {
         const dx = derived.x - input.reading.x
         const dy = derived.y - input.reading.y
+        // The displacement is also evidence, not only prose: a whole number of rows with no
+        // horizontal component is the shift that would align the pre-paint frame, and refusing here
+        // is the last moment this read exists to record it (33982, @cto's step 1).
+        const rowShift =
+          dx === 0 && dy !== 0 && size.height > 0 && dy % size.height === 0
+            ? { rows: dy / size.height, px: dy }
+            : undefined
         throw new SentinelFrameMoved(
           `${input.label}: the frame moved after ${where()} were chosen at ${input.reading.x},${input.reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
+          {
+            changedOutside: ignoredPixels,
+            ...(rowShift !== undefined ? { rowShift } : {}),
+          },
         )
       }
       if (input.settled !== undefined) {

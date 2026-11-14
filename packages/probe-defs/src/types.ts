@@ -581,6 +581,13 @@ export interface PixelCellCrop {
     b: { cell: { row: number; col: number }; box: { x: number; y: number } }
   }
   /**
+   * Pixels that changed between this frame's pre-paint frame and the frame itself, outside the
+   * located pair. A held viewport shifted by whole rows shows a small delta here; a re-anchored
+   * viewport shows a large one. Absent means the read made no such comparison, never zero
+   * (33982, @cto).
+   */
+  changedOutside?: number
+  /**
    * The row delta a DECLARED hold produced between the settled origin and where the painted pair
    * actually landed (34163). An observation only: no grade or published cell may read it until the
    * XTest wheel event's effective displacement is measured, because "one notch" is not yet a row
@@ -872,7 +879,17 @@ export type UngradedDiagnostic =
    * as a `collector-error` instead.
    */
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
-  | { kind: "collector-error"; name: string; message?: string }
+  | {
+      kind: "collector-error"
+      name: string
+      message?: string
+      /**
+       * What the refused read measured before it refused (33982). A moved frame throws before any
+       * frame record exists, so this is the only place its evidence can survive. Present only for
+       * refusals that produce it; absent is "the read produced none", never a zero.
+       */
+      evidence?: { changedOutside: number; rowShift?: { rows: number; px: number } }
+    }
 
 /**
  * One named coverage record: the probe ran and its raw state is retained, but the environment exposes
