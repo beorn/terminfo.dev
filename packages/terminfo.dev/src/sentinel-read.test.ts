@@ -796,6 +796,20 @@ test("a declared hold whose pair lands on the settled origin is still unresolved
   ).rejects.toThrow(/a declared hold is not read until the rows it moves are established independently/)
 })
 
+// @cto, 33981: the hold guard stood aside for a declared hold, and with `settled` absent that meant a
+// held read fell through to an ORIGIN derived from the pair, unguarded. A declared hold now refuses
+// before the pair is asked anything, so the holes are the same whatever the route settled.
+test("a declared hold with no settled origin is unresolved too, never an origin from the pair (33981)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
+})
+
 test("a declared hold that moved the pair sideways is unresolved by the same rule, not graded (34163)", async () => {
   const origin = { x: 2, y: 2 }
   await expect(
@@ -837,6 +851,7 @@ test("refuses by name when the frame moved out from under the cells it chose, an
       // Past the deadline: nothing may retry into a pass, and no retry may repaint those cells.
       deadline: Date.now() - 1,
     })
+  await expect(read()).rejects.toMatchObject({ name: "SentinelFrameMoved" })
   await expect(read()).rejects.toThrow(
     /the frame moved after cells .* were chosen at 0,0 .* the pair landed 0,6 px from it/,
   )
@@ -852,7 +867,6 @@ test("an ordinary read crops at the settled origin and is not called a re-anchor
     settled: settledAt(origin),
   })
   expect(result.origin).toEqual(origin)
-  expect(result.reanchored).toBeUndefined()
   expect(result.scrolledRows).toBeUndefined()
   expect(result.basis).toContain("the pair landed on the settled calibrated origin, which is where this read crops")
   expect(result.basis).not.toContain("re-anchored")
@@ -866,7 +880,6 @@ test("a read within the sentinel box slack of the settled origin is an ordinary 
     settled: settledAt(origin),
   })
   expect(result.origin).toEqual(origin)
-  expect(result.reanchored).toBeUndefined()
   expect(result.basis).toContain("the pair landed on the settled calibrated origin")
 })
 

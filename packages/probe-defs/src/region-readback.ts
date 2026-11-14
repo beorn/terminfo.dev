@@ -760,8 +760,26 @@ export function sentinelCellsInFrame(input: {
   const { rgba, width, height, reading, cell, grid } = input
   const avoid = input.avoid ?? []
   const pixels = (x: number, y: number): number => {
+    // A coordinate that is not a whole pixel, or lies outside the frame, has no colour to report.
+    // Returning black for it is how a cell gets called blank without one pixel having been read
+    // (@cto, 33981): cell.width can be textWidth / columns, so every x in a cell can be fractional,
+    // and a silent zero then equals the background on the common terminal.
+    if (!Number.isInteger(x) || !Number.isInteger(y)) {
+      throw new Error(`this frame was asked for pixel ${x},${y}, which is not a whole pixel coordinate`)
+    }
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      throw new Error(`this frame was asked for pixel ${x},${y}, outside its ${width}x${height} bounds`)
+    }
     const offset = (y * width + x) * 4
-    return ((rgba[offset] ?? 0) << 16) | ((rgba[offset + 1] ?? 0) << 8) | (rgba[offset + 2] ?? 0)
+    const red = rgba[offset]
+    const green = rgba[offset + 1]
+    const blue = rgba[offset + 2]
+    if (red === undefined || green === undefined || blue === undefined) {
+      throw new Error(
+        `this frame was asked for pixel ${x},${y}, whose bytes run past its ${rgba.length}-byte buffer`,
+      )
+    }
+    return (red << 16) | (green << 8) | blue
   }
   const counts = new Map<number, number>()
   for (let y = 0; y < height; y++) {
@@ -778,13 +796,33 @@ export function sentinelCellsInFrame(input: {
       backgroundCount = count
     }
   }
+  /**
+   * A cell's rectangle in WHOLE pixels: the origin plus the cell pitch, with each edge rounded to the
+   * nearest pixel (@cto, 33981). The pitch is not always whole — `cellWidth` is `textWidth / columns`
+   * — and a fractional left edge makes every x in the cell fractional, so the rectangle has to be
+   * reduced to whole pixels before anything is read. Edges, not widths, are rounded, so adjacent
+   * cells tile without a gap or an overlap no matter which way the fraction falls.
+   */
+  const cellRect = (row: number, col: number) => {
+    const left = Math.round(reading.x + (col - 1) * cell.width)
+    const right = Math.round(reading.x + col * cell.width)
+    const top = Math.round(reading.y + (row - 1) * cell.height)
+    const bottom = Math.round(reading.y + row * cell.height)
+    if (right <= left || bottom <= top) {
+      throw new Error(
+        `this frame cannot judge the ink on cell ${row},${col}: at the ${cell.width}x${cell.height} px pitch its rectangle has the edges ${left}..${right} by ${top}..${bottom}, which covers no whole pixel`,
+      )
+    }
+    return { left, right, top, bottom }
+  }
   /** Every pixel of this cell is the frame's background. */
   const modal = (row: number, col: number): boolean => {
-    const left = reading.x + (col - 1) * cell.width
-    const top = reading.y + (row - 1) * cell.height
-    if (left < 0 || top < 0 || left + cell.width > width || top + cell.height > height) return false
-    for (let y = top; y < top + cell.height; y++) {
-      for (let x = left; x < left + cell.width; x++) if (pixels(x, y) !== background) return false
+    const { left, right, top, bottom } = cellRect(row, col)
+    // A cell whose whole rectangle lies outside the frame cannot be judged from this frame: it is not
+    // blank, and it is not a pixel-read fault either (a grid larger than its frame is the caller's).
+    if (left < 0 || top < 0 || right > width || bottom > height) return false
+    for (let y = top; y < bottom; y++) {
+      for (let x = left; x < right; x++) if (pixels(x, y) !== background) return false
     }
     return true
   }

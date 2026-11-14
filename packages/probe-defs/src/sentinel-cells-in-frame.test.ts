@@ -182,3 +182,57 @@ test("never uses the blank half of a wide glyph as a sentinel cell", () => {
   expect(a, "the cell beside inked text can be a wide glyph's blank half").not.toEqual({ row: 3, col: 12 })
   expect(a).toEqual({ row: 3, col: 13 })
 })
+
+/**
+ * @cto, 33981: `cellWidth` is `textWidth / columns`, so it is not always whole, and the old read
+ * multiplied the pitch out unrounded. On the common black background a fractional x produced an index
+ * that is not an element, the read returned 0 (black), and black equalled the background — so AN INKED
+ * CELL WAS CALLED BLANK and the pair was painted onto cells nobody had checked. The rectangle is now
+ * whole pixels, with its edges rounded, so ink is judged from real pixels.
+ */
+test("judges ink on a fractional cell pitch instead of reading an inked cell as black", () => {
+  const fractional = { rows: 24, cols: 10 }
+  const pitch = { width: 7.3, height: 15 }
+  const width = 73
+  const height = 360
+  const black = 0x000000
+  const inkColour = 0xc1e3fe
+  const rgba = new Uint8Array(width * height * 4)
+  const put = (x: number, y: number, packed: number) => {
+    const offset = (y * width + x) * 4
+    rgba[offset] = (packed >> 16) & 0xff
+    rgba[offset + 1] = (packed >> 8) & 0xff
+    rgba[offset + 2] = packed & 0xff
+    rgba[offset + 3] = 0xff
+  }
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) put(x, y, black)
+  // The whole-pixel rectangle of cell 1,2 at this pitch: edges 7 and 15.
+  for (let y = 0; y < 15; y++) for (let x = 7; x < 15; x++) put(x, y, inkColour)
+  const chosen = sentinelCellsInFrame({
+    rgba,
+    width,
+    height,
+    reading: { x: 0, y: 0 },
+    cell: pitch,
+    grid: fractional,
+    regions: [],
+  })
+  expect([chosen.a, chosen.b]).not.toContainEqual({ row: 1, col: 2 })
+  // And the frame is still usable: the refusal for "every cell carries ink" would be the other half of
+  // the old defect on any non-black background.
+  expect(chosen.tier).toBe("region-free")
+})
+
+test("refuses by name when a pitch leaves a cell no whole pixel to read", () => {
+  expect(() =>
+    sentinelCellsInFrame({
+      rgba: new Uint8Array(4 * 4 * 4),
+      width: 4,
+      height: 4,
+      reading: { x: 0, y: 0 },
+      cell: { width: 0.2, height: 2 },
+      grid: { rows: 2, cols: 2 },
+      regions: [],
+    }),
+  ).toThrow(/cannot judge the ink on cell 1,\d: .*covers no whole pixel/)
+})

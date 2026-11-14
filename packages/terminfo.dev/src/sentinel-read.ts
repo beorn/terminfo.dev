@@ -25,6 +25,16 @@ export class CaptureHoldUnresolved extends Error {
 }
 
 /**
+ * A read whose frame moved after its cells were chosen. Named, so the capture boundary can record it
+ * as an ungraded result instead of ending the run (@cto, 33981): one moved frame is a frame this read
+ * could not vouch for, never a verdict about the terminal. Never retried — a retry repaints cells that
+ * the first paint may already have covered.
+ */
+export class SentinelFrameMoved extends Error {
+  override name = "SentinelFrameMoved"
+}
+
+/**
  * The one pixel read that anchors its crop on the sentinel it paints (33000), located by FRAME
  * DIFFERENCE (33981, @cto).
  *
@@ -153,6 +163,12 @@ export async function readThroughSentinel<T>(input: {
   let before = await input.prePaint()
   chosen = choose(before)
   const resolve: OriginResolver = ({ frame, pixelGeometry }) => {
+    // A declared hold ends the read here, before the pair is asked anything and whatever `settled` is
+    // (@cto, 33981). Every declared hold is CaptureHoldUnresolved: both frames carry the NET
+    // displacement of the text area, so a hold of N rows with an opposite move of M rows is
+    // indistinguishable from one that moved N - M. Asking the pair first let a hold that declared
+    // scroll WITHOUT a settled origin fall through to an unguarded origin — the hole this closes.
+    if (input.scroll !== undefined) throw declaredHoldRefusal(input.label, input.scroll)
     const { a, b } = pair()
     const { regions, ignoredPixels } = locateChangedColour(before, frame, input.sentinel.rgb)
     const noise = ignoredPixels === 0 ? "" : ` (${ignoredPixels} other changed px carry no sentinel colour)`
@@ -235,20 +251,19 @@ export async function readThroughSentinel<T>(input: {
       // the other door, and RE-CHOOSING cannot rescue it either: the origin it would have to re-choose
       // against is only knowable from the pair it just mistrusts, and a raw pre-paint capture cannot
       // map cells before a named origin at all (linux-capture's captureRaw says so outright). So the
-      // read refuses by name instead of anchoring on a crop it cannot vouch for. This is a plain
-      // Error, not a SentinelNotOnFrame: retrying repaints cells that may already have been damaged.
+      // read refuses by name instead of anchoring on a crop it cannot vouch for. SentinelFrameMoved is
+      // not a SentinelNotOnFrame: nothing retries it, because a retry repaints cells the first paint may
+      // already have covered, and the boundary records it as ungraded rather than failing the run.
       //
-      // A read that DECLARED a hold never reaches an origin at all (34163's cut: every declared hold
-      // is CaptureHoldUnresolved), so the guard stands aside and lets that named refusal speak rather
-      // than replacing it with this one. Everything else is covered, with no exception.
-      const holdIsUnresolved = input.scroll !== undefined
+      // A read that DECLARED a hold never reaches this point (it refused above), so there is no
+      // exception here any more: every remaining read is judged, and a moved one refuses by name.
       if (
-        !holdIsUnresolved &&
-        (Math.abs(derived.x - input.reading.x) > slack || Math.abs(derived.y - input.reading.y) > slack)
+        Math.abs(derived.x - input.reading.x) > slack ||
+        Math.abs(derived.y - input.reading.y) > slack
       ) {
         const dx = derived.x - input.reading.x
         const dy = derived.y - input.reading.y
-        throw new Error(
+        throw new SentinelFrameMoved(
           `${input.label}: the frame moved after ${where()} were chosen at ${input.reading.x},${input.reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
         )
       }
@@ -261,7 +276,6 @@ export async function readThroughSentinel<T>(input: {
           size,
           basis: basisText,
           changedOutside: ignoredPixels,
-          ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
           refuse: wrong,
         })
       }
@@ -320,6 +334,15 @@ export async function readThroughSentinel<T>(input: {
 }
 
 /**
+ * The one sentence a declared hold refuses with, whichever read asks: ungraded, no origin claimed.
+ */
+function declaredHoldRefusal(label: string, scroll: DeclaredViewportHold): CaptureHoldUnresolved {
+  return new CaptureHoldUnresolved(
+    `${label}: this read declared a viewport hold of ${scroll.notches} notch(es); a declared hold is not read until the rows it moves are established independently, so no origin is claimed (34163)`,
+  )
+}
+
+/**
  * One origin per read (34163, @cto 2026-11-13): when the route already settled a calibrated origin,
  * the pair proves the paint landed and says where. It never yields the crop origin.
  *
@@ -329,7 +352,8 @@ export async function readThroughSentinel<T>(input: {
  * crop computed from that pair is one nobody can vouch for. Warp's command header is the case 34163
  * first re-anchored; it refuses by name instead of cropping from a grid the terminal left.
  *
- * A declared viewport hold never becomes an origin either. Both frames carry the NET displacement of
+ * A declared viewport hold never reaches here: it refuses before this function is asked anything.
+ * Both frames carry the NET displacement of
  * the text area, so a hold of N rows with an opposite move of M rows looks exactly like one that
  * moved N - M, and the caller declares notches rather than rows: every declared hold throws
  * CaptureHoldUnresolved, ungraded, and the probe records a named todo. Measuring the row a notch
@@ -343,19 +367,9 @@ function onSettledOrigin(input: {
   size: { width: number; height: number }
   basis: string
   changedOutside: number
-  scroll?: DeclaredViewportHold
   refuse: (reason: string) => Error
 }): NamedTextOrigin {
-  const { settled, derived, size, scroll } = input
-  // A declared hold never becomes an origin (@cto's smaller ruling, 34163): two frames carry the NET
-  // displacement of the text area, so a hold of N rows plus an opposite move of M rows is
-  // indistinguishable from one that moved N - M. The wheel caller has no row count to declare
-  // anyway, so the honest answer is a named gap that grades nothing.
-  if (scroll !== undefined) {
-    throw new CaptureHoldUnresolved(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es); a declared hold is not read until the rows it moves are established independently, so no origin is claimed (34163)`,
-    )
-  }
+  const { settled, derived, size } = input
   // The pair landed on the origin its cells were chosen at — the guard in the resolver has already
   // refused every other displacement — so this is the ordinary case and not a re-anchor.
   const slack = SENTINEL_BOX_SLACK_PX

@@ -1554,8 +1554,13 @@ export async function runProbeBatch(
       // error is named in its own result and nothing about pixels is claimed (27875).
       // A read that cannot prove where its crop goes claims nothing about pixels: it is named as a
       // diagnostic (which frames could not be related), never graded as a terminal failure (34163).
+      // SentinelFrameMoved joins them (@cto, 33981): one frame moving after the read chose its cells
+      // ends THAT read as ungraded, not the run — the terminal is not shown to be wrong by it.
       const errorAssertionType =
-        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable" || name === "CaptureHoldUnresolved"
+        name === "UndeclaredTerminalGeometry" ||
+        name === "FrameUnavailable" ||
+        name === "CaptureHoldUnresolved" ||
+        name === "SentinelFrameMoved"
           ? undefined
           : captureAttempted
             ? options.captureKind === "text-cells"

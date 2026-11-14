@@ -587,12 +587,6 @@ export interface PixelCellCrop {
    * count in this codebase.
    */
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
-  /**
-   * How far an UNDECLARED read moved the origin from the settled one when it re-anchored on the pair
-   * instead of refusing (33000, @cto 2026-11-13). Makes the Warp command-header path visible in the
-   * result rather than silent; observation only, like `scrolledRows`.
-   */
-  reanchored?: { rows: number; columns: number }
 }
 
 /**
