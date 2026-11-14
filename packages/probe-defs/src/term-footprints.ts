@@ -19,6 +19,13 @@
  */
 export type TermFootprint = "window" | "app-instance" | "machine"
 
+/**
+ * What a verified owner basis covers. The process arm (a terminal process this run started) covers
+ * its whole app instance and admits every footprint, exactly as it does today. The window arm covers
+ * the one window the run opened, so it admits `window` cells only.
+ */
+export type OwnerBasisScope = "process" | "window"
+
 /** Why a footprint is not `window`, where that is not obvious from the id alone. */
 export const TERM_FOOTPRINT_NOTES: Readonly<Record<string, string>> = {
   "modes.color-scheme-reporting":
@@ -73,6 +80,30 @@ export function termFootprintFor(id: string): TermFootprint | undefined {
 /** A window-scoped basis admits exactly the `window` cells. */
 export function windowBasisAdmits(id: string): boolean {
   return TERM_FOOTPRINTS[id] === "window"
+}
+
+/**
+ * Does a basis with this scope cover this cell's footprint?
+ * - no scope on the basis refuses (a basis must say what it covers)
+ * - an undeclared footprint refuses
+ * - `process` covers everything the run's own terminal process owns, which is the whole instance —
+ *   the behaviour every existing process-owned run has today, unchanged
+ * - `window` admits `window` cells only
+ */
+export function basisScopeAdmits(scope: OwnerBasisScope | undefined, id: string): boolean {
+  if (scope === undefined) return false
+  const footprint = TERM_FOOTPRINTS[id]
+  if (footprint === undefined) return false
+  return scope === "process" ? true : footprint === "window"
+}
+
+/** The refusal sentence names the cell, its declared footprint and the basis scope it met. */
+export function basisScopeRefusal(scope: OwnerBasisScope | undefined, id: string): string {
+  const footprint = TERM_FOOTPRINTS[id]
+  const what = footprint === undefined ? `footprint undeclared for ${id}` : `${id} declares footprint ${footprint}`
+  return scope === undefined
+    ? `${what}; this owner basis declares no scope, so it covers nothing`
+    : `${what}; a ${scope}-scoped owner basis does not cover it`
 }
 
 /** The refusal sentence names the cell and its declared footprint; undeclared refuses too. */

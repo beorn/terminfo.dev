@@ -2886,7 +2886,10 @@ it("refuses app named coverage that arrives beside supported observation and ass
 it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
   verifiedBatchFixture()
   // Reach the geometry contract after the wrap probe's disposable-process prerequisite.
-  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "owned disposable regression process",
+    scope: "process",
+  })
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   const originalAssertionType = definition.termAssertionType
@@ -2922,7 +2925,10 @@ it.each([
 ] as const)("delivers owned geometry to %s and preserves its declaration guard", async (id, undersizedStatus) => {
   verifiedBatchFixture()
   if (id === "modes.auto-wrap") {
-    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "owned disposable regression process",
+    scope: "process",
+  })
   }
   const definition = ALL_PROBES.find((item) => item.id === id)!
   const original = definition.termNeedsGeometry
@@ -3368,7 +3374,10 @@ it("records a text run's collector throw as text evidence", async () => {
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
   // Qualify disposable ownership without changing the selected TTY or its recorded traffic.
-  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "owned disposable regression process",
+    scope: "process",
+  })
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   definition.termNeedsGeometry = true

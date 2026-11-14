@@ -185,13 +185,15 @@ import { deviceProbes } from "./device.ts"
 import { extensionsProbes, withD2LibraryObservation } from "./extensions.ts"
 import { termFootprintFor } from "./term-footprints.ts"
 export {
+  basisScopeAdmits,
+  basisScopeRefusal,
   footprintRefusal,
   termFootprintFor,
   windowBasisAdmits,
   TERM_FOOTPRINTS,
   TERM_FOOTPRINT_NOTES,
 } from "./term-footprints.ts"
-export type { TermFootprint } from "./term-footprints.ts"
+export type { OwnerBasisScope, TermFootprint } from "./term-footprints.ts"
 import { inputProbes } from "./input.ts"
 import { resetProbes } from "./reset.ts"
 import { scrollbackProbes } from "./scrollback.ts"

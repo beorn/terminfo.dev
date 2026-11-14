@@ -9,7 +9,13 @@
  */
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
-import { footprintRefusal, TERM_FOOTPRINTS, windowBasisAdmits } from "./term-footprints.ts"
+import {
+  basisScopeAdmits,
+  basisScopeRefusal,
+  footprintRefusal,
+  TERM_FOOTPRINTS,
+  windowBasisAdmits,
+} from "./term-footprints.ts"
 
 const WINDOW = [
   "modes.alt-screen.enter",
@@ -82,5 +88,30 @@ describe("term footprints (#34148)", () => {
   test("an undeclared id refuses as undeclared, never as a default", () => {
     expect(windowBasisAdmits("modes.not-a-real-cell")).toBe(false)
     expect(footprintRefusal("modes.not-a-real-cell")).toContain("undeclared")
+  })
+  // @cto a4fc490d (revised): the question is not "is this a window cell" but "does this basis scope
+  // cover this cell footprint". A process-owned run must admit exactly what it admits today.
+  test("regression: a process-scoped basis still admits a colour-reset cell", () => {
+    for (const id of APP_INSTANCE) {
+      expect(basisScopeAdmits("process", id), id + " stays admitted under the existing process arm").toBe(true)
+    }
+    expect(basisScopeAdmits("process", "modes.bracketed-paste"), "the pasteboard cell is admitted today").toBe(true)
+  })
+
+  test("a window-scoped basis admits window cells and refuses the rest by name", () => {
+    for (const id of WINDOW) expect(basisScopeAdmits("window", id), id + " is admitted").toBe(true)
+    for (const id of [...APP_INSTANCE, ...MACHINE]) {
+      expect(basisScopeAdmits("window", id), id + " is refused").toBe(false)
+      const refusal = basisScopeRefusal("window", id)
+      expect(refusal, id + " refusal names its footprint").toContain(TERM_FOOTPRINTS[id])
+      expect(refusal).toContain("window-scoped")
+    }
+  })
+
+  test("a basis that declares no scope covers nothing, and an undeclared cell refuses", () => {
+    expect(basisScopeAdmits(undefined, "modes.auto-wrap")).toBe(false)
+    expect(basisScopeRefusal(undefined, "modes.auto-wrap")).toContain("declares no scope")
+    expect(basisScopeAdmits("window", "modes.not-a-real-cell")).toBe(false)
+    expect(basisScopeRefusal("process", "modes.not-a-real-cell")).toContain("undeclared")
   })
 })
