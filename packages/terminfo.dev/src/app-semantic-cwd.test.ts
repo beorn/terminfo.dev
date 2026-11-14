@@ -5,11 +5,13 @@
  * @consumer readAppSemanticState's approved OSC633 and OSC7 CWD observations.
  * @testonly none
  */
-import { closeSync, mkdtempSync, openSync, readlinkSync, rmSync, writeFileSync } from "node:fs"
+import { closeSync, mkdtempSync, openSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
+import { extensionsProbes } from "@terminfo/probe-defs"
+import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import { readAppSemanticState } from "./app-semantic-state.ts"
 
 const { command } = vi.hoisted(() => ({ command: vi.fn() }))
@@ -106,18 +108,22 @@ async function readCwd(
 
 // The tmux cases cannot exercise a verified Mac owner's private cwd getter or its persistent pin.
 // @failure Cwd phases bypass the owned getter, compare URI spelling instead of paths, or claim restoration of a pinned pane.
-test("the owned WezTerm cwd getter supplies controlled OSC633 P state and retains its pin", async () => {
+test.each(["supported", "inert target", "host mismatch"])("owned OSC633 P keeps private cwd evidence through the callback: %s", async (mode) => {
   const runId = "c".repeat(32)
   vi.stubEnv("TERMINFO_RUN_ID", runId)
   vi.stubEnv("TERMINFO_MUX_KIND", "")
   vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
   vi.stubEnv("TERMINFO_TARGET_VERSION", "20240203-110809-5046fc22")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", "/owned-fixture/capture")
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-private-cwd-"))
+  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", directory)
+  const retained: string[] = []
   const writes: string[] = []
   const checkpoints: Array<{ row: number; marker: string } | undefined> = []
-  let uri = "file://localhost/original%20cwd"
+  const initial = "file://localhost/Users/private-person/secret%20project"
+  let uri = initial
   const options = {
     featureId: "extensions.osc633-p",
+    onRetained: (artifact: { path: string }) => { retained.push(artifact.path) },
     runId,
     executable: { path: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui", sha256: "d".repeat(64) },
     write(text: string) {
@@ -125,27 +131,41 @@ test("the owned WezTerm cwd getter supplies controlled OSC633 P state and retain
       const control = /\x1b\]7;([^\x07]*)\x07/.exec(text)?.[1]
       const target = /\x1b\]633;P;Cwd=([^\x07]*)\x07/.exec(text)?.[1]
       if (control !== undefined) uri = control
-      if (target !== undefined) uri = `file://localhost${target}`
+      if (target !== undefined && mode !== "inert target") uri = `file://${mode === "host mismatch" ? "foreign-host" : "localhost"}${target}`
     },
     async readCwd(checkpoint?: { row: number; marker: string }) {
       checkpoints.push(checkpoint)
       return { uri, detail: { sourceKind: "undetermined" } }
     },
   }
-  const reading = await readAppSemanticState(options)
-  expect(reading.status).toBe("measured")
-  if (reading.status !== "measured" || reading.reader !== "state") throw new Error("Missing owned cwd reading")
-  expect(reading.unknown.before).toBe(reading.unknown.after)
-  expect(reading.handled.before).toBe("/original cwd")
-  expect(reading.handled.after).toMatch(/^\/terminfo-control-[0-9a-f]{8}$/)
-  expect(reading.handled.expected).toBe(reading.handled.after)
-  expect(reading.target.before).toBe(reading.handled.after)
-  expect(reading.target.after).toMatch(/^\/terminfo-target-[0-9a-f]{8}$/)
-  expect(reading.target.expected).toBe(reading.target.after)
-  expect(checkpoints.slice(1).map((checkpoint) => checkpoint?.row)).toEqual([1, 2, 3])
-  expect(writes.some((text) => text.includes("7;file://localhost/original"))).toBe(false)
-  expect(JSON.stringify(reading.detail)).toContain("pane left pinned")
-  expect(JSON.stringify(reading.detail)).toContain("file://localhost/original%20cwd")
+  try {
+    const reading = await readAppSemanticState(options)
+    const source = replayTermProbeSource(new Map())
+    source.readAppSemanticState = async () => reading
+    const result = await extensionsProbes.find(probe => probe.id === "extensions.osc633-p")!.term!(source)
+    if (mode === "host mismatch") expect(result.tests?.[0]?.status).toBe("probe-invalid")
+    else expect(result.observation?.outcome).toBe(mode === "supported" ? "supported" : "unsupported")
+    const published = JSON.stringify(result)
+    for (const secret of [initial, "/Users/private-person/secret project", "private-person", process.cwd()]) {
+      expect(published).not.toContain(secret)
+    }
+    const detail = reading.detail as { privateEvidence: string }
+    const artifact = join(directory, detail.privateEvidence)
+    expect(retained).toContain(artifact)
+    const privateEvidence = readFileSync(artifact, "utf8")
+    expect(privateEvidence).toContain(initial)
+    expect(privateEvidence).toContain(process.cwd())
+    if (reading.status === "measured" && reading.reader === "state") {
+      expect(reading.unknown.before).toBe(reading.unknown.after)
+      expect(reading.handled.after).toMatch(/^\/terminfo-control-[0-9a-f]{8}$/)
+      expect(reading.handled.expected).toBe(reading.handled.after)
+      expect(checkpoints.slice(1).map(checkpoint => checkpoint?.row)).toEqual([1, 2, 3])
+      expect(privateEvidence).toContain("pane left pinned")
+    }
+    expect(writes.some(text => text.includes(initial))).toBe(false)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test.runIf(process.platform === "linux").each(["", "file://localhost/original"])(
