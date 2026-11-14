@@ -1451,13 +1451,16 @@ export async function runProbeBatch(
           const witnessReads: Record<string, { before: string | null; after: string | null }> = {}
           for (const attribute of attributes) {
             const key = attributeKey(attribute)
+            const before = witnessBefore.get(key)
             const after = await options.witnessWindow.read(attribute)
-            const verdict = spilloverVerdict({ attribute, before: witnessBefore.get(key), after })
-            witnessReads[key] = { before: witnessBefore.get(key) ?? null, after: after ?? null }
+            const verdict = spilloverVerdict({ attribute, before, after })
+            witnessReads[key] = { before: before ?? null, after: after ?? null }
             if (verdict.status !== "unchanged") {
               batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict })
               throw new SpilloverRefused(probe.id, verdict)
             }
+            // "unchanged" is only reachable with a reading; the guard keeps the type honest.
+            if (after === undefined) throw new Error(`witness unchanged verdict for ${key} carried no reading`)
             witnessBefore.set(key, after)
           }
           batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict: "unchanged" })
