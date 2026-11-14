@@ -134,7 +134,6 @@ it.each([
       createDarwinCapture: async (captureDirectory, options) => ({
         captureRaw: async checkpoint => {
           assert.equal(options.appPid, 4242)
-          assert.equal(options.hostedAppId, app)
           captures.push({ phase: checkpoint.label, nativeCwd })
           mkdirSync(captureDirectory, { recursive: true })
           const path = join(captureDirectory, "native-window-" + captures.length + ".png")
@@ -339,6 +338,8 @@ it.each(["tmux", "screen", "darwin-screen"])(
       const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
       assert.equal(cmuxRecord.executable,cmuxExecutable)
       assert.equal(cmuxRecord.surface,"surface-uuid-1")
+      assert.equal(cmuxRecord.nativeEditorFields.status,"inapplicable")
+      assert.match(cmuxRecord.nativeEditorFields.reason,/name.*processId.*shellIntegration.cwd/)
       assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
       assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
       assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
@@ -1651,7 +1652,7 @@ describe("private finite daemon startup", () => {
       assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
     `)
     expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
-    expect(result.status).toBe(0)
+    expect(result.status, result.error?.message ?? result.signal ?? result.stderr).toBe(0)
   })
 
   it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {

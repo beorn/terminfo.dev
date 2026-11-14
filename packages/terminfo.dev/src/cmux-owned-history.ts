@@ -358,6 +358,7 @@ export function readOwnedCmuxHistory(options: {
     status: "read",
     reading: { totalLines, ...(options.rows === undefined ? {} : { screenLines: options.rows }) },
     receipt: JSON.stringify({
+      rawScreen: stdout,
       surface: options.surface ?? null,
       ownership: options.ownership.kind,
       markers: proof !== undefined && "markers" in proof ? proof.markers : null,

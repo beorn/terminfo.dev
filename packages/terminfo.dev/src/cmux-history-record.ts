@@ -10,5 +10,15 @@ import type { OwnedTerminal } from "./owned-terminal.ts"
 export type CmuxHistoryEvidence = Record<"collector.cmuxHistory", string>
 
 export function cmuxHistoryEvidence(history: OwnedTerminal["cmuxHistory"]): CmuxHistoryEvidence | undefined {
-  return history === undefined ? undefined : { "collector.cmuxHistory": JSON.stringify(history) }
+  return history === undefined
+    ? undefined
+    : {
+        "collector.cmuxHistory": JSON.stringify({
+          ...history,
+          nativeEditorFields: {
+            status: "inapplicable",
+            reason: "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence is its owned surface and raw read-screen response",
+          },
+        }),
+      }
 }

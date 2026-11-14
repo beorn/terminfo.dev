@@ -81,6 +81,17 @@ The reading carries the existing path-free owned-pane identity receipt. Native p
 argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
 The initial/restored phase and feed records use that same content-addressed writer and artifact observer;
 the private evidence basename names a registered immutable blob rather than a collector-local file.
+The hosted Darwin editor reader extends the existing generated VSCode/Cursor fixture.
+Each phase retains fresh Terminal.name, awaited processId and shellIntegration.cwd or
+an explicit native-absence reason, bound to the activation and request nonces.
+Those ordinary files establish activation correlation, not process-writer attestation.
+Controlled CWD changes can qualify a positive reading; API absence never supplies an Unsupported grade.
+Owned-window screenshots and generated private config/read evidence are retained before restoration
+and cleanup on both success and failure, without copying the inherited environment or user profile.
+cmux instead retains its concrete owned surface and raw read-screen response in its existing receipt;
+the persisted record names editor API fields inapplicable rather than inventing values.
+Actual per-App native compatibility and non-author raw/screenshot review remain separate from fixture tests.
+
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
