@@ -255,17 +255,21 @@ export async function readThroughSentinel<T>(input: {
 
 /**
  * One origin per read (34163, @cto 2026-11-13): when the route already settled a calibrated origin,
- * the pair's job is to prove the paint landed and to say where. It never yields the crop origin.
+ * the pair proves the paint landed and says where. It never yields the crop origin.
  *
- * A declared viewport hold moves the pair off the settled grid by whole ROWS — measured live at one
- * wheel notch for both kitty (10 + 5x29) and ghostty (2 + 3x28) — so the read crops at the settled
- * origin and records the delta as an OBSERVATION. No grade or published cell may read `scrolledRows`
- * until the XTest wheel event's effective displacement is measured: "one notch" is not a row count.
+ * Undeclared reads keep 33000's behaviour exactly. A pair still on the settled grid is an ordinary
+ * read; any other move re-anchors to where the pair landed and records the rows and columns it
+ * moved, so a frame whose extent moved (Warp's command header does that) still crops correctly.
+ * There is no hold-signature refusal on this path: a count of changed pixels cannot separate a
+ * viewport scroll from a text area that moved, and reading it as a signature made Warp's moved
+ * header refuse instead of re-anchor.
  *
- * Undeclared reads keep 33000's re-anchor when the frame's own extent moved (Warp's command header
- * does exactly that, and those reads must still crop correctly). An undeclared pair that moved by
- * whole rows while the extent is unchanged is the hold signature, and it refuses by name: a probe
- * holding its viewport must say so, or the read silently crops from a grid the terminal left.
+ * A declared viewport hold never yields a crop origin, and never claims anything about pixels:
+ * both frames carry the NET displacement of the text area, so a hold of N rows with an opposite
+ * move of M rows looks exactly like one that moved N - M, and no raster pair can separate them.
+ * The caller declares notches, not rows, so the read throws CaptureHoldUnresolved and the probe
+ * records a named todo. Measuring the row a notch moves needs a non-pixel read
+ * (@i/terminfo/34222-wheel-notch-row-unit); until that exists there is no positive arm here.
  */
 function onSettledOrigin(input: {
   label: string
