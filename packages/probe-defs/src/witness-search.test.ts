@@ -24,7 +24,11 @@ describe("34040 the pair search reaches a free cell outside the old fixed list",
   ]
   for (const { arm, grid, region } of recorded) {
     it(`${arm}: the pair lands on 1,1 and 4,2`, () => {
-      expect(witnessCellsFor([region], grid)).toEqual({ a: { row: 1, col: 1 }, b: { row: 4, col: 2 } })
+      expect(witnessCellsFor([region], grid)).toEqual({
+        a: { row: 1, col: 1 },
+        b: { row: 4, col: 2 },
+        tier: "region-free",
+      })
     })
   }
 
@@ -42,38 +46,50 @@ describe("34040 the pair search reaches a free cell outside the old fixed list",
     expect(witnessCellsFor([{ top: 1, left: 1, bottom: 3, right: 5 }], { rows: 40, cols: 123 })).toEqual({
       a: { row: 4, col: 1 },
       b: { row: 5, col: 2 },
+      tier: "region-free",
     })
   })
 })
 
-describe("34040 a pair that cannot exist refuses and names the screen's limit", () => {
+describe("34040 tier 2: one clear row still anchors, on a pair a cell apart", () => {
+  // The live grids behind the two rows that still refused with both 34040 commits present.
   const recorded = [
-    {
-      arm: "warp modes.decsscls",
-      grid: { rows: 39, cols: 123 },
-      region: { top: 1, left: 1, bottom: 38, right: 123 },
-      keep: 39,
-    },
     {
       arm: "kitty modes.decsscls",
       grid: { rows: 20, cols: 61 },
       region: { top: 1, left: 1, bottom: 19, right: 61 },
-      keep: 20,
+      row: 20,
     },
     {
       arm: "ghostty modes.decsscls",
       grid: { rows: 21, cols: 61 },
       region: { top: 1, left: 1, bottom: 20, right: 61 },
-      keep: 21,
+      row: 21,
+    },
+    {
+      arm: "warp modes.decsscls",
+      grid: { rows: 39, cols: 123 },
+      region: { top: 1, left: 1, bottom: 38, right: 123 },
+      row: 39,
     },
   ]
-  for (const { arm, grid, region, keep } of recorded) {
-    it(`${arm}: one clear row, named`, () => {
-      expect(() => witnessCellsFor([region], grid)).toThrow(
-        new RegExp(`the compared region leaves one clear row, ${keep}, on this ${grid.rows}x${grid.cols} screen`),
-      )
+  for (const { arm, grid, region, row } of recorded) {
+    it(`${arm}: both cells on row ${row}, one whole cell apart`, () => {
+      expect(witnessCellsFor([region], grid)).toEqual({
+        a: { row, col: 1 },
+        b: { row, col: 3 },
+        tier: "same-row",
+      })
     })
   }
+
+  it("never places the two cells next to each other", () => {
+    // Adjacent cells read as ONE wide box when a run of sentinel colour is painted across them, so
+    // the pair must keep a whole cell between it (@cto, 34040 tier 2).
+    const pair = witnessCellsFor([{ top: 1, left: 1, bottom: 4, right: 10 }], { rows: 5, cols: 10 })
+    expect(pair.tier).toBe("same-row")
+    expect(Math.abs(pair.b.col - pair.a.col)).toBeGreaterThanOrEqual(2)
+  })
 
   it("a one-row screen has nowhere to put a pair at all", () => {
     expect(() => witnessCellsFor([{ top: 1, left: 1, bottom: 1, right: 5 }], { rows: 1, cols: 10 })).toThrow(
@@ -88,16 +104,43 @@ describe("34040 a pair that cannot exist refuses and names the screen's limit", 
   })
 })
 
+describe("34040 tier 3: no clear row at all still anchors, on columns clear of every edge", () => {
+  it("viewport-hold: the region uses every row, both cells move past its column span", () => {
+    // kitty run 2026-11-13T23-06-01Z: "every row of this 20x61 screen is inside a digested region".
+    const pair = witnessCellsFor([{ top: 1, left: 1, bottom: 20, right: 10 }], { rows: 20, cols: 61 })
+    expect(pair.tier).toBe("no-clear-row")
+    expect(pair.a.col).toBeGreaterThanOrEqual(12)
+    expect(pair.b.col).toBeGreaterThanOrEqual(12)
+    expect(pair.b.row).not.toBe(pair.a.row)
+    expect(pair.b.col).not.toBe(pair.a.col)
+  })
+
+  it("keeps a whole cell between the pair and the region's edge (the wide-glyph column)", () => {
+    // Right edge at column 10: column 11 is the straddle column, so 12 is the first usable one.
+    const pair = witnessCellsFor([{ top: 1, left: 1, bottom: 6, right: 10 }], { rows: 6, cols: 20 })
+    expect(pair.tier).toBe("no-clear-row")
+    expect([pair.a.col, pair.b.col]).not.toContain(11)
+  })
+
+  it("still refuses when no column is clear of the region", () => {
+    // Every row is a region row and no column is two cells clear of the region, so no tier can place
+    // a cell; the read refuses with the first cell's own limit.
+    expect(() => witnessCellsFor([{ top: 1, left: 1, bottom: 4, right: 9 }], { rows: 4, cols: 10 })).toThrow(
+      /cannot be anchored/,
+    )
+  })
+})
+
 describe("34040 the pair's refusal does not blame the probe's own output", () => {
   it("names no limit it cannot act on when an avoid band, not the region, blocks the rows", () => {
     // Row 3 is the probe's own output, not a compared region. The second cell avoids the compared
     // region's rows only, so the honest sentence is the generic one — saying "every row is inside a
     // digested region" would blame the compared region for rows it does not use (@dev/15 peer read).
-    expect(() =>
+    expect(
       witnessCellsFor([{ top: 2, left: 1, bottom: 2, right: 5 }], { rows: 3, cols: 10 }, [
         { top: 3, left: 1, bottom: 3, right: 10 },
       ]),
-    ).toThrow(/no a second cell outside the digested regions is left in the 3x10 grid that the pair rule accepts/)
+    ).toEqual({ a: { row: 1, col: 1 }, b: { row: 1, col: 3 }, tier: "same-row" })
   })
 })
 

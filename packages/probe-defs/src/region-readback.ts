@@ -510,6 +510,20 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 export const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * The tier a sentinel pair came from (34040, @cto 2026-11-13). A read's own record names it, so a
+ * reader can tell a pair that avoided every digested row from one that had to share a row.
+ * `same-row` pairs measure the COLUMN pitch only, which is why no vertical move may rest on one.
+ */
+export type WitnessTier = "region-free" | "same-row" | "no-clear-row"
+
+/**
+ * How many columns a same-row pair is kept apart (34040, @cto). One whole cell of gap, never
+ * adjacent: with the cells touching, a horizontal run of sentinel colour or a full-line repaint is
+ * one wide box and would read as two cells; with a cell between them it fails the size test first.
+ */
+export const SAME_ROW_MIN_COLUMN_GAP = 2
+
+/**
  * How many pixels a correctly sized sentinel box may be SHORT of its area (34015). A rendered cell is
  * not a filled rectangle: an anti-aliased corner or the read's own restored pixel leaves a couple of
  * pixels inside a box that is otherwise exactly the cell. The number is the same slack the edges
@@ -739,9 +753,34 @@ export function witnessCellsFor(
   regions: readonly CaptureCells[],
   grid: { rows: number; cols: number },
   avoid: readonly CaptureCells[] = [],
-): { a: { row: number; col: number }; b: { row: number; col: number } } {
-  const a = witnessCellFor(regions, grid, avoid)
+): { a: { row: number; col: number }; b: { row: number; col: number }; tier: WitnessTier } {
   const footprint = [...regions, ...avoid]
+  // Tier 3 (34040, @cto): when no row is free of every digested region, both cells move to a COLUMN
+  // clear of every region and of the probe's own output, at least one whole cell from any edge — the
+  // adjacent column is where a wide glyph straddles and is erased with it. The pair still differs in
+  // row AND column, so it proves both pitches; only "never on a region row" is given up, and the
+  // clearance is what replaces it. Chosen here because `witnessCellFor` is the chooser that used to
+  // throw "no row is left for a cell".
+  const inGrid = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  const edgeClear = (cell: { row: number; col: number }): boolean =>
+    footprint.every((region) => cell.col <= region.left - 2 || cell.col >= region.right + 2)
+  const firstRegion = regions[0]
+  let a: { row: number; col: number }
+  let onlyColumnsClear = false
+  try {
+    a = witnessCellFor(regions, grid, avoid)
+  } catch (error) {
+    if (firstRegion === undefined) throw error
+    const [fallback] = cellsNearestFirst(
+      { row: firstRegion.top, col: firstRegion.left },
+      grid,
+      (cell) => inGrid(cell) && edgeClear(cell),
+    )
+    if (fallback === undefined) throw error
+    a = fallback
+    onlyColumnsClear = true
+  }
   const digested = (cell: { row: number; col: number }): boolean =>
     footprint.some(
       (region) =>
@@ -769,9 +808,29 @@ export function witnessCellsFor(
     { row: a.row + 2, col: a.col - 1 },
   ]
   const found = preferred.find((cell) => usable(cell))
-  if (found) return { a, b: found }
-  for (const cell of cellsNearestFirst(a, grid, usable)) {
-    return { a, b: cell }
+  if (found) return { a, b: found, tier: "region-free" }
+  if (!onlyColumnsClear) {
+    for (const cell of cellsNearestFirst(a, grid, usable)) {
+      return { a, b: cell, tier: "region-free" }
+    }
+  // Tier 2 (34040, @cto 2026-11-13): when the compared region leaves exactly one clear row, the
+  // second cell can only sit on the first cell's OWN row, so the pair measures the column pitch and
+  // nothing else. Two conditions make that safe: the two cells are never adjacent — a gap of at
+  // least one whole cell, so a horizontal run of sentinel colour or a full-line repaint reads as
+  // ONE wide box and fails the size test rather than passing as two cells — and no vertical move is
+  // ever accepted on such a pair (`gridMoveExemption` refuses a zero row gap by name).
+    const sameRow = (cell: { row: number; col: number }): boolean =>
+      cell.row === a.row && Math.abs(cell.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP && accepts(cell)
+    for (const cell of cellsNearestFirst(a, grid, sameRow)) {
+      return { a, b: cell, tier: "same-row" }
+    }
+  }
+  if (onlyColumnsClear) {
+    const pairCell = (cell: { row: number; col: number }): boolean =>
+      inGrid(cell) && edgeClear(cell) && cell.row !== a.row && cell.col !== a.col
+    for (const cell of cellsNearestFirst(a, grid, pairCell)) {
+      return { a, b: cell, tier: "no-clear-row" }
+    }
   }
   throw new Error(
     // The limit is measured from the compared region alone, because that is what the SECOND cell
@@ -939,6 +998,16 @@ const insideImage = (rectangle: CaptureRectangle, image: { width: number; height
  * does is a frame whose cell size and grid are intact, which is what makes the derived origin land on
  * the cells the read named.
  */
+/**
+ * Whether the pair in this crop sat on ONE row, so it measured the column pitch and no row height
+ * (34040 tier 2). Its own tier says so; the cell rows are the fact, checked here so a hand-built
+ * witness cannot claim otherwise.
+ */
+export function pairMeasuredNoRowHeight(crop: PixelCellCrop): boolean {
+  const pair = crop.witness
+  return pair !== undefined && pair.a.cell.row === pair.b.cell.row
+}
+
 function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean {
   const here = crop.witness
   const seed = first.witness
@@ -989,6 +1058,10 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
   const first = seed.crop
   if (first === undefined || seed.rectangle === undefined) return []
   if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return []
+  // A pair painted on ONE row proved the column pitch and never a row height (34040 tier 2, @cto),
+  // so it can never carry a vertical move. Refused here rather than left to the arithmetic, which
+  // tolerates a zero row gap on purpose; the crop refusal names it (see `pairMeasuredNoRowHeight`).
+  if (pairMeasuredNoRowHeight(first)) return []
   if (!witnessProvesPitch(first, first)) return []
   if (!originFollowsFromBoxA(first)) return []
   const moves: GridMove[] = []
@@ -1047,6 +1120,9 @@ export function cropPositionRefusal(input: {
   // every other difference still refuses below, with the sentence it always used.
   if (gridMoveExemption(cropped).length > 0) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
+  const rowHeight = seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
+    ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
+    : ""
   return {
     pass: false,
     response,
@@ -1055,7 +1131,7 @@ export function cropPositionRefusal(input: {
       {
         id: "comparison",
         status: "probe-invalid",
-        reason: `Compared frames were cropped from different positions: ${named}`,
+        reason: `Compared frames were cropped from different positions: ${named}${rowHeight}`,
       },
     ],
     observation: {
