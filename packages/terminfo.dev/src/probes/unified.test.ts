@@ -1789,7 +1789,16 @@ it.each([
     })
     const result = batch.results.find((row) => row.featureId === id)!
     expect(result.status).toBe(scenario.expected)
-    if (scenario.expected === "untestable") expect(result.reason).toMatch(/passed.*outer terminal kitty/i)
+    if (scenario.expected === "untestable") {
+      expect(result.reason).toMatch(/passed.*outer terminal kitty/i)
+      expect(batch.notTested.find((item) => item.featureId === id)).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: expect.stringMatching(/passed.*outer terminal kitty/i),
+        rawReplyRef: `${id}.outerCommands`,
+      })
+    } else {
+      expect(batch.notTested.find((item) => item.featureId === id)).toBeUndefined()
+    }
     if (scenario.expected === "unsupported") expect(result.reason).toMatch(/tmux.*did not forward/i)
     if (scenario.expected !== "probe-todo") {
       expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!)).toMatchObject({
@@ -1805,6 +1814,20 @@ it.each([
         sourceRevision,
       ).run
       expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(scenario.expected)
+      if (scenario.expected === "untestable") {
+        expect(decoded.results.find((row) => row.featureId === id)).toMatchObject({
+          status: "untestable",
+          reason: expect.stringMatching(/passed.*outer terminal kitty/i),
+          rawReplyRef: `${id}.outerCommands`,
+          tests: [
+            expect.objectContaining({
+              id: "declared-untestable",
+              status: "untestable",
+              rawReplyRef: `${id}.outerCommands`,
+            }),
+          ],
+        })
+      }
     }
   } finally {
     Object.assign(definition, original)

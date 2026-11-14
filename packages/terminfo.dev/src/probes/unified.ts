@@ -1888,12 +1888,16 @@ export async function runProbeBatch(
         if (commands.targetSent) {
           const reason = `${subject?.id}: SGR ${commands.target} was passed to outer terminal ${subject?.outerTerminal}; the controlled sample still drew no distinct target effect`
           const declared = declaredUntestableResult(reason, commands)
+          const coverage = { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` }
+          const existing = batch.notTested.findIndex((entry) => entry.featureId === probe.id)
+          if (existing < 0) batch.notTested.push(coverage)
+          else batch.notTested[existing] = coverage
           finalized = {
             ...finalized,
             ...recordExecutedProbe({
               featureId: probe.id,
               attempt,
-              coverage: { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` },
+              coverage,
               criterionBranch: declared.criterionBranch,
               tests: declared.tests,
               assertions: [],
