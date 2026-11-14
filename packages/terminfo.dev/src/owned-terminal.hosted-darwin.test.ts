@@ -1,6 +1,6 @@
 /**
  * @failure Hosted macOS geometry probes skip, a PTY bind attributes geometry to the wrong app,
- *   or a failed iTerm or Terminal.app qualification read loses its original diagnostic inputs.
+ *   an incomplete WezTerm proof borrows a clipboard owner, or a failed qualification read loses its inputs.
  * @level l1
  * @consumer createOwnedTerminal darwinHosted arm used by collectProbeRun on hosted Mac.
  * @reach fs-walk <fixture-only: assertion diagnostics read this test's generated capture directory>
@@ -223,8 +223,10 @@ test("a hosted cmux arm with no published surface id refuses at grant and writes
 
 // Condition 1 of @cto 8c084f05, through the real owner: a hosted WezTerm whose ancestor is a different
 // process at read time must refuse by pid before any WezTerm CLI read, not merely match the app's name.
-test("a hosted WezTerm ancestor that changed pid refuses the read by name and reads nothing", () => {
-  const script = `
+test.each(["changed-owner", "missing-socket", "missing-pane"])(
+  "hosted WezTerm history keeps its own ownership proof: %s",
+  (mode) => {
+    const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { EventEmitter } from "node:events"
@@ -234,6 +236,11 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
     Object.defineProperty(process, "platform", { value: "darwin" })
     process.env.WEZTERM_PANE = "0"
     process.env.WEZTERM_UNIX_SOCKET = "/private/tmp/term-31741/wezterm.sock"
+    const mode = ${JSON.stringify(mode)}
+    // A matching launcher hint must not turn the Darwin clipboard adapter into a WezTerm proof.
+    process.env.TERMINFO_TARGET_ID = "wezterm"
+    if (mode === "missing-socket") delete process.env.WEZTERM_UNIX_SOCKET
+    if (mode === "missing-pane") delete process.env.WEZTERM_PANE
     let appPid = 4242
     const wezTermCalls = []
     const kernelPids = []
@@ -292,6 +299,13 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
     assert.equal(owner.appPid, 4242)
     // Hosted evidence names the measured kernel path; argv0 alone is not that path (#30392).
     assert.equal(JSON.parse(owner.summary).darwinHosted.ancestor.kernelExecutable, executable)
+    if (mode !== "changed-owner") {
+      assert.match(owner.scrollbackProbeTodo, /published no socket|published no pane id/)
+      assert.equal(owner.getScrollback, undefined, "an incomplete hosted proof must not install a foreign owner reader")
+      assert.equal(owner.historyExecutable, undefined)
+      assert.equal(owner.historyExecutableUnmeasured, undefined)
+      await owner.dispose()
+    } else {
     assert.equal(typeof owner.getScrollback, "function")
     const atGrant = wezTermCalls.length
     appPid = 5555
@@ -300,14 +314,16 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
     assert.ok(kernelPids.includes(5555), "the read-time ancestry recheck also measures the new hop's kernel path")
     assert.equal(wezTermCalls.length, atGrant, "no WezTerm CLI read may follow the refusal")
     await owner.dispose()
+    }
   `
-  const result = spawnSync(process.execPath, ["-e", script], {
-    cwd: join(import.meta.dirname, "../../.."),
-    encoding: "utf8",
-    timeout: 20_000,
-  })
-  expect(result.status, result.stderr).toBe(0)
-})
+    const result = spawnSync(process.execPath, ["-e", script], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      timeout: 20_000,
+    })
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
 
 // The pure CWD fixture cannot prove the hosted owner installs the port, brackets CLI calls, or keeps
 // restoration off the publishable writer. Exercise the actual owner with only OS actions supplied.

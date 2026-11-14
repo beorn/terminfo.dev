@@ -1879,9 +1879,11 @@ export async function createOwnedTerminal(options: {
             return proof.status === "refused" ? Promise.reject(new Error(proof.reason)) : Promise.resolve()
           }
         : undefined
+    // The Darwin pasteboard adapter is not a WezTerm proof, even when the launcher hint names WezTerm.
+    // Process-owned arms retain their independent live process-owner check.
     const wezTermOwnerCheck =
       hostedWezTermOwnerCheck ??
-      (appClipboard !== undefined
+      (binding.platform !== "darwin" && appClipboard !== undefined
         ? () => appClipboard.assertOwned()
         : processOwnerCheck === undefined
           ? undefined
