@@ -285,6 +285,30 @@ export interface LedgerInput {
 }
 
 /**
+ * Every attribute a cell's writes touch, plus the writes that could not be classified. The collector
+ * uses this to know what to read back after the callback, in the same walk `ledgerOmega` performs.
+ */
+export function touchedAttributes(writes: readonly string[]): {
+  readonly attributes: readonly LedgerAttribute[]
+  readonly unclassified: readonly string[]
+} {
+  const attributes: LedgerAttribute[] = []
+  const unclassified: string[] = []
+  for (const write of writes) {
+    const classification = classifyWrite(write, attributes)
+    if ("unclassified" in classification) {
+      unclassified.push(write)
+      continue
+    }
+    for (const attribute of classification.attributes) {
+      const key = attributeKey(attribute)
+      if (!attributes.some((existing) => attributeKey(existing) === key)) attributes.push(attribute)
+    }
+  }
+  return { attributes, unclassified }
+}
+
+/**
  * The ledger's verdict for one cell. Every touched attribute must have a before and an after reply
  * that are equal. Anything else is a `refused` verdict naming each failing attribute, so the run can
  * abort with the diff retained (@cto conditions 1, 3 and 5).

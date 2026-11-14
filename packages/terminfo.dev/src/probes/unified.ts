@@ -39,6 +39,16 @@ import {
   basisScopeAdmits,
   basisScopeRefusal,
 } from "@terminfo/probe-defs"
+
+import {
+  MutationRestoreRefused,
+  type AttributeReads,
+  type LedgerAttribute,
+  attributeKey,
+  ledgerOmega,
+  readbackFor,
+  touchedAttributes,
+} from "./attribute-ledger.ts"
 import {
   query,
   queryOutcome,
@@ -94,6 +104,26 @@ export interface Probe {
 }
 
 /** Build a TermProbeSource from the tty.ts helpers */
+/**
+ * The cell's own reply to the readback query for `attribute`, taken from the last such query recorded
+ * before the first write that touched it. A probe that reads its pre-state itself (DECRQM, OSC 4) needs
+ * no pre-pass entry: that reply IS the pre-state (@cto e6ae2880 condition 3).
+ */
+function priorReply(events: readonly TTYTraceEvent[], attribute: LedgerAttribute, pattern: RegExp): string | undefined {
+  const key = attributeKey(attribute)
+  const writes: string[] = []
+  let candidate: string | undefined
+  for (const event of events) {
+    if (event.kind === "query") {
+      if (pattern.test(event.raw)) candidate = event.raw
+      continue
+    }
+    writes.push(event.sequence)
+    if (touchedAttributes(writes).attributes.some((touched) => attributeKey(touched) === key)) return candidate
+  }
+  return candidate
+}
+
 export function createTermProbeSource({
   probe,
   geometry,
@@ -776,6 +806,9 @@ export async function runProbeBatch(
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
+    // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
+    const windowBasis = processOwnerBasis?.scope === "window"
     // Admission runs on EVERY row of an ordinary-open run, not only rows that need ownership, and the fixture
     // hand-out below keys on an explicit `admitted: true`. Otherwise a row that is not marked as needing ownership
     // would be handed the adapter unadmitted, and with no registry bundle id it would also skip the walk
@@ -896,6 +929,20 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    // Fold 2's pre-pass: the two classes no probe reads for itself are read here, before the first
+    // write. A reply that does not come back is absent from the ledger, and that attribute then refuses
+    // as "no pre-state" instead of being assumed restored (@cto e6ae2880 conditions 1 and 3).
+    const ledgerPreReads = new Map<string, string>()
+    if (windowBasis) {
+      for (const attribute of [{ kind: "sgr" }, { kind: "pointer-shape" }] as const) {
+        const readback = readbackFor(attribute)
+        if ("unprovable" in readback) continue
+        const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+        if (outcome?.reason === "reply" && readback.read(outcome.raw) !== null) {
+          ledgerPreReads.set(attributeKey(attribute), outcome.raw)
+        }
+      }
+    }
     if (ownsTerminal) {
       // The verified owner knows which rows its reader observes. Other rows retain their original term
       // callbacks, including wrappers whose unavailable reading does not fall back.
@@ -1340,6 +1387,36 @@ export async function runProbeBatch(
         // The wall ends the callback's hold on the terminal, not the measurement: the geometry
         // after it is what the timed-out row is judged against (#33431).
         if (geometryCheck) geometryCheck.post = await readGeometry()
+      }
+      if (windowBasis) {
+        // Fold 2's verdict: every attribute this cell's own writes touched is read back now and compared
+        // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the
+        // run stops with the diff retained and nothing after it is graded (@cto e6ae2880 conditions 1, 3, 4).
+        const writes = events.filter((event) => event.kind === "write").map((event) => event.sequence)
+        const { attributes, unclassified } = touchedAttributes(writes)
+        const reads = new Map<string, AttributeReads>()
+        for (const attribute of attributes) {
+          const key = attributeKey(attribute)
+          const readback = readbackFor(attribute)
+          if ("unprovable" in readback) continue
+          const before = ledgerPreReads.get(key) ?? priorReply(events, attribute, readback.pattern)
+          const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+          reads.set(key, {
+            ...(before === undefined ? {} : { before }),
+            ...(outcome?.reason === "reply" ? { after: outcome.raw } : {}),
+          })
+        }
+        const omega = ledgerOmega({ writes, reads })
+        batch.rawReplies[`${probe.id}.ledger`] = JSON.stringify({
+          basis: "window",
+          touched: omega.touched,
+          unclassified,
+          reads: Object.fromEntries(
+            [...reads].map(([key, value]) => [key, { before: value.before ?? null, after: value.after ?? null }]),
+          ),
+          omega,
+        })
+        if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
