@@ -328,6 +328,7 @@ const APPS: AppDef[] = [
       executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
       markerFlag: "--config-file",
       markerValue: weztermConfigPath,
+      capture: "artifact-directory",
       prepare: (_run, markerValue) => {
         writeFileSync(markerValue, "return {}\n", { flag: "wx", mode: 0o600 })
       },
@@ -1220,7 +1221,7 @@ async function runApp(
       outcome = { success: true }
     } else {
       const outerLaunch =
-        app.cliLaunch?.capture === "artifact-directory"
+        app.id === "ghostty" && app.cliLaunch?.capture === "artifact-directory"
           ? measureOuterLaunchRecord(
               run,
               launch,

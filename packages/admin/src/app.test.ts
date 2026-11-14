@@ -621,6 +621,16 @@ describe("WezTerm cli-process arm", () => {
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
     await handleApp("wezterm", {})
+    // The real recipe must deliver private artifacts without measuring Ghostty preferences.
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/serve.sh",
+      expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
+      { flag: "wx", mode: 0o700 },
+    )
+    expect(vi.mocked(execFileSync).mock.calls.some(([file]) => String(file) === "/usr/bin/defaults")).toBe(false)
+    expect(vi.mocked(readFileSync).mock.calls.some(([file]) => String(file).includes("com.mitchellh.ghostty"))).toBe(
+      false,
+    )
     const [binary, args] = vi.mocked(spawn).mock.calls[0]!
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(ownedWindow, 555, "2.15", [binary, ...args!])
     expect(writeFileSync).toHaveBeenCalledWith("/private/run/wezterm-private-run.lua", "return {}\n", {
