@@ -111,16 +111,16 @@ const DIRECT_RESET_BY_CODE: Readonly<Record<string, DirectAttributeKind>> = {
  * module cannot name is `unclassified` and refuses the cell; there is no default (@cto condition 1).
  */
 export function classifyWrite(sequence: string, touched: readonly LedgerAttribute[] = []): WriteClassification {
-  const privateMode = CSI_PRIVATE_MODE.exec(sequence)
-  if (privateMode) {
+  const privateModes = CSI_PRIVATE_MODE.exec(sequence)?.[1]
+  if (privateModes !== undefined) {
     return {
-      attributes: privateMode[1]!.split(";").map((mode) => ({ kind: "dec-mode" as const, mode: Number(mode) })),
+      attributes: privateModes.split(";").map((mode) => ({ kind: "dec-mode" as const, mode: Number(mode) })),
     }
   }
-  const ansiMode = CSI_ANSI_MODE.exec(sequence)
-  if (ansiMode) {
+  const ansiModes = CSI_ANSI_MODE.exec(sequence)?.[1]
+  if (ansiModes !== undefined) {
     return {
-      attributes: ansiMode[1]!.split(";").map((mode) => ({ kind: "ansi-mode" as const, mode: Number(mode) })),
+      attributes: ansiModes.split(";").map((mode) => ({ kind: "ansi-mode" as const, mode: Number(mode) })),
     }
   }
   const sgr = CSI_SGR.exec(sequence)
@@ -146,9 +146,11 @@ export function classifyWrite(sequence: string, touched: readonly LedgerAttribut
     return { attributes: paletteTouched, resetUnion: true }
   }
   const direct = OSC_DIRECT.exec(sequence)
-  if (direct) return { attributes: [{ kind: DIRECT_BY_CODE[direct[1]!]! }] }
+  const directKind = direct?.[1] === undefined ? undefined : DIRECT_BY_CODE[direct[1]]
+  if (directKind !== undefined) return { attributes: [{ kind: directKind }] }
   const directReset = OSC_DIRECT_RESET.exec(sequence)
-  if (directReset) return { attributes: [{ kind: DIRECT_RESET_BY_CODE[directReset[1]!]! }] }
+  const resetKind = directReset?.[1] === undefined ? undefined : DIRECT_RESET_BY_CODE[directReset[1]]
+  if (resetKind !== undefined) return { attributes: [{ kind: resetKind }] }
   if (OSC_POINTER.test(sequence)) return { attributes: [{ kind: "pointer-shape" }] }
   return { unclassified: `no attribute class matches ${JSON.stringify(sequence)}` }
 }
