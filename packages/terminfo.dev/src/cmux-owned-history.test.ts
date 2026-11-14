@@ -231,7 +231,7 @@ test("the reader names the surface it reads and returns retained lines, not the 
   expect(read.status).toBe("read")
   expect(read.status === "read" && read.reading.totalLines).toBe(16)
   expect(read.status === "read" && read.reading.screenLines).toBe(50)
-  expect(read.status === "read" && "rawScreen" in JSON.parse(read.receipt)).toBe(false)
+  expect(read.status === "read" && "rawScreen" in (JSON.parse(read.receipt) as Record<string, unknown>)).toBe(false)
   expect(transcripts).toEqual([transcriptOf(12)])
   expect(read.status === "read" && read.facts.transcript).toBe(`sha256:${configSha256}`)
   // Unreported stays absent: cmux answers no viewport offset and no capacity, and both stay unclaimed.
