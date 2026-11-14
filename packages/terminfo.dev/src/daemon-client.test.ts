@@ -98,6 +98,32 @@ afterEach(async () => {
   root = undefined
 })
 
+// #34018: an owned-app run carries the identity the composer handed it. Both directions matter:
+// the handed id is used verbatim, and a malformed one refuses by name instead of minting a
+// substitute — a silent mint here is exactly what made the composed pass refuse its own run.
+it("carries a handed run id instead of minting one", () => {
+  const handed = "0123456789abcdef0123456789abcdef"
+  const run = createProbeRun(handed)
+  try {
+    expect(run.id).toBe(handed)
+    expect(run.scriptPath).toBe(join(run.directory, "serve-" + handed + ".sh"))
+    expect(lstatSync(run.directory).mode & 0o077).toBe(0)
+  } finally {
+    removeProbeRun(run)
+  }
+})
+
+it("refuses a malformed handed run id by name and leaves nothing behind", () => {
+  expect(() => createProbeRun("NOT-A-RUN-ID")).toThrow(/run id "NOT-A-RUN-ID" is not 32 lowercase hex characters/)
+  // Direct local use still mints, unchanged: only a handed id is validated.
+  const minted = createProbeRun()
+  try {
+    expect(minted.id).toMatch(/^[0-9a-f]{32}$/)
+  } finally {
+    removeProbeRun(minted)
+  }
+})
+
 it("keeps the Darwin editor IPC path short despite a long per-user temporary directory", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const longTemporaryDirectory = join(root, "darwin-per-user-cache-".repeat(3))

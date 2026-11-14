@@ -3,6 +3,7 @@
  *   or a failed iTerm or Terminal.app qualification read loses its original diagnostic inputs.
  * @level l1
  * @consumer createOwnedTerminal darwinHosted arm used by collectProbeRun on hosted Mac.
+ * @reach fs-walk <fixture-only: assertion diagnostics read this test's generated capture directory>
  * @testonly none
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -139,6 +140,87 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
   },
 )
 
+// An app that publishes no surface id leaves nothing to name, so the grant must refuse rather than let a
+// later read fall back to "whatever surface is current" (@dev/1 peer read 2026-11-13).
+test("a hosted cmux arm with no published surface id refuses at grant and writes nothing", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    delete process.env.CMUX_SURFACE_ID
+    const cmuxCalls = []
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    const realReadFileSync = fs.readFileSync
+    mock.module("node:fs", () => ({
+      ...fs,
+      fstatSync: () => device,
+      statSync: () => device,
+      openSync: () => 7,
+      closeSync: () => {},
+      readFileSync: (path) => (String(path) === executable ? Buffer.from("cmux-binary") : realReadFileSync(path)),
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      spawn: (file) => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from("24 80\\n"))
+            child.emit("close", 0)
+          })
+        }
+        return child
+      },
+      execFileSync: (command, args) => {
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawnSync: (file, args) => {
+        if (String(file).includes("cmux")) {
+          cmuxCalls.push(String(file) + " " + args.join(" "))
+          return { status: 0, stdout: "$ prompt\\nCMUX-" + "a".repeat(32) + "-BEGIN", stderr: "" }
+        }
+        return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const writes = []
+    const realWrite = process.stdout.write.bind(process.stdout)
+    process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    process.stdout.write = realWrite
+    assert.equal(writes.length, 0, "a grant that cannot name a surface must not write into one")
+    assert.equal(owner.cmuxHistory?.surface ?? null, null)
+    assert.match(owner.cmuxHistory.grantProof, /published no CMUX_SURFACE_ID/u)
+    const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.match(error?.message ?? "", /published no CMUX_SURFACE_ID/u)
+    assert.equal(cmuxCalls.filter((call) => call.includes("read-screen")).length, 0, "no read may run without an acquired id")
+    await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
 // Condition 1 of @cto 8c084f05, through the real owner: a hosted WezTerm whose ancestor is a different
 // process at read time must refuse by pid before any WezTerm CLI read, not merely match the app's name.
 test("a hosted WezTerm ancestor that changed pid refuses the read by name and reads nothing", () => {
@@ -154,6 +236,14 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
     process.env.WEZTERM_UNIX_SOCKET = "/private/tmp/term-31741/wezterm.sock"
     let appPid = 4242
     const wezTermCalls = []
+    const kernelPids = []
+    mock.module("./packages/terminfo.dev/src/darwin-kernel-exec.ts", () => ({
+      kernelExecPath: (pid) => {
+        kernelPids.push(pid)
+        return { path: pid === appPid ? executable : pid === 1 ? "/sbin/launchd" : "/bin/zsh",
+          reader: "fixture", error: null, attempts: [] }
+      }
+    }))
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
@@ -200,13 +290,180 @@ test("a hosted WezTerm ancestor that changed pid refuses the read by name and re
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, "wezterm")
     assert.equal(owner.appPid, 4242)
+    // Hosted evidence names the measured kernel path; argv0 alone is not that path (#30392).
+    assert.equal(JSON.parse(owner.summary).darwinHosted.ancestor.kernelExecutable, executable)
     assert.equal(typeof owner.getScrollback, "function")
     const atGrant = wezTermCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
     assert.equal(error?.message, "Hosted WezTerm ancestor is now pid 5555, not pid 4242 measured at grant")
+    assert.ok(kernelPids.includes(5555), "the read-time ancestry recheck also measures the new hop's kernel path")
     assert.equal(wezTermCalls.length, atGrant, "no WezTerm CLI read may follow the refusal")
     await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// The pure CWD fixture cannot prove the hosted owner installs the port, brackets CLI calls, or keeps
+// restoration off the publishable writer. Exercise the actual owner with only OS actions supplied.
+test.each([
+  "steady",
+  "lost-owner",
+  "unreviewed-version",
+  "foreign-version",
+  "foreign-run",
+  "mux-environment",
+  "missing-cwd",
+  "duplicate-pane",
+  "unsafe-uri",
+  "wrong-pane",
+  "malformed-json",
+  "semantic-fallbacks",
+])("hosted WezTerm CWD uses its owned private port; mode=%s", (mode) => {
+  const loseOwner = mode === "lost-owner"
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-owned-cwd-"))
+  directories.push(directory)
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const executable = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
+    const cli = "/Applications/WezTerm.app/Contents/MacOS/wezterm"
+    const socket = "/private/owned/wezterm.sock"
+    process.env.WEZTERM_PANE = "0"
+    process.env.WEZTERM_UNIX_SOCKET = socket
+    process.env.TERMINFO_RUN_ID = ${JSON.stringify((mode === "foreign-run" ? "c" : "b").repeat(32))}
+    process.env.TERMINFO_TARGET_VERSION = ${JSON.stringify(mode === "foreign-version" ? "unreviewed-version" : "20240203-110809-5046fc22")}
+    process.env.TERMINFO_MUX_KIND = ${JSON.stringify(mode === "mux-environment" ? "tmux" : "")}
+    process.env.TERMINFO_CAPTURE_DIRECTORY = ${JSON.stringify(directory)}
+    let appPid = 4242, cwd = "file:///Users/private-person/secret-project", text = "", writes = 0, reads = 0
+    const initial = cwd
+    const originalReadFileSync = fs.readFileSync
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, openSync: () => 7, closeSync: () => {},
+      statSync: (path, ...args) => {
+        if (String(path).startsWith("/terminfo-")) throw Object.assign(new Error("absent"), { code: "ENOENT" })
+        return device
+      },
+      readFileSync: (path, ...args) => String(path) === cli ? Buffer.from("owned-cli") : originalReadFileSync(path, ...args)
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawn: (file) => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => true
+        child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => { child.stdout.emit("data", Buffer.from("24 80\\n")); child.emit("close", 0) })
+        } else assert.ok(/pbcopy|pbpaste|osascript/.test(String(file)))
+        return child
+      },
+      spawnSync: (file, args) => {
+        if (String(file).endsWith("lsof")) return { status: 0, stdout: "n" + socket + "\\n", stderr: "" }
+        assert.equal(String(file), cli)
+        if (args[0] === "--version") return { status: 0, stdout: ${JSON.stringify(mode === "unreviewed-version" ? "wezterm unreviewed-version" : "wezterm 20240203-110809-5046fc22")}, stderr: "" }
+        reads++
+        if (args.includes("list")) {
+          const row = { pane_id: ${mode === "wrong-pane" ? 9 : 0}, tty_name: "/dev/ttys004",
+            cwd: ${mode === "missing-cwd" ? "undefined" : mode === "unsafe-uri" ? '"file:///unsafe\\x07directory"' : "cwd"} }
+          return { status: 0, stdout: ${mode === "malformed-json" ? '"not JSON"' : `JSON.stringify([row${mode === "duplicate-pane" ? ", row" : ""}])`}, stderr: "" }
+        }
+        assert.ok(args.includes("get-text"))
+        return { status: 0, stdout: Buffer.from(text + "\\n".repeat(24)), stderr: Buffer.alloc(0) }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const realWrite = process.stdout.write
+    const retained = []
+    process.stdout.write = (chunk) => {
+      text = String(chunk); writes++
+      const command = /\\x1b\\]7;([^\\x07]*)\\x07/.exec(text)
+      if (command) cwd = command[1]
+      if (${loseOwner}) appPid = 5555
+      return true
+    }
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: artifact => retained.push(artifact) })
+    assert.equal(typeof owner.readAppSemanticState, "function", "hosted owner must install the CWD reader")
+    if (${mode === "semantic-fallbacks"}) {
+      const { ALL_PROBES } = await import("./packages/probe-defs/src/index.ts")
+      const { withAppSemanticObservation } = await import("./packages/probe-defs/src/app-semantic-state.ts")
+      const { runProbeBatch } = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const { ownedTerminalVerifiedFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      assert.equal(ownedTerminalVerifiedFor(owner, "a".repeat(32), process.stdout), true)
+      const features = ["extensions.osc1-icon", "extensions.osc133-a", "extensions.osc8", "extensions.osc176-app-id"]
+      const called = []
+      for (const id of features) {
+        const definition = ALL_PROBES.find(probe => probe.id === id)
+        assert.ok(definition, id)
+        definition.termNeedsGeometry = false
+        definition.term = withAppSemanticObservation({ id, lib: null, term: async () => {
+          called.push(id)
+          return { pass: false, note: "original term " + id,
+            tests: [{ id: "criterion", status: "probe-todo", reason: "original term " + id }] }
+        } }).term
+      }
+      const batch = await runProbeBatch({ ids: features, ownedTerminal: owner, captureRunId: "a".repeat(32),
+        subject: { kind: "term", id: "wezterm", os: "macos", version: "20240203-110809-5046fc22" } })
+      for (const id of features) {
+        assert.ok(called.includes(id), "original term did not run: " + id + " " + JSON.stringify(batch.results.find(row => row.featureId === id)))
+        assert.equal(batch.results.find(row => row.featureId === id)?.reason, "original term " + id,
+          "wrapper replaced the original term result: " + id)
+      }
+      await owner.dispose()
+      process.stdout.write = realWrite
+    } else {
+    const result = await owner.readAppSemanticState("extensions.osc7-cwd", () => { throw new Error("public writer leaked restoration") })
+      .then((value) => value, (error) => ({ status: "run-error", reason: error.message }))
+    if (${mode !== "steady" && mode !== "lost-owner"}) {
+      assert.equal(result.status, "invalid", JSON.stringify(result))
+      assert.equal(writes, 0, "an unqualified reader must not mutate the pane")
+      assert.equal(reads, ${["unreviewed-version", "foreign-version", "foreign-run", "mux-environment"].includes(mode) ? 0 : 1})
+    } else if (${loseOwner}) {
+      assert.notEqual(result.status, "measured")
+      assert.match(result.reason, /ownership|restoration|ancestor/i)
+      assert.equal(reads, 1, "no CLI command follows ownership loss")
+    } else {
+      assert.equal(result.status, "measured", JSON.stringify(result) + " " + fs.readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY)
+        .map((file) => fs.readFileSync(process.env.TERMINFO_CAPTURE_DIRECTORY + "/" + file, "utf8")).join(" "))
+      assert.equal(cwd, initial)
+      assert.equal(writes, 4)
+      assert.equal(JSON.stringify(result).includes("private-person"), false)
+      assert.equal(typeof result.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
+      assert.deepEqual(JSON.parse(result.detail.ownershipReceipt), {
+        surface: "wezterm", pane: "0", listedTty: "ttys004", measuredTty: "ttys004",
+        ttyMatch: true, socketPresent: true, executable: "wezterm",
+      })
+      assert.equal(/[\\\\/]/u.test(result.detail.ownershipReceipt), false)
+      const nativeReads = retained.map(artifact => JSON.parse(fs.readFileSync(artifact.path, "utf8")))
+      assert.ok(nativeReads.some(read => read.args?.includes("list") && typeof read.stdout === "string" && read.stdout.includes(initial)), "private pane-list argv/stdout must survive")
+      assert.ok(nativeReads.some(read => read.args?.includes("get-text") && typeof read.stdoutBase64 === "string"), "private get-text argv/stdout must survive")
+      assert.ok(nativeReads.some(read => read.initial === initial && read.restored === initial && Array.isArray(read.phases)
+        && read.phases.some(phase => typeof phase.feed === "string")), "private CWD phase/feed record must reach the collector manifest")
+      assert.ok(retained.some(artifact => artifact.path.endsWith("/" + result.detail.privateEvidence)), "published private reference must name a manifest artifact")
+    }
+    await owner.dispose()
+    process.stdout.write = realWrite
+    }
   `
   const result = spawnSync(process.execPath, ["-e", script], {
     cwd: join(import.meta.dirname, "../../.."),
@@ -335,7 +592,8 @@ test("retains Terminal.app's refused text reply with its checkpoint and unchange
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const directory = ${JSON.stringify(directory)}
-    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory + "/artifacts"
+    fs.writeFileSync(directory + "/terminal-launch.json", JSON.stringify({ appId: "terminal-app", terminalWindow: { provider: "terminal-app", windowId: 34 } }))
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
@@ -438,11 +696,13 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "terminal-app",
     comm: "Terminal",
     titleRead: "system-events",
+    captureWindowSelection: "largest",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/iTerm.app/Contents/MacOS/iTerm2")).toEqual({
     id: "iterm2",
     comm: "iTerm2",
     titleRead: "none",
+    captureWindowSelection: "largest",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Ghostty.app/Contents/MacOS/ghostty")).toEqual({
     id: "ghostty",
@@ -489,6 +749,19 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     titleRead: "none",
     titleUnavailable: expect.stringContaining('"Terminal"'),
   })
+  // 34087: each sentence names its calibration run first and says the counted runs read nothing, so no
+  // app-own-title row can be read as a live measurement of a run that attempted none; the calibration
+  // pid is gone because it is not a fact about the row.
+  for (const [path, calibrationRun] of [
+    ["/Applications/Cursor.app/Contents/MacOS/Cursor", "43325922491"],
+    ["/Applications/Visual Studio Code.app/Contents/MacOS/Code", "43325922491"],
+    ["/Applications/cmux.app/Contents/MacOS/cmux", "43327254711"],
+  ] as const) {
+    const sentence = hostedDarwinAppFromExecutablePath(path).titleUnavailable ?? ""
+    expect(sentence).toContain(`on 33821 calibration run ${calibrationRun}`)
+    expect(sentence).toContain("counted runs attempted no title-row read")
+    expect(sentence).not.toMatch(/\bpid \d+/)
+  }
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
     "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
@@ -802,4 +1075,131 @@ test.each([
   [{ platform: "darwin", hostedAppId: undefined, launcherAppId: undefined }, undefined],
 ])("owned app id resolves in one place: %j", (input, expected) => {
   expect(resolveOwnedAppId(input)).toBe(expected)
+})
+
+// The cmux arm through the real owner: the receipt names the app, the collector runs inside its surface, and
+// a changed ancestor must refuse by pid before any cmux read (@cto plan GO af8608c3, nonce arm ba9e117fd).
+test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by name first", () => {
+  const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    let appPid = 4242
+    const cmuxCalls = []
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    const realReadFileSync = fs.readFileSync
+    mock.module("node:fs", () => ({
+      ...fs,
+      fstatSync: () => device,
+      statSync: () => device,
+      // The grid read reopens the selected fd; a test runner's stdout is a pipe, so the reopen is faked.
+      openSync: () => 7,
+      closeSync: () => {},
+      readFileSync: (path) => (String(path) === executable ? Buffer.from("cmux-binary") : realReadFileSync(path)),
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    mock.module("node:child_process", () => ({ ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid ? process.pid + " " + appPid + " /bin/zsh"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
+      },
+      spawn: (file) => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        child.stdin = { end() { queueMicrotask(() => { child.stdout.emit("data", Buffer.from("\\n")); child.emit("close", 0) }) } }
+        // The owning arm reads its grid from stty on the bound pty; a successful read needs a real size.
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from("24 80\\n"))
+            child.emit("close", 0)
+          })
+        }
+        return child
+      },
+      spawnSync: (file, args) => {
+        if (String(file).includes("cmux")) {
+          cmuxCalls.push(String(file) + " " + args.join(" "))
+          if (args.includes("read-screen")) {
+            // Each surface answers with its own history, and an unnamed read answers as the focused
+            // surface. Focus moves to surface-uuid-2 after the grant, so a read that fell back to "current"
+            // would return the rival's three lines instead of our four (@dev/1 peer verdict, F3).
+            const named = args[args.indexOf("--surface") + 1]
+            if (named === "surface-uuid-1") {
+              return { status: 0, stdout: "$ prompt\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ prompt", stderr: "" }
+            }
+            return { status: 0, stdout: "rival-a\\nrival-b\\nrival-c", stderr: "" }
+          }
+        }
+        return { status: 0, stdout: "cmux 0.65.2", stderr: "" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    process.env.CMUX_SURFACE_ID = "surface-uuid-1"
+    const writes = []
+    // selectedFd accepts only the daemon's real stdout (or a real tty WriteStream), so the spy lives on
+    // process.stdout. The only write this owner may make is the single grant nonce line (@cto REVISE F1).
+    const realWrite = process.stdout.write.bind(process.stdout)
+    process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    assert.equal(owner.hostedAppId, "cmux")
+    assert.equal(owner.appPid, 4242)
+    assert.equal(typeof owner.getScrollback, "function")
+    assert.equal(owner.historyReadsThroughCli, true)
+    assert.equal(owner.historyExecutable?.path, executable)
+    assert.equal(owner.historyExecutable?.version, "cmux 0.65.2")
+    // The grant proof wrote the nonce once; no later read may write anything (@cto REVISE F1).
+    assert.equal(writes.length, 1)
+    assert.match(writes[0], /CMUX-a{32}-BEGIN/)
+    const grant = JSON.parse(owner.cmuxHistory.grantProof)
+    assert.equal(grant.ownership, "nonce")
+    assert.equal(grant.surface, "surface-uuid-1")
+    assert.equal(owner.cmuxHistory.surface, "surface-uuid-1")
+    const atGrant = cmuxCalls.length
+    appPid = 5555
+    const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.equal(error?.message, "Hosted cmux ancestor is now pid 5555, not pid 4242 measured at launch")
+    assert.equal(cmuxCalls.length, atGrant, "no cmux read may follow the refusal")
+    // A refusal alone would let a broken success path pass, so restore the owner and read twice for real
+    // (@dev/1 peer read 2026-11-13).
+    appPid = 4242
+    // Focus moves to a second surface after grant; every later read must still name the acquired one
+    // (@dev/1 peer verdict, F3).
+    process.env.CMUX_SURFACE_ID = "surface-uuid-2"
+    const first = await owner.getScrollback()
+    const second = await owner.getScrollback()
+    assert.deepEqual(second, first, "two reads of an unchanged surface report the same history")
+    assert.equal(first.totalLines, 4, "reads report the acquired surface's history, not the focused surface's")
+    assert.equal(cmuxCalls.length, atGrant + 2, "each later read runs its own CLI read")
+    for (const call of cmuxCalls.slice(atGrant)) {
+      assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
+    }
+    assert.equal(writes.length, 1, "no read may write to the surface")
+    const readReceipt = JSON.parse(owner.cmuxHistory.lastRead)
+    assert.equal(readReceipt.ownership, "surface")
+    assert.equal(readReceipt.surface, "surface-uuid-1")
+    assert.equal(readReceipt.screenLines, 24)
+    process.stdout.write = realWrite
+    await owner.dispose()
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
+  })
+  expect(result.status, result.stderr).toBe(0)
 })

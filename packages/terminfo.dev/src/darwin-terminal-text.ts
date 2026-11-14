@@ -45,6 +45,7 @@ import {
 } from "@terminfo/probe-defs"
 import { hex, isSingleCellCodePoint } from "./single-cell.ts"
 import { splitLogicalLine, splitLogicalRows } from "./logical-rows.ts"
+import { ownedHistoryReceipt } from "./owned-history-receipt.ts"
 
 /** The two macOS terminals this arm can read, with the bundle name JXA addresses. */
 export const TERMINAL_TEXT_APPS = {
@@ -660,10 +661,22 @@ export function readTerminalAppHistory(options: Omit<TerminalTextReadOptions, "a
       reason: `${label} history does not end with the screen's ${String(screenRows.length)} lines, so its count cannot be placed above this screen`,
     }
   }
+  // The owned tab's tty is the one this run measured; Terminal.app publishes no second tty for the tab, and
+  // the record says so with an absent listed tty rather than claiming a match it never made.
+  const identity = ownedHistoryReceipt({
+    surface: "terminal-app",
+    measuredTty: options.tty,
+    executable: options.run === undefined ? "osascript" : undefined,
+  })
+  if (identity.status === "refused") return { status: "refused", reason: identity.reason }
   return {
     status: "read",
     historyLines,
-    reading: { totalLines: historyRows.length - screenRows.length + options.rows, screenLines: options.rows },
+    reading: {
+      totalLines: historyRows.length - screenRows.length + options.rows,
+      screenLines: options.rows,
+      receipt: identity.receipt,
+    },
   }
 }
 

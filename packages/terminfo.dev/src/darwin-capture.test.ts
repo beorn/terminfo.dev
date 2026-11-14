@@ -4,18 +4,15 @@
  * @consumer createDarwinCapture ownership, scale and attributed acquisition failures
  * @testonly none
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
-import {
-  censusDarwinWindows,
-  createDarwinCapture,
-  readTerminalLaunchWindowId,
-  requireDarwinScale,
-} from "./darwin-capture.ts"
+import { censusDarwinWindows, createDarwinCapture, requireDarwinScale } from "./darwin-capture.ts"
+
+import { readTerminalLaunchWindowId } from "./owned-terminal.ts"
 
 const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
 /** The capture target alone, as the selection tests read it. */
@@ -497,6 +494,11 @@ test("Darwin census selects the launch receipt's exact window id and refuses a t
     [29, "rival"],
     [34, "selected"],
   ])
+  // Newly routed PID-only apps must never select a rival by size. The legacy policy above remains.
+  const larger = { ...startup, bounds: { ...bounds, width: 1000 } }
+  expect(() => censusDarwinWindows([larger, launched], 41, undefined, "unique")).toThrow(/found 2 candidates/)
+  expect(censusDarwinWindows([launched], 41, undefined, "unique").selected.window.id).toBe(34)
+  expect(censusDarwinWindows([larger, launched], 41, 34, "unique").selected.window.id).toBe(34)
 })
 
 // The named id is a claim to check, never a bypass: a window that is offscreen, fully transparent, not
@@ -516,6 +518,9 @@ test("Darwin census refuses a named window it cannot prove owned, visible and la
 // only honest source of that id on a hosted runner, so an absent or foreign record refuses by name
 // instead of letting the census fall back to a window this run never launched.
 test("Terminal.app launch receipt names the owned window id or refuses by name", async () => {
+  // CTO boundary requirement: the shared reader must never interpret app-specific ownership files.
+  const readerSource = readFileSync(new URL("./darwin-capture.ts", import.meta.url), "utf8")
+  expect(readerSource).not.toMatch(/readTerminalLaunchWindowId|terminal-launch|hostedAppId|terminal-app/)
   const directory = mkdtempSync(join(tmpdir(), "terminal-launch-"))
   const record = join(directory, "terminal-launch.json")
   expect(() => readTerminalLaunchWindowId(directory)).toThrow(/launch receipt .*terminal-launch\.json/)
@@ -540,10 +545,8 @@ test("Terminal.app launch receipt names the owned window id or refuses by name",
   expect(() => readTerminalLaunchWindowId(directory)).toThrow(/is not JSON/)
 })
 
-// The wiring, not just the census: a hosted Terminal.app capture resolves its window from the launch
-// receipt beside the artifacts directory, refuses by name when that receipt is absent, and leaves
-// every other app on the size-based selection.
-test("hosted Terminal.app capture resolves the window tie through the launch receipt", async () => {
+// Ownership interprets the launch receipt; capture receives only its already verified numeric claim.
+test("Darwin capture resolves a window tie through the ownership adapter's window claim", async () => {
   const artifacts = mkdtempSync(join(tmpdir(), "darwin-launch-receipt-"))
   const captureDirectory = join(artifacts, "artifacts")
   const bounds = { x: 40, y: 51, width: 877, height: 499 }
@@ -555,9 +558,7 @@ test("hosted Terminal.app capture resolves the window tie through the launch rec
     throw new Error(`Unexpected command ${file}`)
   })
   try {
-    await expect(
-      createDarwinCapture(captureDirectory, { appPid: 41, hostedAppId: "terminal-app", onRetained: () => {} }),
-    ).rejects.toThrow(/launch receipt .*terminal-launch\.json/)
+    expect(() => readTerminalLaunchWindowId(artifacts)).toThrow(/launch receipt .*terminal-launch\.json/)
     writeFileSync(
       join(artifacts, "terminal-launch.json"),
       JSON.stringify({
@@ -567,7 +568,7 @@ test("hosted Terminal.app capture resolves the window tie through the launch rec
     )
     const adapter = await createDarwinCapture(captureDirectory, {
       appPid: 41,
-      hostedAppId: "terminal-app",
+      expectedWindowId: readTerminalLaunchWindowId(artifacts),
       onRetained: () => {},
     })
     expect(adapter.installCensus.window).toEqual({ id: 34, ownerPid: 41, layer: 0, bounds })
@@ -584,7 +585,7 @@ test("hosted Terminal.app capture resolves the window tie through the launch rec
     })
     const otherAdapter = await createDarwinCapture(captureDirectory, {
       appPid: 41,
-      hostedAppId: "ghostty",
+      windowSelection: "largest",
       onRetained: () => {},
     })
     expect(otherAdapter.installCensus.window.id).toBe(34)

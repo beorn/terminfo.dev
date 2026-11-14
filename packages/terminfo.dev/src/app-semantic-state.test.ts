@@ -23,11 +23,13 @@ import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
+import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
 import {
   appSemanticDeclarations,
   beginMuxSgrCommandRead,
   openAppCommandLog,
   readAppSemanticState,
+  readWezTermCwd,
 } from "./app-semantic-state.ts"
 
 const weztermCli = vi.hoisted(() => vi.fn())
@@ -420,6 +422,182 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
   ).not.toHaveProperty("extensions.osc8")
 })
 
+// The existing tmux CWD fixtures and WezTerm OSC8 text fixture cannot see the owned pane JSON directory field.
+// The real platform-owner boundary is checked in its own fixture. Here the registered callback consumes
+// the shared parser's literal CWD, including escapes that must survive restoration without normalization.
+test("shared WezTerm OSC7 observes two fresh directory values and restores the literal public URI", async () => {
+  const runId = "a".repeat(32)
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-literal-"))
+  const initial = "file:///terminfo-original%2Fkeep%20case"
+  let cwd = initial
+  let text = ""
+  const feeds: string[] = []
+  weztermCli.mockImplementation((file, args) => {
+    expect(file).toBe("/owned/wezterm")
+    expect(args).toEqual(["cli", "--no-auto-start", "list", "--format", "json"])
+    return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
+  })
+  const source = replayTermProbeSource(new Map())
+  const privateWrite = (bytes: string) => {
+    text = bytes
+    for (const command of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
+      feeds.push(command[0])
+      if (command[1] === "7") cwd = command[2]!
+    }
+  }
+  source.readAppSemanticState = () =>
+    readWezTermCwd({
+      write: privateWrite,
+      onRetained: () => {},
+      runId,
+      captureDirectory: directory,
+      readText: async () => text,
+      async readPane() {
+        const read = readOwnedWezTermPane({ executable: "/owned/wezterm", socket: "/owned/wezterm.sock", pane: "17" })
+        if (read.status !== "listed" || read.matchingPanes !== 1 || typeof read.cwd !== "string") {
+          throw new Error("No unique owned CWD")
+        }
+        return read.cwd
+      },
+    })
+  try {
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(feeds.map((feed) => /^\x1b\](\d+);/.exec(feed)?.[1])).toEqual(["77", "7", "7", "7"])
+    expect(feeds[1]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-control-[0-9a-f]{8}\x07$/)
+    expect(feeds[2]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-target-[0-9a-f]{8}\x07$/)
+    expect(cwd).toBe(initial)
+    expect(feeds.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test("WezTerm CWD keeps its initial home URI private while the registered callback decides support", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-private-"))
+  const initial = "file:///Users/private-person/secret-project"
+  let cwd = initial
+  let text = ""
+  let reading: AppSemanticReading | undefined
+  try {
+    const source = replayTermProbeSource(new Map())
+    source.readAppSemanticState = async () => {
+      reading = await readWezTermCwd({
+        onRetained: () => {},
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+          if (command) cwd = command[1]!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      return reading
+    }
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(JSON.stringify(result)).not.toContain(initial)
+    expect(JSON.stringify(result)).not.toContain("private-person")
+    expect(cwd).toBe(initial)
+    if (reading?.status !== "measured") throw new Error("No controlled CWD reading")
+    expect(reading.detail).toMatchObject({
+      restoredEqual: true,
+      initialSha256: expect.any(String),
+      restoredSha256: expect.any(String),
+    })
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// Failed first reads still publish a private evidence reference; its artifact must exist and name
+// the actual failure without exposing host paths in the public result or issuing any stimulus.
+test("WezTerm CWD retains an initial owned-read failure privately before any write", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-first-read-"))
+  const diagnostic = "owned pane missing cwd at file:///Users/private-person/secret-project"
+  try {
+    const reading = await readWezTermCwd({
+      onRetained: () => {},
+      runId: "a".repeat(32),
+      captureDirectory: directory,
+      write() {
+        throw new Error("stimulus before initial directory")
+      },
+      readPane: async () => {
+        throw new Error(diagnostic)
+      },
+      readText: async () => {
+        throw new Error("text read before initial directory")
+      },
+    })
+    expect(reading.status).toBe("invalid")
+    expect(JSON.stringify(reading)).not.toContain("private-person")
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(diagnostic)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// A positive callback cannot detect an inert command taking effect or an unqualified CWD read.
+// These controls must remain unresolved, including a terminal that ignores only the target.
+test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected", "serialized-control"])(
+  "WezTerm CWD rejects the %s control instead of deciding support",
+  async (mode) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-controls-"))
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    vi.useFakeTimers()
+    try {
+      const pending = readWezTermCwd({
+        onRetained: () => {},
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\](7|77);([^\x07]*)\x07/.exec(bytes)
+          if (!command) throw new Error("No OSC CWD stimulus")
+          const [, code, uri] = command
+          if (code === "77") {
+            if (mode === "inert-applied") cwd = uri!
+            return
+          }
+          if (uri === initial) {
+            cwd = initial
+            return
+          }
+          if (mode === "disabled") return
+          if (uri!.includes("terminfo-target-")) {
+            if (mode === "target-unchanged") return
+            if (mode === "target-unexpected") {
+              cwd = "file:///unexpected-directory"
+              return
+            }
+          }
+          cwd = mode === "serialized-control" ? uri + "/" : uri!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const reading = await pending
+      expect(reading.status).toBe("invalid")
+      expect(JSON.stringify(reading)).not.toContain(initial)
+      expect(cwd).toBe(initial)
+    } finally {
+      vi.useRealTimers()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
@@ -488,6 +666,39 @@ test("reader capability rows do not become declarations or lend their identity t
     { ...alacritty, version: "0.18.0" },
     { ...alacritty, os: "darwin" },
     { ...alacritty, kind: "mux" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
+  const macAlacritty = { ...alacritty, os: "macos" }
+  for (const featureId of [
+    "extensions.osc-633-vscode",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ]) {
+    expect(appSemanticDeclarations(macAlacritty)[featureId]).toMatch(
+      /^Untestable \(no way\):.*configuration, not the terminal's parsed feature state.*cannot grade the feature/,
+    )
+  }
+  for (const subject of [
+    { ...macAlacritty, version: "0.18.0" },
+    { ...macAlacritty, kind: "mux" as const },
   ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
@@ -1057,6 +1268,16 @@ test("only the missing forwarding-control line marks the read as that failure", 
     rmSync(directory, { recursive: true })
   }
 }, 20_000)
+
+// @cto b0de55c0: a measured result beats a declaration in probe code too. iTerm2's UTF-8 mouse mode read Supported
+// on macOS 26.6.2, so the pointer-route list no longer declares that one cell; its other pointer cells stay declared.
+test("the macOS pointer-route list leaves iTerm2's measured UTF-8 mouse mode to its probe", () => {
+  const iterm2 = appSemanticDeclarations({ kind: "term", id: "iterm2", version: "3.6.11", os: "macos" })
+  expect(iterm2).not.toHaveProperty("modes.utf8-mouse-1005")
+  expect(Object.keys(iterm2)).toEqual(expect.arrayContaining(["extensions.osc22-pointer", "input.kitty-click-events"]))
+  const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(ghostty["modes.utf8-mouse-1005"]).toContain("no permitted pointer route")
+})
 
 test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!
