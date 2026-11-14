@@ -800,6 +800,8 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
+    // #34259: cmux's read is the screen's text, so its history rows declare Untestable by that name.
+    scrollbackUnavailable: expect.stringContaining("cmux read-screen answers the screen's text, not a history count"),
     titleUnavailable: expect.stringContaining('"Terminal"'),
   })
   // 34087: each sentence names its calibration run first and says the counted runs read nothing, so no
@@ -1109,12 +1111,17 @@ test("only Alacritty, VS Code and Cursor declare no pane read, with @cto's exact
     "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
-    "/Applications/cmux.app/Contents/MacOS/cmux",
     "/Applications/Warp.app/Contents/MacOS/stable",
   ]
   for (const path of measured) {
     expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBeUndefined()
   }
+  // #34259: cmux is a fourth declaration, and a DIFFERENT one — it has a read, and the read is the screen's
+  // text, so it must never borrow @cto's "no pane read" sentence.
+  const cmux = hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux").scrollbackUnavailable
+  expect(cmux).toContain("cmux read-screen answers the screen's text")
+  expect(cmux).not.toBe(reason)
+  expect(cmux).toContain("43577319701")
 })
 
 // 8c084f05: the hosted arm's app id comes from the receipt, never from a launcher-typed variable that could
@@ -1254,26 +1261,30 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     // Focus moves to a second surface after grant; every later read must still name the acquired one
     // (@dev/1 peer verdict, F3).
     process.env.CMUX_SURFACE_ID = "surface-uuid-2"
-    const first = await owner.getScrollback()
-    const second = await owner.getScrollback()
-    assert.deepEqual(second, first, "two reads of an unchanged surface report the same history")
-    assert.equal(first.totalLines, 4, "reads report the acquired surface's history, not the focused surface's")
-    assert.equal(cmuxCalls.length, atGrant + 2, "each later read runs its own CLI read")
+    // A real read now NAMES what it found instead of returning a count: the surface is still proved and still
+    // named, and the text it answers with is the screen's, not history (@dev/brain 46a8e182).
+    const firstError = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    const secondError = await owner.getScrollback().then(() => undefined, (reason) => reason)
+    assert.match(String(firstError?.message), /^cmux-reader-is-screen-text: /u,
+      "a read of a proved surface names the screen-text fact rather than handing it on as a history count")
+    assert.equal(secondError?.message, firstError?.message, "two reads of an unchanged surface say the same thing")
+    assert.equal(cmuxCalls.length, atGrant + 2, "each later read still runs its own CLI read")
     for (const call of cmuxCalls.slice(atGrant)) {
       assert.match(call, /read-screen --surface surface-uuid-1 --scrollback/)
     }
     assert.equal(writes.length, 1, "no read may write to the surface")
+    // The grant remains the proved ownership and the last thing the record shows: the count is unreadable, the
+    // surface is not. Recording a failed grant here would leak an ownership failure that never happened.
     const readFacts = owner.cmuxHistory.lastRead
-    assert.equal(readFacts.kind, "read")
-    assert.equal(readFacts.ownership, "surface")
-    assert.equal(readFacts.screenLines, 24)
-    assert.equal(typeof readFacts.receiptSha256, "string")
-    assert.equal(readFacts.receiptSha256.length, 64, "the receipt is recorded by hash, never by text")
+    assert.equal(readFacts.kind, "grant", "a count that cannot be read is never recorded as a read")
+    assert.equal(readFacts.ownership, "nonce")
+    assert.equal(owner.cmuxHistory.grant, "proved", "the grant is proved; only the count is unreadable")
+    assert.equal(owner.cmuxHistory.grantRefusal, null)
     const readRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
     assert.equal(readRecord.pane, "surface-uuid-1", "the record still names the surface the run acquired")
     assert.equal(JSON.stringify(readRecord).includes("/"), false, "no path separator reaches the record")
     assert.equal(retained.length, 3, "the grant and both native reads are observed by the artifact writer")
-    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[2].sha256)
+    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[0].sha256, "the record keeps the grant read")
     await assert.rejects(createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } }), /private capture directory and its artifact observer/)
     process.stdout.write = realWrite

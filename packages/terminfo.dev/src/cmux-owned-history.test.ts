@@ -16,6 +16,7 @@ vi.mock("node:fs", async (importOriginal) => ({
   statSync: files.statSync,
 }))
 import {
+  CMUX_READER_IS_SCREEN_TEXT,
   cmuxConfigGuard,
   cmuxHistoryIdentity,
   cmuxMarkerProof,
@@ -154,7 +155,7 @@ test("the ordinary arm proves its own surface by the one nonce line it wrote", (
   expect(cmuxNonceProof({ transcript: "\n", nonce }).status).toBe("refused")
 })
 
-test("the reader grades the nonce arm and still reports retained lines", () => {
+test("the reader proves the nonce arm and refuses the screen's text as a history count", () => {
   const read = readOwnedCmuxHistory({
     executable,
     rows: 50,
@@ -163,9 +164,25 @@ test("the reader grades the nonce arm and still reports retained lines", () => {
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
     spawn: () => ({ status: 0, stdout: `CMUX-${nonce}-BEGIN\nINSIDE-1\nINSIDE-2`, stderr: "" }),
   })
-  expect(read.status).toBe("read")
-  expect(read.status === "read" && read.reading.totalLines).toBe(3)
-  expect(read.status === "read" && (JSON.parse(read.receipt) as { ownership: string }).ownership).toBe("nonce")
+  // The ownership proof still runs first; the count is what this reader will not hand on (run 43577319701).
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain(CMUX_READER_IS_SCREEN_TEXT)
+  expect(read.status === "owned-unreadable" && read.reason).toContain(
+    "this read returned 3 lines against a 50-row screen",
+  )
+
+  // The proof this read made survives the refusal (@dev/brain 46a8e182): a caller must be able to record the
+  // surface as OWNED and the count as unreadable, instead of reporting an ownership failure for a count it
+  // could not read. These are the receipt and the facts the grant record is built from.
+  expect(read.status === "owned-unreadable" && read.receipt).toContain('"ownership":"nonce"')
+  expect(read.status === "owned-unreadable" && read.facts).toMatchObject({
+    ownership: "nonce",
+    markers: null,
+    extras: 2,
+    totalLines: 3,
+    screenLines: 50,
+  })
 })
 
 test("the socket guard is proved by what the run observed at launch and after", () => {
@@ -228,15 +245,12 @@ test("the reader names the surface it reads and returns retained lines, not the 
     },
   })
   expect(calls).toEqual([["read-screen", "--surface", "surface:1000070000", "--scrollback"]])
-  expect(read.status).toBe("read")
-  expect(read.status === "read" && read.reading.totalLines).toBe(16)
-  expect(read.status === "read" && read.reading.screenLines).toBe(50)
-  expect(read.status === "read" && "rawScreen" in (JSON.parse(read.receipt) as Record<string, unknown>)).toBe(false)
+  // The command, the surface it names and the retained bytes are all real; the COUNT is what cannot be named.
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("16 lines against a 50-row screen")
+  expect(read.status === "owned-unreadable" && read.reason).toContain('"surface:1000070000"')
   expect(transcripts).toEqual([transcriptOf(12)])
-  expect(read.status === "read" && read.facts.transcript).toBe(`sha256:${configSha256}`)
-  // Unreported stays absent: cmux answers no viewport offset and no capacity, and both stay unclaimed.
-  expect(read.status === "read" && read.reading.viewportOffset).toBeUndefined()
-  expect(read.status === "read" && read.reading.capacity).toBeUndefined()
 })
 
 test("a surface read proves nothing per call and refuses only an empty read or a moved guard", () => {
@@ -254,9 +268,9 @@ test("a surface read proves nothing per call and refuses only an empty read or a
     },
   }
   const read = readOwnedCmuxHistory(base)
-  expect(read.status).toBe("read")
-  expect(read.status === "read" && read.reading.totalLines).toBe(14)
-  expect(read.status === "read" && read.reading.screenLines).toBe(50)
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("14 lines against a 50-row screen")
   const empty = readOwnedCmuxHistory({ ...base, spawn: () => ({ status: 0, stdout: "", stderr: "" }) })
   expect(empty.status === "refused" && empty.refusal).toBe("cmux-read-empty")
   const moved = readOwnedCmuxHistory({
@@ -297,7 +311,7 @@ test("a surface read proves nothing per call and refuses only an empty read or a
   expect(stderrLog.join("\n")).toContain("Access denied")
 })
 
-test("a surface read without a measured grid still reports retained lines and claims no screen height", () => {
+test("a surface read without a measured grid refuses without claiming a screen height", () => {
   const read = readOwnedCmuxHistory({
     executable,
     ownership: { kind: "surface" as const },
@@ -305,7 +319,7 @@ test("a surface read without a measured grid still reports retained lines and cl
     spawn: () => ({ status: 0, stdout: transcriptOf(3, measuredExtra, false), stderr: "" }),
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
   })
-  expect(read.status).toBe("read")
-  expect(read.status === "read" && read.reading.screenLines).toBeUndefined()
-  expect(read.status === "read" && read.reading.totalLines).toBe(5)
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("5 lines and no measured screen height")
 })
