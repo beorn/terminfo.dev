@@ -31,12 +31,16 @@ export class CaptureHoldUnresolved extends Error {
 }
 
 /**
- * 33982 condition 3: the noise bound on changed pixels outside the located boxes. It is MEASURED, not
- * chosen — @cto's route 3 (an invented bound) was rejected outright — so until the counted run has
- * produced the distribution this is deliberately absent and the accept path refuses by naming it.
- * Nothing else in the read changes when it gains a value.
+ * 33982 condition 3: the noise bound on changed pixels outside the located boxes. Zero is the STRICT
+ * limit, not a cut placed in a distribution: a moved frame is accepted only when not one pixel outside
+ * the painted pair changed, so the value can only refuse too much, never accept too much, and needs no
+ * distribution to be safe (@cto, d1a8cb1c). The six measured Warp rows — all 0 changedOutside on a
+ * 0,560 px move — are what says the path is not dead code at zero.
+ *
+ * Raising it ABOVE zero requires a field-backed counted run, brought to @cto with the numbers; an
+ * invented tolerance was refused outright (route 3). Nothing else in the read changes with the value.
  */
-export const ROW_MOVE_NOISE_BOUND_PX: number | undefined = undefined
+export const ROW_MOVE_NOISE_BOUND_PX: number | undefined = 0
 
 /**
  * Whether the two cells the read painted were CLEAR in its own pre-paint frame, at the pose the pair

@@ -864,6 +864,10 @@ test("refuses by name when the frame moved out from under the cells it chose, an
   const painted = pairOnBlankFrame(grid, [cells], cell)
   // One whole row (6 px) of displacement: past the 2 px blend slack, and inside the 30 px frame.
   const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  // The shipped bound is 0 (@cto, d1a8cb1c), so a moved frame with a quiet surface is ACCEPTED now.
+  // One non-sentinel pixel in the far corner — outside the digested cells and both poses — keeps this
+  // a refusal fixture instead, which is what its message and evidence are about.
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
   const writes = source()
   const read = () =>
     readThroughSentinel({
@@ -896,6 +900,9 @@ test("a moved read carries the count it measured and names a whole-row shift in 
   const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
   const painted = pairOnBlankFrame(grid, [cells], cell)
   const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  // Same one-pixel noise as the refusal above: at the shipped bound of 0 this read must still refuse
+  // for its evidence to exist at all (33982, @cto's d1a8cb1c).
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
   const writes = source()
   const error = await readThroughSentinel({
     source: writes.source,
@@ -946,6 +953,65 @@ test("a whole-row move is accepted once a measured bound is supplied and the cel
   expect(result.basisDetail).toContain("moved 1 whole rows")
   expect(result.basis).not.toContain("moved 1 whole rows")
   expect(result.changedOutside).toEqual(expect.any(Number))
+})
+
+// Zero is the SHIPPED bound (@cto, d1a8cb1c), so the accept path has to fire on the measured case
+// with nothing supplied by the caller. A path that only works when a test hands it a number is dead
+// code in production, and the six measured zeros would then say nothing about what runs.
+test("the shipped bound of 0 admits the measured whole-row move without any caller input (33982)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  const writes = source()
+  const result = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+    capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell,
+    settled: settledAt({ x: 0, y: 0 }, geometry),
+    deadline: Date.now() - 1,
+  })
+  expect(result.origin).toEqual({ x: 0, y: 6 })
+  expect(result.acceptedRowMove).toEqual({ rows: 1, px: 6 })
+  // The measured case: not one pixel outside the painted pair changed.
+  expect(result.changedOutside).toBe(0)
+})
+
+// The bound is a LIMIT, not a tolerance: one real pixel of noise outside the pair is the smallest
+// thing a distribution could ever ask this number to forgive, and at the shipped value it still
+// refuses. This is @cto's item 2 — the path may refuse too much, never too much other than that.
+test("one changed pixel outside the pair still refuses at the shipped bound of 0 (33982)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  // The far corner: outside the digested cells, outside both painted cells at either pose. The
+  // pre-paint fixture leaves it black, and this is not the sentinel colour, so it counts as noise.
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
+  const writes = source()
+  const error = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+    capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell,
+    settled: settledAt({ x: 0, y: 0 }, geometry),
+    deadline: Date.now() - 1,
+  }).catch((failure: unknown) => failure as SentinelFrameMoved)
+  expect(error).toBeInstanceOf(SentinelFrameMoved)
+  if (!(error instanceof SentinelFrameMoved)) throw new Error("unreachable: the read did not refuse by name")
+  expect(error.changedOutside).toBe(1)
+  expect(error.rowShift).toEqual({ rows: 1, px: 6 })
 })
 
 test("a one-row pair passes the pitch check, so the accept path must refuse it by its own guard (33982)", () => {
