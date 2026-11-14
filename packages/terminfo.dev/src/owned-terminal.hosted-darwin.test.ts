@@ -34,16 +34,34 @@ const ids = {
 
 // The app mapping/ancestry tests cannot see which read the real owner selects for a hosted app.
 // Exercise the real owner; only OS reads are fixtures, not its adapter-selection decision.
-test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (app) => {
-  const script = `
+test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
+  "hosted %s selects its own native read",
+  (app) => {
+    const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { EventEmitter } from "node:events"
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const app = ${JSON.stringify(app)}
-    const executable = app === "iterm2" ? "/Applications/iTerm.app/Contents/MacOS/iTerm2"
-      : "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
+    const executable = {
+      iterm2: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+      "terminal-app": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+      cursor: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "com.microsoft.VSCode": "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    }[app]
+    const editor = app === "cursor" || app === "com.microsoft.VSCode"
+    let appPid = 4242
+    const nativeReads = [], captures = []
+    const semantic = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    mock.module("./packages/terminfo.dev/src/app-semantic-state.ts", () => ({ ...semantic,
+      readAppSemanticState: async (input) => {
+        nativeReads.push(input)
+        await input.editor.assertProcess(process.pid)
+        await input.editor.capture(input.featureId, "target")
+        return { status: "unavailable", reason: "Native API boundary fixture" }
+      },
+    }))
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
@@ -55,8 +73,10 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
         const pid = Number(args[args.indexOf("-p") + 1])
         if (args.includes("tty=")) return "ttys004"
         if (!args.includes("pid=")) return "/sbin/launchd"
-        return pid === process.pid ? process.pid + " 4242 /bin/zsh"
-          : pid === 4242 ? "4242 1 " + executable : "1 0 /sbin/launchd"
+        return pid === process.pid ? process.pid + " 5488 /collector/bun"
+          : pid === 5488 ? "5488 " + appPid + " /bin/bash"
+          : pid === 7777 ? "7777 " + appPid + " /bin/bash"
+          : pid === appPid ? appPid + " 1 " + executable : "1 0 /sbin/launchd"
       },
       spawn: (file) => {
         const tool = String(file)
@@ -85,21 +105,40 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: { executablePath: executable } })
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    process.env.TERMINFO_TARGET_ID = "foreign-launcher-value"
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
-      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" },
+      appSemanticCapture: async (featureId, phase) => { captures.push({ featureId, phase }); return { retained: true } } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
-    assert.equal(typeof owner.readCells, "function")
-    assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+    if (editor) {
+      assert.equal(typeof owner.readAppSemanticState, "function", "editor owner must install its native API reader")
+      const result = await owner.readAppSemanticState("extensions.osc633-p", () => {})
+      assert.equal(result.reason, "Native API boundary fixture")
+      assert.equal(nativeReads.length, 1)
+      assert.equal(nativeReads[0].editor.appId, app, "receipt, not launcher environment, selects the native reader")
+      assert.deepEqual(captures, [{ featureId: "extensions.osc633-p", phase: "target" }])
+      await assert.rejects(async () => nativeReads[0].editor.assertProcess(999999), /ancestor|owned|pid/i)
+      await nativeReads[0].editor.assertProcess(5488, true)
+      await nativeReads[0].editor.assertProcess(7777)
+      await assert.rejects(async () => nativeReads[0].editor.assertProcess(7777, true), /collector.*ancestor|ancestor.*collector/i)
+      appPid = 5555
+      await assert.rejects(owner.readAppSemanticState("extensions.osc633-p", () => {}), /5555|4242/)
+      assert.equal(nativeReads.length, 1, "a changed App must refuse before native API evaluation")
+    } else {
+      assert.equal(typeof owner.readCells, "function")
+      assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+    }
     await owner.dispose()
   `
-  const result = spawnSync(process.execPath, ["-e", script], {
-    cwd: join(import.meta.dirname, "../../.."),
-    encoding: "utf8",
-    timeout: 20_000,
-  })
-  expect(result.status, result.stderr).toBe(0)
-})
+    const result = spawnSync(process.execPath, ["-e", script], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      timeout: 20_000,
+    })
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
 
 // An app that publishes no surface id leaves nothing to name, so the grant must refuse rather than let a
 // later read fall back to "whatever surface is current" (@dev/1 peer read 2026-11-13).
@@ -1041,6 +1080,8 @@ test.each([
 // The cmux arm through the real owner: the receipt names the app, the collector runs inside its surface, and
 // a changed ancestor must refuse by pid before any cmux read (@cto plan GO af8608c3, nonce arm ba9e117fd).
 test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by name first", () => {
+  const directory = mkdtempSync(join(tmpdir(), "cmux-private-evidence-"))
+  directories.push(directory)
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
@@ -1048,11 +1089,14 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
     const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    const directory = ${JSON.stringify(directory)}
+    process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+    const retained = []
     Object.defineProperty(process, "platform", { value: "darwin" })
     let appPid = 4242
     const cmuxCalls = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
-    const realReadFileSync = fs.readFileSync
+    const realReadFileSync = fs.readFileSync, realStatSync = fs.statSync
     mock.module("node:fs", () => ({
       ...fs,
       fstatSync: () => device,
@@ -1117,7 +1161,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const realWrite = process.stdout.write.bind(process.stdout)
     process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
-      out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
     assert.equal(owner.hostedAppId, "cmux")
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.getScrollback, "function")
@@ -1128,6 +1172,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(writes.length, 1)
     assert.match(writes[0], /CMUX-a{32}-BEGIN/)
     const grant = JSON.parse(owner.cmuxHistory.grantProof)
+    assert.equal("rawScreen" in grant, false, "raw screen bytes stay out of the receipt")
     assert.equal(grant.ownership, "nonce")
     assert.equal(grant.surface, "surface-uuid-1")
     assert.equal(owner.cmuxHistory.surface, "surface-uuid-1")
@@ -1140,6 +1185,11 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     assert.equal(JSON.stringify(grantRecord).includes("/Users/x"), false, "the pane transcript never reaches the record")
     assert.equal(JSON.stringify(grantRecord).includes("/"), false, "no path separator reaches the record")
     assert.equal(grantRecord.grantRefusal, undefined, "a proved grant records no refusal")
+    assert.match(grantRecord.lastRead.transcript, /^sha256:[a-f0-9]{64}$/)
+    assert.equal(retained.length, 1, "the grant retains its native bytes before publishing a reference")
+    assert.equal(grantRecord.lastRead.transcript, "sha256:" + retained[0].sha256)
+    assert.equal(realReadFileSync(retained[0].path, "utf8"), "$ /Users/x\\n\\nCMUX-" + "a".repeat(32) + "-BEGIN\\n$ /Users/x")
+    assert.equal(Number(realStatSync(retained[0].path).mode) & 0o777, 0o600, "raw transcript is private")
     const atGrant = cmuxCalls.length
     appPid = 5555
     const error = await owner.getScrollback().then(() => undefined, (reason) => reason)
@@ -1169,6 +1219,10 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     const readRecord = JSON.parse(cmuxHistoryEvidence(owner.cmuxHistory)["collector.cmuxHistory"])
     assert.equal(readRecord.pane, "surface-uuid-1", "the record still names the surface the run acquired")
     assert.equal(JSON.stringify(readRecord).includes("/"), false, "no path separator reaches the record")
+    assert.equal(retained.length, 3, "the grant and both native reads are observed by the artifact writer")
+    assert.equal(readRecord.lastRead.transcript, "sha256:" + retained[2].sha256)
+    await assert.rejects(createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout, darwinHosted: { receiptPath: "fixture" } }), /private capture directory and its artifact observer/)
     process.stdout.write = realWrite
     await owner.dispose()
   `

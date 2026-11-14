@@ -145,24 +145,121 @@ function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | 
     shellPath: "/bin/bash",
     shellArgs: ["-p", run.scriptPath],
     cwd: run.directory,
+    env: { TERMINFO_EDITOR_RUN_DIRECTORY: run.directory },
   }
   const terminalJson = JSON.stringify(terminal)
-  const extension =
-    prefix === "cursor"
-      ? `const vscode = require("vscode");
+  const extension = `const vscode = require("vscode");
+const fs = require("node:fs");
+const { join } = require("node:path");
+const { randomUUID } = require("node:crypto");
 exports.activate = async (context) => {
-  await vscode.commands.executeCommand("workbench.action.closePanel");
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
-  const terminal = vscode.window.createTerminal(${terminalJson});
+${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.action.closePanel");\n  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");' : ""}
+  const directory = ${JSON.stringify(run.directory)};
+  const runId = ${JSON.stringify(run.id)};
+  const activationNonce = randomUUID();
+  const requestPath = join(directory, "editor-request.json");
+  const replyDirectory = join(directory, "editor-replies-" + activationNonce);
+  const app = { name: vscode.env.appName, version: vscode.version };
+  if (typeof app.name !== "string" || !app.name || typeof app.version !== "string" || !app.version) {
+    throw new Error("Editor fixture has no native App name/version");
+  }
+  fs.mkdirSync(replyDirectory, { mode: 0o700 });
+  // Same-user files prove correlation with this activation, not which process wrote them.
+  const activation = { runId, activationNonce, extensionPid: process.pid,
+    activatedAt: Date.now(), app, requestPath, replyDirectory,
+    evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them" };
+  const publish = (path, value) => {
+    const temporary = path + "." + randomUUID() + ".tmp";
+    fs.writeFileSync(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 });
+    try { fs.linkSync(temporary, path); } finally { fs.unlinkSync(temporary); }
+  };
+  let terminal;
+  let closed = false;
+  let busy = false;
+  let sequence = 0;
+  let lastRequest;
+  let lastEvaluation;
+  const errors = join(directory, "editor-reader-errors.jsonl");
+  const observe = async (delivery) => {
+    if (closed || busy || !terminal) return;
+    let request;
+    let timer;
+    try {
+      let text;
+      try { text = fs.readFileSync(requestPath, "utf8"); }
+      catch (error) { if (error.code === "ENOENT") return; throw error; }
+      if (text === lastRequest) return;
+      lastRequest = text;
+      request = JSON.parse(text);
+      if (request.runId !== runId || request.activationNonce !== activationNonce ||
+          typeof request.nonce !== "string" || !/^[a-f0-9-]{36}$/.test(request.nonce) ||
+          typeof request.featureId !== "string" || typeof request.phase !== "string" ||
+          (request.expectedCwd !== undefined && typeof request.expectedCwd !== "string") ||
+          !Number.isFinite(request.requestedAt) || !Number.isFinite(request.deadline) ||
+          request.deadline <= request.requestedAt) {
+        throw new Error("Editor request has invalid activation/run/phase/nonce/deadline binding");
+      }
+      if (Date.now() > request.deadline) throw new Error("Editor request deadline expired before evaluation");
+      busy = true;
+      const pid = await Promise.race([
+        terminal.processId,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Editor processId deadline expired")),
+            Math.max(0, Math.min(5000, request.deadline - Date.now())));
+        }),
+      ]);
+      if (closed || Date.now() > request.deadline) throw new Error("Editor terminal closed or request deadline expired");
+      const integration = terminal.shellIntegration;
+      const cwd = integration && integration.cwd;
+      const reply = {
+        runId, featureId: request.featureId, phase: request.phase, nonce: request.nonce,
+        requestedAt: request.requestedAt, deadline: request.deadline,
+        activationNonce, extensionPid: process.pid, app, evaluatedAt: Date.now(),
+        sequence: ++sequence, delivery, status: "observed",
+        terminal: {
+          name: terminal.name,
+          processId: pid === undefined ? { present: false, reason: "Native terminal.processId is undefined" }
+            : { present: true, value: pid },
+          shellIntegrationCwd: cwd === undefined
+            ? { present: false, reason: integration === undefined
+                ? "Native terminal.shellIntegration is undefined" : "Native terminal.shellIntegration.cwd is undefined" }
+            : { present: true, value: cwd.toString(), components: {
+                scheme: cwd.scheme, authority: cwd.authority, path: cwd.path, query: cwd.query, fragment: cwd.fragment } },
+        },
+      };
+      lastEvaluation = reply;
+      fs.appendFileSync(join(directory, "editor-evaluations.jsonl"), JSON.stringify(reply) + "\\n", { mode: 0o600 });
+      if (request.expectedCwd !== undefined &&
+          (!reply.terminal.shellIntegrationCwd.present || reply.terminal.shellIntegrationCwd.value !== request.expectedCwd)) {
+        // The existing deadline-bounded interval or API event will evaluate the native object again.
+        // An unchanged cached value must not complete a known-state phase.
+        lastRequest = undefined;
+        return;
+      }
+      publish(join(replyDirectory, request.nonce + ".json"), reply);
+    } catch (error) {
+      fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid,
+        at: Date.now(), delivery, request, status: "failed", reason: error.message || String(error),
+        ...(lastEvaluation && lastEvaluation.nonce === request?.nonce ? { lastEvaluation } : {}) }) + "\\n",
+        { mode: 0o600 });
+    } finally {
+      clearTimeout(timer);
+      busy = false;
+    }
+  };
+  const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(directory, "editor-request.json"));
+  const interval = setInterval(() => observe("interval"), 25);
+  const stop = () => { closed = true; clearInterval(interval); };
+  context.subscriptions.push(watcher,
+    watcher.onDidCreate(() => observe("watcher")), watcher.onDidChange(() => observe("watcher")),
+    vscode.window.onDidCloseTerminal((value) => { if (value === terminal) stop(); }),
+    vscode.window.onDidChangeTerminalShellIntegration((event) => { if (event.terminal === terminal) observe("shell-integration"); }),
+    { dispose: stop });
+  publish(join(directory, "editor-activation.json"), activation);
+  terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
   terminal.show();
-};
-`
-      : `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
+  await observe("startup");
 };
 `
   writeFileSync(join(fixture, "extension.cjs"), extension, { flag: "wx", mode: 0o600 })
