@@ -629,6 +629,11 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       for (const checkpoint of checkpoints) visualFrames.push((await options.capture(checkpoint)).frame)
       assert.deepEqual(capturedCheckpoints, checkpoints)
       assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
+      // 34306 AC1: the renewal is recorded with the row that asked and both origins, so a later row
+      // is never left standing on an origin the artifact does not name. Asked after the retention
+      // assertion so this fixture keeps proving one install retained exactly one raw frame.
+      const renewed = await source.renewCaptureGeometry("reset.sgr-0")
+      assert.deepEqual(renewed.geometry, pixelGeometry)
       // Initial failure tests create a new adapter per run. Only re-entry on this same
       // adapter exposes a stale closure error blocking capture after successful renewal.
       if (proofState === "source-capable") {
@@ -642,6 +647,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", recordCapture: () => {} })
         assert.equal(renewalSource.captureGeometryRefusal, undefined, "successful renewal clears its prior refusal")
         assert.strictEqual(renewalSource.captureGeometry.geometry, pixelGeometry)
+        await renewalSource.renewCaptureGeometry("editing.delete-chars")
         await options.capture(checkpoints[0])
       }
       const results = options.draft.results.map(row => row.featureId !== visualId ? row : {
@@ -655,20 +661,30 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         observations: [], assertions: [], screenshotRefs: retained.map(result => result.frame.ref), ungradedDiagnostics: {}, suiteComplete: false }
       options.onCheckpoint(batch)
       const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, options.captureRunId + ".draft.json"), "utf8"))
-      assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
-      assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+      assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+      assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
       return batch
     } }))
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     const run = await collectProbeRun({ ids: [visualId] })
     assert.strictEqual(declaredResizeHook, declareWindowSize, "serve.ts wires Linux capture resize declaration into createLinuxInput")
-    assert.equal(calibrations, proofState === "source-capable" ? 3 : 1)
-    assert.equal(rawCaptures, proofState === "source-capable" ? 2 : 1)
-    assert.deepEqual(run.screenshotRefs, [raw.frame.ref])
-    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    assert.equal(calibrations, proofState === "source-capable" ? 5 : 2)
+    assert.equal(rawCaptures, proofState === "source-capable" ? 4 : 2)
+    // The renewal re-runs the fixture capture under the same frame, so its evidence is retained twice.
+    assert.deepEqual(run.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+    // 34306 AC1: the published fact states each renewal — the row and both origins — so no grade
+    // stands on an origin the run does not name.
+    const renewalRow = proofState === "source-capable" ? "editing.delete-chars" : "reset.sgr-0"
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, [
+      { row: renewalRow, from: pixelGeometry, to: pixelGeometry },
+    ])
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
-    assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
-    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals, [
+      { row: renewalRow, from: pixelGeometry, to: pixelGeometry },
+    ], "the checkpoint carries the same renewal record as the final run")
+    assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     // The stored criterion reference must resolve to the exact retained font receipt.
     assert.equal(run.rawReplies[fontKey], fontReceipt, "validated font-source receipt retained in final raw evidence")
     assert.equal(persisted.rawReplies[fontKey], fontReceipt, "final checkpoint retains identical receipt bytes")

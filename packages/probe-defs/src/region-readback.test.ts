@@ -1267,6 +1267,65 @@ test("a row whose frames carry no RIS never asks for the origin again (33774)", 
   expect(renewed).toBe(0)
 })
 
+/**
+ * @failure A run that renewed the origin left its later rows graded against an origin the artifact
+ *   never names: the renewal was told to the row that asked, and nothing said which origin the rows
+ *   after it were read at, so a frame read at the moved origin looked like one read at the pre-flight
+ *   origin to anyone reading the run later.
+ * @level l1
+ * @consumer packages/terminfo.dev/src/serve.ts (collector.captureCalibration.renewals, #34306 AC1)
+ * @source-grep 34306 AC1 as amended 2026-11-14: "a row whose read renewed the origin records the
+ *   origin it was read at, and a run that renewed the origin states each renewal"
+ * @testonly none
+ */
+test("a later row with no RIS is read at the renewed origin and asks for nothing (34306 AC1)", async () => {
+  // The renewed window is 59 rows tall (a Warp RIS moves every row 560 px = 35 rows down), so the
+  // grid has to agree with the origin this row is read at, exactly as it does after a real renewal.
+  const fake = ownedWindow({
+    rows: 59,
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: () => ({ x: 10, y: 64, width: 64, height: 16 }),
+  })
+  // The origin a renewal installed is the one the rest of the run reads at. This row carries no RIS,
+  // so it neither renews nor is allowed to fall back to the pre-flight reading.
+  const renewedReading = {
+    geometry: { ...GEOMETRY, textHeight: GEOMETRY.textHeight + 560 },
+    source: "measured by complete raster calibration" as const,
+  }
+  Object.assign(fake.ctx, { captureGeometry: renewedReading })
+  let renewed = 0
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    return renewedReading
+  }
+  fake.ctx.capture = async (request) => {
+    if (!request.cells || !request.pixelGeometry) throw new Error("Region request lacks its calibrated geometry")
+    const captured = await fake.read({
+      role: request.role,
+      label: request.label,
+      region: request.cells,
+      pixelGeometry: request.pixelGeometry,
+    })
+    return {
+      kind: "pixels" as const,
+      role: captured.frame.role,
+      label: captured.frame.label,
+      capturedAt: captured.frame.capturedAt,
+      ref: captured.frame.ref,
+      ...(captured.frame.sourceRef ? { sourceRef: captured.frame.sourceRef } : {}),
+      regionDigest: captured.regionDigest,
+      pixelsDigest: captured.pixelsDigest,
+      ...(captured.regionRectangle ? { regionRectangle: captured.regionRectangle } : {}),
+    }
+  }
+  const result = await captureRegionCallbackResult(fake.ctx, "editing.delete-chars", spec())
+  expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(renewed).toBe(0)
+  expect(fake.requests.length).toBeGreaterThan(0)
+  expect(fake.requests.every(({ pixelGeometry }) => pixelGeometry === renewedReading.geometry)).toBe(true)
+}, 30_000)
+
 test("region rows refuse a calibrated footprint that no longer covers the current grid before paint", async () => {
   const fake = ownedWindow({ rows: 30, cols: 120, repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }

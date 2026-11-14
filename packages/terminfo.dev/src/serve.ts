@@ -468,6 +468,11 @@ interface CaptureCalibrationFact {
   /** The named cause, present exactly when the geometry was refused. */
   refusal?: string
   causes?: Array<{ name: string; message: string; captureCommand?: unknown }>
+  /** Every renewal this run asked for, in the order it happened: the row that asked, the origin the
+   * rows before it were graded against, and the origin every later row is graded against. A run that
+   * never renewed carries none, and a run that did renew names each one so no grade stands on an
+   * origin the artifact does not state (#34306 AC1). */
+  renewals?: Array<{ row: string; from: PixelGeometry; to: PixelGeometry }>
 }
 
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
@@ -879,7 +884,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               source: "measured by complete raster calibration",
               sentinel: textOrigin.sentinel,
             }
-            captureCalibration = {
+            const installedCalibration: CaptureCalibrationFact = {
               outcome: "installed",
               basis: probeSource.captureGeometry.source,
               geometry: textOrigin.pixelGeometry,
@@ -887,6 +892,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               queries,
               installCensus,
             }
+            captureCalibration = installedCalibration
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
              * row 35 lower, footprint unchanged), so the probe asks for the origin again instead of
@@ -894,7 +900,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
              * re-writes its frame afterwards; this hook only re-measures and publishes the reading,
              * and it reuses the same pre-flight arm so one calibration authority exists per run.
              */
-            probeSource.renewCaptureGeometry = async () => {
+            probeSource.renewCaptureGeometry = async (row) => {
+              if (textOrigin === undefined) {
+                throw new Error("a renewal was asked before any origin was installed")
+              }
+              // Read before the re-measure: this is the origin the rows before this one were graded
+              // against, and the pair is what a reader needs to place the renewal in run order.
+              const from = textOrigin.pixelGeometry
               textOrigin = await calibrateCaptureOrigin({
                 ctx: probeSource,
                 pixelGeometry: reportedGeometry,
@@ -911,6 +923,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 source: "measured by complete raster calibration",
                 sentinel: textOrigin.sentinel,
               }
+              ;(installedCalibration.renewals ??= []).push({ row, from, to: textOrigin.pixelGeometry })
               return probeSource.captureGeometry
             }
           } catch (cause) {

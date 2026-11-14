@@ -2212,7 +2212,7 @@ export async function captureRegionReadbackDecision(
   let pixelGeometry = spec.pixelGeometry
   const renewAfterWindowMove = async (writes: string) => {
     if (!writes.includes("\x1bc") || ctx.renewCaptureGeometry === undefined) return
-    const renewed = await ctx.renewCaptureGeometry()
+    const renewed = await ctx.renewCaptureGeometry(id)
     if (renewed === undefined) return
     pixelGeometry = renewed.geometry
     ctx.write(writes)

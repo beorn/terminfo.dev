@@ -1555,8 +1555,13 @@ export interface TermProbeSource {
    * the frame again afterwards because calibration paints the whole grid. Absent on a text arm or a
    * collector with no arm to re-run, where a moved window still refuses by name exactly as it does
    * today. Returns the reading now installed, or undefined when this arm had nothing to renew.
+   *
+   * `row` is the probe id that asked, and the collector records it with the origin it moved FROM and
+   * the one it moved TO. That record is what makes a later row's origin readable: a run that renewed
+   * states each renewal and the row it happened under, so no grade is left standing on an origin the
+   * artifact does not name (#34306 AC1).
    */
-  renewCaptureGeometry?: () => Promise<
+  renewCaptureGeometry?: (row: string) => Promise<
     | {
         geometry: CapturePixelGeometry
         source: "measured by complete raster calibration"
