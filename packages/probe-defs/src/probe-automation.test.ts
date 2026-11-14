@@ -2990,15 +2990,16 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      if (raw === "") {
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "probe-invalid", reason: "No complete OSC 52 c reply" }),
-        ])
-      } else {
-        expect(result.observation?.outcome, JSON.stringify(raw)).toBe("inconclusive")
-      }
+      // @cto 2026-11-13: no cited read-default, so a missing OSC 52 c reply is probe-todo, not inconclusive.
+      expect(result.observation, JSON.stringify(raw)).toBeUndefined()
+      expect(result.assertions, JSON.stringify(raw)).toBeUndefined()
+      expect(result.tests, JSON.stringify(raw)).toEqual([
+        expect.objectContaining({
+          id: "criterion",
+          status: "probe-todo",
+          reason: expect.stringContaining("default not established"),
+        }),
+      ])
     }
     const uncorrelated = await read.term(
       terminalSource({
