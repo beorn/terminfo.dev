@@ -1023,7 +1023,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
   daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid") || { cat /out/daemon.log >&2; exit 2; }
-  jq 'del(.token)' "$daemon_file" > /out/daemon-registration.json
+  jq 'del(.token)' "$daemon_file" > /out/daemon-registration.json || {
+    registration_copy_status=$?
+    echo "$daemon_file: Owned preflight collector registration copy failed (jq exit $registration_copy_status); expected the live owned collector JSON returned by readiness" >&2
+    exit 2
+  }
   port=$(jq -er .port /out/daemon-registration.json)
   token=$(jq -er .token "$daemon_file")
   curl --fail-with-body --silent --show-error "http://127.0.0.1:$port/info" > /out/info.json
@@ -1089,7 +1093,11 @@ if [[ "${1:-}" == "--inside" ]]; then
     daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid" "$preflight_pid" "$mux_socket_receipt") || {
       cat /out/daemon.log >&2; exit 2;
     }
-    jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json
+    jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json || {
+      registration_copy_status=$?
+      echo "$daemon_file: Owned mux collector registration copy failed (jq exit $registration_copy_status); expected a new live owned collector JSON after preflight PID $preflight_pid retired" >&2
+      exit 2
+    }
     collector_pid=$(jq -er .pid /out/mux-daemon-registration.json)
     port=$(jq -er .port /out/mux-daemon-registration.json)
     token=$(jq -er .token "$daemon_file")

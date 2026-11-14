@@ -2577,8 +2577,8 @@ describe("Kitty protocol detection", () => {
   // library callback, which stays PROBE TODO, and an answering terminal must stay byte for byte as before.
   const everySiblingSilent =
     "Untestable (no way to tell): no mode query in this run got a DECRPM reply. CSI ? 5522 $ p and its control query CSI ? Pm $ p for modes 7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031 all went unanswered, so this terminal has no report to read."
-  // @cto c0dbe6ff (shape 2): a reporter that answers some modes and not 5522 has decided nothing
-  // about 5522, so that silence is not a probe fault. @cpo/term 2ddb8d2a keeps existing Untestable
+  // @cto b15bd58a-e70c-44f7-8c86-19fb354fd5b7: mixed-reporter silence is not a probe fault.
+  // @cpo/term 2ddb8d2a keeps existing Untestable
   // reasons and adds no new ones: the partial-silence case names the missing observer as PROBE TODO.
   const oneSiblingSilent =
     "This probe sends only the mode query CSI ? 5522 $ p; it writes nothing through OSC 5522 and reads nothing back, and no probe in this suite reads the clipboard for this mode. The mode reporter answered 7; CSI ? 5522 $ p and 13 of 14 controls were a measured silence with the fence answered; that silence decides nothing. The observer that would decide it writes a payload through OSC 5522 and reads it back through the OSC 52 read path, which a terminal may gate behind clipboard-read permission."
@@ -2669,7 +2669,7 @@ describe("Kitty protocol detection", () => {
     },
   )
 
-  // @cto c0dbe6ff boundary kept on record: when every control answers and only 5522 is silent, the row
+  // Existing detection boundary: when every control answers and only 5522 is silent, the row
   // behaves exactly as before this change — a probe-invalid detection, not the Untestable route.
   test("OSC 5522 terminal arm keeps its detection reading when every control answers", async () => {
     const da1 = "\x1b[?1;2c"
