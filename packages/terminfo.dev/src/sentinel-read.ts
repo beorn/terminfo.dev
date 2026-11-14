@@ -96,17 +96,6 @@ export async function readThroughSentinel<T>(input: {
    * undeclared, it is refused by name.
    */
   scroll?: DeclaredViewportHold
-  /**
-   * The most recent UNDECLARED read of this feature, whose origin is the only base a declared hold
-   * may crop at (@cto 2026-11-13, 2). A hold with no such read has no base and refuses by name.
-   */
-  base?: { label: string; origin: { x: number; y: number } }
-  /**
-   * The measured displacement between the base frame's content and this read's PRE-PAINT frame (2a).
-   * Never derived from the pre-paint-to-painted difference: that comparison cannot see a text area
-   * that moved before the pre-paint frame was taken.
-   */
-  witnessShift?: { rows: number; columns: number; unique: boolean }
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
@@ -216,8 +205,6 @@ export async function readThroughSentinel<T>(input: {
           basis: basisText,
           changedOutside: ignoredPixels,
           ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
-          ...(input.base !== undefined ? { base: input.base } : {}),
-          ...(input.witnessShift !== undefined ? { witnessShift: input.witnessShift } : {}),
           refuse: wrong,
         })
       }
@@ -289,10 +276,6 @@ function onSettledOrigin(input: {
   basis: string
   changedOutside: number
   scroll?: DeclaredViewportHold
-  /** The most recent UNDECLARED read of this feature: its origin and label (34163, @cto 2). */
-  base?: { label: string; origin: { x: number; y: number } }
-  /** The measured displacement of the base frame's content in this read's pre-paint frame (2a). */
-  witnessShift?: { rows: number; columns: number; unique: boolean }
   refuse: (reason: string) => Error
 }): NamedTextOrigin {
   const { settled, derived, size, scroll } = input
@@ -301,7 +284,6 @@ function onSettledOrigin(input: {
   const slack = SENTINEL_BOX_SLACK_PX
   const rows = Math.round(dy / size.height)
   const wholeRows = Math.abs(dy - rows * size.height) <= slack
-  const movedBy = `the pair landed ${dy} px (${wholeRows ? `${rows} rows` : "not a whole number of rows"}) off the settled origin at ${settled.origin.x},${settled.origin.y}, which puts its box at ${derived.x},${derived.y} against an expected ${settled.origin.x},${settled.origin.y} for a ${size.width}x${size.height} cell`
   const reanchored: NamedTextOrigin = {
     ...settled,
     origin: derived,
@@ -331,83 +313,12 @@ function onSettledOrigin(input: {
     if (wholeRows && Math.abs(dx) <= slack && rows === 0) return onSettledGrid
     return reanchored
   }
-  const unresolved = (detail: string) => new CaptureHoldUnresolved(`${input.label}: ${detail} (34163)`)
-  const base = input.base
-  if (base === undefined) {
-    throw unresolved(
-      `this read declared a viewport hold of ${scroll.notches} notch(es) and no earlier UNDECLARED read in this probe proved a stationary origin, so there is no base to prove this hold against`,
-    )
-  }
-  if (scroll.rows === undefined) {
-    throw unresolved(
-      `this read declared a viewport hold of ${scroll.notches} notch(es) and no row count, and one notch is not a row count, so no measured shift can be proved against it`,
-    )
-  }
-  const shift = input.witnessShift
-  if (shift === undefined) {
-    throw unresolved(
-      `no measured witness relates the base frame "${base.label}" to this read's pre-paint frame, so this crop's origin is unproved`,
-    )
-  }
-  if (!shift.unique) {
-    throw unresolved(
-      `more than one whole-cell shift of the base frame "${base.label}" matches this read's pre-paint frame, so the displacement between them is ambiguous`,
-    )
-  }
-  if (shift.columns !== 0) {
-    throw unresolved(
-      `the base frame "${base.label}" moved ${shift.columns} columns in this read's pre-paint frame, and a viewport hold moves no columns`,
-    )
-  }
-  if (shift.rows !== scroll.rows) {
-    throw unresolved(
-      `the base frame "${base.label}" moved ${shift.rows} rows in this read's pre-paint frame against the declared hold of ${scroll.rows} rows, so the frames carry a displacement this read did not declare`,
-    )
-  }
-  if (Math.abs(dx) > slack) {
-    throw input.refuse(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) up, which moves the pair in ROWS; ${movedBy} and the horizontal offset is ${dx} px, so this is not a hold`,
-    )
-  }
-  if (!wholeRows) {
-    throw input.refuse(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) but ${movedBy}: a hold moves the pair by whole rows of the ${size.width}x${size.height} cell`,
-    )
-  }
-  if (rows === 0) {
-    // A terminal that scrolls to bottom when it receives OUTPUT snaps as this read paints the pair,
-    // because the paint IS a pty write. Its frame then shows the bottom viewport with the pair on the
-    // settled grid, which is exactly the snapped candidate the viewport-hold probe exists to detect,
-    // so this is an OBSERVATION the probe can grade and never a refusal (@cto 2026-11-13). Cropping
-    // at the settled origin is correct here for the same reason: the pair is on the grid.
-    return {
-      ...settled,
-      origin: base.origin,
-      basis: `${input.basis}; cropped at the origin proved by the undeclared read "${base.label}", and the pair's NET delta from the base is zero, which a held viewport and an opposite whole-row move can both produce, so this reads as an observation and never as proof the viewport was held (34163)`,
-      basisKind: settled.basisKind,
-      witness: input.witness,
-      changedOutside: input.changedOutside,
-      scrolledRows: { rows: 0, direction: scroll.direction, notches: scroll.notches },
-    }
-  }
-  const expectedSign = scroll.direction === "up" ? 1 : -1
-  if (Math.sign(rows) !== expectedSign) {
-    throw input.refuse(
-      `${input.label}: this read declared the viewport held ${scroll.direction} and the pair landed ${rows} rows off the settled origin, whose sign is the other way — a hold in that direction cannot move the pair there`,
-    )
-  }
-  if (Math.abs(rows) > scroll.maxRows) {
-    throw input.refuse(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) that can have scrolled at most ${scroll.maxRows} rows on this screen, and the pair landed ${Math.abs(rows)} rows off the settled origin`,
-    )
-  }
-  return {
-    ...settled,
-    origin: base.origin,
-    basis: `${input.basis}; cropped at the origin proved by the undeclared read "${base.label}", with a measured witness that this read's pre-paint frame moved exactly ${shift.rows} rows and no columns off that base frame; the pair landed ${Math.abs(rows)} rows ${rows > 0 ? "below" : "above"} the settled origin under a declared hold of ${scroll.notches} notch(es) (observation only — no grade reads it until the XTest wheel unit is measured, 34163)`,
-    basisKind: settled.basisKind,
-    witness: input.witness,
-    changedOutside: input.changedOutside,
-    scrolledRows: { rows, direction: scroll.direction, notches: scroll.notches },
-  }
+  // Every declared hold is unresolved (@cto 2026-11-13, smaller ruling after @dev/1's peer read):
+  // two frames carry the NET displacement of the text area, so a hold of N rows plus an opposite
+  // move of M rows is indistinguishable from one that moved N - M. No raster pair can separate them,
+  // and this code will not crop at an origin it cannot prove. The wheel caller has no row count to
+  // declare anyway, so the honest answer is a named gap that grades nothing.
+  throw new CaptureHoldUnresolved(
+    `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es); a declared hold is not read until the rows it moves are established independently, so no origin is claimed (34163)`,
+  )
 }

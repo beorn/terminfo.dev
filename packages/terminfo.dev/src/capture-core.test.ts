@@ -16,7 +16,6 @@ import {
   command,
   finishCapture,
   locateColour,
-  measureFrameShift,
   retain,
   type CapturedFrame,
   type OriginResolver,
@@ -506,87 +505,4 @@ test("a region that leaves the frame refuses by name and never shrinks to fit (3
       changedOutside: 7,
     }),
   ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155; 7 px changed outside those boxes/)
-})
-
-/** A window whose text area is painted in distinct horizontal bands, one band per text row. */
-function bandedWindow(input: {
-  width: number
-  height: number
-  area: { x: number; y: number; width: number; height: number }
-  cellHeight: number
-  rows: number
-  /** Rows the content sits BELOW the top of the area (positive) or above it (negative). */
-  shift?: number
-  blank?: boolean
-}): CapturedFrame {
-  const { width, height, area, cellHeight, rows } = input
-  const rgba = new Uint8Array(width * height * 4)
-  const shift = input.shift ?? 0
-  if (!input.blank) {
-    for (let row = 0; row < rows; row++) {
-      const band = area.y + (row + shift) * cellHeight
-      if (band < area.y || band + cellHeight > area.y + rows * cellHeight) continue
-      for (let y = band; y < band + cellHeight; y++) {
-        for (let x = area.x; x < area.x + area.width; x++) {
-          const offset = (y * width + x) * 4
-          rgba[offset] = (row * 7 + 3) & 0xff
-          rgba[offset + 1] = (row * 13 + 1) & 0xff
-          rgba[offset + 2] = (row * 29 + 5) & 0xff
-          rgba[offset + 3] = 0xff
-        }
-      }
-    }
-  }
-  return { width, height, rgba }
-}
-
-test("the witness measures a declared whole-row shift and calls it unique (34163, @cto 2a)", () => {
-  const geometry = { width: 64, height: 96, area: { x: 4, y: 6, width: 48, height: 80 }, cellHeight: 10, rows: 8 }
-  const base = bandedWindow(geometry)
-  const frame = bandedWindow({ ...geometry, shift: 2 })
-  const measured = measureFrameShift({
-    base,
-    frame,
-    cell: { width: 6, height: 10 },
-    area: geometry.area,
-    maxRows: 4,
-  })
-  expect(measured).toEqual({ rows: 2, columns: 0, unique: true, candidates: 1 })
-})
-
-test("the witness reports N plus one undeclared rows as that shift, so the caller refuses it (34163, @cto 2)", () => {
-  const geometry = { width: 64, height: 96, area: { x: 4, y: 6, width: 48, height: 80 }, cellHeight: 10, rows: 8 }
-  const measured = measureFrameShift({
-    base: bandedWindow(geometry),
-    frame: bandedWindow({ ...geometry, shift: 3 }),
-    cell: { width: 6, height: 10 },
-    area: geometry.area,
-    maxRows: 4,
-  })
-  expect(measured?.rows).toBe(3)
-  expect(measured?.rows).not.toBe(2)
-})
-
-test("a blank text area is ambiguous, never a best-score pick (34163, @cto 2)", () => {
-  const geometry = { width: 64, height: 96, area: { x: 4, y: 6, width: 48, height: 80 }, cellHeight: 10, rows: 8 }
-  const measured = measureFrameShift({
-    base: bandedWindow({ ...geometry, blank: true }),
-    frame: bandedWindow({ ...geometry, blank: true }),
-    cell: { width: 6, height: 10 },
-    area: geometry.area,
-    maxRows: 4,
-  })
-  expect(measured?.unique).toBe(false)
-  expect(measured!.candidates).toBeGreaterThan(1)
-})
-
-test("frames no whole-row shift explains measure nothing at all (34163, @cto 2b)", () => {
-  const geometry = { width: 64, height: 96, area: { x: 4, y: 6, width: 48, height: 80 }, cellHeight: 10, rows: 8 }
-  const base = bandedWindow(geometry)
-  const repainted = bandedWindow(geometry)
-  for (let index = 0; index < repainted.rgba.length; index += 4)
-    repainted.rgba[index] = (repainted.rgba[index]! + 97) & 0xff
-  expect(
-    measureFrameShift({ base, frame: repainted, cell: { width: 6, height: 10 }, area: geometry.area, maxRows: 4 }),
-  ).toBeUndefined()
 })
