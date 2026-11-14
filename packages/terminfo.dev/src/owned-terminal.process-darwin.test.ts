@@ -255,7 +255,7 @@ function runDarwinArm(scenario: {
       process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
     }
     const reads = []
-    const pasteboard = []
+    const pasteboardCalls = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     const realFs = await import("node:fs")
     const realOpenSync = realFs.openSync
@@ -317,7 +317,7 @@ function runDarwinArm(scenario: {
         // #31741 follow-on: an owned Terminal.app window now carries its own pasteboard fixture, so
         // construction reads the pasteboard once. Nothing here writes the real one.
         if (command === "/usr/bin/pbpaste" || command === "/usr/bin/pbcopy") {
-          pasteboard.push(command)
+          pasteboardCalls.push(command)
           const pasteboard = new EventEmitter()
           Object.assign(pasteboard, {
             stdout: new EventEmitter(),
@@ -427,7 +427,9 @@ function runDarwinArm(scenario: {
         }))
       }
     } catch (error) {
-      console.log("REFUSED " + error.message + " PASTEBOARD " + JSON.stringify(pasteboard))
+      console.log("REFUSED " + error.message)
+      // Only the refusal fixture reports the count, so no other case changes shape.
+      if (scenario.windowOwnership === "refused") console.log("PASTEBOARD " + JSON.stringify(pasteboardCalls))
     }
   `
   return {
@@ -784,4 +786,27 @@ test("the process assertion has one strict shape: exact keys, known provider and
   ]) {
     expect(() => parseProcessOwnerAssertion(assertion)).toThrow(/Invalid process owner assertion/)
   }
+
+})
+
+
+// @cto 1c7e19df condition 4, as @dev/3 required: the owned arm shares the machine’s one pasteboard,
+// so the first write must be preceded by proof that the run still owns its Terminal.app window. A
+// run whose window is gone writes nothing at all - it never grades someone else’s clipboard.
+test("an owned Terminal.app run that no longer owns its window writes nothing to the shared pasteboard", () => {
+  const result = runDarwinArm({
+    provider: "kitty",
+    workerPid: "self",
+    ownerPid: 4242,
+    marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
+    // collector <- login shell 4242 <- Terminal 777 <- launchd: a real owned tab, then a window
+    // the window server says no longer exists.
+    parent: { self: 4242, "4242": 777, "777": 1, "1": 0 },
+    comms: { "777": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+    terminalAppPid: 777,
+    batch: "terminal-app",
+    windowOwnership: "refused",
+  })
+  expect(result.stdout).toMatch(/REFUSED .*owned Terminal window no longer exists uniquely/)
+  expect(result.stdout).toMatch(/PASTEBOARD \[\]/)
 })
