@@ -122,6 +122,23 @@ describe("34040 tier 3: no clear row at all still anchors, on columns clear of e
     expect([pair.a.col, pair.b.col]).not.toContain(11)
   })
 
+  it("names the tier it actually used when the first cell came from the column fallback (@dev/10, 34040)", () => {
+    // Regions leave no free row and the probe's own band covers the row below, so the first cell is
+    // chosen by the column fallback. The pair it finds is a tier-3 pair, not a region-free one, and
+    // both cells keep the edge clearance the fallback used.
+    const regions = [{ top: 1, left: 1, bottom: 2, right: 2 }]
+    const avoid = [{ top: 3, left: 1, bottom: 3, right: 2 }]
+    const pair = witnessCellsFor(regions, { rows: 3, cols: 10 }, avoid)
+    expect(pair.tier).toBe("no-clear-row")
+    for (const cell of [pair.a, pair.b]) {
+      for (const region of [...regions, ...avoid]) {
+        expect(cell.col <= region.left - 2 || cell.col >= region.right + 2).toBe(true)
+      }
+    }
+    expect(pair.b.row).not.toBe(pair.a.row)
+    expect(pair.b.col).not.toBe(pair.a.col)
+  })
+
   it("still refuses when no column is clear of the region", () => {
     // Every row is a region row and no column is two cells clear of the region, so no tier can place
     // a cell; the read refuses with the first cell's own limit.

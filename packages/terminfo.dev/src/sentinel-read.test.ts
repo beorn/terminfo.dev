@@ -238,6 +238,78 @@ test("a sentinel-coloured run along a same-row pair reads as one wide box and re
   expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
 })
 
+// @dev/10 peer read, 34040: the tier-2 pair is the reason the tiers exist, so the READ has to accept
+// one. Two isolated cell-sized boxes on the pair's shared row anchor the crop, and the basis says the
+// pair measured one axis; a pair whose boxes sit on different rows is refused in words.
+test("a same-row pair anchors on the column pitch and says it measured one axis (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  const frame = windowAt({ x: 0, y: 0 }, { painted: false })
+  for (const [col, row] of [
+    [1, 3],
+    [3, 3],
+  ] as const) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 2; dx += 1) {
+        const x = (col - 1) * 2 + dx
+        const y = (row - 1) * 2 + dy
+        frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+      }
+    }
+  }
+  const painted = source(sameRowGrid)
+  const origin = await readThroughSentinel({
+    source: painted.source,
+    prePaint: async () => windowAt({ x: 0, y: 0 }, { painted: false }),
+    capture: async (resolve) => resolve({ frame, pixelGeometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    deadline: Date.now() + 1_000,
+  })
+  expect(origin.origin).toEqual({ x: 0, y: 0 })
+  expect(origin.basis).toContain(
+    "sentinel re-located by frame difference at cells 3,1 and 3,3 (33000, 33981) (one-axis pair: both cells on one row, so it measures the column pitch only)",
+  )
+  expect(origin.witness).toEqual({
+    a: { cell: { row: 3, col: 1 }, box: { x: 0, y: 4 } },
+    b: { cell: { row: 3, col: 3 }, box: { x: 4, y: 4 } },
+  })
+  // The pair paints and restores the two cells this grid anchored on.
+  expect(painted.writes.at(0)).toBe("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[3;3H\x1b[45m \x1b[0m\x1b8")
+  expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
+})
+
+test("a same-row pair whose boxes sit on different rows is refused in words (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  const frame = windowAt({ x: 0, y: 0 }, { painted: false })
+  for (const [col, row] of [
+    [1, 3],
+    [3, 2],
+  ] as const) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 2; dx += 1) {
+        const x = (col - 1) * 2 + dx
+        const y = (row - 1) * 2 + dy
+        frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+      }
+    }
+  }
+  const painted = source(sameRowGrid)
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => windowAt({ x: 0, y: 0 }, { painted: false }),
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(
+    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: their offset is -4,2: this pair is on one row, so it can only measure the column pitch, and these two boxes do not share a row — they sit 2 px apart vertically, more than the 2 px blend slack or half the 2 px cell; it did not settle before this read's deadline$/,
+  )
+})
+
 test("two changed cells at an offset the painted pair does not imply refuse by name (33981)", async () => {
   const frame = windowAt({ x: 0, y: 0 }, { painted: false })
   // Two cell-sized sentinel blocks one cell apart on BOTH axes would be the pair; these sit two cells

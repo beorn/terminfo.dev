@@ -807,8 +807,13 @@ export function witnessCellsFor(
     { row: a.row + 2, col: a.col + 1 },
     { row: a.row + 2, col: a.col - 1 },
   ]
-  const found = preferred.find((cell) => usable(cell))
-  if (found) return { a, b: found, tier: "region-free" }
+  // When the first cell came from the column-clear fallback, the whole pair is a tier-3 pair: the
+  // second cell keeps the same edge clearance, and the record says "no-clear-row" rather than
+  // claiming a region-free pair the frame never had (@dev/10 peer read, 34040).
+  const tier: WitnessTier = onlyColumnsClear ? "no-clear-row" : "region-free"
+  const acceptable = onlyColumnsClear ? (cell: { row: number; col: number }) => usable(cell) && edgeClear(cell) : usable
+  const found = preferred.find((cell) => acceptable(cell))
+  if (found) return { a, b: found, tier }
   if (!onlyColumnsClear) {
     for (const cell of cellsNearestFirst(a, grid, usable)) {
       return { a, b: cell, tier: "region-free" }
