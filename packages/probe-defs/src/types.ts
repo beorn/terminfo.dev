@@ -1545,6 +1545,25 @@ export interface TermProbeSource {
      */
     sentinel?: CalibrationSentinel
   }
+  /**
+   * Re-measure this run's pixel origin after a frame that re-lays-out the window. A full reset (RIS)
+   * re-renders a block terminal's shell-integration block, so every absolute row after it renders
+   * elsewhere while the grid size and the calibrated footprint stay identical — a move the footprint
+   * check cannot see (#33774; Warp runs 43285337469 and 43597976383, 560 px = 35 rows, stable).
+   *
+   * A collector installs this only when it can re-run its own calibration arm, and the caller writes
+   * the frame again afterwards because calibration paints the whole grid. Absent on a text arm or a
+   * collector with no arm to re-run, where a moved window still refuses by name exactly as it does
+   * today. Returns the reading now installed, or undefined when this arm had nothing to renew.
+   */
+  renewCaptureGeometry?: () => Promise<
+    | {
+        geometry: CapturePixelGeometry
+        source: "measured by complete raster calibration"
+        sentinel?: CalibrationSentinel
+      }
+    | undefined
+  >
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
   measureRenderedWidth(text: string): Promise<RenderedWidthResult>

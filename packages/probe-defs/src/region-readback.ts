@@ -2198,6 +2198,25 @@ export async function captureRegionReadbackDecision(
     frames,
   })
   const discriminator = spec.discriminator
+  /**
+   * 33774: a frame that carries RIS re-lays-out a block terminal's window. On Warp (runs 43285337469
+   * and 43597976383) every absolute row after it renders 35 rows lower — 0,560 px — while the grid and
+   * the calibrated footprint stay identical, which is why the footprint check cannot see it and the
+   * pair-anchored read refuses "the frame moved after cells ... were chosen".
+   *
+   * The collector re-measures the origin, and the frame this row painted is written again afterwards:
+   * calibration paints the whole grid, so without the re-paint the read would compare the calibration
+   * pattern instead of the frame. A collector with no arm to re-run installs no hook, and the row
+   * refuses exactly as it does today — never silently at the old origin.
+   */
+  let pixelGeometry = spec.pixelGeometry
+  const renewAfterWindowMove = async (writes: string) => {
+    if (!writes.includes("\x1bc") || ctx.renewCaptureGeometry === undefined) return
+    const renewed = await ctx.renewCaptureGeometry()
+    if (renewed === undefined) return
+    pixelGeometry = renewed.geometry
+    ctx.write(writes)
+  }
   const savedRendition = spec.savedRendition
   if ((savedRendition?.subsets.filter((subset) => subset.expected).length ?? 0) > 1) {
     throw new Error(`${id}: more than one expected saved-rendition subset`)
@@ -2387,7 +2406,10 @@ export async function captureRegionReadbackDecision(
     // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
     // Each declared frame still gets its own seed writes and paint witness below.
     ctx.write("\x1b[2J\x1b[H")
-    if (savedRendition) ctx.write(spec.expected)
+    if (savedRendition) {
+      ctx.write(spec.expected)
+      await renewAfterWindowMove(spec.expected)
+    }
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
     const {
@@ -2402,7 +2424,7 @@ export async function captureRegionReadbackDecision(
           role: "control",
           label: `${id}: capture stability 1`,
           region: spec.region,
-          pixelGeometry: spec.pixelGeometry,
+          pixelGeometry: pixelGeometry,
         })
         frames.push(measured.frame)
         return measured
@@ -2412,7 +2434,7 @@ export async function captureRegionReadbackDecision(
           role: "control",
           label: `${id}: capture stability 2`,
           region: spec.region,
-          pixelGeometry: spec.pixelGeometry,
+          pixelGeometry: pixelGeometry,
         })
         frames.push(measured.frame)
         return measured
@@ -2421,6 +2443,7 @@ export async function captureRegionReadbackDecision(
     if (instability) return review(instability)
     for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
+      await renewAfterWindowMove(step.writes)
       ctx.write(park)
       // Writes can still be waiting for paint when this baseline is captured. Declared rows
       // challenge a space/glyph pair in both directions before trusting the requested paint.
@@ -2430,7 +2453,7 @@ export async function captureRegionReadbackDecision(
         role: "control",
         label: `${step.label} — baseline`,
         region: witnessCell,
-        pixelGeometry: spec.pixelGeometry,
+        pixelGeometry: pixelGeometry,
       })
       ctx.write(`${sentinelWrite}${witnessGlyph(index)}`)
       const witnessOptions = {
@@ -2438,7 +2461,7 @@ export async function captureRegionReadbackDecision(
         id,
         label: step.label,
         witnessCell,
-        pixelGeometry: spec.pixelGeometry,
+        pixelGeometry: pixelGeometry,
         geometrySource: spec.geometrySource,
         baseline,
         timeoutMs,
@@ -2478,7 +2501,7 @@ export async function captureRegionReadbackDecision(
         role: step.role,
         label: step.label,
         region: spec.region,
-        pixelGeometry: spec.pixelGeometry,
+        pixelGeometry: pixelGeometry,
       })
       digests.push(measured.regionDigest)
       cropRectangles.push(measured.regionRectangle)
@@ -2493,7 +2516,7 @@ export async function captureRegionReadbackDecision(
             resetReference,
             stability,
             region: spec.region,
-            pixelGeometry: spec.pixelGeometry,
+            pixelGeometry: pixelGeometry,
             geometrySource: spec.geometrySource,
           })
         const invalid = (note: string) =>
@@ -2593,7 +2616,7 @@ export async function captureRegionReadbackDecision(
         if (failed) return invalid(`${step.label}: saved rendition qualification failed; target was not sent`)
       }
       if (rowGroups && index < 3) {
-        groupReads.push(await readRowGroups(read, step, rowGroups, spec.pixelGeometry, frames))
+        groupReads.push(await readRowGroups(read, step, rowGroups, pixelGeometry, frames))
       }
     }
     const seed = digests[0]
@@ -2625,7 +2648,7 @@ export async function captureRegionReadbackDecision(
       region: spec.region,
       sentinel: spec.sentinel,
       cursorRow: spec.cursorRow,
-      pixelGeometry: spec.pixelGeometry,
+      pixelGeometry: pixelGeometry,
       geometrySource: spec.geometrySource,
       seed,
       after,
