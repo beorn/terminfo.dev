@@ -1128,6 +1128,8 @@ describe("default stage", () => {
   // Requirement: an uncounted run must not pay for hashing and re-sending a node_modules tree an
   // earlier full run already hashed, and its receipt must say so; a changed lock must restage it.
   it("reuses a stage a full run hashed, re-sending no node_modules, and names the light check", () => {
+    // A light scan must discover this closure even though it does not scan node_modules.
+    symlinkSync(join("..", "..", "extra", "pkg"), join(code, "vendor", "silvery", "extra"))
     const first = run()
     expect(first.status, first.stderr).toBe(0)
     expect(proof(first).check).toBe("full")
@@ -1160,6 +1162,12 @@ describe("default stage", () => {
     expect(typeof receipt.lightManifestSha256).toBe("string")
     // The marker is not rewritten by a run that did not hash the trees it stands for.
     expect(readFileSync(markerPath, "utf8")).toBe(JSON.stringify(marker, null, 2) + "\n")
+    // Keep the altered bytes through transfer so the witness, rather than rsync, must detect them.
+    writeFileSync(join(stage, "source", "extra", "pkg", "index.ts"), "tampered closure\n")
+    const altered = run({ SHIM_RSYNC_SKIP_EXTRA: "1" }, ["--check", "light"], undefined, "kitty-light-altered")
+    expect(altered.status).not.toBe(0)
+    expect(altered.stderr).toContain("resource manifest mismatch")
+    expect(altered.stderr).toContain("extra/pkg/index.ts")
   }, 60_000)
 
   it("restages fully when the lock is not the one the stage was hashed against", () => {
