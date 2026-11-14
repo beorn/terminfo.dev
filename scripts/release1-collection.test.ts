@@ -48,6 +48,7 @@ import {
   readCollectorAttempt,
   type RunDraft,
   type CapturedRunDraft,
+  type AppLaunchReceipt,
 } from "@terminfo/probe-defs"
 import {
   assertHostedWindowCustody,
@@ -1991,7 +1992,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   }
 }, 60_000)
 
-function ownedMacLaunchReceipt() {
+function ownedMacLaunchReceipt(): AppLaunchReceipt {
   return {
     bundlePath: "/System/Applications/Utilities/Terminal.app",
     cfBundleShortVersionString: "2.15",
@@ -1999,7 +2000,7 @@ function ownedMacLaunchReceipt() {
     executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
     executableSha256: "c5f23927d33d886d3a3e39b4ef76381b1971a9cc74523f7ebf5e60affaf8fa8b",
     sourceArtifact: {
-      kind: "sealed-macos-system-volume" as const,
+      kind: "sealed-macos-system-volume",
       macOSBuild: "25G83",
       snapshotUUID: "C1602FFF-7F1F-48FE-B3AC-3A74675B4416",
       snapshotName: "com.apple.os.update-60587424F5399FC05D957DF05B4D2F65543462495C77AEF520F790FBB57CB212",
