@@ -642,7 +642,9 @@ async function heldRead(input: {
   frame: CapturedFrame
   prePaint: CapturedFrame
   settled?: ReturnType<typeof settledAt> | undefined
-  scroll?: { direction: "up" | "down"; notches: number; maxRows: number }
+  scroll?: { direction: "up" | "down"; notches: number; rows?: number; maxRows: number }
+  base?: { label: string; origin: { x: number; y: number } }
+  witnessShift?: { rows: number; columns: number; unique: boolean }
   geometry?: typeof pixelGeometry
 }) {
   const painted = source()
@@ -655,24 +657,110 @@ async function heldRead(input: {
     regions: [cells],
     ...(input.settled !== undefined ? { settled: input.settled } : {}),
     ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
+    ...(input.base !== undefined ? { base: input.base } : {}),
+    ...(input.witnessShift !== undefined ? { witnessShift: input.witnessShift } : {}),
     deadline: Date.now() - 1,
   })
 }
 
-test("a declared hold crops at the settled origin and records the rows it moved the pair (34163)", async () => {
+test("a declared hold crops at the base origin once the witness measures the declared shift (34163, @cto 2a)", async () => {
   const origin = { x: 2, y: 2 }
-  const held = { direction: "up" as const, notches: 1, maxRows: 4 }
+  const held = { direction: "up" as const, notches: 1, rows: 1, maxRows: 4 }
   const result = await heldRead({
     frame: heldWindow({ origin, shift: { y: 2 } }),
     prePaint: before(origin),
     settled: settledAt(origin),
     scroll: held,
+    base: { label: "constructed bottom reference", origin },
+    witnessShift: { rows: 1, columns: 0, unique: true },
   })
   expect(result.origin).toEqual(origin)
   expect(result.scrolledRows).toEqual({ rows: 1, direction: "up", notches: 1 })
-  expect(result.basis).toContain("cropped at the settled calibrated origin")
-  expect(result.basis).toContain("no grade reads it until the XTest wheel unit is measured")
+  expect(result.basis).toContain('cropped at the origin proved by the undeclared read "constructed bottom reference"')
+  expect(result.basis).toContain("moved exactly 1 rows and no columns")
   expect(result.changedOutside).toBe(0)
+})
+
+test("a declared hold with no earlier undeclared read refuses by name: no base, no cell (34163, @cto 3)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      witnessShift: { rows: 1, columns: 0, unique: true },
+    }),
+  ).rejects.toThrow(/no earlier UNDECLARED read in this probe proved a stationary origin/)
+})
+
+test("a declared hold with no row count refuses by name: one notch is not a row count (34163, @cto 2a)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 0, unique: true },
+    }),
+  ).rejects.toThrow(/declared a viewport hold of 1 notch\(es\) and no row count, and one notch is not a row count/)
+})
+
+test("a declared hold with no measured witness refuses by name and names both frames (34163, @cto 2b)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+    }),
+  ).rejects.toThrow(/no measured witness relates the base frame "constructed bottom reference"/)
+})
+
+test("an ambiguous displacement is unresolved, never a best-score pick (34163, @cto 2)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 0, unique: false },
+    }),
+  ).rejects.toThrow(/more than one whole-cell shift of the base frame "constructed bottom reference" matches/)
+})
+
+test("a declared hold whose witness moved N plus one undeclared rows is unresolved (34163, @cto 2)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 2, columns: 0, unique: true },
+    }),
+  ).rejects.toThrow(/moved 2 rows in this read's pre-paint frame against the declared hold of 1 rows/)
+})
+
+test("a declared hold whose witness moved columns is unresolved (34163, @cto 2)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 2, unique: true },
+    }),
+  ).rejects.toThrow(/moved 2 columns in this read's pre-paint frame, and a viewport hold moves no columns/)
 })
 
 // @cto 2026-11-13: the paint that anchors this read is itself terminal OUTPUT, so a terminal that
@@ -685,11 +773,13 @@ test("a declared hold whose pair lands on the settled origin reports a viewport 
     frame: heldWindow({ origin, shift: {} }),
     prePaint: before(origin),
     settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
+    scroll: { direction: "up", notches: 1, rows: 0, maxRows: 4 },
+    base: { label: "constructed bottom reference", origin },
+    witnessShift: { rows: 0, columns: 0, unique: true },
   })
   expect(result.origin).toEqual(origin)
   expect(result.scrolledRows).toEqual({ rows: 0, direction: "up", notches: 1 })
-  expect(result.basis).toContain("the viewport was NOT held when this frame was taken")
+  expect(result.basis).toContain("the pair's NET delta from the base is zero")
 })
 
 test("a declared hold whose frame snapped to the bottom is still an observation, not the move refusal (34163, @cto)", async () => {
@@ -699,7 +789,9 @@ test("a declared hold whose frame snapped to the bottom is still an observation,
     frame: heldWindow({ origin, shift: {} }),
     prePaint: windowAt({ x: 2, y: 6 }),
     settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
+    scroll: { direction: "up", notches: 1, rows: 0, maxRows: 4 },
+    base: { label: "constructed bottom reference", origin },
+    witnessShift: { rows: 0, columns: 0, unique: true },
   })
   expect(result.scrolledRows?.rows).toBe(0)
   expect(result.changedOutside).toBeGreaterThan(pixelGeometry.textWidth)
@@ -712,7 +804,9 @@ test("a declared hold that moves the pair sideways is not a hold (34163)", async
       frame: heldWindow({ origin, shift: { x: 4 } }),
       prePaint: before(origin),
       settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 0, unique: true },
     }),
   ).rejects.toThrow(/which moves the pair in ROWS.*horizontal offset is 4 px/)
 })
@@ -726,7 +820,9 @@ test("a declared hold must move the pair by whole rows of the cell (34163)", asy
       frame: heldWindow({ origin, shift: { y: 3 }, cell, size: { width: 16, height: 30 } }),
       prePaint: heldWindow({ origin, shift: {}, cell, size: { width: 16, height: 30 }, painted: false }),
       settled: settledAt(origin, geometry),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 0, unique: true },
       geometry,
     }),
   ).rejects.toThrow(/not a whole number of rows.*by whole rows of the 2x6 cell/)
@@ -739,7 +835,9 @@ test("a declared hold cannot scroll further than the screen it holds (34163)", a
       frame: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 } }),
       prePaint: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 }, painted: false }),
       settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 2 },
+      scroll: { direction: "up", notches: 1, rows: 3, maxRows: 2 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 3, columns: 0, unique: true },
     }),
   ).rejects.toThrow(/can have scrolled at most 2 rows on this screen, and the pair landed 3 rows/)
 })
@@ -751,22 +849,25 @@ test("a declared hold in the other direction cannot move the pair where it went 
       frame: heldWindow({ origin, shift: { y: 2 } }),
       prePaint: before(origin),
       settled: settledAt(origin),
-      scroll: { direction: "down", notches: 1, maxRows: 4 },
+      scroll: { direction: "down", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 1, columns: 0, unique: true },
     }),
   ).rejects.toThrow(
     /declared the viewport held down and the pair landed 1 rows off the settled origin, whose sign is the other way/,
   )
 })
 
-test("an undeclared whole-row move refuses and names the declaration the probe owes (34163)", async () => {
+test("an undeclared whole-row move re-anchors, exactly as 33000 did (34163, @cto 1)", async () => {
   const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: { y: 2 } }),
-      prePaint: before(origin),
-      settled: settledAt(origin),
-    }),
-  ).rejects.toThrow(/did not declare a viewport hold.*must declare it on the capture request \(34163\)/)
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: { y: 2 } }),
+    prePaint: before(origin),
+    settled: settledAt(origin),
+  })
+  expect(result.origin).toEqual({ x: 2, y: 4 })
+  expect(result.reanchored).toEqual({ rows: 1, columns: 0 })
+  expect(result.basis).toContain("re-anchored from the pair after the frame moved, by 1 rows and 0 columns")
 })
 
 // The frame pair here is SYNTHETIC: the retained lane runs in this estate carry no Warp run and no
@@ -791,16 +892,18 @@ test("33000 stays intact: an undeclared read whose frame moved re-anchors instea
   expect(result.scrolledRows).toBeUndefined()
 })
 
-test("a declared hold whose frame MOVED refuses: a hold plus a move is not one read (34163)", async () => {
+test("a declared hold whose witness moved more than it declared is unresolved, not refused against the terminal (34163, @cto 2b)", async () => {
   const origin = { x: 2, y: 2 }
   await expect(
     heldRead({
       frame: windowAt({ x: 2, y: 4 }),
       prePaint: before({ x: 2, y: 2 }),
       settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
+      scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+      base: { label: "constructed bottom reference", origin },
+      witnessShift: { rows: 2, columns: 0, unique: true },
     }),
-  ).rejects.toThrow(/more than one 12 px text row, so the frame MOVED while it was supposed to be held still/)
+  ).rejects.toThrow(/the frames carry a displacement this read did not declare/)
 })
 
 test("an ordinary read crops at the settled origin and is not called a re-anchor (34163, @cto)", async () => {
@@ -823,7 +926,9 @@ test("a declared hold may land within the read's own slack of a whole row (34163
     frame: heldWindow({ origin, shift: { y: 3 } }),
     prePaint: heldWindow({ origin, shift: {}, painted: false }),
     settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
+    scroll: { direction: "up", notches: 1, rows: 1, maxRows: 4 },
+    base: { label: "constructed bottom reference", origin },
+    witnessShift: { rows: 1, columns: 0, unique: true },
   })
   expect(result.origin).toEqual(origin)
   expect(result.scrolledRows?.rows).toBe(2)

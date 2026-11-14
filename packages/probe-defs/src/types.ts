@@ -605,6 +605,14 @@ export interface DeclaredViewportHold {
   direction: "up" | "down"
   /** Notches the probe injected since it last returned to the bottom. */
   notches: number
+  /**
+   * The rows the hold is declared to have moved the frame, signed (positive = the frame's content
+   * sits lower than the base frame's, negative = higher). Required for a pixel read: a read may only
+   * crop at a proven origin when the measured base-to-pre-paint displacement equals this exactly and
+   * moves no columns (@cto 2026-11-13, 2a). One wheel notch is NOT a row count, so a wheel-driven
+   * hold either measures its row count first or leaves this absent and reads as unresolved.
+   */
+  rows?: number
   /** The most rows that hold can have scrolled, from the fixture's own construction. */
   maxRows: number
 }

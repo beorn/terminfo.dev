@@ -71,7 +71,13 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
-import { retain } from "./capture-core.ts"
+import {
+  type CapturedFrame,
+  type MeasuredFrameShift,
+  type NamedTextOrigin,
+  measureFrameShift,
+  retain,
+} from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
 import {
@@ -772,6 +778,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       let calibrationError: Error | undefined
       /** The source whose next read anchors its crop on the sentinel it paints (33000). */
       let pixelSource: TermProbeSource | undefined
+      /**
+       * The most recent UNDECLARED read of this feature: the frame taken before its paint plus the
+       * origin it cropped at. A declared hold may only crop where this proves the frame was, and the
+       * raster is what separates a viewport scroll from a text area that moved (@cto 2026-11-13, 2a).
+       * Memory only, one window per feature, dropped when the feature ends.
+       */
+      let lastUndeclared: { label: string; origin: { x: number; y: number }; frame: CapturedFrame } | undefined
       /** Records every raw frame this route takes outside a read (calibration, 33981 pre-paint) in the artifact. */
       let frameRecord: ((result: Awaited<ReturnType<ProbeCapture>>) => void) | undefined
       /**
@@ -807,15 +820,50 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
           // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
-          return readThroughSentinel({
+          // The witness is measured from the PRE-PAINT frame of this read against the base frame of
+          // the last declared-free read, never from the pre-paint-to-painted difference: that
+          // comparison cannot see a text area that moved before the pre-paint frame was taken.
+          let measured: MeasuredFrameShift | undefined
+          let prePainted: CapturedFrame | undefined
+          const readOrigin = await readThroughSentinel({
             source,
             // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
             // re-derive an origin from the pair, which is a second source for one read and the
             // reason a held viewport cropped N rows low.
             settled: calibrated,
             ...(checkpoint.scroll !== undefined ? { scroll: checkpoint.scroll } : {}),
-            prePaint: () =>
-              captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
+            ...(checkpoint.scroll !== undefined && lastUndeclared !== undefined
+              ? { base: { label: lastUndeclared.label, origin: lastUndeclared.origin } }
+              : {}),
+            get witnessShift() {
+              return measured
+            },
+            prePaint: async () => {
+              const frame = await captureRawFrame(
+                checkpoint.featureId,
+                `${checkpoint.label}: pre-paint`,
+                Date.now() + DEFAULT_TIMEOUT_MS,
+              )
+              if (checkpoint.scroll !== undefined) {
+                if (lastUndeclared !== undefined) {
+                  measured = measureFrameShift({
+                    base: lastUndeclared.frame,
+                    frame,
+                    cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
+                    area: {
+                      x: calibrated.origin.x,
+                      y: calibrated.origin.y,
+                      width: calibrated.pixelGeometry.textWidth,
+                      height: calibrated.pixelGeometry.textHeight,
+                    },
+                    maxRows: checkpoint.scroll.maxRows,
+                  })
+                }
+              } else {
+                prePainted = frame
+              }
+              return frame
+            },
             capture: (resolve) => adapter.capture(checkpoint, resolve),
             label: checkpoint.label,
             sentinel,
@@ -823,9 +871,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })
+          // Only a read that actually resolved an origin can be a base; a raw frame is not one, and
+          // saying otherwise would hand a later hold an origin nobody proved.
+          if (checkpoint.scroll === undefined && prePainted !== undefined && "origin" in readOrigin) {
+            const { origin } = readOrigin as unknown as NamedTextOrigin
+            lastUndeclared = { label: checkpoint.label, origin, frame: prePainted }
+          }
+          return readOrigin
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           textOrigin = undefined
+          lastUndeclared = undefined
           calibrationError = undefined
           pixelSource = probeSource
           frameRecord = recordCapture

@@ -145,6 +145,94 @@ export interface CapturedFrame {
   rgba: Uint8Array
 }
 
+/** The whole-cell displacement one frame's text area carries against another's (34163, @cto 2a). */
+export interface MeasuredFrameShift {
+  /** Whole text rows the frame's content sits BELOW (positive) or ABOVE (negative) the base frame's. */
+  rows: number
+  /** Whole text columns the same content sits right of (positive) or left of (negative). */
+  columns: number
+  /** True only when exactly one shift explains the frames; an ambiguous or blank area is false. */
+  unique: boolean
+  /** How many shifts explained the frames, so an unresolved result can say what it saw. */
+  candidates: number
+}
+
+/** FNV-1a over one scanline band: enough to reject a shift before any pixel is compared. */
+function bandHash(rgba: Uint8Array, frameWidth: number, x0: number, x1: number, y0: number, y1: number): number {
+  let hash = 0x811c9dc5
+  for (let y = y0; y < y1; y++) {
+    let offset = (y * frameWidth + x0) * 4
+    for (let x = x0; x < x1; x++) {
+      hash ^= rgba[offset]!
+      hash = Math.imul(hash, 0x01000193)
+      hash ^= rgba[offset + 1]!
+      hash = Math.imul(hash, 0x01000193)
+      hash ^= rgba[offset + 2]!
+      hash = Math.imul(hash, 0x01000193)
+      hash ^= rgba[offset + 3]!
+      hash = Math.imul(hash, 0x01000193)
+      offset += 4
+    }
+  }
+  return hash >>> 0
+}
+
+/**
+ * Measure how far the text area's content moved between a base frame and a later frame, in whole text
+ * rows, and refuse to guess (@cto 2026-11-13, 2). Only a UNIQUE shift is a witness: two frames whose
+ * rows are blank or repeat explain several shifts equally, and a best score is not evidence.
+ *
+ * The frames must come from the same window with the same pixel geometry; the caller proves that
+ * before calling. `undefined` means no whole-row shift explains them at all, which is a frame that
+ * moved by something other than a viewport scroll (a repaint, a resize, a cursor-only difference).
+ */
+export function measureFrameShift(input: {
+  base: CapturedFrame
+  frame: CapturedFrame
+  cell: { width: number; height: number }
+  /** The text area in window pixels, from the calibrated origin and the measured geometry. */
+  area: { x: number; y: number; width: number; height: number }
+  /** The most rows the caller's declaration can have scrolled. */
+  maxRows: number
+}): MeasuredFrameShift | undefined {
+  const { base, frame, cell, area } = input
+  const cellHeight = Math.max(1, Math.round(cell.height))
+  const x0 = Math.max(0, Math.round(area.x))
+  const y0 = Math.max(0, Math.round(area.y))
+  const x1 = Math.min(Math.min(base.width, frame.width), x0 + Math.round(area.width))
+  const y1 = Math.min(Math.min(base.height, frame.height), y0 + Math.round(area.height))
+  const rows = Math.floor((y1 - y0) / cellHeight)
+  if (rows < 2 || x1 - x0 < 1) return undefined
+  const band = (source: CapturedFrame, row: number) =>
+    bandHash(source.rgba, source.width, x0, x1, y0 + row * cellHeight, y0 + (row + 1) * cellHeight)
+  const baseRows = Array.from({ length: rows }, (_, row) => band(base, row))
+  const frameRows = Array.from({ length: rows }, (_, row) => band(frame, row))
+  const minimumOverlap = Math.max(2, Math.ceil(rows / 2))
+  const candidates: number[] = []
+  const limit = Math.min(Math.abs(input.maxRows), rows - minimumOverlap)
+  for (let shift = -limit; shift <= limit; shift++) {
+    const overlap = rows - Math.abs(shift)
+    if (overlap < minimumOverlap) continue
+    let matches = true
+    for (let row = Math.max(0, -shift); row < Math.min(rows, rows - shift); row++) {
+      if (baseRows[row] !== frameRows[row + shift]) {
+        matches = false
+        break
+      }
+    }
+    if (matches) candidates.push(shift)
+  }
+  if (candidates.length === 0) return undefined
+  return {
+    // Every band hash collapsed the whole width, so a sideways move is not separable from a repaint;
+    // a column shift can only be reported as zero once the row match is the unique one.
+    rows: candidates.length === 1 ? candidates[0]! : 0,
+    columns: 0,
+    unique: candidates.length === 1,
+    candidates: candidates.length,
+  }
+}
+
 /**
  * Map a cell-aligned region to an absolute rectangle from the terminal's OWN pixel report and the
  * text area's own witnessed origin, and from nothing else: a window width
