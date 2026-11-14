@@ -913,20 +913,14 @@ export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, lau
 
 export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
   if (launch.cmux !== undefined) {
-    // Close what the cmux arm opened: our config line comes out (by line, C1) and the surface shell
-    // this run started is signaled; the daemon itself is stopped separately by the caller.
+    // The launch's started PID is historical, not close authority after the daemon has stopped.
+    // Restore our config line even when no owner was acquired or its close refuses a changed identity.
     const outcome = launch.cmux.restore()
-    try {
-      process.kill(launch.cmux.startedPid, "SIGTERM")
-      return `cmux surface pid ${launch.cmux.startedPid} signaled; ghostty config ${outcome}`
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
-        return `cmux surface pid ${launch.cmux.startedPid} already exited; ghostty config ${outcome}`
-      }
-      throw new Error(
-        `cmux surface pid ${launch.cmux.startedPid} could not be signaled: ${String(error)}; ghostty config ${outcome}`,
-      )
+    if (launch.terminalWindow === undefined) {
+      return `cmux owner not acquired; no process signaled; surface closure unverified; ghostty config ${outcome}`
     }
+    const proof = closeOwnedTerminalWindow(launch.terminalWindow)
+    return `cmux owner cleanup: ${proof ?? "owner close returned no surface absence proof"}; ghostty config ${outcome}`
   }
   if (launch.terminalWindow) {
     return closeOwnedTerminalWindow(launch.terminalWindow)

@@ -1612,25 +1612,48 @@ describe("cli-process stop when the owner was never resolved", () => {
 })
 
 describe("cmux stop closes what the arm opened", () => {
-  test("restores the ghostty config by line and reports a surface that already exited", () => {
+  // The earlier arbitrary-PID case called the host's real kill and could pass solely on ESRCH.
+  // Cleanup must use the acquired owner and preserve its close result after the daemon stops.
+  test.each(["exited", "reused"] as const)("uses the owned close result for an %s surface", (state) => {
     const restore = vi.fn(() => "line-removed" as const)
-    const proof = stopLaunchedApp(
-      { name: "cmux", id: "cmux" },
-      {
-        proc: null,
-        cmux: {
-          runId: "run-34302-test",
-          commandPath: "/private/run/cmux-command.sh",
-          startedPid: 987654,
-          removedStaleKey: true,
-          restore,
-        },
+    const owner = {
+      provider: "cli-process" as const,
+      ownerPid: 777,
+      executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
+      marker: { flag: "--fixture-owner", value: "run-34302-test" },
+      tty: "/dev/ttys009",
+    }
+    const kill = vi.spyOn(process, "kill").mockReturnValue(true)
+    vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
+      if (state === "reused") throw new Error("fixture owned identity changed; closing nothing")
+      return "fixture acquired owner already exited; surface closure unverified"
+    })
+    const launch: AppLaunch = {
+      proc: null,
+      terminalWindow: owner,
+      cmux: {
+        runId: "run-34302-test",
+        commandPath: "/private/run/cmux-command.sh",
+        startedPid: 987654,
+        removedStaleKey: true,
+        restore,
       },
-    )
-    expect(restore).toHaveBeenCalledTimes(1)
-    expect(proof).toContain("987654")
-    expect(proof).toContain("already exited")
-    expect(proof).toContain("line-removed")
+    }
+    try {
+      if (state === "reused") {
+        expect(() => stopLaunchedApp({ name: "cmux", id: "cmux" }, launch)).toThrow(/identity changed/)
+      } else {
+        const proof = stopLaunchedApp({ name: "cmux", id: "cmux" }, launch)
+        expect(proof).toContain("already exited; surface closure unverified")
+        expect(proof).toContain("line-removed")
+      }
+      expect(kill).not.toHaveBeenCalled()
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledOnce()
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(owner)
+      expect(restore).toHaveBeenCalledOnce()
+    } finally {
+      kill.mockRestore()
+    }
   })
 })
 
