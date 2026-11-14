@@ -800,6 +800,8 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
+    // #34259: cmux's read is the screen's text, so its history rows declare Untestable by that name.
+    scrollbackUnavailable: expect.stringContaining("cmux read-screen answers the screen's text, not a history count"),
     titleUnavailable: expect.stringContaining('"Terminal"'),
   })
   // 34087: each sentence names its calibration run first and says the counted runs read nothing, so no
@@ -1109,12 +1111,17 @@ test("only Alacritty, VS Code and Cursor declare no pane read, with @cto's exact
     "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
-    "/Applications/cmux.app/Contents/MacOS/cmux",
     "/Applications/Warp.app/Contents/MacOS/stable",
   ]
   for (const path of measured) {
     expect(hostedDarwinAppFromExecutablePath(path).scrollbackUnavailable, path).toBeUndefined()
   }
+  // #34259: cmux is a fourth declaration, and a DIFFERENT one — it has a read, and the read is the screen's
+  // text, so it must never borrow @cto's "no pane read" sentence.
+  const cmux = hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux").scrollbackUnavailable
+  expect(cmux).toContain("cmux read-screen answers the screen's text")
+  expect(cmux).not.toBe(reason)
+  expect(cmux).toContain("43577319701")
 })
 
 // 8c084f05: the hosted arm's app id comes from the receipt, never from a launcher-typed variable that could

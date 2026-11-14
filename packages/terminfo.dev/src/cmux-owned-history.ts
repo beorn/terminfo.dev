@@ -29,8 +29,21 @@ export type CmuxRefusal =
   | "cmux-marker-missing"
   | "cmux-markers-out-of-order"
   | "cmux-config-hash-changed"
+  // The read is the screen's text, not a count of retained history: a sixth refusal, not a grade (#34259).
+  | "cmux-reader-is-screen-text"
 
 export type CmuxRefused = Readonly<{ status: "refused"; refusal: CmuxRefusal; reason: string }>
+
+/**
+ * Why this reader never yields a history count (@cto f9829175, 2026-11-14). `read-screen --scrollback`
+ * answers the screen's text: measured on 0.65.2 in run 43577319701 as empty immediately after ESC[2J (a
+ * history counter would still have seen its lines) and as 35 lines against a 36-row screen with the screen
+ * full. `historyLinesFenced` reads a history count as `totalLines - screenLines`, which came out -1 there,
+ * so handing these numbers on is a wrong reading in a field other code does arithmetic on. Removable only
+ * when a cmux version is measured returning history above the screen (the open measurement on #34259).
+ */
+export const CMUX_READER_IS_SCREEN_TEXT =
+  "cmux read-screen answers the screen's text, not a history count: measured on 0.65.2 (run 43577319701) as empty right after ESC[2J and as 35 lines for a 36-row screen, so totalLines cannot be handed to a caller that subtracts screenLines"
 
 /**
  * How this run proves the read is its own surface: a block of numbered markers it wrote (probe arms that
@@ -354,7 +367,7 @@ export function readOwnedCmuxHistory(options: {
       : options.spawn(args)
   const stdout = text(result.stdout)
   // Retain before interpreting ownership or status: a refused native response is evidence too.
-  const transcript = options.retainTranscript?.(stdout)
+  options.retainTranscript?.(stdout)
   const stderr = text(result.stderr)
   // The command's own output goes to the collector's stderr log; the published reason stays value-free
   // except for the one diagnostic a reader needs, which cmux writes at phrase length.
@@ -387,35 +400,21 @@ export function readOwnedCmuxHistory(options: {
   const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
   const totalLines = lines(stdout).length
-  const markers = proof !== undefined && "markers" in proof && typeof proof.markers === "number" ? proof.markers : null
-  const extras: readonly string[] | null = proof?.extras ?? null
-  const config =
-    options.configAtLaunch === undefined
-      ? "unrecorded"
-      : options.configAtLaunch.read === "present"
-        ? { read: "present" as const, sha256: options.configAtLaunch.sha256 }
-        : { read: options.configAtLaunch.read }
+  // The counts below are real, and they are the screen's: refuse to name them a history reading. The
+  // ownership and guard proofs above have already run, so a read that is not this surface's still says so
+  // with its own refusal first.
   return {
-    status: "read",
-    reading: { totalLines, ...(options.rows === undefined ? {} : { screenLines: options.rows }) },
-    // The receipt is the owner's proof and may carry the transcript; the facts are what a record may show.
-    receipt: JSON.stringify({
-      surface: options.surface ?? null,
-      ownership: options.ownership.kind,
-      markers,
-      extras,
-      totalLines,
-      screenLines: options.rows ?? null,
-      config,
-    }),
-    facts: {
-      ...(transcript === undefined ? {} : { transcript }),
-      ownership: options.ownership.kind,
-      markers,
-      extras: extras === null ? null : extras.length,
-      totalLines,
-      screenLines: options.rows ?? null,
-      config,
-    },
+    status: "refused",
+    refusal: "cmux-reader-is-screen-text",
+    reason:
+      CMUX_READER_IS_SCREEN_TEXT +
+      "; this read returned " +
+      String(totalLines) +
+      " line" +
+      (totalLines === 1 ? "" : "s") +
+      (options.rows === undefined
+        ? " and no measured screen height"
+        : " against a " + String(options.rows) + "-row screen") +
+      (options.surface === undefined ? " with no surface named" : " for surface " + JSON.stringify(options.surface)),
   }
 }

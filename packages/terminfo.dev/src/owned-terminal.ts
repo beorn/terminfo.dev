@@ -46,6 +46,7 @@ import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
+  CMUX_READER_IS_SCREEN_TEXT,
   cmuxConfigPath,
   cmuxHistoryIdentity,
   observeCmuxConfig,
@@ -714,6 +715,10 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
+    // The history rows declare Untestable by name rather than reading a screen's text as history
+    // (@cto f9829175, #34259). Reversible: remove this the moment a cmux version is measured returning
+    // history above the screen, which is the open measurement on the issue.
+    scrollbackUnavailable: CMUX_READER_IS_SCREEN_TEXT,
     titleUnavailable:
       'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
   },
