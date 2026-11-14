@@ -102,8 +102,9 @@ export async function readThroughSentinel<T>(input: {
   settled?: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
   /**
    * The viewport hold this read is taken under, as the probe that created it declared it (34163). A
-   * hold renders the pair N rows off the settled grid; declared, that is measured and recorded;
-   * undeclared, it is refused by name.
+   * hold renders the pair N rows off the settled grid, and every declared hold ends as a named
+   * CaptureHoldUnresolved with no origin claimed: two frames carry net displacement only, and the
+   * caller declares notches rather than rows.
    */
   scroll?: DeclaredViewportHold
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
@@ -271,8 +272,8 @@ export async function readThroughSentinel<T>(input: {
         // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
         // pitch on its own rather than restating the one box it already reduced to an origin (33982).
         witness,
-        // The pre-paint difference, counted: a held viewport moved by whole rows leaves this small,
-        // a re-anchored one leaves it large, and a refusal can then name which (34163).
+        // The pre-paint difference, counted so a refusal can say how much changed outside the chosen
+        // pair. It does not separate a hold from a text-area move, and is never read as one (34163).
         changedOutside: ignoredPixels,
       }
     }
@@ -320,17 +321,19 @@ export async function readThroughSentinel<T>(input: {
 
 /**
  * One origin per read (34163, @cto 2026-11-13): when the route already settled a calibrated origin,
- * the pair's job is to prove the paint landed and to say where. It never yields the crop origin.
+ * the pair proves the paint landed and says where. It never yields the crop origin.
  *
- * A declared viewport hold moves the pair off the settled grid by whole ROWS — measured live at one
- * wheel notch for both kitty (10 + 5x29) and ghostty (2 + 3x28) — so the read crops at the settled
- * origin and records the delta as an OBSERVATION. No grade or published cell may read `scrolledRows`
- * until the XTest wheel event's effective displacement is measured: "one notch" is not a row count.
+ * A pair still on the settled grid is an ordinary read. Any further move is refused BEFORE this
+ * function, by the read's own guard, and never becomes an origin here: the cells were chosen against
+ * a frame at `reading`, so a moved frame may have put them on ink this read never saw (33981), and a
+ * crop computed from that pair is one nobody can vouch for. Warp's command header is the case 34163
+ * first re-anchored; it refuses by name instead of cropping from a grid the terminal left.
  *
- * Undeclared reads keep 33000's re-anchor when the frame's own extent moved (Warp's command header
- * does exactly that, and those reads must still crop correctly). An undeclared pair that moved by
- * whole rows while the extent is unchanged is the hold signature, and it refuses by name: a probe
- * holding its viewport must say so, or the read silently crops from a grid the terminal left.
+ * A declared viewport hold never becomes an origin either. Both frames carry the NET displacement of
+ * the text area, so a hold of N rows with an opposite move of M rows looks exactly like one that
+ * moved N - M, and the caller declares notches rather than rows: every declared hold throws
+ * CaptureHoldUnresolved, ungraded, and the probe records a named todo. Measuring the row a notch
+ * moves needs a non-pixel read (@i/terminfo/34222-wheel-notch-row-unit).
  */
 function onSettledOrigin(input: {
   label: string
