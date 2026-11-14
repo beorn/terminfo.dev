@@ -1395,7 +1395,23 @@ code_root=$(cd "$vendor_root/../.." && pwd -P)
 }
 mkdir -p "$output_parent"
 output_parent=$(cd "$output_parent" && pwd -P)
-run_id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+# One identity per run (#34269): the host composer hands its draft id down as
+# TERMINFO_CAPTURE_RUN_ID and the collector draft, the owner assertion and this launcher must all
+# name it. Minting a second, unrelated id here made /probe refuse every Linux pass with
+# "Capture identity X differs from this daemon's launch run Y". Mint only when nobody stated one.
+resolve_run_id() {
+  local handed="${TERMINFO_CAPTURE_RUN_ID:-}"
+  if [[ -z "$handed" ]]; then
+    od -An -tx1 -N16 /dev/urandom | tr -d ' \n'
+    return
+  fi
+  [[ "$handed" =~ ^[0-9a-f]{32}$ ]] || {
+    echo "TERMINFO_CAPTURE_RUN_ID must be the 32-lowercase-hex run identity the host handed down, got '$handed'" >&2
+    return 2
+  }
+  printf '%s' "$handed"
+}
+run_id=$(resolve_run_id) || exit 2
 run_dir="$output_parent/$run_id"
 mkdir "$run_dir"
 mkdir -p "$run_dir/prep/receipt" "$run_dir/raw"
