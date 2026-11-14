@@ -1629,6 +1629,8 @@ function viewportApplication(
     calAmbiguous?: boolean
     digest?: "missing" | "empty" | "missing-region"
     captureError?: boolean | "after-up"
+    /** A declared hold whose frames carry no measured witness (34163, @cto 2b). */
+    unresolvedHold?: boolean
     inputError?: boolean
     upError?: boolean
     wheelReturnError?: boolean
@@ -1781,6 +1783,14 @@ function viewportApplication(
   context.capture = async (request) => {
     if (options.captureError === true || (options.captureError === "after-up" && ups > 0)) {
       throw new Error("viewport capture failed")
+    }
+    if (options.unresolvedHold && request.scroll !== undefined) {
+      throw Object.assign(
+        new Error('no measured witness relates the base frame "constructed bottom reference" to this read'),
+        {
+          name: "CaptureHoldUnresolved",
+        },
+      )
     }
     assertCalibratedCaptureGeometry(context.captureGeometry, request)
     const inHoldPhase = hasTailSeed()
@@ -2046,6 +2056,18 @@ test.each([
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("ambiguous frame")
+})
+
+// A hold with no measured witness has no origin to crop at, so the row records a reason and leaves
+// the cell todo rather than grading the terminal (34163, @cto 2b).
+test("app viewport records a named todo when a declared hold has no measured witness", async () => {
+  const app = viewportApplication(undefined, { unresolvedHold: true })
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expect(result).toMatchObject({ pass: false })
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.notTested?.noObservable).toContain("viewport hold cannot be read")
+  expect(result.notTested?.noObservable).toContain("no measured witness")
+  expect(result.observation).toBeUndefined()
 })
 
 // Accepted prerequisite and calibration contract: mux contexts, missing I/O, or uncalibrated wheel motion withhold before target output.
