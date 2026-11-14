@@ -46,7 +46,6 @@ import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
-  CMUX_READER_IS_SCREEN_TEXT,
   cmuxConfigPath,
   cmuxHistoryIdentity,
   observeCmuxConfig,
@@ -715,10 +714,6 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
-    // The history rows declare Untestable by name rather than reading a screen's text as history
-    // (@cto f9829175, #34259). Reversible: remove this the moment a cmux version is measured returning
-    // history above the screen, which is the open measurement on the issue.
-    scrollbackUnavailable: CMUX_READER_IS_SCREEN_TEXT,
     titleUnavailable:
       'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
   },
@@ -2017,10 +2012,9 @@ export async function createOwnedTerminal(options: {
             configAtLaunch: cmuxConfigAtLaunch,
             observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
           })
-          if (proof.status === "owned-unreadable") {
-            // The surface WAS proved: the nonce/marker proof and the config guard both passed before the reader
-            // declined to call these numbers a history count. Record the grant as proved — an ownership failure
-            // is the serious finding here, so it must not be reported for a run that owned its surface fine.
+          if (proof.status === "read" || proof.status === "owned-unreadable") {
+            // Ownership was proved independently of whether the paired responses yielded a usable count.
+            // Keep that grant even when the plain read failed or the two responses disagreed.
             cmuxGrantReceipt = proof.receipt
             cmuxLastRead = cmuxReadRecord("grant", proof.receipt, proof.facts)
             break
@@ -2044,23 +2038,18 @@ export async function createOwnedTerminal(options: {
         ? async (): Promise<TerminalScrollbackReading> => {
             await hostedCmuxOwnerCheck()
             if (cmuxGrantFailure !== undefined) throw new ScrollbackReadingUnavailable(cmuxGrantFailure)
-            const geometry = await readBoundGeometry(binding, windowsKernel)
-            if (geometry.status !== "measured") {
-              throw new ScrollbackReadingUnavailable("Owned cmux history needs a measured grid: " + geometry.diagnostic)
-            }
             const read = readOwnedCmuxHistory({
               executable: ownedCmuxCli,
               ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
               retainTranscript: retainCmuxTranscript,
-              rows: geometry.rows,
               ownership: { kind: "surface" },
               configAtLaunch: cmuxConfigAtLaunch,
               observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
             })
-            // Every arm of OwnedCmuxRead is a fact about the read and none of them is a history count, so this
-            // arm never returns a reading: a proved-but-unreadable surface still speaks in the reader's own
-            // name instead of being counted, guessed at, or silently skipped (@dev/brain 46a8e182).
-            throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
+            await hostedCmuxOwnerCheck()
+            if (read.status !== "read") throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
+            cmuxLastRead = cmuxReadRecord("read", read.receipt, read.facts)
+            return read.reading
           }
         : undefined
     const readScrollback =
