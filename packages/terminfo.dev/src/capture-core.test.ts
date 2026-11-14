@@ -277,7 +277,11 @@ test("a moved window digests the same cells, because the crop follows the sentin
     grid: { rows: 4, cols: 6 },
     regions: [cells],
   }).a
-  expect(witness).toEqual({ row: 1, col: 4 })
+  // The chooser's order is above the region, then below it, then nearest first (34040 condition 1),
+  // so the pair's first cell is the one under the region — not 1,4, which is what the row-major scan
+  // these tests were written against used to return. The identity is the chooser's to decide; what
+  // this test proves is that the crop and the digest both follow whatever cell it painted.
+  expect(witness).toEqual({ row: 3, col: 1 })
   const calibrated = { origin: { x: 0, y: 0 }, basis: "complete raster calibration" }
   // The fix under test: the crop is taken from where the sentinel actually landed in THIS frame,
   // with the same one-cell block test the post-hoc layout check uses.

@@ -628,15 +628,6 @@ function* cellsNearestFirst(
   }
 }
 
-const cleared = (
-  grid: { rows: number; cols: number },
-  digestedCells: (cell: { row: number; col: number }) => boolean,
-): ((cell: { row: number; col: number }) => boolean) => {
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  return (cell: { row: number; col: number }) => visible(cell) && !digestedCells(cell)
-}
-
 /**
  * The rows and the columns a digested footprint actually leaves usable for a sentinel cell — not
  * "columns no rectangle touches", which is a different and much stricter question: a region that
@@ -856,17 +847,15 @@ export function sentinelCellsInFrame(input: {
   // Tier 1 first: a diagonal pair proves both pitches. Only when the frame has none does the
   // same-row tier exist — a tier offered before tier 1 would let a column-only pair win on a frame
   // that had a full pair available (@cto's condition 4: only when no region-free pair exists).
-  const diagonal = cellsNearestFirst(
-    a,
-    grid,
-    (cellAt) => regionFree(cellAt) && cellAt.row !== a.row && cellAt.col !== a.col,
-  ).next().value
+  const nearestAfter = (accepted: (cellAt: { row: number; col: number }) => boolean) => {
+    for (const cellAt of cellsNearestFirst(a, grid, accepted)) return cellAt
+    return undefined
+  }
+  const diagonal = nearestAfter((cellAt) => regionFree(cellAt) && cellAt.row !== a.row && cellAt.col !== a.col)
   if (diagonal !== undefined) return { a, b: diagonal, tier: "region-free" }
-  const sameRow = cellsNearestFirst(
-    a,
-    grid,
+  const sameRow = nearestAfter(
     (cellAt) => regionFree(cellAt) && cellAt.row === a.row && Math.abs(cellAt.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP,
-  ).next().value
+  )
   if (sameRow !== undefined) return { a, b: sameRow, tier: "same-row" }
   throw new Error(
     `No sentinel pair can be anchored in this frame; no second blank cell exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid that differs from cell ${a.row},${a.col} in both row and column, and none shares its row at least ${SAME_ROW_MIN_COLUMN_GAP} columns away${spelledLimitFor("a second cell", "")}`,

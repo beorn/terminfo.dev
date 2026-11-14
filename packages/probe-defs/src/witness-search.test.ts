@@ -10,7 +10,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { sentinelCellsInFrame, type CaptureCells } from "./region-readback.ts"
+import { sentinelCellsInFrame, type CellRegion } from "./region-readback.ts"
 
 const CELL = { width: 8, height: 16 }
 const BACKGROUND = [12, 12, 12] as const
@@ -23,10 +23,10 @@ const INK = [220, 220, 220] as const
  */
 const pairOn = (
   grid: { rows: number; cols: number },
-  regions: readonly CaptureCells[],
-  avoid: readonly CaptureCells[] = [],
+  regions: readonly CellRegion[],
+  avoid: readonly CellRegion[] = [],
   /** Ink that is neither a digested region nor an avoid footprint: a screen that is simply drawn on. */
-  ink: readonly CaptureCells[] = [],
+  ink: readonly CellRegion[] = [],
 ) => {
   const width = grid.cols * CELL.width
   const height = grid.rows * CELL.height
@@ -41,7 +41,7 @@ const pairOn = (
   // not all of it, so the frame's modal colour stays the background. Painting a region solid makes
   // the ink modal on a region that covers most of the screen, and then no cell reads as blank — which
   // is the frame lying to the chooser, not the chooser failing (it took half an hour to see that).
-  const paint = (region: CaptureCells) => {
+  const paint = (region: CellRegion) => {
     for (let row = region.top; row <= region.bottom; row += 1) {
       for (let col = region.left; col <= region.right; col += 1) {
         const y = (row - 1) * CELL.height + Math.floor(CELL.height / 2)
