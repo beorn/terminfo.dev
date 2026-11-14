@@ -9,11 +9,7 @@
  */
 import { describe, expect, test } from "vitest"
 import { TERM_FOOTPRINTS } from "@terminfo/probe-defs"
-import {
-  WINDOW_BASIS_ADMITTED_COUNT,
-  WINDOW_BASIS_PRE_SEED,
-  WINDOW_BASIS_UNCLASSIFIABLE,
-} from "./window-basis-table.ts"
+import { WINDOW_BASIS_PRE_SEED, WINDOW_BASIS_UNCLASSIFIABLE } from "./window-basis-table.ts"
 import { windowBasisAdmission } from "./window-basis-admission.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "./window-basis-rulings.ts"
 import { attributeKey } from "./attribute-ledger.ts"
@@ -33,11 +29,8 @@ describe("window basis admission (#34148)", () => {
       ].filter(Boolean)
       expect(buckets.length, `${id} is decided in exactly one place`).toBe(1)
     }
-    expect(WINDOW_BASIS_ADMITTED_COUNT, "the generated count matches its own table").toBe(
-      Object.keys(WINDOW_BASIS_PRE_SEED).length,
-    )
     expect(
-      WINDOW_BASIS_ADMITTED_COUNT +
+      Object.keys(WINDOW_BASIS_PRE_SEED).length +
         Object.keys(WINDOW_BASIS_UNCLASSIFIABLE).length +
         Object.keys(WINDOW_BASIS_RULING_EXCLUSIONS).length,
     ).toBe(18)

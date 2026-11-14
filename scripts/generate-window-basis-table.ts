@@ -158,8 +158,6 @@ const lines = [
   "",
   'import type { LedgerAttribute } from "./attribute-ledger.ts"',
   "",
-  `export const WINDOW_BASIS_ADMITTED_COUNT = ${sortedAdmitted.length}`,
-  "",
   "export const WINDOW_BASIS_PRE_SEED: Readonly<Record<string, readonly LedgerAttribute[]>> = {",
   ...sortedAdmitted.map(
     ([cell, entry]) =>

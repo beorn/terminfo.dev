@@ -12,8 +12,6 @@
 
 import type { LedgerAttribute } from "./attribute-ledger.ts"
 
-export const WINDOW_BASIS_ADMITTED_COUNT = 4
-
 export const WINDOW_BASIS_PRE_SEED: Readonly<Record<string, readonly LedgerAttribute[]>> = {
   "modes.color-scheme-reporting": [{ kind: "dec-mode", mode: 2031 }],
   "modes.decsclm": [{ kind: "dec-mode", mode: 4 }],
