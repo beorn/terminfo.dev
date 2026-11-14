@@ -44,6 +44,10 @@ import { serveCommand, witnessCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { APP_BUNDLE_IDS } from "../../terminfo.dev/src/app-bundles.ts"
+import {
+  launchCmuxInitialCommand,
+  type CmuxInitialCommandLaunch,
+} from "../../terminfo.dev/src/cmux-initial-command-launch.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import {
   assertIterm2SuiteLive,
@@ -563,6 +567,13 @@ const APPS: AppDef[] = [
     binaryPath: "", // Warp doesn't support direct command launch
     bundleId: APP_BUNDLE_IDS.warp,
   },
+  {
+    name: "cmux",
+    id: "cmux",
+    appPath: "/Applications/cmux.app",
+    binaryPath: "/Applications/cmux.app/Contents/MacOS/cmux",
+    bundleId: APP_BUNDLE_IDS.cmux,
+  },
 ]
 
 // ── Version detection ──
@@ -611,6 +622,8 @@ export interface AppLaunch {
   terminalAppPlistBefore?: TerminalAppPlistSnapshot
   /** The owned iTerm2 launch record, resolved into its window once the daemon registers. */
   iterm2?: Iterm2Launch
+  /** The cmux initial-command launch record: the started surface pid and the config restore (34302). */
+  cmux?: CmuxInitialCommandLaunch
   identityPath?: string
   /** The run-scoped kitty instance group, and the detached launcher's retained stderr. */
   instanceGroup?: string
@@ -740,7 +753,7 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
   }
 }
 
-function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "probe"): AppLaunch {
+async function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "probe"): Promise<AppLaunch> {
   // Every owned Mac launch hands its collector the run's artifact directory (31743, @cto 0822). The
   // directory alone captures nothing: the collector installs a capture only for the window the owner
   // proof binds, and refuses a Darwin directory that arrives with no owner claim.
@@ -852,6 +865,23 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
     }
   }
 
+  if (app.id === "cmux") {
+    // The one entry into cmux under cmuxOnly: an owned surface started by the shared initial-command
+    // launcher (34302). The typed line is this run's serve script itself, not a new-workspace wrap;
+    // the daemon it starts is a descendant of the cmux surface and so admitted.
+    const cmux = await launchCmuxInitialCommand({
+      configPath: join(homedir(), ".config", "ghostty", "config"),
+      appBundle: app.appPath,
+      cmuxExecutable: app.binaryPath,
+      cmuxConfigDir: run.directory,
+      commandPath: join(run.directory, "cmux-command.sh"),
+      startedMarkerPath: join(run.directory, "cmux-started.txt"),
+      payloadPath: run.scriptPath,
+      runId: run.id,
+    })
+    return { proc: null, cmux }
+  }
+
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
@@ -872,7 +902,8 @@ export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, lau
     launch.terminalWindow === undefined &&
     app.id !== "kitty" &&
     launch.marker === undefined &&
-    launch.iterm2 === undefined
+    launch.iterm2 === undefined &&
+    launch.cmux === undefined
   ) {
     throw new Error(
       `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
@@ -881,6 +912,17 @@ export function assertOwnedWindowAssertion(app: Pick<AppDef, "name" | "id">, lau
 }
 
 export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): string | void {
+  if (launch.cmux !== undefined) {
+    // Close what the cmux arm opened: our config line comes out (by line, C1) and the surface shell
+    // this run started is signaled; the daemon itself is stopped separately by the caller.
+    const outcome = launch.cmux.restore()
+    try {
+      process.kill(launch.cmux.startedPid, "SIGTERM")
+    } catch {
+      // The surface already exited; the config restore above is the part that must not be skipped.
+    }
+    return `cmux surface pid ${launch.cmux.startedPid} signaled; ghostty config ${outcome}`
+  }
   if (launch.terminalWindow) {
     return closeOwnedTerminalWindow(launch.terminalWindow)
   }
@@ -1395,7 +1437,7 @@ async function runApp(
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
     progress(`  Launching ${app.name} v${version}...`)
-    launch = launchWithServe(app, run, mode)
+    launch = await launchWithServe(app, run, mode)
     assertOwnedWindowAssertion(app, launch)
     progress(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)

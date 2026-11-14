@@ -774,11 +774,17 @@ jobs:
           } finally {
             writeFileSync(setupPath, JSON.stringify(setup, null, 2), { flag: "wx", mode: 0o600 });
           }
-          const directory = join(homedir(), ".config", "ghostty");
-          mkdirSync(directory, { recursive: true });
-          writeFileSync(join(directory, "config"), "initial-command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });
-          const status = await Bun.spawn(["open", "-a", process.env.APP_BUNDLE], { stdout: "inherit", stderr: "inherit" }).exited;
-          if (status !== 0) throw new Error("open exited " + status);
+          const { launchCmuxInitialCommand } = require(process.cwd() + "/packages/terminfo.dev/src/cmux-initial-command-launch.ts");
+          await launchCmuxInitialCommand({
+            configPath: join(homedir(), ".config", "ghostty", "config"),
+            appBundle: process.env.APP_BUNDLE,
+            cmuxExecutable: join(process.env.APP_BUNDLE, "Contents", "MacOS", "cmux"),
+            cmuxConfigDir: join(process.env.RUNNER_TEMP, "measurement-artifacts"),
+            commandPath: join(process.env.RUNNER_TEMP, "measurement-artifacts", "cmux-command.sh"),
+            startedMarkerPath: join(process.env.RUNNER_TEMP, "measurement-artifacts", "cmux-started.txt"),
+            payloadPath: process.env.COMMAND_PATH,
+            runId: `workflow-${process.env.GITHUB_RUN_ID ?? "local"}`,
+          });
           HOSTED_CMUX_START
           )" > "$OUT/launcher.log" 2>&1
               ;;

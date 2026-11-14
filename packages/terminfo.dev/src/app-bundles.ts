@@ -19,6 +19,8 @@ export const APP_BUNDLE_IDS = {
   // VSCode's admin id is its bundle id (298); the entry is correct even though the two strings coincide.
   "com.microsoft.VSCode": "com.microsoft.VSCode",
   warp: "dev.warp.Warp-Stable",
+  // Read from the app bundle on codimac (CFBundleIdentifier, cmux 0.65.2).
+  cmux: "com.cmuxterm.app",
 } as const satisfies Record<string, string>
 
 /** The bundle id for `id`, or undefined when the table has no row — never a fallback string. */

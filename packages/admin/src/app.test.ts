@@ -358,6 +358,21 @@ test("the owned-window admission passes an iTerm2 run-scoped launch, with no liv
   ).not.toThrow()
 })
 
+test("the owned-window admission passes a cmux initial-command launch, with no live app", () => {
+  expect(() =>
+    assertOwnedWindowAssertion({ name: "cmux", id: "cmux" }, {
+      proc: null,
+      cmux: {
+        runId: "run-34302-test",
+        commandPath: "/private/run/cmux-command.sh",
+        startedPid: 777,
+        removedStaleKey: false,
+        restore: () => "exact" as const,
+      },
+    } as AppLaunch),
+  ).not.toThrow()
+})
+
 test("the owned-window admission refuses a launch carrying no proof, by the same sentence", () => {
   expect(() => assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, { proc: null } as AppLaunch)).toThrow(
     "iTerm2 has no owned-window assertion; refusing to collect a run this probe cannot prove it launched",
@@ -1593,6 +1608,28 @@ describe("cli-process stop when the owner was never resolved", () => {
     } finally {
       error.mockRestore()
     }
+  })
+})
+
+describe("cmux stop closes what the arm opened", () => {
+  test("restores the ghostty config by line and names the surface pid", () => {
+    const restore = vi.fn(() => "line-removed" as const)
+    const proof = stopLaunchedApp(
+      { name: "cmux", id: "cmux" },
+      {
+        proc: null,
+        cmux: {
+          runId: "run-34302-test",
+          commandPath: "/private/run/cmux-command.sh",
+          startedPid: 987654,
+          removedStaleKey: true,
+          restore,
+        },
+      },
+    )
+    expect(restore).toHaveBeenCalledTimes(1)
+    expect(proof).toContain("987654")
+    expect(proof).toContain("line-removed")
   })
 })
 
