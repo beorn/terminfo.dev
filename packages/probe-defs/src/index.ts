@@ -147,6 +147,7 @@ export {
   gridMoveExemption,
   originFollowsFromBoxA,
   witnessProvesPitch,
+  pairMeasuredNoRowHeight,
   CELL_EDGE_TOLERANCE_PX,
   SENTINEL_BOX_SLACK_PX,
   sentinelBoxDeficit,

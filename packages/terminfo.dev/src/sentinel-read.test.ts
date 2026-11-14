@@ -7,7 +7,13 @@
  * @testonly none
  * @reach none
  */
-import { sentinelCellsInFrame } from "@terminfo/probe-defs"
+import {
+  gridMoveExemption,
+  pairMeasuredNoRowHeight,
+  sentinelCellsInFrame,
+  witnessProvesPitch,
+  type PixelCellCrop,
+} from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
 import { chooserRegions } from "./serve.ts"
@@ -934,8 +940,37 @@ test("a whole-row move is accepted once a measured bound is supplied and the cel
   })
   // The origin is where the pair actually landed, and the basis says why that is legitimate.
   expect(result.origin).toEqual({ x: 0, y: 6 })
-  expect(result.basis).toContain("moved 1 whole rows")
+  // The shift travels as DATA; the prose goes beside `basis`, never into it, because a comparison
+  // across a row's frames reads `basis` and a per-frame sentence would stop it (@cto).
+  expect(result.acceptedRowMove).toEqual({ rows: 1, px: 6 })
+  expect(result.basisDetail).toContain("moved 1 whole rows")
+  expect(result.basis).not.toContain("moved 1 whole rows")
   expect(result.changedOutside).toEqual(expect.any(Number))
+})
+
+test("a one-row pair passes the pitch check, so the accept path must refuse it by its own guard (33982)", () => {
+  // The chooser never paints both cells on one row, so this can only arrive from a hand-built or
+  // fixture-recorded crop. The point of the test is the ORDER of the two questions: witnessProvesPitch
+  // against the crop itself passes on the column gap alone, and gridMoveExemption refuses such a pair
+  // outright (pairMeasuredNoRowHeight). The accept path must agree with that refusal, which is why it
+  // tests the pair's row height before the pitch (@cto item 3).
+  const oneRowCrop: PixelCellCrop = {
+    origin: { x: 0, y: 0 },
+    basis: "fixture",
+    cell: { width: 2, height: 6 },
+    grid: { columns: 6, rows: 4 },
+    image: { width: 16, height: 30 },
+    witness: {
+      a: { cell: { row: 1, col: 1 }, box: { x: 0, y: 0 } },
+      b: { cell: { row: 1, col: 2 }, box: { x: 2, y: 0 } },
+    },
+  }
+  expect(pairMeasuredNoRowHeight(oneRowCrop)).toBe(true)
+  // …and the pitch predicate alone would let it through, which is the hole the guard closes.
+  expect(witnessProvesPitch(oneRowCrop, oneRowCrop)).toBe(true)
+  expect(
+    gridMoveExemption([{ role: "seed", crop: oneRowCrop, rectangle: { x: 0, y: 0, width: 16, height: 30 } }]),
+  ).toEqual([])
 })
 
 test("the clear-before-paint predicate says no when ink was already on the cells (33982)", () => {
@@ -948,6 +983,31 @@ test("the clear-before-paint predicate says no when ink was already on the cells
   // The same frame with ink on those two cells: clear is a fact about the pixels, and this is the
   // fact the accept path may never assume.
   expect(pairClearBeforePaint({ before: inkedAtSelectedCells(blank, painted, cell, size), ...asked })).toBe(false)
+})
+
+test("the clear-before-paint predicate asks at the LANDING pose, not the chosen one (33982, @cto)", () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const blank = heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false })
+  // Ink exactly where the pair would land after a two-row move. Two rows, not one, so the landing
+  // cells and the chosen cells do not overlap: otherwise the ink would be under the chosen cells too
+  // and the test could not tell the two poses apart.
+  const landed = inkedAtSelectedCells(
+    blank,
+    {
+      a: { row: painted.a.row + 2, col: painted.a.col },
+      b: { row: painted.b.row + 2, col: painted.b.col },
+    },
+    cell,
+    size,
+  )
+  const asked = { before: landed, cell, columns: grid.cols, cells: [painted.a, painted.b] }
+  // At the CHOSEN pose those cells are still blank — which is why asking there can only say yes and
+  // proves nothing about the frame the read painted over.
+  expect(pairClearBeforePaint({ ...asked, reading: { x: 0, y: 0 } })).toBe(true)
+  // At the LANDING pose the ink is under the pair, and that is the question the accept path asks.
+  expect(pairClearBeforePaint({ ...asked, reading: { x: 0, y: 2 * cell.height } })).toBe(false)
 })
 
 test("a displacement that is not a whole number of rows names no row shift, rather than a fraction (33982)", async () => {

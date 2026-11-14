@@ -8,6 +8,7 @@ import {
   frameBackground,
   frameCellBlank,
   originFollowsFromBoxA,
+  pairMeasuredNoRowHeight,
   witnessProvesPitch,
   type PixelCellCrop,
   type CalibrationSentinel,
@@ -38,12 +39,14 @@ export class CaptureHoldUnresolved extends Error {
 export const ROW_MOVE_NOISE_BOUND_PX: number | undefined = undefined
 
 /**
- * Whether the two cells the read painted were CLEAR in its own pre-paint frame, at the pose they were
- * chosen at (33982 condition 2, @cto).
+ * Whether the two cells the read painted were CLEAR in its own pre-paint frame, at the pose the pair
+ * actually landed at (33982 condition 2, @cto).
  *
- * The refusal exists because the paint may have landed on ink this read never saw. On a whole-row
- * shift the painted cells sit, in the pre-paint frame, exactly where they were chosen, so that pose —
- * `reading`, not the moved origin — is the one to look at. The test is the capture path's own `blank`
+ * The refusal exists because the paint may have landed on ink this read never saw. The pose that
+ * matters is therefore the LANDING pose — the derived origin — not the pose the cells were chosen at:
+ * `choose(before)` already established those cells were blank at `reading`, so asking again there can
+ * only ever say yes and would prove nothing. What is genuinely unknown is whether the frame this read
+ * painted over already carried ink where the pair now sits. The test is the capture path's own `blank`
  * predicate, shared rather than restated: whether the cell is background with no ink beside it.
  */
 export function pairClearBeforePaint(input: {
@@ -338,16 +341,22 @@ export async function readThroughSentinel<T>(input: {
           dx === 0 && dy !== 0 && size.height > 0 && dy % size.height === 0
             ? { rows: dy / size.height, px: dy }
             : undefined
-        // 33982 condition 4: only a whole number of rows, with no horizontal component, is a move this
-        // path may ever accept. Anything else refuses exactly as before, and so does every shift until
-        // the noise bound below has been measured.
-        if (rowShift !== undefined) {
+        // 33982 condition 3, the measured bound, is tested FIRST, before any of the work below: while
+        // nothing supplies one, a moved frame must cost what it cost before this path existed and fail
+        // with the same error, so no crop candidate, no geometry predicate and no pre-paint scan may
+        // run. Those predicates can throw, and skipping them is what makes that parity true of cost
+        // and of error type as well as of outcome (@cto).
+        //
+        // Condition 4 is the guard beside it: only a whole number of rows, with no horizontal
+        // component, is a move this path may ever accept. Anything else refuses exactly as before.
+        const bound = input.noiseBound ?? ROW_MOVE_NOISE_BOUND_PX
+        const withinBound = bound !== undefined && ignoredPixels <= bound
+        if (rowShift !== undefined && withinBound) {
           const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
           const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
           const cropCandidate: PixelCellCrop = {
             origin: derived,
             basis: basisText,
-            basisKind,
             cell: size,
             ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
               ? { grid: { columns, rows } }
@@ -355,27 +364,46 @@ export async function readThroughSentinel<T>(input: {
             image: { width: frame.width, height: frame.height },
             witness,
           }
+          // A pair painted on ONE row measured the column pitch and no row height (34040), so it can
+          // never carry a vertical move. `gridMoveExemption` refuses such a pair outright; this path
+          // would accept it, because `witnessProvesPitch` against the same crop passes on the column
+          // gap alone, so the same refusal is applied here rather than left to the arithmetic (@cto).
+          const pairMeasuredRowHeight = !pairMeasuredNoRowHeight(cropCandidate)
           // Condition 1 is the existing geometry predicates, used as they are: the pair proves the
           // pitch, and the origin follows from box a, on this frame. Condition 2 is that the cells
-          // were clear where they were chosen. Condition 3 is the measured bound.
+          // were clear where the pair LANDED (see the predicate's own note). Condition 3, the measured
+          // bound, was already tested above.
           const geometryProves =
-            witnessProvesPitch(cropCandidate, cropCandidate) && originFollowsFromBoxA(cropCandidate)
+            pairMeasuredRowHeight &&
+            witnessProvesPitch(cropCandidate, cropCandidate) &&
+            originFollowsFromBoxA(cropCandidate)
           const clearBeforePaint = pairClearBeforePaint({
             before,
-            reading: { x: input.reading.x, y: input.reading.y },
+            reading: derived,
             cell: size,
             columns,
             cells: [a, b],
           })
-          const bound = input.noiseBound ?? ROW_MOVE_NOISE_BOUND_PX
-          const withinBound = bound !== undefined && ignoredPixels <= bound
           if (geometryProves && clearBeforePaint && withinBound) {
+            // The origin this returns is the DERIVED one, and it bypasses `onSettledOrigin` below even
+            // when the route passed a settled origin (@cto asked for this stated). That is deliberate:
+            // a settled origin is where the read EXPECTED the text area, measured before the move, so
+            // sending an accepted post-move origin through that comparison would refuse the very case
+            // the bound was measured to admit. The bound is what licenses the substitution — it says
+            // the surface was quiet between the two frames, so the pair's landing is the same content
+            // relocated rather than a stale settle.
+            //
+            // `basis` stays exactly as it was, with the shift carried as data beside it: the crop's
+            // own `basis` is filled from `basisKind`, but prose that differs per frame has no business
+            // in a field a comparison may read (gridMoveExemption, @dev/10's real-shape row).
             return {
               origin: derived,
-              basis: `${basisText}; the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where()} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
+              basis: basisText,
               basisKind,
               witness,
               changedOutside: ignoredPixels,
+              acceptedRowMove: { rows: rowShift.rows, px: rowShift.px },
+              basisDetail: `the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where()} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
             }
           }
         }

@@ -588,6 +588,11 @@ export interface PixelCellCrop {
    */
   changedOutside?: number
   /**
+   * The whole-row displacement this read accepted, in rows and pixels (33982). Present only when a
+   * MEASURED bound licensed it, so a reader can count accepted moves without parsing prose.
+   */
+  acceptedRowMove?: { rows: number; px: number }
+  /**
    * The row delta a DECLARED hold produced between the settled origin and where the painted pair
    * actually landed (34163). An observation only: no grade or published cell may read it until the
    * XTest wheel event's effective displacement is measured, because "one notch" is not yet a row
