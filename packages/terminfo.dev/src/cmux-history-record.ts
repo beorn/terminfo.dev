@@ -17,7 +17,8 @@ export function cmuxHistoryEvidence(history: OwnedTerminal["cmuxHistory"]): Cmux
           ...history,
           nativeEditorFields: {
             status: "inapplicable",
-            reason: "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence is its owned surface and raw read-screen response",
+            reason:
+              "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence is its owned surface and raw read-screen response",
           },
         }),
       }
