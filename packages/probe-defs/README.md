@@ -446,6 +446,18 @@ to a one-row pair behind a two-axis seed.
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+A mutation definition also declares how far its effect reaches. `termFootprint` is `window`,
+`app-instance` or `machine`, carried from the footprint table in
+[`term-footprints.ts`](./src/term-footprints.ts), which keeps the cells in one reviewable place. A cell
+absent from that table carries no footprint, and admission refuses it as undeclared rather than
+assuming the narrow case. A process-owner basis carries its own scope: a `window`-scoped grant admits
+only cells whose footprint is `window`, and an `app-instance` or `machine` cell is refused by name
+with its footprint and its cell id. Transient effects a window cell shares with the rest of the
+machine are declared once as `termGlobalEffects`, each with how it is restored. Issuance is
+process-only today: no window-scoped basis is granted at runtime, so a `window` footprint states what
+a cell would need, not a permission it has. Granting one at runtime stays blocked on the restore-abort
+proof and the per-cell cross-window spillover read.
+
 The SGR colour capture owner supplies an explicit pending review test when its observation is
 inconclusive, including equal references and a witness timeout. It retains the observation's reason,
 frames and response; the result writer publishes PROBE TODO without changing its global status ladder.
