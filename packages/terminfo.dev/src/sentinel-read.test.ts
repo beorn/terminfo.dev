@@ -751,6 +751,10 @@ test("an undeclared whole-row move refuses and names the declaration the probe o
   ).rejects.toThrow(/did not declare a viewport hold.*must declare it on the capture request \(34163\)/)
 })
 
+// The frame pair here is SYNTHETIC: the retained lane runs in this estate carry no Warp run and no
+// per-frame crop records (the census on the bead names what was searched), so no real Warp pair exists
+// to replay. The shape replayed is the one the 33000 comment names: a text area that moved while the
+// measured pixel geometry changed with it.
 test("33000 stays intact: an undeclared read whose frame moved re-anchors instead of refusing (34163)", async () => {
   const origin = { x: 2, y: 2 }
   const moved = { cellWidth: 2, cellHeight: 2, textWidth: 10, textHeight: 8 }
@@ -764,6 +768,8 @@ test("33000 stays intact: an undeclared read whose frame moved re-anchors instea
   expect(result.basis).toContain(
     "re-anchored from the pair because the frame's own pixel geometry moved after calibration (33000)",
   )
+  // @cto 2026-11-13: the re-anchor is VISIBLE, not silent — how far it moved, beside the basis prose.
+  expect(result.reanchored).toEqual({ rows: 1, columns: 0 })
   expect(result.scrolledRows).toBeUndefined()
 })
 

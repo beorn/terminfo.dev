@@ -180,6 +180,8 @@ export type ProbeCapture = (checkpoint: {
   locate?: CaptureRequest["locate"]
   /** Cells the probe's own output may cover; the read never paints its sentinel there (33985). */
   avoid?: CaptureRequest["avoid"]
+  /** The viewport hold this read is taken under, forwarded verbatim to the collector (34163). */
+  scroll?: CaptureRequest["scroll"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>

@@ -313,6 +313,13 @@ export interface NamedTextOrigin {
    * cell may read it until the XTest wheel event's effective displacement is measured.
    */
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * How far an UNDECLARED read moved the origin from the settled one, when it re-anchored on the pair
+   * instead of refusing (33000, @cto 2026-11-13): whole rows plus any column move. Recorded so the
+   * Warp command-header path is visible in the result rather than silent, exactly as `scrolledRows`
+   * makes a declared hold visible.
+   */
+  reanchored?: { rows: number; columns: number }
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -566,6 +573,7 @@ export async function finishCapture(input: {
       image: { width, height },
       ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
       ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
+      ...(placement.reanchored !== undefined ? { reanchored: placement.reanchored } : {}),
     }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle

@@ -35,6 +35,7 @@ export type {
   CaptureRectangle,
   CaptureRenderingAxes,
   CaptureRequest,
+  DeclaredViewportHold,
   CaptureLocated,
   CalibrationSentinel,
 } from "./types.ts"

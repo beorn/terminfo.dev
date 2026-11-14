@@ -587,6 +587,26 @@ export interface PixelCellCrop {
    * count in this codebase.
    */
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * How far an UNDECLARED read moved the origin from the settled one when it re-anchored on the pair
+   * instead of refusing (33000, @cto 2026-11-13). Makes the Warp command-header path visible in the
+   * result rather than silent; observation only, like `scrolledRows`.
+   */
+  reanchored?: { rows: number; columns: number }
+}
+
+/**
+ * The viewport hold a probe declares on its capture request (34163). A held viewport renders the
+ * painted sentinel pair N rows off the calibrated grid, so a declared read crops at the settled
+ * origin and records N as an observation; undeclared, that move refuses by name.
+ */
+export interface DeclaredViewportHold {
+  /** "up" means the viewport is held above the bottom; the pair then renders LOW (positive rows). */
+  direction: "up" | "down"
+  /** Notches the probe injected since it last returned to the bottom. */
+  notches: number
+  /** The most rows that hold can have scrolled, from the fixture's own construction. */
+  maxRows: number
 }
 
 /**
@@ -619,14 +639,7 @@ export interface CaptureRequest {
    * moved pair is a refusal naming the delta. `maxRows` bounds what the fixture can have scrolled —
    * a hold can never exceed one screen — so a delta outside it is not a hold and refuses.
    */
-  scroll?: {
-    /** "up" means the viewport is held above the bottom; the pair then renders LOW (positive rows). */
-    direction: "up" | "down"
-    /** Notches the probe injected since it last returned to the bottom. */
-    notches: number
-    /** The most rows that hold can have scrolled, from the fixture's own construction. */
-    maxRows: number
-  }
+  scroll?: DeclaredViewportHold
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
   /**

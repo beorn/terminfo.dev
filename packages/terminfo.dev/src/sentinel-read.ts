@@ -8,9 +8,9 @@ import {
   type CalibrationSentinel,
   type CaptureCells,
   type CapturePixelGeometry,
-  type CaptureRequest,
+  type DeclaredViewportHold,
 } from "@terminfo/probe-defs"
-import { locateChangedColour, type CapturedFrame, type OriginResolver } from "./capture-core.ts"
+import { locateChangedColour, type CapturedFrame, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
 
 /** A frame this read cannot anchor yet: the paint may still be one capture behind (33000). Never fatal. */
 class SentinelNotOnFrame extends Error {}
@@ -86,7 +86,7 @@ export async function readThroughSentinel<T>(input: {
    * hold renders the pair N rows off the settled grid; declared, that is measured and recorded;
    * undeclared, it is refused by name.
    */
-  scroll?: CaptureRequest["scroll"]
+  scroll?: DeclaredViewportHold
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
@@ -268,7 +268,7 @@ function onSettledOrigin(input: {
   size: { width: number; height: number }
   basis: string
   changedOutside: number
-  scroll?: CaptureRequest["scroll"]
+  scroll?: DeclaredViewportHold
   refuse: (reason: string) => Error
 }): NamedTextOrigin {
   const { settled, derived, size, scroll } = input
@@ -284,13 +284,18 @@ function onSettledOrigin(input: {
   const rows = Math.round(dy / size.height)
   const wholeRows = Math.abs(dy - rows * size.height) <= slack
   const movedBy = `the pair landed ${dy} px (${wholeRows ? `${rows} rows` : "not a whole number of rows"}) off the settled origin at ${settled.origin.x},${settled.origin.y}, which puts its box at ${derived.x},${derived.y} against an expected ${settled.origin.x},${settled.origin.y} for a ${size.width}x${size.height} cell`
+  const columnMove = dx / size.width
   const reanchored: NamedTextOrigin = {
     ...settled,
     origin: derived,
-    basis: `${input.basis}; re-anchored from the pair because the frame's own pixel geometry moved after calibration (33000)`,
+    basis: `${input.basis}; re-anchored from the pair because the frame's own pixel geometry moved after calibration (33000), by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(columnMove) ? `${columnMove} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y}`,
     basisKind: settled.basisKind,
     witness: input.witness,
     changedOutside: input.changedOutside,
+    reanchored: {
+      rows: wholeRows ? rows : dy / size.height,
+      columns: Number.isInteger(columnMove) ? columnMove : dx / size.width,
+    },
   }
   if (scroll === undefined) {
     if (extentMoved || !wholeRows || Math.abs(dx) > slack || rows === 0) return reanchored
