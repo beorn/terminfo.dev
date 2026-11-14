@@ -1299,7 +1299,7 @@ export function beginMuxSgrCommandRead(input: {
 }
 
 /** The existing bounded semantic read loop, shared by native readers without another polling mechanism. */
-async function untilAppSemanticRead(
+export async function untilAppSemanticRead(
   read: () => string | Promise<string>,
   complete: (value: string) => boolean,
   name: string,
@@ -1579,7 +1579,8 @@ export async function readAppSemanticState(input: {
       ) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
-      const pathValue = (value: string) => (value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value)
+      const pathValue = (value: string) =>
+        value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
       const get = async (checkpoint?: { row: number; marker: string }) => {
         const read = await ownedCwd(checkpoint)
         const uri = new URL(read.uri)
@@ -1606,9 +1607,14 @@ export async function readAppSemanticState(input: {
         }
         return reading
       }
-      return await readCwdPhases(initial, sample, async () => {
-        detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
-      }, pathValue)
+      return await readCwdPhases(
+        initial,
+        sample,
+        async () => {
+          detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+        },
+        pathValue,
+      )
     }
     const mux = input.mux === "tmux"
     let pane: string | undefined

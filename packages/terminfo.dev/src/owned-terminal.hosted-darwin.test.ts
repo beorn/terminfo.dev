@@ -1167,8 +1167,12 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
 
 // The state-domain getter fixture cannot prove which bundle/socket/pane the real owner reads.
 // @failure A Mac cwd observation comes from a different GUI, pane or bundle despite a valid output binding.
-test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTerm cwd reader binds custody: %s", (fault) => {
-  const script = `
+test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])(
+  "hosted WezTerm cwd reader binds custody: %s",
+  (fault) => {
+    const captureDirectory = mkdtempSync(join(tmpdir(), "owned-wezterm-cwd-"))
+    directories.push(captureDirectory)
+    const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { EventEmitter } from "node:events"
@@ -1180,7 +1184,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTe
     const version = "20240203-110809-5046fc22"
     Object.defineProperty(process, "platform", { value: "darwin" })
     Object.assign(process.env, { TERMINFO_RUN_ID: "b".repeat(32), TERMINFO_MUX_KIND: "", TERMINFO_TARGET_ID: "wezterm",
-      TERMINFO_TARGET_VERSION: version, TERMINFO_CAPTURE_DIRECTORY: "/owned/capture", WEZTERM_PANE: "1", WEZTERM_UNIX_SOCKET: "/owned/gui.sock" })
+      TERMINFO_TARGET_VERSION: version, TERMINFO_CAPTURE_DIRECTORY: ${JSON.stringify(captureDirectory)}, WEZTERM_PANE: "1", WEZTERM_UNIX_SOCKET: "/owned/gui.sock" })
     const device = { dev: 7n, rdev: 9n, ino: 11n, isSocket: () => true }
     const realReadFileSync = fs.readFileSync
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
@@ -1229,7 +1233,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTe
       readDisposableReceipt: () => ({ kind: "github-hosted-runner", sha256: "a".repeat(64), appLaunch: {
         executablePath: executable, executableSha256: createHash("sha256").update("gui").digest("hex") } }) }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
-    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32), out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
+    const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32), out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained() {} })
     try {
       assert.equal(typeof owner.readAppSemanticState, "function")
       const reading = await owner.readAppSemanticState("extensions.osc633-p", text => {
@@ -1247,7 +1251,11 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])("hosted WezTe
       }
     } finally { await owner.dispose() }
   `
-  const result = spawnSync(process.execPath, ["-e", script], { cwd: join(import.meta.dirname, "../../.."), encoding: "utf8", timeout: 20_000 })
-  expect(result.status, result.stderr).toBe(0)
-})
-
+    const result = spawnSync(process.execPath, ["-e", script], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      timeout: 20_000,
+    })
+    expect(result.status, result.stderr).toBe(0)
+  },
+)

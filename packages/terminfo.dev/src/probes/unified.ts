@@ -888,11 +888,10 @@ export async function runProbeBatch(
       captureGeometryRefusal,
     })
     if (ownsTerminal) {
-      // The Mac WezTerm port observes only CWD. Other rows keep their original term callback,
-      // including icon and semantic wrappers whose unavailable reading does not fall back.
-      const cwdOnly =
-        options.subject?.kind === "term" && options.subject.id === "wezterm" && options.subject.os === "macos"
-      if (!cwdOnly || probe.id === "extensions.osc7-cwd") {
+      // The verified owner knows which rows its reader observes. Other rows retain their original term
+      // callbacks, including wrappers whose unavailable reading does not fall back.
+      const semanticFeatures = options.ownedTerminal?.appSemanticStateFeatures
+      if (semanticFeatures === undefined || semanticFeatures.has(probe.id)) {
         probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
       }
       const read = options.ownedTerminal?.getScrollback
