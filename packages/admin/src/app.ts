@@ -760,10 +760,15 @@ export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLau
     const outcome = launch.cmux.restore()
     try {
       process.kill(launch.cmux.startedPid, "SIGTERM")
-    } catch {
-      // The surface already exited; the config restore above is the part that must not be skipped.
+      return `cmux surface pid ${launch.cmux.startedPid} signaled; ghostty config ${outcome}`
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        return `cmux surface pid ${launch.cmux.startedPid} already exited; ghostty config ${outcome}`
+      }
+      throw new Error(
+        `cmux surface pid ${launch.cmux.startedPid} could not be signaled: ${String(error)}; ghostty config ${outcome}`,
+      )
     }
-    return `cmux surface pid ${launch.cmux.startedPid} signaled; ghostty config ${outcome}`
   }
   if (launch.terminalWindow) {
     return closeOwnedTerminalWindow(launch.terminalWindow)

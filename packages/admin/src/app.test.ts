@@ -1282,7 +1282,7 @@ describe("cli-process stop when the owner was never resolved", () => {
 })
 
 describe("cmux stop closes what the arm opened", () => {
-  test("restores the ghostty config by line and names the surface pid", () => {
+  test("restores the ghostty config by line and reports a surface that already exited", () => {
     const restore = vi.fn(() => "line-removed" as const)
     const proof = stopLaunchedApp(
       { name: "cmux", id: "cmux" },
@@ -1299,6 +1299,7 @@ describe("cmux stop closes what the arm opened", () => {
     )
     expect(restore).toHaveBeenCalledTimes(1)
     expect(proof).toContain("987654")
+    expect(proof).toContain("already exited")
     expect(proof).toContain("line-removed")
   })
 })
