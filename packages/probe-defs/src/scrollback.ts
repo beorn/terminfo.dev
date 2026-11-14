@@ -625,6 +625,12 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       ],
     }
   } catch (error) {
+    // A hold whose frames carry no measured witness has no origin this read may crop at (34163).
+    // That is a coverage gap with a reason, not a verdict about the terminal: record it and leave the
+    // cell todo, exactly as a missing fixture does.
+    if (error instanceof Error && error.name === "CaptureHoldUnresolved") {
+      return todo(`viewport hold cannot be read: ${error.message}`)
+    }
     failed = true
     primary = error
     throw error

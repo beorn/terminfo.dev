@@ -740,7 +740,9 @@ async function heldRead(input: {
   frame: CapturedFrame
   prePaint: CapturedFrame
   settled?: ReturnType<typeof settledAt> | undefined
-  scroll?: { direction: "up" | "down"; notches: number; maxRows: number }
+  scroll?: { direction: "up" | "down"; notches: number; rows?: number; maxRows: number }
+  base?: { label: string; origin: { x: number; y: number } }
+  witnessShift?: { rows: number; columns: number; unique: boolean }
   geometry?: typeof pixelGeometry
   cell?: { width: number; height: number }
 }) {
@@ -764,68 +766,37 @@ async function heldRead(input: {
     cell,
     ...(input.settled !== undefined ? { settled: input.settled } : {}),
     ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
+    ...(input.base !== undefined ? { base: input.base } : {}),
+    ...(input.witnessShift !== undefined ? { witnessShift: input.witnessShift } : {}),
     deadline: Date.now() - 1,
   })
 }
 
-test("a declared hold crops at the settled origin and records the rows it moved the pair (34163)", async () => {
+test("every declared hold is unresolved and claims no origin (34163, @cto smaller ruling)", async () => {
   const origin = { x: 2, y: 2 }
-  const held = { direction: "up" as const, notches: 1, maxRows: 4 }
-  const result = await heldRead({
-    frame: heldWindow({ origin, shift: { y: 2 } }),
-    prePaint: before(origin),
-    settled: settledAt(origin),
-    scroll: held,
-  })
-  expect(result.origin).toEqual(origin)
-  expect(result.scrolledRows).toEqual({ rows: 1, direction: "up", notches: 1 })
-  expect(result.basis).toContain("cropped at the settled calibrated origin")
-  expect(result.basis).toContain("no grade reads it until the XTest wheel unit is measured")
-  expect(result.changedOutside).toBe(0)
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
 })
 
-// @cto 2026-11-13: the paint that anchors this read is itself terminal OUTPUT, so a terminal that
-// snaps to bottom on output snaps while the pair is being painted. Its frame shows the bottom
-// viewport with the pair on the settled grid, which is the snapped candidate the viewport-hold probe
-// exists to detect. That must be an observation the probe can grade, never a refusal.
-test("a declared hold whose pair lands on the settled origin reports a viewport that was NOT held (34163, @cto)", async () => {
+test("a declared hold whose pair lands on the settled origin is still unresolved, never an observation (34163, @cto smaller ruling)", async () => {
   const origin = { x: 2, y: 2 }
-  const result = await heldRead({
-    frame: heldWindow({ origin, shift: {} }),
-    prePaint: before(origin),
-    settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
-  })
-  expect(result.origin).toEqual(origin)
-  expect(result.scrolledRows).toEqual({ rows: 0, direction: "up", notches: 1 })
-  expect(result.basis).toContain("the viewport was NOT held when this frame was taken")
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: {} }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toThrow(/a declared hold is not read until the rows it moves are established independently/)
 })
 
-test("a declared hold whose frame snapped to the bottom is still an observation, not the move refusal (34163, @cto)", async () => {
-  const origin = { x: 2, y: 2 }
-  // Pair on the settled grid, but the rest of the window is a different view: the snap signature.
-  // The pair's CELLS are the ones this read chooses from that view (33981 chooses against the frame
-  // it actually saw), so the fixture paints where the read will paint — the snap shows the read's
-  // own pair at the settled origin, and the difference is the rest of the window.
-  const view = windowAt({ x: 2, y: 6 })
-  const painting = sentinelCellsInFrame({
-    ...view,
-    reading: { x: 2, y: 6 },
-    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
-    grid,
-    regions: [cells],
-  })
-  const result = await heldRead({
-    frame: heldWindow({ origin, shift: {}, pair: painting }),
-    prePaint: view,
-    settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
-  })
-  expect(result.scrolledRows?.rows).toBe(0)
-  expect(result.changedOutside).toBeGreaterThan(pixelGeometry.textWidth)
-})
-
-test("a declared hold that moves the pair sideways is not a hold (34163)", async () => {
+test("a declared hold that moved the pair sideways is unresolved by the same rule, not graded (34163)", async () => {
   const origin = { x: 2, y: 2 }
   await expect(
     heldRead({
@@ -834,63 +805,7 @@ test("a declared hold that moves the pair sideways is not a hold (34163)", async
       settled: settledAt(origin),
       scroll: { direction: "up", notches: 1, maxRows: 4 },
     }),
-  ).rejects.toThrow(/which moves the pair in ROWS.*horizontal offset is 4 px/)
-})
-
-test("a declared hold must move the pair by whole rows of the cell (34163)", async () => {
-  const origin = { x: 0, y: 0 }
-  const cell = { width: 2, height: 6 }
-  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
-  const size = { width: 16, height: 30 }
-  // The cells this read chooses in a 2x6 cell are not the 2x2-cell pair: paint where it will paint.
-  const pair = pairOnBlankFrame(grid, [cells], cell)
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: { y: 3 }, cell, size, pair }),
-      prePaint: heldWindow({ origin, shift: {}, cell, size, painted: false }),
-      settled: settledAt(origin, geometry),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
-      geometry,
-      cell,
-    }),
-  ).rejects.toThrow(/not a whole number of rows.*by whole rows of the 2x6 cell/)
-})
-
-test("a declared hold cannot scroll further than the screen it holds (34163)", async () => {
-  const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 } }),
-      prePaint: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 }, painted: false }),
-      settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 2 },
-    }),
-  ).rejects.toThrow(/can have scrolled at most 2 rows on this screen, and the pair landed 3 rows/)
-})
-
-test("a declared hold in the other direction cannot move the pair where it went (34163)", async () => {
-  const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: { y: 2 } }),
-      prePaint: before(origin),
-      settled: settledAt(origin),
-      scroll: { direction: "down", notches: 1, maxRows: 4 },
-    }),
-  ).rejects.toThrow(
-    /declared the viewport held down and the pair landed 1 rows off the settled origin, whose sign is the other way/,
-  )
-})
-
-test("an undeclared whole-row move refuses and names the declaration the probe owes (34163)", async () => {
-  const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: { y: 2 } }),
-      prePaint: before(origin),
-      settled: settledAt(origin),
-    }),
-  ).rejects.toThrow(/did not declare a viewport hold.*must declare it on the capture request \(34163\)/)
+  ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
 })
 
 // @cto's condition on the 33981 x 34163 composition: the cells were chosen against a frame at
@@ -929,40 +844,6 @@ test("refuses by name when the frame moved out from under the cells it chose, an
   await expect(read()).rejects.toThrow(/will not re-anchor from a pair that may have covered ink/)
 })
 
-// The frame pair here is SYNTHETIC: the retained lane runs in this estate carry no Warp run and no
-// per-frame crop records (the census on the bead names what was searched), so no real Warp pair exists
-// to replay. The shape replayed is the one the 33000 comment names: a text area that moved while the
-// measured pixel geometry changed with it.
-test("33000 stays intact: an undeclared read whose frame moved re-anchors instead of refusing (34163)", async () => {
-  const origin = { x: 2, y: 2 }
-  // Constructed the way the route does it (@cto 2026-11-13): the SAME pixel geometry in both frames,
-  // because a differing one is refused before the resolver runs. The frame itself moved: pattern and
-  // pair both two rows down, which is what a moved text area looks like and what leaves thousands of
-  // changed pixels outside the pair.
-  const result = await heldRead({
-    frame: windowAt({ x: 2, y: 4 }),
-    prePaint: before({ x: 2, y: 2 }),
-    settled: settledAt(origin),
-  })
-  expect(result.origin).toEqual({ x: 2, y: 4 })
-  expect(result.basis).toContain("re-anchored from the pair after the frame moved, by 1 rows and 0 columns")
-  // @cto 2026-11-13: the re-anchor is VISIBLE, not silent — how far it moved, beside the basis prose.
-  expect(result.reanchored).toEqual({ rows: 1, columns: 0 })
-  expect(result.scrolledRows).toBeUndefined()
-})
-
-test("a declared hold whose frame MOVED refuses: a hold plus a move is not one read (34163)", async () => {
-  const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: windowAt({ x: 2, y: 4 }),
-      prePaint: before({ x: 2, y: 2 }),
-      settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
-    }),
-  ).rejects.toThrow(/more than one 12 px text row, so the frame MOVED while it was supposed to be held still/)
-})
-
 test("an ordinary read crops at the settled origin and is not called a re-anchor (34163, @cto)", async () => {
   const origin = { x: 2, y: 2 }
   const result = await heldRead({
@@ -977,14 +858,59 @@ test("an ordinary read crops at the settled origin and is not called a re-anchor
   expect(result.basis).not.toContain("re-anchored")
 })
 
-test("a declared hold may land within the read's own slack of a whole row (34163, @cto)", async () => {
+test("a read within the sentinel box slack of the settled origin is an ordinary read (34163, @cto)", async () => {
   const origin = { x: 2, y: 2 }
   const result = await heldRead({
-    frame: heldWindow({ origin, shift: { y: 3 } }),
+    frame: heldWindow({ origin, shift: { x: 1 } }),
     prePaint: heldWindow({ origin, shift: {}, painted: false }),
     settled: settledAt(origin),
-    scroll: { direction: "up", notches: 1, maxRows: 4 },
   })
   expect(result.origin).toEqual(origin)
-  expect(result.scrolledRows?.rows).toBe(2)
+  expect(result.reanchored).toBeUndefined()
+  expect(result.basis).toContain("the pair landed on the settled calibrated origin")
+})
+
+// The production contract (@cto 2026-11-13, ruling 4): a capture adapter hands the read a
+// `{frame, ...}` result and calls the resolver IT was given, so the origin the route uses is the one
+// this resolver returns. Both cases below run through that exact shape, which is the boundary the
+// direct-resolver tests above cannot see.
+test("the adapter boundary keeps the {frame} result shape and refuses a declared hold there (34163, @cto 4)", async () => {
+  const origin = { x: 2, y: 2 }
+  const painted = source()
+  let resolved: { x: number; y: number } | undefined
+  const adapter = () => ({
+    source: painted.source,
+    prePaint: async () => before(origin),
+    // The real adapter calls the resolver it is handed, then returns a frame: the origin never
+    // rides at the top level of the result.
+    capture: async (
+      resolve: (input: { frame: CapturedFrame; pixelGeometry: typeof pixelGeometry }) => {
+        origin: { x: number; y: number }
+      },
+    ) => {
+      resolved = resolve({ frame: heldWindow({ origin, shift: { y: 2 } }), pixelGeometry }).origin
+      return {
+        frame: { role: "control" as const, label: "cells 1,1-2,2", capturedAt: 1, ref: "sha256:" + "a".repeat(64) },
+        trace: {},
+      }
+    },
+    label: "cells 1,1-2,2" as const,
+    sentinel,
+    regions: [cells],
+    // 33981: the cells are chosen against a frame at this origin, so the read needs it and the cell.
+    reading: origin,
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    settled: settledAt(origin),
+    deadline: Date.now() - 1,
+  })
+  const result = await readThroughSentinel(adapter())
+  // A 2 px displacement on a 2 px cell is inside the blend slack, so this is the ordinary case: the
+  // pair sits on the settled origin and the route crops there. A displacement past the slack is the
+  // moved-read refusal, which the test below this one pins by name.
+  expect(resolved).toEqual({ x: 2, y: 2 })
+  expect(result).toHaveProperty("frame")
+  expect(result as Record<string, unknown>).not.toHaveProperty("origin")
+  await expect(
+    readThroughSentinel({ ...adapter(), scroll: { direction: "up" as const, notches: 1, maxRows: 4 } }),
+  ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
 })
