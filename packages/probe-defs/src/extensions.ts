@@ -386,7 +386,7 @@ function osc5522AfterSiblings(
   const other = controls.filter((control) => control.outcome === "other").map(({ mode }) => mode)
   // A reporter that answers some modes but not the one under test has not told us anything about
   // 5522: its silence there decides nothing, and calling that a probe fault would blame the wrong
-  // party (@cto c0dbe6ff, shape 2). It is not a second declared-Untestable reason beside the
+  // party (@cto b15bd58a-e70c-44f7-8c86-19fb354fd5b7). It is not a second declared-Untestable reason beside the
   // all-silent net above: nothing the protocol could report went missing, the observer did. So this
   // states what it measured and names the missing observer as PROBE TODO (@cpo/term 2ddb8d2a: keep
   // existing Untestable reasons, add no new ones), the same class the OSC 0 unknown already uses.
