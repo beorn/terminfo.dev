@@ -502,6 +502,7 @@ test("a region that leaves the frame refuses by name and never shrinks to fit (3
         a: { cell: { row: 2, col: 3 }, box: { x: 29, y: 184 } },
         b: { cell: { row: 1, col: 4 }, box: { x: 42, y: 155 } },
       },
+      changedOutside: 7,
     }),
-  ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155/)
+  ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155; 7 px changed outside those boxes/)
 })

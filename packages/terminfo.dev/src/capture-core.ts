@@ -173,8 +173,20 @@ export function cellRectangle(input: {
    * painted beside the boxes it located are what prove the pair moved (34163).
    */
   witness?: NamedTextOrigin["witness"]
+  /** The pre-paint difference's changed pixels outside the located pair (`NamedTextOrigin.changedOutside`). */
+  changedOutside?: number
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible, basis, witness } = input
+  const {
+    cells,
+    pixelGeometry: geometry,
+    textOrigin,
+    windowWidth,
+    windowHeight,
+    visible,
+    basis,
+    witness,
+    changedOutside,
+  } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -240,7 +252,10 @@ export function cellRectangle(input: {
         `over a ${geometry.textWidth}x${geometry.textHeight} text area` +
         (witness
           ? `; sentinel witness cells ${witness.a.cell.row},${witness.a.cell.col} at ${witness.a.box.x},${witness.a.box.y} and ${witness.b.cell.row},${witness.b.cell.col} at ${witness.b.box.x},${witness.b.box.y}`
-          : ""),
+          : "") +
+        (changedOutside === undefined
+          ? ""
+          : `; ${changedOutside} px changed outside those boxes between the pre-paint frame and this one`),
     )
   }
   return rectangle
@@ -286,6 +301,12 @@ export interface NamedTextOrigin {
    * half and must travel with the frame for a grid move to be proved (33982).
    */
   witness?: NonNullable<PixelCellCrop["witness"]>
+  /**
+   * Pixels that changed between the pre-paint frame and the frame this origin was derived from
+   * WITHOUT carrying the sentinel colour. A held viewport moved by whole rows shows as a delta on a
+   * quiet frame; a re-anchored viewport shows here as a large number (34163).
+   */
+  changedOutside?: number
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -493,6 +514,7 @@ export async function finishCapture(input: {
         ...(placement.visible ? { visible: placement.visible } : {}),
         ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
         ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+        ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
       })
       const cropExpected = rectangle.width * rectangle.height * 4
       const cropped = Buffer.alloc(cropExpected)
