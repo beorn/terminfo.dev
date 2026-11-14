@@ -452,8 +452,10 @@ A mutation definition also declares how far its effect reaches. `termFootprint` 
 absent from that table carries no footprint, and admission refuses it as undeclared rather than
 assuming the narrow case. A process-owner basis carries its own scope: a `window`-scoped grant admits
 only cells whose footprint is `window`, and an `app-instance` or `machine` cell is refused by name
-with its footprint and its cell id. Transient effects a window cell shares with the rest of the
-machine are declared once as `termGlobalEffects`, each with how it is restored. Issuance is
+with its footprint and its cell id. Where a cell's effect is not obviously window-confined,
+`TERM_FOOTPRINT_NOTES` records why, in the same file as the table. A separate declaration of shared
+transient effects is not implemented yet: the first slice that issues a window-scoped basis is where
+each effect and its restore are named, so no such field is documented here as shipped. Issuance is
 process-only today: no window-scoped basis is granted at runtime, so a `window` footprint states what
 a cell would need, not a permission it has. Granting one at runtime stays blocked on the restore-abort
 proof and the per-cell cross-window spillover read.
