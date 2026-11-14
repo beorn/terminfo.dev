@@ -9,13 +9,7 @@
  */
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
-import {
-  basisScopeAdmits,
-  basisScopeRefusal,
-  footprintRefusal,
-  TERM_FOOTPRINTS,
-  windowBasisAdmits,
-} from "./term-footprints.ts"
+import { basisScopeAdmits, basisScopeRefusal, TERM_FOOTPRINTS } from "./term-footprints.ts"
 
 const WINDOW = [
   "modes.alt-screen.enter",
@@ -78,16 +72,16 @@ describe("term footprints (#34148)", () => {
   })
 
   test("a window basis admits the 18 and refuses the 8 + 1 by name", () => {
-    for (const id of WINDOW) expect(windowBasisAdmits(id), `${id} is admitted`).toBe(true)
+    for (const id of WINDOW) expect(basisScopeAdmits("window", id), `${id} is admitted`).toBe(true)
     for (const id of [...APP_INSTANCE, ...MACHINE]) {
-      expect(windowBasisAdmits(id), `${id} is refused`).toBe(false)
-      expect(footprintRefusal(id), `${id}'s refusal names its footprint`).toContain(TERM_FOOTPRINTS[id])
+      expect(basisScopeAdmits("window", id), `${id} is refused`).toBe(false)
+      expect(basisScopeRefusal("window", id), `${id}'s refusal names its footprint`).toContain(TERM_FOOTPRINTS[id])
     }
   })
 
   test("an undeclared id refuses as undeclared, never as a default", () => {
-    expect(windowBasisAdmits("modes.not-a-real-cell")).toBe(false)
-    expect(footprintRefusal("modes.not-a-real-cell")).toContain("undeclared")
+    expect(basisScopeAdmits("window", "modes.not-a-real-cell")).toBe(false)
+    expect(basisScopeRefusal("window", "modes.not-a-real-cell")).toContain("undeclared")
   })
   // @cto a4fc490d (revised): the question is not "is this a window cell" but "does this basis scope
   // cover this cell footprint". A process-owned run must admit exactly what it admits today.

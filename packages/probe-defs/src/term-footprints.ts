@@ -77,11 +77,6 @@ export function termFootprintFor(id: string): TermFootprint | undefined {
   return TERM_FOOTPRINTS[id]
 }
 
-/** A window-scoped basis admits exactly the `window` cells. */
-export function windowBasisAdmits(id: string): boolean {
-  return TERM_FOOTPRINTS[id] === "window"
-}
-
 /**
  * Does a basis with this scope cover this cell's footprint?
  * - no scope on the basis refuses (a basis must say what it covers)
@@ -104,12 +99,4 @@ export function basisScopeRefusal(scope: OwnerBasisScope | undefined, id: string
   return scope === undefined
     ? `${what}; this owner basis declares no scope, so it covers nothing`
     : `${what}; a ${scope}-scoped owner basis does not cover it`
-}
-
-/** The refusal sentence names the cell and its declared footprint; undeclared refuses too. */
-export function footprintRefusal(id: string): string {
-  const footprint = TERM_FOOTPRINTS[id]
-  return footprint === undefined
-    ? `footprint undeclared for ${id}`
-    : `${id} declares footprint ${footprint}; a window-scoped owner basis admits window cells only`
 }

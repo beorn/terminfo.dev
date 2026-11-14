@@ -187,9 +187,7 @@ import { termFootprintFor } from "./term-footprints.ts"
 export {
   basisScopeAdmits,
   basisScopeRefusal,
-  footprintRefusal,
   termFootprintFor,
-  windowBasisAdmits,
   TERM_FOOTPRINTS,
   TERM_FOOTPRINT_NOTES,
 } from "./term-footprints.ts"
