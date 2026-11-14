@@ -438,6 +438,9 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     const result = await capture({
       role,
       label,
+      // 34163: a frame taken while the viewport is held up declares the hold, so the read crops at
+      // the settled origin and records where the hold put the pair instead of cropping there.
+      ...(scrolled ? { scroll: { direction: "up" as const, notches: heldNotches, maxRows: ctx.rows } } : {}),
       ...(calGeometry ? { cells: labelCells, pixelGeometry: calGeometry } : {}),
     })
     const cellDigest = frameDigests(result).cells
@@ -457,8 +460,21 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   let failed = false
   let primary: unknown
   let scrolled = false
+  /** Notches injected since the last return to the bottom; the declared bound of a hold (34163). */
+  let heldNotches = 0
+  /**
+   * One wheel notch up, counted. Declaring the hold on every frame taken under it is what lets the
+   * capture route crop at its settled origin instead of the pair's held position (34163): a hold
+   * can never exceed one screen, so `ctx.rows` is the bound.
+   */
+  const notchUp = async () => {
+    scrolled = true
+    heldNotches += 1
+    await input.injectClick(4)
+  }
   const moveDown = async () => {
     scrolled = false
+    heldNotches = 0
     for (let notch = 0; notch < down; notch++) await input.injectClick(5)
   }
   const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
@@ -474,11 +490,10 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
     calibration.delivery = calDelivery
     if (!calDelivery) return todo("viewport input delivery not observed")
-    scrolled = true
-    await input.injectClick(4)
+    await notchUp()
     const calScrolled = await frame("Viewport calibration scrolled")
     calibration.calScrolled = calScrolled
-    for (let notch = 0; notch < maxCandidate; notch++) await input.injectClick(4)
+    for (let notch = 0; notch < maxCandidate; notch++) await notchUp()
     const calTop = await frame("Viewport calibration top")
     calibration.calTop = calTop
     await moveDown()
@@ -513,8 +528,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       const control = await readInput(/^a/, 1000, () => input.injectKey("a"))
       state.delivery = control
       if (!control) return todo("viewport input delivery not observed")
-      scrolled = true
-      await input.injectClick(4)
+      await notchUp()
       const anchor = await frame(`${phase} U`)
       state.U = anchor
       if (sameCells(anchor, bottom) || sameCells(anchor, reference)) {
@@ -568,8 +582,7 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
       const arrived = await frame(`${phase} B1`)
       state.B1 = arrived
       if (!sameCells(arrived, reference)) return todo("restoration to bottom not proven")
-      scrolled = true
-      await input.injectClick(4)
+      await notchUp()
       const relative = await frame(`${phase} R`)
       state.R = relative
       const candidates = { held: anchor, snapped: arrived, "bottom-relative": relative }

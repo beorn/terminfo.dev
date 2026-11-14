@@ -292,6 +292,8 @@ export type CmuxReadFacts = Readonly<{
   readonly extras: number | null
   readonly totalLines: number
   readonly screenLines: number | null
+  /** Private native bytes registered by the owner's capture writer; only this hash is publishable. */
+  readonly transcript?: string
   /** Whether the socket guard was there, by hash. An unreadable file records only that it was unreadable. */
   readonly config:
     | "unrecorded"
@@ -338,6 +340,7 @@ export function readOwnedCmuxHistory(options: {
   readonly ownership: CmuxOwnership
   readonly configAtLaunch: CmuxConfigObservation | undefined
   readonly observeConfig: () => CmuxConfigObservation
+  readonly retainTranscript?: (stdout: string) => string
   readonly spawn?: (args: readonly string[]) => CommandOutcome
 }): OwnedCmuxRead {
   const args = [
@@ -350,6 +353,8 @@ export function readOwnedCmuxHistory(options: {
       ? spawnSync(options.executable, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 })
       : options.spawn(args)
   const stdout = text(result.stdout)
+  // Retain before interpreting ownership or status: a refused native response is evidence too.
+  const transcript = options.retainTranscript?.(stdout)
   const stderr = text(result.stderr)
   // The command's own output goes to the collector's stderr log; the published reason stays value-free
   // except for the one diagnostic a reader needs, which cmux writes at phrase length.
@@ -404,6 +409,7 @@ export function readOwnedCmuxHistory(options: {
       config,
     }),
     facts: {
+      ...(transcript === undefined ? {} : { transcript }),
       ownership: options.ownership.kind,
       markers,
       extras: extras === null ? null : extras.length,

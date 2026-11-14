@@ -580,6 +580,33 @@ export interface PixelCellCrop {
     a: { cell: { row: number; col: number }; box: { x: number; y: number } }
     b: { cell: { row: number; col: number }; box: { x: number; y: number } }
   }
+  /**
+   * The row delta a DECLARED hold produced between the settled origin and where the painted pair
+   * actually landed (34163). An observation only: no grade or published cell may read it until the
+   * XTest wheel event's effective displacement is measured, because "one notch" is not yet a row
+   * count in this codebase.
+   */
+  scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * How far an UNDECLARED read moved the origin from the settled one when it re-anchored on the pair
+   * instead of refusing (33000, @cto 2026-11-13). Makes the Warp command-header path visible in the
+   * result rather than silent; observation only, like `scrolledRows`.
+   */
+  reanchored?: { rows: number; columns: number }
+}
+
+/**
+ * The viewport hold a probe declares on its capture request (34163). A held viewport renders the
+ * painted sentinel pair N rows off the calibrated grid, so a declared read crops at the settled
+ * origin and records N as an observation; undeclared, that move refuses by name.
+ */
+export interface DeclaredViewportHold {
+  /** "up" means the viewport is held above the bottom; the pair then renders LOW (positive rows). */
+  direction: "up" | "down"
+  /** Notches the probe injected since it last returned to the bottom. */
+  notches: number
+  /** The most rows that hold can have scrolled, from the fixture's own construction. */
+  maxRows: number
 }
 
 /**
@@ -605,6 +632,14 @@ export interface CaptureRequest {
    * image over text hides the sentinel, and the crop cannot be anchored.
    */
   avoid?: CaptureCells
+  /**
+   * The viewport hold this read is taken under, declared by the probe that created it (34163). A
+   * held viewport renders the painted sentinel pair N rows BELOW the calibrated grid, so a declared
+   * read crops at the settled origin and records N as an observation; without the declaration a
+   * moved pair is a refusal naming the delta. `maxRows` bounds what the fixture can have scrolled —
+   * a hold can never exceed one screen — so a delta outside it is not a hold and refuses.
+   */
+  scroll?: DeclaredViewportHold
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
   /**

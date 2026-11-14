@@ -1040,10 +1040,18 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
 function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
   const { a } = crop.witness ?? {}
   if (a === undefined) return false
-  return (
-    crop.origin.x === a.box.x - (a.cell.col - 1) * crop.cell.width &&
-    crop.origin.y === a.box.y - (a.cell.row - 1) * crop.cell.height
-  )
+  // 34163: a DECLARED viewport hold crops at the settled origin and records the rows the hold moved
+  // the pair, so the box follows from the origin plus that declared delta, proved with the same
+  // tolerance the read used — and still a disagreement if the two halves contradict each other.
+  const heldRows = (crop.scrolledRows?.rows ?? 0) * crop.cell.height
+  const expectedY = a.box.y - (a.cell.row - 1) * crop.cell.height - heldRows
+  if (crop.origin.x !== a.box.x - (a.cell.col - 1) * crop.cell.width) return false
+  // A declared hold is proved with the SAME tolerance the read accepted it with, not a second,
+  // stricter one: a pair that lands 1-2 px off a whole row passes the read, and an exact equality
+  // here would then empty the exemption in silence (34163, @cto 2026-11-13).
+  return crop.scrolledRows === undefined
+    ? crop.origin.y === expectedY
+    : Math.abs(crop.origin.y - expectedY) <= SENTINEL_BOX_SLACK_PX
 }
 
 /**
@@ -1125,9 +1133,10 @@ export function cropPositionRefusal(input: {
   // every other difference still refuses below, with the sentence it always used.
   if (gridMoveExemption(cropped).length > 0) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
-  const rowHeight = seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
-    ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
-    : ""
+  const rowHeight =
+    seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
+      ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
+      : ""
   return {
     pass: false,
     response,

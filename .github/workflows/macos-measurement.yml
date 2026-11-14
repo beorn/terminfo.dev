@@ -707,7 +707,7 @@ jobs:
           exit 1
 
       - name: Preserve terminal launch failure evidence
-        if: always() && (matrix.id == 'cursor' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'com.microsoft.VSCode')))
+        if: always() && (matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode' || matrix.id == 'cmux' || matrix.id == 'terminal-app' || (failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp')))
         env:
           APP_ID: ${{ matrix.id }}
           COLLECT_OUTCOME: ${{ steps.collect.outcome }}
@@ -847,7 +847,8 @@ jobs:
         if: always() && (matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')
         run: |
           bun --eval "$(cat <<'HOSTED_EDITOR_CLOSE'
-          const { existsSync, readFileSync, mkdirSync, copyFileSync } = require("node:fs");
+          const { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } = require("node:fs");
+          const { createHash } = require("node:crypto");
           const { basename, join, dirname } = require("node:path");
           const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
@@ -860,15 +861,20 @@ jobs:
             try {
               const prefix = appId === "cursor" ? "cursor" : "vscode";
               // The script carries the run id (#30518 D2), so it is selected by the recorded name.
-              const selected = new Set([basename(run.scriptPath), "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]);
+              const selected = new Set([basename(run.scriptPath), "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs",
+                prefix + "-" + run.id + "/User/settings.json", "editor-activation.json", "editor-request.json", "editor-evaluations.jsonl", "editor-reader-errors.jsonl"]);
               for await (const path of new Bun.Glob("**/*.log").scan({ cwd: run.directory })) selected.add(path);
+              for await (const path of new Bun.Glob("editor-replies-*/*.json").scan({ cwd: run.directory })) selected.add(path);
+              const files = [], missing = [];
               for (const path of selected) {
                 const source = join(run.directory, path);
-                if (!existsSync(source)) { console.log("::warning::Editor retained launch file missing: " + source); continue; }
+                if (!existsSync(source)) { missing.push({ path, reason: "File absent at owned cleanup" }); console.log("::warning::Editor retained launch file missing: " + source); continue; }
                 const target = join(out, "editor-launch-files", path);
                 mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
                 copyFileSync(source, target);
+                files.push({ path, sha256: createHash("sha256").update(readFileSync(target)).digest("hex") });
               }
+              writeFileSync(join(out, "editor-files.json"), JSON.stringify({ appId, runId: run.id, files, missing }, null, 2), { mode: 0o600 });
             } finally {
               if (terminalWindow) closeOwnedTerminalWindow(terminalWindow);
               else console.error("Editor GUI ownership was not resolved; no process was signalled");

@@ -641,6 +641,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       throw new Error("Controlled Linux collection lacks measured executable")
     }
     let capture: ProbeCapture | undefined
+    // Native semantic reads retain the same owned window without a cell crop or calibration.
+    let nativeAppCapture: ProbeCapture | undefined
     /** The installed pixel capture's fixed settle wait, when its adapter declares one. */
     let captureSettleMs: number | undefined
     /** Set when `capture` above reads the terminal's own text rather than pixels. */
@@ -818,6 +820,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
           return readThroughSentinel({
             source,
+            // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
+            // re-derive an origin from the pair, which is a second source for one read and the
+            // reason a held viewport cropped N rows low.
+            settled: calibrated,
+            ...(checkpoint.scroll !== undefined ? { scroll: checkpoint.scroll } : {}),
             prePaint: () =>
               captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
             capture: (resolve) => adapter.capture(checkpoint, resolve),
@@ -995,16 +1002,22 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
+      const nativeEditorRead = ["cursor", "com.microsoft.VSCode"].includes(terminal.hostedAppId ?? "")
+      const nativeAppRead = nativeEditorRead || terminal.hostedAppId === "cmux"
       if (!captureDirectory) {
         captureInstallationRefusal = `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`
         return
       }
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      // main's structure (a pixel adapter stays primary; the text recipe is a per-app qualification on
-      // top of it). The owned-app arm is excluded: an owned-Mac app is pixel-first always, and a text
-      // route there would be a declared field in its proof entry, never a fallback (@cto 9f889378).
-      if (terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) installTextCapture(terminal)
+      // Main's structure: a pixel adapter stays primary, and the text recipe is a per-app
+      // qualification on top of it. The owned-app arm is excluded: an owned-Mac app is pixel-first
+      // always, and a text route there would be a declared field in its proof entry, never a fallback
+      // (@cto 9f889378). A native app read (nativeEditorRead, or the cmux hosted app) installs no text
+      // capture either: that app's own capture is primary.
+      if (!nativeEditorRead && terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) {
+        installTextCapture(terminal)
+      }
       const darwinCapture = await createDarwinCapture(captureDirectory, {
         appPid,
         // The owned-app arm (34107) names its own window: it is not on OwnedTerminal yet, so it comes
@@ -1017,6 +1030,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
         onRetained,
       })
+      if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
     }
     if (captureDirectory && process.platform === "linux") {
@@ -1091,6 +1105,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
         darwinHosted: { receiptPath: hostedReceipt },
+        appSemanticCapture: async (featureId, phase) => {
+          if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
+          return nativeAppCapture({
+            featureId,
+            role: phase === "target" ? "target" : "control",
+            label: `Native App ${phase}`,
+          })
+        },
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
       await installDarwinCapture(ownedTerminal)
