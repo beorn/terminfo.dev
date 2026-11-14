@@ -95,7 +95,12 @@ Controlled CWD changes can qualify a positive reading; API absence never supplie
 Owned-window screenshots and generated private config/read evidence are retained before restoration
 and cleanup on both success and failure, without copying the inherited environment or user profile.
 cmux retains raw read-screen responses through the same private content-addressed capture writer,
-including refused responses. Its public record carries the acquired surface, read facts and transcript
+including refused responses. Its history reading pairs `read-screen --scrollback` with plain `read-screen`
+on the acquired surface. Both responses drop trailing empty lines; the plain response must equal the
+history response's tail. Their line counts supply totalLines and screenLines, independently of geometry.
+An empty plain response is an accepted, uncorroborated zero-screen reading; empty history remains a named
+refusal pending a measured case. A failed plain read or inconsistent pair preserves proved ownership
+without publishing a count. Both raw responses remain private. Its public record carries the acquired surface, read facts and transcript
 hash reference; the receipt contains no rawScreen field. The persisted record names editor API fields
 inapplicable rather than inventing values and rejects any surviving host path separator.
 Actual per-App native compatibility and non-author raw/screenshot review remain separate from fixture tests.

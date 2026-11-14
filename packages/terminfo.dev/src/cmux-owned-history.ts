@@ -22,7 +22,7 @@ export function cmuxConfigPath(home: string): string {
   return join(home, ".config", "cmux", "cmux.json")
 }
 
-/** The five refusals the cmux arm can raise (@cto af8608c3 condition 2). Each is a probe failure, never a grade. */
+/** Named failures of ownership or readback. Each is a probe failure, never a grade. */
 export type CmuxRefusal =
   | "cmux-surface-not-owned"
   | "cmux-read-empty"
@@ -34,8 +34,8 @@ export type CmuxRefusal =
 
 export type CmuxRefused = Readonly<{ status: "refused"; refusal: CmuxRefusal; reason: string }>
 
-// #34263, cmux 0.65.2 build111, CLI SHA256500071f2aa046c1ca03e4ee919222b18a36ade3d9d8408817b853889c36ef5ba:
-// the recorded full-screen pair is101/81; after ESC[2J it is21/0 after trailing-empty normalization.
+// #34263, cmux 0.65.2 build 111, CLI SHA256 500071f2aa046c1ca03e4ee919222b18a36ade3d9d8408817b853889c36ef5ba:
+// the recorded full-screen pair is 101/81; after ESC[2J it is 21/0 after trailing-empty normalization.
 // Geometry is not the screen text count. CTO ae9e3795 replaces the earlier screen-only basis with paired reads.
 
 /**
@@ -365,6 +365,9 @@ const text = (value: Buffer | string | null | undefined): string =>
  *
  * Unreported fields stay absent: cmux answers no viewport offset and no capacity, so `viewportOffset` and
  * `capacity` are never inferred from the line count.
+ * An empty plain response is an accepted, uncorroborated zero-screen reading. The tail check cannot detect
+ * a screen-only reader returning the same text twice; the probe's seed stage must establish retained history.
+ * Fully empty history remains cmux-read-empty until a measured case supports changing that limit.
  */
 export function readOwnedCmuxHistory(options: {
   readonly executable: string
@@ -376,16 +379,26 @@ export function readOwnedCmuxHistory(options: {
   readonly spawn?: (args: readonly string[]) => CommandOutcome
 }): OwnedCmuxRead {
   const command = (scrollback: boolean) => {
-    const args = ["read-screen", ...(options.surface === undefined ? [] : ["--surface", options.surface]), ...(scrollback ? ["--scrollback"] : [])]
-    const result = options.spawn === undefined
-      ? spawnSync(options.executable, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 })
-      : options.spawn(args)
+    const args = [
+      "read-screen",
+      ...(options.surface === undefined ? [] : ["--surface", options.surface]),
+      ...(scrollback ? ["--scrollback"] : []),
+    ]
+    const result =
+      options.spawn === undefined
+        ? spawnSync(options.executable, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 })
+        : options.spawn(args)
     const stdout = text(result.stdout)
     // Both responses, including failed reads, use the existing private artifact observer.
     const transcript = options.retainTranscript?.(stdout)
     const stderr = text(result.stderr)
     if (stderr.trim() !== "") console.error(`cmux read-screen: ${stderr.trim()}`)
-    return { result, stdout, transcript, succeeded: result.error === undefined && result.signal == null && result.status === 0 }
+    return {
+      result,
+      stdout,
+      transcript,
+      succeeded: result.error === undefined && result.signal == null && result.status === 0,
+    }
   }
   const history = command(true)
   const { result, stdout, transcript, succeeded } = history
@@ -395,6 +408,10 @@ export function readOwnedCmuxHistory(options: {
       refusal: "cmux-surface-not-owned",
       reason: `cmux read-screen answered nothing this run may read (${result.error?.message ?? result.signal ?? `exit ${result.status}`})`,
     }
+  }
+  const historyLines = normalizedLines(stdout)
+  if (historyLines.length === 0) {
+    return { status: "refused", refusal: "cmux-read-empty", reason: "cmux read-screen returned no lines" }
   }
   const proof =
     options.ownership.kind === "surface"
@@ -413,7 +430,6 @@ export function readOwnedCmuxHistory(options: {
   const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
   const screen = command(false)
-  const historyLines = normalizedLines(stdout)
   const screenLines = screen.succeeded ? normalizedLines(screen.stdout) : undefined
   const totalLines = historyLines.length
   // Ownership and configuration have been proved independently of whether the two reads agree.
@@ -426,28 +442,42 @@ export function readOwnedCmuxHistory(options: {
         ? { read: "present" as const, sha256: options.configAtLaunch.sha256 }
         : { read: options.configAtLaunch.read }
   const receipt = JSON.stringify({
-      surface: options.surface ?? null,
-      ownership: options.ownership.kind,
-      markers,
-      extras,
-      totalLines,
-      screenLines: screenLines?.length ?? null,
-      ...(screen.transcript === undefined ? {} : { screenTranscript: screen.transcript }),
-      config,
-    })
+    surface: options.surface ?? null,
+    ownership: options.ownership.kind,
+    markers,
+    extras,
+    totalLines,
+    screenLines: screenLines?.length ?? null,
+    ...(screen.transcript === undefined ? {} : { screenTranscript: screen.transcript }),
+    config,
+  })
   const facts: CmuxReadFacts = {
-      ...(transcript === undefined ? {} : { transcript }),
-      ownership: options.ownership.kind,
-      markers,
-      extras: extras === null ? null : extras.length,
-      totalLines,
-      screenLines: screenLines?.length ?? null,
-      config,
+    ...(transcript === undefined ? {} : { transcript }),
+    ownership: options.ownership.kind,
+    markers,
+    extras: extras === null ? null : extras.length,
+    totalLines,
+    screenLines: screenLines?.length ?? null,
+    config,
   }
-  if (screenLines === undefined) return { status: "owned-unreadable", refusal: "cmux-read-failed", reason: `cmux plain read failed after ${totalLines} scrollback lines (${screen.result.error?.message ?? screen.result.signal ?? `exit ${screen.result.status}`})`, receipt, facts }
+  if (screenLines === undefined) {
+    return {
+      status: "owned-unreadable",
+      refusal: "cmux-read-failed",
+      reason: `cmux plain read failed after ${totalLines} scrollback lines (${screen.result.error?.message ?? screen.result.signal ?? `exit ${screen.result.status}`})`,
+      receipt,
+      facts,
+    }
+  }
   const offset = historyLines.length - screenLines.length
   if (offset < 0 || screenLines.some((line, index) => historyLines[offset + index] !== line)) {
-    return { status: "owned-unreadable", refusal: "cmux-reads-disagree", reason: `cmux reads disagree: ${totalLines} scrollback lines and ${screenLines.length} screen lines`, receipt, facts }
+    return {
+      status: "owned-unreadable",
+      refusal: "cmux-reads-disagree",
+      reason: `cmux reads disagree: ${totalLines} scrollback lines and ${screenLines.length} screen lines`,
+      receipt,
+      facts,
+    }
   }
   return { status: "read", reading: { totalLines, screenLines: screenLines.length, receipt }, receipt, facts }
 }

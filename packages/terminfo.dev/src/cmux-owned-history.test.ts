@@ -56,7 +56,14 @@ beforeEach(() => {
 const recordedHistory = ["prompt", ...Array.from({ length: 100 }, (_, i) => `MK-${i + 1}`)]
 const clearedHistory = ["prompt-1", "prompt-2", ...Array.from({ length: 19 }, (_, i) => `MK-${i + 1}`)]
 test.each([
-  { name: "full screen", history: recordedHistory.join("\n") + "\n", screen: recordedHistory.slice(-81).join("\n") + "\n", total: 101, visible: 81, agrees: true },
+  {
+    name: "full screen",
+    history: recordedHistory.join("\n") + "\n",
+    screen: recordedHistory.slice(-81).join("\n") + "\n",
+    total: 101,
+    visible: 81,
+    agrees: true,
+  },
   { name: "post ESC[2J", history: clearedHistory.join("\n") + "\n", screen: "\n", total: 21, visible: 0, agrees: true },
   { name: "disagreeing reads", history: "retained\nkeep \n", screen: "keep\n", total: 2, visible: 1, agrees: false },
 ])("recorded cmux paired reading: $name", ({ history, screen, total, visible, agrees }) => {
@@ -67,9 +74,15 @@ test.each([
     observeConfig: () => ({ read: "present", sha256: configSha256 }),
     spawn: (args) => ({ status: 0, stdout: args.includes("--scrollback") ? history : screen, stderr: "" }),
   })
-  expect(read).toMatchObject(agrees
-    ? { status: "read", reading: { totalLines: total, screenLines: visible } }
-    : { status: "owned-unreadable", refusal: "cmux-reads-disagree", facts: { totalLines: total, screenLines: visible } })
+  expect(read).toMatchObject(
+    agrees
+      ? { status: "read", reading: { totalLines: total, screenLines: visible } }
+      : {
+          status: "owned-unreadable",
+          refusal: "cmux-reads-disagree",
+          facts: { totalLines: total, screenLines: visible },
+        },
+  )
 })
 
 test("only an owned cmux surface on macOS has a history CLI", () => {
@@ -257,13 +270,16 @@ test("the reader names the surface it reads and returns retained lines, not the 
       return { status: 0, stdout: transcriptOf(12), stderr: "" }
     },
   })
-  expect(calls).toEqual([["read-screen", "--surface", "surface:1000070000", "--scrollback"], ["read-screen", "--surface", "surface:1000070000"]])
+  expect(calls).toEqual([
+    ["read-screen", "--surface", "surface:1000070000", "--scrollback"],
+    ["read-screen", "--surface", "surface:1000070000"],
+  ])
   expect(read).toMatchObject({ status: "read", reading: { totalLines: 16, screenLines: 16 } })
   expect(read.status === "read" && read.receipt).toContain('"surface:1000070000"')
   expect(transcripts).toEqual([transcriptOf(12), transcriptOf(12)])
 })
 
-test("a surface read keeps real zero counts and refuses failed reads or a moved guard", () => {
+test("a surface read refuses empty history, failed reads or a moved guard", () => {
   const retained: string[] = []
   const base = {
     executable,
@@ -279,15 +295,31 @@ test("a surface read keeps real zero counts and refuses failed reads or a moved 
   const read = readOwnedCmuxHistory(base)
   expect(read).toMatchObject({ status: "read", reading: { totalLines: 14, screenLines: 14 } })
   const empty = readOwnedCmuxHistory({ ...base, spawn: () => ({ status: 0, stdout: "", stderr: "" }) })
-  expect(empty).toMatchObject({ status: "read", reading: { totalLines: 0, screenLines: 0 } })
+  expect(empty).toMatchObject({ status: "refused", refusal: "cmux-read-empty" })
   const moved = readOwnedCmuxHistory({
     ...base,
     observeConfig: () => ({ read: "present" as const, sha256: "f".repeat(64) }),
   })
   expect(moved.status === "refused" && moved.refusal).toBe("cmux-config-hash-changed")
-  expect(retained).toEqual([transcriptOf(12, measuredExtra, false), transcriptOf(12, measuredExtra, false), "", "", transcriptOf(12, measuredExtra, false)])
-  const failedScreen = readOwnedCmuxHistory({ ...base, spawn: (args) => ({ status: args.includes("--scrollback") ? 0 : 1, stdout: args.includes("--scrollback") ? "history\n" : "", stderr: "" }) })
-  expect(failedScreen).toMatchObject({ status: "owned-unreadable", refusal: "cmux-read-failed", facts: { totalLines: 1, screenLines: null } })
+  expect(retained).toEqual([
+    transcriptOf(12, measuredExtra, false),
+    transcriptOf(12, measuredExtra, false),
+    "",
+    transcriptOf(12, measuredExtra, false),
+  ])
+  const failedScreen = readOwnedCmuxHistory({
+    ...base,
+    spawn: (args) => ({
+      status: args.includes("--scrollback") ? 0 : 1,
+      stdout: args.includes("--scrollback") ? "history\n" : "",
+      stderr: "",
+    }),
+  })
+  expect(failedScreen).toMatchObject({
+    status: "owned-unreadable",
+    refusal: "cmux-read-failed",
+    facts: { totalLines: 1, screenLines: null },
+  })
   expect(() =>
     readOwnedCmuxHistory({
       ...base,

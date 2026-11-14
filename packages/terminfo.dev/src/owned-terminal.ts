@@ -714,9 +714,6 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
-    // The history rows declare Untestable by name rather than reading a screen's text as history
-    // (@cto f9829175, #34259). Reversible: remove this the moment a cmux version is measured returning
-    // history above the screen, which is the open measurement on the issue.
     titleUnavailable:
       'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
   },
@@ -2016,9 +2013,8 @@ export async function createOwnedTerminal(options: {
             observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
           })
           if (proof.status === "read" || proof.status === "owned-unreadable") {
-            // The surface WAS proved: the nonce/marker proof and the config guard both passed before the reader
-            // declined to call these numbers a history count. Record the grant as proved — an ownership failure
-            // is the serious finding here, so it must not be reported for a run that owned its surface fine.
+            // Ownership was proved independently of whether the paired responses yielded a usable count.
+            // Keep that grant even when the plain read failed or the two responses disagreed.
             cmuxGrantReceipt = proof.receipt
             cmuxLastRead = cmuxReadRecord("grant", proof.receipt, proof.facts)
             break
