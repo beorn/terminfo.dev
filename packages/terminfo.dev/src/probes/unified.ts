@@ -50,6 +50,7 @@ import {
   touchedAttributes,
 } from "./attribute-ledger.ts"
 import { SpilloverRefused, spilloverVerdict, witnessAdmission } from "./spillover-witness.ts"
+import { SentinelFrameMoved } from "../sentinel-read.ts"
 import { windowBasisAdmission } from "./window-basis-admission.ts"
 import {
   query,
@@ -1803,7 +1804,21 @@ export async function runProbeBatch(
           ...(queries.length || captureAttempted || clipboardEvents.length ? { rawReplyRef: probe.id } : {}),
         })
       } else {
-        batch.ungradedDiagnostics[probe.id] = { kind: "collector-error", name, message }
+        batch.ungradedDiagnostics[probe.id] = {
+          kind: "collector-error",
+          name,
+          message,
+          // 33982: a moved frame refuses before this probe writes any frame record, so the count it
+          // measured is attached here or it is lost. Absent for every other refusal.
+          ...(error instanceof SentinelFrameMoved
+            ? {
+                evidence: {
+                  changedOutside: error.changedOutside,
+                  ...(error.rowShift !== undefined ? { rowShift: error.rowShift } : {}),
+                },
+              }
+            : {}),
+        }
       }
     } finally {
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)

@@ -872,7 +872,17 @@ export type UngradedDiagnostic =
    * as a `collector-error` instead.
    */
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
-  | { kind: "collector-error"; name: string; message?: string }
+  | {
+      kind: "collector-error"
+      name: string
+      message?: string
+      /**
+       * What the refused read measured before it refused (33982). A moved frame throws before any
+       * frame record exists, so this is the only place its evidence can survive. Present only for
+       * refusals that produce it; absent is "the read produced none", never a zero.
+       */
+      evidence?: { changedOutside: number; rowShift?: { rows: number; px: number } }
+    }
 
 /**
  * One named coverage record: the probe ran and its raw state is retained, but the environment exposes

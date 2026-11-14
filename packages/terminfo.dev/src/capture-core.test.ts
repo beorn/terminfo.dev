@@ -135,6 +135,56 @@ test("capture finalizer writes the grid measurement beside the rectangle it mapp
   expect(unmeasured.frame.cellCrop?.basis).toBeUndefined()
 })
 
+test("the crop record carries the changed-pixel count, and stays silent when there was none (33982)", async () => {
+  // The type declared this field from the start, but nothing filled it, so every retained frame
+  // dropped the one number the row-move measurement reads (@cto's step 1).
+  const withCount = await finishCapture({
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: {
+      origin: { x: 0, y: 0 },
+      basis: "measured fixture",
+      basisKind: "sentinel pair located by frame difference",
+      changedOutside: 797,
+    },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture",
+      role: "target" as const,
+      label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  expect(withCount.frame.cellCrop?.changedOutside).toBe(797)
+  // Absence is named by absence: a read that measured nothing must not publish a 0 a later bound
+  // would happily accept as a quiet frame.
+  const without = await finishCapture({
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: {
+      origin: { x: 0, y: 0 },
+      basis: "measured fixture",
+      basisKind: "sentinel pair located by frame difference",
+    },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture",
+      role: "target" as const,
+      label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  expect(without.frame.cellCrop && "changedOutside" in without.frame.cellCrop).toBe(false)
+})
+
 test("capture finalizer crops the same-shot control region from the same decoded frame (#33117)", async () => {
   const result = await finishCapture({
     directory: directory(),
