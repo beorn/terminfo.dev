@@ -2153,3 +2153,59 @@ exit 2
     expect(Number(readFileSync(counter, "utf8"))).toBe(3)
   })
 })
+
+/**
+ * @failure The launcher mints a second run identity instead of adopting the one the host composer handed
+ *   down, so every Linux pass ends at /probe with "Capture identity X differs from this daemon's launch
+ *   run Y" and no draft can be collected (#34269, broken from the #34018 identity change on 2026-11-14).
+ * @level l3 — runs the launcher's own identity block with real bash; no container starts.
+ * @consumer scripts/linux-container-run.sh container identity handed to the collector (#34269)
+ */
+describe("the launcher adopts the handed run identity (#34269)", () => {
+  const source = readFileSync(launcher, "utf8")
+  const start = source.indexOf("\n# One identity per run (#34269)")
+  const end = source.indexOf("\nrun_dir=", start)
+  if (start < 0 || end < 0) throw new Error("run identity block not found in scripts/linux-container-run.sh")
+  const block = source.slice(start, end)
+
+  function runIdentity(handed?: string) {
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    delete env.TERMINFO_CAPTURE_RUN_ID
+    if (handed !== undefined) env.TERMINFO_CAPTURE_RUN_ID = handed
+    return spawnSync("bash", ["-c", `set -euo pipefail\n${block}\nprintf '%s' "$run_id"\n`], {
+      encoding: "utf8",
+      env,
+    })
+  }
+
+  it("names the run by the identity the composer handed down, not a fresh mint", () => {
+    const handed = "a3b238820289526e40d97d98b92188e4"
+    const minted = runIdentity()
+    expect(minted.status, minted.stderr).toBe(0)
+    const adopted = runIdentity(handed)
+    expect(adopted.status, adopted.stderr).toBe(0)
+    expect(adopted.stdout).toBe(handed)
+    expect(adopted.stdout).not.toBe(minted.stdout)
+    expect(minted.stdout).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it("mints a fresh identity per run only when nobody stated one", () => {
+    const first = runIdentity()
+    const second = runIdentity()
+    expect(first.status, first.stderr).toBe(0)
+    expect(second.status, second.stderr).toBe(0)
+    expect(first.stdout).toMatch(/^[0-9a-f]{32}$/)
+    expect(first.stdout).not.toBe(second.stdout)
+  })
+
+  it.each(["A3B238820289526E40D97D98B92188E4", "a3b23882-0289-526e-40d9-7d98b92188e4", "a3b23882"])(
+    "refuses %s by name instead of minting around it",
+    (handed) => {
+      const result = runIdentity(handed)
+      expect(result.status).toBe(2)
+      expect(result.stdout).toBe("")
+      expect(result.stderr).toContain("TERMINFO_CAPTURE_RUN_ID")
+      expect(result.stderr).toContain(handed)
+    },
+  )
+})
