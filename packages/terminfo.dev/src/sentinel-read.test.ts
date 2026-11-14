@@ -926,7 +926,7 @@ test("the adapter boundary keeps the {frame} result shape and refuses a declared
   ).rejects.toMatchObject({ name: "CaptureHoldUnresolved" })
 })
 
-test("serve's chooser regions keep a blank pre-paint frame from writing inside keep-clear rows (34240)", async () => {
+test("serve's chooser regions keep a blank or inked pre-paint frame from writing inside keep-clear rows (34240)", async () => {
   const dims = { rows: 8, cols: 10 }
   const cell = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
   const keepClear = [
@@ -938,34 +938,52 @@ test("serve's chooser regions keep a blank pre-paint frame from writing inside k
     keepClear,
   })
   expect(regions).toEqual([{ top: 2, left: 2, bottom: 2, right: 5 }, ...keepClear])
-  const painted = source(dims)
-  const frame = blankFrame(dims, cell)
-  await readThroughSentinel({
-    source: painted.source,
-    prePaint: async () => frame,
-    capture: async (resolve) => resolve({ frame, pixelGeometry }),
-    label: "keep-clear",
-    sentinel,
-    regions,
-    reading: { x: 0, y: 0 },
-    cell,
-    deadline: Date.now(),
-  }).catch(() => undefined)
-  const addressed = painted.writes.flatMap((write) =>
-    [...write.matchAll(/\x1b\[(\d+);(\d+)H/g)].map((match) => ({
-      row: Number(match[1]),
-      col: Number(match[2]),
-    })),
-  )
-  expect(addressed.length).toBeGreaterThan(0)
-  for (const cellAt of addressed) {
-    for (const region of keepClear) {
-      const inside =
-        cellAt.row >= region.top &&
-        cellAt.row <= region.bottom &&
-        cellAt.col >= region.left &&
-        cellAt.col <= region.right
-      expect(inside).toBe(false)
+  const inked = blankFrame(dims, cell)
+  const ink = 0xc1e3fe
+  for (const region of keepClear) {
+    for (let row = region.top; row <= region.bottom; row += 1) {
+      for (let col = region.left; col <= region.right; col += 1) {
+        for (let y = 0; y < cell.height; y += 1) {
+          for (let x = 0; x < cell.width; x += 1) {
+            const offset = (((row - 1) * cell.height + y) * inked.width + (col - 1) * cell.width + x) * 4
+            inked.rgba[offset] = (ink >> 16) & 0xff
+            inked.rgba[offset + 1] = (ink >> 8) & 0xff
+            inked.rgba[offset + 2] = ink & 0xff
+            inked.rgba[offset + 3] = 0xff
+          }
+        }
+      }
+    }
+  }
+  for (const frame of [blankFrame(dims, cell), inked]) {
+    const painted = source(dims)
+    await readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => frame,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "keep-clear",
+      sentinel,
+      regions,
+      reading: { x: 0, y: 0 },
+      cell,
+      deadline: Date.now(),
+    }).catch(() => undefined)
+    const addressed = painted.writes.flatMap((write) =>
+      [...write.matchAll(/\x1b\[(\d+);(\d+)H/g)].map((match) => ({
+        row: Number(match[1]),
+        col: Number(match[2]),
+      })),
+    )
+    expect(addressed.length).toBeGreaterThan(0)
+    for (const cellAt of addressed) {
+      for (const region of keepClear) {
+        const inside =
+          cellAt.row >= region.top &&
+          cellAt.row <= region.bottom &&
+          cellAt.col >= region.left &&
+          cellAt.col <= region.right
+        expect(inside).toBe(false)
+      }
     }
   }
 })
