@@ -304,7 +304,20 @@ export async function createLinuxCapture(
     declaredGeometry = nextGeometry
     declaredByFeatureId = nextGeometry === startupGeometry ? undefined : featureId
   }
-  const acquire = async (featureId: string, deadline?: number) => {
+  /** How many times one labelled acquisition has been asked for, so a retry is visible as one. */
+  const attempts = new Map<string, number>()
+  const acquire = async (featureId: string, deadline?: number, identity?: { role: string; label: string }) => {
+    const phaseStart = performance.now()
+    let phase = phaseStart
+    const mark = () => {
+      const now = performance.now()
+      const elapsed = Math.round(now - phase)
+      phase = now
+      return elapsed
+    }
+    const attemptKey = `${featureId}\u0000${identity?.label ?? ""}`
+    const attempt = (attempts.get(attemptKey) ?? 0) + 1
+    attempts.set(attemptKey, attempt)
     const expectedGeometry = declaredGeometry
     const expectedFeatureId = declaredByFeatureId
     if (expectedGeometry !== startupGeometry && featureId !== expectedFeatureId) {
@@ -312,17 +325,24 @@ export async function createLinuxCapture(
         `Capture window ${windowId} left resized by ${String(expectedFeatureId)} (${describeWindowGeometry(expectedGeometry)}, startup ${describeWindowGeometry(startupGeometry)}) during ${featureId}`,
       )
     }
-    // Static-frame settling is recorded; callbacks own any temporal schedule.
+    // Static-frame settling is recorded; callbacks own any temporal schedule. The configured delay is
+    // reported beside the ELAPSED one: a reader deciding whether this wait is redundant needs what the
+    // clock actually did, not what the constant asked for (@cto 34261).
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LINUX_CAPTURE_SETTLE_MS)
     })
+    const settleElapsedMs = mark()
     await assertOwned(deadline)
+    const ownedMs = mark()
     await assertFocusHelperIdentity(deadline)
+    const focusIdentityMs = mark()
     const before = (
       await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
     ).toString()
+    const geometryMs = mark()
     if (before !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, before)
     await assertFocusHelperClear(before, deadline)
+    const focusClearMs = mark()
     const observedWindow = windowPixels(before)
     if (observedWindow.width > screen.width || observedWindow.height > screen.height) {
       throw new Error(
@@ -349,6 +369,7 @@ export async function createLinuxCapture(
     } else {
       original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
     }
+    const captureMs = mark()
     const capturedAt = Date.now()
     const png = await command(
       "magick",
@@ -359,6 +380,7 @@ export async function createLinuxCapture(
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }
+    const convertMs = mark()
     await assertOwned(deadline)
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
     if (after !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, after)
@@ -382,16 +404,34 @@ export async function createLinuxCapture(
         windowId,
         geometry: before,
         converter,
+        // The configured delay the settle asks for, and what it actually took, kept apart.
         settleMs: 150,
+        // One monotonic basis (performance.now) for every duration; capturedAt keeps its wall-clock
+        // meaning. The identity names which leg this acquisition was (its own role and label) and
+        // which attempt at that leg, so a retry is distinguishable from a first shot (@cto 34261).
+        acquisition: {
+          role: identity?.role ?? "unknown",
+          label: identity?.label ?? featureId,
+          attempt,
+          settleElapsedMs,
+          ownedMs,
+          focusIdentityMs,
+          geometryMs,
+          focusClearMs,
+          captureMs,
+          convertMs,
+          finalizeMs: mark(),
+          totalMs: Math.round(performance.now() - phaseStart),
+        },
       },
     }
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
-    const acquired = await acquire(checkpoint.featureId)
+    const acquired = await acquire(checkpoint.featureId, undefined, checkpoint)
     return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
-    const acquired = await acquire(checkpoint.featureId, deadline)
+    const acquired = await acquire(checkpoint.featureId, deadline, checkpoint)
     const decoded = await decodeCapture({ source: acquired.source, featureId: checkpoint.featureId, deadline })
     const result = await finishCapture({
       directory,

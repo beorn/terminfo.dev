@@ -531,6 +531,49 @@ test.runIf(process.platform === "linux")(
 )
 
 test.runIf(process.platform === "linux")(
+  "each acquisition names its own leg and records measured phase durations (34261)",
+  async () => {
+    const { directory, release } = fixture()
+    writeFileSync(release, "continue")
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
+    const first = await captureRaw({ featureId: "sgr.blink", role: "control", label: "sample: pre-paint" })
+    const again = await captureRaw({ featureId: "sgr.blink", role: "control", label: "sample: pre-paint" })
+    const target = await captureRaw({ featureId: "sgr.blink", role: "target", label: "sample" })
+    const acquisition = (raw: typeof first) => raw.result.trace.acquisition as Record<string, number | string>
+    // The leg comes from the checkpoint, so a pre-paint frame and a target frame are never one row.
+    expect(acquisition(first)).toMatchObject({ role: "control", label: "sample: pre-paint", attempt: 1 })
+    // A second acquisition of the SAME leg is a later attempt: that is how a retry is told from a
+    // first shot without a second field or a second trace store.
+    expect(acquisition(again).attempt).toBe(2)
+    expect(acquisition(target)).toMatchObject({ role: "target", label: "sample", attempt: 1 })
+    // Durations are measured, on one monotonic basis, and the configured delay keeps its own name.
+    const timing = acquisition(first)
+    const phases = [
+      "settleElapsedMs",
+      "ownedMs",
+      "focusIdentityMs",
+      "geometryMs",
+      "focusClearMs",
+      "captureMs",
+      "convertMs",
+      "finalizeMs",
+      "totalMs",
+    ] as const
+    for (const phase of phases) {
+      expect(typeof timing[phase]).toBe("number")
+      expect(timing[phase]).toBeGreaterThanOrEqual(0)
+    }
+    // The settle actually ran for its delay: a relabelled constant would not have to be this large.
+    expect(timing.settleElapsedMs).toBeGreaterThanOrEqual(140)
+    expect(timing.totalMs).toBeGreaterThanOrEqual(timing.settleElapsedMs)
+    // The configured delay is recorded beside the elapsed one, never in place of it.
+    expect(first.result.trace.settleMs).toBe(150)
+    const measured = phases.filter((phase) => phase !== "totalMs").reduce((sum, phase) => sum + Number(timing[phase]), 0)
+    expect(measured).toBeLessThanOrEqual(Number(timing.totalMs) + 50)
+  },
+)
+
+test.runIf(process.platform === "linux")(
   "a recorded focus helper overlapping the owned window refuses the capture with both rectangles",
   async () => {
     const { directory, release } = fixture()
