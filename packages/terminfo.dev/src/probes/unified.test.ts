@@ -6074,3 +6074,63 @@ it("keeps the wall's trace when the callback hangs inside its own pending query"
     Object.assign(next, originalNext)
   }
 })
+
+// @failure One frame moving under a pixel read ended the whole collection. The refusal was a plain
+// Error, so this boundary graded it as a collector error and the run lost every cell with it, the
+// text-read ones included — the harness was telling the terminal it was wrong about a frame nobody
+// could vouch for (@cto 2be9f946, from @dev/brain's peer read).
+// @level l1
+// @consumer runProbeBatch -> the one capture boundary every pixel probe passes through.
+it("records a moved frame as an ungraded cell and keeps the batch going (33981)", async () => {
+  verifiedBatchFixture()
+  const movedId = "sgr.underline.dashed"
+  const textId = "device.primary-da"
+  const moved = ALL_PROBES.find((probe) => probe.id === movedId)!
+  const text = ALL_PROBES.find((probe) => probe.id === textId)!
+  const originals = { moved: { term: moved.term }, text: { term: text.term } }
+  const movedReason =
+    "cells 2,2 and 3,3: the frame moved after the cells were chosen at 16,32 — the pair landed 0,16 px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink"
+  try {
+    // A pixel probe's own capture is exercised by sentinel-read.test.ts; what this boundary owns is what
+    // happens to the ERROR it raises. A verified owned terminal gets the row past the grant gate, so the
+    // stub is the callback that runs and the assertion is about the grade catch (@dev/11, red before the fix).
+    moved.term = async (source) => {
+      // One frame is captured before the refusal, so the boundary is in its production state: the
+      // error arrives where a frame WOULD have been graded, and the only thing deciding its fate is
+      // the name it carries (red before the fix: graded as a screenshot collector error).
+      const capture = source.capture
+      if (!capture) throw new Error("the moved-frame row needs this run's capture adapter")
+      await capture({ role: "control", label: "the moved frame" })
+      const refusal = new Error(movedReason)
+      refusal.name = "SentinelFrameMoved"
+      throw refusal
+    }
+    text.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "query_reply", note: "the text read is unaffected" },
+      tests: [{ id: "criterion", status: "supported", reason: "controlled actual reply" }],
+    })
+    const batch = await runProbeBatch({
+      ids: [movedId, textId],
+      subject: { kind: "term", id: "kitty", os: "linux" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async ({ role, label }) => ({
+        frame: { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}`, pixelsDigest: "moved-frame" },
+        trace: {},
+      }),
+    })
+    // Ungraded WITH the reason, never a pass and never a fail: the cell claims nothing about pixels.
+    expect(batch.ungradedDiagnostics[movedId]).toMatchObject({
+      kind: "collector-error",
+      name: "SentinelFrameMoved",
+      message: expect.stringContaining("will not re-anchor from a pair that may have covered ink"),
+    })
+    expect(batch.observations.filter((entry) => entry.featureId === movedId)).toEqual([])
+    // The collection finished: the text-read cell in the same batch is recorded as it always was.
+    expect(batch.results.find((entry) => entry.featureId === textId)).toMatchObject({ status: "supported" })
+    expect(batch.ungradedDiagnostics[textId]).toBeUndefined()
+  } finally {
+    moved.term = originals.moved.term
+    text.term = originals.text.term
+  }
+})
