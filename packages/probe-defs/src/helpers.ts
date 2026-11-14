@@ -1511,8 +1511,10 @@ const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
 
 /**
  * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
- * cell reader shows bold applied, then the target must add one or more entries all carrying the code its own
- * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
+ * cell reader shows bold applied, then the target must add exactly its expected code or ordered codes.
+ * Missing, different, extra or reordered entries keep the body's result. Explicit colour targets
+ * may consult this fallback only when the body's cell reader does not expose underline colour;
+ * exposed-but-uncalibrated observations retain their unresolved result.
  * sgr.underline-color-reset calls it directly for "59m" (@cto routes-32 section 1, 23:02 PST Nov 5 2026).
  */
 export function withUnhandledSgrReport(
@@ -1524,6 +1526,7 @@ export function withUnhandledSgrReport(
   return (ctx) => {
     const result = body(ctx)
     if (reportsDecidedOutcome(result)) return result
+    if (target !== undefined && result.notTested?.reason !== "no-semantic-observable") return result
     const cursor = ctx.getCursor()
     const reported = unhandledSequenceVerdict(
       ctx,

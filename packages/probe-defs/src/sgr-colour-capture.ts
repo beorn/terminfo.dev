@@ -248,16 +248,16 @@ export function underlineColourIndexedDecision(digest: (name: string) => string)
       `${id}: 58:5:${neither.index} changed the underline but matched neither the default underline nor the foreground-route underline (58:5:${neither.index} sample ${neither.colour}, 38:5:${neither.index} sample ${neither.route})`,
     )
   }
-  if (outcomes.every(({ outcome }) => outcome === "matched")) {
-    return decide(
-      "supported",
-      `${id}: 58:5:N paints the underline as palette entry N, matched exactly against an underline coloured by the foreground route (N = ${UNDERLINE_INDICES.join(" and ")})`,
-    )
-  }
   if (outcomes.every(({ outcome }) => outcome === "ignored")) {
     return decide(
       "unsupported",
       `${id}: 58:5:N left the underline in its default colour while the same underline took palette entry N by the foreground route (N = ${UNDERLINE_INDICES.join(" and ")}): colour ignored, decoration kept`,
+    )
+  }
+  if (outcomes.every(({ outcome }) => outcome === "matched")) {
+    return decide(
+      "supported",
+      `${id}: 58:5:N paints the underline as palette entry N, matched exactly against an underline coloured by the foreground route (N = ${UNDERLINE_INDICES.join(" and ")})`,
     )
   }
   return decide(
