@@ -442,13 +442,20 @@ secondary restoration failure in the named per-row no-adapter outcome, including
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
 
 **The sentinel pair that anchors a moved window** is two cells repainted in the sentinel colour and
-chosen by `witnessCellsFor` in [`region-readback.ts`](src/region-readback.ts). The record names the
-tier that chose them, first match wins: `region-free` (both cells off every digested region row —
-unchanged for every grid that anchored before 34040), `same-row` (the compared region leaves exactly
-one clear row, so the second cell sits on the first cell's own row, never adjacent, at least
-`SAME_ROW_MIN_COLUMN_GAP` columns away), and `no-clear-row` (no row is free at all, so both cells
-move to a column clear of every region and of the probe's own output, a whole cell from any edge,
-still differing in row and column). `readThroughSentinel` accepts a one-row pair on the column pitch
+chosen from the frame taken immediately before that paint by `sentinelCellsInFrame` in
+[`region-readback.ts`](src/region-readback.ts). A cell is eligible only when its whole cell AND both
+of its neighbours on the same row are the frame's background colour — blank alone would let the
+restore erase the blank half of a wide glyph — and it lies outside every digested region and the
+probe's own output footprint. The record names the tier that chose them, first match wins:
+`region-free` (both cells on blank cells outside every digested region, differing in row AND column,
+so one stray patch or a full-line repaint cannot satisfy the pair) and `same-row` (no such diagonal
+pair exists, so the second cell sits on the first cell's own row, never adjacent, at least
+`SAME_ROW_MIN_COLUMN_GAP` columns away, and the pair measures the column pitch alone). There is no
+third `no-clear-row` tier, and that is consolidation rather than unreachability (@dev/10's peer read):
+a cell two columns clear of every region's edge is OUTSIDE every region, so it is an ordinary
+`region-free` candidate under the frame rule. The old tier named the constraint that made such a cell
+choosable (a clear column, no free row), not a third geometry; where such a cell carries ink the frame
+rule now refuses it instead of painting over it. `readThroughSentinel` accepts a one-row pair on the column pitch
 and on the two boxes sharing a row, and its basis says so: `(one-axis pair: both cells on one row,
 so it measures the column pitch only)`. A pair that proves no row height never authorizes a
 vertical move — `gridMoveExemption` grants nothing from such a seed and `cropPositionRefusal` names

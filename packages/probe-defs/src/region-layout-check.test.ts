@@ -9,13 +9,7 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes } from "./editing.ts"
-import {
-  awaitPaintWitness,
-  layoutSinceCalibration,
-  originFromSentinel,
-  witnessCellFor,
-  type RegionCapture,
-} from "./region-readback.ts"
+import { awaitPaintWitness, layoutSinceCalibration, originFromSentinel, type RegionCapture } from "./region-readback.ts"
 import type { CaptureLocated, CaptureRequest, ObservationFrame, TermProbeSource } from "./types.ts"
 
 const CELL = { width: 8, height: 16 }
@@ -130,46 +124,6 @@ test("a sentinel located on this frame gives the exact origin its crop must use 
   // Exact arithmetic: one pixel of movement stays one pixel. No rounding, no fitted correction.
   const nudged = { box: { ...located.box, x: located.box.x + 1 }, pixels: located.pixels }
   expect(originFromSentinel(nudged, { row: 3, col: 1 }, CELL)).toEqual({ x: ORIGIN.x + 1, y: ORIGIN.y + WARP_SHIFT })
-})
-
-test("the sentinel cell is one clear of every digested region, and a crowded grid refuses by name (33000)", () => {
-  const grid = { rows: 24, cols: 80 }
-  // The usual case: the cell directly above the compared region's first cell.
-  expect(witnessCellFor([{ top: 3, left: 1, bottom: 5, right: 10 }], grid)).toEqual({ row: 2, col: 1 })
-  // A region against the top row cannot use the cell above it, so the cell below wins instead.
-  expect(witnessCellFor([{ top: 1, left: 1, bottom: 4, right: 10 }], grid)).toEqual({ row: 5, col: 1 })
-  // The control region is digested from the same frame, so it is not a candidate either.
-  expect(
-    witnessCellFor(
-      [
-        { top: 3, left: 1, bottom: 5, right: 10 },
-        { top: 2, left: 1, bottom: 2, right: 80 },
-      ],
-      grid,
-    ),
-  ).toEqual({ row: 6, col: 1 })
-  // Every candidate taken: the read refuses rather than cropping from an unanchored frame.
-  expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 24, right: 80 }], grid)).toThrow(
-    /No cell outside the digested region 1,1-24,80 in the 24x80 grid can carry calibration's sentinel/,
-  )
-  // No same-row candidate is offered (@dev/10 peer read): a neighbouring cell on the region's own
-  // row can split a wide glyph straddling its edge and change the frame being digested.
-  // 34040: the last row of the screen is clear, so it IS a candidate — the old fixed list of three
-  // cells refused a frame whose only free row sat three rows below the region, which is the read
-  // this row then could never anchor. The search finds it, and the row is not a region row.
-  expect(
-    witnessCellFor(
-      [
-        { top: 1, left: 1, bottom: 22, right: 10 },
-        { top: 23, left: 1, bottom: 23, right: 10 },
-      ],
-      grid,
-    ),
-  ).toEqual({ row: 24, col: 1 })
-  // A footprint that really does use every row still refuses, and now says why in plain words.
-  expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 22, right: 10 }], { rows: 22, cols: 80 })).toThrow(
-    /every row of this 22x80 screen is inside a digested region/,
-  )
 })
 
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {

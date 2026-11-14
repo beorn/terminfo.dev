@@ -10,7 +10,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { originFromSentinel, sentinelBlockRefusal, witnessCellFor } from "@terminfo/probe-defs"
+import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "@terminfo/probe-defs"
 import {
   cellRectangle,
   command,
@@ -268,7 +268,20 @@ test("a moved window digests the same cells, because the crop follows the sentin
   const sentinel = [255, 136, 255] as const
   const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
   const cells = { top: 1, left: 1, bottom: 2, right: 2 }
-  const witness = witnessCellFor([cells], { rows: 4, cols: 6 })
+  // The cell the frame-based chooser picks for this window: the first all-background cell outside the
+  // region whose neighbours are background too — the cell next to the region's ink could be the blank
+  // half of a wide glyph (@dev/10's rule).
+  const witness = sentinelCellsInFrame({
+    ...drawnWindow({ x: 0, y: 0 }, { row: 0, col: 0 }, cells, sentinel),
+    reading: { x: 0, y: 0 },
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    grid: { rows: 4, cols: 6 },
+    regions: [cells],
+  }).a
+  // The chooser's order is above the region, then below it, then nearest first (34040 condition 1),
+  // so the pair's first cell is the one under the region — not 1,4, which is what the row-major scan
+  // these tests were written against used to return. The identity is the chooser's to decide; what
+  // this test proves is that the crop and the digest both follow whatever cell it painted.
   expect(witness).toEqual({ row: 3, col: 1 })
   const calibrated = { origin: { x: 0, y: 0 }, basis: "complete raster calibration" }
   // The fix under test: the crop is taken from where the sentinel actually landed in THIS frame,

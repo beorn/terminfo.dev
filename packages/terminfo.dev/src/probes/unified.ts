@@ -1552,8 +1552,10 @@ export async function runProbeBatch(
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).
+      // A read that cannot prove where its crop goes claims nothing about pixels: it is named as a
+      // diagnostic (which frames could not be related), never graded as a terminal failure (34163).
       const errorAssertionType =
-        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
+        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable" || name === "CaptureHoldUnresolved"
           ? undefined
           : captureAttempted
             ? options.captureKind === "text-cells"

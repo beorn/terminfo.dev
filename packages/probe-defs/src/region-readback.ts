@@ -514,7 +514,7 @@ export const CELL_EDGE_TOLERANCE_PX = 1
  * reader can tell a pair that avoided every digested row from one that had to share a row.
  * `same-row` pairs measure the COLUMN pitch only, which is why no vertical move may rest on one.
  */
-export type WitnessTier = "region-free" | "same-row" | "no-clear-row"
+export type WitnessTier = "region-free" | "same-row"
 
 /**
  * How many columns a same-row pair is kept apart (34040, @cto). One whole cell of gap, never
@@ -628,15 +628,6 @@ function* cellsNearestFirst(
   }
 }
 
-const cleared = (
-  grid: { rows: number; cols: number },
-  digestedCells: (cell: { row: number; col: number }) => boolean,
-): ((cell: { row: number; col: number }) => boolean) => {
-  const visible = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  return (cell: { row: number; col: number }) => visible(cell) && !digestedCells(cell)
-}
-
 /**
  * The rows and the columns a digested footprint actually leaves usable for a sentinel cell — not
  * "columns no rectangle touches", which is a different and much stricter question: a region that
@@ -679,58 +670,8 @@ const spelledLimit = (
   if (clear.cols.length === 1) {
     return `the compared region leaves one clear column, ${clear.cols[0]}, on this ${grid.rows}x${grid.cols} screen, so ${need} cannot sit on another column and the row cannot be graded here`
   }
-  return `no ${need} outside the digested regions is left in the ${grid.rows}x${grid.cols} grid that the pair rule accepts`
-}
-
-/**
- * The cell a read paints calibration's sentinel on so its origin can be derived from the very frame
- * it reads (33000). One cell on a row no digested region uses — a neighbouring cell on the region's
- * own row can split a wide character straddling its edge and the terminal erases the whole glyph,
- * which would change the frame this read digests (@dev/10 peer read) — and inside the grid, preferring
- * the cell directly above the compared region's first cell, the same place the region would have
- * started had it not been pushed down. When those places are taken the nearest cell the search of
- * `cellsNearestFirst` accepts wins (34040): a free cell three rows below is a cell, not a reason to
- * refuse. A frame with no such cell refuses and names the screen's own limit: a crop nobody can
- * anchor is not a reading.
- */
-export function witnessCellFor(
-  regions: readonly CaptureCells[],
-  grid: { rows: number; cols: number },
-  avoid: readonly CaptureCells[] = [],
-): { row: number; col: number } {
-  const [first] = regions
-  if (!first) throw new Error("A capture with no compared region cannot place calibration's sentinel cell")
-  const footprint = [...regions, ...avoid]
-  const digested = (cell: { row: number; col: number }): boolean =>
-    footprint.some(
-      (region) =>
-        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
-    )
-  const onFootprintRow = (cell: { row: number; col: number }): boolean =>
-    footprint.some((region) => cell.row >= region.top && cell.row <= region.bottom)
-  // The probe's own output (an inline image, 33985) may cover the rows around the compared region:
-  // the same places, taken again just outside that footprint, keep the sentinel visible.
-  const band = avoid.filter((region) => region.bottom >= first.top && region.top <= first.bottom)
-  const top = Math.min(first.top, ...band.map((region) => region.top))
-  const bottom = Math.max(first.bottom, ...band.map((region) => region.bottom))
-  const accepts = cleared(grid, digested)
-  const preferred = [
-    { row: top - 1, col: first.left },
-    { row: top - 1, col: first.right + 1 },
-    { row: bottom + 1, col: first.left },
-  ]
-  const found = preferred.find((cell) => accepts(cell) && !onFootprintRow(cell))
-  if (found) return found
-  for (const cell of cellsNearestFirst(
-    { row: top, col: first.left },
-    grid,
-    (candidate) => accepts(candidate) && !onFootprintRow(candidate),
-  )) {
-    return cell
-  }
-  throw new Error(
-    `No cell outside the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} in the ${grid.rows}x${grid.cols} grid can carry calibration's sentinel: ${spelledLimit(clearExtent(footprint, grid), grid, "a cell")}, so this frame's crop cannot be anchored`,
-  )
+  const noun = need === "a cell" ? "cell" : "second cell"
+  return `no ${noun} outside the digested regions is left in the ${grid.rows}x${grid.cols} grid that the pair rule accepts`
 }
 
 const spelledRegions = (regions: readonly CaptureCells[]): string =>
@@ -740,109 +681,239 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
   avoid.length === 0 ? "" : ` or the probe's own output ${spelledRegions(avoid)}`
 
 /**
- * The TWO cells one read paints calibration's sentinel on (33981, @cto): the pair has to differ in
- * BOTH row and column, so one stray sentinel-coloured patch, a horizontal run of them, or a full-line
- * repaint can never satisfy it. The first cell is the one `witnessCellFor` chooses, which keeps
- * 33000's preference and its named refusal; the second is the nearest cell clear of every digested
- * region that differs from the first in both axes, preferring another row than the first so a wide
- * character straddling the region's edge is never split. "Nearest" is the search of
- * `cellsNearestFirst`, the same order on every arm and every re-run (34040). A grid with no such
- * second cell refuses and names the limit: one clear row (or column), or none.
+ * The TWO cells one read may paint the sentinel on, chosen from the frame taken immediately BEFORE
+ * that paint (33981 second pass, @cto 2026-11-13, @dev/15's 19-row diagnosis), and the TIER that says
+ * which rule chose them (34040, @cto's condition 4).
+ *
+ * The first pass chose cells geometrically: clear of the digested regions, but never looking at what
+ * was already on the screen. On a probe whose evidence fills the grid the pair landed on that
+ * evidence, and clearing it erased the probe's own drawing (modes.xtsave/xtrestore, sgr.blink), or
+ * no legal cell existed at all and the read refused before the target was sent (erase.screen.above,
+ * reset.decaln, modes.decsscls, scrollback.viewport-hold).
+ *
+ * So the choice reads the frame: a cell is eligible only when every pixel in it is the SAME colour as
+ * the frame's modal (background) colour, which is the one state this read can restore by writing a
+ * blank with the attributes it found — nothing the probe drew is ever covered. Eligible cells must
+ * still be outside every digested region and outside the probe's declared avoid footprint.
+ *
+ * Blank is not enough on its own (@dev/15 peer read, 33981): a double-width glyph draws its ink in
+ * one half and can leave the other half the background colour, so a cell whose neighbour carries ink
+ * may BE the blank half of a glyph — and the blank restore erases a wide glyph whole, which changes
+ * the very frame this read digests (@dev/10's rule, generalised). So a cell is eligible only when its
+ * own cell AND the cells either side of it on the same row are all background. Neighbouring ink is
+ * the only evidence that says so; blankness alone cannot.
+ *
+ * ORDER (34040, @cto's condition 1) is not a row-major scan: the cell directly above the compared
+ * region's first cell, then above its right edge, then directly below, and otherwise the nearest
+ * eligible cell by `cellsNearestFirst` — the same order on every arm and every re-run. A row-major
+ * scan picked whichever cell happened to sit top-left, so an unrelated row gaining ink moved the
+ * pair and two runs of the same frame disagreed.
+ *
+ * The tiers are this chooser's, and a tier that cannot be reached is not a tier:
+ * - `region-free`: both cells on blank cells outside every digested region, differing in row AND
+ *   column, so one stray patch or a full-line repaint can never satisfy the pair.
+ * - `same-row`: only when no such diagonal pair exists, the second cell sits on the first cell's own
+ *   row at least `SAME_ROW_MIN_COLUMN_GAP` columns away. The pair then measures the COLUMN pitch
+ *   alone, and the reader says so rather than implying both pitches were measured.
+ * There is no third tier, and the reason is CONSOLIDATION, not unreachability (@dev/10's peer read,
+ * 33981): the geometry picker had a `no-clear-row` tier for frames with no free ROW, which moved both
+ * cells to columns two clear of every region's edge. Every cell that tier could offer is outside every
+ * region's rectangle by construction — c <= R.left-2 or c >= R.right+2 puts c outside R, not inside it
+ * — so under the frame rule those same cells are ordinary `region-free` candidates, and the old name
+ * described the CONSTRAINT that made them choosable (a clear column, no free row) rather than a third
+ * geometry. Two things therefore change when an old tier-3 frame arrives: a cell that was blank is
+ * chosen by tiers 1/2 with no further rule, and a cell that carries ink is REFUSED, where the geometry
+ * picker would have painted over it. The tier's label is gone; its answers are the frame rule's, and
+ * what decides the rest is ink, never row geometry. Keeping a third branch would ship a vocabulary
+ * that says a different thing from the rule it applies.
+ *
+ * `reading` is where cell 1,1 sits in the frame, in pixels. A frame too short to hold the whole grid
+ * at that origin cannot be used to choose cells, and says so rather than guessing.
  */
-export function witnessCellsFor(
-  regions: readonly CaptureCells[],
-  grid: { rows: number; cols: number },
-  avoid: readonly CaptureCells[] = [],
-): { a: { row: number; col: number }; b: { row: number; col: number }; tier: WitnessTier } {
-  const footprint = [...regions, ...avoid]
-  // Tier 3 (34040, @cto): when no row is free of every digested region, both cells move to a COLUMN
-  // clear of every region and of the probe's own output, at least one whole cell from any edge — the
-  // adjacent column is where a wide glyph straddles and is erased with it. The pair still differs in
-  // row AND column, so it proves both pitches; only "never on a region row" is given up, and the
-  // clearance is what replaces it. Chosen here because `witnessCellFor` is the chooser that used to
-  // throw "no row is left for a cell".
-  const inGrid = (cell: { row: number; col: number }): boolean =>
-    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
-  const edgeClear = (cell: { row: number; col: number }): boolean =>
-    footprint.every((region) => cell.col <= region.left - 2 || cell.col >= region.right + 2)
-  const firstRegion = regions[0]
-  let a: { row: number; col: number }
-  let onlyColumnsClear = false
-  try {
-    a = witnessCellFor(regions, grid, avoid)
-  } catch (error) {
-    if (firstRegion === undefined) throw error
-    const [fallback] = cellsNearestFirst(
-      { row: firstRegion.top, col: firstRegion.left },
-      grid,
-      (cell) => inGrid(cell) && edgeClear(cell),
-    )
-    if (fallback === undefined) throw error
-    a = fallback
-    onlyColumnsClear = true
+/**
+ * The pair in READING order: the upper cell first, and among two cells on one row the left one first.
+ *
+ * Which cells the pair is comes from the order above and nowhere else; this only fixes which of the
+ * two the record calls `a`. A diff of two frames arrives as connected regions in POSITION order, so
+ * a pair whose `b` sat above-left of its `a` reached the reader as the same two boxes with the cells
+ * swapped, and a reader that divides the boxes' offset by the cells' gap then sees the two axes
+ * disagree in sign (@dev/10's 5x10 frame found this through a snapped-to-bottom read, 34163).
+ */
+function readingOrder(
+  one: { row: number; col: number },
+  other: { row: number; col: number },
+): { a: { row: number; col: number }; b: { row: number; col: number } } {
+  const oneFirst = one.row === other.row ? one.col <= other.col : one.row < other.row
+  return oneFirst ? { a: one, b: other } : { a: other, b: one }
+}
+
+export function sentinelCellsInFrame(input: {
+  rgba: Uint8Array
+  width: number
+  height: number
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  grid: { rows: number; cols: number }
+  regions: readonly CaptureCells[]
+  avoid?: readonly CaptureCells[]
+}): { a: { row: number; col: number }; b: { row: number; col: number }; tier: WitnessTier } {
+  const { rgba, width, height, reading, cell, grid } = input
+  const avoid = input.avoid ?? []
+  const pixels = (x: number, y: number): number => {
+    const offset = (y * width + x) * 4
+    return ((rgba[offset] ?? 0) << 16) | ((rgba[offset + 1] ?? 0) << 8) | (rgba[offset + 2] ?? 0)
   }
-  const digested = (cell: { row: number; col: number }): boolean =>
+  const counts = new Map<number, number>()
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const packed = pixels(x, y)
+      counts.set(packed, (counts.get(packed) ?? 0) + 1)
+    }
+  }
+  let background = 0
+  let backgroundCount = -1
+  for (const [packed, count] of counts) {
+    if (count > backgroundCount || (count === backgroundCount && packed < background)) {
+      background = packed
+      backgroundCount = count
+    }
+  }
+  /** Every pixel of this cell is the frame's background. */
+  const modal = (row: number, col: number): boolean => {
+    const left = reading.x + (col - 1) * cell.width
+    const top = reading.y + (row - 1) * cell.height
+    if (left < 0 || top < 0 || left + cell.width > width || top + cell.height > height) return false
+    for (let y = top; y < top + cell.height; y++) {
+      for (let x = left; x < left + cell.width; x++) if (pixels(x, y) !== background) return false
+    }
+    return true
+  }
+  /**
+   * A cell a blank restore puts back as it was found: background itself, and with no ink either side
+   * of it on its row, so it cannot be the blank half of a wide glyph whose other half is drawn next
+   * door. A neighbour outside the grid has no glyph and does not exclude the cell.
+   */
+  const blank = (row: number, col: number): boolean =>
+    modal(row, col) && (col === 1 || modal(row, col - 1)) && (col === grid.cols || modal(row, col + 1))
+  const footprint = [...input.regions, ...avoid]
+  const inGrid = (cellAt: { row: number; col: number }): boolean =>
+    cellAt.row >= 1 && cellAt.col >= 1 && cellAt.row <= grid.rows && cellAt.col <= grid.cols
+  const digested = (cellAt: { row: number; col: number }): boolean =>
     footprint.some(
       (region) =>
-        cell.row >= region.top && cell.row <= region.bottom && cell.col >= region.left && cell.col <= region.right,
+        cellAt.row >= region.top &&
+        cellAt.row <= region.bottom &&
+        cellAt.col >= region.left &&
+        cellAt.col <= region.right,
     )
-  const onRegionRow = (cell: { row: number; col: number }): boolean =>
-    regions.some((region) => cell.row >= region.top && cell.row <= region.bottom)
-  const apart = (cell: { row: number; col: number }): boolean => cell.row !== a.row && cell.col !== a.col
-  const accepts = cleared(grid, digested)
-  // Kept from 33981 and NOT widened here: the first cell avoids every row the probe's own output
-  // covers, the second avoids only the compared region's rows. Changing that moves the pair on every
-  // frame that carries an avoid band, so it is left as it is rather than folded into 34040
-  // (@dev/15 peer read, residual 1).
-  const usable = (cell: { row: number; col: number }): boolean => accepts(cell) && !onRegionRow(cell) && apart(cell)
-  // Closest first, and another ROW before another row's far column: the +/-1 column, +/-1 and +/-2 row
-  // cells keep 33981's original preference, then the search takes over.
-  const preferred = [
-    { row: a.row - 1, col: a.col + 1 },
-    { row: a.row - 1, col: a.col - 1 },
-    { row: a.row + 1, col: a.col + 1 },
-    { row: a.row + 1, col: a.col - 1 },
-    { row: a.row - 2, col: a.col + 1 },
-    { row: a.row - 2, col: a.col - 1 },
-    { row: a.row + 2, col: a.col + 1 },
-    { row: a.row + 2, col: a.col - 1 },
-  ]
-  // When the first cell came from the column-clear fallback, the whole pair is a tier-3 pair: the
-  // second cell keeps the same edge clearance, and the record says "no-clear-row" rather than
-  // claiming a region-free pair the frame never had (@dev/10 peer read, 34040).
-  const tier: WitnessTier = onlyColumnsClear ? "no-clear-row" : "region-free"
-  const acceptable = onlyColumnsClear ? (cell: { row: number; col: number }) => usable(cell) && edgeClear(cell) : usable
-  const found = preferred.find((cell) => acceptable(cell))
-  if (found) return { a, b: found, tier }
-  if (!onlyColumnsClear) {
-    for (const cell of cellsNearestFirst(a, grid, usable)) {
-      return { a, b: cell, tier: "region-free" }
+  /** Tier 1 and 2: blank, and on no digested region. */
+  const regionFree = (cellAt: { row: number; col: number }): boolean =>
+    inGrid(cellAt) && !digested(cellAt) && blank(cellAt.row, cellAt.col)
+  const first = input.regions[0]
+  // The band every compared region occupies, plus the avoid band where it overlaps the regions' rows:
+  // "above" and "below" are asked of the WHOLE footprint, not of the first region, or a second region
+  // sitting directly under the first hides the free row below it and the search walks sideways
+  // instead (a recorded 24-row screen whose only free row was 24 landed on 1,12).
+  const band = avoid.filter(
+    (region) =>
+      first !== undefined &&
+      [...input.regions].some((compared) => region.bottom >= compared.top && region.top <= compared.bottom),
+  )
+  const top = Math.min(...input.regions.map((region) => region.top), ...band.map((region) => region.top))
+  const bottom = Math.max(...input.regions.map((region) => region.bottom), ...band.map((region) => region.bottom))
+  const anchor = first === undefined ? { row: 1, col: 1 } : { row: top, col: first.left }
+  const preferred =
+    first === undefined
+      ? []
+      : [
+          { row: top - 1, col: first.left },
+          { row: top - 1, col: first.right + 1 },
+          { row: bottom + 1, col: first.left },
+        ]
+  const firstAccepted = (accepts: (cellAt: { row: number; col: number }) => boolean) => {
+    for (const cellAt of preferred) if (accepts(cellAt)) return cellAt
+    for (const cellAt of cellsNearestFirst(anchor, grid, accepts)) return cellAt
+    return undefined
+  }
+  const limit = (need: "a cell" | "a second cell"): string => spelledLimit(clearExtent(input.regions, grid), grid, need)
+  const spelledLimitFor = (need: "a cell" | "a second cell", why: string): string =>
+    `: ${limit(need)}${why}, so this frame's crop cannot be anchored`
+  // Where the search looked, spelled the same way in both refusals: an empty region list must not
+  // leave a hole in the sentence (a grid with no compared region still has a probe footprint or none).
+  const spelledFootprint =
+    input.regions.length === 0
+      ? avoid.length === 0
+        ? ""
+        : ` outside the probe's own output ${spelledRegions(avoid)}`
+      : ` outside the digested region ${spelledRegions(input.regions)}${spelledAvoid(avoid)}`
+  const a = firstAccepted(regionFree)
+  if (a === undefined) {
+    // Two different facts, said as two different sentences: a frame with no background cell at all is
+    // not the same refusal as a frame whose background cells all sit on a digested region or beside ink
+    // (main's message, kept: the read must name what it looked for, not only that it failed).
+    let anyBackground = false
+    for (let row = 1; row <= grid.rows && !anyBackground; row += 1) {
+      for (let col = 1; col <= grid.cols; col += 1) {
+        if (modal(row, col)) {
+          anyBackground = true
+          break
+        }
+      }
     }
-  // Tier 2 (34040, @cto 2026-11-13): when the compared region leaves exactly one clear row, the
-  // second cell can only sit on the first cell's OWN row, so the pair measures the column pitch and
-  // nothing else. Two conditions make that safe: the two cells are never adjacent — a gap of at
-  // least one whole cell, so a horizontal run of sentinel colour or a full-line repaint reads as
-  // ONE wide box and fails the size test rather than passing as two cells — and no vertical move is
-  // ever accepted on such a pair (`gridMoveExemption` refuses a zero row gap by name).
-    const sameRow = (cell: { row: number; col: number }): boolean =>
-      cell.row === a.row && Math.abs(cell.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP && accepts(cell)
-    for (const cell of cellsNearestFirst(a, grid, sameRow)) {
-      return { a, b: cell, tier: "same-row" }
+    const head = anyBackground
+      ? `No sentinel pair can be anchored in this frame; no blank cell exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid`
+      : `No sentinel pair can be anchored in this frame; no blank cell exists in the ${grid.rows}x${grid.cols} grid, because every cell carries ink`
+    throw new Error(`${head}${spelledLimitFor("a cell", "")}`)
+  }
+  // Tier 1 first: a diagonal pair proves both pitches. Only when the frame has none does the
+  // same-row tier exist — a tier offered before tier 1 would let a column-only pair win on a frame
+  // that had a full pair available (@cto's condition 4: only when no region-free pair exists).
+  //
+  // Tier 1 searches PAIRS, not the mates of one fixed cell (@dev/10's 5x10 frame, 33981 peer read):
+  // the order's first blank cell had no diagonal mate while two other blank cells formed one, so a
+  // mate-only search fell to `same-row` with a full diagonal pair sitting in the same frame. Cell
+  // counts per row and column answer "has a diagonal mate" in one subtraction — the cells off this
+  // cell's row and off its column — so the pair search costs no more than the scan that builds it.
+  // The first cell still comes from the SAME order (the nearest blank cell that can be paired), so a
+  // frame whose earlier cell pairs answers exactly as before.
+  const blankCellsInRow = new Map<number, number>()
+  const blankCellsInColumn = new Map<number, number>()
+  let blankCells = 0
+  for (let row = 1; row <= grid.rows; row += 1) {
+    for (let col = 1; col <= grid.cols; col += 1) {
+      if (!regionFree({ row, col })) continue
+      blankCells += 1
+      blankCellsInRow.set(row, (blankCellsInRow.get(row) ?? 0) + 1)
+      blankCellsInColumn.set(col, (blankCellsInColumn.get(col) ?? 0) + 1)
     }
   }
-  if (onlyColumnsClear) {
-    const pairCell = (cell: { row: number; col: number }): boolean =>
-      inGrid(cell) && edgeClear(cell) && cell.row !== a.row && cell.col !== a.col
-    for (const cell of cellsNearestFirst(a, grid, pairCell)) {
-      return { a, b: cell, tier: "no-clear-row" }
-    }
+  const hasDiagonalMate = (cellAt: { row: number; col: number }): boolean =>
+    blankCells - (blankCellsInRow.get(cellAt.row) ?? 0) - (blankCellsInColumn.get(cellAt.col) ?? 0) + 1 > 0
+  const nearestAfter = (
+    anchor: { row: number; col: number },
+    accepted: (cellAt: { row: number; col: number }) => boolean,
+  ) => {
+    for (const cellAt of cellsNearestFirst(anchor, grid, accepted)) return cellAt
+    return undefined
   }
+  const pairFirst = firstAccepted((cellAt) => regionFree(cellAt) && hasDiagonalMate(cellAt))
+  const diagonal =
+    pairFirst === undefined
+      ? undefined
+      : nearestAfter(
+          pairFirst,
+          (cellAt) => regionFree(cellAt) && cellAt.row !== pairFirst.row && cellAt.col !== pairFirst.col,
+        )
+  if (pairFirst !== undefined && diagonal !== undefined) {
+    return { ...readingOrder(pairFirst, diagonal), tier: "region-free" }
+  }
+  const sameRow = nearestAfter(
+    a,
+    (cellAt) => regionFree(cellAt) && cellAt.row === a.row && Math.abs(cellAt.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP,
+  )
+  if (sameRow !== undefined) return { ...readingOrder(a, sameRow), tier: "same-row" }
   throw new Error(
-    // The limit is measured from the compared region alone, because that is what the SECOND cell
-    // avoids: the probe's own output is not a digested region for it (its rectangles are excluded
-    // cell by cell, as before). Counting avoid rows here named a limit the reader could not act on
-    // (@dev/15 peer read, 34040).
-    `No second cell clear of the digested region ${spelledRegions(regions)}${spelledAvoid(avoid)} on a row it does not use, in the ${grid.rows}x${grid.cols} grid, differs from cell ${a.row},${a.col} in both row and column: ${spelledLimit(clearExtent(regions, grid), grid, "a second cell")}, so this frame's crop cannot be anchored by a sentinel pair`,
+    `No sentinel pair can be anchored in this frame; no diagonal pair exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid, because no two blank cells differ in both row and column, and no blank cell shares the row of cell ${a.row},${a.col} at least ${SAME_ROW_MIN_COLUMN_GAP} columns away${spelledLimitFor("a second cell", "")}`,
   )
 }
 
