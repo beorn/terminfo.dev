@@ -1206,6 +1206,12 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
               events.push("launch")
               launches.push(["open", "-a", opts.appBundle])
               if (status !== 0) throw new Error(`cmux-open-failed: open -a ${opts.appBundle} exited ${status}`)
+              return {
+                restore: () => {
+                  events.push("restore")
+                  return "exact"
+                },
+              }
             },
           }
         }
@@ -1248,6 +1254,7 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
     cmuxExecutable: "/Applications/cmux.app/Contents/MacOS/cmux",
     payloadPath: command,
   })
+  expect(events.indexOf("restore")).toBeGreaterThan(events.indexOf("launch"))
   await expect(run(7)).rejects.toThrow(/open.*7/)
   for (setupFailure of ["write", "type", "value"]) {
     launches.length = 0

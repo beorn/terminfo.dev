@@ -15,7 +15,7 @@
  * chain must reach the cmux process before anything is closed (C4).
  */
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { shellQuote } from "./daemon-client.ts"
 
@@ -163,9 +163,13 @@ export async function launchCmuxInitialCommand(
     cmuxCommandFile({ runId: opts.runId, startedMarkerPath: opts.startedMarkerPath, payloadPath: opts.payloadPath }),
     { flag: "wx", mode: 0o700 },
   )
+  // Append our one line; the file is never rewritten from a snapshot (C1). Only the stale-key
+  // cleanup above may rewrite, and only when it actually removed a key.
   const ourLine = `initial-command = /bin/bash ${shellQuote(opts.commandPath)}`
+  if (removedStaleKey) writeFileSync(opts.configPath, content, { mode: 0o600 })
+  if (content !== "" && !content.endsWith("\n")) appendFileSync(opts.configPath, "\n", { mode: 0o600 })
+  appendFileSync(opts.configPath, `${ourLine}\n`, { mode: 0o600 })
   const withKey = `${content}${content === "" || content.endsWith("\n") ? "" : "\n"}${ourLine}\n`
-  writeFileSync(opts.configPath, withKey, { mode: 0o600 })
 
   // The bytes a clean restore returns to: the config as it stood once stale own keys were removed.
   const baseContent = content

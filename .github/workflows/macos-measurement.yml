@@ -775,7 +775,7 @@ jobs:
             writeFileSync(setupPath, JSON.stringify(setup, null, 2), { flag: "wx", mode: 0o600 });
           }
           const { launchCmuxInitialCommand } = require(process.cwd() + "/packages/terminfo.dev/src/cmux-initial-command-launch.ts");
-          await launchCmuxInitialCommand({
+          const cmuxLaunch = await launchCmuxInitialCommand({
             configPath: join(homedir(), ".config", "ghostty", "config"),
             appBundle: process.env.APP_BUNDLE,
             cmuxExecutable: join(process.env.APP_BUNDLE, "Contents", "MacOS", "cmux"),
@@ -785,6 +785,9 @@ jobs:
             payloadPath: process.env.COMMAND_PATH,
             runId: `workflow-${process.env.GITHUB_RUN_ID ?? "local"}`,
           });
+          // The key has done its job once the surface starts (the started marker proves it did); collection
+          // talks to the daemon, not the config, so the line comes out now, not at job end.
+          cmuxLaunch.restore();
           HOSTED_CMUX_START
           )" > "$OUT/launcher.log" 2>&1
               ;;
