@@ -6,7 +6,9 @@ import { lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync } from
 
 import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from "node:path"
 
-export const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".vitest-cache", ".cache"])
+// Mutable tool caches: vite and vitest write these into node_modules during dev and build, so a
+// manifest that hashed them would change while another test runs (34306/33915).
+export const RESOURCE_EXCLUDES = new Set([".git", ".vitest", ".vitest-cache", ".cache", ".vite", ".vite-temp"])
 
 function fail(name: string, detail: string): never {
   throw new Error(`${name}: ${detail}`)
