@@ -616,6 +616,10 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: result => retained.push(result) })
       assert.equal(calibrations, 1)
       assert.strictEqual(source.captureGeometry.geometry, pixelGeometry)
+      // 33774: the origin is askable again, so a row whose own frame writes RIS can be measured
+      // instead of refused as a moved window. Calibration paints the grid, so the probe re-writes
+      // its frame after the renewal — both halves are asserted on the probe side.
+      assert.equal(typeof source.renewCaptureGeometry, "function", "a RIS row can ask for the origin again")
       assert.deepEqual(retained, [raw], "raw calibration evidence reaches batch retention")
       await assert.rejects(
         () => options.capture({ ...checkpoints[0], pixelGeometry: { ...pixelGeometry, textWidth: pixelGeometry.textWidth - pixelGeometry.cellWidth } }),

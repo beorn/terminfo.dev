@@ -1216,6 +1216,49 @@ test("region rows consume the same calibrated run geometry without re-dividing w
   expect(fake.requests.every((request) => request.pixelGeometry === reading.geometry)).toBe(true)
 })
 
+/**
+ * @failure A frame that writes RIS re-lays-out a block terminal's window (Warp: every absolute row 35
+ *   lower, footprint unchanged), and the row refuses "the frame moved after cells ... were chosen"
+ *   with no way to ask for the origin again — so six reset-family rows stay probe-invalid forever.
+ * @level l1
+ * @consumer packages/probes/* (the reset-family and SGR rows whose expected frame carries RIS)
+ * @source-grep Warp runs 43285337469 and 43597976383: "the frame moved after cells 1,2 and 2,1 were
+ *   chosen at 17,46 — the pair landed 0,560 px from it"; 560 px is exactly 35 rows of a 16 px cell.
+ * @testonly none
+ */
+test("a RIS-bearing frame asks for the origin again and is written again after it (33774)", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const GEOMETRY_AFTER_MOVE: PixelGeometry = { ...GEOMETRY, textHeight: GEOMETRY.textHeight + 560 }
+  const RIS_FRAME = `${EXPECTED}\x1bc\x1b[?25l`
+  let renewed = 0
+  fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    const reading = { geometry: GEOMETRY_AFTER_MOVE, source: "measured by complete raster calibration" as const }
+    fake.ctx.captureGeometry = reading
+    return reading
+  }
+  await decide(fake, { expected: RIS_FRAME })
+  // Calibration paints the whole grid, so the frame is written once by the row and once after the
+  // renewal; without the second write the read would compare the calibration pattern.
+  expect(renewed).toBeGreaterThan(0)
+  expect(fake.writes.filter((entry) => entry === RIS_FRAME)).toHaveLength(renewed + 1)
+  expect(fake.writes.at(-2) === RIS_FRAME || fake.writes.includes(RIS_FRAME)).toBe(true)
+  // Every read taken after the renewal reads at the origin the collector just measured.
+  expect(fake.requests.at(-1)?.pixelGeometry).toBe(GEOMETRY_AFTER_MOVE)
+}, 30_000)
+
+test("a row whose frames carry no RIS never asks for the origin again (33774)", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  let renewed = 0
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    return undefined
+  }
+  await decide(fake)
+  expect(renewed).toBe(0)
+})
+
 test("region rows refuse a calibrated footprint that no longer covers the current grid before paint", async () => {
   const fake = ownedWindow({ rows: 30, cols: 120, repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }

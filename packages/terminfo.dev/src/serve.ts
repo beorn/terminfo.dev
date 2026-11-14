@@ -887,6 +887,32 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               queries,
               installCensus,
             }
+            /**
+             * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
+             * row 35 lower, footprint unchanged), so the probe asks for the origin again instead of
+             * refusing the frame as moved. Calibration paints the whole grid, which is why the caller
+             * re-writes its frame afterwards; this hook only re-measures and publishes the reading,
+             * and it reuses the same pre-flight arm so one calibration authority exists per run.
+             */
+            probeSource.renewCaptureGeometry = async () => {
+              textOrigin = await calibrateCaptureOrigin({
+                ctx: probeSource,
+                pixelGeometry: reportedGeometry,
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+                ...(chromeBand ? { chromeBand } : {}),
+                collectorLaunched:
+                  kind === "darwinHosted" ||
+                  ((kind === "process" || kind === "ownedApp") && process.platform === "darwin") ||
+                  (process.platform === "linux" && kind === "linux"),
+                captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
+              })
+              probeSource.captureGeometry = {
+                geometry: textOrigin.pixelGeometry,
+                source: "measured by complete raster calibration",
+                sentinel: textOrigin.sentinel,
+              }
+              return probeSource.captureGeometry
+            }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
             const causes: NonNullable<CaptureCalibrationFact["causes"]> = []
