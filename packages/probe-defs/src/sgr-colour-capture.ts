@@ -624,7 +624,9 @@ export function colourCaptureCallbackResult(
       ...(verdict.response === undefined ? {} : { response: verdict.response }),
     }
   }
-  if (observation.outcome === "unsupported") {
+  // Reset's negative has already passed its independent RIS reference and setup controls.
+  // It is not the colour oracle's ambiguous unchanged-paint comparison (#33534).
+  if (observation.outcome === "unsupported" && id !== "sgr.underline-color-reset") {
     // A downgraded result keeps nothing from the verdict it replaced: the oracle's negative
     // assertion names an outcome this path does not publish, and the batch reader records every
     // assertion it is handed.
