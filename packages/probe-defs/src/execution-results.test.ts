@@ -389,8 +389,24 @@ it.each([
     expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
   }
   const missingOsc0State = kind === "lib" && id === "extensions.osc0-icon-title"
+  // @cto 2026-11-13: a term OSC 52 read with no reply and no cited read-default is probe-todo,
+  // not a reply failure. The cursor control answered, so silence is ungraded.
+  const osc52ReadSilence = kind === "term" && id === "extensions.osc52-read" && !rawOverride
   const expectedReplyFailure =
-    (!rawOverride || id === "extensions.osc0-icon-title") && !highlightZeroReply && !missingOsc0State
+    (!rawOverride || id === "extensions.osc0-icon-title") &&
+    !highlightZeroReply &&
+    !missingOsc0State &&
+    !osc52ReadSilence
+  if (osc52ReadSilence) {
+    expect(callback.tests).toEqual([
+      expect.objectContaining({
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringContaining("default not established"),
+      }),
+    ])
+    expect(callback.observation).toBeUndefined()
+  }
   if (expectedReplyFailure) expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   else expect(callback).not.toHaveProperty("replyFailureTestIds")
   const result =

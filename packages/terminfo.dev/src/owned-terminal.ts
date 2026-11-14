@@ -646,6 +646,32 @@ export function resolveOwnedAppId(input: {
   return input.platform === "darwin" && input.hostedAppId !== undefined ? input.hostedAppId : input.launcherAppId
 }
 
+/**
+ * History arm for a Linux app that has no installed reader (#34278).
+ * Alacritty matches the Darwin declaration (@cto 20b9ffed): the app exposes no pane read.
+ * Ghostty stays undeclared: its scrollback-file action is an accepted read (@cto a1663f9d) and this
+ * arm does not invoke it, so the row stays work. xterm has no reader among the installed ones
+ * (kitty, screen, tmux, wezterm), so that missing arm stays work too, not a measured absence.
+ * A reader already installed, or any non-Linux arm, returns nothing so this cannot replace it.
+ * The two checks live here so createOwnedTerminal's complexity does not grow.
+ */
+export function linuxScrollbackArm(
+  linux: object | undefined,
+  readScrollback: unknown,
+  appId: string | undefined,
+): {
+  readonly scrollbackUnavailable?: string
+  readonly scrollbackProbeTodo?: string
+} {
+  if (linux === undefined || readScrollback !== undefined) return {}
+  if (appId === "alacritty") return { scrollbackUnavailable: NO_PANE_READ }
+  if (appId === "ghostty") {
+    return { scrollbackProbeTodo: "this Linux arm does not invoke Ghostty's scrollback-file action" }
+  }
+  if (appId === "xterm") return { scrollbackProbeTodo: "this Linux arm has no history reader for xterm" }
+  return {}
+}
+
 /** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
 const TERMINAL_APP_HOSTED: HostedDarwinApp = {
   id: "terminal-app",
@@ -2181,6 +2207,8 @@ export async function createOwnedTerminal(options: {
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
       ...(wezTermOwnedReadProbeTodo && { scrollbackProbeTodo: wezTermOwnedReadProbeTodo }),
+      // No installed reader: name the arm instead of leaving the history rows on the screenshot todo.
+      ...linuxScrollbackArm(linux, readScrollback, ownedAppId),
       ...(ownedAppId === "wezterm" && { wezTermPaneEnvironment }),
       ...(clipboard && { clipboard }),
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
