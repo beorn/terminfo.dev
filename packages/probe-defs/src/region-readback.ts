@@ -2991,10 +2991,11 @@ export async function captureRegionReadbackDecision(
       // Before our save exists, leave rendition alone rather than borrowing another saved slot.
       endCaptureLifecycle(ctx, spec.cleanup, savedRendition ? (initialRenditionSaved ? "\x1b8" : "") : undefined)
     } catch (cleanup) {
-      if (readFailed)
+      if (readFailed) {
         throw new AggregateError([readFailure, cleanup], `${id}: capture and recipe cleanup failed`, {
           cause: readFailure,
         })
+      }
       throw cleanup
     }
   }

@@ -1939,14 +1939,15 @@ test.each(["throw", "timeout", "recipe-cleanup"])(
     }
     observeThroughSentinel(terminal, fault === "timeout" ? "timeout" : failure)
     const operation = resetProbes.find((probe) => probe.id === "reset.sgr")!.term!(terminal.ctx)
-    if (fault === "recipe-cleanup")
+    if (fault === "recipe-cleanup") {
       await expect(operation).rejects.toMatchObject({
         name: "AggregateError",
         cause: failure,
         errors: [failure, cleanupFailure],
       })
-    else if (fault === "timeout") await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
-    else await expect(operation).rejects.toBe(failure)
+    } else if (fault === "timeout") {
+      await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
+    } else await expect(operation).rejects.toBe(failure)
     expect(terminal.snapshot()).toEqual(new Set())
     expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
     expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
