@@ -182,6 +182,36 @@ test("a witness cell the check painted is read back after the clear and restored
   expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
 })
 
+test("both witness shots are taken with DECTCEM hiding the cursor, which the check shows again (34243)", async () => {
+  // A cursor left standing on the witness cell is ink in the crop, and the guard would read it as
+  // calibration's sentinel still painted there: so the check hides it for the whole measurement.
+  // DECTCEM is a visibility mode, never the DECSC slot, so the paint and the clear keep their save.
+  const { writes } = await sameCellsNote(blockAt(WARP_SHIFT))
+  const hide = writes.indexOf("\x1b[?25l")
+  const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  const clear = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+  expect(hide).toBeGreaterThan(-1)
+  expect(paint).toBeGreaterThan(hide)
+  expect(writes.indexOf("\x1b[?25h")).toBeGreaterThan(clear)
+  // Hidden as often as shown: the check contributes its own pair to the run prelude and leaves the
+  // cursor where it found it, never hidden past the end of the measurement.
+  expect(writes.filter((entry) => entry === "\x1b[?25h")).toHaveLength(
+    writes.filter((entry) => entry === "\x1b[?25l").length,
+  )
+})
+
+test("a failed locate skips the restore read: an unknown window cannot prove a restore (34243)", async () => {
+  // The restore comparison only means something on a window whose sentinel was found; after a failed
+  // locate the crop measures the move, not the clear, so the check spends no second shot on it.
+  const { note, cellReads, writes } = await sameCellsNote(null)
+  expect(note).toContain("probe text not in view")
+  // The refusal takes the early exit, so the cursor is shown from the finally, not from the happy path.
+  const clear = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+  expect(writes.indexOf("\x1b[?25h")).toBeGreaterThan(clear)
+  expect(cellReads.filter((label) => label.includes("witness before paint"))).toHaveLength(1)
+  expect(cellReads.filter((label) => label.includes("witness restored"))).toEqual([])
+}, 20_000)
+
 test("a witness cell that did not come back byte-identically is named, never assumed (34243)", async () => {
   const { result, note } = await sameCellsNote(blockAt(0), { restoreDiffers: true })
   expect(result.observation?.outcome).toBe("inconclusive")
