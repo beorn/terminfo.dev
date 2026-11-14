@@ -64,11 +64,11 @@ function windowAt(origin: { x: number; y: number }, options: { painted?: boolean
   return { width, height, rgba }
 }
 
-function source() {
+function source(dims: { rows: number; cols: number } = grid) {
   const writes: string[] = []
   return {
     writes,
-    source: { rows: grid.rows, cols: grid.cols, write: (text: string) => writes.push(text) },
+    source: { rows: dims.rows, cols: dims.cols, write: (text: string) => writes.push(text) },
   }
 }
 
@@ -106,7 +106,7 @@ function terminal(origin: { x: number; y: number }) {
 }
 
 test("the picker chooses two cells that differ in both row and column, and refuses a grid with no second cell (33981)", () => {
-  expect(witnessCellsFor([cells], grid)).toEqual(pair)
+  expect(witnessCellsFor([cells], grid)).toEqual({ ...pair, tier: "region-free" })
   expect(() => witnessCellsFor([cells], { rows: 4, cols: 1 })).toThrow(
     /No second cell clear of the digested region 1,1-2,2 on a row it does not use, in the 4x1 grid, differs from cell 3,1 in both row and column/,
   )
@@ -115,17 +115,24 @@ test("the picker chooses two cells that differ in both row and column, and refus
 // @dev/10 peer read: a cell on a digested region's own row is excluded even when its column is clear,
 // because the restore erases a wide character at the region's edge whole and would change the frame
 // this read digests. Both shapes that used to slip through now refuse by name.
-test("the picker never puts the second cell on a row a compared region uses (33981)", () => {
-  // A five-row screen whose region leaves one clear row cannot hold a pair: the second cell would
-  // have to differ in row, and there is no other row. It refuses and names that limit (34040).
-  expect(() => witnessCellsFor([cells], { rows: 3, cols: 6 })).toThrow(
-    /on a row it does not use, in the 3x6 grid.*the compared region leaves one clear row, 3,/,
+test("the picker keeps the second cell off a compared region's own row, or anchors a whole cell away on it (33981, 34040)", () => {
+  // One clear row and six columns: the pair stays on that row a whole cell apart, and the record
+  // names the tier so no reader takes it for a two-axis pair (34040, @cto tier 2).
+  expect(witnessCellsFor([cells], { rows: 3, cols: 6 })).toEqual({
+    a: { row: 3, col: 1 },
+    b: { row: 3, col: 3 },
+    tier: "same-row",
+  })
+  // Two columns cannot hold that gap, so the same screen refuses and names the limit.
+  expect(() => witnessCellsFor([cells], { rows: 3, cols: 2 })).toThrow(
+    /on a row it does not use, in the 3x2 grid.*the compared region leaves one clear row, 3,/,
   )
   // 34040: cell 4,2 is three rows below the first cell and clear of the region. It was outside the
   // old fixed candidate list, which refused this grid; the search takes the nearest usable cell.
   expect(witnessCellsFor([{ top: 2, left: 1, bottom: 3, right: 2 }], { rows: 5, cols: 6 })).toEqual({
     a: { row: 1, col: 1 },
     b: { row: 4, col: 2 },
+    tier: "region-free",
   })
 })
 
@@ -197,6 +204,38 @@ test("a lone sentinel-coloured patch cannot stand in for the pair, and refuses b
   )
   // Both cells are still restored.
   expect(painted.writes.at(-1)).toBe(CLEAR)
+})
+
+// @cto 34040 condition 1, carried to the read: the tier-2 pair sits on ONE row a whole cell apart, so
+// a run of sentinel colour along that row — a full-line repaint, a wide glyph erased with its
+// neighbour — arrives as one connected region. It must refuse by name, never pass as two cells.
+test("a sentinel-coloured run along a same-row pair reads as one wide box and refuses by name (34040)", async () => {
+  const sameRowGrid = { rows: 3, cols: 6 }
+  const anchored = witnessCellsFor([cells], sameRowGrid)
+  expect(anchored.tier).toBe("same-row")
+  const frame = windowAt({ x: 0, y: 0 }, { painted: false })
+  // One continuous run of the sentinel's colour along the pair's row, spanning every column.
+  for (let y = (anchored.a.row - 1) * pixelGeometry.cellHeight; y < anchored.a.row * pixelGeometry.cellHeight; y += 1) {
+    for (let x = 0; x < sameRowGrid.cols * pixelGeometry.cellWidth; x += 1) {
+      frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+    }
+  }
+  const painted = source(sameRowGrid)
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => windowAt({ x: 0, y: 0 }, { painted: false }),
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(
+    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: 1 connected regions changed into the sentinel colour — 24 px in a 12x2 box at 0,4 — where the two painted cells need exactly two; it did not settle before this read's deadline$/,
+  )
+  // Both cells are still restored, in the pair's own order.
+  expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
 })
 
 test("two changed cells at an offset the painted pair does not imply refuse by name (33981)", async () => {
