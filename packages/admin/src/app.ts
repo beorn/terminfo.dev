@@ -534,6 +534,10 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
     TERMINFO_RUN_ID: run.id,
     TERMINFO_TERM_FEATURES_LAUNCH: run.id,
   }
+  if (app.id === "wezterm") {
+    env.TERMINFO_TARGET_ID = app.id
+    env.TERMINFO_TARGET_VERSION = getAppVersion(app)
+  }
   // Only an export added by this freshly launched terminal may answer the child probe.
   delete env.TERM_FEATURES
   return {

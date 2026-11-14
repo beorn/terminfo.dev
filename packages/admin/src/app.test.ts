@@ -247,6 +247,28 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
   }
 })
 
+// Native semantic readers need the selected launch identity, even with no hosted caller.
+test.each([undefined, "stale-parent"])("WezTerm preparation replaces inherited target hints: %s", (inherited) => {
+  vi.stubEnv("TERMINFO_TARGET_ID", inherited)
+  vi.stubEnv("TERMINFO_TARGET_VERSION", inherited)
+  const version = "20240203-110809-5046fc22"
+  vi.mocked(execFileSync).mockReturnValueOnce(`wezterm ${version}\n`)
+  try {
+    const prepared = prepareCliLaunch("wezterm", {
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+    expect(prepared.env).toMatchObject({
+      TERMINFO_TARGET_ID: "wezterm",
+      TERMINFO_TARGET_VERSION: version,
+      TERMINFO_RUN_ID: "private-run",
+    })
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
+
 test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
   expect(() =>
     assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, {
