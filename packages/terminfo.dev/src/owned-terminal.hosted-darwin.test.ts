@@ -1188,6 +1188,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])(
     const device = { dev: 7n, rdev: 9n, ino: 11n, isSocket: () => true }
     const realReadFileSync = fs.readFileSync
     mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device,
+      openSync: () => 7, closeSync: () => {},
       readFileSync: (path, ...args) => path === executable ? Buffer.from("gui") : path === cli ? Buffer.from("cli") : realReadFileSync(path, ...args),
       realpathSync: path => fault === "wrong bundle" && path === cli ? "/outside/wezterm" : path }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
@@ -1210,11 +1211,18 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])(
         return JSON.stringify([{ pane_id: fault === "wrong pane" ? 2 : 1, tty_name: "/dev/ttys004", cwd: uri }])
       },
       spawnSync: (command, args, options) => {
+        if (command === "/usr/sbin/lsof") {
+          assert.deepEqual(args, ["-a", "-U", "-p", "4242", "-Fn"])
+          return { status: 0, signal: null, stdout: "n" + (fault === "wrong socket" ? "/foreign/gui.sock" : "/owned/gui.sock") + "\\n", stderr: "" }
+        }
         if (args[0] === "--version") {
           assert.equal(command, cli)
           return { status: 0, signal: null, stdout: "wezterm " + version, stderr: "" }
         }
         assert.equal(command, cli); assert.equal(options.env.WEZTERM_UNIX_SOCKET, "/owned/gui.sock")
+        cliCalls++
+        if (args[2] === "list") return { status: 0, signal: null, stdout: JSON.stringify([{ pane_id: fault === "wrong pane" ? 2 : 1, tty_name: "/dev/ttys004", cwd: uri }]), stderr: "" }
+        assert.equal(args[2], "get-text")
         return { status: 0, signal: null, stdout: Buffer.from(rows.join("\\n") + "\\n"), stderr: Buffer.alloc(0) }
       },
       spawn: file => {
@@ -1226,6 +1234,7 @@ test.each(["owned", "wrong socket", "wrong pane", "wrong bundle"])(
           const reply = tool.endsWith("pbcopy") ? "" : tool.endsWith("pbpaste") ? pasteboard + "\\n" : tool.endsWith("stty") ? "24 80\\n" : "\\n"
           queueMicrotask(() => { child.stdout.emit("data", Buffer.from(reply)); child.emit("close", 0) })
         } }
+        if (tool.endsWith("stty")) queueMicrotask(() => { child.stdout.emit("data", Buffer.from("24 80\\n")); child.emit("close", 0) })
         return child
       }
     }))
