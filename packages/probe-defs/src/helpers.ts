@@ -1987,15 +1987,21 @@ export function decrpmModeProbe(
       if (!verifySet) return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
       const snapshot = await queryDecrpm(ctx, modeNum)
       let ps = snapshot
+      let afterRestore: DecrpmPs | null | undefined
       if (snapshot === 2) {
         try {
           ctx.write(`\x1b[?${modeNum}h`)
           ps = await queryDecrpm(ctx, modeNum)
         } finally {
           ctx.write(`\x1b[?${modeNum}l`)
+          if (modeNum === 2026) afterRestore = await queryDecrpm(ctx, modeNum)
         }
       }
-      const response = JSON.stringify({ snapshot, ...(snapshot === 2 ? { afterSet: ps } : {}) })
+      const response = JSON.stringify({
+        snapshot,
+        ...(snapshot === 2 ? { afterSet: ps } : {}),
+        ...(afterRestore === undefined ? {} : { afterRestore }),
+      })
       if (ps === null) {
         return {
           pass: false,

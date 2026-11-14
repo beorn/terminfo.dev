@@ -1085,7 +1085,7 @@ test.each([
     [2, null, null],
   ] as const) {
     const events: string[] = []
-    const replies = [snapshot, enabled]
+    const replies = [snapshot, enabled, 2]
     const context = captureSource(24, 80, [], [])
     context.write = (bytes) => {
       events.push(bytes)
@@ -1105,7 +1105,15 @@ test.each([
     if (missingReverseReader) context.capture = undefined
     const result = await definition.term!(context)
     expect(events).toEqual(
-      snapshot === 2 ? [`\x1b[?${mode}$p`, `\x1b[?${mode}h`, `\x1b[?${mode}$p`, `\x1b[?${mode}l`] : [`\x1b[?${mode}$p`],
+      snapshot === 2
+        ? [
+            `\x1b[?${mode}$p`,
+            `\x1b[?${mode}h`,
+            `\x1b[?${mode}$p`,
+            `\x1b[?${mode}l`,
+            ...(mode === 2026 ? [`\x1b[?${mode}$p`] : []),
+          ]
+        : [`\x1b[?${mode}$p`],
     )
     if (missingReverseReader) {
       expect(result.observation).toBeUndefined()
@@ -1116,7 +1124,7 @@ test.each([
       // The retained Alacritty after-set Ps 2 reply took 140 ms; it cannot witness the enabled update.
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(result.response).toBe('{"snapshot":2,"afterSet":2}')
+      expect(result.response).toBe('{"snapshot":2,"afterSet":2,"afterRestore":2}')
       expect(result.tests).toEqual([
         { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("set-state control unobservable") },
       ])
