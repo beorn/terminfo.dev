@@ -65,11 +65,17 @@ refusal can establish only Unsupported, takes precedence over a no-setup fallbac
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
 WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
-The Mac WezTerm collector offers that reader only to the CWD row; other rows retain their existing terminal callbacks.
+The Mac WezTerm owner declares the two CWD rows its reader serves; the collector asks that owner and leaves other
+rows on their existing terminal callbacks. OSC633 P reuses the owned pane read behind same-pane text checkpoints,
+compares decoded paths with retained raw URI/host and records an undetermined initial source kind. Its unknown,
+OSC7 handled and OSC633 P target phases run last among directory/prompt rows; the disposable pane stays pinned
+until its normal end-of-run close. Its raw reading and process cwd are retained privately; published phases
+carry hashes and nonce control/target paths only, including invalid results. Clipboard and consent retain their later positions. This is one Mac position;
+the other prompt/metadata positions and native qualification retain their own prerequisites.
 The measured CLI version and launch version must match the reviewed Linux
 `0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
 Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
-and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
+and a safe literal public directory URI. For OSC7, fresh inert, handled and target controls precede exact
 restoration of the initial URI. The private capture retains the initial/restored values and feed/text
 trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
 An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
@@ -81,6 +87,19 @@ The reading carries the existing path-free owned-pane identity receipt. Native p
 argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
 The initial/restored phase and feed records use that same content-addressed writer and artifact observer;
 the private evidence basename names a registered immutable blob rather than a collector-local file.
+The hosted Darwin editor reader extends the existing generated VSCode/Cursor fixture.
+Each phase retains fresh Terminal.name, awaited processId and shellIntegration.cwd or
+an explicit native-absence reason, bound to the activation and request nonces.
+Those ordinary files establish activation correlation, not process-writer attestation.
+Controlled CWD changes can qualify a positive reading; API absence never supplies an Unsupported grade.
+Owned-window screenshots and generated private config/read evidence are retained before restoration
+and cleanup on both success and failure, without copying the inherited environment or user profile.
+cmux retains raw read-screen responses through the same private content-addressed capture writer,
+including refused responses. Its public record carries the acquired surface, read facts and transcript
+hash reference; the receipt contains no rawScreen field. The persisted record names editor API fields
+inapplicable rather than inventing values and rejects any surviving host path separator.
+Actual per-App native compatibility and non-author raw/screenshot review remain separate from fixture tests.
+
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and

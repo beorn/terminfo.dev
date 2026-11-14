@@ -209,7 +209,11 @@ describe("34040 the first cell gets the same search, not a second fixed list", (
       { top: 1, left: 1, bottom: 22, right: 10 },
       { top: 23, left: 1, bottom: 23, right: 10 },
     ])
-    expect(pair.a).toEqual({ row: 24, col: 1 })
+    // The pair is the order's answer, read as a SET: `a` is now the upper (then left) cell of the
+    // pair, because a frame diff hands its connected regions over in position order and a pair whose
+    // `b` sat above-left would otherwise reach the reader with the two cells swapped (@dev/10,
+    // 34163's snapped frame). Which PAIR the order chose is unchanged.
+    expect(pair).toEqual({ a: { row: 13, col: 12 }, b: { row: 24, col: 1 }, tier: "region-free" })
     expect(pair.tier).toBe("region-free")
   })
 
@@ -240,13 +244,17 @@ describe("34040 the first cell gets the same search, not a second fixed list", (
   })
 
   it("keeps 33000's preference: directly above the region, then below it", () => {
-    expect(pairOn({ rows: 24, cols: 80 }, [{ top: 3, left: 1, bottom: 5, right: 10 }]).a).toEqual({
-      row: 2,
-      col: 1,
-    })
-    expect(pairOn({ rows: 24, cols: 80 }, [{ top: 1, left: 1, bottom: 4, right: 10 }]).a).toEqual({
-      row: 5,
-      col: 1,
-    })
+    // The preference is about WHICH cells are chosen, so it is asserted as membership in the pair:
+    // the record's `a` is the upper of the two (see the note above).
+    const above = pairOn({ rows: 24, cols: 80 }, [{ top: 3, left: 1, bottom: 5, right: 10 }])
+    expect([above.a, above.b]).toEqual(
+      expect.arrayContaining([
+        { row: 2, col: 1 },
+        { row: 1, col: 2 },
+      ]),
+    )
+    const below = pairOn({ rows: 24, cols: 80 }, [{ top: 1, left: 1, bottom: 4, right: 10 }])
+    expect([below.a, below.b]).toContainEqual({ row: 5, col: 1 })
+    expect(below.a.row !== below.b.row && below.a.col !== below.b.col).toBe(true)
   })
 })

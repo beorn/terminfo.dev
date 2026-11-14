@@ -12,6 +12,7 @@ import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "@terminfo/probe-defs"
 import {
+  cellRectangle,
   command,
   finishCapture,
   locateColour,
@@ -477,4 +478,44 @@ test("the extension is part of the name: one digest may hold two encodings witho
 
   expect(png).toBe(xwd)
   expect(readdirSync(dir).sort()).toEqual([`${digest(bytes)}.png`, `${digest(bytes)}.xwd`])
+})
+
+test("a region that leaves the frame refuses by name and never shrinks to fit (34163)", () => {
+  // The numbers are the kitty scrollback.viewport-hold-output refusal: 20 rows of 29 px cells from a
+  // text origin 155 px down cannot fit a 600 px frame. The refusal has to carry the rectangle, the
+  // frame, the cell pitch and the origin's basis, because those four are what settle whether the
+  // origin, the pitch or the frame is the wrong number.
+  const input = {
+    cells: { top: 1, left: 1, bottom: 20, right: 10 },
+    pixelGeometry: { cellWidth: 13, cellHeight: 29, textWidth: 1040, textHeight: 580 },
+    textOrigin: { x: 3, y: 155 },
+    windowWidth: 800,
+    windowHeight: 600,
+    basis: "sentinel pair located by frame difference",
+  }
+  expect(() => cellRectangle(input)).toThrow(
+    'Capture rectangle {"x":3,"y":155,"width":130,"height":580} leaves the measured 800x600 window for cells {"top":1,"left":1,"bottom":20,"right":10}: 13x29 cells from text origin 3,155 (origin basis: sentinel pair located by frame difference) over a 1040x580 text area',
+  )
+  // The visible-text-area clip is not a licence to shrink: the same extent still refuses.
+  expect(() => cellRectangle({ ...input, visible: { width: 1040, height: 580 } })).toThrow(
+    /leaves the measured 800x600 window/,
+  )
+  // A placement that does fit is accepted, so the refusal is about the extent, not the origin.
+  expect(
+    cellRectangle({ ...input, textOrigin: { x: 3, y: 5 }, pixelGeometry: { ...input.pixelGeometry, cellHeight: 22 } }),
+  ).toEqual({ x: 3, y: 5, width: 130, height: 440 })
+  // An origin with no settled name says so, rather than leaving the reader to guess which measurement lied.
+  expect(() => cellRectangle({ ...input, basis: undefined })).toThrow(/origin basis unnamed/)
+  // A located pair travels with the refusal: the cells the code believed it painted beside the boxes
+  // it found are the only record of a pair that slid down the grid.
+  expect(() =>
+    cellRectangle({
+      ...input,
+      witness: {
+        a: { cell: { row: 2, col: 3 }, box: { x: 29, y: 184 } },
+        b: { cell: { row: 1, col: 4 }, box: { x: 42, y: 155 } },
+      },
+      changedOutside: 7,
+    }),
+  ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155; 7 px changed outside those boxes/)
 })

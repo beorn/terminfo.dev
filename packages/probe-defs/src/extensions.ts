@@ -6090,9 +6090,27 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
 }
 
 const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
-/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+/**
+ * The same-run control every OSC 22 read must pass first: a CPR asked by this process is answered by whatever
+ * terminal is reading this session, so it separates "the app has no shape read method" from "nothing here was
+ * reading at all" (@cto 91ec1211, 2026-11-13). It is a control, not evidence about pointer shapes.
+ */
+const OSC22_CONTROL_QUERY = "\x1b[6n"
+const OSC22_CONTROL_REPLY = /^\x1b\[\d+;\d+R$/u
+/**
+ * A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). Kept as the
+ * one written home of this sentence: 15 stored probe records already carry it as their
+ * extensions.osc22-pointer reason (15 of the 189 records under content/, parsed 2026-11-13; each writes it
+ * twice, as the row's reason and its criterion's). No code reads this export by name.
+ */
 export const OSC22_SILENT_TERMINAL =
   "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
+/** Control answered, shape query silent: this app offers no read method for the shape here (@cto 91ec1211). */
+export const OSC22_READ_METHOD_UNAVAILABLE =
+  "Open: this run's control was answered and the OSC 22 selected-shape query was not, so this app offers no read method for the shape in this run; a silent read-back is a read-method gap, never an unsupported."
+/** Nothing answered, control included: no observation exists, so nothing is decided (@cto 91ec1211). */
+export const OSC22_NO_CONTROL_REPLY =
+  "Open: neither this run's control nor the OSC 22 selected-shape query was answered, so nothing here shows the terminal was reading this session at all; with no observation the row is not decided."
 /** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
 export function osc22SilentMultiplexer(_mux: "tmux" | "screen"): string {
   return "Open by design only for a run with no command record from the outer terminal: without that record nothing shows what the multiplexer sent."
@@ -9047,6 +9065,10 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         if (ctx.capture && ctx.captureKind !== "text-cells") return osc22PointerAppCapture(ctx)
         const query = OSC22_CURRENT_QUERY
+        // Ask the control first: without a passing control a silent shape query cannot say whether the app has no
+        // read method or whether nothing was reading this session (@cto 91ec1211).
+        const control = await ctx.queryOutcome(OSC22_CONTROL_QUERY, OSC22_CONTROL_REPLY)
+        const controlAnswered = OSC22_CONTROL_REPLY.test(control.raw)
         const read = async () => {
           const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)
           return { ...readOsc22Shape(outcome.raw), reason: outcome.reason }
@@ -9055,10 +9077,15 @@ const extensionDefinitions: ProbeDefinition[] = [
         if (initial.shape === undefined) {
           // @cto a7fb82cc (#33100): silence on the query form is never Unsupported, and an answered OSC
           // colour query is no control for OSC 22. Each subject says why it stays open.
-          const reason = ctx.mux === undefined ? OSC22_SILENT_TERMINAL : osc22SilentMultiplexer(ctx.mux)
+          const reason =
+            ctx.mux === undefined
+              ? controlAnswered
+                ? OSC22_READ_METHOD_UNAVAILABLE
+                : OSC22_NO_CONTROL_REPLY
+              : osc22SilentMultiplexer(ctx.mux)
           return {
-            ...notTestedResult(reason, { query, initial }),
-            note: `No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read; ${reason}`,
+            ...notTestedResult(reason, { control: { raw: control.raw, reason: control.reason }, query, initial }),
+            note: `No initial OSC 22 selected-shape reply; control ${controlAnswered ? "answered" : "unanswered"}; shape untouched, visible pointer not read; ${reason}`,
           }
         }
         const controlShape = initial.shape === "text" ? "wait" : "text"

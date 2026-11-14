@@ -180,6 +180,8 @@ export type ProbeCapture = (checkpoint: {
   locate?: CaptureRequest["locate"]
   /** Cells the probe's own output may cover; the read never paints its sentinel there (33985). */
   avoid?: CaptureRequest["avoid"]
+  /** The viewport hold this read is taken under, forwarded verbatim to the collector (34163). */
+  scroll?: CaptureRequest["scroll"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
@@ -220,6 +222,7 @@ export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; 
 }
 
 /**
+ * OSC633 P can pin the pane cwd until it closes, so it follows cwd and prompt observations.
  * OSC 52 stays after the other probes so a clipboard write does not disturb them. DECRQCRA is
  * last: on iTerm2 it raises a consent banner that covers every later pixel probe (#31741).
  */
@@ -232,6 +235,8 @@ export function scheduleAppProbes<T extends { readonly id: string }>(requested: 
     else if (probe.id.startsWith("extensions.osc52-")) clipboard.push(probe)
     else body.push(probe)
   }
+  const cwdPin = body.findIndex((probe) => probe.id === "extensions.osc633-p")
+  if (cwdPin !== -1) body.push(...body.splice(cwdPin, 1))
   return [...body, ...clipboard, ...consent]
 }
 
@@ -885,11 +890,10 @@ export async function runProbeBatch(
       captureGeometryRefusal,
     })
     if (ownsTerminal) {
-      // The Mac WezTerm port observes only CWD. Other rows keep their original term callback,
-      // including icon and semantic wrappers whose unavailable reading does not fall back.
-      const cwdOnly =
-        options.subject?.kind === "term" && options.subject.id === "wezterm" && options.subject.os === "macos"
-      if (!cwdOnly || probe.id === "extensions.osc7-cwd") {
+      // The verified owner knows which rows its reader observes. Other rows retain their original term
+      // callbacks, including wrappers whose unavailable reading does not fall back.
+      const semanticFeatures = options.ownedTerminal?.appSemanticStateFeatures
+      if (semanticFeatures === undefined || semanticFeatures.has(probe.id)) {
         probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
       }
       const read = options.ownedTerminal?.getScrollback

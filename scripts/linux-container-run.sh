@@ -341,13 +341,44 @@ mux_receipt_target() {
 
 await_owned_daemon() {
   local daemon_dir=$1 app_pid=$2 previous_pid=${3:-0} socket_receipt=${4:-} files candidate mux_socket mux_state=
+  local registration read_status read_attempt vanished=no started=$SECONDS
   for _ in $(seq 1 150); do
     files=("$daemon_dir"/*.json)
     if [[ "${#files[@]}" == 1 && -f "${files[0]}" ]]; then
-      candidate=$(jq -er '.pid' "${files[0]}") || return 2
-      if [[ "$candidate" != "$previous_pid" ]]; then
-        jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run and (.port | type == "number") and (.token | type == "string")' \
-          "${files[0]}" >/dev/null || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
+      # register() writes directly with writeFileSync(wx), not by rename. Read one JSON
+      # snapshot: retirement may remove the old file, and one incomplete read may finish
+      # on an immediate second read. Neither changes the existing poll or its interval.
+      registration=
+      for read_attempt in 1 2; do
+        if registration=$(jq -c . "${files[0]}" 2>&1); then
+          [[ -n "$registration" ]] && break
+          read_status=5 # An empty file is the writer's not-yet-complete JSON too.
+        else
+          read_status=$?
+        fi
+        # jq's input/system-error status plus an absent file distinguishes retirement
+        # from malformed JSON without interpreting its human diagnostic text.
+        if [[ "$read_status" == 2 && ! -e "${files[0]}" ]]; then
+          vanished=yes
+          registration=
+          break
+        fi
+        if [[ ( "$read_status" != 4 && "$read_status" != 5 ) || "$read_attempt" == 2 ]]; then
+          if [[ "$read_status" == 4 || "$read_status" == 5 ]]; then
+            echo "Daemon registration ${files[0]} has malformed JSON after $read_attempt read(s)" >&2
+          else
+            echo "Daemon registration ${files[0]} could not be read (jq exit $read_status)" >&2
+          fi
+          return 2
+        fi
+        echo "Daemon registration ${files[0]} has incomplete JSON; rereading once because its writer does not rename" >&2
+      done
+      if [[ -n "$registration" ]]; then
+        candidate=$(jq -er --arg run "$TERMINFO_RUN_ID" \
+          'if .runId == $run and (.port | type == "number") and (.token | type == "string") then .pid else error("wrong run ID or invalid fields") end' \
+          <<< "$registration") || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
+      fi
+      if [[ -n "$registration" && "$candidate" != "$previous_pid" ]]; then
         if [[ -n "$socket_receipt" ]]; then
           [[ -r "$socket_receipt" ]] && IFS= read -r mux_socket < "$socket_receipt" && [[ -n "$mux_socket" ]] || {
             echo "Owned tmux socket receipt cannot supply a socket path: $socket_receipt" >&2; return 2;
@@ -371,6 +402,7 @@ await_owned_daemon() {
   else
     echo "Expected exactly one live owned collector registration, different from $previous_pid" >&2
   fi
+  echo "Collector readiness waited $((SECONDS - started))s; old collector PID $previous_pid; registration file vanished: $vanished" >&2
   return 2
 }
 

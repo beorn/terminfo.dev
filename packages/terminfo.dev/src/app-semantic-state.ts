@@ -1,5 +1,6 @@
-import { statSync, readFileSync, readlinkSync, writeFileSync } from "node:fs"
+import { statSync, readFileSync, readlinkSync, writeFileSync, renameSync } from "node:fs"
 import { basename, dirname, isAbsolute, join } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { execFileSync } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { readCallLog } from "viprobe"
@@ -793,13 +794,33 @@ export function appSemanticDeclarations(
   )
 }
 
-/** One file-custody owner for App reports and the outer command stream. */
-export function openAppCommandLog(capture: string) {
-  const log = join(dirname(capture), "daemon.log")
-  const identity = statSync(log)
+/** One file-custody owner for App reports, outer commands and a not-yet-created native reply. */
+export function openAppCommandLog(capture: string, pendingReplyPath?: string) {
+  const log = pendingReplyPath ?? join(dirname(capture), "daemon.log")
+  // The ordinary daemon log is an expected existing resource: only a specifically selected reply
+  // may still be absent before its extension answers. Once seen, that file's identity is pinned too.
+  let identity = pendingReplyPath === undefined ? statSync(log) : undefined
+  const inspect = () => {
+    try {
+      return statSync(log)
+    } catch (error) {
+      if (
+        pendingReplyPath !== undefined &&
+        identity === undefined &&
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+      ) {
+        return undefined
+      }
+      throw error
+    }
+  }
   const mark = () => {
-    const now = statSync(log)
-    if (now.dev !== identity.dev || now.ino !== identity.ino) throw new Error("Owned App log rotated")
+    const now = inspect()
+    if (now === undefined) return 0
+    if (identity !== undefined && (now.dev !== identity.dev || now.ino !== identity.ino)) {
+      throw new Error("Owned App log rotated")
+    }
+    identity ??= now
     return now.size
   }
   return {
@@ -814,13 +835,16 @@ export function openAppCommandLog(capture: string) {
         return { complete: completed, offset, endOffset: offset + bytes.length, path, text: bytes.toString("utf8") }
       }
       do {
-        const now = statSync(log)
-        if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
-          throw new Error("Owned App log changed identity or truncated")
+        const now = inspect()
+        if (now !== undefined) {
+          identity ??= now
+          if (now.dev !== identity.dev || now.ino !== identity.ino || now.size < offset) {
+            throw new Error("Owned App log changed identity or truncated")
+          }
+          text = readFileSync(log).subarray(offset).toString("utf8")
+          const end = complete(text)
+          if (end !== undefined) return retain(end, true)
         }
-        text = readFileSync(log).subarray(offset).toString("utf8")
-        const end = complete(text)
-        if (end !== undefined) return retain(end, true)
         await Bun.sleep(25)
       } while (Date.now() < deadline)
       return retain(text.length, false)
@@ -1299,7 +1323,7 @@ export function beginMuxSgrCommandRead(input: {
 }
 
 /** The existing bounded semantic read loop, shared by native readers without another polling mechanism. */
-async function untilAppSemanticRead(
+export async function untilAppSemanticRead(
   read: () => string | Promise<string>,
   complete: (value: string) => boolean,
   name: string,
@@ -1448,16 +1472,309 @@ export async function readWezTermCwd(input: {
   }
 }
 
-/** Owned Linux App/mux read, using only the public actions qualified by #32566. */
-export async function readAppSemanticState(input: {
-  featureId: string
-  write: (text: string) => void
+type NativeEditorSource = {
+  appId: "com.microsoft.VSCode" | "cursor"
+  assertProcess: (pid: number, collectorAncestor?: boolean) => void | Promise<void>
+  capture: (featureId: string, phase: string) => Promise<unknown>
+}
+
+type NativeEditorActivation = {
   runId: string
-  executable: LiveExecutable
-  mux?: "tmux" | "screen"
-  readTitle?: LinuxClipboardAdapter["readTitle"]
-  withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
+  activationNonce: string
+  extensionPid: number
+  activatedAt: number
+  app: { name: string; version: string }
+  requestPath: string
+  replyDirectory: string
+}
+
+type NativeEditorReply = Pick<NativeEditorActivation, "runId" | "activationNonce" | "extensionPid" | "app"> & {
+  featureId: string
+  phase: string
+  nonce: string
+  requestedAt: number
+  deadline: number
+  evaluatedAt: number
+  sequence: number
+  delivery: string
+  status: string
+  terminal: {
+    name: string
+    processId: { present: boolean; value?: number; reason?: string }
+    shellIntegrationCwd: { present: boolean; value?: string; reason?: string }
+  }
+}
+
+/** Native API replies from the single Terminal object held by this run's generated extension. */
+async function readNativeEditorState(input: {
+  featureId: string
+  runId: string
+  write: (text: string) => void
+  editor: NativeEditorSource
 }): Promise<AppSemanticReading> {
+  const detail: {
+    identity?: object
+    nativeObservations: Array<{ phase: string; artifact: string; raw: string }>
+    captures: Array<{ phase: string; observation: unknown }>
+    restoration?: object
+    nativeFailure?: string
+  } = { nativeObservations: [], captures: [] }
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+  if (!captureDirectory || !isAbsolute(captureDirectory)) {
+    throw new Error("Native editor read has no owned capture directory")
+  }
+  // The owned Darwin receipt selected this App; the Linux launcher's environment is not a second authority.
+  const directory = process.env.TERMINFO_EDITOR_RUN_DIRECTORY
+  if (!directory || !isAbsolute(directory)) throw new Error("Native editor read has no private launch directory")
+  const activationPath = join(directory, "editor-activation.json")
+  const activationIdentity = statSync(activationPath)
+  const activationRaw = readFileSync(activationPath, "utf8")
+  const activation = JSON.parse(activationRaw) as NativeEditorActivation
+  if (
+    activation.runId !== input.runId ||
+    typeof activation.activationNonce !== "string" ||
+    !/^[0-9a-f-]{36}$/u.test(activation.activationNonce) ||
+    !Number.isInteger(activation.extensionPid) ||
+    activation.extensionPid <= 0 ||
+    !Number.isFinite(activation.activatedAt) ||
+    typeof activation.app?.name !== "string" ||
+    !activation.app.name ||
+    typeof activation.app.version !== "string" ||
+    !activation.app.version ||
+    activation.requestPath !== join(directory, "editor-request.json") ||
+    !isAbsolute(activation.replyDirectory) ||
+    dirname(activation.replyDirectory) !== directory
+  ) {
+    throw new Error("Native editor activation has invalid run/process/App/path binding")
+  }
+  await input.editor.assertProcess(activation.extensionPid)
+  const activationArtifact = join(captureDirectory, "editor-activation-retained.json")
+  writeFileSync(activationArtifact, activationRaw)
+  detail.identity = {
+    ...activation,
+    artifact: activationArtifact,
+    sha256: createHash("sha256").update(activationRaw).digest("hex"),
+    evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
+  }
+  let lastSequence = 0
+  let unavailableReason: string | undefined
+  const sample = async (phase: string, expectedCwd?: string): Promise<string | undefined> => {
+    const current = statSync(activationPath)
+    if (
+      current.dev !== activationIdentity.dev ||
+      current.ino !== activationIdentity.ino ||
+      readFileSync(activationPath, "utf8") !== activationRaw
+    ) {
+      throw new Error("Native editor activation changed during the row")
+    }
+    const nonce = randomUUID()
+    const replyPath = join(activation.replyDirectory, `${nonce}.json`)
+    try {
+      statSync(replyPath)
+      throw new Error("Native editor reply was present before its request")
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+    }
+    const reader = openAppCommandLog(captureDirectory, replyPath)
+    const offset = reader.mark()
+    if (offset !== 0) throw new Error("Native editor reply contains data before its request")
+    const requestedAt = Date.now()
+    if (activation.activatedAt > requestedAt) throw new Error("Native editor activation does not predate its request")
+    const request = {
+      runId: input.runId,
+      featureId: input.featureId,
+      phase,
+      nonce,
+      activationNonce: activation.activationNonce,
+      requestedAt,
+      deadline: requestedAt + 4500,
+      ...(expectedCwd === undefined ? {} : { expectedCwd }),
+    }
+    const temporary = `${activation.requestPath}.${nonce}.tmp`
+    writeFileSync(temporary, JSON.stringify(request), { flag: "wx", mode: 0o600 })
+    renameSync(temporary, activation.requestPath)
+    // The extension publishes a complete file atomically. Retain even malformed bytes before
+    // interpreting them, so a failed read is reviewable rather than disappearing at JSON.parse.
+    const retained = await reader.read(0, `editor-${input.featureId}-${phase}-${nonce}.json`, (text) =>
+      text.length === 0 ? undefined : text.length,
+    )
+    detail.nativeObservations.push({ phase, artifact: retained.path, raw: retained.text })
+    if (!retained.complete) {
+      try {
+        detail.nativeFailure = readFileSync(join(directory, "editor-reader-errors.jsonl"), "utf8")
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+        detail.nativeFailure = "No native reader error record was created before the reply deadline"
+      }
+      unavailableReason = "Native editor reply deadline expired; no fresh API observation"
+      throw new Error(unavailableReason)
+    }
+    const reply = JSON.parse(retained.text) as NativeEditorReply
+    if (
+      reply.runId !== input.runId ||
+      reply.featureId !== input.featureId ||
+      reply.phase !== phase ||
+      reply.nonce !== nonce ||
+      reply.activationNonce !== activation.activationNonce ||
+      reply.extensionPid !== activation.extensionPid ||
+      reply.requestedAt !== requestedAt ||
+      reply.deadline !== request.deadline ||
+      reply.app?.name !== activation.app.name ||
+      reply.app.version !== activation.app.version ||
+      reply.status !== "observed" ||
+      !Number.isInteger(reply.sequence) ||
+      reply.sequence <= lastSequence ||
+      !Number.isFinite(reply.evaluatedAt) ||
+      reply.evaluatedAt < requestedAt ||
+      reply.evaluatedAt > request.deadline ||
+      !["interval", "watcher", "startup", "shell-integration"].includes(reply.delivery) ||
+      typeof reply.terminal?.name !== "string" ||
+      reply.terminal.name === ""
+    ) {
+      throw new Error("Native editor reply has stale or mismatched activation/request/process binding")
+    }
+    const nativePid = reply.terminal.processId
+    if (
+      nativePid?.present === false &&
+      typeof nativePid.reason === "string" &&
+      nativePid.reason !== "" &&
+      !("value" in nativePid)
+    ) {
+      unavailableReason = `Native editor terminal.processId is unavailable: ${nativePid.reason}`
+      throw new Error(unavailableReason)
+    }
+    if (
+      nativePid?.present !== true ||
+      typeof nativePid.value !== "number" ||
+      !Number.isSafeInteger(nativePid.value) ||
+      nativePid.value <= 0
+    ) {
+      throw new Error("Native editor reply has an invalid terminal process PID")
+    }
+    await input.editor.assertProcess(reply.extensionPid)
+    await input.editor.assertProcess(nativePid.value, true)
+    lastSequence = reply.sequence
+    const cwd = reply.terminal.shellIntegrationCwd
+    if (
+      typeof cwd?.present !== "boolean" ||
+      (cwd.present && typeof cwd.value !== "string") ||
+      (!cwd.present && (typeof cwd.reason !== "string" || "value" in cwd))
+    ) {
+      throw new Error("Native editor reply does not distinguish a CWD value from native API absence")
+    }
+    if (expectedCwd !== undefined && (!cwd.present || cwd.value !== expectedCwd)) {
+      unavailableReason =
+        "Native editor did not observe the expected CWD; unchanged or absent state does not decide support"
+      throw new Error(unavailableReason)
+    }
+    return cwd.present ? cwd.value : undefined
+  }
+  const osc = (value: string) => `\x1b]${value}\x07`
+  let restore: string | undefined
+  let mutated = false
+  let captured = false
+  let reading: AppSemanticReading | undefined
+  try {
+    const original = await sample("initial")
+    if (input.featureId !== "extensions.osc633-p") {
+      unavailableReason = "Native editor API supplies no typed observable for this row"
+      throw new Error(unavailableReason)
+    }
+    if (original !== undefined) restore = fileURLToPath(original)
+    const baseline = `/terminfo-fixture-${randomUUID()}`
+    mutated = true
+    input.write(osc("633;A") + osc(`633;P;Cwd=${baseline}`))
+    const baselineValue = await sample("baseline", pathToFileURL(baseline).toString())
+    if (restore === undefined) {
+      if (baselineValue === undefined) throw new Error("Native editor baseline has no CWD to restore")
+      restore = fileURLToPath(baselineValue)
+      detail.restoration = { scope: "measured fixture baseline", reason: "Initial native API CWD was absent" }
+    }
+    const unknownBefore = await sample("unknown-before")
+    input.write(osc(`9999;Cwd=/terminfo-unknown-${randomUUID()}`))
+    const unknownAfter = await sample("unknown-after")
+    const handledBefore = await sample("handled-before")
+    const handled = `/terminfo-control-${randomUUID()}`
+    input.write(osc(`633;P;Cwd=${handled}`))
+    const handledExpected = pathToFileURL(handled).toString()
+    const handledAfter = await sample("handled-after", handledExpected)
+    const targetBefore = await sample("target-before")
+    const target = `/terminfo-target-${randomUUID()}`
+    input.write(osc(`633;P;Cwd=${target}`))
+    const targetExpected = pathToFileURL(target).toString()
+    const targetAfter = await sample("target-after", targetExpected)
+    detail.captures.push({ phase: "target", observation: await input.editor.capture(input.featureId, "target") })
+    captured = true
+    if (
+      unknownBefore === undefined ||
+      unknownAfter === undefined ||
+      handledBefore === undefined ||
+      handledAfter === undefined ||
+      targetBefore === undefined ||
+      targetAfter === undefined
+    ) {
+      unavailableReason = "Native editor CWD controls contain an absent API value"
+      throw new Error(unavailableReason)
+    }
+    reading = {
+      status: "measured",
+      reader: "state",
+      runId: input.runId,
+      unknown: { before: unknownBefore, after: unknownAfter },
+      handled: { before: handledBefore, after: handledAfter, expected: handledExpected },
+      target: { before: targetBefore, after: targetAfter, expected: targetExpected },
+      detail,
+    }
+  } catch (error) {
+    reading = {
+      status: unavailableReason === undefined ? "invalid" : "unavailable",
+      reason: error instanceof Error ? error.message : String(error),
+      detail,
+    }
+  } finally {
+    if (!captured) {
+      try {
+        detail.captures.push({
+          phase: "failed-read",
+          observation: await input.editor.capture(input.featureId, "failed-read"),
+        })
+      } catch (error) {
+        reading = { status: "invalid", reason: `Native editor evidence capture failed: ${String(error)}`, detail }
+      }
+    }
+    if (mutated && restore !== undefined) {
+      try {
+        input.write(osc(`633;P;Cwd=${restore}`))
+        await sample("restored", pathToFileURL(restore).toString())
+      } catch (error) {
+        reading = { status: "invalid", reason: `Native editor fixture restoration failed: ${String(error)}`, detail }
+      }
+    } else if (mutated) {
+      detail.restoration = {
+        scope: "owned disposable fixture",
+        status: "unrestored",
+        reason: "No native CWD value was observed to restore; owned run cleanup is required",
+      }
+    }
+  }
+  if (reading === undefined) throw new Error("Native editor sampling completed without a reading")
+  return reading
+}
+
+/** Owned App/mux read, with native editor observation selected outside the generic grader. */
+export async function readAppSemanticState(
+  input: {
+    featureId: string
+    write: (text: string) => void
+    runId: string
+    mux?: "tmux" | "screen"
+    readTitle?: LinuxClipboardAdapter["readTitle"]
+    withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
+    /** Private port supplied only by the verified owner; the checkpoint fences the same pane writes. */
+    readCwd?: (checkpoint?: { row: number; marker: string }) => Promise<{ uri: string; detail: object }>
+    onRetained?: Parameters<typeof retainCaptureArtifact>[3]
+  } & ({ editor: NativeEditorSource; executable?: never } | { editor?: never; executable: LiveExecutable }),
+): Promise<AppSemanticReading> {
   const detail: { commands: Array<{ argv: string[]; stdout: string }>; phases: object[]; identity?: object } = {
     commands: [],
     phases: [],
@@ -1469,6 +1786,33 @@ export async function readAppSemanticState(input: {
     }
     if (input.mux !== (env.TERMINFO_MUX_KIND || undefined)) {
       throw new Error("App semantic reader mux identity differs from its owned attachment")
+    }
+    if (input.editor !== undefined) {
+      try {
+        return await readNativeEditorState({ ...input, editor: input.editor })
+      } catch (error) {
+        // Setup can fail before sampling starts (for example, activation never completed).
+        // The caller already verified its owner; retain that window on this failure too.
+        const reason = error instanceof Error ? error.message : String(error)
+        try {
+          const observation = await input.editor.capture(input.featureId, "failed-read")
+          return {
+            status: "invalid",
+            reason,
+            detail: {
+              nativeFailure: reason,
+              nativeObservations: [],
+              captures: [{ phase: "failed-read", observation }],
+            },
+          }
+        } catch (captureError) {
+          return {
+            status: "invalid",
+            reason: `${reason}; native editor evidence capture failed: ${String(captureError)}`,
+            detail: { nativeFailure: reason, captureFailure: String(captureError) },
+          }
+        }
+      }
     }
     if (input.featureId === "extensions.osc0-icon-title" || input.featureId === "extensions.osc1-icon") {
       const fixture = input.withIconNameFixture
@@ -1527,6 +1871,145 @@ export async function readAppSemanticState(input: {
       untilAppSemanticRead(read, complete, name, detail.phases)
     const osc = (body: string) => `\x1b]${body}\x07`
     const nonce = randomUUID().slice(0, 8)
+    const readCwdPhases = async <T extends { cwd: string }>(
+      initial: T,
+      sample: (number: number, feed: string) => Promise<T>,
+      restore: () => Promise<void>,
+      expectedValue: (value: string) => string = (value) => value,
+    ): Promise<AppSemanticReading> => {
+      const controlPath = `file://localhost/terminfo-control-${nonce}`
+      const isOsc7 = input.featureId === "extensions.osc7-cwd"
+      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
+      try {
+        if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
+          throw new Error("tmux OSC7 control and target paths must be fresh")
+        }
+        const unknown = await sample(1, osc(isOsc7 ? `77;${targetPath}` : "133;Z"))
+        const unknownReading = {
+          before: isOsc7 ? initial.cwd : JSON.stringify(initial),
+          after: isOsc7 ? unknown.cwd : JSON.stringify(unknown),
+        }
+        const handled = await sample(2, osc(`7;${controlPath}`))
+        const target = await sample(3, osc(isOsc7 ? `7;${targetPath}` : `633;P;Cwd=${targetPath}`))
+        if (isOsc7 && target.cwd === handled.cwd) {
+          return {
+            status: "invalid",
+            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
+            detail,
+          }
+        }
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          unknown: unknownReading,
+          handled: { before: initial.cwd, after: handled.cwd, expected: expectedValue(controlPath) },
+          target: { before: handled.cwd, after: target.cwd, expected: expectedValue(targetPath) },
+          detail,
+        }
+      } finally {
+        await restore()
+      }
+    }
+    const ownedCwd = input.readCwd
+    if (ownedCwd) {
+      if (
+        input.mux ||
+        appId !== "wezterm" ||
+        env.TERMINFO_TARGET_VERSION !== "20240203-110809-5046fc22" ||
+        input.featureId !== "extensions.osc633-p"
+      ) {
+        return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
+      }
+      const observe = async (): Promise<AppSemanticReading> => {
+        const pathValue = (value: string) =>
+          value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+        const get = async (checkpoint?: { row: number; marker: string }) => {
+          const read = await ownedCwd(checkpoint)
+          const uri = new URL(read.uri)
+          if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
+          const reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
+          detail.phases.push({ ...(checkpoint && { checkpoint }), reading, receipt: read.detail })
+          return reading
+        }
+        const initial = await get()
+        const processCwd = process.cwd()
+        const freshPaths = [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
+        if (freshPaths.includes(processCwd) || freshPaths.includes(initial.cwd)) {
+          throw new Error("Owned cwd control/target must differ from process and baseline cwd")
+        }
+        detail.identity = { executable: input.executable, runId: input.runId, processCwd }
+        let serial = 0
+        const sample = async (number: number, feed: string) => {
+          const marker = `Q-${nonce}-${serial++}`
+          input.write(`\x1b[${number};1H${feed}${marker}`)
+          const reading = await get({ row: number, marker })
+          const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
+          if (reading.host !== expectedHost) {
+            throw new Error(
+              `Owned cwd host mismatch: expected ${expectedHost}, read ${reading.host}; ${reading.rawUri}`,
+            )
+          }
+          return reading
+        }
+        return readCwdPhases(
+          initial,
+          sample,
+          () => {
+            detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+            return Promise.resolve()
+          },
+          pathValue,
+        )
+      }
+      let reading: AppSemanticReading
+      try {
+        reading = await observe()
+      } catch (error) {
+        detail.phases.push({ error: error instanceof Error ? error.message : String(error) })
+        reading = { status: "invalid", reason: "Owned cwd observation failed; see private evidence" }
+      }
+      const bytes = Buffer.from(JSON.stringify({ reading, detail, processCwd: process.cwd() }))
+      // The shared phase reader is private. Clear its diagnostic carrier before any
+      // retention failure reaches the outer, publishable error result.
+      detail.commands.length = 0
+      detail.phases.length = 0
+      delete detail.identity
+      let privateEvidence: string | undefined
+      try {
+        const onRetained = input.onRetained
+        if (onRetained === undefined) throw new Error("Missing owned artifact observer")
+        retainCaptureArtifact(capture, bytes, "json", (artifact) => {
+          onRetained(artifact)
+          privateEvidence = basename(artifact.path)
+        })
+      } catch (error) {
+        throw new Error("Owned cwd private evidence retention failed", { cause: error })
+      }
+      const publicDetail = { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
+      if (reading.status !== "measured" || reading.reader !== "state") {
+        return { status: "invalid", reason: "Owned cwd observation failed; see private evidence", detail: publicDetail }
+      }
+      const publicValue = (value: string) =>
+        value === `/terminfo-control-${nonce}` || value === `/terminfo-target-${nonce}`
+          ? value
+          : createHash("sha256").update(value).digest("hex")
+      return {
+        ...reading,
+        unknown: { before: publicValue(reading.unknown.before), after: publicValue(reading.unknown.after) },
+        handled: {
+          before: publicValue(reading.handled.before),
+          after: publicValue(reading.handled.after),
+          expected: publicValue(reading.handled.expected),
+        },
+        target: {
+          before: publicValue(reading.target.before),
+          after: publicValue(reading.target.after),
+          expected: publicValue(reading.target.expected),
+        },
+        detail: publicDetail,
+      }
+    }
     const mux = input.mux === "tmux"
     let pane: string | undefined
     let tmux: ((...args: string[]) => string) | undefined
@@ -1854,44 +2337,14 @@ export async function readAppSemanticState(input: {
       if (!initial.cwd) {
         detail.phases.push({ note: "tmux's pane_path cannot tell an unset path from an empty one" })
       }
-      const controlPath = `file://localhost/terminfo-control-${nonce}`
-      const isOsc7 = row.featureId === "extensions.osc7-cwd"
-      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
-      try {
-        if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
-          throw new Error("tmux OSC7 control and target paths must be fresh")
-        }
-        const unknown = await sample(1, osc(isOsc7 ? `77;${targetPath}` : "133;Z"))
-        const unknownReading = {
-          before: isOsc7 ? initial.cwd : JSON.stringify(initial),
-          after: isOsc7 ? unknown.cwd : JSON.stringify(unknown),
-        }
-        const handled = await sample(2, osc(`7;${controlPath}`))
-        const target = await sample(3, osc(isOsc7 ? `7;${targetPath}` : `633;P;Cwd=${targetPath}`))
-        if (isOsc7 && target.cwd === handled.cwd) {
-          return {
-            status: "invalid",
-            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
-            detail,
-          }
-        }
-        return {
-          status: "measured",
-          reader: "state",
-          runId: input.runId,
-          unknown: unknownReading,
-          handled: { before: initial.cwd, after: handled.cwd, expected: controlPath },
-          target: { before: handled.cwd, after: target.cwd, expected: targetPath },
-          detail,
-        }
-      } finally {
+      return await readCwdPhases(initial, sample, async () => {
         input.write(osc(`7;${initial.cwd}`))
         await until(
           () => format()[1],
           (value) => value === initial.cwd,
           "tmux pane_path restoration",
         )
-      }
+      })
     }
     const unknown = await sample(1, osc("133;Z"))
     const unknownReading = { before: JSON.stringify(initial), after: JSON.stringify(unknown) }

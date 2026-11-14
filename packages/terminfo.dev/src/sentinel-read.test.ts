@@ -23,6 +23,13 @@ const clearOf = (pair: { a: { row: number; col: number }; b: { row: number; col:
   `\x1b7${at(pair.a)}\x1b[0m ${at(pair.b)} \x1b[0m\x1b8`
 
 /**
+ * The text origin each fixture frame was built at. A read's `reading` is the PRE-PAINT frame's own
+ * origin (33981: the witness cells are chosen against the frame this run actually showed), so the
+ * fixture carries its origin instead of every call restating it and drifting from the frame it built.
+ */
+const textOriginOf = new WeakMap<CapturedFrame, { x: number; y: number }>()
+
+/**
  * A 16x12 window whose text area starts at `origin`: the probe's cells carry a pattern that depends
  * only on where a pixel sits inside its cell, and BOTH witness cells sit solid in the sentinel's
  * colour when `painted`. The same window with `painted: false` is one frame as the route saw it before
@@ -62,7 +69,9 @@ function windowAt(origin: { x: number; y: number }, options: { painted?: boolean
       }
     }
   }
-  return { width, height, rgba }
+  const frame = { width, height, rgba }
+  textOriginOf.set(frame, origin)
+  return frame
 }
 
 function source(dims: { rows: number; cols: number } = grid) {
@@ -80,7 +89,9 @@ function blankFrame(
 ): CapturedFrame {
   const width = dims.cols * cell.width
   const height = dims.rows * cell.height
-  return { width, height, rgba: new Uint8Array(width * height * 4).fill(255) }
+  const frame = { width, height, rgba: new Uint8Array(width * height * 4).fill(255) }
+  textOriginOf.set(frame, { x: 0, y: 0 })
+  return frame
 }
 
 /**
@@ -649,4 +660,295 @@ test("a witness box one pixel short of its area anchors the read and says so in 
   })
   expect(origin.origin).toEqual(drawnAt)
   expect(origin.basis).toContain("sentinel box accepted short of its area (3 of 4 px)")
+})
+
+/**
+ * 34163: a read taken while the probe HOLDS its viewport above the bottom. The pair still lands where
+ * the terminal put it — `shift` px off the settled grid — which is exactly what used to become the
+ * crop origin and push the rectangle out of the window. `cell` lets a test use a pitch bigger than the
+ * blend slack, so a shift that is not a whole number of rows is expressible at all.
+ */
+function heldWindow(input: {
+  origin: { x: number; y: number }
+  shift: { x?: number; y?: number }
+  cell?: { width: number; height: number }
+  size?: { width: number; height: number }
+  /** False for the frame taken BEFORE this read paints (33981). */
+  painted?: boolean
+  /** The cells the read will paint, when they differ from `chosenPair`'s 2x2-cell answer. */
+  pair?: { a: { row: number; col: number }; b: { row: number; col: number } }
+}): CapturedFrame {
+  const cell = input.cell ?? { width: 2, height: 2 }
+  const size = input.size ?? { width: 16, height: 12 }
+  const rgba = new Uint8Array(size.width * size.height * 4)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 255
+  const paintAt = (x: number, y: number, colour: readonly number[]) => {
+    if (x < 0 || y < 0 || x >= size.width || y >= size.height) return
+    rgba.set(colour, (y * size.width + x) * 4)
+  }
+  // The digested cells carry the same pattern as `before`, so the difference sees ONLY the pair.
+  for (let row = cells.top; row <= cells.bottom; row += 1) {
+    for (let col = cells.left; col <= cells.right; col += 1) {
+      for (let dy = 0; dy < cell.height; dy += 1) {
+        for (let dx = 0; dx < cell.width; dx += 1) {
+          paintAt(input.origin.x + (col - 1) * cell.width + dx, input.origin.y + (row - 1) * cell.height + dy, [
+            (row * 40 + dy * 7) % 256,
+            (col * 50 + dx * 11) % 256,
+            90,
+            255,
+          ])
+        }
+      }
+    }
+  }
+  for (const cellRef of input.painted === false ? [] : [(input.pair ?? chosenPair).a, (input.pair ?? chosenPair).b]) {
+    for (let dy = 0; dy < cell.height; dy += 1) {
+      for (let dx = 0; dx < cell.width; dx += 1) {
+        paintAt(
+          input.origin.x + (cellRef.col - 1) * cell.width + dx + (input.shift.x ?? 0),
+          input.origin.y + (cellRef.row - 1) * cell.height + dy + (input.shift.y ?? 0),
+          [...sentinel.rgb, 255],
+        )
+      }
+    }
+  }
+  const frame = { width: size.width, height: size.height, rgba }
+  textOriginOf.set(frame, input.origin)
+  return frame
+}
+
+/** A settled origin the route measured before this read, as `serve.ts` forwards it (34163). */
+function settledAt(
+  origin: { x: number; y: number },
+  geometry = pixelGeometry,
+): {
+  origin: { x: number; y: number }
+  basis: string
+  basisKind: string
+  pixelGeometry: typeof pixelGeometry
+} {
+  return {
+    origin,
+    basis: "measured by complete raster calibration",
+    basisKind: "complete raster calibration",
+    pixelGeometry: geometry,
+  }
+}
+
+/** One read against a held window with a settle already known; `deadline` past means no retry hides the reason. */
+async function heldRead(input: {
+  frame: CapturedFrame
+  prePaint: CapturedFrame
+  settled?: ReturnType<typeof settledAt> | undefined
+  scroll?: { direction: "up" | "down"; notches: number; maxRows: number }
+  geometry?: typeof pixelGeometry
+  cell?: { width: number; height: number }
+}) {
+  // 33981: the cells are chosen against the frame this run actually showed, so the read's `reading`
+  // is the PRE-PAINT fixture's origin. A fixture that never recorded one is a broken fixture, not a
+  // reason to guess an origin.
+  const reading = textOriginOf.get(input.prePaint)
+  if (reading === undefined) {
+    throw new Error("heldRead: the pre-paint fixture did not record the text origin it was built at")
+  }
+  const cell = input.cell ?? { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
+  const painted = source()
+  return readThroughSentinel({
+    source: painted.source,
+    prePaint: async () => input.prePaint,
+    capture: async (resolve) => resolve({ frame: input.frame, pixelGeometry: input.geometry ?? pixelGeometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading,
+    cell,
+    ...(input.settled !== undefined ? { settled: input.settled } : {}),
+    ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
+    deadline: Date.now() - 1,
+  })
+}
+
+test("a declared hold crops at the settled origin and records the rows it moved the pair (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  const held = { direction: "up" as const, notches: 1, maxRows: 4 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: { y: 2 } }),
+    prePaint: before(origin),
+    settled: settledAt(origin),
+    scroll: held,
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.scrolledRows).toEqual({ rows: 1, direction: "up", notches: 1 })
+  expect(result.basis).toContain("cropped at the settled calibrated origin")
+  expect(result.basis).toContain("no grade reads it until the XTest wheel unit is measured")
+  expect(result.changedOutside).toBe(0)
+})
+
+// @cto 2026-11-13: the paint that anchors this read is itself terminal OUTPUT, so a terminal that
+// snaps to bottom on output snaps while the pair is being painted. Its frame shows the bottom
+// viewport with the pair on the settled grid, which is the snapped candidate the viewport-hold probe
+// exists to detect. That must be an observation the probe can grade, never a refusal.
+test("a declared hold whose pair lands on the settled origin reports a viewport that was NOT held (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: {} }),
+    prePaint: before(origin),
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.scrolledRows).toEqual({ rows: 0, direction: "up", notches: 1 })
+  expect(result.basis).toContain("the viewport was NOT held when this frame was taken")
+})
+
+test("a declared hold whose frame snapped to the bottom is still an observation, not the move refusal (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  // Pair on the settled grid, but the rest of the window is a different view: the snap signature.
+  // The pair's CELLS are the ones this read chooses from that view (33981 chooses against the frame
+  // it actually saw), so the fixture paints where the read will paint — the snap shows the read's
+  // own pair at the settled origin, and the difference is the rest of the window.
+  const view = windowAt({ x: 2, y: 6 })
+  const painting = sentinelCellsInFrame({
+    ...view,
+    reading: { x: 2, y: 6 },
+    cell: { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight },
+    grid,
+    regions: [cells],
+  })
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: {}, pair: painting }),
+    prePaint: view,
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.scrolledRows?.rows).toBe(0)
+  expect(result.changedOutside).toBeGreaterThan(pixelGeometry.textWidth)
+})
+
+test("a declared hold that moves the pair sideways is not a hold (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { x: 4 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toThrow(/which moves the pair in ROWS.*horizontal offset is 4 px/)
+})
+
+test("a declared hold must move the pair by whole rows of the cell (34163)", async () => {
+  const origin = { x: 0, y: 0 }
+  const cell = { width: 2, height: 6 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const size = { width: 16, height: 30 }
+  // The cells this read chooses in a 2x6 cell are not the 2x2-cell pair: paint where it will paint.
+  const pair = pairOnBlankFrame(grid, [cells], cell)
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 3 }, cell, size, pair }),
+      prePaint: heldWindow({ origin, shift: {}, cell, size, painted: false }),
+      settled: settledAt(origin, geometry),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+      geometry,
+      cell,
+    }),
+  ).rejects.toThrow(/not a whole number of rows.*by whole rows of the 2x6 cell/)
+})
+
+test("a declared hold cannot scroll further than the screen it holds (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 } }),
+      prePaint: heldWindow({ origin, shift: { y: 6 }, size: { width: 16, height: 20 }, painted: false }),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 2 },
+    }),
+  ).rejects.toThrow(/can have scrolled at most 2 rows on this screen, and the pair landed 3 rows/)
+})
+
+test("a declared hold in the other direction cannot move the pair where it went (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+      scroll: { direction: "down", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toThrow(
+    /declared the viewport held down and the pair landed 1 rows off the settled origin, whose sign is the other way/,
+  )
+})
+
+test("an undeclared whole-row move refuses and names the declaration the probe owes (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: heldWindow({ origin, shift: { y: 2 } }),
+      prePaint: before(origin),
+      settled: settledAt(origin),
+    }),
+  ).rejects.toThrow(/did not declare a viewport hold.*must declare it on the capture request \(34163\)/)
+})
+
+// The frame pair here is SYNTHETIC: the retained lane runs in this estate carry no Warp run and no
+// per-frame crop records (the census on the bead names what was searched), so no real Warp pair exists
+// to replay. The shape replayed is the one the 33000 comment names: a text area that moved while the
+// measured pixel geometry changed with it.
+test("33000 stays intact: an undeclared read whose frame moved re-anchors instead of refusing (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  // Constructed the way the route does it (@cto 2026-11-13): the SAME pixel geometry in both frames,
+  // because a differing one is refused before the resolver runs. The frame itself moved: pattern and
+  // pair both two rows down, which is what a moved text area looks like and what leaves thousands of
+  // changed pixels outside the pair.
+  const result = await heldRead({
+    frame: windowAt({ x: 2, y: 4 }),
+    prePaint: before({ x: 2, y: 2 }),
+    settled: settledAt(origin),
+  })
+  expect(result.origin).toEqual({ x: 2, y: 4 })
+  expect(result.basis).toContain("re-anchored from the pair after the frame moved, by 1 rows and 0 columns")
+  // @cto 2026-11-13: the re-anchor is VISIBLE, not silent — how far it moved, beside the basis prose.
+  expect(result.reanchored).toEqual({ rows: 1, columns: 0 })
+  expect(result.scrolledRows).toBeUndefined()
+})
+
+test("a declared hold whose frame MOVED refuses: a hold plus a move is not one read (34163)", async () => {
+  const origin = { x: 2, y: 2 }
+  await expect(
+    heldRead({
+      frame: windowAt({ x: 2, y: 4 }),
+      prePaint: before({ x: 2, y: 2 }),
+      settled: settledAt(origin),
+      scroll: { direction: "up", notches: 1, maxRows: 4 },
+    }),
+  ).rejects.toThrow(/more than one 12 px text row, so the frame MOVED while it was supposed to be held still/)
+})
+
+test("an ordinary read crops at the settled origin and is not called a re-anchor (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: {} }),
+    prePaint: heldWindow({ origin, shift: {}, painted: false }),
+    settled: settledAt(origin),
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.reanchored).toBeUndefined()
+  expect(result.scrolledRows).toBeUndefined()
+  expect(result.basis).toContain("the pair landed on the settled calibrated origin, which is where this read crops")
+  expect(result.basis).not.toContain("re-anchored")
+})
+
+test("a declared hold may land within the read's own slack of a whole row (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: { y: 3 } }),
+    prePaint: heldWindow({ origin, shift: {}, painted: false }),
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.scrolledRows?.rows).toBe(2)
 })

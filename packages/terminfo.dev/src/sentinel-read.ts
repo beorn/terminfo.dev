@@ -7,8 +7,10 @@ import {
   sentinelFillClause,
   type CalibrationSentinel,
   type CaptureCells,
+  type CapturePixelGeometry,
+  type DeclaredViewportHold,
 } from "@terminfo/probe-defs"
-import { locateChangedColour, type CapturedFrame, type OriginResolver } from "./capture-core.ts"
+import { locateChangedColour, type CapturedFrame, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
 
 /** A frame this read cannot anchor yet: the paint may still be one capture behind (33000). Never fatal. */
 class SentinelNotOnFrame extends Error {}
@@ -75,11 +77,26 @@ export async function readThroughSentinel<T>(input: {
   avoid?: CaptureCells
   /**
    * Where cell 1,1 sits in the frames this read compares, in pixels — the witnessed text origin the
-   * capture adapter measures against, never a window width divided by a column count.
+   * capture adapter measures against, never a window width divided by a column count. This is also
+   * the origin the witness cells are CHOSEN against (33981): the frame that decides which cells are
+   * blank is the frame this run actually shows, so a window that moved since calibration still gets
+   * a pair painted on cells that are background where it now is.
    */
   reading: { x: number; y: number }
   /** The cell this run was calibrated to, which the chosen cells must be measured in. */
   cell: { width: number; height: number }
+  /**
+   * The settled calibrated origin this route measured before the read, when the route has one
+   * (34163). With it the pair is a WITNESS of where the paint landed, never a second origin source:
+   * one origin per read, and the settled one wins.
+   */
+  settled?: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
+  /**
+   * The viewport hold this read is taken under, as the probe that created it declared it (34163). A
+   * hold renders the pair N rows off the settled grid; declared, that is measured and recorded;
+   * undeclared, it is refused by name.
+   */
+  scroll?: DeclaredViewportHold
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
@@ -195,16 +212,35 @@ export async function readThroughSentinel<T>(input: {
       // 34015: a box the size of the cell that is one or two pixels short is ACCEPTED, and says so
       // here — the basis travels on the frame, so a reader can count how many reads leaned on the
       // slack instead of inferring it from a silence.
+      const derived = originFromSentinel(aBox, a, size)
+      const witness = {
+        a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
+        b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
+      }
+      const basisText = `${basis}${oneAxis ? " (one-axis pair: both cells on one row, so it measures the column pitch only)" : ""}${noise}${sentinelFillClause([aBox, bBox])}`
+      if (input.settled !== undefined) {
+        return onSettledOrigin({
+          label: input.label,
+          settled: input.settled,
+          derived,
+          witness,
+          size,
+          basis: basisText,
+          changedOutside: ignoredPixels,
+          ...(input.scroll !== undefined ? { scroll: input.scroll } : {}),
+          refuse: wrong,
+        })
+      }
       return {
-        origin: originFromSentinel(aBox, a, size),
-        basis: `${basis}${oneAxis ? " (one-axis pair: both cells on one row, so it measures the column pitch only)" : ""}${noise}${sentinelFillClause([aBox, bBox])}`,
+        origin: derived,
+        basis: basisText,
         basisKind,
         // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
         // pitch on its own rather than restating the one box it already reduced to an origin (33982).
-        witness: {
-          a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
-          b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
-        },
+        witness,
+        // The pre-paint difference, counted: a held viewport moved by whole rows leaves this small,
+        // a re-anchored one leaves it large, and a refusal can then name which (34163).
+        changedOutside: ignoredPixels,
       }
     }
     throw wrong(
@@ -246,5 +282,135 @@ export async function readThroughSentinel<T>(input: {
     }
   } finally {
     clearCells()
+  }
+}
+
+/**
+ * One origin per read (34163, @cto 2026-11-13): when the route already settled a calibrated origin,
+ * the pair's job is to prove the paint landed and to say where. It never yields the crop origin.
+ *
+ * A declared viewport hold moves the pair off the settled grid by whole ROWS — measured live at one
+ * wheel notch for both kitty (10 + 5x29) and ghostty (2 + 3x28) — so the read crops at the settled
+ * origin and records the delta as an OBSERVATION. No grade or published cell may read `scrolledRows`
+ * until the XTest wheel event's effective displacement is measured: "one notch" is not a row count.
+ *
+ * Undeclared reads keep 33000's re-anchor when the frame's own extent moved (Warp's command header
+ * does exactly that, and those reads must still crop correctly). An undeclared pair that moved by
+ * whole rows while the extent is unchanged is the hold signature, and it refuses by name: a probe
+ * holding its viewport must say so, or the read silently crops from a grid the terminal left.
+ */
+function onSettledOrigin(input: {
+  label: string
+  settled: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
+  derived: { x: number; y: number }
+  witness: NonNullable<NamedTextOrigin["witness"]>
+  size: { width: number; height: number }
+  basis: string
+  changedOutside: number
+  scroll?: DeclaredViewportHold
+  refuse: (reason: string) => Error
+}): NamedTextOrigin {
+  const { settled, derived, size, scroll } = input
+  const dx = derived.x - settled.origin.x
+  const dy = derived.y - settled.origin.y
+  const slack = SENTINEL_BOX_SLACK_PX
+  const rows = Math.round(dy / size.height)
+  const wholeRows = Math.abs(dy - rows * size.height) <= slack
+  const movedBy = `the pair landed ${dy} px (${wholeRows ? `${rows} rows` : "not a whole number of rows"}) off the settled origin at ${settled.origin.x},${settled.origin.y}, which puts its box at ${derived.x},${derived.y} against an expected ${settled.origin.x},${settled.origin.y} for a ${size.width}x${size.height} cell`
+  // A held viewport is STATIC between the pre-paint frame and this one, so only the painted pair
+  // moves in the difference; a window that moved repaints at least the rows it shifted. One text row
+  // of changed pixels is the bound (@cto 2026-11-13), and it is the only signature of a move the
+  // read can observe: the frame's pixel geometry cannot differ from the settled one here, because
+  // assertCalibratedCaptureGeometry refused that request before this resolver ran.
+  //
+  // PROVISIONAL (@cto 2026-11-13): both sides of the bound are printed by the refusal and by the
+  // reanchored record, so the first real hold run and the first real Warp run give the two numbers
+  // that set it. Until one run of each is on record, treat "one text row" as a guess with a reason,
+  // not as a measured separation. Both misclassifications stay visible rather than silent: a hold
+  // read as a move re-anchors and records reanchored, a move read as a hold refuses by name.
+  const movedFrameBound = settled.pixelGeometry.textWidth
+  const reanchored: NamedTextOrigin = {
+    ...settled,
+    origin: derived,
+    basis: `${input.basis}; re-anchored from the pair after the frame moved, by ${wholeRows ? `${rows} rows` : `${dy} px`} and ${Number.isInteger(dx / size.width) ? `${dx / size.width} columns` : `${dx} px`} off the settled origin at ${settled.origin.x},${settled.origin.y}; ${input.changedOutside} px changed outside the pair against the ${movedFrameBound} px one-text-row bound (33000)`,
+    basisKind: settled.basisKind,
+    witness: input.witness,
+    changedOutside: input.changedOutside,
+    reanchored: {
+      rows: wholeRows ? rows : dy / size.height,
+      columns: Number.isInteger(dx / size.width) ? dx / size.width : dx / size.width,
+    },
+  }
+  const onSettledGrid: NamedTextOrigin = {
+    ...settled,
+    origin: settled.origin,
+    basis: `${input.basis}; the pair landed on the settled calibrated origin, which is where this read crops (34163)`,
+    basisKind: settled.basisKind,
+    witness: input.witness,
+    changedOutside: input.changedOutside,
+  }
+  if (scroll === undefined) {
+    // The ordinary read, and it is most of them: no delta, so there is nothing to explain and
+    // nothing to call a re-anchor. One origin, the settled one.
+    if (wholeRows && Math.abs(dx) <= slack && rows === 0) return onSettledGrid
+    // A sideways or non-whole move is 33000's window move: re-anchor and say by how much.
+    if (!wholeRows || Math.abs(dx) > slack) return reanchored
+    if (input.changedOutside <= movedFrameBound) {
+      throw input.refuse(
+        `${input.label}: ${movedBy}, only ${input.changedOutside} px changed outside the pair (a move repaints at least one ${movedFrameBound} px text row), and this read did not declare a viewport hold. A probe whose viewport is held above the bottom must declare it on the capture request (34163); an undeclared hold is not re-anchored, because re-anchoring it is how a held read crops the wrong cells in silence`,
+      )
+    }
+    return reanchored
+  }
+  if (Math.abs(dx) > slack) {
+    throw input.refuse(
+      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) up, which moves the pair in ROWS; ${movedBy} and the horizontal offset is ${dx} px, so this is not a hold`,
+    )
+  }
+  if (!wholeRows) {
+    throw input.refuse(
+      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) but ${movedBy}: a hold moves the pair by whole rows of the ${size.width}x${size.height} cell`,
+    )
+  }
+  if (rows === 0) {
+    // A terminal that scrolls to bottom when it receives OUTPUT snaps as this read paints the pair,
+    // because the paint IS a pty write. Its frame then shows the bottom viewport with the pair on the
+    // settled grid, which is exactly the snapped candidate the viewport-hold probe exists to detect,
+    // so this is an OBSERVATION the probe can grade and never a refusal (@cto 2026-11-13). Cropping
+    // at the settled origin is correct here for the same reason: the pair is on the grid.
+    return {
+      ...settled,
+      origin: settled.origin,
+      basis: `${input.basis}; the pair landed on the settled calibrated origin under a declared hold of ${scroll.notches} notch(es), so the viewport was NOT held when this frame was taken (a snapped or never-held viewport), and this read crops at the settled origin (34163)`,
+      basisKind: settled.basisKind,
+      witness: input.witness,
+      changedOutside: input.changedOutside,
+      scrolledRows: { rows: 0, direction: scroll.direction, notches: scroll.notches },
+    }
+  }
+  const expectedSign = scroll.direction === "up" ? 1 : -1
+  if (Math.sign(rows) !== expectedSign) {
+    throw input.refuse(
+      `${input.label}: this read declared the viewport held ${scroll.direction} and the pair landed ${rows} rows off the settled origin, whose sign is the other way — a hold in that direction cannot move the pair there`,
+    )
+  }
+  if (Math.abs(rows) > scroll.maxRows) {
+    throw input.refuse(
+      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) that can have scrolled at most ${scroll.maxRows} rows on this screen, and the pair landed ${Math.abs(rows)} rows off the settled origin`,
+    )
+  }
+  if (input.changedOutside > movedFrameBound) {
+    throw input.refuse(
+      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) but ${input.changedOutside} px changed outside the pair, more than one ${movedFrameBound} px text row, so the frame MOVED while it was supposed to be held still — a hold plus a move is not one read's story`,
+    )
+  }
+  return {
+    ...settled,
+    origin: settled.origin,
+    basis: `${input.basis}; cropped at the settled calibrated origin, and the pair landed ${Math.abs(rows)} rows ${rows > 0 ? "below" : "above"} it under a declared hold of ${scroll.notches} notch(es) (observation only — no grade reads it until the XTest wheel unit is measured, 34163)`,
+    basisKind: settled.basisKind,
+    witness: input.witness,
+    changedOutside: input.changedOutside,
+    scrolledRows: { rows, direction: scroll.direction, notches: scroll.notches },
   }
 }

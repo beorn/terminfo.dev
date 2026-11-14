@@ -726,6 +726,23 @@ const spelledAvoid = (avoid: readonly CaptureCells[]): string =>
  * `reading` is where cell 1,1 sits in the frame, in pixels. A frame too short to hold the whole grid
  * at that origin cannot be used to choose cells, and says so rather than guessing.
  */
+/**
+ * The pair in READING order: the upper cell first, and among two cells on one row the left one first.
+ *
+ * Which cells the pair is comes from the order above and nowhere else; this only fixes which of the
+ * two the record calls `a`. A diff of two frames arrives as connected regions in POSITION order, so
+ * a pair whose `b` sat above-left of its `a` reached the reader as the same two boxes with the cells
+ * swapped, and a reader that divides the boxes' offset by the cells' gap then sees the two axes
+ * disagree in sign (@dev/10's 5x10 frame found this through a snapped-to-bottom read, 34163).
+ */
+function readingOrder(
+  one: { row: number; col: number },
+  other: { row: number; col: number },
+): { a: { row: number; col: number }; b: { row: number; col: number } } {
+  const oneFirst = one.row === other.row ? one.col <= other.col : one.row < other.row
+  return oneFirst ? { a: one, b: other } : { a: other, b: one }
+}
+
 export function sentinelCellsInFrame(input: {
   rgba: Uint8Array
   width: number
@@ -884,13 +901,13 @@ export function sentinelCellsInFrame(input: {
           (cellAt) => regionFree(cellAt) && cellAt.row !== pairFirst.row && cellAt.col !== pairFirst.col,
         )
   if (pairFirst !== undefined && diagonal !== undefined) {
-    return { a: pairFirst, b: diagonal, tier: "region-free" }
+    return { ...readingOrder(pairFirst, diagonal), tier: "region-free" }
   }
   const sameRow = nearestAfter(
     a,
     (cellAt) => regionFree(cellAt) && cellAt.row === a.row && Math.abs(cellAt.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP,
   )
-  if (sameRow !== undefined) return { a, b: sameRow, tier: "same-row" }
+  if (sameRow !== undefined) return { ...readingOrder(a, sameRow), tier: "same-row" }
   throw new Error(
     `No sentinel pair can be anchored in this frame; no diagonal pair exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid, because no two blank cells differ in both row and column, and no blank cell shares the row of cell ${a.row},${a.col} at least ${SAME_ROW_MIN_COLUMN_GAP} columns away${spelledLimitFor("a second cell", "")}`,
   )
@@ -1090,10 +1107,18 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
 function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
   const { a } = crop.witness ?? {}
   if (a === undefined) return false
-  return (
-    crop.origin.x === a.box.x - (a.cell.col - 1) * crop.cell.width &&
-    crop.origin.y === a.box.y - (a.cell.row - 1) * crop.cell.height
-  )
+  // 34163: a DECLARED viewport hold crops at the settled origin and records the rows the hold moved
+  // the pair, so the box follows from the origin plus that declared delta, proved with the same
+  // tolerance the read used — and still a disagreement if the two halves contradict each other.
+  const heldRows = (crop.scrolledRows?.rows ?? 0) * crop.cell.height
+  const expectedY = a.box.y - (a.cell.row - 1) * crop.cell.height - heldRows
+  if (crop.origin.x !== a.box.x - (a.cell.col - 1) * crop.cell.width) return false
+  // A declared hold is proved with the SAME tolerance the read accepted it with, not a second,
+  // stricter one: a pair that lands 1-2 px off a whole row passes the read, and an exact equality
+  // here would then empty the exemption in silence (34163, @cto 2026-11-13).
+  return crop.scrolledRows === undefined
+    ? crop.origin.y === expectedY
+    : Math.abs(crop.origin.y - expectedY) <= SENTINEL_BOX_SLACK_PX
 }
 
 /**

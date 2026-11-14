@@ -161,8 +161,32 @@ export function cellRectangle(input: {
   windowHeight: number
   /** The measured pixels of the text area, when a window edge clips its last row or column. */
   visible?: { width: number; height: number }
+  /**
+   * The settled name of the measurement behind `textOrigin` (`NamedTextOrigin.basisKind`). A
+   * rectangle that cannot fit the frame refuses by name; without this the reader learns only that a
+   * number was too large, never which measurement produced it (34163).
+   */
+  basis?: string
+  /**
+   * The sentinel pair the origin was derived from, when there was one. A frame-extent refusal is
+   * the only record a failing read leaves, so the pair travels in it: the cells the code believed it
+   * painted beside the boxes it located are what prove the pair moved (34163).
+   */
+  witness?: NamedTextOrigin["witness"]
+  /** The pre-paint difference's changed pixels outside the located pair (`NamedTextOrigin.changedOutside`). */
+  changedOutside?: number
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible } = input
+  const {
+    cells,
+    pixelGeometry: geometry,
+    textOrigin,
+    windowWidth,
+    windowHeight,
+    visible,
+    basis,
+    witness,
+    changedOutside,
+  } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -222,7 +246,16 @@ export function cellRectangle(input: {
     rectangle.y + rectangle.height > windowHeight
   ) {
     throw new Error(
-      `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}`,
+      `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}: ` +
+        `${geometry.cellWidth}x${geometry.cellHeight} cells from text origin ${textOrigin.x},${textOrigin.y} ` +
+        `(${basis ? `origin basis: ${basis}` : "origin basis unnamed, so no measurement can be blamed"}) ` +
+        `over a ${geometry.textWidth}x${geometry.textHeight} text area` +
+        (witness
+          ? `; sentinel witness cells ${witness.a.cell.row},${witness.a.cell.col} at ${witness.a.box.x},${witness.a.box.y} and ${witness.b.cell.row},${witness.b.cell.col} at ${witness.b.box.x},${witness.b.box.y}`
+          : "") +
+        (changedOutside === undefined
+          ? ""
+          : `; ${changedOutside} px changed outside those boxes between the pre-paint frame and this one`),
     )
   }
   return rectangle
@@ -268,6 +301,25 @@ export interface NamedTextOrigin {
    * half and must travel with the frame for a grid move to be proved (33982).
    */
   witness?: NonNullable<PixelCellCrop["witness"]>
+  /**
+   * Pixels that changed between the pre-paint frame and the frame this origin was derived from
+   * WITHOUT carrying the sentinel colour. A held viewport moved by whole rows shows as a delta on a
+   * quiet frame; a re-anchored viewport shows here as a large number (34163).
+   */
+  changedOutside?: number
+  /**
+   * Where a DECLARED viewport hold put the painted pair, in rows off the settled origin (34163).
+   * Present only when the probe declared the hold, and an observation only: no grade or published
+   * cell may read it until the XTest wheel event's effective displacement is measured.
+   */
+  scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * How far an UNDECLARED read moved the origin from the settled one, when it re-anchored on the pair
+   * instead of refusing (33000, @cto 2026-11-13): whole rows plus any column move. Recorded so the
+   * Warp command-header path is visible in the result rather than silent, exactly as `scrolledRows`
+   * makes a declared hold visible.
+   */
+  reanchored?: { rows: number; columns: number }
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -473,6 +525,9 @@ export async function finishCapture(input: {
         windowWidth: width,
         windowHeight: height,
         ...(placement.visible ? { visible: placement.visible } : {}),
+        ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+        ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+        ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
       })
       const cropExpected = rectangle.width * rectangle.height * 4
       const cropped = Buffer.alloc(cropExpected)
@@ -517,6 +572,8 @@ export async function finishCapture(input: {
         : {}),
       image: { width, height },
       ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+      ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
+      ...(placement.reanchored !== undefined ? { reanchored: placement.reanchored } : {}),
     }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle

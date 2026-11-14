@@ -32,6 +32,164 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
+// Requirement: the actual generated extension, native reader, grader, batch and collector must
+// retain the same read/capture in the returned run on success and failure. Owner OS custody is
+// covered separately; helper-only reader tests cannot detect a missing collector callback.
+it.each([
+  { app: "com.microsoft.VSCode", failed: false },
+  { app: "com.microsoft.VSCode", failed: true },
+  { app: "cursor", failed: false },
+  { app: "cursor", failed: true },
+])("serializes $app native editor evidence (failed=$failed)", ({ app, failed }) => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    import { runInNewContext } from "node:vm"
+    const app = process.env.EDITOR_APP, failed = process.env.EDITOR_FAILED === "yes"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+      manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+        probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] } },
+      collectorRevision: "b".repeat(40),
+    }
+    const cursorSetup = await import("./packages/admin/src/cursor-onboarding.ts")
+    mock.module("./packages/admin/src/cursor-onboarding.ts", () => ({ ...cursorSetup, assertCursorBundlePinsShipped: () => {} }))
+    const runId = "c".repeat(32), directory = join(process.env.HOME, "private-launch")
+    mkdirSync(directory)
+    const run = { id: runId, directory, scriptPath: join(directory, "serve.sh") }
+    const { prepareCliLaunch } = await import("./packages/admin/src/app.ts")
+    prepareCliLaunch(app, run)
+    const prefix = app === "cursor" ? "cursor" : "vscode"
+    let nativeCwd = "file:///native-original"
+    const subscriptions = [], captures = []
+    const disposable = () => ({ dispose() {} })
+    const terminal = {
+      name: failed ? "" : "exact native terminal",
+      processId: Promise.resolve(process.pid),
+      get shellIntegration() { return { cwd: new URL(nativeCwd) } },
+      show() {}, dispose() {},
+    }
+    const vscode = {
+      env: { appName: "Native " + app }, version: "native-api-1",
+      commands: { executeCommand: async () => {} },
+      RelativePattern: class {},
+      workspace: { createFileSystemWatcher: () => ({ dispose() {}, onDidCreate: disposable, onDidChange: disposable }) },
+      window: {
+        createTerminal: options => { Object.assign(process.env, options.env); return terminal },
+        onDidCloseTerminal: disposable, onDidChangeTerminalShellIntegration: disposable,
+      },
+    }
+    const exported = {}
+    runInNewContext(readFileSync(join(directory, prefix + "-fixture", "extension.cjs"), "utf8"), {
+      exports: exported, require: id => id === "vscode" ? vscode : require(id),
+      process, Date, setInterval, clearInterval, setTimeout, clearTimeout,
+    })
+    await exported.activate({ subscriptions })
+    process.env.TERMINFO_RUN_ID = runId
+    process.env.TERMINFO_MUX_KIND = ""
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const { readAppSemanticState } = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const geometry = { status: "measured", rows: 24, cols: 80 }
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+      detectTerminal: () => ({ name: app, version: "counted-build", os: "macos", osVersion: "fixture" }),
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => undefined,
+    }))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+      ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => true,
+      createOwnedTerminal: async options => ({
+        hostedAppId: app, appPid: 4242, geometryAtGrant: geometry, geometrySource: "fixture",
+        summary: "owner OS boundary fixture", readGeometry: async () => geometry, dispose: async () => {},
+        readAppSemanticState: (featureId, write) => readAppSemanticState({ featureId, write, runId,
+          editor: { appId: app, assertProcess: async () => {}, capture: options.appSemanticCapture } }),
+      }),
+    }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      writeTTY: text => {
+        const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(text)?.[1]
+        if (cwd !== undefined) nativeCwd = "file://" + cwd
+      },
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const raw = sequence === "\x1b[18t" ? "\x1b[8;24;80t" : sequence === "\x1b[16t" ? "\x1b[6;17;8t" : sequence === "\x1b[14t" ? "\x1b[4;408;640t" : "\x1b[?1;2c"
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      },
+    }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+      calibrateCaptureOrigin: async () => { throw Object.assign(new Error("No crop in native-read fixture"), { name: "CaptureCalibrationRefused" }) },
+    }))
+    mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+      createDarwinCapture: async (captureDirectory, options) => ({
+        captureRaw: async checkpoint => {
+          assert.equal(options.appPid, 4242)
+          captures.push({ phase: checkpoint.label, nativeCwd })
+          mkdirSync(captureDirectory, { recursive: true })
+          const path = join(captureDirectory, "native-window-" + captures.length + ".png")
+          const bytes = Buffer.from("owned pixel adapter fixture bytes")
+          const sha256 = createHash("sha256").update(bytes).digest("hex")
+          writeFileSync(path, bytes)
+          options.onRetained({ path, sha256 })
+          return { result: { frame: { kind: "pixels", path, sha256 }, trace: { label: checkpoint.label } } }
+        },
+      }),
+    }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    try {
+      const returned = await collectProbeRun({ ids: ["extensions.osc633-p"], captureRunId: "editor-evidence" })
+      // Assert the actual JSON boundary, not the live reading or a helper-built record.
+      const record = JSON.parse(JSON.stringify(returned))
+      const reading = JSON.parse(record.rawReplies["extensions.osc633-p.callbackResponse"])
+      assert.equal(reading.status, failed ? "invalid" : "measured")
+      assert.equal(reading.detail.identity.app.name, "Native " + app)
+      assert.ok(reading.detail.nativeObservations.length >= (failed ? 1 : 7))
+      for (const observation of reading.detail.nativeObservations) assert.equal(readFileSync(observation.artifact, "utf8"), observation.raw)
+      assert.equal(reading.detail.captures.length, 1)
+      const frame = reading.detail.captures[0].observation.frame
+      assert.equal(createHash("sha256").update(readFileSync(frame.path)).digest("hex"), frame.sha256)
+      const blobs = JSON.parse(record.rawReplies["collector.traceManifest"]).blobs
+      assert.deepEqual(blobs, [{ path: "artifacts/native-window-1.png", sha256: frame.sha256 }])
+      assert.equal(captures.length, 1)
+      assert.equal(captures[0].phase, failed ? "Native App failed-read" : "Native App target")
+      if (!failed) assert.ok(captures[0].nativeCwd.includes("/terminfo-target-"))
+      assert.equal(nativeCwd, "file:///native-original")
+      const row = record.results.find(row => row.featureId === "extensions.osc633-p")
+      assert.equal(row.status, failed ? "probe-invalid" : "supported")
+    } finally {
+      for (const subscription of subscriptions) subscription.dispose()
+    }
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        HOME: home,
+        EDITOR_APP: app,
+        EDITOR_FAILED: failed ? "yes" : "no",
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
+        TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
+        TERMINFO_RUNTIME_PROVENANCE: "",
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+      },
+      encoding: "utf8",
+      timeout: 15000,
+    },
+  )
+  expect(result.status, result.stderr).toBe(0)
+})
+
 // The owner factory has its own live-custody tests. The collector consumes the owner-level proof:
 // Darwin has no clipboard adapter, and a second clipboard home could hide a missing owner proof.
 it.each(["tmux", "screen", "darwin-screen"])(
@@ -71,10 +229,14 @@ it.each(["tmux", "screen", "darwin-screen"])(
     // read - and switches arms between collects below.
     const cmuxExecutable="/Applications/cmux.app/Contents/MacOS/cmux"
     const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
+    // The owner publishes the last read as facts, never the receipt text: a receipt carries the pane
+    // transcript (@cto REVISE 2026-11-13). "grant-only" models a run whose only read was the grant.
+    const cmuxFacts=(over)=>({kind:"read",receiptSha256:"cd".repeat(32),receiptLength:120,ownership:"surface",markers:null,extras:1,totalLines:73,screenLines:24,config:{read:"present",sha256:"ef".repeat(32)},...over})
     let cmuxArm,cmuxLast
     const cmuxHistory=()=>cmuxArm==="grant-failed"
-      ? {executable:cmuxExecutable,surface:null,grantProof:"cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired",lastRead:null}
-      : {executable:cmuxExecutable,surface:"surface-uuid-1",grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),get lastRead(){return cmuxLast??null}}
+      ? {executable:cmuxExecutable,surface:null,grant:"failed",grantRefusal:"cmux-surface-not-owned (reason withheld: names a host path)",grantProof:"cmux-surface-not-owned: cmux CLI /Applications/cmux.app/Contents/MacOS/cmux answered nothing this run may read (exit 1)",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grant:"proved",grantRefusal:null,grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),
+        get lastRead(){return cmuxArm==="grant-only"?cmuxFacts({kind:"grant",ownership:"nonce",extras:2}):(cmuxLast??null)}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -89,7 +251,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>{cmuxLast=JSON.stringify({surface:"surface-uuid-1",ownership:"surface",markers:null,extras:null,totalLines:73});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>{cmuxLast=cmuxFacts(cmuxArm==="config-absent"?{config:{read:"absent"}}:{});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
         ...(cmuxArm===undefined?{}:{cmuxHistory:cmuxHistory(),historyReadsThroughCli:true,historyExecutable:{path:cmuxExecutable,sha256:"ab".repeat(32),version:"cmux 0.65.2"}}),
         // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
@@ -178,21 +340,38 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
       cmuxArm="success"
       const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(cmuxRecord.executable,cmuxExecutable)
-      assert.equal(cmuxRecord.surface,"surface-uuid-1")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).ownership,"nonce","the grant proof stays the receipt it was")
-      assert.equal(JSON.parse(cmuxRecord.grantProof).totalLines,41)
-      assert.equal(JSON.parse(cmuxRecord.lastRead).ownership,"surface","the record carries the read that happened, not the grant")
-      assert.equal(JSON.parse(cmuxRecord.lastRead).totalLines,73)
+      assert.equal(cmuxRecord.executable,"cmux","the record names the executable by basename, never the host path")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/Applications/"),false,"no host path reaches the record")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/"),false,"no path separator reaches the record at all")
+      assert.equal(cmuxRecord.surface,"cmux")
+      assert.equal(cmuxRecord.pane,"surface-uuid-1")
+      assert.equal(cmuxRecord.grant,"proved","the grant's outcome is recorded as a status")
+      assert.equal(cmuxRecord.nativeEditorFields.status,"inapplicable")
+      assert.match(cmuxRecord.nativeEditorFields.reason,/name.*processId.*shellIntegration.cwd/)
+      assert.equal("grantProof" in cmuxRecord,false,"the grant proof stays out of the record")
+      assert.equal("grantRefusal" in cmuxRecord,false,"a proved grant has no refusal to record")
+      assert.equal(cmuxRecord.lastRead.kind,"read","the record carries the read that happened, not the grant")
+      assert.equal(cmuxRecord.lastRead.ownership,"surface")
+      assert.equal(cmuxRecord.lastRead.totalLines,73)
+      assert.equal(typeof cmuxRecord.lastRead,"object","the last read is facts, never the receipt text")
+      cmuxArm="grant-only";cmuxLast=undefined
+      const grantOnlyRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(grantOnlyRecord.lastRead.kind,"grant","a run with no later read shows the grant read, not nothing")
+      assert.equal(grantOnlyRecord.lastRead.extras,2,"extras is published as a count")
+      assert.equal(JSON.stringify(grantOnlyRecord).includes("/"),false,"the grant receipt never reaches the record")
       cmuxArm="grant-failed";cmuxLast=undefined
       const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.equal(failedRecord.surface,null)
+      assert.equal(failedRecord.pane,null)
+      assert.equal(failedRecord.grant,"failed")
+      assert.equal(failedRecord.grantRefusal,"cmux-surface-not-owned (reason withheld: names a host path)","a failed grant keeps its code and withholds a reason that names a path")
+      assert.equal(JSON.stringify(failedRecord).includes("/"),false,"the withheld reason's path stays out")
       assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
-      assert.match(failedRecord.grantProof,/published no CMUX_SURFACE_ID/)
+      assert.equal("grantProof" in failedRecord,false)
       cmuxArm="config-absent";cmuxLast=undefined
       const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
-      assert.deepEqual(JSON.parse(absentRecord.grantProof).config,{read:"absent"},"a launch with no config keeps the absence in the record")
-      assert.equal(JSON.parse(absentRecord.lastRead).ownership,"surface")
+      assert.equal(absentRecord.grant,"proved","a launch with no config still shows the grant's outcome")
+      assert.equal(absentRecord.lastRead.ownership,"surface")
+      assert.equal(absentRecord.lastRead.config.read,"absent","a launch with no config keeps the absence in the record")
       cmuxArm=undefined
     }
   `,
@@ -1492,7 +1671,7 @@ describe("private finite daemon startup", () => {
       assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
     `)
     expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
-    expect(result.status).toBe(0)
+    expect(result.status, result.error?.message ?? result.signal ?? result.stderr).toBe(0)
   })
 
   it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {
@@ -1637,6 +1816,8 @@ describe("private finite daemon startup", () => {
       pid: true,
     })),
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "cursor", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "com.microsoft.VSCode", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "pixels", retained: true, pid: true },
     {
@@ -1807,7 +1988,7 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
       // Hosted pixel runs must retain the same qualification refusals without replacing pixels.
-      if (route === "text-cells" || route === "pixels") {
+      if (route === "text-cells" || (route === "pixels" && !["cursor", "com.microsoft.VSCode"].includes(app))) {
         assert.ok(run.textQualification, "hosted pixel capture skipped text qualification")
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))

@@ -136,6 +136,14 @@ test("ordinary-open START refusals hold through collectProbeRun, each named", as
   const receiptRun = "d".repeat(32)
   const thisRun = "e".repeat(32)
   vi.resetModules()
+  // This START-refusal fixture needs a Linux identity, never a query to the test runner's TTY.
+  vi.doMock("./detect.ts", () => ({
+    detectTerminal: () => ({ name: "unknown", version: "", os: "linux", osVersion: "fixture" }),
+  }))
+  vi.doMock("./tty.ts", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./tty.ts")>()),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "", rawBase64: "" }),
+  }))
   vi.doMock("./owned-terminal.ts", async (importOriginal) => ({
     ...(await importOriginal<typeof import("./owned-terminal.ts")>()),
     createOwnedTerminal: async () => ownedTerminalFixture,
@@ -181,5 +189,7 @@ test("ordinary-open START refusals hold through collectProbeRun, each named", as
     if (previousProvenance === undefined) delete process.env.TERMINFO_RUNTIME_PROVENANCE
     else process.env.TERMINFO_RUNTIME_PROVENANCE = previousProvenance
     vi.doUnmock("./owned-terminal.ts")
+    vi.doUnmock("./detect.ts")
+    vi.doUnmock("./tty.ts")
   }
 })

@@ -534,54 +534,126 @@ mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-
 
 // Registration can precede tmux's status rename (#32226). The existing receipt tests do
 // not exercise readiness; use the real poll with only the metadata provider doubled.
-it.each(["settles", "never-settles", "missing-receipt"])("owned tmux readiness: %s", (mode) => {
-  const daemons = join(dir, "daemons")
-  mkdirSync(daemons)
-  const runId = "a".repeat(32)
-  writeFileSync(join(daemons, "collector.json"), JSON.stringify({ pid: 96, runId, port: 1234, token: "fixture" }))
-  const socket = join(dir, "owned.sock")
-  if (mode !== "missing-receipt") writeFileSync(join(dir, "mux-socket.txt"), socket + "\n")
-  writeFileSync(join(dir, "count"), "0")
-  writeFileSync(join(dir, "queries"), "")
-  const result = spawnSync(
-    "bash",
-    [
-      "-c",
+it.each(["settles", "never-settles", "missing-receipt"])(
+  "owned tmux readiness: %s",
+  (mode) => {
+    const daemons = join(dir, "daemons")
+    mkdirSync(daemons)
+    const runId = "a".repeat(32)
+    writeFileSync(join(daemons, "collector.json"), JSON.stringify({ pid: 96, runId, port: 1234, token: "fixture" }))
+    const socket = join(dir, "owned.sock")
+    if (mode !== "missing-receipt") writeFileSync(join(dir, "mux-socket.txt"), socket + "\n")
+    writeFileSync(join(dir, "count"), "0")
+    writeFileSync(join(dir, "queries"), "")
+    const result = spawnSync(
+      "bash",
       [
-        'source "$1"',
-        "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "root=$2 mode=$3",
-        "sleep() { :; }",
-        "tmux() {",
-        '  printf "%s\\n" "$*" >> "$root/queries"',
-        '  local count; count=$(cat "$root/count"); count=$((count + 1))',
-        '  printf "%s" "$count" > "$root/count"',
-        '  if [[ "$mode" == settles && "$count" -ge 3 ]]; then printf "bun|bun\\n"',
-        '  elif [[ "$mode" == settles && "$count" == 2 ]]; then printf "bun|bash\\n"',
-        '  else printf "tmux|bun\\n"; fi',
-        "}",
-        'await_owned_daemon "$root/daemons" "$$" 95 "$root/mux-socket.txt"',
-      ].join("\n"),
-      "_",
-      launcher,
-      dir,
-      mode,
-    ],
-    { encoding: "utf8" },
-  )
-  expect(result.status, result.stderr).toBe(mode === "settles" ? 0 : 2)
-  const queries = readFileSync(join(dir, "queries"), "utf8").trim().split("\n").filter(Boolean)
-  expect(queries).toHaveLength(mode === "settles" ? 3 : mode === "never-settles" ? 150 : 0)
-  expect(
-    queries.every(
-      (query) =>
-        query ===
-        "-S " + socket + " display-message -p -t terminfo-" + runId + " #{window_name}|#{pane_current_command}",
-    ),
-  ).toBe(true)
-  if (mode === "settles") expect(result.stdout.trim()).toBe(join(daemons, "collector.json"))
-  else expect(result.stderr).toContain(mode === "missing-receipt" ? "socket receipt" : "bun|bun")
-})
+        "-c",
+        [
+          'source "$1"',
+          "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "root=$2 mode=$3",
+          "sleep() { :; }",
+          "tmux() {",
+          '  printf "%s\\n" "$*" >> "$root/queries"',
+          '  local count; count=$(cat "$root/count"); count=$((count + 1))',
+          '  printf "%s" "$count" > "$root/count"',
+          '  if [[ "$mode" == settles && "$count" -ge 3 ]]; then printf "bun|bun\\n"',
+          '  elif [[ "$mode" == settles && "$count" == 2 ]]; then printf "bun|bash\\n"',
+          '  else printf "tmux|bun\\n"; fi',
+          "}",
+          'await_owned_daemon "$root/daemons" "$$" 95 "$root/mux-socket.txt"',
+        ].join("\n"),
+        "_",
+        launcher,
+        dir,
+        mode,
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(mode === "settles" ? 0 : 2)
+    const queries = readFileSync(join(dir, "queries"), "utf8").trim().split("\n").filter(Boolean)
+    expect(queries).toHaveLength(mode === "settles" ? 3 : mode === "never-settles" ? 150 : 0)
+    expect(
+      queries.every(
+        (query) =>
+          query ===
+          "-S " + socket + " display-message -p -t terminfo-" + runId + " #{window_name}|#{pane_current_command}",
+      ),
+    ).toBe(true)
+    if (mode === "settles") expect(result.stdout.trim()).toBe(join(daemons, "collector.json"))
+    else expect(result.stderr).toContain(mode === "missing-receipt" ? "socket receipt" : "bun|bun")
+    // The 150 real jq/tmux subprocess polls remain asserted above; allow host CPU contention.
+  },
+  15_000,
+)
+
+// @failure Retiring the preflight collector races the next registration read (#34153).
+// The production poll runs unchanged; only the filesystem transition at jq's read is controlled.
+it.each(["stable", "replacement", "gone", "malformed", "partial", "wrong-run"])(
+  "collector registration handoff: %s",
+  (mode) => {
+    const daemons = join(dir, "daemons")
+    mkdirSync(daemons)
+    const registration = join(daemons, "collector.json")
+    const next = join(daemons, "next.json")
+    const record = JSON.stringify({ pid: 96, port: 1234, token: "fixture", runId: "a".repeat(32) })
+    writeFileSync(join(dir, "valid.json"), record)
+    writeFileSync(
+      registration,
+      mode === "malformed" || mode === "partial"
+        ? "{"
+        : mode === "wrong-run"
+          ? record.replace("a".repeat(32), "b".repeat(32))
+          : mode === "replacement" || mode === "gone"
+            ? record.replace('"pid":96', '"pid":95')
+            : record,
+    )
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        [
+          'source "$1"',
+          "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "root=$2 mode=$3",
+          'sleep() { printf "." >> "$root/sleeps"; }',
+          "jq() {",
+          '  if [[ "${@: -1}" == "$root/daemons/collector.json" ]]; then',
+          '    if [[ ! -e "$root/read-once" ]]; then',
+          '      : > "$root/read-once"',
+          '      if [[ "$mode" == replacement || "$mode" == gone ]]; then',
+          '        rm "$root/daemons/collector.json"',
+          '        if [[ "$mode" == replacement ]]; then cp "$root/valid.json" "$root/daemons/next.json"; fi',
+          "      fi",
+          '    elif [[ "$mode" == partial ]]; then',
+          '      cp "$root/valid.json" "$root/daemons/collector.json"',
+          "    fi",
+          "  fi",
+          '  command jq "$@"',
+          "}",
+          'await_owned_daemon "$root/daemons" "$$" 95',
+        ].join("\n"),
+        "_",
+        launcher,
+        dir,
+        mode,
+      ],
+      { encoding: "utf8" },
+    )
+    const succeeds = ["stable", "replacement", "partial"].includes(mode)
+    expect(result.status, result.stderr).toBe(succeeds ? 0 : 2)
+    if (succeeds) expect(result.stdout.trim()).toBe(mode === "replacement" ? next : registration)
+    if (mode === "gone") {
+      expect(result.stderr).toContain("95")
+      expect(result.stderr).toContain("vanished")
+      expect(result.stderr).toMatch(/waited \d+s/)
+    }
+    if (mode === "malformed") expect(result.stderr).toContain("malformed")
+    if (mode === "wrong-run") expect(result.stderr).toContain("wrong run ID")
+    if (mode === "malformed" || mode === "wrong-run") expect(existsSync(join(dir, "sleeps"))).toBe(false)
+  },
+)
 
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {
