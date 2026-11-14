@@ -1889,7 +1889,7 @@ const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline",
 // #34276 / CTO52218a6e: existing recipe fixtures omit the observer's bytes, so they miss its
 // overwriting the recipe's immutable N. This composes the actual writer with the existing terminal;
 // the callback intentionally bypasses origin resolution, which sentinel-read.test.ts owns.
-function observeThroughSentinel(terminal: StatefulTerminal): void {
+function observeThroughSentinel(terminal: StatefulTerminal, captureFailure?: Error | "timeout"): void {
   const capture = terminal.ctx.capture!
   const blank = {
     width: terminal.ctx.cols,
@@ -1902,15 +1902,39 @@ function observeThroughSentinel(terminal: StatefulTerminal): void {
       ...request,
       source: terminal.ctx,
       prePaint: async () => blank,
-      capture: async () => capture(request),
+      capture: async (resolve) => {
+        if (captureFailure && request.label.includes("subset SGR 1")) {
+          if (captureFailure === "timeout") {
+            resolve({
+              frame: blank,
+              pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: blank.width, textHeight: blank.height },
+            })
+            throw new Error("Blank timeout fixture unexpectedly anchored")
+          }
+          throw captureFailure
+        }
+        return capture(request)
+      },
       sentinel: { form: "basic", rgb: [255, 136, 255] },
       regions: [request.cells],
       reading: { x: 0, y: 0 },
       cell: { width: 1, height: 1 },
-      deadline: Date.now() + 5_000,
+      deadline: captureFailure === "timeout" ? Date.now() - 1 : Date.now() + 5_000,
     })
   }
 }
+
+test.each(["throw", "timeout"])("nested capture %s restores N through observer and recipe cleanup", async (fault) => {
+  const terminal = statefulTerminal(ALL_ATTRS)
+  const failure = new Error("owned capture failed")
+  observeThroughSentinel(terminal, fault === "timeout" ? "timeout" : failure)
+  const operation = resetProbes.find((probe) => probe.id === "reset.sgr")!.term!(terminal.ctx)
+  if (fault === "timeout") await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
+  else await expect(operation).rejects.toBe(failure)
+  expect(terminal.snapshot()).toEqual(new Set())
+  expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
+  expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+})
 
 // #32590: the immutable pre-setter reference must distinguish a complete reset from every
 // retained subset. The old tests only refused these captures and never exercised restoration.
@@ -2151,6 +2175,7 @@ test.each([
   "saved reset reference invalidates a corrupt measurement without querying: $name",
   async ({ options, reason, target }) => {
     const terminal = statefulTerminal(ALL_ATTRS, options)
+    observeThroughSentinel(terminal)
     const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
     expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringMatching(reason) }])
     expect(result.assertions ?? []).toEqual([])

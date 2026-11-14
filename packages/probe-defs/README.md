@@ -1099,6 +1099,8 @@ only their setter sequence; the final target restores N without replaying the re
 YY. The already-painted target remains decisive. Each request freezes its phase's bytes before
 awaiting capture. An absent field keeps the observer's existing save/restore behavior; an empty
 field is a declaration error before painting. Text reads do not gain observer writes.
+Each phase also restores its future pen after painting YY and before its first freshness mark,
+so even a corrupt made-up control or partial target cannot change witness styling across reads.
 Only the two newly declared SGR
 reset entries add reference-before-query routing; other SGR rows keep their current routes.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage

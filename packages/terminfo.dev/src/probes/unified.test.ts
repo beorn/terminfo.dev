@@ -629,6 +629,51 @@ function legacyReplies(replies: Record<string, string>): Record<string, string> 
     }),
   )
 }
+// #34276: the actual collector wrapper and persisted call log must preserve owner restoration
+// bytes. Recipe state tests cannot detect a dropped field or non-serializable transport.
+it("retains owner restoration through capture and strict call-log replay", async () => {
+  verifiedBatchFixture()
+  const probe = ALL_PROBES.find((entry) => entry.id === "sgr.reset")
+  if (!probe) throw new Error("Missing SGR transport fixture")
+  const original = probe.term
+  const restoreAfterPaint = "\x1b8\x1b[1;3;7m\x1b[4;1H"
+  const callback = async (ctx: TermProbeSource) => {
+    if (!ctx.capture) throw new Error("Missing collector capture wrapper")
+    await ctx.capture({ role: "control", label: "owner transport", restoreAfterPaint })
+    return { pass: false, tests: [{ id: "criterion", status: "probe-todo" as const, reason: "transport fixture" }] }
+  }
+  let observed: string | undefined
+  try {
+    probe.term = callback
+    const batch = await runProbeBatch({
+      ids: [probe.id],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async (checkpoint) => {
+        observed = checkpoint.restoreAfterPaint
+        return {
+          frame: {
+            role: checkpoint.role,
+            label: checkpoint.label,
+            ref: `sha256:${"a".repeat(64)}`,
+            capturedAt: Date.now(),
+          },
+          trace: {},
+        }
+      },
+    })
+    expect(observed).toBe(restoreAfterPaint)
+    const stored = batch.rawReplies[`${probe.id}.callLog`]
+    if (stored === undefined) throw new Error("Missing retained owner call log")
+    const log = readCallLog(JSON.parse(stored))
+    const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+    await callback(replay.context)
+    replay.finish()
+    expect(observed).toBe(restoreAfterPaint)
+  } finally {
+    probe.term = original
+  }
+})
+
 // A callback that never returns must still have an actual attempt in the retained checkpoint.
 it("checkpoints the native attempt before invoking its callback", async () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "device.decrpm")!

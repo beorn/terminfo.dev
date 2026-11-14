@@ -480,16 +480,18 @@ test.each([undefined, "\x1b8\x1b[1;3;7m\x1b[4;1H"])(
     // show the sentinel and can never see it change (@dev/10).
     frame.state.lag = 1
     let prePaints = 0
-    const origin = await readThroughSentinel({
+    const input = {
       source: frame.source,
       restoreAfterPaint,
       prePaint: async () => {
         prePaints += 1
         return frame.frameNow()
       },
-      capture: async (resolve) => {
+      capture: async (resolve: OriginResolver) => {
         const captured = frame.frameNow()
         frame.state.lag = 0
+        // An owner advancing its state must not alter restoration bytes already held by this read.
+        input.restoreAfterPaint = "\x1b8\x1b[31m"
         return resolve({ frame: captured, pixelGeometry })
       },
       label: "cells 1,1-2,2",
@@ -498,7 +500,8 @@ test.each([undefined, "\x1b8\x1b[1;3;7m\x1b[4;1H"])(
       reading: { x: 2, y: 2 },
       cell: { width: 2, height: 2 },
       deadline: Date.now() + 1_000,
-    })
+    }
+    const origin = await readThroughSentinel(input)
     expect(origin.origin).toEqual({ x: 2, y: 2 })
     expect(prePaints).toBe(2)
     const expected = (write: string) =>

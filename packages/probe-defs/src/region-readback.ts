@@ -2470,10 +2470,10 @@ export async function captureRegionReadbackDecision(
       ctx.write(step.writes)
       await renewAfterWindowMove(step.writes)
       ctx.write(park)
-      // YY already records the unknown target. Put its future pen in N BEFORE the first witness
-      // space, so later observer restoration cannot change the space/glyph roundtrip's styling.
-      // This never repaints YY or replays the reset whose actual pixels decide the verdict.
-      if (step.phase === "target" && restoreAfterPaint !== undefined) ctx.write(restoreAfterPaint)
+      // YY already records this phase, including a corrupt control or unknown target. Restore its
+      // future pen BEFORE the first witness space, so observer cleanup cannot change the witness
+      // roundtrip's styling. Never repaint YY or replay the reset whose pixels decide the verdict.
+      if (restoreAfterPaint !== undefined) ctx.write(restoreAfterPaint)
       // Writes can still be waiting for paint when this baseline is captured. Declared rows
       // challenge a space/glyph pair in both directions before trusting the requested paint.
       const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`
