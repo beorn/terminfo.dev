@@ -436,6 +436,9 @@ export async function runProbeBatch(
     prepareCapture?: (input: {
       source: TermProbeSource
       featureId: string
+      /** The row whose read asked for this preparation, when a later row renews the origin; absent
+       * on the pre-flight, which no row asked for (#34306 AC1). */
+      row?: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
     /**
@@ -685,6 +688,7 @@ export async function runProbeBatch(
     probe: ProbeDefinition,
     preGeometry?: GeometryMeasurement,
     calibrationId = "collector.captureCalibration",
+    askingRow?: string,
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -763,6 +767,7 @@ export async function runProbeBatch(
                 prepareCapture({
                   source: preparationSource,
                   featureId: calibrationId,
+                  ...(askingRow !== undefined && { row: askingRow }),
                   recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
                 }),
               {
@@ -1361,7 +1366,13 @@ export async function runProbeBatch(
           ? "collector.captureCalibration"
           : `collector.captureCalibration.renewal.${capturePreparations}`
       capturePreparations++
-      await prepareCaptureWith(options.prepareCapture, probe, preGeometry, calibrationId)
+      await prepareCaptureWith(
+        options.prepareCapture,
+        probe,
+        preGeometry,
+        calibrationId,
+        calibrationId === "collector.captureCalibration" ? undefined : probe.id,
+      )
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined

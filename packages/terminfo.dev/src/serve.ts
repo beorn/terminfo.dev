@@ -772,6 +772,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       | ((input: {
           source: TermProbeSource
           featureId: string
+          /** The row whose read asked for this preparation, on a renewal; absent on the pre-flight. */
+          row?: string
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
         }) => Promise<void>)
       | undefined
@@ -856,7 +858,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })
         }
-        prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
+        prepareCapture = async ({ source: probeSource, featureId, recordCapture, row }) => {
+          // 34306 AC1: the origin the rows before this one were graded against. Read before the
+          // re-measure, because a renewal replaces `textOrigin` with the reading this install makes.
+          const previousOrigin = textOrigin?.pixelGeometry
           textOrigin = undefined
           calibrationError = undefined
           pixelSource = probeSource
@@ -884,6 +889,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               source: "measured by complete raster calibration",
               sentinel: textOrigin.sentinel,
             }
+            // 34306 AC1: a renewal is a fact of the run, not of one install. Carry the renewals the
+            // earlier installs recorded, then add this one, so replacing `captureCalibration` here
+            // never drops the renewals a later row or the hook already named.
+            const carriedRenewals = captureCalibration?.renewals ?? []
+            const renewals =
+              previousOrigin === undefined
+                ? carriedRenewals
+                : [...carriedRenewals, { row: row ?? featureId, from: previousOrigin, to: textOrigin.pixelGeometry }]
             const installedCalibration: CaptureCalibrationFact = {
               outcome: "installed",
               basis: probeSource.captureGeometry.source,
@@ -891,6 +904,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               rasterBasis: textOrigin.basis,
               queries,
               installCensus,
+              ...(renewals.length > 0 && { renewals }),
             }
             captureCalibration = installedCalibration
             /**
@@ -950,7 +964,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure) throw error
             calibrationError = error
             probeSource.captureGeometryRefusal = error.message
-            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes, installCensus }
+            // 34306 AC1: a refusal names no origin, but the renewals the run already asked for stay
+            // facts of the run, so a later install still reports them in run order.
+            const refusalRenewals = captureCalibration?.renewals ?? []
+            captureCalibration = {
+              outcome: "refused",
+              queries,
+              refusal: error.message,
+              causes,
+              installCensus,
+              ...(refusalRenewals.length > 0 && { renewals: refusalRenewals }),
+            }
           }
         }
       }

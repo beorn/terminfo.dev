@@ -674,15 +674,18 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     assert.deepEqual(run.screenshotRefs, [raw.frame.ref, raw.frame.ref])
     // 34306 AC1: the published fact states each renewal — the row and both origins — so no grade
     // stands on an origin the run does not name.
-    const renewalRow = proofState === "source-capable" ? "editing.delete-chars" : "reset.sgr-0"
-    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, [
-      { row: renewalRow, from: pixelGeometry, to: pixelGeometry },
-    ])
+    // 34306 AC1: every renewal the run asked for, in the order it happened. The first one is asked
+    // before the refused preparation below, and the old code lost it when that refusal replaced the
+    // calibration fact; it must survive, not just the last renewal of the run.
+    const expectedRenewals = proofState === "source-capable"
+      ? [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry },
+         { row: "editing.delete-chars", from: pixelGeometry, to: pixelGeometry }]
+      : [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry }]
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, expectedRenewals)
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
-    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals, [
-      { row: renewalRow, from: pixelGeometry, to: pixelGeometry },
-    ], "the checkpoint carries the same renewal record as the final run")
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,
+      expectedRenewals, "the checkpoint carries the same renewal record as the final run")
     assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref, raw.frame.ref])
     assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     // The stored criterion reference must resolve to the exact retained font receipt.
