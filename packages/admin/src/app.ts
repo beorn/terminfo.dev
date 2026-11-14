@@ -31,6 +31,7 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
+import { readWindowsWezTermRows } from "../../terminfo.dev/src/windows-wezterm-text.ts"
 import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { assertPrivateCollectionOutput, writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
@@ -1036,6 +1037,7 @@ interface HandReadDiagnostic {
     stdout: string
     stderr: string
     pane: Record<string, unknown> | null
+    text: ReturnType<typeof readWindowsWezTermRows> | null
   } | null
   primaryFailure: string | null
   cleanup: { daemon: string; window: string; errors: string[]; proof?: string }
@@ -1095,6 +1097,7 @@ function readOwnedWeztermPane(
     stdout: "",
     stderr: "",
     pane: null,
+    text: null,
   }
   diagnostic.read = read
   const result = spawnSync(cliPath, argv, {
@@ -1139,6 +1142,20 @@ function readOwnedWeztermPane(
   }
   assertOwnedTerminalWindow(owner, workerPid)
   read.pane = selected
+  const size = selected.size
+  if (
+    typeof size !== "object" ||
+    size === null ||
+    !("rows" in size) ||
+    typeof size.rows !== "number" ||
+    !Number.isSafeInteger(size.rows) ||
+    size.rows <= 0
+  ) {
+    throw new Error(`WezTerm pane ${pane} reported no valid native row count`)
+  }
+  read.text = readWindowsWezTermRows({ executable: cliPath, socket, pane, rows: size.rows })
+  assertOwnedTerminalWindow(owner, workerPid)
+  if (read.text.status === "refused") throw new Error(read.text.reason)
 }
 
 async function runApp(

@@ -32,8 +32,7 @@ export function readWindowsWezTermRows(
     "get-text",
     "--pane-id",
     options.pane,
-    "--start-line",
-    String(options.startLine ?? 0),
+    ...(options.startLine === undefined ? [] : ["--start-line", String(options.startLine)]),
     "--end-line",
     String(options.rows - 1),
     ...(options.escapes ? ["--escapes"] : []),
@@ -82,7 +81,7 @@ export function readWindowsWezTermRows(
 }
 
 export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine" | "escapes">): TerminalTextRead {
-  const read = readWindowsWezTermRows(options)
+  const read = readWindowsWezTermRows({ ...options, startLine: 0 })
   if (read.status === "refused") return read
   const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)
   if (typeof cells === "string") {
