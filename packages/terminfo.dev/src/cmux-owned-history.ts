@@ -395,6 +395,7 @@ export function readOwnedCmuxHistory(options: {
     reading: { totalLines, ...(options.rows === undefined ? {} : { screenLines: options.rows }) },
     // The receipt is the owner's proof and may carry the transcript; the facts are what a record may show.
     receipt: JSON.stringify({
+      rawScreen: stdout,
       surface: options.surface ?? null,
       ownership: options.ownership.kind,
       markers,

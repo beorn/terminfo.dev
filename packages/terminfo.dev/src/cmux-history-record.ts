@@ -29,6 +29,10 @@ export function cmuxHistoryEvidence(history: OwnedTerminal["cmuxHistory"]): Cmux
     grant: history.grant,
     ...(history.grantRefusal === null ? {} : { grantRefusal: history.grantRefusal }),
     lastRead: history.lastRead,
+    nativeEditorFields: {
+      status: "inapplicable",
+      reason: "cmux has no VSCode Terminal API for name, processId or shellIntegration.cwd; native evidence comes from its owned surface",
+    },
   })
   // The fields above are each reduced by construction; this is the fence on the whole record, so a value
   // nobody anticipated cannot carry a path into the corpus (@cto REVISE 2026-11-13).
