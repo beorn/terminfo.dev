@@ -747,6 +747,127 @@ function readingOrder(
   return oneFirst ? { a: one, b: other } : { a: other, b: one }
 }
 
+/**
+ * One pixel of a depth-8 RGBA frame, refusing a coordinate that cannot name one.
+ *
+ * A coordinate that is not a whole pixel, or lies outside the frame, has no colour to report.
+ * Returning black for it is how a cell gets called blank without one pixel having been read
+ * (@cto, 33981): cell.width can be textWidth / columns, so every x in a cell can be fractional,
+ * and a silent zero then equals the background on the common terminal.
+ */
+function framePackedPixel(rgba: Uint8Array, width: number, height: number, x: number, y: number): number {
+  if (!Number.isInteger(x) || !Number.isInteger(y)) {
+    throw new Error(`this frame was asked for pixel ${x},${y}, which is not a whole pixel coordinate`)
+  }
+  if (x < 0 || y < 0 || x >= width || y >= height) {
+    throw new Error(`this frame was asked for pixel ${x},${y}, outside its ${width}x${height} bounds`)
+  }
+  const offset = (y * width + x) * 4
+  const red = rgba[offset]
+  const green = rgba[offset + 1]
+  const blue = rgba[offset + 2]
+  if (red === undefined || green === undefined || blue === undefined) {
+    throw new Error(`this frame was asked for pixel ${x},${y}, whose bytes run past its ${rgba.length}-byte buffer`)
+  }
+  return (red << 16) | (green << 8) | blue
+}
+
+/** The frame's background: its most common colour, with ties going to the lowest packed value. */
+export function frameBackground(rgba: Uint8Array, width: number, height: number): number {
+  const counts = new Map<number, number>()
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const packed = framePackedPixel(rgba, width, height, x, y)
+      counts.set(packed, (counts.get(packed) ?? 0) + 1)
+    }
+  }
+  let background = 0
+  let backgroundCount = -1
+  for (const [packed, count] of counts) {
+    if (count > backgroundCount || (count === backgroundCount && packed < background)) {
+      background = packed
+      backgroundCount = count
+    }
+  }
+  return background
+}
+
+/**
+ * A cell's rectangle in WHOLE pixels: the origin plus the cell pitch, with each edge rounded to the
+ * nearest pixel (@cto, 33981). The pitch is not always whole — `cellWidth` is `textWidth / columns`
+ * — and a fractional left edge makes every x in the cell fractional, so the rectangle has to be
+ * reduced to whole pixels before anything is read. Edges, not widths, are rounded, so adjacent
+ * cells tile without a gap or an overlap no matter which way the fraction falls.
+ */
+function frameCellRectangle(input: {
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  row: number
+  col: number
+}): { left: number; right: number; top: number; bottom: number } {
+  const { reading, cell, row, col } = input
+  const left = Math.round(reading.x + (col - 1) * cell.width)
+  const right = Math.round(reading.x + col * cell.width)
+  const top = Math.round(reading.y + (row - 1) * cell.height)
+  const bottom = Math.round(reading.y + row * cell.height)
+  if (right <= left || bottom <= top) {
+    throw new Error(
+      `this frame cannot judge the ink on cell ${row},${col}: at the ${cell.width}x${cell.height} px pitch its rectangle has the edges ${left}..${right} by ${top}..${bottom}, which covers no whole pixel`,
+    )
+  }
+  return { left, right, top, bottom }
+}
+
+/** Every whole pixel of this cell is the frame's background. */
+function frameCellIsModal(input: {
+  rgba: Uint8Array
+  width: number
+  height: number
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  background: number
+  row: number
+  col: number
+}): boolean {
+  const { rgba, width, height, reading, cell, background, row, col } = input
+  const { left, right, top, bottom } = frameCellRectangle({ reading, cell, row, col })
+  // A cell whose whole rectangle lies outside the frame cannot be judged from this frame: it is not
+  // blank, and it is not a pixel-read fault either (a grid larger than its frame is the caller's).
+  if (left < 0 || top < 0 || right > width || bottom > height) return false
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      if (framePackedPixel(rgba, width, height, x, y) !== background) return false
+    }
+  }
+  return true
+}
+
+/**
+ * Whether a cell is clear, in the one sense the capture path already means by it: the cell a blank
+ * restore puts back as it was found — background itself, and with no ink either side of it on its
+ * row, so it cannot be the blank half of a wide glyph whose other half is drawn next door. A
+ * neighbour outside the grid has no glyph and does not exclude the cell.
+ *
+ * Shared rather than restated (33982, @cto): the cells the read chose were judged clear by this
+ * predicate, so a later proof that they were clear before the paint must use the same one, or the
+ * two answers are about different questions.
+ */
+export function frameCellBlank(input: {
+  rgba: Uint8Array
+  width: number
+  height: number
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  background: number
+  columns: number
+  row: number
+  col: number
+}): boolean {
+  const { columns, row, col } = input
+  const modal = (atCol: number): boolean => frameCellIsModal({ ...input, col: atCol })
+  return modal(col) && (col === 1 || modal(col - 1)) && (col === columns || modal(col + 1))
+}
+
 export function sentinelCellsInFrame(input: {
   rgba: Uint8Array
   width: number
@@ -759,43 +880,8 @@ export function sentinelCellsInFrame(input: {
 }): { a: { row: number; col: number }; b: { row: number; col: number }; tier: WitnessTier } {
   const { rgba, width, height, reading, cell, grid } = input
   const avoid = input.avoid ?? []
-  const pixels = (x: number, y: number): number => {
-    // A coordinate that is not a whole pixel, or lies outside the frame, has no colour to report.
-    // Returning black for it is how a cell gets called blank without one pixel having been read
-    // (@cto, 33981): cell.width can be textWidth / columns, so every x in a cell can be fractional,
-    // and a silent zero then equals the background on the common terminal.
-    if (!Number.isInteger(x) || !Number.isInteger(y)) {
-      throw new Error(`this frame was asked for pixel ${x},${y}, which is not a whole pixel coordinate`)
-    }
-    if (x < 0 || y < 0 || x >= width || y >= height) {
-      throw new Error(`this frame was asked for pixel ${x},${y}, outside its ${width}x${height} bounds`)
-    }
-    const offset = (y * width + x) * 4
-    const red = rgba[offset]
-    const green = rgba[offset + 1]
-    const blue = rgba[offset + 2]
-    if (red === undefined || green === undefined || blue === undefined) {
-      throw new Error(
-        `this frame was asked for pixel ${x},${y}, whose bytes run past its ${rgba.length}-byte buffer`,
-      )
-    }
-    return (red << 16) | (green << 8) | blue
-  }
-  const counts = new Map<number, number>()
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const packed = pixels(x, y)
-      counts.set(packed, (counts.get(packed) ?? 0) + 1)
-    }
-  }
-  let background = 0
-  let backgroundCount = -1
-  for (const [packed, count] of counts) {
-    if (count > backgroundCount || (count === backgroundCount && packed < background)) {
-      background = packed
-      backgroundCount = count
-    }
-  }
+  const pixels = (x: number, y: number): number => framePackedPixel(rgba, width, height, x, y)
+  const background = frameBackground(rgba, width, height)
   /**
    * A cell's rectangle in WHOLE pixels: the origin plus the cell pitch, with each edge rounded to the
    * nearest pixel (@cto, 33981). The pitch is not always whole — `cellWidth` is `textWidth / columns`
@@ -803,36 +889,17 @@ export function sentinelCellsInFrame(input: {
    * reduced to whole pixels before anything is read. Edges, not widths, are rounded, so adjacent
    * cells tile without a gap or an overlap no matter which way the fraction falls.
    */
-  const cellRect = (row: number, col: number) => {
-    const left = Math.round(reading.x + (col - 1) * cell.width)
-    const right = Math.round(reading.x + col * cell.width)
-    const top = Math.round(reading.y + (row - 1) * cell.height)
-    const bottom = Math.round(reading.y + row * cell.height)
-    if (right <= left || bottom <= top) {
-      throw new Error(
-        `this frame cannot judge the ink on cell ${row},${col}: at the ${cell.width}x${cell.height} px pitch its rectangle has the edges ${left}..${right} by ${top}..${bottom}, which covers no whole pixel`,
-      )
-    }
-    return { left, right, top, bottom }
-  }
+  const cellRect = (row: number, col: number) => frameCellRectangle({ reading, cell, row, col })
   /** Every pixel of this cell is the frame's background. */
-  const modal = (row: number, col: number): boolean => {
-    const { left, right, top, bottom } = cellRect(row, col)
-    // A cell whose whole rectangle lies outside the frame cannot be judged from this frame: it is not
-    // blank, and it is not a pixel-read fault either (a grid larger than its frame is the caller's).
-    if (left < 0 || top < 0 || right > width || bottom > height) return false
-    for (let y = top; y < bottom; y++) {
-      for (let x = left; x < right; x++) if (pixels(x, y) !== background) return false
-    }
-    return true
-  }
+  const modal = (row: number, col: number): boolean =>
+    frameCellIsModal({ rgba, width, height, reading, cell, background, row, col })
   /**
    * A cell a blank restore puts back as it was found: background itself, and with no ink either side
    * of it on its row, so it cannot be the blank half of a wide glyph whose other half is drawn next
    * door. A neighbour outside the grid has no glyph and does not exclude the cell.
    */
   const blank = (row: number, col: number): boolean =>
-    modal(row, col) && (col === 1 || modal(row, col - 1)) && (col === grid.cols || modal(row, col + 1))
+    frameCellBlank({ rgba, width, height, reading, cell, background, columns: grid.cols, row, col })
   const footprint = [...input.regions, ...avoid]
   const inGrid = (cellAt: { row: number; col: number }): boolean =>
     cellAt.row >= 1 && cellAt.col >= 1 && cellAt.row <= grid.rows && cellAt.col <= grid.cols
@@ -1130,7 +1197,7 @@ export function pairMeasuredNoRowHeight(crop: PixelCellCrop): boolean {
   return pair !== undefined && pair.a.cell.row === pair.b.cell.row
 }
 
-function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean {
+export function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean {
   const here = crop.witness
   const seed = first.witness
   if (here === undefined || seed === undefined) return false
@@ -1154,7 +1221,7 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
  * follow from its own box `a` is a frame whose two halves disagree — the pair would prove a pitch for
  * a crop nobody mapped from it (@dev/10's non-blocking note b). Exact arithmetic, as in the read.
  */
-function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
+export function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
   const { a } = crop.witness ?? {}
   if (a === undefined) return false
   // 34163: a DECLARED viewport hold crops at the settled origin and records the rows the hold moved

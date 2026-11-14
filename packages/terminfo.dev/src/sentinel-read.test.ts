@@ -11,7 +11,7 @@ import { sentinelCellsInFrame } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
 import { chooserRegions } from "./serve.ts"
-import { SentinelFrameMoved, readThroughSentinel } from "./sentinel-read.ts"
+import { SentinelFrameMoved, pairClearBeforePaint, readThroughSentinel } from "./sentinel-read.ts"
 
 const sentinel = { form: "basic" as const, rgb: [255, 136, 255] as const }
 const pixelGeometry = { cellWidth: 2, cellHeight: 2, textWidth: 12, textHeight: 8 }
@@ -669,6 +669,27 @@ test("a witness box one pixel short of its area anchors the read and says so in 
  * crop origin and push the rectangle out of the window. `cell` lets a test use a pitch bigger than the
  * blend slack, so a shift that is not a whole number of rows is expressible at all.
  */
+/** The same frame with ink on the two selected cells, so they are provably not clear. */
+function inkedAtSelectedCells(
+  frame: CapturedFrame,
+  pair: { a: { row: number; col: number }; b: { row: number; col: number } },
+  cell: { width: number; height: number },
+  size: { width: number; height: number },
+): CapturedFrame {
+  const rgba = new Uint8Array(frame.rgba)
+  for (const at of [pair.a, pair.b]) {
+    for (let dy = 0; dy < cell.height; dy += 1) {
+      for (let dx = 0; dx < cell.width; dx += 1) {
+        const x = (at.col - 1) * cell.width + dx
+        const y = (at.row - 1) * cell.height + dy
+        if (x < 0 || y < 0 || x >= size.width || y >= size.height) continue
+        rgba.set([250, 250, 250, 255], (y * size.width + x) * 4)
+      }
+    }
+  }
+  return { ...frame, rgba }
+}
+
 function heldWindow(input: {
   origin: { x: number; y: number }
   shift: { x?: number; y?: number }
@@ -886,6 +907,47 @@ test("a moved read carries the count it measured and names a whole-row shift in 
   if (!(error instanceof SentinelFrameMoved)) throw new Error("unreachable: the read did not refuse by name")
   expect(typeof error.changedOutside).toBe("number")
   expect(error.rowShift).toEqual({ rows: 1, px: 6 })
+})
+
+// Condition 3 is a number nobody has measured yet, so the accept path only fires when one is
+// supplied. These two say what it accepts when it has one, and what it still refuses with a
+// generous one in hand — the difference is the cells, not the bound.
+test("a whole-row move is accepted once a measured bound is supplied and the cells were clear (33982)", async () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
+  const writes = source()
+  const result = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false }),
+    capture: async (resolve) => resolve({ frame: moved, pixelGeometry: geometry }),
+    label: "cells 1,1-2,2",
+    sentinel,
+    regions: [cells],
+    reading: { x: 0, y: 0 },
+    cell,
+    settled: settledAt({ x: 0, y: 0 }, geometry),
+    noiseBound: 4096,
+    deadline: Date.now() - 1,
+  })
+  // The origin is where the pair actually landed, and the basis says why that is legitimate.
+  expect(result.origin).toEqual({ x: 0, y: 6 })
+  expect(result.basis).toContain("moved 1 whole rows")
+  expect(result.changedOutside).toEqual(expect.any(Number))
+})
+
+test("the clear-before-paint predicate says no when ink was already on the cells (33982)", () => {
+  const cell = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const painted = pairOnBlankFrame(grid, [cells], cell)
+  const blank = heldWindow({ origin: { x: 0, y: 0 }, shift: {}, cell, size, painted: false })
+  const asked = { reading: { x: 0, y: 0 }, cell, columns: grid.cols, cells: [painted.a, painted.b] }
+  expect(pairClearBeforePaint({ before: blank, ...asked })).toBe(true)
+  // The same frame with ink on those two cells: clear is a fact about the pixels, and this is the
+  // fact the accept path may never assume.
+  expect(pairClearBeforePaint({ before: inkedAtSelectedCells(blank, painted, cell, size), ...asked })).toBe(false)
 })
 
 test("a displacement that is not a whole number of rows names no row shift, rather than a fraction (33982)", async () => {
