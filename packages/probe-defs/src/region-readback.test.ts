@@ -1234,6 +1234,8 @@ test("a RIS-bearing frame asks for the origin again and is written again after i
   fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
   fake.ctx.renewCaptureGeometry = async () => {
     renewed += 1
+    // A marker in the harness's own order log: the write that follows it is the frame's second write.
+    fake.timeline.push("renew")
     const reading = { geometry: GEOMETRY_AFTER_MOVE, source: "measured by complete raster calibration" as const }
     fake.ctx.captureGeometry = reading
     return reading
@@ -1243,7 +1245,13 @@ test("a RIS-bearing frame asks for the origin again and is written again after i
   // renewal; without the second write the read would compare the calibration pattern.
   expect(renewed).toBeGreaterThan(0)
   expect(fake.writes.filter((entry) => entry === RIS_FRAME)).toHaveLength(renewed + 1)
-  expect(fake.writes.at(-2) === RIS_FRAME || fake.writes.includes(RIS_FRAME)).toBe(true)
+  const renewalAt = fake.timeline.indexOf("renew")
+  expect(renewalAt, "the frame's own RIS is what asks for the origin again").toBeGreaterThanOrEqual(0)
+  // The order is the contract, not the count: a frame written again BEFORE the renewal would land on the
+  // old window, and the read below would compare calibration's paint at the moved origin.
+  expect(fake.timeline[renewalAt + 1], "the frame is written again after the renewal returns").toBe(
+    `write:${RIS_FRAME}`,
+  )
   // Every read taken after the renewal reads at the origin the collector just measured.
   expect(fake.requests.at(-1)?.pixelGeometry).toBe(GEOMETRY_AFTER_MOVE)
 }, 30_000)
