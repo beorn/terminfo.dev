@@ -655,6 +655,46 @@ it.each(["stable", "replacement", "gone", "malformed", "partial", "wrong-run"])(
   },
 )
 
+// Readiness can succeed immediately before its registration retires. The readiness tests above
+// cannot see either caller's subsequent copy; execute those real blocks without launching an App.
+it.each(["preflight", "mux"])("registration copy names its failed read: %s", (stage) => {
+  const source = readFileSync(launcher, "utf8")
+  const destination = stage === "preflight" ? "daemon-registration.json" : "mux-daemon-registration.json"
+  const start = source.indexOf(`jq 'del(.token)' "$daemon_file" > /out/${destination}`)
+  const next = stage === "preflight" ? "\n  port=$(" : "\n    collector_pid=$("
+  const end = source.indexOf(next, start)
+  if (start < 0 || end < 0) throw new Error(`The ${stage} registration copy block is missing`)
+  const block = source.slice(start, end).replaceAll(`/out/${destination}`, '"$output"')
+  const registration = join(dir, "collector.json")
+  const output = join(dir, destination)
+  for (const mode of ["valid", "missing", "malformed"]) {
+    const file = mode === "missing" ? join(dir, "retired.json") : registration
+    if (mode !== "missing") {
+      writeFileSync(file, mode === "valid" ? JSON.stringify({ pid: 171, token: "private-fixture", port: 1234 }) : "{")
+    }
+    // The real jq supplies the independent expected read status, including its platform's parse status.
+    const directRead = spawnSync("jq", ["del(.token)", file], { encoding: "utf8" })
+    const result = spawnSync(
+      "bash",
+      ["-c", "set -euo pipefail\ndaemon_file=$1 output=$2 preflight_pid=170\n" + block, "_", file, output],
+      {
+        encoding: "utf8",
+      },
+    )
+    if (mode === "valid") {
+      expect(result.status, result.stderr).toBe(0)
+      expect(JSON.parse(readFileSync(output, "utf8"))).toEqual({ pid: 171, port: 1234 })
+    } else {
+      expect(directRead.status).not.toBe(0)
+      expect(result.status).toBe(2)
+      expect(result.stderr).toContain(`Owned ${stage} collector registration copy failed`)
+      expect(result.stderr).toContain(file)
+      expect(result.stderr).toContain(`jq exit ${directRead.status}`)
+      expect(result.stderr).toContain("expected")
+    }
+  }
+})
+
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {
     const { result, output } = compose()
