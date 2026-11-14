@@ -183,6 +183,15 @@ import { editingProbes } from "./editing.ts"
 import { modesProbes } from "./modes.ts"
 import { deviceProbes } from "./device.ts"
 import { extensionsProbes, withD2LibraryObservation } from "./extensions.ts"
+import { termFootprintFor } from "./term-footprints.ts"
+export {
+  footprintRefusal,
+  termFootprintFor,
+  windowBasisAdmits,
+  TERM_FOOTPRINTS,
+  TERM_FOOTPRINT_NOTES,
+} from "./term-footprints.ts"
+export type { TermFootprint } from "./term-footprints.ts"
 import { inputProbes } from "./input.ts"
 import { resetProbes } from "./reset.ts"
 import { scrollbackProbes } from "./scrollback.ts"
@@ -207,7 +216,17 @@ export const ALL_PROBES = [
   ...charsetsProbes,
   ...unicodeProbes,
   ...clipboardProbes,
-].map(withD2LibraryObservation)
+]
+  .map(withTermFootprint)
+  .map(withD2LibraryObservation)
+
+/** Carry each probe's declared mutation footprint onto the definition (#34148).
+ * The declaration itself lives in `term-footprints.ts` so the 27 cells stay one reviewable table;
+ * an id absent from it keeps no `termFootprint`, and admission refuses it as undeclared. */
+function withTermFootprint(probe: import("./types.ts").ProbeDefinition): import("./types.ts").ProbeDefinition {
+  const termFootprint = termFootprintFor(probe.id)
+  return termFootprint === undefined ? probe : { ...probe, termFootprint }
+}
 
 /** Resolve execution inputs without changing the full catalogue or suite membership. */
 export function resolveProbeIds(

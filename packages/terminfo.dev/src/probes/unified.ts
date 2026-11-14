@@ -36,6 +36,8 @@ import {
   type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
+  footprintRefusal,
+  windowBasisAdmits,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -811,7 +813,9 @@ export async function runProbeBatch(
           ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
           : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
             ? "no verified disposable-ownership receipt was presented"
-            : undefined
+            : probe.termNeedsDisposable === true && !disposable && processOwnerBasis && !windowBasisAdmits(probe.id)
+              ? footprintRefusal(probe.id)
+              : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
