@@ -1453,6 +1453,7 @@ test.each([
     const definition = find(featureId)
     const writes: string[] = []
     const frames: ObservationFrame[] = []
+    const captureRequests: CaptureRequest[] = []
     const resizeCalls: { width: number; height: number }[] = []
     const rows = 10
     const wideCols = 24
@@ -1600,6 +1601,7 @@ test.each([
           },
         },
         capture: async (rawRequest) => {
+          captureRequests.push(rawRequest)
           const request =
             shrunkenCaptureGeometry && rawRequest.cells && rawRequest.pixelGeometry
               ? {
@@ -1652,6 +1654,17 @@ test.each([
         return
       }
       const result = await definition.term!(context)
+      // 34242: a reflow shot that declares only its own band leaves the other width's tail eligible
+      // for calibration's mark, and the arm that reads it then measures the probe's own paint. Every
+      // shot that crops cells declares BOTH compared bands (@cto a5f7b29c).
+      const banded = captureRequests.filter((request) => request.cells !== undefined)
+      expect(banded.length, "the reflow probe crops cells on every settle and after-shot").toBeGreaterThan(0)
+      for (const request of banded) {
+        expect(request.keepClear, `reflow shot ${request.label} declares both compared bands`).toEqual([
+          { top: 1, left: 1, bottom: 5, right: 20 },
+          { top: 1, left: 1, bottom: 5, right: 16 },
+        ])
+      }
       expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
       const clearAndPaintWrites = writes.filter((entry) => entry.includes("\x1b[2J") && !entry.startsWith("\x1b[18t"))
       expect(clearAndPaintWrites.length).toBeGreaterThan(0)

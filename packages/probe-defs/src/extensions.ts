@@ -7508,12 +7508,23 @@ const extensionDefinitions: ProbeDefinition[] = [
         const regionRows = 5
         const growCells = { top: 1, left: 1, bottom: regionRows, right: growCols }
         const shrinkCells = { top: 1, left: 1, bottom: regionRows, right: narrowCols }
+        // Both bands this probe compares are declared on EVERY shot, so calibration's own mark can
+        // never land on a cell one width reads and the other does not (@cto a5f7b29c, 34242): the
+        // compared band spans both, and naming only the arm's own cells left the wide width's tail
+        // eligible for a mark the narrow arm would then read as text.
+        const comparedBands = [growCells, shrinkCells]
         const grab = async (
           role: "control" | "target",
           label: string,
           cells: typeof growCells,
         ): Promise<ObservationFrame> => {
-          const captured = await capture({ role, label, cells, pixelGeometry: baseGeometry })
+          const captured = await capture({
+            role,
+            label,
+            cells,
+            pixelGeometry: baseGeometry,
+            keepClear: comparedBands,
+          })
           const digest = frameDigests(captured).cells
           if (!digest?.trim()) {
             throw new Error(`Reflow capture ${label} is missing cell-region digest`)
