@@ -313,6 +313,18 @@ export interface NamedTextOrigin {
    * cell may read it until the XTest wheel event's effective displacement is measured.
    */
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * The whole-row displacement this read ACCEPTED, in rows and pixels (33982 condition 3). Present
+   * only when a measured bound licensed it, so its presence is the count of accepted moves rather
+   * than a zero that cannot be told from "no move seen".
+   */
+  acceptedRowMove?: { rows: number; px: number }
+  /**
+   * Prose about this frame that a comparison may never read: `basis` is compared across frames of one
+   * row by `gridMoveExemption`, so anything that differs per frame — the accepted shift, for one —
+   * belongs here and not there (33982, @cto).
+   */
+  basisDetail?: string
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -570,6 +582,11 @@ export async function finishCapture(input: {
       // the row-move measurement needs. Absent, never 0, when the origin carried none.
       ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
       ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
+      // 33982: an accepted whole-row move travels with the frame as data, so the record can count
+      // accepted moves instead of parsing a sentence, and its prose goes beside `basis` rather than
+      // into it (a comparison reads `basis`).
+      ...(placement.acceptedRowMove !== undefined ? { acceptedRowMove: placement.acceptedRowMove } : {}),
+      ...(placement.basisDetail !== undefined ? { basisDetail: placement.basisDetail } : {}),
     }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle

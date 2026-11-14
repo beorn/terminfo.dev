@@ -5,6 +5,12 @@ import {
   SENTINEL_BOX_SLACK_PX,
   sentinelBlockRefusal,
   sentinelFillClause,
+  frameBackground,
+  frameCellBlank,
+  originFollowsFromBoxA,
+  pairMeasuredNoRowHeight,
+  witnessProvesPitch,
+  type PixelCellCrop,
   type CalibrationSentinel,
   type CaptureCells,
   type CapturePixelGeometry,
@@ -22,6 +28,54 @@ class SentinelNotOnFrame extends Error {}
  */
 export class CaptureHoldUnresolved extends Error {
   override name = "CaptureHoldUnresolved"
+}
+
+/**
+ * 33982 condition 3: the noise bound on changed pixels outside the located boxes. Zero is the STRICT
+ * limit, not a cut placed in a distribution: a moved frame is accepted only when not one pixel outside
+ * the painted pair changed, so the value can only refuse too much, never accept too much, and needs no
+ * distribution to be safe (@cto, d1a8cb1c). The six measured Warp rows — all 0 changedOutside on a
+ * 0,560 px move — are what says the path is not dead code at zero.
+ *
+ * Raising it ABOVE zero requires a field-backed counted run, brought to @cto with the numbers; an
+ * invented tolerance was refused outright (route 3). Nothing else in the read changes with the value.
+ */
+export const ROW_MOVE_NOISE_BOUND_PX: number | undefined = 0
+
+/**
+ * Whether the two cells the read painted were CLEAR in its own pre-paint frame, at the pose the pair
+ * actually landed at (33982 condition 2, @cto).
+ *
+ * The refusal exists because the paint may have landed on ink this read never saw. The pose that
+ * matters is therefore the LANDING pose — the derived origin — not the pose the cells were chosen at:
+ * `choose(before)` already established those cells were blank at `reading`, so asking again there can
+ * only ever say yes and would prove nothing. What is genuinely unknown is whether the frame this read
+ * painted over already carried ink where the pair now sits. The test is the capture path's own `blank`
+ * predicate, shared rather than restated: whether the cell is background with no ink beside it.
+ */
+export function pairClearBeforePaint(input: {
+  before: CapturedFrame
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  columns: number
+  cells: ReadonlyArray<{ row: number; col: number }>
+}): boolean {
+  const { before, reading, cell, columns, cells } = input
+  if (!Number.isSafeInteger(columns) || columns <= 0) return false
+  const background = frameBackground(before.rgba, before.width, before.height)
+  return cells.every((cellAt) =>
+    frameCellBlank({
+      rgba: before.rgba,
+      width: before.width,
+      height: before.height,
+      reading,
+      cell,
+      background,
+      columns,
+      row: cellAt.row,
+      col: cellAt.col,
+    }),
+  )
 }
 
 /**
@@ -122,6 +176,12 @@ export async function readThroughSentinel<T>(input: {
   reading: { x: number; y: number }
   /** The cell this run was calibrated to, which the chosen cells must be measured in. */
   cell: { width: number; height: number }
+  /**
+   * 33982 condition 3: how many changed pixels outside the located boxes a whole-row move may still
+   * be accepted with. Supplied by whatever MEASURED it; absent means the measurement has not happened
+   * yet and every moved frame refuses exactly as it did before this path existed.
+   */
+  noiseBound?: number
   /**
    * The settled calibrated origin this route measured before the read, when the route has one
    * (34163). With it the pair is a WITNESS of where the paint landed, never a second origin source:
@@ -285,6 +345,72 @@ export async function readThroughSentinel<T>(input: {
           dx === 0 && dy !== 0 && size.height > 0 && dy % size.height === 0
             ? { rows: dy / size.height, px: dy }
             : undefined
+        // 33982 condition 3, the measured bound, is tested FIRST, before any of the work below: while
+        // nothing supplies one, a moved frame must cost what it cost before this path existed and fail
+        // with the same error, so no crop candidate, no geometry predicate and no pre-paint scan may
+        // run. Those predicates can throw, and skipping them is what makes that parity true of cost
+        // and of error type as well as of outcome (@cto).
+        //
+        // Condition 4 is the guard beside it: only a whole number of rows, with no horizontal
+        // component, is a move this path may ever accept. Anything else refuses exactly as before.
+        const bound = input.noiseBound ?? ROW_MOVE_NOISE_BOUND_PX
+        const withinBound = bound !== undefined && ignoredPixels <= bound
+        if (rowShift !== undefined && withinBound) {
+          const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
+          const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
+          const cropCandidate: PixelCellCrop = {
+            origin: derived,
+            basis: basisText,
+            cell: size,
+            ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
+              ? { grid: { columns, rows } }
+              : {}),
+            image: { width: frame.width, height: frame.height },
+            witness,
+          }
+          // A pair painted on ONE row measured the column pitch and no row height (34040), so it can
+          // never carry a vertical move. `gridMoveExemption` refuses such a pair outright; this path
+          // would accept it, because `witnessProvesPitch` against the same crop passes on the column
+          // gap alone, so the same refusal is applied here rather than left to the arithmetic (@cto).
+          const pairMeasuredRowHeight = !pairMeasuredNoRowHeight(cropCandidate)
+          // Condition 1 is the existing geometry predicates, used as they are: the pair proves the
+          // pitch, and the origin follows from box a, on this frame. Condition 2 is that the cells
+          // were clear where the pair LANDED (see the predicate's own note). Condition 3, the measured
+          // bound, was already tested above.
+          const geometryProves =
+            pairMeasuredRowHeight &&
+            witnessProvesPitch(cropCandidate, cropCandidate) &&
+            originFollowsFromBoxA(cropCandidate)
+          const clearBeforePaint = pairClearBeforePaint({
+            before,
+            reading: derived,
+            cell: size,
+            columns,
+            cells: [a, b],
+          })
+          if (geometryProves && clearBeforePaint && withinBound) {
+            // The origin this returns is the DERIVED one, and it bypasses `onSettledOrigin` below even
+            // when the route passed a settled origin (@cto asked for this stated). That is deliberate:
+            // a settled origin is where the read EXPECTED the text area, measured before the move, so
+            // sending an accepted post-move origin through that comparison would refuse the very case
+            // the bound was measured to admit. The bound is what licenses the substitution — it says
+            // the surface was quiet between the two frames, so the pair's landing is the same content
+            // relocated rather than a stale settle.
+            //
+            // `basis` stays exactly as it was, with the shift carried as data beside it: the crop's
+            // own `basis` is filled from `basisKind`, but prose that differs per frame has no business
+            // in a field a comparison may read (gridMoveExemption, @dev/10's real-shape row).
+            return {
+              origin: derived,
+              basis: basisText,
+              basisKind,
+              witness,
+              changedOutside: ignoredPixels,
+              acceptedRowMove: { rows: rowShift.rows, px: rowShift.px },
+              basisDetail: `the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where()} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
+            }
+          }
+        }
         throw new SentinelFrameMoved(
           `${input.label}: the frame moved after ${where()} were chosen at ${input.reading.x},${input.reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
           {
