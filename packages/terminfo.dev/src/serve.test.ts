@@ -639,12 +639,12 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       if (proofState === "source-capable") {
         const renewalSource = { kind: "live", rows: 24, cols: 80 }
         calibrationFailure = Object.assign(new Error("renewal fixture refused"), { name: "CaptureCalibrationRefused" })
-        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.1", recordCapture: () => {} })
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.1", row: "sgr.bg.default", recordCapture: () => {} })
         assert.equal(renewalSource.captureGeometry, undefined)
         assert.equal(renewalSource.captureGeometryRefusal, "renewal fixture refused")
         await assert.rejects(() => options.capture(checkpoints[0]), error => error === calibrationFailure)
         calibrationFailure = undefined
-        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", recordCapture: () => {} })
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", row: "sgr.bg.default", recordCapture: () => {} })
         assert.equal(renewalSource.captureGeometryRefusal, undefined, "successful renewal clears its prior refusal")
         assert.strictEqual(renewalSource.captureGeometry.geometry, pixelGeometry)
         await renewalSource.renewCaptureGeometry("editing.delete-chars")
@@ -677,8 +677,11 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
     // 34306 AC1: every renewal the run asked for, in the order it happened. The first one is asked
     // before the refused preparation below, and the old code lost it when that refusal replaced the
     // calibration fact; it must survive, not just the last renewal of the run.
+    // The second entry is the row that asked through the preparation production itself uses, and it
+    // must survive the refused attempt before it (from is the origin the last successful install left).
     const expectedRenewals = proofState === "source-capable"
       ? [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry },
+         { row: "sgr.bg.default", from: pixelGeometry, to: pixelGeometry },
          { row: "editing.delete-chars", from: pixelGeometry, to: pixelGeometry }]
       : [{ row: "reset.sgr-0", from: pixelGeometry, to: pixelGeometry }]
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, expectedRenewals)

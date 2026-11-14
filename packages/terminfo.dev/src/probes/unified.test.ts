@@ -2388,9 +2388,7 @@ it.each([
     )
     // 34306 AC1: the recursion that renews is the later ROW's read, so the preparation must name
     // that row. Without it the published fact can only name the pass number, never the row.
-    expect(preparedRows).toEqual(
-      resets ? [undefined, ids[1]] : [undefined],
-    )
+    expect(preparedRows).toEqual(resets ? [undefined, ids[1]] : [undefined])
     expect(observedWrites.filter((text) => text === sequence)).toEqual([sequence])
     expect(handedSources[0]?.captureGeometry).toEqual(initialRefusal ? undefined : initial)
     expect(handedSources[0]?.captureGeometryRefusal).toBe(initialRefusal ? "initial refused" : undefined)
