@@ -203,7 +203,7 @@ function compareUnderlineColours(
   }
 }
 
-/** Controls first, then neither, both matched, both ignored, mixed; exact digest equality only. */
+/** Controls first, then neither, both ignored, both matched, mixed; exact digest equality only. */
 export function underlineColourIndexedDecision(digest: (name: string) => string): UnderlineIndexedDecision {
   const id = UNDERLINE_INDEXED_ID
   const comparison = compareUnderlineColours(
