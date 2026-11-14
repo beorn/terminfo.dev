@@ -12,7 +12,6 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { spawnSync } from "node:child_process"
-import type { TerminalScrollbackReading } from "../../probe-defs/src/types.ts"
 
 /** The app bundle's own CLI. cmux is macOS-only, so there is no second install this run could mean. */
 export const CMUX_HISTORY_EXECUTABLE = "/Applications/cmux.app/Contents/MacOS/cmux"
@@ -323,9 +322,27 @@ export type CmuxLastRead = Readonly<{
 }> &
   CmuxReadFacts
 
-export type OwnedCmuxRead =
-  | Readonly<{ status: "read"; reading: TerminalScrollbackReading; receipt: string; facts: CmuxReadFacts }>
-  | CmuxRefused
+/**
+ * A read that PROVED it is this run's own surface and then found the text is the screen's, not a history count
+ * (@dev/brain REVISE 2026-11-14, @dev/18 f6ae50d4). It carries the proof it made — receipt and facts — because
+ * an ownership proof that passed must not be recorded as an ownership failure merely because the count is
+ * unreadable. `refusal` names the fact; `status` is deliberately NOT `refused`, which means "this arm could not
+ * read at all" and is what a missing surface, a missing marker or a changed config report.
+ */
+export type CmuxOwnedUnreadable = Readonly<{
+  status: "owned-unreadable"
+  refusal: "cmux-reader-is-screen-text"
+  reason: string
+  /** The owner's proof of this read. Never published: the record carries only its sha256 and length. */
+  receipt: string
+  facts: CmuxReadFacts
+}>
+
+/**
+ * Every outcome names a fact about the read and none of them is a history reading: the union has no success
+ * arm, so no caller can be handed these `totalLines` as a count (see CMUX_READER_IS_SCREEN_TEXT).
+ */
+export type OwnedCmuxRead = CmuxOwnedUnreadable | CmuxRefused
 
 type CommandOutcome = Readonly<{
   status: number | null
@@ -367,7 +384,7 @@ export function readOwnedCmuxHistory(options: {
       : options.spawn(args)
   const stdout = text(result.stdout)
   // Retain before interpreting ownership or status: a refused native response is evidence too.
-  options.retainTranscript?.(stdout)
+  const transcript = options.retainTranscript?.(stdout)
   const stderr = text(result.stderr)
   // The command's own output goes to the collector's stderr log; the published reason stays value-free
   // except for the one diagnostic a reader needs, which cmux writes at phrase length.
@@ -400,11 +417,19 @@ export function readOwnedCmuxHistory(options: {
   const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
   if (guard.status === "refused") return guard
   const totalLines = lines(stdout).length
-  // The counts below are real, and they are the screen's: refuse to name them a history reading. The
-  // ownership and guard proofs above have already run, so a read that is not this surface's still says so
-  // with its own refusal first.
+  // The counts below are real, and they are the screen's: name that instead of handing them on as a history
+  // reading. The ownership and guard proofs above have already run, so a read that is not this surface's still
+  // says so with its own refusal first — which is why this is `owned-unreadable` and not `refused`.
+  const markers = proof !== undefined && "markers" in proof && typeof proof.markers === "number" ? proof.markers : null
+  const extras: readonly string[] | null = proof?.extras ?? null
+  const config =
+    options.configAtLaunch === undefined
+      ? "unrecorded"
+      : options.configAtLaunch.read === "present"
+        ? { read: "present" as const, sha256: options.configAtLaunch.sha256 }
+        : { read: options.configAtLaunch.read }
   return {
-    status: "refused",
+    status: "owned-unreadable",
     refusal: "cmux-reader-is-screen-text",
     reason:
       CMUX_READER_IS_SCREEN_TEXT +
@@ -416,5 +441,24 @@ export function readOwnedCmuxHistory(options: {
         ? " and no measured screen height"
         : " against a " + String(options.rows) + "-row screen") +
       (options.surface === undefined ? " with no surface named" : " for surface " + JSON.stringify(options.surface)),
+    // The receipt is the owner's proof and may carry the transcript; the facts are what a record may show.
+    receipt: JSON.stringify({
+      surface: options.surface ?? null,
+      ownership: options.ownership.kind,
+      markers,
+      extras,
+      totalLines,
+      screenLines: options.rows ?? null,
+      config,
+    }),
+    facts: {
+      ...(transcript === undefined ? {} : { transcript }),
+      ownership: options.ownership.kind,
+      markers,
+      extras: extras === null ? null : extras.length,
+      totalLines,
+      screenLines: options.rows ?? null,
+      config,
+    },
   }
 }

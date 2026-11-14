@@ -165,10 +165,24 @@ test("the reader proves the nonce arm and refuses the screen's text as a history
     spawn: () => ({ status: 0, stdout: `CMUX-${nonce}-BEGIN\nINSIDE-1\nINSIDE-2`, stderr: "" }),
   })
   // The ownership proof still runs first; the count is what this reader will not hand on (run 43577319701).
-  expect(read.status).toBe("refused")
-  expect(read.status === "refused" && read.refusal).toBe("cmux-reader-is-screen-text")
-  expect(read.status === "refused" && read.reason).toContain(CMUX_READER_IS_SCREEN_TEXT)
-  expect(read.status === "refused" && read.reason).toContain("this read returned 3 lines against a 50-row screen")
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain(CMUX_READER_IS_SCREEN_TEXT)
+  expect(read.status === "owned-unreadable" && read.reason).toContain(
+    "this read returned 3 lines against a 50-row screen",
+  )
+
+  // The proof this read made survives the refusal (@dev/brain 46a8e182): a caller must be able to record the
+  // surface as OWNED and the count as unreadable, instead of reporting an ownership failure for a count it
+  // could not read. These are the receipt and the facts the grant record is built from.
+  expect(read.status === "owned-unreadable" && read.receipt).toContain('"ownership":"nonce"')
+  expect(read.status === "owned-unreadable" && read.facts).toMatchObject({
+    ownership: "nonce",
+    markers: null,
+    extras: 2,
+    totalLines: 3,
+    screenLines: 50,
+  })
 })
 
 test("the socket guard is proved by what the run observed at launch and after", () => {
@@ -231,11 +245,11 @@ test("the reader names the surface it reads and returns retained lines, not the 
     },
   })
   expect(calls).toEqual([["read-screen", "--surface", "surface:1000070000", "--scrollback"]])
-  // The command, the surface it names and the retained bytes are all real; the COUNT is what is refused.
-  expect(read.status).toBe("refused")
-  expect(read.status === "refused" && read.refusal).toBe("cmux-reader-is-screen-text")
-  expect(read.status === "refused" && read.reason).toContain("16 lines against a 50-row screen")
-  expect(read.status === "refused" && read.reason).toContain('"surface:1000070000"')
+  // The command, the surface it names and the retained bytes are all real; the COUNT is what cannot be named.
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("16 lines against a 50-row screen")
+  expect(read.status === "owned-unreadable" && read.reason).toContain('"surface:1000070000"')
   expect(transcripts).toEqual([transcriptOf(12)])
 })
 
@@ -254,9 +268,9 @@ test("a surface read proves nothing per call and refuses only an empty read or a
     },
   }
   const read = readOwnedCmuxHistory(base)
-  expect(read.status).toBe("refused")
-  expect(read.status === "refused" && read.refusal).toBe("cmux-reader-is-screen-text")
-  expect(read.status === "refused" && read.reason).toContain("14 lines against a 50-row screen")
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("14 lines against a 50-row screen")
   const empty = readOwnedCmuxHistory({ ...base, spawn: () => ({ status: 0, stdout: "", stderr: "" }) })
   expect(empty.status === "refused" && empty.refusal).toBe("cmux-read-empty")
   const moved = readOwnedCmuxHistory({
@@ -305,7 +319,7 @@ test("a surface read without a measured grid refuses without claiming a screen h
     spawn: () => ({ status: 0, stdout: transcriptOf(3, measuredExtra, false), stderr: "" }),
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
   })
-  expect(read.status).toBe("refused")
-  expect(read.status === "refused" && read.refusal).toBe("cmux-reader-is-screen-text")
-  expect(read.status === "refused" && read.reason).toContain("5 lines and no measured screen height")
+  expect(read.status).toBe("owned-unreadable")
+  expect(read.status === "owned-unreadable" && read.refusal).toBe("cmux-reader-is-screen-text")
+  expect(read.status === "owned-unreadable" && read.reason).toContain("5 lines and no measured screen height")
 })
