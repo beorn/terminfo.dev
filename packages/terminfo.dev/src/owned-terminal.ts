@@ -7,6 +7,7 @@ import {
   fstatSync,
   openSync,
   readFileSync,
+  realpathSync,
   statSync,
   type BigIntStats,
 } from "node:fs"
@@ -22,7 +23,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
-import { readAppSemanticState, readWezTermCwd } from "./app-semantic-state.ts"
+import { readAppSemanticState, readWezTermCwd, untilAppSemanticRead } from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
@@ -335,6 +336,8 @@ export interface OwnedTerminal {
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
   readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /** When present, only these rows consume this owner's reader; other rows retain their term callbacks. */
+  readonly appSemanticStateFeatures?: ReadonlySet<string>
   /**
    * The terminal process's own session bus, read from /proc rather than assumed from the collector's
    * environment (#33333). A mux reads the outer terminal, which is the process that would emit a Notify.
@@ -2041,12 +2044,17 @@ export async function createOwnedTerminal(options: {
           }
         },
       }),
+      ...(binding.platform === "darwin" &&
+        ownedAppId === "wezterm" && {
+          appSemanticStateFeatures: new Set(["extensions.osc7-cwd", "extensions.osc633-p"]),
+        }),
       ...((linux || (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin"))) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
           }
-          if (ownedAppId === "wezterm" && featureId === "extensions.osc7-cwd") {
+          const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
+          if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd)) {
             const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
             if (
@@ -2096,6 +2104,78 @@ export async function createOwnedTerminal(options: {
                 throw new Error("WezTerm OSC7 native evidence retention failed", { cause: error })
               }
             }
+            const readPane = async () => {
+              await check()
+              const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.privateTranscript)
+              if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
+              if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
+                throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
+              }
+              if (
+                typeof read.cwd !== "string" ||
+                !read.cwd.startsWith("file://") ||
+                // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
+                /[\x00-\x1f\x7f]/.test(read.cwd)
+              ) {
+                throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
+              }
+              const identity = ownedHistoryReceipt({
+                surface: "wezterm",
+                pane,
+                listedTty: read.tty,
+                measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+                socketPresent: true,
+                executable: ownedWezTermCli,
+              })
+              if (identity.status === "refused") throw new Error(identity.reason)
+              ownershipReceipt = identity.receipt
+              return read.cwd
+            }
+            const readText = async () => {
+              await check()
+              const geometry = await owner.readGeometry()
+              await check()
+              if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
+              const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.receipt)
+              return read.rows.join("\n")
+            }
+            if (ownedPromptCwd) {
+              try {
+                if (
+                  hostedAppExecutablePath === undefined ||
+                  realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(hostedAppExecutablePath)), "wezterm")
+                ) {
+                  throw new Error("WezTerm cwd CLI is outside the verified App bundle")
+                }
+                return await readAppSemanticState({
+                  featureId,
+                  onRetained,
+                  runId: expectedLaunchRunId,
+                  executable: ownedWezTermIdentity.historyExecutable,
+                  write,
+                  async readCwd(checkpoint) {
+                    if (checkpoint !== undefined) {
+                      await untilAppSemanticRead(
+                        readText,
+                        (text) => (text.split("\n")[checkpoint.row - 1] ?? "").includes(checkpoint.marker),
+                        "owned cwd checkpoint",
+                        [],
+                      )
+                    }
+                    const uri = await readPane()
+                    return { uri, detail: { ownershipReceipt, nativeReads } }
+                  },
+                })
+              } catch (error) {
+                return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+              }
+            }
             const reading = await readWezTermCwd({
               runId: expectedLaunchRunId,
               captureDirectory,
@@ -2105,47 +2185,8 @@ export async function createOwnedTerminal(options: {
                 out.write(text)
                 await check()
               },
-              async readPane() {
-                await check()
-                const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
-                await check()
-                if (read.status === "refused") throw new Error(read.reason)
-                retainNative(read.privateTranscript)
-                if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
-                if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
-                  throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
-                }
-                if (
-                  typeof read.cwd !== "string" ||
-                  !read.cwd.startsWith("file://") ||
-                  // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
-                  /[\x00-\x1f\x7f]/.test(read.cwd)
-                ) {
-                  throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
-                }
-                const identity = ownedHistoryReceipt({
-                  surface: "wezterm",
-                  pane,
-                  listedTty: read.tty,
-                  measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
-                  socketPresent: true,
-                  executable: ownedWezTermCli,
-                })
-                if (identity.status === "refused") throw new Error(identity.reason)
-                ownershipReceipt = identity.receipt
-                return read.cwd
-              },
-              async readText() {
-                await check()
-                const geometry = await owner.readGeometry()
-                await check()
-                if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
-                const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
-                await check()
-                if (read.status === "refused") throw new Error(read.reason)
-                retainNative(read.receipt)
-                return read.rows.join("\n")
-              },
+              readPane,
+              readText,
             })
             if (ownershipReceipt !== undefined && typeof reading.detail === "object" && reading.detail !== null) {
               Object.assign(reading.detail, { ownershipReceipt, nativeReads })
