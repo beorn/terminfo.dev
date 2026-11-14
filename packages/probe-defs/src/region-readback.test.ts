@@ -42,6 +42,7 @@ import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
 import { initializeRunDraft, recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 import { decodeCollectorDraft } from "../../run-parser/src/index.ts"
+import { readThroughSentinel } from "../../terminfo.dev/src/sentinel-read.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -1885,6 +1886,32 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
 
+// #34276 / CTO52218a6e: existing recipe fixtures omit the observer's bytes, so they miss its
+// overwriting the recipe's immutable N. This composes the actual writer with the existing terminal;
+// the callback intentionally bypasses origin resolution, which sentinel-read.test.ts owns.
+function observeThroughSentinel(terminal: StatefulTerminal): void {
+  const capture = terminal.ctx.capture!
+  const blank = {
+    width: terminal.ctx.cols,
+    height: terminal.ctx.rows,
+    rgba: new Uint8Array(terminal.ctx.cols * terminal.ctx.rows * 4).fill(255),
+  }
+  terminal.ctx.capture = (request) => {
+    if (!request.cells) throw new Error("saved reference fixture requires a cell region")
+    return readThroughSentinel({
+      ...request,
+      source: terminal.ctx,
+      prePaint: async () => blank,
+      capture: async () => capture(request),
+      sentinel: { form: "basic", rgb: [255, 136, 255] },
+      regions: [request.cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 1, height: 1 },
+      deadline: Date.now() + 5_000,
+    })
+  }
+}
+
 // #32590: the immutable pre-setter reference must distinguish a complete reset from every
 // retained subset. The old tests only refused these captures and never exercised restoration.
 test.each(
@@ -1895,11 +1922,17 @@ test.each(
   "$id saved reset reference grades the retained subset $retained and survives the daemon decoder",
   async ({ id, retained }) => {
     const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained, risRetains: retained })
+    observeThroughSentinel(terminal)
     const capture = terminal.ctx.capture!
     const capturedWrites: Array<{ role: ObservationFrame["role"]; label: string; writes: string }> = []
     terminal.ctx.capture = async (request) => {
       if (request.cells?.top === 3 && request.cells.left === 5) {
-        capturedWrites.push({ role: request.role, label: request.label, writes: terminal.writes.join("") })
+        capturedWrites.push({
+          role: request.role,
+          label: request.label,
+          // Observer paints contain SGR0 but never paint YY. Only fixture writes can send the target.
+          writes: terminal.writes.filter((write) => write.includes("YY")).join(""),
+        })
       }
       return capture(request)
     }
@@ -1924,11 +1957,14 @@ test.each(
     const baseline = checks[0]!.digest
     const styled = checks.filter((check) => check.phase === "styled")
     expect(styled).toHaveLength(7)
+    expect(terminal.snapshot()).toEqual(new Set())
     expect(styled.every((check) => check.digest !== baseline)).toBe(true)
     const restored = checks.filter((check) => check.phase === "restored")
     expect(restored).toHaveLength(7)
     expect(restored.every((check) => check.digest === baseline)).toBe(true)
-    expect(terminal.writes.join("").match(/\x1b7/g)).toHaveLength(1)
+    const savedN = terminal.writes.indexOf("\x1b[4;1H\x1b7")
+    expect(savedN).toBeGreaterThanOrEqual(0)
+    expect(terminal.writes.slice(savedN + 1).some((write) => write.includes("\x1b7"))).toBe(false)
     expect(terminal.writes.at(-2)).toBe("\x1b[?25h")
     expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
     // This is the exact strict decoder used by the daemon client. A prior feature assertion
@@ -2023,13 +2059,14 @@ test.each([
   "SGR22 clears both intensities while preserving italic, retained $retained",
   async ({ retained }) => {
     const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained })
+    observeThroughSentinel(terminal)
     const id = "sgr.selective-reset.bold"
     const result = await sgrProbes.find((candidate) => candidate.id === id)!.term!(terminal.ctx)
     const status = retained.length ? "unsupported" : "supported"
     expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
     expect(result.tests).toMatchObject([{ id: "criterion", status, assertionRefs: [0] }])
     expect(terminal.queries).toEqual([])
-    expect(terminal.writes.join("")).not.toContain("\x1b[0m")
+    expect(terminal.writes.filter((write) => write.includes("YY")).join("")).not.toContain("\x1b[0m")
     expect(terminal.writes.join("")).not.toContain("\x1bc")
     expect(decodeResetCallback(result, terminal, id).run.results[0]).toMatchObject({ status })
   },

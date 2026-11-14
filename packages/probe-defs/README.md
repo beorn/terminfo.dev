@@ -1091,7 +1091,15 @@ every other subset before the target is sent. The target must equal it for Suppo
 or another subset is Unsupported on a bare terminal and TODO on a mux. A third crop is Invalid.
 The recipe paints bare YY without RIS or setters in the reference. Failed separation restores the
 saved rendition and tries the existing DECRQSS fallback. More than one expected subset throws with
-the row named; no flag retains the initial-N verdict unchanged. Only the two newly declared SGR
+the row named; no flag retains the initial-N verdict unchanged.
+After its one N save, each read carries fixture-owned `CaptureRequest.restoreAfterPaint` bytes.
+The existing pixel observer uses those bytes after every paint and clear, including retries and
+failure cleanup, instead of touching the fixture's DECSC slot. Known phases restore N and apply
+only their setter sequence; the final target restores N without replaying the reset or repainting
+YY. The already-painted target remains decisive. Each request freezes its phase's bytes before
+awaiting capture. An absent field keeps the observer's existing save/restore behavior; an empty
+field is a declaration error before painting. Text reads do not gain observer writes.
+Only the two newly declared SGR
 reset entries add reference-before-query routing; other SGR rows keep their current routes.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.

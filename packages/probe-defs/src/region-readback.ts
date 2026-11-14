@@ -82,6 +82,7 @@ export type RegionRead = (request: {
   pixelGeometry?: PixelGeometry
   /** Cells the probe's own output may cover; the read's sentinel is never painted there (33985). */
   avoid?: CellRegion
+  restoreAfterPaint?: string
 }) => Promise<RegionCapture>
 
 /**
@@ -93,8 +94,15 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
   // A text arm hands the region readback its own cells adapter; every other arm reads pixels.
   const capture = ctx.cells ?? ctx.capture
   if (!capture) return null
-  return async ({ role, label, region, pixelGeometry, avoid }) => {
-    const frame = await capture({ role, label, cells: region, pixelGeometry, ...(avoid ? { avoid } : {}) })
+  return async ({ role, label, region, pixelGeometry, avoid, restoreAfterPaint }) => {
+    const frame = await capture({
+      role,
+      label,
+      cells: region,
+      pixelGeometry,
+      ...(avoid ? { avoid } : {}),
+      ...(restoreAfterPaint !== undefined ? { restoreAfterPaint } : {}),
+    })
     // ONE accessor for both kinds: a pixel frame hands over its raw-pixel digests, a
     // text frame its cell digests. The comparison below never names a field, so it is one path.
     const digests = frameDigests(frame)
@@ -2229,6 +2237,7 @@ export async function captureRegionReadbackDecision(
     failedAt?: string
   } = { qualified: false, checks: [] }
   let initialRenditionSaved = false
+  let restoreAfterPaint: string | undefined
   // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
   // retain their existing observation-only result, including its historical timeout semantics.
   const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult => {
@@ -2280,7 +2289,11 @@ export async function captureRegionReadbackDecision(
   if (witnessedPixels) {
     const capture = read
     read = async (request) => {
-      const measured = await capture(request)
+      // Copy the phase's bytes into this request before awaiting the reader.
+      const measured = await capture({
+        ...request,
+        ...(restoreAfterPaint !== undefined ? { restoreAfterPaint } : {}),
+      })
       const frame = measured.frame
       const rectangle = measured.regionRectangle
       const geometry = request.pixelGeometry
@@ -2330,6 +2343,7 @@ export async function captureRegionReadbackDecision(
     role: ObservationFrame["role"]
     label: string
     writes: string
+    rendition?: string
     phase?: "baseline" | "before" | "styled" | "restored" | "setup" | "control" | "target"
   }> = savedRendition
     ? [
@@ -2345,6 +2359,7 @@ export async function captureRegionReadbackDecision(
             role: "control" as const,
             label: `${id}: subset ${subset.label}`,
             writes: `${subset.sequence}${spec.expected}`,
+            rendition: subset.sequence,
             phase: "styled" as const,
           },
           {
@@ -2442,9 +2457,23 @@ export async function captureRegionReadbackDecision(
     )
     if (instability) return review(instability)
     for (const [index, step] of steps.entries()) {
+      if (savedRendition && initialRenditionSaved) {
+        const rendition =
+          step.phase === "styled"
+            ? step.rendition
+            : step.phase === "setup" || step.phase === "control"
+              ? savedRendition.subsets.at(-1)?.sequence
+              : ""
+        if (rendition === undefined) throw new Error(`${id}: ${step.label} has no declared rendition setter`)
+        restoreAfterPaint = `\x1b8${rendition}${park}`
+      }
       ctx.write(step.writes)
       await renewAfterWindowMove(step.writes)
       ctx.write(park)
+      // YY already records the unknown target. Put its future pen in N BEFORE the first witness
+      // space, so later observer restoration cannot change the space/glyph roundtrip's styling.
+      // This never repaints YY or replays the reset whose actual pixels decide the verdict.
+      if (step.phase === "target" && restoreAfterPaint !== undefined) ctx.write(restoreAfterPaint)
       // Writes can still be waiting for paint when this baseline is captured. Declared rows
       // challenge a space/glyph pair in both directions before trusting the requested paint.
       const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`

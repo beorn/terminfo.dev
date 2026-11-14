@@ -623,6 +623,12 @@ export interface DeclaredViewportHold {
 export interface CaptureRequest {
   role: ObservationFrame["role"]
   label: string
+  /**
+   * Fixture-owned state restoration after every observer paint and clear, including retries and
+   * failure cleanup. Supplying these bytes prevents the observer from using the fixture's DECSC
+   * slot. Must be nonempty and must not repaint the measured region or replay the target.
+   */
+  restoreAfterPaint?: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
   /**

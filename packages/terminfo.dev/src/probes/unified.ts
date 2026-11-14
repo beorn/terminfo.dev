@@ -205,6 +205,7 @@ export type ProbeCapture = (checkpoint: {
   featureId: string
   role: ObservationFrame["role"]
   label: string
+  restoreAfterPaint?: CaptureRequest["restoreAfterPaint"]
   /** The cell-aligned region to digest; the collector maps it to window pixels itself. */
   cells?: CaptureCells
   /** A second cell-aligned region digested from the same captured image, beside `cells`. */

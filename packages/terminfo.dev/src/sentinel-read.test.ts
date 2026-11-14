@@ -471,34 +471,109 @@ test("changed pixels that carry no sentinel colour are counted in the evidence, 
   expect(origin.basis).toContain("(2 other changed px carry no sentinel colour)")
 })
 
-test("a read whose first frame is one write behind the paint restarts and still anchors (33000)", async () => {
-  const frame = terminal({ x: 2, y: 2 })
-  // The first capture lands one write behind: it does not show the paint yet. The retry has to clear
-  // the paint before it re-takes the pre-paint frame, or the difference compares two frames that both
-  // show the sentinel and can never see it change (@dev/10).
-  frame.state.lag = 1
-  let prePaints = 0
-  const origin = await readThroughSentinel({
-    source: frame.source,
-    prePaint: async () => {
-      prePaints += 1
-      return frame.frameNow()
-    },
-    capture: async (resolve) => {
-      const captured = frame.frameNow()
-      frame.state.lag = 0
-      return resolve({ frame: captured, pixelGeometry })
-    },
-    label: "cells 1,1-2,2",
-    sentinel,
-    regions: [cells],
-    reading: { x: 2, y: 2 },
-    cell: { width: 2, height: 2 },
-    deadline: Date.now() + 1_000,
-  })
-  expect(origin.origin).toEqual({ x: 2, y: 2 })
-  expect(prePaints).toBe(2)
-  expect(frame.writes).toEqual([PAINT, CLEAR, PAINT, CLEAR])
+test.each([undefined, "\x1b8\x1b[1;3;7m\x1b[4;1H"])(
+  "a lagged read retries with its original restoration bytes: %j (33000,34276)",
+  async (restoreAfterPaint) => {
+    const frame = terminal({ x: 2, y: 2 })
+    // The first capture lands one write behind: it does not show the paint yet. The retry has to clear
+    // the paint before it re-takes the pre-paint frame, or the difference compares two frames that both
+    // show the sentinel and can never see it change (@dev/10).
+    frame.state.lag = 1
+    let prePaints = 0
+    const origin = await readThroughSentinel({
+      source: frame.source,
+      restoreAfterPaint,
+      prePaint: async () => {
+        prePaints += 1
+        return frame.frameNow()
+      },
+      capture: async (resolve) => {
+        const captured = frame.frameNow()
+        frame.state.lag = 0
+        return resolve({ frame: captured, pixelGeometry })
+      },
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      reading: { x: 2, y: 2 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    })
+    expect(origin.origin).toEqual({ x: 2, y: 2 })
+    expect(prePaints).toBe(2)
+    const expected = (write: string) =>
+      restoreAfterPaint === undefined ? write : write.slice(2, -2) + restoreAfterPaint
+    expect(frame.writes).toEqual([PAINT, CLEAR, PAINT, CLEAR].map(expected))
+  },
+)
+
+// #34276: a failure on the very first paint used to escape cleanup; a second cleanup failure must
+// retain the deciding capture/paint failure. The ordinary capture-error test below cannot reach it.
+test.each(["paint", "capture", "cleanup", "paint+cleanup", "capture+cleanup"])(
+  "owner restoration attempts cleanup and retains both failures: %s",
+  async (fault) => {
+    const writes: string[] = []
+    const paintFailure = new Error("paint write failed")
+    const captureFailure = new Error("capture failed")
+    const cleanupFailure = new Error("cleanup write failed")
+    const restoreAfterPaint = "\x1b8\x1b[4;1H"
+    const operation = readThroughSentinel({
+      source: {
+        ...grid,
+        write: (text: string) => {
+          writes.push(text)
+          if (writes.length === 1 && fault.startsWith("paint")) throw paintFailure
+          if (writes.length === 2 && fault.includes("cleanup")) throw cleanupFailure
+        },
+      },
+      restoreAfterPaint,
+      prePaint: async () => before({ x: 0, y: 0 }),
+      capture: async () => {
+        if (fault.startsWith("capture")) throw captureFailure
+        return "captured"
+      },
+      label: "owner cleanup",
+      sentinel,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    })
+    const original = fault.startsWith("paint") ? paintFailure : captureFailure
+    if (fault.includes("+"))
+      await expect(operation).rejects.toMatchObject({
+        name: "AggregateError",
+        cause: original,
+        errors: [original, cleanupFailure],
+      })
+    else await expect(operation).rejects.toBe(fault === "cleanup" ? cleanupFailure : original)
+    expect(writes).toHaveLength(2)
+    expect(writes.every((write) => !write.includes("\x1b7") && write.endsWith(restoreAfterPaint))).toBe(true)
+  },
+)
+
+test("empty owner restoration is refused before reading or painting", async () => {
+  const painted = source()
+  let reads = 0
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      restoreAfterPaint: "",
+      label: "empty restoration",
+      prePaint: async () => {
+        reads += 1
+        return before({ x: 0, y: 0 })
+      },
+      capture: async () => "captured",
+      sentinel,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(/empty restoration: restoreAfterPaint must be nonempty/)
+  expect(painted.writes).toEqual([])
+  expect(reads).toBe(0)
 })
 
 test("a pre-paint frame that lagged the probe's own drawing is retaken, and the read still anchors on the pair (33981)", async () => {

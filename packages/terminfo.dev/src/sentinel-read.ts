@@ -142,8 +142,9 @@ export class SentinelFrameMoved extends Error {
  * Deliberately NOT calibration's two-frame confirmation: calibration pays a capture-until-stable loop
  * because it is measuring geometry once, while this runs for every pixel row.
  *
- * Three residuals, none reachable today by a pixel-row probe, stated rather than implied:
- * - `ESC 7` is one save slot: a probe holding its own DECSC across a read loses that saved state.
+ * Residuals stated rather than implied:
+ * - `ESC 7` is one save slot: an owner holding DECSC across reads supplies restoreAfterPaint,
+ *   so the observer never overwrites it (the saved-rendition reset recipe, 34276).
  * - Under DECOM the margins move the CUP origin, so the paint lands off the cells and the derived
  *   origin is shifted by the margin: a wrong crop, not a refusal.
  * - The restore writes a default-colour blank, so whatever the witness cells held (probe text, or a
@@ -153,6 +154,8 @@ export class SentinelFrameMoved extends Error {
 export async function readThroughSentinel<T>(input: {
   /** Where this read paints, and the grid its sentinel cells must fit in. */
   source: { write(text: string): void; rows: number; cols: number }
+  /** Fixture-owned nonempty bytes after every paint/clear; the observer uses no save slot with them. */
+  restoreAfterPaint?: string
   /**
    * One frame of the same window through the same capture route, taken before this read paints and
    * after the previous read's restore has been written.
@@ -198,6 +201,8 @@ export async function readThroughSentinel<T>(input: {
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
+  const restoreAfterPaint = input.restoreAfterPaint
+  if (restoreAfterPaint === "") throw new Error(`${input.label}: restoreAfterPaint must be nonempty`)
   const grid = { rows: input.source.rows, cols: input.source.cols }
   /**
    * The two cells to paint, chosen from the frame taken just before this attempt's paint: only cells
@@ -460,10 +465,14 @@ export async function readThroughSentinel<T>(input: {
     const { b } = pair()
     return `\x1b[${b.row};${b.col}H`
   }
-  const paintCells = () => input.source.write(`\x1b7${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m\x1b8`)
-  const clearCells = () => input.source.write(`\x1b7${atA()}\x1b[0m ${atB()} \x1b[0m\x1b8`)
-  paintCells()
+  const save = restoreAfterPaint === undefined ? "\x1b7" : ""
+  const restore = restoreAfterPaint ?? "\x1b8"
+  const paintCells = () => input.source.write(`${save}${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m${restore}`)
+  const clearCells = () => input.source.write(`${save}${atA()}\x1b[0m ${atB()} \x1b[0m${restore}`)
+  let failed = false
+  let failure: unknown
   try {
+    paintCells()
     for (;;) {
       try {
         return await input.capture(resolve)
@@ -480,8 +489,19 @@ export async function readThroughSentinel<T>(input: {
         paintCells()
       }
     }
+  } catch (error) {
+    failed = true
+    failure = error
+    throw error
   } finally {
-    clearCells()
+    try {
+      clearCells()
+    } catch (cleanup) {
+      if (failed) {
+        throw new AggregateError([failure, cleanup], `${input.label}: capture and cleanup failed`, { cause: failure })
+      }
+      throw cleanup
+    }
   }
 }
 

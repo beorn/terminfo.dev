@@ -855,6 +855,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
           return readThroughSentinel({
             source,
+            ...(checkpoint.restoreAfterPaint !== undefined ? { restoreAfterPaint: checkpoint.restoreAfterPaint } : {}),
             // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
             // re-derive an origin from the pair, which is a second source for one read and the
             // reason a held viewport cropped N rows low.
