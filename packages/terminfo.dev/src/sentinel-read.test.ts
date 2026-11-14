@@ -675,16 +675,34 @@ test("a declared hold crops at the settled origin and records the rows it moved 
   expect(result.changedOutside).toBe(0)
 })
 
-test("a declared hold whose pair lands on the settled origin refuses as a contradiction, not a quiet zero (34163)", async () => {
+// @cto 2026-11-13: the paint that anchors this read is itself terminal OUTPUT, so a terminal that
+// snaps to bottom on output snaps while the pair is being painted. Its frame shows the bottom
+// viewport with the pair on the settled grid, which is the snapped candidate the viewport-hold probe
+// exists to detect. That must be an observation the probe can grade, never a refusal.
+test("a declared hold whose pair lands on the settled origin reports a viewport that was NOT held (34163, @cto)", async () => {
   const origin = { x: 2, y: 2 }
-  await expect(
-    heldRead({
-      frame: heldWindow({ origin, shift: {} }),
-      prePaint: before(origin),
-      settled: settledAt(origin),
-      scroll: { direction: "up", notches: 1, maxRows: 4 },
-    }),
-  ).rejects.toThrow(/declared a viewport hold of 1 notch\(es\) and the pair landed exactly on the settled origin/)
+  const result = await heldRead({
+    frame: heldWindow({ origin, shift: {} }),
+    prePaint: before(origin),
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.scrolledRows).toEqual({ rows: 0, direction: "up", notches: 1 })
+  expect(result.basis).toContain("the viewport was NOT held when this frame was taken")
+})
+
+test("a declared hold whose frame snapped to the bottom is still an observation, not the move refusal (34163, @cto)", async () => {
+  const origin = { x: 2, y: 2 }
+  const result = await heldRead({
+    // Pair on the settled grid, but the rest of the window is a different view: the snap signature.
+    frame: heldWindow({ origin, shift: {} }),
+    prePaint: windowAt({ x: 2, y: 6 }),
+    settled: settledAt(origin),
+    scroll: { direction: "up", notches: 1, maxRows: 4 },
+  })
+  expect(result.scrolledRows?.rows).toBe(0)
+  expect(result.changedOutside).toBeGreaterThan(pixelGeometry.textWidth)
 })
 
 test("a declared hold that moves the pair sideways is not a hold (34163)", async () => {

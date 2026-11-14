@@ -332,9 +332,20 @@ function onSettledOrigin(input: {
     )
   }
   if (rows === 0) {
-    throw input.refuse(
-      `${input.label}: this read declared a viewport hold of ${scroll.notches} notch(es) and the pair landed exactly on the settled origin, so the declaration was not in effect when this frame was taken — a held read that reports no delta is a contradiction, not a quiet zero`,
-    )
+    // A terminal that scrolls to bottom when it receives OUTPUT snaps as this read paints the pair,
+    // because the paint IS a pty write. Its frame then shows the bottom viewport with the pair on the
+    // settled grid, which is exactly the snapped candidate the viewport-hold probe exists to detect,
+    // so this is an OBSERVATION the probe can grade and never a refusal (@cto 2026-11-13). Cropping
+    // at the settled origin is correct here for the same reason: the pair is on the grid.
+    return {
+      ...settled,
+      origin: settled.origin,
+      basis: `${input.basis}; the pair landed on the settled calibrated origin under a declared hold of ${scroll.notches} notch(es), so the viewport was NOT held when this frame was taken (a snapped or never-held viewport), and this read crops at the settled origin (34163)`,
+      basisKind: settled.basisKind,
+      witness: input.witness,
+      changedOutside: input.changedOutside,
+      scrolledRows: { rows: 0, direction: scroll.direction, notches: scroll.notches },
+    }
   }
   const expectedSign = scroll.direction === "up" ? 1 : -1
   if (Math.sign(rows) !== expectedSign) {
