@@ -307,6 +307,12 @@ export interface NamedTextOrigin {
    * quiet frame; a re-anchored viewport shows here as a large number (34163).
    */
   changedOutside?: number
+  /**
+   * Where a DECLARED viewport hold put the painted pair, in rows off the settled origin (34163).
+   * Present only when the probe declared the hold, and an observation only: no grade or published
+   * cell may read it until the XTest wheel event's effective displacement is measured.
+   */
+  scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -559,6 +565,7 @@ export async function finishCapture(input: {
         : {}),
       image: { width, height },
       ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+      ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
     }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle

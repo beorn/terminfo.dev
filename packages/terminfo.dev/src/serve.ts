@@ -809,6 +809,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
           return readThroughSentinel({
             source,
+            // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
+            // re-derive an origin from the pair, which is a second source for one read and the
+            // reason a held viewport cropped N rows low.
+            settled: calibrated,
+            ...(checkpoint.scroll !== undefined ? { scroll: checkpoint.scroll } : {}),
             prePaint: () =>
               captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
             capture: (resolve) => adapter.capture(checkpoint, resolve),

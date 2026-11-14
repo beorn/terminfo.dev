@@ -1040,9 +1040,13 @@ function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean 
 function originFollowsFromBoxA(crop: PixelCellCrop): boolean {
   const { a } = crop.witness ?? {}
   if (a === undefined) return false
+  // 34163: a DECLARED viewport hold crops at the settled origin and records the rows the hold moved
+  // the pair, so the box follows from the origin plus that declared delta — still exact arithmetic,
+  // and still a disagreement if the two halves contradict each other.
+  const heldRows = (crop.scrolledRows?.rows ?? 0) * crop.cell.height
   return (
     crop.origin.x === a.box.x - (a.cell.col - 1) * crop.cell.width &&
-    crop.origin.y === a.box.y - (a.cell.row - 1) * crop.cell.height
+    crop.origin.y === a.box.y - (a.cell.row - 1) * crop.cell.height - heldRows
   )
 }
 
