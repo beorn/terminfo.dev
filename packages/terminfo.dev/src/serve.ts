@@ -986,14 +986,15 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      const nativeAppRead = ["cursor", "com.microsoft.VSCode", "cmux"].includes(terminal.hostedAppId ?? "")
+      const nativeEditorRead = ["cursor", "com.microsoft.VSCode"].includes(terminal.hostedAppId ?? "")
+      const nativeAppRead = nativeEditorRead || terminal.hostedAppId === "cmux"
       if (!captureDirectory) {
         captureInstallationRefusal = `Verified ${kind} screenshot capture requires TERMINFO_CAPTURE_DIRECTORY to retain its evidence`
         return
       }
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      if (!nativeAppRead && terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) {
+      if (!nativeEditorRead && terminal.textRecipe && (kind === "darwinHosted" || kind === "terminalApp")) {
         installTextCapture(terminal)
       }
       const darwinCapture = await createDarwinCapture(captureDirectory, {
