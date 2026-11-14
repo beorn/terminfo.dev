@@ -966,8 +966,11 @@ export interface SgrReadback {
  * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
  * never a negative.
  */
+export const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
+export const DECRQSS_SGR_REPLY = /\x1bP1\$r([0-9;:]*)m\x1b\\/
+
 export async function querySgrState(ctx: TermProbeSource): Promise<string[] | null> {
-  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
+  const outcome = await ctx.queryWithSentinelOutcome(DECRQSS_SGR_QUERY, DECRQSS_SGR_REPLY)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
   if (payload === undefined) return null

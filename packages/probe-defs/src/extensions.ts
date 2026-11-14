@@ -6089,7 +6089,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
-const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
+export const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
 /**
  * The same-run control every OSC 22 read must pass first: a CPR asked by this process is answered by whatever
  * terminal is reading this session, so it separates "the app has no shape read method" from "nothing here was
@@ -6115,7 +6115,7 @@ export const OSC22_NO_CONTROL_REPLY =
 export function osc22SilentMultiplexer(_mux: "tmux" | "screen"): string {
   return "Open by design only for a run with no command record from the outer terminal: without that record nothing shows what the multiplexer sent."
 }
-const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
+export const OSC22_SHAPE_REPLY = /^\x1b\]22;([a-z0-9_-]+)(?:\x07|\x1b\\)$/u
 
 /**
  * Through a multiplexer, OSC 22 reads only the outer terminal's command record (@cto 5c25b17f, 1818f9ec):
