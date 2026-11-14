@@ -548,6 +548,11 @@ test.runIf(process.platform === "linux")(
     expect(acquisition(target)).toMatchObject({ role: "target", label: "sample", attempt: 1 })
     // Durations are measured, on one monotonic basis, and the configured delay keeps its own name.
     const timing = acquisition(first)
+    const duration = (phase: string): number => {
+      const value = timing[phase]
+      expect(typeof value).toBe("number")
+      return Number(value)
+    }
     const phases = [
       "settleElapsedMs",
       "ownedMs",
@@ -557,19 +562,16 @@ test.runIf(process.platform === "linux")(
       "captureMs",
       "convertMs",
       "finalizeMs",
-      "totalMs",
-    ] as const
-    for (const phase of phases) {
-      expect(typeof timing[phase]).toBe("number")
-      expect(timing[phase]).toBeGreaterThanOrEqual(0)
-    }
+    ]
+    for (const phase of phases) expect(duration(phase)).toBeGreaterThanOrEqual(0)
     // The settle actually ran for its delay: a relabelled constant would not have to be this large.
-    expect(timing.settleElapsedMs).toBeGreaterThanOrEqual(140)
-    expect(timing.totalMs).toBeGreaterThanOrEqual(timing.settleElapsedMs)
+    expect(duration("settleElapsedMs")).toBeGreaterThanOrEqual(140)
+    const total = duration("totalMs")
+    expect(total).toBeGreaterThanOrEqual(duration("settleElapsedMs"))
     // The configured delay is recorded beside the elapsed one, never in place of it.
     expect(first.result.trace.settleMs).toBe(150)
-    const measured = phases.filter((phase) => phase !== "totalMs").reduce((sum, phase) => sum + Number(timing[phase]), 0)
-    expect(measured).toBeLessThanOrEqual(Number(timing.totalMs) + 50)
+    const measured = phases.reduce((sum, phase) => sum + duration(phase), 0)
+    expect(measured).toBeLessThanOrEqual(total + 50)
   },
 )
 
