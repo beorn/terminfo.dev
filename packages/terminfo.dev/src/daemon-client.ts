@@ -17,13 +17,18 @@ import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
   parseProcessOwnerAssertion,
+  parseOwnedAppOwnerAssertion,
   parseTerminalAppOwner,
+  type OwnedAppOwnerAssertion,
   type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
 
-/** Exactly one owner claim: Terminal.app's window assertion, or the shared process proof. */
-export type DaemonOwnerRequest = { terminalApp: TerminalAppOwnerAssertion } | { process: ProcessOwnerAssertion }
+/** Exactly one owner claim: Terminal.app's window assertion, the shared process proof, or an owned app launch. */
+export type DaemonOwnerRequest =
+  | { terminalApp: TerminalAppOwnerAssertion }
+  | { process: ProcessOwnerAssertion }
+  | { ownedApp: OwnedAppOwnerAssertion }
 
 export interface DaemonRegistration {
   pid: number
@@ -188,6 +193,12 @@ export async function requestDaemonProbe(
       throw new Error("Terminal.app owner assertion differs from the selected daemon")
     }
     body = { terminalAppOwner: owner }
+  } else if (request && "ownedApp" in request) {
+    const owner = parseOwnedAppOwnerAssertion(request.ownedApp)
+    if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid) {
+      throw new Error("owned-app owner assertion differs from the selected daemon")
+    }
+    body = { ownedAppOwner: owner }
   } else if (request) {
     const owner = parseProcessOwnerAssertion(request.process)
     if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid) {
