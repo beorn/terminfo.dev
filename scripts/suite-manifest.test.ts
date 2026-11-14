@@ -24,7 +24,11 @@ import { getTrustedSuiteReceipt } from "../packages/terminfo.dev/src/serve.ts"
 
 /** Verbatim copy of a linux-xvfb-container receipt the round carried (#30764 M4 P1b). */
 const LINUX_RECEIPT_FIXTURE = "070448f8377ad6e3dfae0579235fb402.json"
-import { readExplicitSuiteTarget, verifySuiteManifest } from "../packages/admin/suite-manifest.ts"
+import {
+  MissingSuiteManifestError,
+  readExplicitSuiteTarget,
+  verifySuiteManifest,
+} from "../packages/admin/suite-manifest.ts"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -225,6 +229,28 @@ test("the derived in-development declaration is not uncommitted collector dirt (
  * Rule 3 stays: an absent id that is NOT the live suite still refuses by name, so no derived
  * declaration ever stands in for an older suite.
  */
+/**
+ * 34085: the absent-manifest refusal is a type carrying the measured tree's suite, so a caller that keeps its own
+ * wording maps it instead of measuring the tree a second time. The registry half and the tree half cannot disagree
+ * on which tree they describe, because there is only one call.
+ */
+test("an absent suite id refuses as a typed missing-manifest error naming the measured tree (34085)", () => {
+  const directory = temp("terminfo-missing-suite-")
+  mkdirSync(join(directory, "content", "suites"), { recursive: true })
+  let refusal: unknown
+  try {
+    readExplicitSuiteTarget(directory, "deadbeefcafe")
+  } catch (error) {
+    refusal = error
+  }
+  expect(refusal).toBeInstanceOf(MissingSuiteManifestError)
+  const error = refusal as MissingSuiteManifestError
+  expect(error.suiteId).toBe("deadbeefcafe")
+  expect(error.path).toBe(join(directory, "content", "suites", "deadbeefcafe.json"))
+  expect(error.treeSuiteId).toBe(probeSuiteSnapshot().probeHash)
+  expect(error.message).toContain("names no suite in this registry")
+})
+
 test("the live suite is derived when content/suites has no manifest for it (70719828)", () => {
   const directory = temp("terminfo-live-suite-")
   for (const entry of readdirSync(REPO_ROOT, { withFileTypes: true })) {

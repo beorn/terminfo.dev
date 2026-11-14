@@ -49,6 +49,35 @@ const SUITE_ID_RE = /^[0-9a-f]{12}$/u
 export type ExplicitSuiteTarget = Readonly<{ suiteId: string; path: string; manifest: ProbeSuiteManifest }>
 
 /**
+ * The one refusal a caller may handle by name: the named suite has no committed manifest and is not this tree's
+ * live suite. It carries the tree's suite id so a caller can keep its own wording without deriving the tree again.
+ */
+export class MissingSuiteManifestError extends Error {
+  constructor(
+    readonly path: string,
+    readonly suiteId: string,
+    readonly treeSuiteId: string | undefined,
+  ) {
+    super(`${path}: no suite manifest carries that id, so "--suite ${suiteId}" names no suite in this registry`)
+    this.name = "MissingSuiteManifestError"
+  }
+}
+
+/**
+ * The tree a named suite is measured against, decided once: `root` carries the registry, and it is also the measured
+ * tree when it holds probe sources (a checkout). A vault root holding only `content/suites` measures this installed
+ * tree instead, which is what every caller did before the decision was folded here — the halves could disagree only
+ * because the registry half read `root` while the tree half read the default. Nothing when neither root measures.
+ */
+function measuredTree(root: string): ProbeSuiteSnapshot | undefined {
+  try {
+    return existsSync(join(root, "packages", "probes")) ? probeSuiteSnapshot(root) : probeSuiteSnapshot()
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Read a suite the caller named instead of the live collector suite (28018). A ruling can name an
  * older suite the registry still carries, and no collector can be made to re-derive it.
  * The target is therefore read, never assumed: the id must be shaped like a suite id, a manifest must
@@ -68,13 +97,11 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
   }
   const path = join(root, "content", "suites", `${suiteId}.json`)
   if (!existsSync(path)) {
-    const tree = probeSuiteSnapshot(root)
-    if (tree.probeHash === suiteId) {
+    const tree = measuredTree(root)
+    if (tree !== undefined && tree.probeHash === suiteId) {
       return { suiteId, path: `${suiteId} (derived from this tree)`, manifest: derivedSuiteManifest(tree) }
     }
-    throw new Error(
-      `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
-    )
+    throw new MissingSuiteManifestError(path, suiteId, tree?.probeHash)
   }
   return { suiteId, path, manifest: readSuiteManifestFile(path, suiteId) }
 }

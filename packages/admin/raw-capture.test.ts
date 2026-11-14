@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { loadRawCapture } from "./raw-capture.ts"
+import { UntrustedSuiteError, loadRawCapture } from "./raw-capture.ts"
 import { probeSuiteSnapshot } from "./versions.ts"
 
 const REPO = join(import.meta.dirname, "..", "..")
@@ -65,6 +65,34 @@ describe("loadRawCapture: the one raw-capture reader fails loudly", () => {
     expect(refusal).toContain("there is no standalone step")
     expect(refusal).toContain("neither this tree's nor placed cannot be read here")
     expect(refusal).not.toContain("write-suite-manifest")
+  })
+
+  it("keeps naming the measured tree's suite and the placement cure when it refuses", () => {
+    const root = scratchRoot()
+    const path = join(root, "foreign-named.draft.json")
+    writeFileSync(
+      path,
+      JSON.stringify({ runId: "r", probeHash: "000000000000", suiteId: "000000000000", sourceRevision: "s" }),
+    )
+    let refusal: unknown
+    try {
+      loadRawCapture(path, { root, catalogIds: [] })
+    } catch (error) {
+      refusal = error
+    }
+    expect(refusal).toBeInstanceOf(UntrustedSuiteError)
+    const message = (refusal as Error).message
+    expect(message).toContain(`is not this tree's suite ${probeSuiteSnapshot().probeHash}`)
+    expect(message).toContain("placement is the only writer")
+  })
+
+  // 34085: the live-suite decision lives in suite-manifest only. A second call site here is how the registry half
+  // and the tree half came to read different roots, so the absence of one is the property worth pinning.
+  it("decides the live suite through one call site, never a tree probe of its own", () => {
+    const source = readFileSync(join(REPO, "packages/admin/raw-capture.ts"), "utf8")
+    expect(source).not.toContain("probeSuiteSnapshot")
+    expect(source).not.toContain("derivedSuiteManifest")
+    expect(source).toContain("readExplicitSuiteTarget(root, suiteId)")
   })
 
   it("refuses a capture whose suiteId disagrees with its trusted manifest", () => {
