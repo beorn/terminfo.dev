@@ -2893,22 +2893,25 @@ it("ungrades a cell the witness never read before, records the reading it got, a
     basis: "window basis under test",
     scope: "window",
   })
-  const first = ALL_PROBES.find((item) => item.id === "modes.auto-wrap")!
-  const second = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  // Both cells are admitted by the window-basis table: decsclm (dec:4) and synchronized-output (dec:2026).
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
   const originalFirst = first.term
   const originalSecond = second.term
   let secondRan = false
   process.stdout.write = ((text: string) => {
     if (typeof text !== "string") return true
     const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
-    if (mode) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};1$y\x1b[?62c`))
+    // Answer "reset" (2): it is what this cell's cleanup writes, so the cell is admitted and the
+    // witness path is the thing this test exercises.
+    if (mode) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};2$y\x1b[?62c`))
     else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
     return true
   }) as typeof process.stdout.write
   first.term = async (ctx) => {
-    await ctx.queryMode?.(7)
-    await ctx.write("\x1b[?7l")
-    await ctx.write("\x1b[?7h")
+    await ctx.queryMode?.(4)
+    await ctx.write("\x1b[?4l")
+    await ctx.write("\x1b[?4h")
     return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
   }
   second.term = async () => {
@@ -2916,17 +2919,17 @@ it("ungrades a cell the witness never read before, records the reading it got, a
     return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
   }
   try {
+    // The first witness reading is missing and every later one is present: the cell has no baseline,
+    // which ungrades it without being a spill, and the reading it does get seeds the next cell.
+    let witnessReads = 0
     const batch = await runProbeBatch({
-      ids: ["modes.auto-wrap", "modes.decsclm"],
+      ids: ["modes.decsclm", "modes.synchronized-output"],
       subject: { kind: "term", id: "terminal-app", os: "darwin" },
       ownedTerminal: geometryOwner(measured(24, 80)),
-      witnessWindow: { app: "terminal-app", read: async () => "0" },
+      witnessWindow: { app: "terminal-app", read: async () => (witnessReads++ === 0 ? undefined : "0") },
     })
-    {
-      const d = batch.results.find((r) => r.featureId === "modes.auto-wrap")
-    }
-    expect(batch.results.find((result) => result.featureId === "modes.auto-wrap")?.reason).toContain(
-      "spillover unmeasured for dec:7",
+    expect(batch.results.find((result) => result.featureId === "modes.decsclm")?.reason).toContain(
+      "spillover unmeasured for dec:4",
     )
     expect(secondRan).toBe(true)
   } finally {
@@ -2945,19 +2948,24 @@ it("stops the run at a restore it cannot prove, and never calls the next cell's 
     basis: "window basis under test",
     scope: "window",
   })
-  const first = ALL_PROBES.find((item) => item.id === "modes.auto-wrap")!
-  const second = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
   const originalFirst = first.term
   const originalSecond = second.term
   let secondRan = false
-  // Answer the sentinel with no reply: every readback in this fixture is absent, which is exactly the
-  // "no pre-state" refusal this test needs, and keeps each query from waiting out its wall.
+  // The PRE-read is answered (2 = reset, which is what this cell's cleanup writes), so the cell is
+  // admitted and its callback runs. The post-read is then left unanswered, which is the one case that
+  // stays run-fatal: a write went out and its restore cannot be proven (@cto 06:41).
+  let modeReads = 0
   process.stdout.write = ((text: string) => {
-    if (typeof text === "string" && text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    if (typeof text !== "string") return true
+    if (/\x1b\[\?4\$p\x1b\[c$/.test(text) && modeReads++ === 0) {
+      process.stdin.emit("data", Buffer.from("\x1b[?4;2$y\x1b[?62c"))
+    } else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
     return true
   }) as typeof process.stdout.write
   first.term = async (ctx) => {
-    await ctx.write("\x1b[?7l")
+    await ctx.write("\x1b[?4l")
     return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
   }
   second.term = async () => {
@@ -2966,7 +2974,7 @@ it("stops the run at a restore it cannot prove, and never calls the next cell's 
   }
   try {
     const run = runProbeBatch({
-      ids: ["modes.auto-wrap", "modes.decsclm"],
+      ids: ["modes.decsclm", "modes.synchronized-output"],
       subject: { kind: "term", id: "terminal-app", os: "darwin" },
       ownedTerminal: geometryOwner(measured(24, 80)),
       witnessWindow: { app: "terminal-app", read: async () => "0" },
@@ -6228,5 +6236,147 @@ it("records a moved frame as an ungraded cell and keeps the batch going (33981)"
   } finally {
     moved.term = originals.moved.term
     text.term = originals.text.term
+  }
+})
+
+// @failure A window-scoped basis grades a cell whose restore nothing can read back (DECSTR clears the
+//   saved cursor and charsets), or classifies one of the four cells that have no retained trace from a
+//   guess, so a leaky cell is called restored or a cell is graded on evidence nobody has (@cto 69ad9f37).
+// @level l1
+// @consumer A window-scoped batch's admission, before the cell's first byte.
+it("refuses reset.soft and the traceless cells on a window basis before any byte, naming why", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const traceless = ["modes.application-cursor", "modes.mouse-all", "modes.mouse-sgr", "modes.mouse-tracking"]
+  const writesOf = (id: string): unknown => (JSON.parse(batch.rawReplies[id] ?? "{}") as { writes?: unknown }).writes
+  const batch = await runProbeBatch({
+    ids: ["reset.soft", ...traceless],
+    subject: { kind: "term", id: "terminal-app", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    witnessWindow: { app: "terminal-app", read: async () => "0" },
+  })
+  const reset = batch.results.find((result) => result.featureId === "reset.soft")
+  expect(reset?.reason, "reset.soft is refused by name").toContain("not admitted on a window basis")
+  expect(reset?.reason).toContain("DECSTR")
+  expect(reset?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+  // The refusal happens before the cell writes: its own trace holds no write event at all.
+  expect(writesOf("reset.soft")).toEqual([])
+  for (const id of traceless) {
+    const row = batch.results.find((result) => result.featureId === id)
+    expect(row?.reason, `${id} is refused by name`).toContain("no retained trace")
+    expect(writesOf(id), `${id} wrote nothing`).toEqual([])
+  }
+})
+
+// @failure A cell whose probe resets its attribute to the DEFAULT is graded on a terminal that already
+//   holds the non-default value: pre is 1 and post is 2, the ledger throws, and one cell kills the rest
+//   of the run (@dev/brain e1b6910e1 review 1).
+// @level l1
+// @consumer A window-scoped batch on a terminal that is not in its default state.
+it("refuses by name when the terminal is already non-default, and keeps running", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let firstRan = false
+  let secondRan = false
+  // Mode 4 answers "set" (1), which is not what this cell's cleanup (?4l → reset = 2) leaves behind.
+  // Mode 2026 answers "reset" (2), which its cleanup does leave, so that cell is admitted.
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    if (mode) {
+      process.stdin.emit("data", Buffer.from(`\x1b[?${mode};${mode === "4" ? "1" : "2"}$y\x1b[?62c`))
+    } else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async () => {
+    firstRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+    const refused = batch.results.find((result) => result.featureId === "modes.decsclm")
+    expect(refused?.reason, "the refusal names the cell and the mismatch").toContain("already non-default")
+    expect(refused?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+    expect(firstRan, "a refused cell's callback never runs").toBe(false)
+    expect((JSON.parse(batch.rawReplies["modes.decsclm"] ?? "{}") as { writes?: unknown }).writes).toEqual([])
+    expect(secondRan, "the run continues to the next cell").toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
+// @failure A terminal that does not answer the pre-read for an admitted cell's attribute lets the cell
+//   run, and then the ledger's no-pre-state refusal kills the whole run at that cell, taking every later
+//   cell's grade with it (@dev/brain d5b4517c6 review, @cto 06:41).
+// @level l1
+// @consumer A window-scoped batch on a terminal silent about one query.
+it("refuses by name when the pre-read went unanswered, and keeps running", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let firstRan = false
+  let secondRan = false
+  // Mode 4 is never answered — only the DA1 sentinel comes back, which is the measured "silent" case.
+  // Mode 2026 is answered 2, so that cell is admitted and grades.
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    if (mode === "2026") process.stdin.emit("data", Buffer.from(`\x1b[?${mode};2$y\x1b[?62c`))
+    else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async () => {
+    firstRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+    const refused = batch.results.find((result) => result.featureId === "modes.decsclm")
+    expect(refused?.reason, "the refusal names the missing pre-read").toContain("did not answer the pre-read for dec:4")
+    expect(refused?.reason, "and says which kind of silence it was").toContain(
+      "answered the sentinel but not this query",
+    )
+    expect(refused?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+    expect(firstRan, "a refused cell's callback never runs").toBe(false)
+    expect((JSON.parse(batch.rawReplies["modes.decsclm"] ?? "{}") as { writes?: unknown }).writes).toEqual([])
+    expect(secondRan, "the run continues to the next cell").toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
   }
 })
