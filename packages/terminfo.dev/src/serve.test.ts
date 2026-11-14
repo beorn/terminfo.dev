@@ -746,6 +746,172 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
   },
 )
 
+// 34306 AC1, the test the earlier head could not pass: the renewal record has to come out of the
+// production path, so this drives the REAL collectProbeRun and the REAL runProbeBatch (neither is
+// mocked) with two rows, and reads the published array. Only the custody grant and the terminal's
+// own layers are fixtures: detect, tty, linux capture/input, calibration, and the disposable receipt.
+// A real xterm screen is fed the run's own writes, so a capture is a reading of what was painted.
+it("records a renewal's own origins through a real two-row collectProbeRun batch", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-renewal-real-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+import { mock } from "bun:test"
+import assert from "node:assert/strict"
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { createHash } from "node:crypto"
+Object.defineProperty(process, "platform", { value: "linux" })
+const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+const tty = await import("./packages/terminfo.dev/src/tty.ts")
+const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+const hash = "a".repeat(12), revision = "5fa93036a8f87bf66d0b98ba96d0a32043775d2a"
+const pixelGeometry = { cellWidth: 9, cellHeight: 22, textWidth: 720, textHeight: 528 }
+const measured = { origin: { x: 13, y: 57 }, pixelGeometry, basis: "fixture complete raster" }
+const decoded = { width: 800, height: 600, rgba: Buffer.alloc(800 * 600 * 4) }
+const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
+  capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
+const digest = seed => createHash("sha256").update(seed).digest("hex")
+const fontReceipt = JSON.stringify({
+  fixture: "synthetic font-source receipt", proofState: "source-capable", reason: "synthetic source-control state",
+  requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
+  source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
+  harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
+    featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
+const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
+  sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
+  runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10", sourceRevision: revision, cleanTree: true, suiteHash: hash },
+  fixture: { definition: "fixture", config: "--config NONE", font: fontReceipt, geometry: "80x24", display: "fixture", gl: "fixture" } }
+if (!existsSync(process.env.TERMINFO_CAPTURE_DIRECTORY)) mkdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY)
+writeFileSync(process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT, JSON.stringify({ fixture: "clipboard custody" }))
+writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+writeFileSync(process.env.TERMINFO_DISPOSABLE_RECEIPT, JSON.stringify({
+  schemaVersion: 1, kind: "linux-xvfb-container", runId: "b".repeat(32), collectedAt: "2026-10-06T22:00:00Z",
+  runtime: { imageId: provenance.runtime.imageId, imageTarSha256: provenance.runtime.imageTarSha256,
+    arch: "amd64", nixLockRevision: provenance.runtime.nixLockRevision, sourceRevision: revision,
+    sourceTreeStatus: "clean", rootRevision: "3ffeb2c8d2a30527990135b610c41b8ba989ccab", suiteHash: hash },
+  runnerArtifact: { frozenRunnerSha256: digest("frozen runner"), buildReceiptSha256: digest("build receipt") },
+  declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+  preset: "current", clipboardProfile: "default" }))
+
+globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
+  catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+  probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
+}, collectorRevision: revision }
+let calibrations = 0, rawCaptures = 0
+const grantedReadings: Array<typeof measured> = []
+const granted = []
+const readingAt = index => {
+  const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+  grantedReadings.push(stable)
+  return stable
+}
+const { createXtermBackend } = await import("@termless/xtermjs")
+const screen = createXtermBackend()
+screen.init({ rows: 24, cols: 80 })
+const encoder = new TextEncoder()
+// Every byte this run paints goes into the screen, so a capture is a reading of what was written,
+// not a constant: the collector's paint witness needs a frame that can change.
+process.stdout.write = (chunk) => { screen.feed(encoder.encode(String(chunk))); return true }
+const screenText = () => Array.from({ length: 24 }, (_, row) =>
+  Array.from({ length: 80 }, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")).join("\n")
+mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
+  name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture"
+}) }))
+mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+  withRawMode: async callback => callback(), drainStdin: async () => {},
+  queryWithSentinelOutcome: async (sequence, pattern) => {
+    const reply = sequence === "\x1b[16t" ? "\x1b[6;22;9t"
+      : sequence === "\x1b[14t" ? "\x1b[4;528;720t"
+      : sequence === "\x1b[18t" ? "\x1b[8;24;80t" : "\x1bP>|kitty(0.49.2)\x1b\\"
+    return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
+  }
+}))
+mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async () => undefined }))
+mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async () => ({
+  declareWindowSize: () => {},
+  captureRaw: async () => { rawCaptures++; return { result: raw, decoded } },
+  capture: async (checkpoint, origin) => {
+    granted.push({ featureId: checkpoint.featureId, origin })
+    const bytes = Buffer.from(screenText())
+    const sha256 = createHash("sha256").update(bytes).digest("hex")
+    const path = "artifacts/" + checkpoint.featureId.replace(/[^a-z0-9.-]/gi, "_") + ".png"
+    const directory = join(process.env.TERMINFO_CAPTURE_DIRECTORY, "artifacts")
+    if (!existsSync(directory)) mkdirSync(directory)
+    writeFileSync(join(directory, path.replace("artifacts/", "")), bytes)
+    return { frame: { kind: "pixels", role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
+      ref: "sha256:" + sha256, path, sha256, regionDigest: "sha256:" + sha256,
+      pixelsDigest: "sha256:" + sha256,
+      regionRectangle: { x: 0, y: 0, width: pixelGeometry.textWidth, height: pixelGeometry.textHeight } },
+      trace: { label: checkpoint.label } }
+  }
+}) }))
+const geometryMeasurement = { status: "measured", at: new Date(0).toISOString(), source: "stty",
+  rows: 24, cols: 80, stdout: "24 80", stderr: "" }
+// Custody is fixture-granted here on purpose: this case proves the renewal RECORD a real batch writes,
+// not terminal ownership, which has its own suite. Naming it keeps the grant from reading as measured.
+mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+  createOwnedTerminal: async () => ({
+    geometryAtGrant: geometryMeasurement, geometrySource: "stty", summary: "fixture owned terminal",
+    readGeometry: async () => geometryMeasurement, dispose: async () => {} }),
+  ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => undefined }))
+mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
+  calibrations++
+  return readingAt(grantedReadings.length + 1)
+} }))
+const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+let run, failure
+try {
+  run = await collectProbeRun({ ids: ["sgr.fg.default", "sgr.bg.default"], captureRunId: "real-two-row" })
+} catch (error) { failure = String(error && error.stack || error) }
+
+assert.equal(failure, undefined)
+// The asking row is the SECOND row: the first row's own install is the one this renewal leaves.
+assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, [{
+  row: "sgr.bg.default",
+  from: pixelGeometry, fromOrigin: { x: 13, y: 57 },
+  to: pixelGeometry, toOrigin: { x: 13, y: 597 },
+}])
+// Both rows really ran: a renewal recorded beside a row that never reached its callback would prove nothing.
+for (const id of ["sgr.fg.default", "sgr.bg.default"]) {
+  const row = run.results.find(candidate => candidate.featureId === id)
+  assert.equal(row.attempt.scope, "probe", id + " did not start its callback")
+}
+// The renewal is its own install, published under its own key, not folded into the first calibration.
+assert.ok(Object.keys(run.rawReplies).includes("collector.captureCalibration.renewal.1.trace"))
+// The checkpoint carries the same renewal record as the completed run.
+const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
+assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,
+  JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals)
+// Every graded capture after the renewal used the index the renewal installed, never the first one.
+assert.deepEqual([...new Set(granted.map(entry => entry.origin.origin.y))], [57, 597])
+
+`,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: join(home, "clipboard.json"),
+        TERMINFO_DISPOSABLE_RECEIPT: join(home, "ownership.json"),
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
   environment: Record<string, string | undefined> = {},
