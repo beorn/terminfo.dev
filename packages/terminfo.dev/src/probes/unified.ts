@@ -1446,26 +1446,48 @@ export async function runProbeBatch(
           ),
           omega,
         })
+        // The restore ledger is run-fatal FIRST: a state that may be left behind must not be graded,
+        // nor may the next cell run against it (@cto 34148 REVISE blocking 1).
+        if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
         if (options.witnessWindow && witness?.admitted === true) {
           // Fold 3: the witness is never written by this run, so any change in it is this cell's spill.
           const witnessReads: Record<string, { before: string | null; after: string | null }> = {}
+          let ungraded: string | undefined
           for (const attribute of attributes) {
             const key = attributeKey(attribute)
             const before = witnessBefore.get(key)
             const after = await options.witnessWindow.read(attribute)
             const verdict = spilloverVerdict({ attribute, before, after })
             witnessReads[key] = { before: before ?? null, after: after ?? null }
-            if (verdict.status !== "unchanged") {
+            // A spill is run-fatal: the declaration is wrong and the app instance has changed.
+            if (verdict.status === "spilled") {
               batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict })
               throw new SpilloverRefused(probe.id, verdict)
             }
-            // "unchanged" is only reachable with a reading; the guard keeps the type honest.
+            // No reading before this cell is NOT a spill and not a pass: the restore is proved, so the
+            // cell is ungraded by name and the reading it did get seeds later cells (@cto REVISE 2).
+            if (verdict.status === "refused") {
+              ungraded ??= verdict.reason
+              if (after !== undefined) witnessBefore.set(key, after)
+              continue
+            }
             if (after === undefined) throw new Error(`witness unchanged verdict for ${key} carried no reading`)
             witnessBefore.set(key, after)
           }
-          batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict: "unchanged" })
+          batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({
+            reads: witnessReads,
+            verdict: ungraded === undefined ? "unchanged" : { status: "refused", reason: ungraded },
+          })
+          // The restore is proved, so nothing was leaked; the reach is unmeasured. That is coverage,
+          // not a run failure: record the cell as PROBE TODO naming the missing reading (@cto REVISE 2).
+          if (ungraded !== undefined) {
+            result = {
+              pass: false,
+              notTested: { reason: "no-semantic-observable", noObservable: ungraded },
+              ...(result.response === undefined ? {} : { response: result.response }),
+            }
+          }
         }
-        if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
@@ -1675,6 +1697,12 @@ export async function runProbeBatch(
     } catch (error) {
       if (custody.failure) throw custody.failure.error
       const name = error instanceof Error ? error.name : "Error"
+      // #34148 fold 2 and fold 3: a restore that cannot be proved, and a cell that changed the app
+      // instance, both leave state behind. Grading the next cell against it would launder that state
+      // into that cell's result, so both stop the RUN here rather than becoming this cell's
+      // collector-error (@cto 34148 REVISE blocking 1). Their `.ledger` / `.spillover` record is
+      // written before the throw, so the failure draft keeps the diff.
+      if (name === "MutationRestoreRefused" || name === "SpilloverRefused") throw error
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).

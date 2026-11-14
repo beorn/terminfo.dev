@@ -2883,6 +2883,102 @@ it("refuses app named coverage that arrives beside supported observation and ass
   }
 })
 
+// @failure A witness with no reading before a cell kills the run, so one unmeasured attribute stops every
+//   later cell (@cto 34148 REVISE 2), or the cell grades on a witness that never read it.
+// @level l1
+// @consumer A window-scoped batch's cross-window read.
+it("ungrades a cell the witness never read before, records the reading it got, and runs the next cell", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.auto-wrap")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let secondRan = false
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    if (mode) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};1$y\x1b[?62c`))
+    else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async (ctx) => {
+    await ctx.queryMode?.(7)
+    await ctx.write("\x1b[?7l")
+    await ctx.write("\x1b[?7h")
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["modes.auto-wrap", "modes.decsclm"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "0" },
+    })
+    {
+      const d = batch.results.find((r) => r.featureId === "modes.auto-wrap")
+    }
+    expect(batch.results.find((result) => result.featureId === "modes.auto-wrap")?.reason).toContain(
+      "spillover unmeasured for dec:7",
+    )
+    expect(secondRan).toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
+// @failure A cell whose writes cannot be read back leaves state behind, the collector records it as that
+//   cell's collector-error, and the next cell is graded against the leaked state (@cto 34148 REVISE blocking 1).
+// @level l1
+// @consumer A window-scoped batch's per-cell restore proof.
+it("stops the run at a restore it cannot prove, and never calls the next cell's callback", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.auto-wrap")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let secondRan = false
+  // Answer the sentinel with no reply: every readback in this fixture is absent, which is exactly the
+  // "no pre-state" refusal this test needs, and keeps each query from waiting out its wall.
+  process.stdout.write = ((text: string) => {
+    if (typeof text === "string" && text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async (ctx) => {
+    await ctx.write("\x1b[?7l")
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  try {
+    const run = runProbeBatch({
+      ids: ["modes.auto-wrap", "modes.decsclm"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "0" },
+    })
+    await expect(run).rejects.toThrow(/cannot prove its writes were restored/)
+    expect(secondRan).toBe(false)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
 it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
   verifiedBatchFixture()
   // Reach the geometry contract after the wrap probe's disposable-process prerequisite.
