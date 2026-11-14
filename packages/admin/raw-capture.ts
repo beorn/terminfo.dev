@@ -34,16 +34,12 @@ export class UntrustedSuiteError extends Error {
   constructor(
     readonly path: string,
     readonly suiteId: string,
-    readonly treeSuiteId: string | undefined,
+    readonly treeSuiteId: string,
     root: string,
   ) {
-    const treeClause =
-      treeSuiteId === undefined
-        ? `and no measured tree under ${root} declares it`
-        : `and is not this tree's suite ${treeSuiteId}`
     super(
-      `${path}: suite ${suiteId} has no committed manifest under ${join(root, "content", "suites")} ${treeClause}; ` +
-        `the raw capture cannot be read against a trusted declaration. Cure: placing a ` +
+      `${path}: suite ${suiteId} has no committed manifest under ${join(root, "content", "suites")} and is not this ` +
+        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: placing a ` +
         `run at that suite writes its manifest (placement is the only writer; there is no standalone step). A ` +
         `capture at a suite that is neither this tree's nor placed cannot be read here.`,
     )

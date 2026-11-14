@@ -56,7 +56,7 @@ export class MissingSuiteManifestError extends Error {
   constructor(
     readonly path: string,
     readonly suiteId: string,
-    readonly treeSuiteId: string | undefined,
+    readonly treeSuiteId: string,
   ) {
     super(`${path}: no suite manifest carries that id, so "--suite ${suiteId}" names no suite in this registry`)
     this.name = "MissingSuiteManifestError"
@@ -64,17 +64,14 @@ export class MissingSuiteManifestError extends Error {
 }
 
 /**
- * The tree a named suite is measured against, decided once: `root` carries the registry, and it is also the measured
- * tree when it holds probe sources (a checkout). A vault root holding only `content/suites` measures this installed
- * tree instead, which is what every caller did before the decision was folded here — the halves could disagree only
- * because the registry half read `root` while the tree half read the default. Nothing when neither root measures.
+ * The tree a named suite is measured against, decided once: `root` carries the registry and is the measured tree
+ * when it holds probe sources (a checkout). A vault root holding only `content/suites` measures this installed
+ * tree, which is what every caller did before the decision was folded here — the halves could disagree only
+ * because the registry half read `root` while the tree half read the default. There is no "unknown tree" state: an
+ * installation whose own probe sources cannot be read fails loudly rather than reporting a suite it never measured.
  */
-function measuredTree(root: string): ProbeSuiteSnapshot | undefined {
-  try {
-    return existsSync(join(root, "packages", "probes")) ? probeSuiteSnapshot(root) : probeSuiteSnapshot()
-  } catch {
-    return undefined
-  }
+function measuredTree(root: string): ProbeSuiteSnapshot {
+  return existsSync(join(root, "packages", "probes")) ? probeSuiteSnapshot(root) : probeSuiteSnapshot()
 }
 
 /**
@@ -98,10 +95,10 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
   const path = join(root, "content", "suites", `${suiteId}.json`)
   if (!existsSync(path)) {
     const tree = measuredTree(root)
-    if (tree !== undefined && tree.probeHash === suiteId) {
+    if (tree.probeHash === suiteId) {
       return { suiteId, path: `${suiteId} (derived from this tree)`, manifest: derivedSuiteManifest(tree) }
     }
-    throw new MissingSuiteManifestError(path, suiteId, tree?.probeHash)
+    throw new MissingSuiteManifestError(path, suiteId, tree.probeHash)
   }
   return { suiteId, path, manifest: readSuiteManifestFile(path, suiteId) }
 }
