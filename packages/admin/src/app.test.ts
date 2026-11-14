@@ -528,6 +528,7 @@ describe("WezTerm cli-process arm", () => {
     binding?: string
     stdout?: string
     status?: number
+    textStatus?: number
     cleanupFailure?: boolean
     ownerFailure?: boolean
     message: RegExp
@@ -538,6 +539,8 @@ describe("WezTerm cli-process arm", () => {
     { name: "ambiguous pane", stdout: '[{"pane_id":4,"cwd":"a"},{"pane_id":4,"cwd":"b"}]', message: /2 candidates/ },
     { name: "malformed JSON", stdout: "not-json", message: /invalid JSON/ },
     { name: "CLI failure", status: 2, message: /exit 2/ },
+    { name: "missing native rows", stdout: '[{"pane_id":4,"cwd":"file:///private/own"}]', message: /native row count/ },
+    { name: "text read and close failure", textStatus: 17, cleanupFailure: true, message: /get-text unavailable/ },
     { name: "read and close failure", status: 2, cleanupFailure: true, message: /exit 2/ },
     // 34076: a cleanup-only failure must not be mislabeled as a primary read failure in CLI JSON.
     { name: "close failure only", cleanupFailure: true, message: /close failed/ },
@@ -561,8 +564,13 @@ describe("WezTerm cli-process arm", () => {
     }
     const previous = vi.mocked(spawnSync).getMockImplementation()!
     vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("get-text")) {
+        const stdout = Buffer.from("owned diagnostic text\n\n")
+        const stderr = Buffer.from("owned text stderr")
+        return { pid: 9, status: fault.textStatus ?? 0, signal: null, stdout, stderr, output: [null, stdout, stderr] }
+      }
       if (String(file).endsWith("/wezterm") && args?.includes("list")) {
-        const stdout = fault.stdout ?? '[{"pane_id":4,"cwd":"file:///private/own"}]'
+        const stdout = fault.stdout ?? '[{"pane_id":4,"cwd":"file:///private/own","size":{"rows":2,"cols":24}}]'
         return {
           pid: 8,
           status: fault.status ?? 0,
@@ -586,6 +594,10 @@ describe("WezTerm cli-process arm", () => {
       expect(saved).toBeDefined()
       const diagnostic: unknown = JSON.parse(String(saved![1]))
       expect(diagnostic).toMatchObject({ primaryFailure: summaryLog ? null : expect.stringMatching(fault.message) })
+      if (fault.textStatus !== undefined) {
+        expect(JSON.stringify(diagnostic)).toContain(Buffer.from("owned diagnostic text\n\n").toString("base64"))
+        expect(JSON.stringify(diagnostic)).toContain(Buffer.from("owned text stderr").toString("base64"))
+      }
       if (summaryLog) {
         expect(summaryLog).toHaveBeenCalledExactlyOnceWith(expect.any(String))
         const summary: unknown = JSON.parse(String(summaryLog.mock.calls[0]?.[0]))

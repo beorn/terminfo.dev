@@ -2177,6 +2177,7 @@ export async function createOwnedTerminal(options: {
                 pane: process.env.WEZTERM_PANE,
                 socket: process.env.WEZTERM_UNIX_SOCKET,
                 ...geometry,
+                startLine: 0,
               })
           : undefined
     const renditions = windowsTerminalPid === undefined ? undefined : createLineRenditionTracker()
@@ -2400,7 +2401,13 @@ export async function createOwnedTerminal(options: {
               const geometry = await owner.readGeometry()
               await check()
               if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
-              const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
+              const read = readWindowsWezTermRows({
+                executable: ownedWezTermCli,
+                socket,
+                pane,
+                rows: geometry.rows,
+                startLine: 0,
+              })
               await check()
               if (read.status === "refused") throw new Error(read.reason)
               retainNative(read.receipt)

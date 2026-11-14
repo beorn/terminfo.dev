@@ -51,7 +51,7 @@ test("a missing owned pane cannot select the focused pane or start a server", ()
 test("the same owned row reader retains escaped hyperlink bytes when requested", () => {
   const linked = "\x1b(B\x1b[0m\x1b]8;id=owned;https://example.com/x\x1b\\LINK\x1b]8;;\x1b\\ after"
   answer(`${linked}\r\n\r\n\n`)
-  const escaped = { ...options, escapes: true }
+  const escaped = { ...options, startLine: 0, escapes: true }
   expect(readWindowsWezTermRows(escaped)).toMatchObject({ status: "read", rows: [linked, ""] })
   expect(run.mock.calls[0]?.slice(0, 2)).toEqual([
     options.executable,

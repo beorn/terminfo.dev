@@ -2220,6 +2220,7 @@ export async function readAppSemanticState(
           pane: env.WEZTERM_PANE,
           socket: env.WEZTERM_UNIX_SOCKET,
           rows: 3,
+          startLine: 0,
           escapes,
         })
         if (read.status === "refused") throw new Error(read.reason)
