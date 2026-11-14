@@ -167,8 +167,14 @@ export function cellRectangle(input: {
    * number was too large, never which measurement produced it (34163).
    */
   basis?: string
+  /**
+   * The sentinel pair the origin was derived from, when there was one. A frame-extent refusal is
+   * the only record a failing read leaves, so the pair travels in it: the cells the code believed it
+   * painted beside the boxes it located are what prove the pair moved (34163).
+   */
+  witness?: NamedTextOrigin["witness"]
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible, basis } = input
+  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible, basis, witness } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -231,7 +237,10 @@ export function cellRectangle(input: {
       `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}: ` +
         `${geometry.cellWidth}x${geometry.cellHeight} cells from text origin ${textOrigin.x},${textOrigin.y} ` +
         `(${basis ? `origin basis: ${basis}` : "origin basis unnamed, so no measurement can be blamed"}) ` +
-        `over a ${geometry.textWidth}x${geometry.textHeight} text area`,
+        `over a ${geometry.textWidth}x${geometry.textHeight} text area` +
+        (witness
+          ? `; sentinel witness cells ${witness.a.cell.row},${witness.a.cell.col} at ${witness.a.box.x},${witness.a.box.y} and ${witness.b.cell.row},${witness.b.cell.col} at ${witness.b.box.x},${witness.b.box.y}`
+          : ""),
     )
   }
   return rectangle
@@ -483,6 +492,7 @@ export async function finishCapture(input: {
         windowHeight: height,
         ...(placement.visible ? { visible: placement.visible } : {}),
         ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+        ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
       })
       const cropExpected = rectangle.width * rectangle.height * 4
       const cropped = Buffer.alloc(cropExpected)
