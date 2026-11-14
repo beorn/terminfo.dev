@@ -1991,6 +1991,28 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   }
 }, 60_000)
 
+function ownedMacLaunchReceipt() {
+  return {
+    bundlePath: "/System/Applications/Utilities/Terminal.app",
+    cfBundleShortVersionString: "2.15",
+    cfBundleVersion: "470.2",
+    executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    executableSha256: "c5f23927d33d886d3a3e39b4ef76381b1971a9cc74523f7ebf5e60affaf8fa8b",
+    sourceArtifact: {
+      kind: "sealed-macos-system-volume" as const,
+      macOSBuild: "25G83",
+      snapshotUUID: "C1602FFF-7F1F-48FE-B3AC-3A74675B4416",
+      snapshotName: "com.apple.os.update-60587424F5399FC05D957DF05B4D2F65543462495C77AEF520F790FBB57CB212",
+      sealed: true,
+      codeSignature: {
+        identifier: "com.apple.Terminal",
+        cdHash: "df446fa448104498f44f6cbce28099ed286eecc2",
+        strictVerified: true,
+      },
+    },
+  }
+}
+
 // #34018 R1 (@dev/17 peer REVISE): the composed owned route, driven through the real pass. The host
 // stub consumes the inbound `--run-id` as the identity of the run it hands back — which is what the
 // admin does with `createProbeRun(runId)` — so the only way the assertions below can hold is if the
@@ -2048,7 +2070,14 @@ async function composedOwnedPass(hostRunId?: string) {
     permissions: null,
   }
   draft.identity = "unverified"
-  draft.origin = { kind: "collector" }
+  // The launch receipt a real owned Mac run carries, copied verbatim from the 02:20 PST pass of
+  // 2026-11-14 (run a3b238820289526e40d97d98b92188e4): placement binds Terminal.app's measured
+  // bundle version to the run's declared 2.15, and a hand-authored receipt here would prove nothing.
+  draft.origin = { kind: "collector", appLaunch: ownedMacLaunchReceipt() }
+  // The identity replies Terminal.app actually answers (same run): DA1/DA2 are what bind the window
+  // to the app, and the app answers no XTVERSION at all, which its rule forbids.
+  draft.rawReplies["device.primary-da"] = "\x1b[?1;2c"
+  draft.rawReplies["device.secondary-da"] = "\x1b[>1;95;0c\x1b[?1;2c"
   draft.measuredAt = "2026-10-06T23:41:34.869Z"
   writeFileSync(producer, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
   const environment = {
@@ -2093,6 +2122,15 @@ it("admits the identity the host consumed, not a fixture identity", async () => 
     expect(readFileSync(witness, "utf8")).toBe(handed.runId)
     const original = JSON.parse(readFileSync(row.rawRun!, "utf8")) as { runId: string }
     expect(original.runId).toBe(handed.runId)
+    // Placeability is the other half of AC3: the run this owned Mac row produced is the run the corpus
+    // accepts, under the same identity — hand the graded original to the place path and read it back.
+    const content = mkdtempSync(join(directory, "content"))
+    copyFileSync(join(CONTENT, "features.json"), join(content, "features.json"))
+    for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
+    const manifest = { ...versions.derivedSuiteManifest(versions.probeSuiteSnapshot()), schemaVersion: 4 as const }
+    const placed = placeCollectedRun(row.rawRun!, manifest, content)
+    expect(basename(placed)).toContain(handed.runId)
+    expect(loadStoredRuns(content, manifest.catalogIds!)).toMatchObject([{ runId: handed.runId }])
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
