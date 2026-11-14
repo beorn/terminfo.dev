@@ -1407,3 +1407,157 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
     })
   })
 })
+
+// @cto 2026-11-13: a read's feature is the query, so the read leg carries a control. No control reply is a named
+// probe-todo (nothing measured the channel); a control reply with a silent query is unsupported (the feature is
+// absent in this configuration); and a profile reading names its profile and exact setting so it can never be read
+// as the default configuration a person gets when they open the app.
+describe("OSC 52 read leg control and profile naming", () => {
+  function readCallback() {
+    const found = ALL_PROBES.find((item) => item.id === "extensions.osc52-read")?.term
+    if (!found) throw new Error("OSC 52 read callback is missing")
+    return found
+  }
+
+  test("no control reply is probe-todo naming the control, never unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        queryCursorPosition: async () => null,
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "cursor-position control before the OSC 52 read",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("control answered and the query silent with a pinned deny default is unsupported, and names no profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "deny", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toBe("cursor-position control answered; OSC 52 c returned no reply")
+  })
+
+  test("an ask default grades the same silence as probe-todo naming the unanswered prompt", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "ask", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "default asks the user; the prompt was not answered",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("a read-granting profile grades silence unsupported even with no pinned default, and names the profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "allow", setting: "ghostty --clipboard-read=allow" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toContain("allow: ghostty --clipboard-read=allow")
+  })
+
+  test("an unpinned default grades the same silence as probe-todo naming the missing citation", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("default not established"),
+    })
+  })
+
+  test("a version refusal names both versions and never grades unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefaultRefusal: "default not established: this tree cites kitty 0.49.2, this run measured 0.49.1",
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("this tree cites kitty 0.49.2, this run measured 0.49.1"),
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("a deny-read profile grades its own configured refusal, naming write-clipboard only", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "deny-read", setting: "kitty -o clipboard_control=write-clipboard" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "deny-read profile: refusal configured by this run; grades nothing about the default",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("an answered query passes and its note carries the profile and exact setting", async () => {
+    let seeded = ""
+    const result = await readCallback()(
+      termSource({
+        queryOutcome: async () => {
+          const raw = `\x1b]52;c;${btoa(seeded)}\x07`
+          return { match: [raw, btoa(seeded)], reason: "reply" as const, raw, rawBase64: "" }
+        },
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async (text) => {
+              seeded = text
+            },
+            readProfile: { profile: "allow", setting: "kitty clipboard_control=write-clipboard read-clipboard" },
+          }),
+      }),
+    )
+    expect(result.pass).toBe(true)
+    expect(result.observation?.note).toContain("allow: kitty clipboard_control=write-clipboard read-clipboard")
+  })
+})

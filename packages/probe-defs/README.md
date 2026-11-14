@@ -55,7 +55,7 @@ values (@cto 8c084f05). It is deliberately not the declaration above: that one s
 and is removed by a later app version; this one says this run could not reach the read and is removed by a
 later arm. Neither is ever inferred from a failed screenshot.
 
-The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+The owned App collector supplies an optional semantic-state reader. Linux's exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
 a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
@@ -64,6 +64,23 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
+The Mac WezTerm collector offers that reader only to the CWD row; other rows retain their existing terminal callbacks.
+The measured CLI version and launch version must match the reviewed Linux
+`0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
+Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
+and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
+restoration of the initial URI. The private capture retains the initial/restored values and feed/text
+trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
+An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
+is published only after the write succeeds, and retention failure is a named collector error.
+The restoration writer bypasses the publishable call log. Failed restoration throws through the
+collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
+neither process-CWD inference nor URI normalization supplies an answer.
+The reading carries the existing path-free owned-pane identity receipt. Native pane-list and get-text
+argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
+The initial/restored phase and feed records use that same content-addressed writer and artifact observer;
+the private evidence basename names a registered immutable blob rather than a collector-local file.
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
@@ -1146,6 +1163,14 @@ cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames 
 new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+
+Owned Darwin apps share the existing window pixel capture, retention and calibration path.
+Their ownership adapter supplies the measured PID and any proved window ID; the common reader
+does not interpret app-specific launch receipts. Newly routed PID-only apps require exactly one
+visible normal-layer owned window, while Terminal.app and iTerm2 retain their existing selection
+policy. Missing retention names an apparatus refusal on affected rows and never selects text as
+a screenshot substitute. Existing text qualification retains its separate frames and write-error
+causes. Routing alone grades no feature and does not authorize a native run.
 
 The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
 The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,

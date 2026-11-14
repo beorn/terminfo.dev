@@ -1,6 +1,15 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  statSync,
+  type BigIntStats,
+} from "node:fs"
 import { isatty, WriteStream } from "node:tty"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, win32 } from "node:path"
@@ -13,7 +22,7 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
-import { readAppSemanticState } from "./app-semantic-state.ts"
+import { readAppSemanticState, readWezTermCwd } from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
@@ -33,7 +42,7 @@ import {
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
-import { ownedHistoryReceipt } from "./owned-history-receipt.ts"
+import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
   cmuxConfigPath,
   cmuxHistoryIdentity,
@@ -100,6 +109,7 @@ import {
   hostedWezTermOwnerProof,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
+  readOwnedWezTermPane,
   socketHeldByPid,
   wezTermHistoryIdentity,
 } from "./wezterm-owned-history.ts"
@@ -335,6 +345,10 @@ export interface OwnedTerminal {
    * A hosted arm measures the receipt-named app in this collector's process ancestry; the owned-process
    * arm takes the owner that assertOwnedProcess proved. Absent on every other arm. */
   readonly appPid?: number
+  /** Window identity already proved by this arm's launch/owner evidence. */
+  readonly expectedWindowId?: number
+  /** Legacy hosted arms retain their census policy; new PID-only routes require a unique window. */
+  readonly captureWindowSelection?: "largest" | "unique"
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
@@ -468,6 +482,7 @@ export type HostedDarwinApp = {
   titleUnavailable?: string
   /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
   captureChromeBand?: CaptureChromeBand
+  captureWindowSelection?: "largest" | "unique"
   /**
    * This app was measured and exposes no permitted read of its own pane (#31741, @cto 20b9ffed). The
    * history rows return it as their declared Untestable reason instead of falling back to a screenshot
@@ -512,12 +527,17 @@ export function resolveOwnedAppId(input: {
 }
 
 /** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
-const TERMINAL_APP_HOSTED: HostedDarwinApp = { id: "terminal-app", comm: "Terminal", titleRead: "system-events" }
+const TERMINAL_APP_HOSTED: HostedDarwinApp = {
+  id: "terminal-app",
+  comm: "Terminal",
+  titleRead: "system-events",
+  captureWindowSelection: "largest",
+}
 
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Terminal: TERMINAL_APP_HOSTED,
   // The System Events permission dialog hangs a hosted iTerm2 collector (#33017).
-  iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none" },
+  iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none", captureWindowSelection: "largest" },
   // Ghostty's own scrollback-file action is an acceptable read under @cto a1663f9d's five conditions, so the
   // absence here is Alacritty/Code/Cursor only.
   ghostty: { id: "ghostty", comm: "ghostty", titleRead: "system-events" },
@@ -1254,6 +1274,7 @@ export async function createOwnedTerminal(options: {
   let hostedAncestor: AncestryRow | undefined
   let processOwnerPid: number | undefined
   let terminalAppPid: number | undefined
+  let expectedWindowId: number | undefined
   let processOwnerBasis: string | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
   /** The owned-process arm's own proof, re-run before a later history read (31741). */
@@ -1275,6 +1296,7 @@ export async function createOwnedTerminal(options: {
   } else if (terminalApp) {
     if (process.platform !== "darwin") throw new Error("Terminal.app owner requires Darwin")
     const assertion = parseTerminalAppOwner(terminalApp)
+    expectedWindowId = assertion.windowId
     requireOwnWorker(assertion, expectedLaunchRunId, "Terminal.app")
     binding = darwinOutput(out, assertion.tabTty)
     // The app's pid, for macOS keys posted to that pid only (33587, @cto 60e39dfc b): the assertion
@@ -1329,6 +1351,7 @@ export async function createOwnedTerminal(options: {
     }
     const ownerDaemonPid = darwinAttachment ? darwinAttachment.attachedClient.pid : process.pid
     assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
+    if (assertion.provider === "iterm2") expectedWindowId = assertion.windowId
     // A history read that happens later re-runs this same proof rather than trusting the grant: the
     // pid may be reused and the marker may be gone, and a reading must not outlive the ownership it
     // claims (31741).
@@ -1859,6 +1882,10 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid ?? terminalAppPid
+    const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+    if (hostedApp === TERMINAL_APP_HOSTED && captureDirectory) {
+      expectedWindowId = readTerminalLaunchWindowId(dirname(captureDirectory))
+    }
     // WT uses UIA; WezTerm's candidate uses the owned pane CLI. Both must pass the shared writer's
     // mapping and host-ownership witnesses. Alacritty retains its explicitly unqualified host read.
     const windowsTerminalPid = hostedWindowsApp?.id === "windows-terminal" ? hostedAncestor?.pid : undefined
@@ -1898,6 +1925,8 @@ export async function createOwnedTerminal(options: {
       geometrySource: source,
       summary,
       ...(appPid !== undefined && { appPid }),
+      ...(expectedWindowId !== undefined && { expectedWindowId }),
+      ...(binding.platform === "darwin" && { captureWindowSelection: hostedApp?.captureWindowSelection ?? "unique" }),
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
@@ -1975,9 +2004,120 @@ export async function createOwnedTerminal(options: {
             return { status: "refused", reason: `Terminal process environment unreadable: ${(error as Error).message}` }
           }
         },
+      }),
+      ...((linux || (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin"))) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
+          }
+          if (ownedAppId === "wezterm" && featureId === "extensions.osc7-cwd") {
+            const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
+            const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
+            if (
+              cliVersion !== reviewedVersion ||
+              process.env.TERMINFO_TARGET_VERSION !== reviewedVersion ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              muxAttachmentProof !== undefined ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "WezTerm OSC7 has no reviewed CLI version bound to this App launch",
+              }
+            }
+            const socket = process.env.WEZTERM_UNIX_SOCKET
+            const pane = process.env.WEZTERM_PANE
+            const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+            const onRetained = options.onRetained
+            if (
+              wezTermOwnerCheck === undefined ||
+              ownedWezTermCli === undefined ||
+              ownedWezTermIdentity?.historyExecutable === undefined ||
+              !socket ||
+              !pane ||
+              !/^\d+$/.test(pane) ||
+              !captureDirectory ||
+              !isAbsolute(captureDirectory) ||
+              onRetained === undefined
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "WezTerm OSC7 needs an owned pane, measured CLI and private capture with its artifact observer",
+              }
+            }
+            // Every command uses the current owner, including the private restoration write. In
+            // particular, never pass the callback's publishable writer a URI from the host's pane.
+            const check = async () => {
+              if (!verifiedTerminalOwners.has(owner)) throw new Error("WezTerm OSC7 ownership is no longer live")
+              await wezTermOwnerCheck()
+            }
+            let ownershipReceipt: string | undefined
+            const nativeReads: string[] = []
+            const retainNative = (transcript: string) => {
+              try {
+                nativeReads.push(retain(captureDirectory, Buffer.from(transcript), "json", onRetained))
+              } catch (error) {
+                throw new Error("WezTerm OSC7 native evidence retention failed", { cause: error })
+              }
+            }
+            const reading = await readWezTermCwd({
+              runId: expectedLaunchRunId,
+              captureDirectory,
+              onRetained,
+              async write(text) {
+                await check()
+                out.write(text)
+                await check()
+              },
+              async readPane() {
+                await check()
+                const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
+                await check()
+                if (read.status === "refused") throw new Error(read.reason)
+                retainNative(read.privateTranscript)
+                if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
+                if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
+                  throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
+                }
+                if (
+                  typeof read.cwd !== "string" ||
+                  !read.cwd.startsWith("file://") ||
+                  // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
+                  /[\x00-\x1f\x7f]/.test(read.cwd)
+                ) {
+                  throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
+                }
+                const identity = ownedHistoryReceipt({
+                  surface: "wezterm",
+                  pane,
+                  listedTty: read.tty,
+                  measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+                  socketPresent: true,
+                  executable: ownedWezTermCli,
+                })
+                if (identity.status === "refused") throw new Error(identity.reason)
+                ownershipReceipt = identity.receipt
+                return read.cwd
+              },
+              async readText() {
+                await check()
+                const geometry = await owner.readGeometry()
+                await check()
+                if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
+                const read = readWindowsWezTermRows({ executable: ownedWezTermCli, socket, pane, rows: geometry.rows })
+                await check()
+                if (read.status === "refused") throw new Error(read.reason)
+                retainNative(read.receipt)
+                return read.rows.join("\n")
+              },
+            })
+            if (ownershipReceipt !== undefined && typeof reading.detail === "object" && reading.detail !== null) {
+              Object.assign(reading.detail, { ownershipReceipt, nativeReads })
+            }
+            return reading
+          }
+          if (!linux) {
+            return { status: "invalid" as const, reason: "No owned App semantic reader for this feature on macOS" }
           }
           await owner.readGeometry()
           return readAppSemanticState({
@@ -2209,4 +2349,35 @@ export async function createOwnedTerminal(options: {
     await clipboard?.dispose()
     throw error
   }
+}
+
+export function readTerminalLaunchWindowId(artifactDirectory: string): number {
+  const record = join(artifactDirectory, "terminal-launch.json")
+  if (!existsSync(record)) {
+    throw new Error(
+      `Terminal.app capture requires the launch receipt ${record} that names the owned window id; that record is absent`,
+    )
+  }
+  const raw = readFileSync(record, "utf8")
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (cause) {
+    // A malformed receipt is the operator's evidence to read, never a bare parser error.
+    throw new Error(
+      `Terminal.app launch receipt ${record} is not JSON: ${cause instanceof Error ? cause.message : String(cause)}: ${raw}`,
+    )
+  }
+  const row = parsed as { appId?: unknown; terminalWindow?: { provider?: unknown; windowId?: unknown } }
+  const windowId = row.terminalWindow?.windowId
+  if (
+    row.appId !== "terminal-app" ||
+    row.terminalWindow?.provider !== "terminal-app" ||
+    typeof windowId !== "number" ||
+    !Number.isSafeInteger(windowId) ||
+    windowId < 1
+  ) {
+    throw new Error(`Terminal.app launch receipt ${record} names no owned window id: ${raw}`)
+  }
+  return windowId
 }
