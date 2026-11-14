@@ -925,6 +925,7 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
   const events: string[] = []
   const launches: string[][] = []
   const native: string[][] = []
+  let launcherOpts: Record<string, string> | undefined
   let setupFailure = ""
   const run = (status: number) =>
     runInNewContext(`(async () => {${source}\n})()`, {
@@ -977,6 +978,25 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
           }
         }
         if (id.endsWith("/daemon-client.ts")) return { shellQuote }
+        if (id.endsWith("/cmux-initial-command-launch.ts")) {
+          // The launcher itself is unit-tested beside its source; this caller test pins that the
+          // workflow calls it with the staged command as payload, and nothing else opens the app.
+          return {
+            launchCmuxInitialCommand: async (opts: {
+              configPath: string
+              commandPath: string
+              appBundle: string
+              payloadPath: string
+            }) => {
+              launcherOpts = opts
+              events.push("config")
+              writes.set(opts.configPath, `initial-command = /bin/bash '${opts.commandPath}'\n`)
+              events.push("launch")
+              launches.push(["open", "-a", opts.appBundle])
+              if (status !== 0) throw new Error(`cmux-open-failed: open -a ${opts.appBundle} exited ${status}`)
+            },
+          }
+        }
         throw new Error(`Unexpected cmux launch dependency: ${id}`)
       },
     })
@@ -1009,7 +1029,13 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
     .replace(/^initial-command = /, "")
   const argv = spawnSync("/bin/bash", ["-c", `set -- ${configured}; printf '%s\\0' "$@"`], { encoding: "utf8" })
   expect(argv.status, argv.stderr).toBe(0)
-  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
+  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", "/runner/measurement-artifacts/cmux-command.sh"])
+  expect(launcherOpts).toMatchObject({
+    configPath: "/Users/runner/.config/ghostty/config",
+    appBundle: "/Applications/cmux.app",
+    cmuxExecutable: "/Applications/cmux.app/Contents/MacOS/cmux",
+    payloadPath: command,
+  })
   await expect(run(7)).rejects.toThrow(/open.*7/)
   for (setupFailure of ["write", "type", "value"]) {
     launches.length = 0
