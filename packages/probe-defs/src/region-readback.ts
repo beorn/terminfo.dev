@@ -847,18 +847,52 @@ export function sentinelCellsInFrame(input: {
   // Tier 1 first: a diagonal pair proves both pitches. Only when the frame has none does the
   // same-row tier exist — a tier offered before tier 1 would let a column-only pair win on a frame
   // that had a full pair available (@cto's condition 4: only when no region-free pair exists).
-  const nearestAfter = (accepted: (cellAt: { row: number; col: number }) => boolean) => {
-    for (const cellAt of cellsNearestFirst(a, grid, accepted)) return cellAt
+  //
+  // Tier 1 searches PAIRS, not the mates of one fixed cell (@dev/10's 5x10 frame, 33981 peer read):
+  // the order's first blank cell had no diagonal mate while two other blank cells formed one, so a
+  // mate-only search fell to `same-row` with a full diagonal pair sitting in the same frame. Cell
+  // counts per row and column answer "has a diagonal mate" in one subtraction — the cells off this
+  // cell's row and off its column — so the pair search costs no more than the scan that builds it.
+  // The first cell still comes from the SAME order (the nearest blank cell that can be paired), so a
+  // frame whose earlier cell pairs answers exactly as before.
+  const blankCellsInRow = new Map<number, number>()
+  const blankCellsInColumn = new Map<number, number>()
+  let blankCells = 0
+  for (let row = 1; row <= grid.rows; row += 1) {
+    for (let col = 1; col <= grid.cols; col += 1) {
+      if (!regionFree({ row, col })) continue
+      blankCells += 1
+      blankCellsInRow.set(row, (blankCellsInRow.get(row) ?? 0) + 1)
+      blankCellsInColumn.set(col, (blankCellsInColumn.get(col) ?? 0) + 1)
+    }
+  }
+  const hasDiagonalMate = (cellAt: { row: number; col: number }): boolean =>
+    blankCells - (blankCellsInRow.get(cellAt.row) ?? 0) - (blankCellsInColumn.get(cellAt.col) ?? 0) + 1 > 0
+  const nearestAfter = (
+    anchor: { row: number; col: number },
+    accepted: (cellAt: { row: number; col: number }) => boolean,
+  ) => {
+    for (const cellAt of cellsNearestFirst(anchor, grid, accepted)) return cellAt
     return undefined
   }
-  const diagonal = nearestAfter((cellAt) => regionFree(cellAt) && cellAt.row !== a.row && cellAt.col !== a.col)
-  if (diagonal !== undefined) return { a, b: diagonal, tier: "region-free" }
+  const pairFirst = firstAccepted((cellAt) => regionFree(cellAt) && hasDiagonalMate(cellAt))
+  const diagonal =
+    pairFirst === undefined
+      ? undefined
+      : nearestAfter(
+          pairFirst,
+          (cellAt) => regionFree(cellAt) && cellAt.row !== pairFirst.row && cellAt.col !== pairFirst.col,
+        )
+  if (pairFirst !== undefined && diagonal !== undefined) {
+    return { a: pairFirst, b: diagonal, tier: "region-free" }
+  }
   const sameRow = nearestAfter(
+    a,
     (cellAt) => regionFree(cellAt) && cellAt.row === a.row && Math.abs(cellAt.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP,
   )
   if (sameRow !== undefined) return { a, b: sameRow, tier: "same-row" }
   throw new Error(
-    `No sentinel pair can be anchored in this frame; no second blank cell exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid that differs from cell ${a.row},${a.col} in both row and column, and none shares its row at least ${SAME_ROW_MIN_COLUMN_GAP} columns away${spelledLimitFor("a second cell", "")}`,
+    `No sentinel pair can be anchored in this frame; no diagonal pair exists${spelledFootprint} in the ${grid.rows}x${grid.cols} grid, because no two blank cells differ in both row and column, and no blank cell shares the row of cell ${a.row},${a.col} at least ${SAME_ROW_MIN_COLUMN_GAP} columns away${spelledLimitFor("a second cell", "")}`,
   )
 }
 

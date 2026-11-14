@@ -105,6 +105,51 @@ test("anchors on a lone blank row, a whole cell apart, and says it measured one 
   expect(Math.abs(b.col - a.col)).toBeGreaterThanOrEqual(2)
 })
 
+// @dev/10's peer read of 8f16a313 (33981): the chooser fixed its first cell to the order's first
+// blank cell and searched only THAT cell's diagonal mates, so a frame whose first blank cell can
+// join no diagonal pair fell to `same-row` with a full diagonal pair sitting in the same frame. Row
+// 1's blank run leaves 1,3 first in the order and 1,3 has no diagonal mate of its own, while 1,8 and
+// 4,3 form one. Tier 1 must find a pair, not merely the mates of one cell.
+test("finds a diagonal pair the order's first blank cell cannot join (@dev/10's 5x10 frame)", () => {
+  const peerGrid = { rows: 5, cols: 10 }
+  const peerCell = { width: 8, height: 16 }
+  // One ink pixel per drawn cell: a solid fill makes ink the frame's modal colour and every inked
+  // cell then reads as blank (the trap the wide-glyph fixture below names).
+  const blankRuns = [
+    { row: 1, from: 2, to: 4 },
+    { row: 1, from: 7, to: 9 },
+    { row: 4, from: 2, to: 4 },
+  ]
+  const width = peerGrid.cols * peerCell.width
+  const height = peerGrid.rows * peerCell.height
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 0xff
+  for (let row = 1; row <= peerGrid.rows; row++) {
+    for (let col = 1; col <= peerGrid.cols; col++) {
+      if (blankRuns.some((run) => run.row === row && col >= run.from && col <= run.to)) continue
+      rgba[((row - 1) * peerCell.height * width + (col - 1) * peerCell.width) * 4] = 0x80
+    }
+  }
+  const chosen = sentinelCellsInFrame({
+    rgba,
+    width,
+    height,
+    reading: { x: 0, y: 0 },
+    cell: peerCell,
+    grid: peerGrid,
+    regions: [{ top: 2, bottom: 2, left: 3, right: 3 }],
+  })
+  expect(chosen.tier).toBe("region-free")
+  expect(new Set([chosen.a.row, chosen.b.row]).size).toBe(2)
+  expect(new Set([chosen.a.col, chosen.b.col]).size).toBe(2)
+  expect([chosen.a, chosen.b]).toEqual(
+    expect.arrayContaining([
+      { row: 1, col: 8 },
+      { row: 4, col: 3 },
+    ]),
+  )
+})
+
 // @dev/15's finding on the A+B head: a double-width glyph draws its ink in one half and can leave
 // the other half the background colour, so "every pixel is background" alone would choose the blank
 // half and the restore would erase the glyph whole — @dev/10's rule. The cell a wide glyph could
