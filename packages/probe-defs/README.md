@@ -55,7 +55,7 @@ values (@cto 8c084f05). It is deliberately not the declaration above: that one s
 and is removed by a later app version; this one says this run could not reach the read and is removed by a
 later arm. Neither is ever inferred from a failed screenshot.
 
-The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+The owned App collector supplies an optional semantic-state reader. Linux's exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
 a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
@@ -64,6 +64,23 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
+The Mac WezTerm collector offers that reader only to the CWD row; other rows retain their existing terminal callbacks.
+The measured CLI version and launch version must match the reviewed Linux
+`0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
+Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
+and a safe literal public directory URI. Fresh inert, handled and target controls precede exact
+restoration of the initial URI. The private capture retains the initial/restored values and feed/text
+trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
+An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
+is published only after the write succeeds, and retention failure is a named collector error.
+The restoration writer bypasses the publishable call log. Failed restoration throws through the
+collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
+neither process-CWD inference nor URI normalization supplies an answer.
+The reading carries the existing path-free owned-pane identity receipt. Native pane-list and get-text
+argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
+The initial/restored phase and feed records use that same content-addressed writer and artifact observer;
+the private evidence basename names a registered immutable blob rather than a collector-local file.
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
@@ -178,7 +195,15 @@ made-up OSC control and a distinct independent SGR reference. OSC 112 uses a vis
 CPR, shown/hidden/restored pixels and the made-up control, and both post-reset reads must be cropped
 from the same rectangle as the frames they are compared with; a moved crop is probe-invalid. Only
 unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
-reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
+reset or stack result. A pixel-region read whose target frame carries the expected frame's own background and
+per-pixel ink coverage, within 2 of 255, while its ink COLOUR differs is graded Unsupported as a
+named colour mismatch (osc104), and the reason spells out after, expected and seed colours plus
+whether the target paints the seed's own colour (nothing changed) or a third colour. Each compared
+pixel frame records `background`, `inkColour`, `inkCount` and `contrast` from the crop its
+`regionDigest` hashed; the coverage array itself stays in memory, because a full-run record holds
+millions of compared pixels and the retained PNGs already carry them. The branch refuses at a
+coverage difference of 3 or more, on a background change, on a moved crop, and on ink below
+contrast 40 of 255 or under 16 ink pixels. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
 paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
 the progress shows outside the window the run captures. If set-50 changes the App window and clear
 restores it, the same capture additionally compares stable normal-state37/73/37 pairs, clearing
@@ -396,6 +421,20 @@ not a cursor-mode readback claim.
 Native capture-command failures during installation retain their primary command evidence and
 secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
+
+**The sentinel pair that anchors a moved window** is two cells repainted in the sentinel colour and
+chosen by `witnessCellsFor` in [`region-readback.ts`](src/region-readback.ts). The record names the
+tier that chose them, first match wins: `region-free` (both cells off every digested region row —
+unchanged for every grid that anchored before 34040), `same-row` (the compared region leaves exactly
+one clear row, so the second cell sits on the first cell's own row, never adjacent, at least
+`SAME_ROW_MIN_COLUMN_GAP` columns away), and `no-clear-row` (no row is free at all, so both cells
+move to a column clear of every region and of the probe's own output, a whole cell from any edge,
+still differing in row and column). `readThroughSentinel` accepts a one-row pair on the column pitch
+and on the two boxes sharing a row, and its basis says so: `(one-axis pair: both cells on one row,
+so it measures the column pitch only)`. A pair that proves no row height never authorizes a
+vertical move — `gridMoveExemption` grants nothing from such a seed and `cropPositionRefusal` names
+the reason — and every later frame must match the seed's witness cell coordinates, so it cannot swap
+to a one-row pair behind a two-axis seed.
 
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
@@ -1124,6 +1163,14 @@ cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames 
 new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+
+Owned Darwin apps share the existing window pixel capture, retention and calibration path.
+Their ownership adapter supplies the measured PID and any proved window ID; the common reader
+does not interpret app-specific launch receipts. Newly routed PID-only apps require exactly one
+visible normal-layer owned window, while Terminal.app and iTerm2 retain their existing selection
+policy. Missing retention names an apparatus refusal on affected rows and never selects text as
+a screenshot substitute. Existing text qualification retains its separate frames and write-error
+causes. Routing alone grades no feature and does not authorize a native run.
 
 The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
 The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,

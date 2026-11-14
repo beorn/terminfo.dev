@@ -94,6 +94,7 @@ probe
   .description("Launch and probe macOS terminal apps")
   .argument("[terminal]", "Terminal app to probe")
   .option("--all", "Probe all installed terminals")
+  .option("--hand-read", "Launch one owned WezTerm, read its pane once, and close without probing")
   .option("-f, --force", "Re-run even if cached")
   .option("--output <directory>", "Retain the collected run and original HTTP response privately")
   .option("--probe-ids <json>", "Exact probe IDs as a JSON array; [] executes none", json)
@@ -106,6 +107,7 @@ probe
       output?: string
       probeIds?: unknown
       runId?: string
+      handRead?: boolean
     }) => {
       ensureSourceSuiteEnvironment()
       const { handleApp } = await import("./app.ts")

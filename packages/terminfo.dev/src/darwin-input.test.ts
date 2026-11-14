@@ -117,10 +117,12 @@ describe("macOS input install", () => {
   })
 })
 
-// 33587, @cto 60e39dfc: codimac's console shows other people's apps, so an owned host posts keys
-// only, and nothing but the fixed self-test keys before delivery is proven.
+// 33587, @cto 60e39dfc: codimac's console shows other people's apps, so nothing but the fixed
+// self-test keys may be posted before delivery is proven. Pointer verbs stopped being refused here when
+// @cto ruled (cbc34e67) that their identity is proved in the helper — pid, window, re-read frame, one lock
+// across proof and post — so this guard now covers keys only and lets the proved mechanism through.
 describe("macOS input on an owned host", () => {
-  it("refuses every pointer event, and any key but the self-test keys until delivery is proven", async () => {
+  it("keeps the pre-delivery key restriction and passes pointer verbs to the mechanism that proves identity", async () => {
     const fake = fakeInputMechanism()
     let delivered = false
     const owned = ownedHostMechanism(fake.mechanism, () => delivered)
@@ -129,16 +131,18 @@ describe("macOS input on an owned host", () => {
     await expect(owned.key("a")).rejects.toThrow(/refused on an owned host: only the fixed self-test keys/)
     delivered = true
     await owned.key("a")
-    expect(() => owned.moveTo(1, 2, { verifyPointer: false, dragged: false })).toThrow(/not posted on an owned host/)
-    expect(() => owned.click(1)).toThrow(/not posted on an owned host/)
-    expect(() => owned.press(1)).toThrow(/not posted on an owned host/)
-    expect(() => owned.release(1)).toThrow(/not posted on an owned host/)
+    await owned.moveTo(1, 2, { verifyPointer: true, dragged: false })
+    await owned.click(1)
+    await owned.press(1)
+    await owned.release(1)
     expect(fake.calls.filter((call) => call.op === "key").map((call) => call.args[0])).toEqual([
       DARWIN_INPUT_SELF_TEST_KEYSYM,
       DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
       "a",
     ])
-    expect(fake.calls.some((call) => ["moveTo", "click", "press", "release"].includes(call.op))).toBe(false)
+    expect(
+      fake.calls.filter((call) => ["moveTo", "click", "press", "release"].includes(call.op)).map((call) => call.op),
+    ).toEqual(["moveTo", "click", "press", "release"])
   })
 
   it("posts each key to the app pid with the run's own window id, and logs every helper line", async () => {
@@ -179,7 +183,9 @@ describe("macOS input on an owned host", () => {
         }),
       )
       await input.injectKey("a")
-      await expect(input.injectClick(1)).rejects.toThrow(/not posted on an owned host/)
+      // The click reaches the helper with the pid and the run's own window: the helper re-reads that
+      // window's frame, refuses a point outside it, and posts under its own lock (@cto cbc34e67).
+      await input.injectClick(1)
       const calls = readFileSync(argv, "utf8").trim().split("\n")
       // Every key names the pid and the run's own window; the refused click never reaches a mouse verb.
       // The run's tab tty rides on every key, so the helper proves the selected tab in the same call.
@@ -187,13 +193,23 @@ describe("macOS input on an owned host", () => {
         "key 4242 33 z /dev/ttys004",
         "key 4242 33 a /dev/ttys004",
       ])
-      expect(calls.filter((call) => call.startsWith("mouse"))).toEqual([])
+      // Window-relative coordinates and the identity, in one argv: no screen point leaves this process.
+      expect(calls.filter((call) => call.startsWith("mouse "))).toEqual([
+        "mouse move 4242 33 plain 400 300",
+        "mouse click 4242 33 1",
+      ])
       expect(logged.filter((line) => line.startsWith("posted="))).toEqual([
         "posted=key route=pid frontmost=true front-window=true key=true pid=4242 window=33",
         "posted=key route=pid frontmost=true front-window=true key=true pid=4242 window=33",
       ])
       expect(logged).not.toContain('[{"id":33,"x":40,"y":40,"width":700,"height":400}]')
-      expect(facts[0]).toMatch(/^darwin input installed \(owned host: keys to pid only\): pid 4242, window 33,/)
+      expect(facts[0]).toMatch(
+        /^darwin input installed \(owned host: keys and pointer addressed to the run's own window, one posting at a time\): pid 4242, window 33,/,
+      )
+      // Where the permission comes from rides on the same fact: a rebuilt host must fail recognisably.
+      expect(facts[0]).toMatch(
+        /permission: inherited from the ssh session's \/usr\/libexec\/sshd-keygen-wrapper Accessibility grant/,
+      )
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

@@ -8,7 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
-import { extensionsProbes, OSC22_SILENT_TERMINAL } from "./extensions.ts"
+import { extensionsProbes, OSC22_NO_CONTROL_REPLY } from "./extensions.ts"
 import { NO_SAME_PATH_CONTROL, withReplyFailureEvidence } from "./helpers.ts"
 import {
   contractGaps,
@@ -860,7 +860,7 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
 
 /** Rows whose missing reading carries its own ruled sentence instead of the generic one (@cto a7fb82cc, #33100). */
 const NAMED_NO_OBSERVABLE: Readonly<Record<string, string>> = {
-  "extensions.osc22-pointer": OSC22_SILENT_TERMINAL,
+  "extensions.osc22-pointer": OSC22_NO_CONTROL_REPLY,
 }
 
 const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<

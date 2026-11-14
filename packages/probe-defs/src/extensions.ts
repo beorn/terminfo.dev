@@ -5008,6 +5008,22 @@ async function liveClipboardProbe(
     const nonce = `terminfo-osc52-${randomUUID()}`
     await fixture.writeText(nonce)
     const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
+    // @cto 2026-11-13: a read's feature IS the query, so a control must prove this TTY answers queries at all before
+    // silence can mean anything. Control fails = probe-todo naming the control; control passes and the query is
+    // silent = unsupported. A profile reading names its profile and exact setting; a default reading names nothing.
+    const profileNote = fixture.readProfile
+      ? `${fixture.readProfile.profile}: ${fixture.readProfile.setting}`
+      : undefined
+    if (kind === "read") {
+      const control = await ctx.queryCursorPosition()
+      // probe-todo, never the declared-untestable shape: the channel was not measured, nothing was declared absent.
+      if (!control)
+        return {
+          pass: false,
+          note: "cursor-position control before the OSC 52 read",
+          tests: [{ id: "criterion", status: "probe-todo", reason: "cursor-position control before the OSC 52 read" }],
+        }
+    }
     if (mux) {
       const settled = await settledClipboardReply(
         async () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
@@ -5063,6 +5079,91 @@ async function liveClipboardProbe(
     }
     const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
     const outcome = settled.outcome
+    // @cto 2026-11-13: the control answered and the query never did. What that silence MEANS depends on the
+    // configuration the run measured (@dev/16 peer 18:43: a granting profile is its own case, and the default
+    // decides only default-configuration runs):
+    //  - a read-granting profile (a profile that set read-clipboard and is not deny-read): nothing can hold the
+    //    query behind a prompt, so silence is the feature's absence — unsupported, with the section named;
+    //  - the app's pinned default "ask": a person may be holding the query, and nothing here answers a prompt or
+    //    injects an answer, so the silence grades nothing;
+    //  - pinned "deny"/"absent": silence is the default answer — unsupported;
+    //  - no citation at all: the row names the missing citation instead of guessing.
+    if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+      // A deny-read profile configured the refusal this run measured, so its silence is this run's own setting
+      // talking, not a statement about the app's default (@dev/16 peer).
+      if (fixture.readProfile?.profile === "deny-read") {
+        const reason = "deny-read profile: refusal configured by this run; grades nothing about the default"
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
+      const granting = fixture.readProfile !== undefined
+      const posture = fixture.readDefault?.posture
+      if (granting) {
+        const note = `cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
+          profileNote ? ` (${profileNote})` : ""
+        }`
+        return {
+          pass: false,
+          response: outcome.raw,
+          note,
+          observation: { outcome: "unsupported", assertionType: "query_reply", note },
+          assertions: [
+            {
+              assertionType: "query_reply" as const,
+              kind: "negative" as const,
+              expected: "OSC 52 c returns the independently written payload",
+              observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+            },
+          ],
+        }
+      }
+      if (posture === undefined || posture === "ask") {
+        // @cto 2026-11-13: a citation from another version never grades this run — for a "deny" citation that would
+        // write a wrong negative — so the adapter refuses it and the row names BOTH versions instead of claiming no
+        // citation exists.
+        let reason: string
+        if (posture === "ask") {
+          reason = "default asks the user; the prompt was not answered"
+        } else if (fixture.readDefaultRefusal !== undefined) {
+          reason = `cursor-position control answered; OSC 52 c returned no reply; ${fixture.readDefaultRefusal}`
+        } else {
+          reason =
+            "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+        }
+        // @dev/16 peer, and @cto's "attach an existing capture, do not add one": a frame the run already takes is kept
+        // next to an undecided row, in case the prompt is visible in it. Nothing here answers the prompt.
+        if (ctx.capture) {
+          const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
+          return {
+            pass: false,
+            note: reason,
+            tests: [{ id: "criterion", status: "probe-todo", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              assertionType: "screenshot",
+              screenshotRef: frame.ref,
+              note: `${reason}; the frame is attached in case a prompt is visible, and this run does not answer one`,
+            },
+          }
+        }
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
+      }
+      const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
+      return {
+        pass: false,
+        response: outcome.raw,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply" as const,
+            kind: "negative" as const,
+            expected: "OSC 52 c returns the independently written payload",
+            observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+          },
+        ],
+      }
+    }
     const result = clipboardQueryResult(outcome, nonce, settled)
     if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
@@ -5078,7 +5179,15 @@ async function liveClipboardProbe(
         },
       }
     }
-    return result
+    return profileNote && kind === "read" && result.observation
+      ? {
+          ...result,
+          observation: {
+            ...result.observation,
+            note: result.observation.note ? `${result.observation.note} (${profileNote})` : profileNote,
+          },
+        }
+      : result
   })
 }
 
@@ -5981,9 +6090,27 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
 }
 
 const OSC22_CURRENT_QUERY = "\x1b]22;?__current__\x07"
-/** A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). */
+/**
+ * The same-run control every OSC 22 read must pass first: a CPR asked by this process is answered by whatever
+ * terminal is reading this session, so it separates "the app has no shape read method" from "nothing here was
+ * reading at all" (@cto 91ec1211, 2026-11-13). It is a control, not evidence about pointer shapes.
+ */
+const OSC22_CONTROL_QUERY = "\x1b[6n"
+const OSC22_CONTROL_REPLY = /^\x1b\[\d+;\d+R$/u
+/**
+ * A terminal that does not answer the OSC 22 query form, in the criterion's terms (@cto a7fb82cc). Kept as the
+ * one written home of this sentence: 15 stored probe records already carry it as their
+ * extensions.osc22-pointer reason (15 of the 189 records under content/, parsed 2026-11-13; each writes it
+ * twice, as the row's reason and its criterion's). No code reads this export by name.
+ */
 export const OSC22_SILENT_TERMINAL =
   "Open: the terminal gave no OSC 22 selected-shape reply, and silence on the query form is not unsupported, because a terminal can set pointer shapes without answering the query; with no reply, a cursor query cannot show the shape, and the visible pointer is outside this run's evidence."
+/** Control answered, shape query silent: this app offers no read method for the shape here (@cto 91ec1211). */
+export const OSC22_READ_METHOD_UNAVAILABLE =
+  "Open: this run's control was answered and the OSC 22 selected-shape query was not, so this app offers no read method for the shape in this run; a silent read-back is a read-method gap, never an unsupported."
+/** Nothing answered, control included: no observation exists, so nothing is decided (@cto 91ec1211). */
+export const OSC22_NO_CONTROL_REPLY =
+  "Open: neither this run's control nor the OSC 22 selected-shape query was answered, so nothing here shows the terminal was reading this session at all; with no observation the row is not decided."
 /** A multiplexer stays open by design: the pointer is the outer terminal's (@cto a7fb82cc). */
 export function osc22SilentMultiplexer(_mux: "tmux" | "screen"): string {
   return "Open by design only for a run with no command record from the outer terminal: without that record nothing shows what the multiplexer sent."
@@ -8938,6 +9065,10 @@ const extensionDefinitions: ProbeDefinition[] = [
         }
         if (ctx.capture && ctx.captureKind !== "text-cells") return osc22PointerAppCapture(ctx)
         const query = OSC22_CURRENT_QUERY
+        // Ask the control first: without a passing control a silent shape query cannot say whether the app has no
+        // read method or whether nothing was reading this session (@cto 91ec1211).
+        const control = await ctx.queryOutcome(OSC22_CONTROL_QUERY, OSC22_CONTROL_REPLY)
+        const controlAnswered = OSC22_CONTROL_REPLY.test(control.raw)
         const read = async () => {
           const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)
           return { ...readOsc22Shape(outcome.raw), reason: outcome.reason }
@@ -8946,10 +9077,15 @@ const extensionDefinitions: ProbeDefinition[] = [
         if (initial.shape === undefined) {
           // @cto a7fb82cc (#33100): silence on the query form is never Unsupported, and an answered OSC
           // colour query is no control for OSC 22. Each subject says why it stays open.
-          const reason = ctx.mux === undefined ? OSC22_SILENT_TERMINAL : osc22SilentMultiplexer(ctx.mux)
+          const reason =
+            ctx.mux === undefined
+              ? controlAnswered
+                ? OSC22_READ_METHOD_UNAVAILABLE
+                : OSC22_NO_CONTROL_REPLY
+              : osc22SilentMultiplexer(ctx.mux)
           return {
-            ...notTestedResult(reason, { query, initial }),
-            note: `No initial OSC 22 selected-shape reply; shape untouched, visible pointer not read; ${reason}`,
+            ...notTestedResult(reason, { control: { raw: control.raw, reason: control.reason }, query, initial }),
+            note: `No initial OSC 22 selected-shape reply; control ${controlAnswered ? "answered" : "unanswered"}; shape untouched, visible pointer not read; ${reason}`,
           }
         }
         const controlShape = initial.shape === "text" ? "wait" : "text"

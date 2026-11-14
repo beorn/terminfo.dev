@@ -10,7 +10,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
-import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
+import { appSemanticDeclarations, readSessionBus, readWezTermCwd } from "../app-semantic-state.ts"
 import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -41,6 +41,7 @@ import { finishCapture } from "../capture-core.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
+import { parseOrdinaryOpenReceipt, type LiveAncestryReader } from "../ordinary-open-receipt.ts"
 
 // Most cases stub only decode-context measurement; its evidence owner below exercises the real
 // round trip. Every other tty export stays real, so the batch path under test is unchanged.
@@ -998,6 +999,224 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   ])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
+})
+
+function ordinaryOpenReceiptFixture(overrides: Record<string, unknown> = {}) {
+  const runId = "a".repeat(32)
+  const nonce = `nonce-${runId}-b7d1`
+  return parseOrdinaryOpenReceipt(
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "ordinary-open-app",
+      runId,
+      collectedAt: "2026-11-13T19:00:00Z",
+      subject: {
+        id: "iterm2",
+        bundleId: "com.googlecode.iterm2",
+        version: "3.5.14",
+        executableInBundle: "iTerm.app/Contents/MacOS/iTerm2",
+      },
+      ancestry: {
+        appPid: 4711,
+        chain: [
+          { pid: 4802, executable: "bun" },
+          { pid: 4790, executable: "zsh" },
+          { pid: 4711, executable: "iTerm2" },
+        ],
+      },
+      nonce: { value: nonce, sha256: createHash("sha256").update(nonce).digest("hex") },
+      witness: { command: "pbpaste", exit: 0, matched: true },
+      baselineRestore: { length: 12, sha256: "b".repeat(64), restored: true },
+      signature: { teamId: "H7H8Q7M5BK", signingIdentifier: "com.googlecode.iterm2" },
+      ...overrides,
+    }),
+  )
+}
+
+/** The live walk a real ordinary-open run gets: this process -> zsh -> the app the receipt names. */
+function liveAncestryToApp(reaches = 4711): LiveAncestryReader {
+  return {
+    parent(pid) {
+      if (pid === process.pid) return { pid: 4790, executable: "zsh" }
+      if (pid === 4790) return { pid: reaches, executable: "iTerm2" }
+      if (pid === reaches) return { pid: 1, executable: "launchd" }
+      return undefined
+    },
+  }
+}
+
+function ordinaryOpenClipboard(): LinuxClipboardAdapter {
+  return {
+    profile: "default",
+    pasteboard: "darwin",
+    pasteboardApp: "iterm2",
+    config: null,
+    permissions: "clipboard: read=allow,write=allow",
+    summary: "ordinary-open pasteboard for iTerm2",
+    assertOwned: async () => {},
+    readTitle: async () => {
+      throw new Error("An ordinary-open receipt carries no title reader")
+    },
+    dispose: async () => {},
+    async withClipboardFixture(work, _trace, verify) {
+      await verify()
+      return work({ readText: async () => "fixture", writeText: async () => {} })
+    },
+  }
+}
+
+// @failure A receipt for an app a person opened themselves grants a row it is not about, or grants its three OSC 52
+//   rows on stored bytes alone — either way a Mac row is graded on evidence nobody can trace.
+// @level l1
+// @consumer the OSC 52 gate on an ordinary-open receipt (@cto 2026-11-13).
+it("refuses an ordinary-open receipt on a row outside the OSC 52 set, naming that row", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const batch = await runProbeBatch({
+    ids: ["modes.bracketed-paste"],
+    captureRunId: "a".repeat(32),
+    subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+    ordinaryOpen: {
+      receipt: ordinaryOpenReceiptFixture(),
+      clipboard: ordinaryOpenClipboard(),
+      expectedBundleId: "com.googlecode.iterm2",
+      readAncestry: liveAncestryToApp(),
+    },
+  })
+  expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")).toMatchObject({
+    status: "probe-todo",
+    reason: "Required grant missing: an ordinary-open receipt admits only the OSC 52 rows, not modes.bracketed-paste",
+  })
+})
+
+it("admits an OSC 52 row when the live ancestry still reaches the app the receipt names", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  const readFixture = vi.fn()
+  try {
+    definition.term = async (probeSource) =>
+      probeSource.withClipboardFixture!(async (fixture) => {
+        readFixture(await fixture.readText())
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      })
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: "com.googlecode.iterm2",
+        readAncestry: liveAncestryToApp(),
+      },
+    })
+    expect(readFixture).toHaveBeenCalledWith("fixture")
+    expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toMatchObject({
+      status: "supported",
+    })
+  } finally {
+    definition.term = originalTerm
+  }
+})
+
+it("keeps an OSC 52 row probe-todo when the live ancestry no longer reaches the app", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc52-read"],
+    captureRunId: "a".repeat(32),
+    subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+    ordinaryOpen: {
+      receipt: ordinaryOpenReceiptFixture(),
+      clipboard: ordinaryOpenClipboard(),
+      expectedBundleId: "com.googlecode.iterm2",
+      readAncestry: liveAncestryToApp(9999),
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc52-read")
+  expect(row).toMatchObject({ status: "probe-todo" })
+  expect(row?.reason).toContain("read method unavailable here: the live ancestry from pid")
+})
+
+/** Passes the gate's walk, then loses the chain: the fixture-time re-walk must refuse rather than grade. */
+function ancestryFailingAfterFirstWalk(): LiveAncestryReader {
+  let starts = 0
+  return {
+    parent(pid) {
+      if (pid === process.pid) {
+        starts += 1
+        if (starts > 1) return undefined
+        return { pid: 4790, executable: "zsh" }
+      }
+      if (pid === 4790) return { pid: 4711, executable: "iTerm2" }
+      if (pid === 4711) return { pid: 1, executable: "launchd" }
+      return undefined
+    },
+  }
+}
+
+// @cto 2026-11-13 fail-open path 1: the fixture clause must key on an explicit admission, not on "no refusal was
+// computed". A row that does not need ownership must still get no adapter, and a missing bundle id must never pass.
+it("gives no clipboard fixture to an OSC 52 row that does not need ownership when no bundle id is named", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  const originalWrites = definition.termWrites
+  const seen: unknown[] = []
+  try {
+    definition.termWrites = "query"
+    definition.term = async (probeSource) => {
+      seen.push(probeSource.withClipboardFixture)
+      return { pass: true, observation: { outcome: "unsupported", assertionType: "query_reply" } }
+    }
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: undefined,
+        readAncestry: liveAncestryToApp(),
+      },
+    })
+    expect(seen).toEqual([undefined])
+    expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toBeDefined()
+  } finally {
+    definition.term = originalTerm
+    definition.termWrites = originalWrites
+  }
+})
+
+// @dev/16 19:42 item 3: a walk that passes at the gate and fails inside the fixture must stay a named probe-todo,
+// not degrade into an ungraded collector-error.
+it("keeps the named probe-todo when the live walk fails inside the fixture after passing at the gate", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  try {
+    definition.term = async (probeSource) =>
+      probeSource.withClipboardFixture!(async (fixture) => {
+        await fixture.readText()
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      })
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: "com.googlecode.iterm2",
+        readAncestry: ancestryFailingAfterFirstWalk(),
+      },
+    })
+    const row = batch.results.find((result) => result.featureId === "extensions.osc52-read")
+    expect(row).toMatchObject({ status: "probe-todo" })
+    expect(row?.reason).toContain("read method unavailable here")
+    expect(batch.ungradedDiagnostics?.["extensions.osc52-read"]).toBeUndefined()
+  } finally {
+    definition.term = originalTerm
+  }
 })
 
 // A caller cannot manufacture ownership by satisfying the owner's public TypeScript shape.
@@ -4059,6 +4278,84 @@ it("records failed clipboard restoration as collector error rather than retainin
   ])
   expect(batch.suiteComplete).toBe(false)
 })
+
+// A direct semantic reading cannot see the collector's publishable call log or run-level failure.
+// The actual batch and shared observer must retain a home URI privately and revoke a failed restore.
+it.each([false, true])(
+  "WezTerm CWD batch keeps host URIs private and reports failed restoration: %s",
+  async (failRestore) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-batch-"))
+    receiptDirectories.push(directory)
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    const privateWrites: string[] = []
+    const retainedPhases: Array<{ path: string; sha256: string }> = []
+    const captured: { reading?: AppSemanticReading } = {}
+    const id = "extensions.osc7-cwd"
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        async readAppSemanticState(featureId, _publishableWrite) {
+          expect(featureId).toBe(id)
+          captured.reading = await readWezTermCwd({
+            onRetained: (artifact) => retainedPhases.push(artifact),
+            runId: "a".repeat(32),
+            captureDirectory: directory,
+            write(bytes) {
+              privateWrites.push(bytes)
+              text = bytes
+              const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+              if (command && !(failRestore && command[1] === initial)) cwd = command[1]!
+            },
+            readPane: async () => cwd,
+            readText: async () => text,
+          })
+          return captured.reading
+        },
+      },
+    })
+    const published = JSON.stringify(batch)
+    expect(published).not.toContain(initial)
+    expect(published).not.toContain("private-person")
+    expect(privateWrites).toHaveLength(4)
+    expect(privateWrites.at(-1)).toContain(initial)
+    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8")) as {
+      initial?: string
+      phases: unknown[]
+    }
+    expect(phaseRecord.initial).toBe(initial)
+    expect(phaseRecord.phases).toContainEqual(
+      expect.objectContaining({ name: "restoration", feed: expect.stringContaining(initial) }),
+    )
+    const row = batch.results.find((result) => result.featureId === id)
+    if (failRestore) {
+      expect(batch.rawReplies[id]).toBeDefined()
+      expect(cwd).not.toBe(initial)
+      expect(row?.status).not.toBe("supported")
+      expect(batch.suiteComplete).toBe(false)
+      expect(JSON.stringify(batch.ungradedDiagnostics[id])).toContain("pane's reported directory was left changed")
+      expect(phaseRecord.phases).toContainEqual(
+        expect.objectContaining({ name: "restoration", error: expect.any(String) }),
+      )
+    } else {
+      expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
+      expect(cwd).toBe(initial)
+      expect(row?.status).toBe("supported")
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      const reading = captured.reading
+      if (reading?.status !== "measured") throw new Error("No measured CWD reading")
+      const detail = reading.detail as { privateEvidence: string; restoredEqual: boolean }
+      expect(detail.restoredEqual).toBe(true)
+      expect(retainedPhases.some((artifact) => basename(artifact.path) === detail.privateEvidence)).toBe(true)
+      expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+    }
+  },
+  15_000,
+)
 
 // #30932 AC3: a TTY-only log loses the source's optional capture method. The saved-rendition
 // reference now needs pixel geometry before capture; replay must retain that same source shape

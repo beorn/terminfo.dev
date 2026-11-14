@@ -95,6 +95,22 @@ describe("33982 whole-row grid move", () => {
     expect(refusal(compared)).not.toBeNull()
   })
 
+  it("refuses a whole-row move when the pair sits on one row, and says the row height was never measured (34040)", () => {
+    // Tier 2 anchors two witness cells on ONE row, two columns apart: it proves the column pitch and
+    // nothing about the row, so no vertical move can be accepted from it however tidy the boxes look.
+    const oneRow = {
+      witness: {
+        a: { cell: { row: 1, col: 2 }, box: { x: firstOrigin.x + 16, y: firstOrigin.y } },
+        b: { cell: { row: 1, col: 4 }, box: { x: firstOrigin.x + 48, y: firstOrigin.y } },
+      },
+    }
+    const compared = [frame("seed", firstOrigin, oneRow), frame("expected", movedOrigin, oneRow)]
+    expect(gridMoveExemption(compared)).toEqual([])
+    expect(refusal(compared)?.tests?.[0]?.reason).toMatch(
+      /and the sentinel pair measured no row height \(both witness cells on row 1\), so a vertical move cannot be accepted from it/,
+    )
+  })
+
   it("refuses a move of half a row", () => {
     const half = { x: movedOrigin.x, y: movedOrigin.y + cell.height / 2 }
     const compared = [frame("seed", firstOrigin), frame("expected", half)]

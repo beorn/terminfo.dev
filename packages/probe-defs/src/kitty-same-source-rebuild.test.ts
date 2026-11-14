@@ -43,9 +43,33 @@ const run1249 = {
   ],
 } satisfies HeadlessRuntimeIdentity
 
+/** The 2026-11-13T21-49-03Z run at termless 3da7fd0e: the 34034 bridge and layout, and another re-patched binary (34051). */
+const run2149 = {
+  ...run1249,
+  termlessRevision: "3da7fd0efaade8268c8940ae93e92fc2f74bf58e",
+  loadedBinary: {
+    path: "/nix/store/6dp446p5-kitty-official-binary-0.49.2/bin/kitty",
+    sha256: "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83",
+  },
+  provenance: {
+    ...run1249.provenance,
+    sha256: "cd8e986533e83b7d1fb0621d110fa41be45655353a14662ff3e04351fc41ae83",
+  },
+  adapterSources: run1249.adapterSources.map((entry) =>
+    entry.path.endsWith("bridge.py")
+      ? { ...entry, blobOid: "94e5f97e5933625355b5c988721027f684f9f204" }
+      : entry.path.endsWith("native-mode-layout.json")
+        ? { ...entry, blobOid: "37594baca0cbd3ebf847478a47db999d937506ba" }
+        : entry.path.endsWith("native-mode-layout.receipt.json")
+          ? { ...entry, blobOid: "189dd4fdd9780f841756928e237490f75dfbb947" }
+          : entry,
+  ),
+} satisfies HeadlessRuntimeIdentity
+
 const otherBinary = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
 const identities = {
   "the 12:49Z run": run1249,
+  "the 21:49Z run (termless 3da7fd0e)": run2149,
   "the same source and adapter with other binary bytes": {
     ...run1249,
     loadedBinary: { ...run1249.loadedBinary, sha256: otherBinary },

@@ -14,8 +14,11 @@
  *
  * The decision is digest EQUALITY and nothing else: after equals expected is supported; after equals
  * seed (the sequence left the screen untouched) or equals the row's `ignored` frame (the sequence ran
- * while dropping the one attribute the row claims) is unsupported behind a proven paint; anything
- * else is inconclusive BY NAME. No tolerance, no similarity, no glyph reading. A missing paint
+ * while dropping the one attribute the row claims) is unsupported behind a proven paint; a pair that
+ * is the expected frame's own background and glyph coverage in a different ink colour is unsupported
+ * as a NAMED colour result (osc104, below); anything else is inconclusive BY NAME. No glyph reading:
+ * the colour branch compares per-pixel coverage that each frame normalised by its OWN ink, so the one
+ * tolerance it carries is 8-bit rounding (2 of 255), named with its measurement beside the constant. A missing paint
  * witness, a capture that is not byte-stable, or a paint seen outside the sentinel region is never a
  * negative.
  *
@@ -31,6 +34,8 @@ import type {
   AssertionType,
   CapturePixelGeometry,
   CaptureRectangle,
+  CaptureRenderingAxes,
+  PixelObservationFrame,
   ColourNoAttributeWitness,
   ObservationFrame,
   PixelCellCrop,
@@ -61,6 +66,11 @@ export interface RegionCapture {
    * text area per frame, so a frame cropped 26 px away is not the same cells (29580).
    */
   regionRectangle?: CaptureRectangle
+  /**
+   * The rendering axes and their per-pixel coverage, when the capture adapter measured them. In
+   * memory only: a stored frame carries `CaptureRenderingAxes` without the coverage array.
+   */
+  rendering?: CaptureRenderingAxes
   frame: ObservationFrame
 }
 
@@ -97,6 +107,7 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
       regionDigest: digests.cells,
       pixelsDigest: digests.whole,
       ...(frame.regionRectangle ? { regionRectangle: frame.regionRectangle } : {}),
+      ...(frame.rendering ? { rendering: frame.rendering } : {}),
       frame,
     }
   }
@@ -499,6 +510,31 @@ function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): re
 export const CELL_EDGE_TOLERANCE_PX = 1
 
 /**
+ * The tier a sentinel pair came from (34040, @cto 2026-11-13). A read's own record names it, so a
+ * reader can tell a pair that avoided every digested row from one that had to share a row.
+ * `same-row` pairs measure the COLUMN pitch only, which is why no vertical move may rest on one.
+ */
+export type WitnessTier = "region-free" | "same-row" | "no-clear-row"
+
+/**
+ * How many columns a same-row pair is kept apart (34040, @cto). One whole cell of gap, never
+ * adjacent: with the cells touching, a horizontal run of sentinel colour or a full-line repaint is
+ * one wide box and would read as two cells; with a cell between them it fails the size test first.
+ */
+export const SAME_ROW_MIN_COLUMN_GAP = 2
+
+/**
+ * How many pixels a correctly sized sentinel box may be SHORT of its area (34015). A rendered cell is
+ * not a filled rectangle: an anti-aliased corner or the read's own restored pixel leaves a couple of
+ * pixels inside a box that is otherwise exactly the cell. The number is the same slack the edges
+ * already get, named ONCE so the size test and the fill test cannot drift apart. It is used as BOTH
+ * an edge length (how far a box may sit short on one axis) and a pixel count (how far its fill may
+ * sit short of width x height) — the same "one blended line" quantity measured two ways, which is
+ * only coherent because the constant is that one line's size.
+ */
+export const SENTINEL_BOX_SLACK_PX = 2 * CELL_EDGE_TOLERANCE_PX
+
+/**
  * Whether a located sentinel is one solid cell block of the expected size. The ONE spelling of that
  * test: the post-hoc layout check and the per-read origin derivation must agree, or a frame one of
  * them accepts is a frame the other refuses. Returns the clause, or undefined when it fits.
@@ -507,15 +543,46 @@ export function sentinelBlockRefusal(
   located: { box: { width: number; height: number }; pixels: number },
   cell: { width: number; height: number },
 ): string | undefined {
-  const fits = (size: number, expected: number) => size <= expected && size >= expected - 2 * CELL_EDGE_TOLERANCE_PX
+  const fits = (size: number, expected: number) => size <= expected && size >= expected - SENTINEL_BOX_SLACK_PX
+  const area = located.box.width * located.box.height
   if (
-    located.pixels !== located.box.width * located.box.height ||
+    located.pixels > area ||
+    located.pixels < area - SENTINEL_BOX_SLACK_PX ||
     !fits(located.box.width, cell.width) ||
     !fits(located.box.height, cell.height)
   ) {
     return `${located.pixels} px in a ${located.box.width}x${located.box.height} box, against a ${cell.width}x${cell.height} cell`
   }
   return undefined
+}
+
+/**
+ * The pixels a correctly sized sentinel box is short of its area, when it is short at all (34015). An
+ * accepted box that leaned on the slack says so on the row, so a reader can count how many reads did
+ * rather than infer it from a silence; a box that fills its area returns undefined.
+ */
+export function sentinelBoxDeficit(located: {
+  box: { width: number; height: number }
+  pixels: number
+}): { pixels: number; area: number; short: number } | undefined {
+  const area = located.box.width * located.box.height
+  const short = area - located.pixels
+  return short > 0 ? { pixels: located.pixels, area, short } : undefined
+}
+
+/**
+ * What a read says when a box it ACCEPTED was short of its area (34015): the pixel count and the area
+ * of every such box, in the read's own basis, which travels on the frame — so a reader can count how
+ * many reads leaned on the slack instead of inferring it from a silence. Empty when every box fills.
+ */
+export function sentinelFillClause(
+  boxes: ReadonlyArray<{ box: { width: number; height: number }; pixels: number }>,
+): string {
+  const short = boxes
+    .map((entry) => sentinelBoxDeficit(entry))
+    .filter((entry): entry is { pixels: number; area: number; short: number } => entry !== undefined)
+    .map((entry) => `${entry.pixels} of ${entry.area} px`)
+  return short.length === 0 ? "" : `; sentinel box accepted short of its area (${short.join(", ")})`
 }
 
 /**
@@ -686,9 +753,34 @@ export function witnessCellsFor(
   regions: readonly CaptureCells[],
   grid: { rows: number; cols: number },
   avoid: readonly CaptureCells[] = [],
-): { a: { row: number; col: number }; b: { row: number; col: number } } {
-  const a = witnessCellFor(regions, grid, avoid)
+): { a: { row: number; col: number }; b: { row: number; col: number }; tier: WitnessTier } {
   const footprint = [...regions, ...avoid]
+  // Tier 3 (34040, @cto): when no row is free of every digested region, both cells move to a COLUMN
+  // clear of every region and of the probe's own output, at least one whole cell from any edge — the
+  // adjacent column is where a wide glyph straddles and is erased with it. The pair still differs in
+  // row AND column, so it proves both pitches; only "never on a region row" is given up, and the
+  // clearance is what replaces it. Chosen here because `witnessCellFor` is the chooser that used to
+  // throw "no row is left for a cell".
+  const inGrid = (cell: { row: number; col: number }): boolean =>
+    cell.row >= 1 && cell.col >= 1 && cell.row <= grid.rows && cell.col <= grid.cols
+  const edgeClear = (cell: { row: number; col: number }): boolean =>
+    footprint.every((region) => cell.col <= region.left - 2 || cell.col >= region.right + 2)
+  const firstRegion = regions[0]
+  let a: { row: number; col: number }
+  let onlyColumnsClear = false
+  try {
+    a = witnessCellFor(regions, grid, avoid)
+  } catch (error) {
+    if (firstRegion === undefined) throw error
+    const [fallback] = cellsNearestFirst(
+      { row: firstRegion.top, col: firstRegion.left },
+      grid,
+      (cell) => inGrid(cell) && edgeClear(cell),
+    )
+    if (fallback === undefined) throw error
+    a = fallback
+    onlyColumnsClear = true
+  }
   const digested = (cell: { row: number; col: number }): boolean =>
     footprint.some(
       (region) =>
@@ -715,10 +807,35 @@ export function witnessCellsFor(
     { row: a.row + 2, col: a.col + 1 },
     { row: a.row + 2, col: a.col - 1 },
   ]
-  const found = preferred.find((cell) => usable(cell))
-  if (found) return { a, b: found }
-  for (const cell of cellsNearestFirst(a, grid, usable)) {
-    return { a, b: cell }
+  // When the first cell came from the column-clear fallback, the whole pair is a tier-3 pair: the
+  // second cell keeps the same edge clearance, and the record says "no-clear-row" rather than
+  // claiming a region-free pair the frame never had (@dev/10 peer read, 34040).
+  const tier: WitnessTier = onlyColumnsClear ? "no-clear-row" : "region-free"
+  const acceptable = onlyColumnsClear ? (cell: { row: number; col: number }) => usable(cell) && edgeClear(cell) : usable
+  const found = preferred.find((cell) => acceptable(cell))
+  if (found) return { a, b: found, tier }
+  if (!onlyColumnsClear) {
+    for (const cell of cellsNearestFirst(a, grid, usable)) {
+      return { a, b: cell, tier: "region-free" }
+    }
+  // Tier 2 (34040, @cto 2026-11-13): when the compared region leaves exactly one clear row, the
+  // second cell can only sit on the first cell's OWN row, so the pair measures the column pitch and
+  // nothing else. Two conditions make that safe: the two cells are never adjacent — a gap of at
+  // least one whole cell, so a horizontal run of sentinel colour or a full-line repaint reads as
+  // ONE wide box and fails the size test rather than passing as two cells — and no vertical move is
+  // ever accepted on such a pair (`gridMoveExemption` refuses a zero row gap by name).
+    const sameRow = (cell: { row: number; col: number }): boolean =>
+      cell.row === a.row && Math.abs(cell.col - a.col) >= SAME_ROW_MIN_COLUMN_GAP && accepts(cell)
+    for (const cell of cellsNearestFirst(a, grid, sameRow)) {
+      return { a, b: cell, tier: "same-row" }
+    }
+  }
+  if (onlyColumnsClear) {
+    const pairCell = (cell: { row: number; col: number }): boolean =>
+      inGrid(cell) && edgeClear(cell) && cell.row !== a.row && cell.col !== a.col
+    for (const cell of cellsNearestFirst(a, grid, pairCell)) {
+      return { a, b: cell, tier: "no-clear-row" }
+    }
   }
   throw new Error(
     // The limit is measured from the compared region alone, because that is what the SECOND cell
@@ -779,8 +896,10 @@ export async function layoutSinceCalibration(check: {
     return `probe text not in view: calibration's sentinel painted at ${where} is nowhere in the window within ${timeoutMs} ms`
   }
   const { box, pixels } = located
-  const fits = (size: number, cellSize: number) => size <= cellSize && size >= cellSize - 2 * CELL_EDGE_TOLERANCE_PX
-  if (pixels !== box.width * box.height || !fits(box.width, crop.width) || !fits(box.height, crop.height)) {
+  // The ONE spelling of the block test (its own comment says so): the post-hoc layout check and the
+  // per-read derivation must agree, or a frame one accepts is a frame the other refuses (@dev/10).
+  const blockRefusal = sentinelBlockRefusal({ box, pixels }, crop)
+  if (blockRefusal !== undefined) {
     return `sentinel found but not as one cell block: ${pixels} px in a ${box.width}x${box.height} box at ${box.x},${box.y}, against a ${crop.width}x${crop.height} cell painted at ${where}`
   }
   if (
@@ -884,6 +1003,16 @@ const insideImage = (rectangle: CaptureRectangle, image: { width: number; height
  * does is a frame whose cell size and grid are intact, which is what makes the derived origin land on
  * the cells the read named.
  */
+/**
+ * Whether the pair in this crop sat on ONE row, so it measured the column pitch and no row height
+ * (34040 tier 2). Its own tier says so; the cell rows are the fact, checked here so a hand-built
+ * witness cannot claim otherwise.
+ */
+export function pairMeasuredNoRowHeight(crop: PixelCellCrop): boolean {
+  const pair = crop.witness
+  return pair !== undefined && pair.a.cell.row === pair.b.cell.row
+}
+
 function witnessProvesPitch(crop: PixelCellCrop, first: PixelCellCrop): boolean {
   const here = crop.witness
   const seed = first.witness
@@ -934,6 +1063,10 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
   const first = seed.crop
   if (first === undefined || seed.rectangle === undefined) return []
   if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return []
+  // A pair painted on ONE row proved the column pitch and never a row height (34040 tier 2, @cto),
+  // so it can never carry a vertical move. Refused here rather than left to the arithmetic, which
+  // tolerates a zero row gap on purpose; the crop refusal names it (see `pairMeasuredNoRowHeight`).
+  if (pairMeasuredNoRowHeight(first)) return []
   if (!witnessProvesPitch(first, first)) return []
   if (!originFollowsFromBoxA(first)) return []
   const moves: GridMove[] = []
@@ -992,6 +1125,9 @@ export function cropPositionRefusal(input: {
   // every other difference still refuses below, with the sentence it always used.
   if (gridMoveExemption(cropped).length > 0) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
+  const rowHeight = seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
+    ? ` — and the sentinel pair measured no row height (both witness cells on row ${seed.crop.witness?.a.cell.row}), so a vertical move cannot be accepted from it`
+    : ""
   return {
     pass: false,
     response,
@@ -1000,7 +1136,7 @@ export function cropPositionRefusal(input: {
       {
         id: "comparison",
         status: "probe-invalid",
-        reason: `Compared frames were cropped from different positions: ${named}`,
+        reason: `Compared frames were cropped from different positions: ${named}${rowHeight}`,
       },
     ],
     observation: {
@@ -1042,6 +1178,132 @@ async function readRowGroups(
     frames.push(group.frame)
   }
   return reads
+}
+
+/**
+ * Two frames whose per-pixel coverage agrees to within `COLOUR_COVERAGE_TOLERANCE` while their ink
+ * colours differ (osc104), or undefined when the comparison decides nothing.
+ *
+ * Why 2: each frame's coverage divides by its OWN ink distance and lands on 0..255, so the same glyph
+ * blend renders within one or two levels of itself in a different ink — measured worst 2 on Warp's
+ * retained osc104 pair. That is 8-bit rounding of one blend, not a suggested similarity, and it is
+ * not widened to make a row fire: a difference of 3 refuses as before.
+ *
+ * Why the floors: coverage is a fraction of the ink's own distance from the background, so a
+ * near-background ink turns rounding noise into "agreement", and a handful of ink pixels can agree by
+ * accident. Both floors come from the retained osc104 frames (32 crops carrying ink): the lowest
+ * contrast is 81 of 255 and the lowest ink count is 45 pixels, so the floors sit at 40 and 16.
+ *
+ * The two observations are named apart, never merged: the target painting the SEED's colour means the
+ * sequence changed nothing in this region, and a target painting a third colour means it changed into
+ * something that is neither.
+ */
+const COLOUR_COVERAGE_TOLERANCE = 2
+/** Largest channel distance between modal ink and modal background this branch will read. */
+const INK_CONTRAST_FLOOR = 40
+/** Fewest ink pixels this branch will read. */
+const INK_PIXEL_FLOOR = 16
+
+export interface ColourOnlyMismatch {
+  note: string
+  /** Which observation this pair made: the target repainted the seed's own colour, or a third one. */
+  observation: "no-effect" | "third-colour"
+  afterInk: string
+  expectedInk: string
+  seedInk: string
+  worstDelta: number
+}
+
+export function colourOnlyMismatch(
+  id: string,
+  seed: CaptureRenderingAxes | undefined,
+  after: CaptureRenderingAxes | undefined,
+  expected: CaptureRenderingAxes | undefined,
+): ColourOnlyMismatch | undefined {
+  if (!seed || !after || !expected) return undefined
+  if (!(seed.background === after.background && after.background === expected.background)) return undefined
+  if (after.inkColour === expected.inkColour) return undefined
+  for (const frame of [after, expected]) {
+    if (frame.contrast < INK_CONTRAST_FLOOR || frame.inkCount < INK_PIXEL_FLOOR) return undefined
+  }
+  const afterCoverage = after.coverage
+  const expectedCoverage = expected.coverage
+  if (!afterCoverage || !expectedCoverage) return undefined
+  if (afterCoverage.length !== expectedCoverage.length) return undefined
+  let worst = 0
+  for (let index = 0; index < afterCoverage.length; index++) {
+    const delta = Math.abs((afterCoverage[index] ?? 0) - (expectedCoverage[index] ?? 0))
+    if (delta > worst) worst = delta
+  }
+  if (worst > COLOUR_COVERAGE_TOLERANCE) return undefined
+  const noEffect = after.inkColour === seed.inkColour
+  const observation = noEffect
+    ? "the target paints the seed's own colour, so the sequence changed nothing in this region"
+    : "the target paints a third colour, matching neither the seed nor the expected frame"
+  return {
+    observation: noEffect ? "no-effect" : "third-colour",
+    afterInk: after.inkColour,
+    expectedInk: expected.inkColour,
+    seedInk: seed.inkColour,
+    worstDelta: worst,
+    note: `${id}: the frames are the same geometry in a different ink colour — the background (${expected.background}) is identical to the expected frame's and the per-pixel coverage agrees within ${worst} of 255, while the ink colour differs: after ${after.inkColour}, expected ${expected.inkColour}, seed ${seed.inkColour}. ${observation}`,
+  }
+}
+
+/**
+ * Attempt agreement for the colour branch (@cto 91917ee1): the grade is only given when EVERY attempt
+ * that reaches the comparison fires the branch, because a terminal that supports the reset but paints
+ * late would otherwise grade Unsupported from one stale frame — the case the retry exists for.
+ *
+ * The frames of one probe arrive here in capture order, one attempt per trailing "expected frame"
+ * read, and each pixel frame carries the axes of its own crop. Any attempt that matches the expected
+ * ink, refuses on a floor or a move, or arrives without axes makes the row a named refusal; the
+ * per-attempt after colours and their "no effect" / "third colour" labels are kept so a reader can see
+ * that the attempts differed, and neither label is published as the terminal's behaviour.
+ */
+export function colourOnlyAttempts(
+  id: string,
+  frames: ObservationFrame[],
+): { rounds: number; note: string } | { disagreement: string } | undefined {
+  const pixel = frames.filter((frame): frame is PixelObservationFrame => frame.kind !== "text-cells")
+  const rounds: PixelObservationFrame[][] = []
+  let current: PixelObservationFrame[] = []
+  for (const frame of pixel) {
+    current.push(frame)
+    if (frame.label.endsWith("expected frame")) {
+      rounds.push(current)
+      current = []
+    }
+  }
+  if (current.length > 0) rounds.push(current)
+  if (rounds.length < 2) return undefined
+  const observed: { afterInk: string; label: "no-effect" | "third-colour" }[] = []
+  for (const [index, round] of rounds.entries()) {
+    const pick = (suffix: string) => round.filter((frame) => frame.label.endsWith(suffix))
+    const [seed] = pick("pre-edit seed")
+    const [after] = pick("post-sequence target")
+    const [expected] = pick("expected frame")
+    const mismatch =
+      seed && after && expected
+        ? colourOnlyMismatch(id, seed.rendering, after.rendering, expected.rendering)
+        : undefined
+    if (!mismatch) {
+      return {
+        disagreement: `${id}: attempts disagree — attempt ${index + 1} of ${rounds.length} does not read the same colour mismatch as the one that reached this verdict, so no colour result is published for this row`,
+      }
+    }
+    observed.push({ afterInk: mismatch.afterInk, label: mismatch.observation })
+  }
+  const colours = new Set(observed.map((entry) => entry.afterInk))
+  const labels = new Set(observed.map((entry) => entry.label))
+  if (colours.size === 1 && labels.size === 1) return undefined
+  const detail = observed
+    .map((entry, index) => `attempt ${index + 1}: after ${entry.afterInk} (${entry.label})`)
+    .join("; ")
+  return {
+    rounds: observed.length,
+    note: `${id}: after colour differed between attempts — ${detail}. The grade stands on every attempt; the observation above is not published as the terminal's behaviour`,
+  }
 }
 
 /** The declared row groups' Unsupported, citing every frame the region verdict would have cited. */
@@ -1096,15 +1358,6 @@ function rowGroupsNegative(reads: RowGroupRead[][]): boolean {
   )
 }
 
-/**
- * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
- * pixels). A context that answers neither cannot map cells onto the captured window at all, and
- * says so BY NAME instead of falling back to a window width divided by a column count.
- *
- * A terminal that answers no 16 t — alacritty, on Linux and macOS — is not a terminal without a
- * report: it answers the SAME text area twice, in pixels (14 t) and in characters (18 t), so its
- * cell size is the whole-number division of the two (28763).
- */
 /** The two bases a pixel geometry can rest on, named once so a reader sees one spelling. */
 const GEOMETRY_REPORTED = "reported by CSI 16 t"
 const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
@@ -1159,6 +1412,15 @@ export interface PixelGeometryRefusal {
  */
 export type PixelGeometryQuerySource = Pick<TermProbeSource, "queryWithSentinelOutcome">
 
+/**
+ * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
+ * pixels). A context that answers neither cannot map cells onto the captured window at all, and
+ * says so BY NAME instead of falling back to a window width divided by a column count.
+ *
+ * A terminal that answers no 16 t — alacritty, on Linux and macOS — is not a terminal without a
+ * report: it answers the SAME text area twice, in pixels (14 t) and in characters (18 t), so its
+ * cell size is the whole-number division of the two (28763).
+ */
 export async function queryPixelGeometry(
   ctx: PixelGeometryQuerySource,
 ): Promise<{ geometry: PixelGeometry; source: PixelGeometrySource } | PixelGeometryRefusal> {
@@ -1913,6 +2175,9 @@ export async function captureRegionReadbackDecision(
   // Each digest's own crop rectangle, pushed in lockstep with it: two digests mean the same cells
   // only when their rectangles match (29580).
   const cropRectangles: Array<CaptureRectangle | undefined> = []
+  // Each digest's own rendering axes (background, ink colour, geometry mask), in lockstep with it:
+  // two frames can be graded as a colour result only when all three were measured on the same crop.
+  const renderings: Array<CaptureRenderingAxes | undefined> = []
   // Each rectangle's own grid measurement, pushed in the same lockstep: a later frame can only be
   // proved a whole-row move when it says where its origin sat (33982).
   const cropMeasurements: Array<PixelCellCrop | undefined> = []
@@ -2024,6 +2289,7 @@ export async function captureRegionReadbackDecision(
       })
       digests.push(measured.regionDigest)
       cropRectangles.push(measured.regionRectangle)
+      renderings.push(measured.rendering)
       cropMeasurements.push(measured.frame.kind === "text-cells" ? undefined : measured.frame.cellCrop)
       frames.push(measured.frame)
       if (step.role === "target") targetScreenshotRef = measured.frame.ref
@@ -2373,6 +2639,34 @@ export async function captureRegionReadbackDecision(
       })
     }
     if (!supported && !unsupported) {
+      // A pair that is the expected frame's own geometry and background in a different ink colour is
+      // a measurable colour result (osc104): the sequence did not reach the expected paint, and the
+      // only axis that differs is the ink colour the reset should have restored. Graded negative, and
+      // named with both raw colours, instead of refused as "some rendering axis differed".
+      const colourOnly =
+        assertionType === "screenshot" ? colourOnlyMismatch(id, renderings[0], renderings[1], renderings[2]) : undefined
+      if (colourOnly !== undefined) {
+        return review({
+          pass: false,
+          criterionBranch: "colour-only-mismatch",
+          tests: [{ id: "criterion", status: "unsupported", assertionRefs: [0] }],
+          response: observed,
+          observation: {
+            outcome: "unsupported",
+            assertionType,
+            ...cite(targetScreenshotRef, frames),
+            note: colourOnly.note,
+          },
+          assertions: [
+            {
+              assertionType,
+              kind: "negative",
+              expected: `${id}: cell-aligned region ${JSON.stringify(spec.region)} equals the same-run expected frame's geometry and background after ${JSON.stringify(spec.edit)}, in the frame's own ink colour`,
+              observed: `${after} at ink ${renderings[1]?.inkColour ?? "unrecorded"} (expected ink ${renderings[2]?.inkColour ?? "unrecorded"}; ink pixels ${renderings[1]?.inkCount ?? 0} vs ${renderings[2]?.inkCount ?? 0}, contrast ${renderings[1]?.contrast ?? 0} vs ${renderings[2]?.contrast ?? 0} of 255)`,
+            },
+          ],
+        })
+      }
       // The three compared planes are pairwise distinct: the seed and the expected frame already
       // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
       // equals neither. State that OBSERVATION and nothing more: "matched none" told the reader
