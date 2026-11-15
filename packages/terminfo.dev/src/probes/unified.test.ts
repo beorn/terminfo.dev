@@ -2475,7 +2475,7 @@ it("keeps a capture recorded after preparation returns, with identical pixels ke
     termWrites,
   }))
   const samePixels = `sha256:${"a".repeat(64)}`
-  let lateRecorder: ((captured: unknown) => void) | undefined
+  let lateRecorder: Parameters<CapturePreparation>[0]["recordCapture"] | undefined
   process.stdout.write = (() => true) as typeof process.stdout.write
   try {
     for (const definition of definitions) {
@@ -2514,7 +2514,7 @@ it("keeps a capture recorded after preparation returns, with identical pixels ke
           trace: { captureCommand: "fixture-capture" },
         })
         // Handed out here, called by the callback below: the ordering the defect froze out.
-        lateRecorder = recordCapture as (captured: unknown) => void
+        lateRecorder = recordCapture
         source.captureGeometry = {
           geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
           source: "measured by complete raster calibration" as const,
@@ -2600,7 +2600,7 @@ it("keeps each preparation's late acquisitions with the preparation that handed 
     termNeedsGeometry,
     termWrites,
   }))
-  const recorders: Array<(captured: never) => void> = []
+  const recorders: Array<Parameters<CapturePreparation>[0]["recordCapture"]> = []
   const settled = {
     geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
     source: "measured by complete raster calibration" as const,
@@ -2623,7 +2623,7 @@ it("keeps each preparation's late acquisitions with the preparation that handed 
               label: "reset.ris: pre-paint",
             },
             trace: {},
-          } as never)
+          })
         }
         return {
           pass: false,
@@ -2638,7 +2638,7 @@ it("keeps each preparation's late acquisitions with the preparation that handed 
       ownedTerminal: geometryOwner(measured(24, 80)),
       prepareCapture: async ({ source, recordCapture }) => {
         const preparation = recorders.length
-        recorders.push(recordCapture as (captured: never) => void)
+        recorders.push(recordCapture)
         source.write(`calibration:${preparation + 1}`)
         recordCapture({
           frame: {
