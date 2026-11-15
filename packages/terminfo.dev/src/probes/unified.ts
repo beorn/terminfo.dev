@@ -1344,21 +1344,53 @@ export async function runProbeBatch(
     const captureEligible =
       pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
+      // One served path for both kinds. The caller measurement starts at the served entry, BEFORE
+      // withTTYOperation, or the queue and verification interval before the adapter disappears
+      // outside every bucket (34261). The first interval is named for the boundaries it actually
+      // spans - served entry to adapter callback entry - and is not called transport, nor charged
+      // to the queue or to verification. adapterCallbackMs is inclusive: it contains the
+      // collector's own acquisition and finish buckets, so the two are never added together.
+      const servedCapture = async (checkpoint: Parameters<ProbeCapture>[0]) => {
+        captureAttempted = true
+        const entryAt = performance.now()
+        let adapterEnteredAt: number | undefined
+        let adapterReturnedAt: number | undefined
+        const result = await withTTYOperation(
+          async () => {
+            adapterEnteredAt = performance.now()
+            const value = await capture({ featureId: probe.id, ...checkpoint })
+            adapterReturnedAt = performance.now()
+            return value
+          },
+          out,
+          verify,
+        )
+        const recordedAt = performance.now()
+        // A value that was not observed stays absent rather than being reported as zero.
+        const caller =
+          adapterEnteredAt === undefined || adapterReturnedAt === undefined
+            ? undefined
+            : {
+                basis: "caller monotonic clock, milliseconds",
+                entryToAdapterCallbackMs: Math.max(0, Math.round(adapterEnteredAt - entryAt)),
+                adapterCallbackMs: Math.max(0, Math.round(adapterReturnedAt - adapterEnteredAt)),
+                adapterCallbackContains: "acquisition, finish (inclusive, not disjoint)",
+                adapterReturnToRecordedMs: Math.max(0, Math.round(recordedAt - adapterReturnedAt)),
+                totalMs: Math.max(0, Math.round(recordedAt - entryAt)),
+              }
+        recordCapture(
+          probe.id,
+          captures,
+          caller === undefined ? result : { ...result, trace: { ...result.trace, caller } },
+          checkpoint.role,
+        )
+        return result.frame
+      }
       if (textCells) {
         probeSource.captureKind = "text-cells"
-        probeSource.cells = async (checkpoint) => {
-          captureAttempted = true
-          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
-          recordCapture(probe.id, captures, result, checkpoint.role)
-          return result.frame
-        }
+        probeSource.cells = servedCapture
       } else {
-        probeSource.capture = async (checkpoint) => {
-          captureAttempted = true
-          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
-          recordCapture(probe.id, captures, result, checkpoint.role)
-          return result.frame
-        }
+        probeSource.capture = servedCapture
       }
     }
     if (options.prepareCapture && !capturePrepared) {
