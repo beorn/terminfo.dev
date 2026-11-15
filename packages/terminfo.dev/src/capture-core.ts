@@ -484,14 +484,19 @@ export async function finishCapture(input: {
   /** Absolute deadline for the one decode this finalizer runs when `decoded` is absent (30092). */
   deadline?: number
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
+  const finishEntry = performance.now()
   const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
   const { featureId, role, label, cells, controlCells, pixelGeometry, locate } = checkpoint
   const { width, height, format, bytes: original, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
   }
+  // The whole of both retains: hashing, the exclusive write or the existing-file read/compare, and
+  // the onRetained callback. Deliberately not labelled write time and not corrected for its hash.
+  const retainStart = performance.now()
   const sourceRef = retain(directory, original, format, onRetained)
   const ref = retain(directory, png, "png", onRetained)
+  const retainMs = Math.round(performance.now() - retainStart)
   const sourceStem = sourceRef.replace(/^sha256:/, "")
   const pngStem = ref.replace(/^sha256:/, "")
   if ((cells === undefined) !== (pixelGeometry === undefined)) {
@@ -502,12 +507,17 @@ export async function finishCapture(input: {
   if (controlCells !== undefined && cells === undefined) {
     throw new Error(`Capture ${featureId} was asked for a same-shot control region without the region it controls`)
   }
+  const decodeStart = performance.now()
   const decoded = predecoded ?? (await decodeCapture({ source, featureId, deadline }))
+  // Absent, never 0, when the caller already decoded: linux captureRaw decodes before this function,
+  // so a measured zero must stay distinguishable from a decode that did not happen here (@cto 34261).
+  const decodeMs = predecoded === undefined ? Math.round(performance.now() - decodeStart) : undefined
   if (decoded.width !== width || decoded.height !== height || decoded.rgba.byteLength !== width * height * 4) {
     throw new Error(
       `Decoded capture for ${featureId} is ${decoded.width}x${decoded.height} with ${decoded.rgba.byteLength} bytes; source is ${width}x${height} with ${width * height * 4} depth-8 RGBA bytes`,
     )
   }
+  const postDecodeStart = performance.now()
   const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
   let regionRectangle: CaptureRectangle | undefined
@@ -631,7 +641,21 @@ export async function finishCapture(input: {
       ...(located !== undefined ? { located } : {}),
       ...(cellCrop !== undefined ? { cellCrop } : {}),
     },
-    trace: { ...trace, ...regionTrace, ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}) },
+    trace: {
+      ...trace,
+      ...regionTrace,
+      // 34261 diagnostic buckets for the finish stage, on the acquisition trace's own
+      // performance.now basis. They do not cover the whole served context.capture path: the caller's
+      // dispatch and small validation and string work sit outside every bucket, so they need not sum
+      // to the complete call. postDecodeMs is one aggregate by decision, not a measured split.
+      finish: {
+        retainMs,
+        ...(decodeMs === undefined ? {} : { decodeMs }),
+        postDecodeMs: Math.round(performance.now() - postDecodeStart),
+        totalMs: Math.round(performance.now() - finishEntry),
+      },
+      ...(locate !== undefined ? { locate: { rgb: locate.rgb, located } } : {}),
+    },
   }
 }
 

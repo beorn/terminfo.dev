@@ -87,6 +87,38 @@ test.each(["png", "xwd"] as const)(
   },
 )
 
+test("the finalizer records its own finish buckets and omits a decode it did not run (34261)", async () => {
+  // The acquisition trace ends when acquire returns; these buckets name the rest of the call, so a
+  // capture slower than its own legs can say which finish term owns the difference. A predecoded
+  // fixture pins the skipped-decode contract: decodeMs is ABSENT, never a fabricated zero, while the
+  // three buckets that did run are finite and non-negative. The buckets deliberately do not sum to
+  // the served context.capture path, so no arithmetic between them is asserted.
+  const result = await finishCapture({
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: {},
+    checkpoint: {
+      featureId: "finish-bucket-fixture",
+      role: "target" as const,
+      label: "one row",
+      cells: { top: 1, left: 1, bottom: 1, right: 2 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  const finish = result.trace.finish as Record<string, unknown> | undefined
+  expect(finish).toBeDefined()
+  expect(Object.hasOwn(finish ?? {}, "decodeMs")).toBe(false)
+  for (const key of ["retainMs", "postDecodeMs", "totalMs"]) {
+    const value = (finish ?? {})[key]
+    expect(typeof value).toBe("number")
+    expect(value as number).toBeGreaterThanOrEqual(0)
+  }
+})
+
 test("capture finalizer writes the grid measurement beside the rectangle it mapped (#33982)", async () => {
   const witness = {
     a: { cell: { row: 1, col: 2 }, box: { x: 1, y: 0 } },
@@ -262,7 +294,15 @@ test("a capture request with locate answers located; one without it is the previ
   const checkpoint = { featureId: "locate-fixture", role: "control" as const, label: "layout check" }
   const plain = await finishCapture({ ...input, checkpoint })
   expect(plain.frame).not.toHaveProperty("located")
-  expect(plain.trace).toEqual({ arm: "fixture" })
+  // The caller's trace object is preserved field for field; the only addition is the finalizer's
+  // own diagnostic block from 34261, which this case now names rather than forbidding wholesale.
+  const { finish: plainFinish, ...plainRest } = plain.trace as Record<string, unknown>
+  expect(plainRest).toEqual({ arm: "fixture" })
+  expect(plainFinish).toMatchObject({
+    retainMs: expect.any(Number),
+    postDecodeMs: expect.any(Number),
+    totalMs: expect.any(Number),
+  })
   const located = await finishCapture({ ...input, checkpoint: { ...checkpoint, locate: { rgb: [255, 136, 255] } } })
   expect(located.frame.located).toEqual({ box: { x: 4, y: 2, width: 2, height: 1 }, pixels: 2 })
   expect(located.trace.locate).toEqual({ rgb: [255, 136, 255], located: located.frame.located })
