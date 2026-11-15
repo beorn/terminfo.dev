@@ -1385,7 +1385,7 @@ export async function runProbeBatch(
           probe.id,
           captures,
           caller === undefined ? result : { ...result, trace: { ...result.trace, caller } },
-          checkpoint.role,
+          request.role,
         )
         return result.frame
       }
