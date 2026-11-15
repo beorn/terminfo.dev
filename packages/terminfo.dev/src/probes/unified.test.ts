@@ -6457,3 +6457,116 @@ it("refuses by name when the pre-read went unanswered, and keeps running", async
     second.term = originalSecond
   }
 })
+
+// @cto 2026-11-14 (osc104 after-merge review): the disagreement branch withdrew the colour result from the
+// observation only, while the writer grades from the explicit tests. A refused attempt vector therefore left an
+// unsupported criterion authoritative and the terminal kept a negative on evidence this row had refused. These
+// drive that composition through the collector, which the helper-only tests cannot reach.
+describe("a colour-attempt disagreement reaches the recorded grade (osc104)", () => {
+  type Round = "qualifies" | "does-not-qualify"
+  const framesOf = (round: Round) => [
+    { label: "pre-edit seed", role: "control" as const, ink: "#616161" },
+    { label: "post-sequence target", role: "target" as const, ink: "#123456" },
+    // A round qualifies when its expected ink differs from the target's; the second round below repaints the
+    // target's own colour there, so colourOnlyMismatch refuses that attempt and the vector disagrees.
+    { label: "expected frame", role: "control" as const, ink: round === "qualifies" ? "#c1e3fe" : "#123456" },
+  ]
+  const axes = (inkColour: string) => ({
+    background: "#050505",
+    inkColour,
+    inkCount: 58,
+    contrast: 200,
+    coverage: Uint8Array.from([0, 1, 2, 3]),
+  })
+  const drive = async (
+    probeId: string,
+    rounds: readonly Round[],
+    tests: { id: string; status: string }[],
+    outcome: "supported" | "unsupported" | "inconclusive",
+  ) => {
+    const probe = ALL_PROBES.find((entry) => entry.id === probeId)!
+    const original = probe.term
+    const asked: string[] = []
+    try {
+      probe.term = async (source) => {
+        const frames = []
+        for (const round of rounds) {
+          for (const frame of framesOf(round)) {
+            asked.push(frame.label)
+            frames.push(await source.capture!({ role: frame.role, label: frame.label }))
+          }
+        }
+        return {
+          pass: false as const,
+          criterionBranch: "colour-only-mismatch",
+          tests: tests as never,
+          observation: {
+            featureId: probe.id,
+            outcome,
+            assertionType: "screenshot" as const,
+            frames,
+          },
+        }
+      }
+      let next = 0
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async (checkpoint) => {
+          const frame = framesOf(rounds[Math.floor(next / 3)] ?? "qualifies")[next % 3]!
+          next += 1
+          return {
+            frame: {
+              role: checkpoint.role,
+              label: checkpoint.label,
+              ref: `sha256:${"c".repeat(64)}`,
+              capturedAt: Date.now(),
+              rendering: axes(frame.ink),
+            },
+            trace: {},
+          }
+        },
+      })
+      const result = batch.results.find((entry) => entry.featureId === probe.id)
+      if (result === undefined) throw new Error(`${probe.id} left the batch`)
+      return { result, asked }
+    } finally {
+      probe.term = original
+    }
+  }
+
+  it("leaves the recorded grade unresolved with the named cause instead of a negative", async () => {
+    const { result, asked } = await drive(
+      "device.decrpm",
+      ["qualifies", "does-not-qualify"],
+      [{ id: "criterion", status: "unsupported" }],
+      "unsupported",
+    )
+    expect(asked, "both attempts reached the capture list").toHaveLength(6)
+    expect(result.status).toBe("probe-todo")
+    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-todo" })
+    expect(result.tests?.[0]?.reason ?? "").toContain("attempts disagree")
+    expect(result.reason ?? "").toContain("attempts disagree")
+  })
+
+  it("keeps the negative when every attempt qualifies (agreement control)", async () => {
+    const { result } = await drive(
+      "device.decrpm",
+      ["qualifies", "qualifies"],
+      [{ id: "criterion", status: "unsupported" }],
+      "unsupported",
+    )
+    expect(result.status).toBe("unsupported")
+    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "unsupported" })
+  })
+
+  it("keeps an exact positive positive (positive control)", async () => {
+    const { result } = await drive(
+      "device.decrpm",
+      ["qualifies"],
+      [{ id: "criterion", status: "supported" }],
+      "supported",
+    )
+    expect(result.status).toBe("supported")
+  })
+})
