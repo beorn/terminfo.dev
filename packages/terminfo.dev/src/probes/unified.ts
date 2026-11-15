@@ -1350,7 +1350,7 @@ export async function runProbeBatch(
       // spans - served entry to adapter callback entry - and is not called transport, nor charged
       // to the queue or to verification. adapterCallbackMs is inclusive: it contains the
       // collector's own acquisition and finish buckets, so the two are never added together.
-      const servedCapture = async (checkpoint: Parameters<ProbeCapture>[0]) => {
+      const servedCapture = async (request: CaptureRequest) => {
         const entryAt = performance.now()
         let adapterEnteredAt: number | undefined
         let adapterReturnedAt: number | undefined
@@ -1361,7 +1361,7 @@ export async function runProbeBatch(
             // that grade decides errorAssertionType and whether rawReplyRef is set.
             captureAttempted = true
             adapterEnteredAt = performance.now()
-            const value = await capture({ featureId: probe.id, ...checkpoint })
+            const value = await capture({ featureId: probe.id, ...request })
             adapterReturnedAt = performance.now()
             return value
           },

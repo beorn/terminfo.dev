@@ -6581,12 +6581,27 @@ describe("the served capture path records its own caller intervals (34261)", () 
     label,
   })
 
+  // The recorded reply is a string here and JSON.parse is `unknown` under this config, so the shape the
+  // assertions read is declared once instead of cast at every line.
+  type CallerTrace = {
+    basis: string
+    entryToAdapterCallbackMs: number
+    adapterCallbackMs: number
+    adapterReturnToRecordedMs: number
+    totalMs: number
+  }
+  type RecordedCapture = { trace: Record<string, unknown> & { caller: CallerTrace } }
+  const readCaptures = (raw: string | undefined): RecordedCapture[] => {
+    if (raw === undefined) throw new Error("the probe recorded no reply at all")
+    return (JSON.parse(raw) as { captures: RecordedCapture[] }).captures
+  }
+
   it("records the caller intervals beside the existing buckets without replacing them", async () => {
     const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
     const original = probe.term
     try {
       probe.term = async (source) => {
-        await source.capture!({ featureId: probe.id, role: "control", label: "caller interval" })
+        await source.capture!({ role: "control", label: "caller interval" })
         return {
           pass: false as const,
           tests: [
@@ -6605,8 +6620,8 @@ describe("the served capture path records its own caller intervals (34261)", () 
           }
         },
       })
-      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
-      expect(recorded.captures).toHaveLength(1)
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toHaveLength(1)
       const trace = recorded.captures[0].trace
       // The existing buckets are untouched: the caller block is added beside them, not instead of them.
       expect(trace.acquisition).toEqual({ totalMs: 2 })
@@ -6636,7 +6651,7 @@ describe("the served capture path records its own caller intervals (34261)", () 
     const original = probe.term
     try {
       probe.term = async (source) => {
-        await source.capture!({ featureId: probe.id, role: "control", label: "fails" })
+        await source.capture!({ role: "control", label: "fails" })
         throw new Error("unreachable: the capture adapter must fail")
       }
       const batch = await runProbeBatch({
@@ -6648,8 +6663,8 @@ describe("the served capture path records its own caller intervals (34261)", () 
       })
       const row = batch.results.find((result) => result.featureId === probe.id)
       expect(JSON.stringify(row)).toContain("adapter exploded")
-      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
-      expect(recorded.captures ?? []).toEqual([])
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toEqual([])
     } finally {
       probe.term = original
     }
@@ -6664,7 +6679,7 @@ describe("the served capture path records its own caller intervals (34261)", () 
     const original = probe.term
     try {
       probe.term = async (source) => {
-        await source.capture!({ featureId: probe.id, role: "control", label: "slow verify" })
+        await source.capture!({ role: "control", label: "slow verify" })
         return {
           pass: false as const,
           tests: [
@@ -6684,6 +6699,11 @@ describe("the served capture path records its own caller intervals (34261)", () 
             assertOwned: async () => {
               await new Promise<void>((resolve) => setTimeout(resolve, 10))
             },
+            // Only ownership verification is under test here; a probe that reached the clipboard
+            // transaction would be outside this fixture's scope, so it says so instead of passing.
+            withClipboardFixture: async () => {
+              throw new Error("this fixture provides ownership verification only")
+            },
             readTitle: async () => {
               throw new Error("This clipboard fixture has no title reader")
             },
@@ -6695,9 +6715,9 @@ describe("the served capture path records its own caller intervals (34261)", () 
           trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
         }),
       })
-      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
-      expect(recorded.captures).toHaveLength(1)
-      const caller = recorded.captures[0].trace.caller
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toHaveLength(1)
+      const caller = recorded[0].trace.caller
       expect(Number(caller.entryToAdapterCallbackMs)).toBeGreaterThanOrEqual(10)
       expect(Number(caller.adapterCallbackMs)).toBeLessThan(10)
       expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.entryToAdapterCallbackMs))
@@ -6734,9 +6754,9 @@ describe("the served capture path records its own caller intervals (34261)", () 
       },
       ownedTerminal: geometryOwner(measured(24, 80)),
     })
-    const recorded = JSON.parse(batch.rawReplies["erase.el-with-attrs"]!)
-    expect(recorded.captures.length).toBeGreaterThan(0)
-    for (const capture of recorded.captures) {
+    const recorded = readCaptures(batch.rawReplies["erase.el-with-attrs"])
+    expect(recorded.length).toBeGreaterThan(0)
+    for (const capture of recorded) {
       expect(capture.trace.kind).toBe("text-cells")
       expect(capture.trace.retained).toBe("snapshot.txt")
       const caller = capture.trace.caller
