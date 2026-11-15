@@ -1722,16 +1722,23 @@ export async function runProbeBatch(
         const colourDisagreement =
           colourAttempts && "disagreement" in colourAttempts ? colourAttempts.disagreement : undefined
         if (colourDisagreement !== undefined) {
-          // @cto 2026-11-14: the writer grades from the explicit tests, so withdrawing the colour result
-          // from the observation alone left the criterion's unsupported grade standing on evidence this
-          // row had just refused - a terminal negative on refused evidence. Supply the existing unresolved
-          // criterion result beside the named cause instead. Captures, the attempt policy and the writer's
-          // own precedence are untouched; nothing here retries or re-captures.
+          // @cto 2026-11-14 (96a8d82c): the writer grades from the explicit tests, so withdrawing the colour
+          // result from the observation alone left the criterion's unsupported grade standing on evidence this
+          // row had just refused - a terminal negative on refused evidence. Supply the established
+          // ATTEMPTED-inconclusive result instead, which in this writer is a probe-invalid criterion with the
+          // named cause (helpers.ts: the inconclusive-observation branch folds to probe-invalid before explicit
+          // tests override it; probe-todo would claim the row was never attempted). Captures, the attempt
+          // policy and the writer's own precedence are untouched; nothing here retries or re-captures.
           callbackTests = callbackTests?.some((test) => test.id === "criterion")
             ? callbackTests.map((test) =>
-                test.id === "criterion" ? { ...test, status: "probe-todo" as const, reason: colourDisagreement } : test,
+                test.id === "criterion"
+                  ? { ...test, status: "probe-invalid" as const, reason: colourDisagreement }
+                  : test
               )
-            : [...(callbackTests ?? []), { id: "criterion", status: "probe-todo" as const, reason: colourDisagreement }]
+            : [
+                ...(callbackTests ?? []),
+                { id: "criterion", status: "probe-invalid" as const, reason: colourDisagreement }
+              ]
         }
         batch.observations.push({
           featureId: probe.id,

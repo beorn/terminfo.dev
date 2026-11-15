@@ -6535,7 +6535,7 @@ describe("a colour-attempt disagreement reaches the recorded grade (osc104)", ()
     }
   }
 
-  it("leaves the recorded grade unresolved with the named cause instead of a negative", async () => {
+  it("leaves the recorded grade attempted-inconclusive with the named cause instead of a negative", async () => {
     const { result, asked } = await drive(
       "device.decrpm",
       ["qualifies", "does-not-qualify"],
@@ -6543,8 +6543,10 @@ describe("a colour-attempt disagreement reaches the recorded grade (osc104)", ()
       "unsupported",
     )
     expect(asked, "both attempts reached the capture list").toHaveLength(6)
-    expect(result.status).toBe("probe-todo")
-    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-todo" })
+    // @cto 96a8d82c: the established attempted-inconclusive result is a probe-invalid criterion, not a
+    // probe-todo one - the row ran and could not decide, it was not never-attempted.
+    expect(result.status).toBe("probe-invalid")
+    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
     expect(result.tests?.[0]?.reason ?? "").toContain("attempts disagree")
     expect(result.reason ?? "").toContain("attempts disagree")
   })
