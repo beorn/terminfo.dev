@@ -62,12 +62,22 @@ test("an executed pre-paint inside the rounding resolution keeps an observed zer
   expect(meter.reading()).toEqual({ calls: 1, elapsedMs: 0 })
 })
 
+test("the reading is an accessor, so asking twice answers the same thing", async () => {
+  const meter = createPrePaintMeter(fakeClock(0, 100))
+  await meter.run(async () => "one frame")
+  expect(meter.reading()).toEqual({ calls: 1, elapsedMs: 100 })
+  expect(meter.reading()).toEqual({ calls: 1, elapsedMs: 100 })
+})
+
 test("the reading rides the capture's own trace beside the buckets it explains", () => {
   const capture = { frame: { label: "target" }, trace: { acquisition: { totalMs: 235 }, finish: { totalMs: 32 } } }
   expect(withPrePaintReading(capture, { calls: 1, elapsedMs: 269 })).toEqual({
     frame: { label: "target" },
     trace: { acquisition: { totalMs: 235 }, finish: { totalMs: 32 }, prePaint: { calls: 1, elapsedMs: 269 } },
   })
+  // The input capture is not mutated: the merge returns a new object, and the original trace keeps
+  // the absence it was handed, so a caller still holding the earlier read sees no phantom bucket.
+  expect(capture.trace).toEqual({ acquisition: { totalMs: 235 }, finish: { totalMs: 32 } })
   // A route that never took the frame is untouched: absence means unobserved, never zero.
   expect(withPrePaintReading(capture, undefined)).toBe(capture)
 })
