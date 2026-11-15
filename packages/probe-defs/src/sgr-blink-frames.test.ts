@@ -316,19 +316,19 @@ test("a producer that settles 200 ms per acquisition records requested offsets b
   }
 })
 
-// 34129 margin ruling: the requested schedule leaves the observed achieved-minus-requested steps
+// 34129 margin ruling: the requested schedule leaves the observed achieved-minus-requested gap delta
 // between it and the gate ceiling. The previous schedule reached 538 ms against a 545.45 ms ceiling,
-// so the declared per-sample steps below — up to 30 ms, the largest such step the settle-0 study
-// observed on one host — broke it on a single gap, while the shipped schedule takes the same steps
-// and still clears every achieved-gap check. A declared fixture over whole-millisecond capturedAt:
-// those steps stand in for observed steps, they are not an isolated measurement of capture lag or
-// jitter, and this is not a forecast that any host passes.
+// so the declared varying capture lag below — up to 30 ms, the largest gap delta the settle-0 study
+// observed — broke it on a single gap, while the shipped schedule absorbs the same lag and still
+// clears every achieved-gap check. The lag is a declared fixture over whole-millisecond capturedAt:
+// it models a host whose captures cost varying amounts, it measures no host, and it is not a
+// forecast that any host passes.
 const OLD_BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515]
 // The last step is zero so the post-sampling repaint, captured after the final sample, keeps its own
 // place in capture order rather than inheriting that sample's step.
 const FIXTURE_LAG_MS = [0, 8, 4, 34, 10, 6, 28, 2, 20, 12, 30, 6, 24, 0, 16, 0]
 
-test("declared lag steps that broke the old schedule leave the shipped one clear of the ceiling", async () => {
+test("declared varying capture lag that broke the old schedule leaves the shipped one clear of the ceiling", async () => {
   const laggedCapturedAt = (now: number, sample: number) => now + (FIXTURE_LAG_MS[sample] ?? 0)
   const oldOffsets = [0]
   for (const gap of OLD_BLINK_GAPS_MS) oldOffsets.push(oldOffsets.at(-1)! + gap)
