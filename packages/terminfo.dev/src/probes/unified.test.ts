@@ -30,7 +30,7 @@ import { replyFailure, notTestedResult, declaredUntestableResult } from "../../.
 import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
-import { measureUtf8Decoding } from "../tty.ts"
+import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
@@ -6604,8 +6604,15 @@ describe("the served capture path records its own caller intervals (34261)", () 
   }
 
   it("records the caller intervals beside the existing buckets without replacing them", async () => {
+    // A controlled clock, not host speed: each fixture step advances it by a known amount, so every
+    // interval is an exact number instead of a threshold a loaded host can miss (34261 post-merge
+    // review). The recorded frame's ref is a getter, so recordCapture's own read of it is visible to
+    // the completion mark.
     const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
     const original = probe.term
+    let clock = 1_000
+    let recordWorkRuns = 0
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => clock)
     try {
       probe.term = async (source) => {
         await source.capture!({ role: "control", label: "caller interval" })
@@ -6620,9 +6627,18 @@ describe("the served capture path records its own caller intervals (34261)", () 
         ids: [probe.id],
         ownedTerminal: geometryOwner(measured(24, 80)),
         capture: async (checkpoint) => {
-          await new Promise<void>((resolve) => setTimeout(resolve, 10))
+          clock += 7
+          const frame = fixtureFrame(checkpoint.label)
+          Object.defineProperty(frame, "ref", {
+            enumerable: true,
+            get: () => {
+              recordWorkRuns += 1
+              clock += 123
+              return `sha256:${"b".repeat(64)}`
+            },
+          })
           return {
-            frame: fixtureFrame(checkpoint.label),
+            frame,
             trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
           }
         },
@@ -6640,15 +6656,18 @@ describe("the served capture path records its own caller intervals (34261)", () 
         expect(Number.isFinite(caller[key])).toBe(true)
         expect(Number(caller[key])).toBeGreaterThanOrEqual(0)
       }
-      // The adapter itself awaited at least the delayed work, and the whole interval contains every part,
-      // so the pre-adapter interval is measured rather than lost outside the buckets.
-      expect(Number(caller.adapterCallbackMs)).toBeGreaterThanOrEqual(10)
-      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterCallbackMs))
-      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterReturnToRecordedMs))
-      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(
-        Number(caller.adapterCallbackMs) + Number(caller.adapterReturnToRecordedMs) - 1,
-      )
+      // Exact, not threshold: ownership verification did not advance the clock, so the pre-adapter
+      // interval is zero and the adapter interval is the 7 ms only the adapter added.
+      expect(Number(caller.entryToAdapterCallbackMs)).toBe(0)
+      expect(Number(caller.adapterCallbackMs)).toBe(7)
+      // recordCapture reads the frame's ref, and each read advances the same clock. The completion mark
+      // must come after that read or this interval stays 0 - which is exactly the boundary the
+      // post-merge review found missing (34261).
+      expect(recordWorkRuns).toBeGreaterThan(0)
+      expect(Number(caller.adapterReturnToRecordedMs)).toBeGreaterThanOrEqual(123)
+      expect(Number(caller.totalMs)).toBe(7 + Number(caller.adapterReturnToRecordedMs))
     } finally {
+      nowSpy.mockRestore()
       probe.term = original
     }
   })
@@ -6677,13 +6696,16 @@ describe("the served capture path records its own caller intervals (34261)", () 
     }
   })
 
-  it("charges a slow ownership verification to the pre-adapter interval, not to the adapter", async () => {
+  it("charges ownership verification to the pre-adapter interval, not to the adapter", async () => {
     // The interval that used to fall outside every bucket is the one BEFORE the adapter: the TTY queue
-    // wait and lease.verify(). A verification that sleeps must show up there, and must not be counted
-    // as adapter time, or the two numbers would be indistinguishable in a real run (34261 review).
+    // wait and lease.verify(). A verification that costs time must show up there, and must not be
+    // counted as adapter time, or the two numbers would be indistinguishable in a real run (34261
+    // review). The cost is a controlled clock advance, so a loaded host changes nothing.
     verifiedBatchFixture()
     const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
     const original = probe.term
+    let clock = 1_000
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => clock)
     try {
       probe.term = async (source) => {
         await source.capture!({ role: "control", label: "slow verify" })
@@ -6704,7 +6726,7 @@ describe("the served capture path records its own caller intervals (34261)", () 
             permissions: "fixture",
             summary: "{}",
             assertOwned: async () => {
-              await new Promise<void>((resolve) => setTimeout(resolve, 10))
+              clock += 11
             },
             // Only ownership verification is under test here; a probe that reached the clipboard
             // transaction would be outside this fixture's scope, so it says so instead of passing.
@@ -6725,9 +6747,58 @@ describe("the served capture path records its own caller intervals (34261)", () 
       const recorded = readCaptures(batch.rawReplies[probe.id])
       expect(recorded).toHaveLength(1)
       const caller = recorded[0]!.trace.caller
-      expect(Number(caller.entryToAdapterCallbackMs)).toBeGreaterThanOrEqual(10)
-      expect(Number(caller.adapterCallbackMs)).toBeLessThan(10)
-      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.entryToAdapterCallbackMs))
+      expect(Number(caller.entryToAdapterCallbackMs)).toBe(11)
+      expect(Number(caller.adapterCallbackMs)).toBe(0)
+      expect(Number(caller.totalMs)).toBe(11)
+    } finally {
+      nowSpy.mockRestore()
+      probe.term = original
+    }
+  })
+
+  it("stops the run when ownership verification fails, so no capture grade is invented", async () => {
+    // Verified at the reviewed heads: a failed ownership verification is custody-classified, and the
+    // probe catch rethrows a custody failure instead of grading the row. So the attempted stamp can
+    // never change this path's outcome - what diverged on main was the source ordering, not an
+    // observed error shape (34261 post-merge review). Both halves are pinned here so a later change to
+    // either the custody classification or the stamp placement is visible.
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ role: "control", label: "verify fails" })
+        throw new Error("unreachable: the owning terminal must refuse verification")
+      }
+      const batch = runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: {
+          ...geometryOwner(measured(24, 80)),
+          clipboard: {
+            profile: "allow",
+            config: "fixture",
+            permissions: "fixture",
+            summary: "{}",
+            assertOwned: async () => {
+              throw new Error("ownership verification failed")
+            },
+            // Only ownership verification is under test here; a probe that reached the clipboard
+            // transaction would be outside this fixture's scope, so it says so instead of passing.
+            withClipboardFixture: async () => {
+              throw new Error("this fixture provides ownership verification only")
+            },
+            readTitle: async () => {
+              throw new Error("This clipboard fixture has no title reader")
+            },
+            dispose: async () => {},
+          },
+        },
+        capture: async (checkpoint) => ({
+          frame: fixtureFrame(checkpoint.label),
+          trace: { acquisition: { totalMs: 2 } },
+        }),
+      })
+      await expect(batch).rejects.toThrow("ownership verification failed")
     } finally {
       probe.term = original
     }

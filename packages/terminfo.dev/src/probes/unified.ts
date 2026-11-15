@@ -1351,15 +1351,16 @@ export async function runProbeBatch(
       // to the queue or to verification. adapterCallbackMs is inclusive: it contains the
       // collector's own acquisition and finish buckets, so the two are never added together.
       const servedCapture = async (request: CaptureRequest) => {
+        // Attempted is stamped BEFORE withTTYOperation, where both wrappers of the baseline
+        // (041c6879) stamped it. A first capture whose ownership verification fails therefore still
+        // counts as attempted: the error path keeps its screenshot/buffer-state observation and its
+        // rawReplyRef instead of degrading to an ungraded diagnostic (34261 post-merge review).
+        captureAttempted = true
         const entryAt = performance.now()
         let adapterEnteredAt: number | undefined
         let adapterReturnedAt: number | undefined
         const result = await withTTYOperation(
           async () => {
-            // Attempted means the adapter ran, not that the call was made: a row that dies in the
-            // queue wait or in lease.verify() before this line keeps its "not attempted" grade, and
-            // that grade decides errorAssertionType and whether rawReplyRef is set.
-            captureAttempted = true
             adapterEnteredAt = performance.now()
             const value = await capture({ featureId: probe.id, ...request })
             adapterReturnedAt = performance.now()
@@ -1368,25 +1369,26 @@ export async function runProbeBatch(
           out,
           verify,
         )
+        recordCapture(probe.id, captures, result, request.role)
+        // The completion mark is taken AFTER recordCapture, so the frame validation and the
+        // capture/reference retention inside it sit in the measured span instead of before it (34261
+        // post-merge review). The frame is already retained by the line above, so the caller block is
+        // attached to that recorded trace; a throw above records no caller block at all, and a value
+        // that was not observed stays absent rather than being reported as zero.
         const recordedAt = performance.now()
-        // A value that was not observed stays absent rather than being reported as zero.
-        const caller =
-          adapterEnteredAt === undefined || adapterReturnedAt === undefined
-            ? undefined
-            : {
-                basis: "caller monotonic clock, milliseconds",
-                entryToAdapterCallbackMs: Math.max(0, Math.round(adapterEnteredAt - entryAt)),
-                adapterCallbackMs: Math.max(0, Math.round(adapterReturnedAt - adapterEnteredAt)),
-                adapterCallbackContains: "acquisition, finish (inclusive, not disjoint)",
-                adapterReturnToRecordedMs: Math.max(0, Math.round(recordedAt - adapterReturnedAt)),
-                totalMs: Math.max(0, Math.round(recordedAt - entryAt)),
-              }
-        recordCapture(
-          probe.id,
-          captures,
-          caller === undefined ? result : { ...result, trace: { ...result.trace, caller } },
-          request.role,
-        )
+        if (adapterEnteredAt !== undefined && adapterReturnedAt !== undefined) {
+          result.trace = {
+            ...result.trace,
+            caller: {
+              basis: "caller monotonic clock, milliseconds",
+              entryToAdapterCallbackMs: Math.max(0, Math.round(adapterEnteredAt - entryAt)),
+              adapterCallbackMs: Math.max(0, Math.round(adapterReturnedAt - adapterEnteredAt)),
+              adapterCallbackContains: "acquisition, finish (inclusive, not disjoint)",
+              adapterReturnToRecordedMs: Math.max(0, Math.round(recordedAt - adapterReturnedAt)),
+              totalMs: Math.max(0, Math.round(recordedAt - entryAt)),
+            },
+          }
+        }
         return result.frame
       }
       if (textCells) {
