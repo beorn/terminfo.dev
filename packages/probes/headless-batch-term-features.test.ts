@@ -6,6 +6,7 @@
  * @reach fs-walk <fixture-only: private PTY child files>
  */
 import { afterEach, expect, test, vi } from "vitest"
+import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -21,6 +22,12 @@ import { classifyResultMethod } from "../../docs/data/release-scope.ts"
 import { serveCommand } from "../admin/src/serve-command.ts"
 import * as versions from "../admin/versions.ts"
 import type { TermFeaturesReading } from "@terminfo/probe-defs"
+
+// Only the host version lookup is substituted; spawn and the private PTY child remain real.
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>()
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) }
+})
 
 const directories: string[] = []
 afterEach(() => {
@@ -80,6 +87,7 @@ test("the actual CLI spawn input excludes a hostile parent advertisement and bin
   const directory = mkdtempSync(join(tmpdir(), "terminfo-child-env-"))
   directories.push(directory)
   const run = { id: "a".repeat(32), directory, scriptPath: join(directory, "serve.sh") }
+  vi.mocked(execFileSync).mockReturnValueOnce("wezterm 20240203-110809-5046fc22\n")
   const launch = prepareCliLaunch("wezterm", run)
   expect(Object.hasOwn(launch.env, "TERM_FEATURES")).toBe(false)
   expect(launch.env.TERMINFO_RUN_ID).toBe(run.id)
@@ -97,6 +105,7 @@ test
     directories.push(directory)
     const run = { id: "b".repeat(32), directory, scriptPath: join(directory, "serve.sh") }
     vi.stubEnv("TERM_FEATURES", "hostile-parent-only")
+    vi.mocked(execFileSync).mockReturnValueOnce("wezterm 20240203-110809-5046fc22\n")
     const launch = prepareCliLaunch("wezterm", run)
     const output = join(directory, "child.json"),
       hook = join(directory, "hook.sh")
