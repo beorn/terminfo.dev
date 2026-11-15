@@ -1351,12 +1351,15 @@ export async function runProbeBatch(
       // to the queue or to verification. adapterCallbackMs is inclusive: it contains the
       // collector's own acquisition and finish buckets, so the two are never added together.
       const servedCapture = async (checkpoint: Parameters<ProbeCapture>[0]) => {
-        captureAttempted = true
         const entryAt = performance.now()
         let adapterEnteredAt: number | undefined
         let adapterReturnedAt: number | undefined
         const result = await withTTYOperation(
           async () => {
+            // Attempted means the adapter ran, not that the call was made: a row that dies in the
+            // queue wait or in lease.verify() before this line keeps its "not attempted" grade, and
+            // that grade decides errorAssertionType and whether rawReplyRef is set.
+            captureAttempted = true
             adapterEnteredAt = performance.now()
             const value = await capture({ featureId: probe.id, ...checkpoint })
             adapterReturnedAt = performance.now()

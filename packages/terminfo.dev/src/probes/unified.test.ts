@@ -6654,4 +6654,55 @@ describe("the served capture path records its own caller intervals (34261)", () 
       probe.term = original
     }
   })
+
+  it("charges a slow ownership verification to the pre-adapter interval, not to the adapter", async () => {
+    // The interval that used to fall outside every bucket is the one BEFORE the adapter: the TTY queue
+    // wait and lease.verify(). A verification that sleeps must show up there, and must not be counted
+    // as adapter time, or the two numbers would be indistinguishable in a real run (34261 review).
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ featureId: probe.id, role: "control", label: "slow verify" })
+        return {
+          pass: false as const,
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "lifecycle fixture does not measure support" },
+          ],
+        }
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: {
+          ...geometryOwner(measured(24, 80)),
+          clipboard: {
+            profile: "allow",
+            config: "fixture",
+            permissions: "fixture",
+            summary: "{}",
+            assertOwned: async () => {
+              await new Promise<void>((resolve) => setTimeout(resolve, 10))
+            },
+            readTitle: async () => {
+              throw new Error("This clipboard fixture has no title reader")
+            },
+            dispose: async () => {},
+          },
+        },
+        capture: async (checkpoint) => ({
+          frame: fixtureFrame(checkpoint.label),
+          trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
+        }),
+      })
+      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
+      expect(recorded.captures).toHaveLength(1)
+      const caller = recorded.captures[0].trace.caller
+      expect(Number(caller.entryToAdapterCallbackMs)).toBeGreaterThanOrEqual(10)
+      expect(Number(caller.adapterCallbackMs)).toBeLessThan(10)
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.entryToAdapterCallbackMs))
+    } finally {
+      probe.term = original
+    }
+  })
 })
