@@ -149,7 +149,7 @@ export function loadGroupRows(
     for (const name of names.filter((entry) => entry.endsWith(".json"))) {
       const data = JSON.parse(readFileSync(join(contentDir, source.dir, name), "utf8")) as {
         schemaVersion?: number
-        runId?: string
+        runId?: unknown
         target?: { id?: string; version?: string }
         observations?: Array<{ featureId: string; outcome: string; note?: string }>
         rawReplies?: Record<string, string>
@@ -162,6 +162,16 @@ export function loadGroupRows(
         })
         continue
       }
+      // #30815: a row is named by the identity its own bytes carry. The file name is a location,
+      // never a substitute id, and an absent or empty id is NAMED here instead of being invented.
+      if (typeof data.runId !== "string" || data.runId.length === 0) {
+        excluded.push({
+          dir: source.dir,
+          path: join(contentDir, source.dir, name),
+          cause: `runId ${JSON.stringify(data.runId)} is not a nonempty string; the run has no identity of its own and was not loaded by name, not skipped in silence`,
+        })
+        continue
+      }
       const observations: Record<string, StoredObservation> = {}
       for (const item of data.observations ?? []) {
         if (typeof item?.featureId !== "string" || item.featureId.length === 0) continue
@@ -171,7 +181,7 @@ export function loadGroupRows(
         file: `${source.dir}/${name}`,
         terminal: data.target?.id ?? "unknown",
         version: data.target?.version ?? "unknown",
-        runId: data.runId ?? name,
+        runId: data.runId,
         observations,
         rawReplies: data.rawReplies ?? {},
       })

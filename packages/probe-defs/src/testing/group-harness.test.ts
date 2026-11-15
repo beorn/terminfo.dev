@@ -90,6 +90,27 @@ test("a non-v2 run is NAMED in excluded, never skipped in silence", () => {
   }
 })
 
+test("a run with no identity is NAMED in excluded with its path, never named after its file", () => {
+  const { root, cleanup } = fixture()
+  try {
+    const explicit = "0123456789abcdef0123456789abcdef"
+    writeRun(root, "probes-apps", "explicit.json", { runId: explicit })
+    writeRun(root, "probes-apps", "anonymous.json", { runId: undefined })
+    writeRun(root, "probes-apps", "blank.json", { runId: "" })
+    const read = loadGroupRows(root, [{ dir: "probes-apps" }])
+    expect(read.rows.map((row) => row.runId)).toEqual([explicit])
+    expect(read.excluded.map((entry) => entry.path).sort()).toEqual([
+      join(root, "probes-apps", "anonymous.json"),
+      join(root, "probes-apps", "blank.json"),
+    ])
+    expect(read.excluded.every((entry) => entry.cause.includes("runId"))).toBe(true)
+    expect(read.excluded.every((entry) => entry.cause.includes("is not a nonempty string"))).toBe(true)
+    expect(read.rows.map((row) => row.runId)).not.toContain("anonymous.json")
+  } finally {
+    cleanup()
+  }
+})
+
 test("a stored observation is read by featureId, and a required missing id is loud", () => {
   const { root, cleanup } = fixture()
   try {
