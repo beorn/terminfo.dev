@@ -42,7 +42,10 @@ const textOriginOf = new WeakMap<CapturedFrame, { x: number; y: number }>()
  * colour when `painted`. The same window with `painted: false` is one frame as the route saw it before
  * a paint, which is what the difference is taken against (33981).
  */
-function windowAt(origin: { x: number; y: number }, options: { painted?: boolean } = {}): CapturedFrame {
+function windowAt(
+  origin: { x: number; y: number },
+  options: { painted?: boolean; pair?: { a: { row: number; col: number }; b: { row: number; col: number } } } = {},
+): CapturedFrame {
   const width = 16
   const height = 12
   const rgba = new Uint8Array(width * height * 4)
@@ -68,7 +71,8 @@ function windowAt(origin: { x: number; y: number }, options: { painted?: boolean
     }
   }
   if (options.painted ?? true) {
-    for (const cell of [chosenPair.a, chosenPair.b]) {
+    const painted = options.pair ?? chosenPair
+    for (const cell of [painted.a, painted.b]) {
       for (let dy = 0; dy < 2; dy += 1) {
         for (let dx = 0; dx < 2; dx += 1) {
           paintAt(origin.x + (cell.col - 1) * 2 + dx, origin.y + (cell.row - 1) * 2 + dy, [...sentinel.rgb, 255])
@@ -156,12 +160,25 @@ function terminal(origin: { x: number; y: number }) {
     const last = drawn().at(-1)
     return last !== undefined && last.includes("\x1b[45m")
   }
+  /**
+   * The cells the last drawn write names, so a frame shows the pair THAT write painted rather than
+   * one fixture-wide pair. Without this a read that chose other cells could never be shown painting
+   * them, and the stale-but-located case below could not exist at all (34129).
+   */
+  const paintedPair = () => {
+    const cells = [...(drawn().at(-1) ?? "").matchAll(/\x1b\[(\d+);(\d+)H/g)].map((hit) => ({
+      row: Number(hit[1]),
+      col: Number(hit[2]),
+    }))
+    const [a, b] = cells
+    return a !== undefined && b !== undefined ? { a, b } : chosenPair
+  }
   return {
     writes,
     state,
     source: { rows: grid.rows, cols: grid.cols, write: (text: string) => writes.push(text) },
     frameNow() {
-      const frame = windowAt(origin, { painted: paintsNow() })
+      const frame = windowAt(origin, { painted: paintsNow(), pair: paintedPair() })
       if (state.underline) {
         for (let x = 0; x < 16; x++) frame.rgba.set([...sentinel.rgb, 255], (11 * 16 + x) * 4)
       }
@@ -602,6 +619,60 @@ test("a pre-paint frame that lagged the probe's own drawing is retaken, and the 
   })
   expect(origin.origin).toEqual({ x: 2, y: 2 })
   expect(prePaints).toBe(2)
+})
+
+/** One pixel of a frame, by absolute position: what a reader sees at a witness box's own corner. */
+function pixelOf(frame: CapturedFrame, at: { x: number; y: number }) {
+  const offset = (at.y * frame.width + at.x) * 4
+  return [...frame.rgba.slice(offset, offset + 4)]
+}
+
+/**
+ * The freshness observation the settle study rests on, and why locating cannot stand in for it: a
+ * pre-paint frame that still carries the PREVIOUS read's cleared pair can be short of blank cells
+ * there, pick other ones, and locate its own new pair perfectly. A successful read therefore says
+ * nothing about whether the cleanup write reached the screen; only the previous pair's recorded
+ * witness boxes do (34129, @cto settle-experiment scope).
+ */
+test("a pre-paint frame one cleanup write behind still locates, so location is not freshness (34129)", async () => {
+  const terminalAt = terminal({ x: 0, y: 0 })
+  const read = async (from: CapturedFrame, whenCaptured: () => void) =>
+    readThroughSentinel({
+      source: terminalAt.source,
+      prePaint: async () => from,
+      capture: async (resolve) => {
+        whenCaptured()
+        return resolve({ frame: terminalAt.frameNow(), pixelGeometry })
+      },
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      reading: textOriginOf.get(from) ?? { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    })
+
+  // First read, with every write drawn: it paints the pair and clears it in one write each.
+  const first = await read(terminalAt.frameNow(), () => {})
+  expect(terminalAt.writes).toEqual([PAINT, CLEAR])
+  expect(first.witness).toBeDefined()
+
+  // The clear has not reached the screen when the next read takes its pre-paint frame.
+  terminalAt.state.lag = 1
+  const stale = terminalAt.frameNow()
+  expect(pixelOf(stale, first.witness?.a.box ?? { x: 0, y: 0 })).toEqual([...sentinel.rgb, 255])
+
+  // That frame still locates: the pair it paints sits in other cells, so the read succeeds and would
+  // have reported nothing about the frame being one write behind.
+  const second = await read(stale, () => {
+    terminalAt.state.lag = 0
+  })
+  expect(second.witness).toBeDefined()
+  expect(terminalAt.writes[2]).not.toBe(PAINT)
+
+  // The discriminator: the same witness boxes on a truly restored frame carry the probe's own cells.
+  const restored = windowAt({ x: 0, y: 0 }, { painted: false })
+  expect(pixelOf(restored, first.witness?.a.box ?? { x: 0, y: 0 })).not.toEqual([...sentinel.rgb, 255])
 })
 
 test("a frame without this read's painted cells refuses by name, and both cells are restored (33000)", async () => {

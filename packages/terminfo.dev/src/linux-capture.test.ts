@@ -20,7 +20,13 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
-import { createLinuxCapture, PNG_CONVERSION_ARGS, screenPixels, windowPixels } from "./linux-capture.ts"
+import {
+  createLinuxCapture,
+  LINUX_CAPTURE_SETTLE_MS,
+  PNG_CONVERSION_ARGS,
+  screenPixels,
+  windowPixels,
+} from "./linux-capture.ts"
 
 import { capturePixels, cellRectangle, command, finishCapture } from "./capture-core.ts"
 
@@ -565,11 +571,13 @@ test.runIf(process.platform === "linux")(
     ]
     for (const phase of phases) expect(duration(phase)).toBeGreaterThanOrEqual(0)
     // The settle actually ran for its delay: a relabelled constant would not have to be this large.
-    expect(duration("settleElapsedMs")).toBeGreaterThanOrEqual(140)
+    // Both sides read the configured delay, so a run bound to a different delay is still pinned to
+    // what it asked for rather than to the 150 that used to be spelled twice (34129 settle study).
+    expect(duration("settleElapsedMs")).toBeGreaterThanOrEqual(LINUX_CAPTURE_SETTLE_MS - 10)
     const total = duration("totalMs")
     expect(total).toBeGreaterThanOrEqual(duration("settleElapsedMs"))
     // The configured delay is recorded beside the elapsed one, never in place of it.
-    expect(first.result.trace.settleMs).toBe(150)
+    expect(first.result.trace.settleMs).toBe(LINUX_CAPTURE_SETTLE_MS)
     const measured = phases.reduce((sum, phase) => sum + duration(phase), 0)
     expect(measured).toBeLessThanOrEqual(total + 50)
   },

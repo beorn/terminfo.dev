@@ -404,8 +404,11 @@ export async function createLinuxCapture(
         windowId,
         geometry: before,
         converter,
-        // The configured delay the settle asks for, and what it actually took, kept apart.
-        settleMs: 150,
+        // The configured delay the settle asks for, and what it actually took, kept apart. Read from
+        // the constant, never spelled again: a second literal would keep saying 150 while an
+        // experiment asked for less, and the trace is the only place a reader can see which delay a
+        // run was bound to (34129 settle study).
+        settleMs: LINUX_CAPTURE_SETTLE_MS,
         // One monotonic basis (performance.now) for every duration; capturedAt keeps its wall-clock
         // meaning. The identity names which leg this acquisition was (its own role and label) and
         // which attempt at that leg, so a retry is distinguishable from a first shot (@cto 34261).
