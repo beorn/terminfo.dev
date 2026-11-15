@@ -139,6 +139,7 @@ beforeEach(() => {
   // Default collection requires authoring-checkout replies before retention.
   vi.mocked(spawnSync).mockImplementation((file, args = []) => {
     const replies: Record<string, string> = {
+      "/bin/ps -o lstart= -p 777": "Thu Oct 22 14:20:06 2026\n",
       "git rev-parse HEAD": "a".repeat(40),
       "git symbolic-ref --quiet --short HEAD": "task/fixture",
       "git symbolic-ref --quiet --short refs/remotes/origin/HEAD": "origin/main",
@@ -420,6 +421,14 @@ describe("WezTerm cli-process arm", () => {
   const ownedWindow = {
     provider: "cli-process" as const,
     ownerPid: 777,
+    ownerBirth: {
+      pid: 777,
+      startedAtEpochSeconds: 1792678806,
+      rawLstart: "Thu Oct 22 14:20:06 2026\n",
+      observedAt: "2026-10-22T14:21:00.000Z",
+      observedByUid: 501,
+      observedOnHost: "owned-mac",
+    },
     tty: "/dev/ttys009",
     executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
     marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
@@ -755,6 +764,14 @@ describe("Ghostty cli-process arm", () => {
   const ownedWindow = {
     provider: "cli-process" as const,
     ownerPid: 777,
+    ownerBirth: {
+      pid: 777,
+      startedAtEpochSeconds: 1792678806,
+      rawLstart: "Thu Oct 22 14:20:06 2026\n",
+      observedAt: "2026-10-22T14:21:00.000Z",
+      observedByUid: 501,
+      observedOnHost: "owned-mac",
+    },
     tty: "/dev/ttys009",
     executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
@@ -969,6 +986,14 @@ test.each([
     const ownedWindow = {
       provider: "cli-process" as const,
       ownerPid: 778,
+      ownerBirth: {
+        pid: 778,
+        startedAtEpochSeconds: 1792678806,
+        rawLstart: "Thu Oct 22 14:20:06 2026\n",
+        observedAt: "2026-10-22T14:21:00.000Z",
+        observedByUid: 501,
+        observedOnHost: "owned-mac",
+      },
       tty: "/dev/ttys009",
       executablePath: `${appPath}/Contents/MacOS/${executable}`,
       marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },

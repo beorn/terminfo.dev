@@ -152,7 +152,22 @@ describe("cli-process ownership", () => {
   const ownerPid = 6200
   const executablePath = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
   const marker = { flag: "--config-file", value: "/run/terminfo-abc9/app.toml" }
-  const owner: OwnedTerminalWindow = { provider: "cli-process", tty: "/dev/ttys009", ownerPid, executablePath, marker }
+  const ownerBirth = {
+    pid: ownerPid,
+    startedAtEpochSeconds: 1794674011,
+    rawLstart: "Sat Nov 14 16:33:31 2026\n",
+    observedAt: "2026-11-15T00:34:00.000Z",
+    observedByUid: 501,
+    observedOnHost: "owned-mac",
+  }
+  const owner: OwnedTerminalWindow = {
+    provider: "cli-process",
+    tty: "/dev/ttys009",
+    ownerPid,
+    executablePath,
+    marker,
+    ownerBirth,
+  }
   const argv = `${executablePath} start --always-new-process --config-file ${marker.value} -- /bin/bash run.sh`
 
   /** Every ps read the authority makes, answered from one table so a case names only what it varies. */
@@ -161,20 +176,23 @@ describe("cli-process ownership", () => {
     comm?: Record<number, string>
     ppid?: Record<number, number>
     tty?: Record<number, string>
+    lstart?: Record<number, string>
   }) {
     vi.mocked(spawnSync).mockImplementation(((_command: string, args: readonly string[]) => {
       const field = args[args.indexOf("-o") + 1]
       const pid = Number(args[args.indexOf("-p") + 1])
       const value =
-        field === "ppid="
-          ? table.ppid?.[pid]
-          : field === "comm="
-            ? table.comm?.[pid]
-            : field === "command="
-              ? table.command?.[pid]
-              : field === "tty="
-                ? table.tty?.[pid]
-                : undefined
+        field === "lstart="
+          ? (table.lstart?.[pid] ?? ownerBirth.rawLstart.trimEnd())
+          : field === "ppid="
+            ? table.ppid?.[pid]
+            : field === "comm="
+              ? table.comm?.[pid]
+              : field === "command="
+                ? table.command?.[pid]
+                : field === "tty="
+                  ? table.tty?.[pid]
+                  : undefined
       return (
         value === undefined ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: `${value}\n`, stderr: "" }
       ) as ReturnType<typeof spawnSync>
@@ -300,6 +318,99 @@ describe("cli-process ownership", () => {
     }
   })
 
+  test.each(
+    (["TERM", "KILL"] as const).flatMap((stage) =>
+      (["birth changed", "birth unreadable", "executable unreadable"] as const).map((fault) => [stage, fault] as const),
+    ),
+  )("%s refuses %s even with the same marker and executable", (stage, fault) => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const base = vi.mocked(spawnSync).getMockImplementation()!
+    let active = stage === "TERM"
+    let killed = false
+    vi.mocked(spawnSync).mockImplementation(((command: string, args: readonly string[]) => {
+      const field = args[args.indexOf("-o") + 1]
+      if (
+        active &&
+        ((field === "lstart=" && fault === "birth unreadable") ||
+          (field === "comm=" && fault === "executable unreadable"))
+      ) {
+        return {
+          status: null,
+          stdout: "",
+          stderr: "",
+          error: Object.assign(new Error("inspection timed out"), { code: "ETIMEDOUT" }),
+        }
+      }
+      if (active && field === "lstart=" && fault === "birth changed") {
+        return { status: 0, stdout: "Sat Nov 14 16:33:32 2026\n", stderr: "" }
+      }
+      return base(command, args)
+    }) as typeof spawnSync)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0 && killed) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+      if (signal === "SIGTERM") active = true
+      if (signal === "SIGKILL") killed = true
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner), fault).toThrow(/birth|executable.*(failed|unreadable)/i)
+      expect(kill, fault).not.toHaveBeenCalledWith(ownerPid, stage === "TERM" ? "SIGTERM" : "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("a proved absent owner sends no signal", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({})
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("gone"), { code: "ESRCH" })
+    })
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).not.toThrow()
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGTERM")
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("permission failure during exit inspection leaves disposal unproved", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0) throw Object.assign(new Error("permission denied"), { code: "EPERM" })
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/permission denied/)
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test.each([
+    undefined,
+    { ...ownerBirth, pid: ownerPid + 1 },
+    { ...ownerBirth, startedAtEpochSeconds: ownerBirth.startedAtEpochSeconds + 1 },
+    { ...ownerBirth, rawLstart: "unknown" },
+    { ...ownerBirth, observedOnHost: "" },
+  ])("missing or inconsistent recorded birth never signals", (birth) => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw new Error("unexpected signal")
+    })
+    try {
+      expect(() => closeOwnedTerminalWindow({ ...owner, ownerBirth: birth } as OwnedTerminalWindow)).toThrow(/birth/i)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
   test("kitty's close now re-tests its instance-group marker before signalling", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const kitty: OwnedTerminalWindow = {
@@ -336,7 +447,11 @@ describe("owner resolution", () => {
         const rows = pids.map((pid) => `${pid} ${executable} ${marker.flag} ${marker.value} --new-window`)
         return { status: 0, stdout: `${rows.join("\n")}\n`, stderr: "" } as ReturnType<typeof spawnSync>
       }
-      return { status: 0, stdout: `${executable}\n`, stderr: "" } as ReturnType<typeof spawnSync>
+      return {
+        status: 0,
+        stdout: args.includes("lstart=") ? "Sat Nov 14 16:33:31 2026\n" : `${executable}\n`,
+        stderr: "",
+      } as ReturnType<typeof spawnSync>
     }) as unknown as typeof spawnSync)
   }
 
@@ -345,6 +460,14 @@ describe("owner resolution", () => {
     expect(resolveOwnedProcessByMarker({ executablePath, marker, tty: "/dev/ttys012" })).toEqual({
       provider: "cli-process",
       ownerPid: 5100,
+      ownerBirth: {
+        pid: 5100,
+        startedAtEpochSeconds: 1794674011,
+        rawLstart: "Sat Nov 14 16:33:31 2026\n",
+        observedAt: expect.any(String),
+        observedByUid: process.getuid!(),
+        observedOnHost: expect.any(String),
+      },
       executablePath,
       marker,
       tty: "/dev/ttys012",

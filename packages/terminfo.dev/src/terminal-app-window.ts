@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 import { basename } from "node:path"
+import { hostname } from "node:os"
 import { CENSUS, censusDarwinWindows } from "./darwin-capture.ts"
 import { parseLstart } from "./disposable-receipt.ts"
 import { ownedAppProofSpec, type OwnedAppProofSpec } from "./darwin-owned-app.ts"
@@ -36,6 +37,12 @@ export type OwnedTerminalWindow =
       provider: "cli-process"
       /** The live pid the launch resolved and recorded. Assert and close read this pid and no other. */
       ownerPid: number
+      ownerBirth: AccountProcess & {
+        rawLstart: string
+        observedAt: string
+        observedByUid: number
+        observedOnHost: string
+      }
       tty: string
       /** The GUI owner's realpath, never the CLI shim's. */
       executablePath: string
@@ -143,11 +150,42 @@ function ownedWindowScript(window: TerminalAppWindow, close: boolean): string {
 end tell`
 }
 
-function processAlive(pid: number): boolean {
+/** The existing single-PID C-locale/UTC birth reader, shared with Ghostty outer-launch measurement. */
+export function readProcessBirth(pid: number): CliProcessWindow["ownerBirth"] {
+  if (!Number.isSafeInteger(pid) || pid < 1) throw new Error("Process birth requires a positive PID")
+  const observedByUid = process.getuid?.()
+  const observedOnHost = hostname()
+  if (observedByUid === undefined || !observedOnHost.trim()) {
+    throw new Error("Process birth observation context unavailable")
+  }
+  const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8",
+    timeout: 5_000,
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+  })
+  if (result.error || result.signal || result.status !== 0) {
+    throw new Error(
+      `Process birth read failed for pid ${pid}: ${result.error?.message ?? result.stderr ?? result.status}`,
+      { cause: result.error },
+    )
+  }
+  const rawLstart = String(result.stdout ?? "")
+  return {
+    pid,
+    rawLstart,
+    startedAtEpochSeconds: parseLstart(rawLstart),
+    observedAt: new Date().toISOString(),
+    observedByUid,
+    observedOnHost,
+  }
+}
+
+function processAlive(pid: number, requireKnownState = false): boolean {
   try {
     process.kill(pid, 0)
     return true
-  } catch {
+  } catch (error) {
+    if (requireKnownState && (error as NodeJS.ErrnoException).code !== "ESRCH") throw error
     return false
   }
 }
@@ -424,6 +462,7 @@ export function resolveOwnedProcessByMarker(input: {
   return {
     provider: "cli-process",
     ownerPid: onlyOwner,
+    ownerBirth: readProcessBirth(onlyOwner),
     executablePath: input.executablePath,
     marker: input.marker,
     tty: input.tty,
@@ -436,12 +475,37 @@ type OwnerRecheck = (stage: "signaling it" | "escalating to SIGKILL") => boolean
 
 /** The marker arms' recheck: the pid still runs the launched binary and still carries the marker. */
 function markerRecheck(
-  owned: { ownerPid: number; executablePath: string },
+  owned: { ownerPid: number; executablePath: string; ownerBirth?: CliProcessWindow["ownerBirth"] },
   marker: ProcessMarker,
   who: string,
 ): OwnerRecheck {
   return (stage) => {
-    const liveExecutable = processExecutable(owned.ownerPid, who)
+    if (who === "cli-process") {
+      const birth = owned.ownerBirth
+      if (
+        !birth ||
+        birth.pid !== owned.ownerPid ||
+        !Number.isSafeInteger(birth.startedAtEpochSeconds) ||
+        !Number.isSafeInteger(birth.observedByUid) ||
+        birth.observedByUid < 0 ||
+        typeof birth.observedOnHost !== "string" ||
+        !birth.observedOnHost.trim() ||
+        typeof birth.observedAt !== "string" ||
+        !Number.isFinite(Date.parse(birth.observedAt))
+      ) {
+        throw new Error(`cli-process owner birth evidence invalid for pid ${owned.ownerPid}; not ${stage}`)
+      }
+      let parsed: number
+      try {
+        parsed = parseLstart(birth.rawLstart)
+      } catch (cause) {
+        throw new Error(`cli-process owner birth evidence malformed; not ${stage}`, { cause })
+      }
+      if (parsed !== birth.startedAtEpochSeconds) {
+        throw new Error(`cli-process owner birth raw/epoch disagree; not ${stage}`)
+      }
+    }
+    const liveExecutable = processExecutable(owned.ownerPid, who, who === "cli-process")
     if (liveExecutable === null) return false
     if (liveExecutable !== realpathSync(owned.executablePath)) {
       throw new Error(
@@ -453,6 +517,12 @@ function markerRecheck(
       throw new Error(
         `${who} owner close: pid ${owned.ownerPid} does not carry the launched marker ${markerText(marker)}; not ${stage}`,
       )
+    }
+    if (who === "cli-process") {
+      const liveBirth = readProcessBirth(owned.ownerPid)
+      if (liveBirth.startedAtEpochSeconds !== owned.ownerBirth?.startedAtEpochSeconds) {
+        throw new Error(`cli-process owner birth changed for pid ${owned.ownerPid}; not ${stage}`)
+      }
     }
     return true
   }
@@ -476,23 +546,24 @@ function iterm2Recheck(window: Iterm2Window): OwnerRecheck {
 /**
  * Recheck the recorded owner and signal only it. The pid is never re-resolved: close signals the one
  * process the launch recorded, and refuses when the recheck says it is no longer that owner, so a pid
- * reused by another instance of the same app is never signalled. No process group is involved.
+ * with an observed birth mismatch is refused. Native lstart has whole-second resolution, and a
+ * check-to-signal interval remains; this is not an atomic process handle. No process group is involved.
  */
-function closeOwnedProcess(ownerPid: number, who: string, recheck: OwnerRecheck): void {
+function closeOwnedProcess(ownerPid: number, who: string, recheck: OwnerRecheck, requireKnownState = false): void {
   if (!recheck("signaling it")) return
   process.kill(ownerPid, "SIGTERM")
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (!processAlive(ownerPid)) return
+    if (!processAlive(ownerPid, requireKnownState)) return
     spawnSync("sleep", ["0.1"])
   }
   // SIGTERM is a request, not a guarantee: kitty was measured surviving it for the whole window and
   // exiting only on SIGKILL (run a9710c8a3f4e6abcfd53da1e147d9b4b, 2026-10-19). The pid was verified
   // before SIGTERM, but it may have exited and been REUSED during those 5s, so it is rechecked before
-  // escalating. A reused pid is never killed.
+  // escalating. Refuse an observed mismatch before sending that signal.
   if (!recheck("escalating to SIGKILL")) return
   process.kill(ownerPid, "SIGKILL")
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (!processAlive(ownerPid)) return
+    if (!processAlive(ownerPid, requireKnownState)) return
     spawnSync("sleep", ["0.1"])
   }
   throw new Error(`${who} owner close: pid ${ownerPid} survived SIGTERM (5000ms) and SIGKILL (5000ms)`)
@@ -570,7 +641,7 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
       return
     }
     case "cli-process": {
-      closeOwnedProcess(window.ownerPid, "cli-process", markerRecheck(window, window.marker, "cli-process"))
+      closeOwnedProcess(window.ownerPid, "cli-process", markerRecheck(window, window.marker, "cli-process"), true)
       return
     }
     case "iterm2": {

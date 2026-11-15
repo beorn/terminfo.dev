@@ -226,10 +226,22 @@ function captureSignedBundle(
     }
     return { codeSignature: { identifier, cdHash, strictVerified: true as const }, raw, commands }
   }
+  const ownerTrace: Record<string, string | number> = {
+    ownerPid: window.provider === "kitty" ? window.kittyPid : window.ownerPid,
+    ...(window.provider === "cli-process" && {
+      ownerBirthPid: window.ownerBirth.pid,
+      ownerBirthRawLstart: window.ownerBirth.rawLstart,
+      ownerBirthStartedAtEpochSeconds: window.ownerBirth.startedAtEpochSeconds,
+      ownerBirthObservedAt: window.ownerBirth.observedAt,
+      ownerBirthObservedByUid: window.ownerBirth.observedByUid,
+      ownerBirthObservedOnHost: window.ownerBirth.observedOnHost,
+    }),
+  }
   const observed = signature()
   if ("absent" in observed) {
     return {
       trace: {
+        ...ownerTrace,
         argvAbsentReason: observed.absent,
         codesignDetailsRaw: observed.raw,
         codesignCommandsRaw: JSON.stringify(observed.commands),
@@ -257,7 +269,7 @@ function captureSignedBundle(
       ...(argv && { argv }),
     },
     trace: {
-      ownerPid: window.provider === "kitty" ? window.kittyPid : window.ownerPid,
+      ...ownerTrace,
       codesignDetailsRaw: observed.raw,
       codesignCommandsRaw: JSON.stringify(observed.commands),
       codesignRecheckCommandsRaw: JSON.stringify(checked.commands),

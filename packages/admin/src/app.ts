@@ -32,7 +32,6 @@ import {
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { readWindowsWezTermRows } from "../../terminfo.dev/src/windows-wezterm-text.ts"
-import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { assertPrivateCollectionOutput, writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
@@ -47,6 +46,7 @@ import {
   kittyOwnedProcess,
   parseKittyIdentity,
   recordedOwnerTty,
+  readProcessBirth,
   resolveOwnedProcessByMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
@@ -952,18 +952,6 @@ function fileSha256(path: string, what: string): string {
   }
 }
 
-/** D3: the owner's birth is one C-locale UTC `ps -o lstart=` line, read from the process the marker resolved. */
-function processBirthSeconds(pid: number): number {
-  return parseLstart(
-    String(
-      execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-        encoding: "utf8",
-        env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
-      }),
-    ),
-  )
-}
-
 /** Ghostty's update-check setting, read once and never written (D4.6). An absent key is a value. */
 function ghosttyAutoUpdate(): {
   key: "SUEnableAutomaticChecks"
@@ -1010,7 +998,7 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
     executablePath: launch.executablePath,
     marker: launch.marker,
     identityFile: { path: launch.identityPath, sha256: fileSha256(launch.identityPath, "owner identity record") },
-    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: processBirthSeconds(ownerPid) },
+    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: readProcessBirth(ownerPid).startedAtEpochSeconds },
     bootId: String(execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" })).trim(),
     runFileSha256: fileSha256(launch.marker.value, "run file"),
     autoUpdate: ghosttyAutoUpdate(),
