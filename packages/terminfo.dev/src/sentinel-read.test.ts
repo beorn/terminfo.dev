@@ -671,10 +671,12 @@ test("a pre-paint frame one cleanup write behind still locates, so location is n
   expect(second.witness).toBeDefined()
   expect(terminalAt.writes[2]).not.toBe(PAINT)
 
-  // The discriminator: the terminal's own frame once the clear has been drawn, not a blank fixture
-  // frame. A fixture frame would only show that the witness box distinguishes SOME blank frame; this
-  // one shows the real post-cleanup frame is blank there (@dev/11 peer read, 34129).
+  // The expected restored state: the same terminal once the clear has been drawn, not a blank fixture
+  // frame. Sentinel absence alone is not restoration — a frame whose protected region had been erased
+  // or recoloured to any non-sentinel RGB would also carry no sentinel and still be wrong — so every
+  // pixel outside this pair's own paint blocks has to match this frame exactly (@dev/7 peer read, 34129).
   const restored = terminalAt.frameNow()
+  expect(differingPixels(stale, restored)).toEqual(blockPixels([chosenPair.a, chosenPair.b]))
   expect(pixelOf(restored, witnessBox)).not.toEqual([...sentinel.rgb, 255])
   expect(sentinelPixels(restored)).toBe(0)
 })
@@ -704,6 +706,35 @@ function sentinelPixels(frame: CapturedFrame) {
     }
   }
   return count
+}
+
+/** Every pixel two frames disagree on, in frame order: what a protected region must have none of. */
+function differingPixels(actual: CapturedFrame, expected: CapturedFrame) {
+  const out: { x: number; y: number }[] = []
+  for (let index = 0; index < Math.min(actual.rgba.length, expected.rgba.length); index += 4) {
+    if (
+      actual.rgba[index] !== expected.rgba[index] ||
+      actual.rgba[index + 1] !== expected.rgba[index + 1] ||
+      actual.rgba[index + 2] !== expected.rgba[index + 2]
+    ) {
+      const pixel = index / 4
+      out.push({ x: pixel % actual.width, y: Math.floor(pixel / actual.width) })
+    }
+  }
+  return out
+}
+
+/** The 2x2 pixels a cell's block occupies, in the same frame order differingPixels reports. */
+function blockPixels(cells: { row: number; col: number }[], origin = { x: 0, y: 0 }) {
+  const out: { x: number; y: number }[] = []
+  for (const cell of cells) {
+    for (let dy = 0; dy < 2; dy += 1) {
+      for (let dx = 0; dx < 2; dx += 1) {
+        out.push({ x: origin.x + (cell.col - 1) * 2 + dx, y: origin.y + (cell.row - 1) * 2 + dy })
+      }
+    }
+  }
+  return out.sort((a, b) => a.y - b.y || a.x - b.x)
 }
 
 /** The cells a paint or clear write names, in the order it names them. */
@@ -762,14 +793,22 @@ test.each([
     const painted = cellsNamedBy(terminalAt.writes[0] ?? "")
     expect(painted.length).toBeGreaterThanOrEqual(1)
     const corner = pixelOf(retryFrame as CapturedFrame, cellPixel(painted[0] as { row: number; col: number }))
+    // The expected restored state for this same terminal once its own clear has been drawn.
+    terminalAt.state.lag = 0
+    const expectedRestored = terminalAt.frameNow()
+    const underTest = retryFrame as CapturedFrame
     if (stale) {
       expect(corner).toEqual([...sentinel.rgb, 255])
-      // Both 2x2 blocks of this read's own paint are on the frame it calls pre-paint.
-      expect(sentinelPixels(retryFrame as CapturedFrame)).toBe(8)
+      expect(sentinelPixels(underTest)).toBe(8)
+      // Still wrong, and wrong in exactly one place: the two paint blocks. Every protected pixel —
+      // everything the paint never touched — matches the restored frame exactly, which is the part a
+      // sentinel count could never tell apart from an erased screen (@dev/7 peer read, 34129).
+      expect(differingPixels(underTest, expectedRestored)).toEqual(blockPixels(painted))
     } else {
-      // A truly restored full frame: the clear landed, so no pixel anywhere still carries the sentinel.
       expect(corner).not.toEqual([...sentinel.rgb, 255])
-      expect(sentinelPixels(retryFrame as CapturedFrame)).toBe(0)
+      expect(sentinelPixels(underTest)).toBe(0)
+      // A truly restored full frame: identical to the expected state everywhere, not merely free of ink.
+      expect(differingPixels(underTest, expectedRestored)).toEqual([])
     }
   },
 )
