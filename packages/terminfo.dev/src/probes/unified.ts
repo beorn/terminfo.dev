@@ -1352,9 +1352,10 @@ export async function runProbeBatch(
       // collector's own acquisition and finish buckets, so the two are never added together.
       const servedCapture = async (request: CaptureRequest) => {
         // Attempted is stamped BEFORE withTTYOperation, where both wrappers of the baseline
-        // (041c6879) stamped it. A first capture whose ownership verification fails therefore still
-        // counts as attempted: the error path keeps its screenshot/buffer-state observation and its
-        // rawReplyRef instead of degrading to an ungraded diagnostic (34261 post-merge review).
+        // (041c6879) stamped it. A failed ownership verification is custody-classified and stops the
+        // run, so it never grades this row either way; the flag decides the failures that do reach the
+        // error path - a queue wait or a refused restore before the adapter - and matching the baseline
+        // is owed on its own (34261 post-merge review).
         captureAttempted = true
         const entryAt = performance.now()
         let adapterEnteredAt: number | undefined
@@ -1372,9 +1373,10 @@ export async function runProbeBatch(
         recordCapture(probe.id, captures, result, request.role)
         // The completion mark is taken AFTER recordCapture, so the frame validation and the
         // capture/reference retention inside it sit in the measured span instead of before it (34261
-        // post-merge review). The frame is already retained by the line above, so the caller block is
-        // attached to that recorded trace; a throw above records no caller block at all, and a value
-        // that was not observed stays absent rather than being reported as zero.
+        // post-merge review). recordCapture retains the adapter's own object, and real adapters return
+        // a fresh literal per call, so the caller block is attached to that recorded trace rather than
+        // copied; a throw above records no caller block at all, and a value that was not observed stays
+        // absent rather than being reported as zero.
         const recordedAt = performance.now()
         if (adapterEnteredAt !== undefined && adapterReturnedAt !== undefined) {
           result.trace = {
