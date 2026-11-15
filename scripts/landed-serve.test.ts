@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawn, spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import {
   createPreviewHandler,
@@ -118,6 +118,116 @@ it("gives the host the build's declared ceiling, 16384 MiB by default", () => {
   expect(ceiling({ TERMINFO_SITE_PEAK_CEILING_BYTES: String(20 * 1024 ** 3) })).toBe("20480")
   expect(() => ceiling({ TERMINFO_SITE_PEAK_CEILING_BYTES: "-1" })).toThrow("TERMINFO_SITE_PEAK_CEILING_BYTES")
 })
+
+// @failure A damaged hourly summary prevents the actual preview owner starting again (#33944 C8).
+// @level l3 @consumer real landed-serve bootstrap, strict run reader and HTTP listener.
+// Helper routing/rebuild tests and the build-failure subprocess cannot witness successful owner lifetimes.
+it("starts the real owner twice on the same malformed hourly summary and keeps serving", async () => {
+  const ownerPath = fileURLToPath(new URL("./landed-serve.ts", import.meta.url))
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url))
+  const target = execFileSync("git", ["-C", sourceRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+  const out = join(dist, "owner-out")
+  const served = join(out, "dist")
+  const runs = join(dist, "owner-runs")
+  const oldRun = "2026-11-02T20-34-05-309Z-75c7a72a53da"
+  const badRun = "2026-11-02T21-34-03-594Z-2d0bc819ffc1"
+  const badSummary = join(runs, badRun, "summary.json")
+  const stamp = { sourceCommit: target, workingRun: { id: oldRun } }
+  mkdirSync(served, { recursive: true })
+  mkdirSync(join(runs, oldRun), { recursive: true })
+  mkdirSync(join(runs, badRun), { recursive: true })
+  writeFileSync(join(served, "build.json"), JSON.stringify(stamp))
+  writeFileSync(join(served, "index.html"), "owned-preview-survives-damaged-summary")
+  writeFileSync(join(served, "404.html"), "owned-not-found")
+  writeFileSync(join(runs, oldRun, "summary.json"), JSON.stringify({ complete: true }))
+  writeFileSync(join(runs, oldRun, "cells.json"), "{}")
+  writeFileSync(badSummary, `${JSON.stringify({ complete: true })}${"\u0000".repeat(32)}`)
+  const retained = [
+    join(served, "build.json"),
+    join(served, "index.html"),
+    join(runs, oldRun, "summary.json"),
+    join(runs, oldRun, "cells.json"),
+    badSummary,
+  ].map((path) => ({ path, bytes: readFileSync(path) }))
+
+  // The owner is actual Bun; only an unexpected external site build hits the existing fake-bun boundary.
+  const bin = join(dist, "owner-bin")
+  const trace = join(dist, "unexpected-owner-build.json")
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, "bun"),
+    `#!${process.execPath}\nawait Bun.write(process.env.BUILD_ARGV_TRACE, JSON.stringify(process.argv.slice(2))); process.exit(17);\n`,
+    { mode: 0o755 },
+  )
+  const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("port reservation") })
+  const port = portProbe.port
+  await portProbe.stop(true)
+  const owners = new Set<number>()
+  for (let lifetime = 0; lifetime < 2; lifetime++) {
+    let stdout = ""
+    let stderr = ""
+    let spawnError: Error | undefined
+    const child = spawn(process.execPath, [ownerPath], {
+      cwd: sourceRoot,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        TERMINFO_SITE_HOST: "127.0.0.1",
+        TERMINFO_SITE_PORT: String(port),
+        TERMINFO_SITE_OUT_DIR: out,
+        TERMINFO_SITE_WORKING_RUNS_DIR: runs,
+        BUILD_ARGV_TRACE: trace,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()))
+    child.once("error", (error) => {
+      spawnError = error
+    })
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8")
+    })
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8")
+    })
+    try {
+      await vi.waitFor(
+        () => {
+          if (spawnError) throw spawnError
+          expect(child.exitCode, `${stdout}\n${stderr}`).toBeNull()
+          expect(child.signalCode, `${stdout}\n${stderr}`).toBeNull()
+          expect(stderr).toContain(badSummary)
+          expect(stderr).toContain("invalid JSON")
+        },
+        { timeout: 30_000, interval: 25 },
+      )
+      // The listener binds before the scan: request only AFTER this lifetime's named error was observed.
+      const response = await fetch(`http://127.0.0.1:${port}/`)
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe("owned-preview-survives-damaged-summary")
+      const build = await fetch(`http://127.0.0.1:${port}/build.json`)
+      expect(build.status).toBe(200)
+      expect(await build.json()).toEqual(stamp)
+      expect(child.pid).toBeTypeOf("number")
+      expect(owners.has(child.pid!)).toBe(false)
+      owners.add(child.pid!)
+      expect(existsSync(trace), `${stdout}\n${stderr}`).toBe(false)
+      for (const file of retained) expect(readFileSync(file.path)).toEqual(file.bytes)
+    } finally {
+      // 'close' follows process exit AND stdio closure; do not reopen or remove its files before it settles.
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+      const force = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
+      }, 5_000)
+      try {
+        await closed
+      } finally {
+        clearTimeout(force)
+      }
+    }
+  }
+  expect(owners.size).toBe(2)
+}, 75_000)
 
 function get(path: string, init?: RequestInit): Response {
   return createPreviewHandler(dist)(new Request(`http://preview.test${path}`, init))
