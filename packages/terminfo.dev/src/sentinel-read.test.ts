@@ -675,6 +675,94 @@ test("a pre-paint frame one cleanup write behind still locates, so location is n
   expect(pixelOf(restored, first.witness?.a.box ?? { x: 0, y: 0 })).not.toEqual([...sentinel.rgb, 255])
 })
 
+/** Where the fixture paints a cell: the same 2x2 arithmetic its window uses, by absolute pixel. */
+function cellPixel(cell: { row: number; col: number }, origin = { x: 0, y: 0 }) {
+  return { x: origin.x + (cell.col - 1) * 2, y: origin.y + (cell.row - 1) * 2 }
+}
+
+/** How many pixels of a whole frame carry the sentinel: what a fully restored frame must not have. */
+function sentinelPixels(frame: CapturedFrame) {
+  let count = 0
+  for (let at = 0; at < frame.rgba.length; at += 4) {
+    if (
+      frame.rgba[at] === sentinel.rgb[0] &&
+      frame.rgba[at + 1] === sentinel.rgb[1] &&
+      frame.rgba[at + 2] === sentinel.rgb[2]
+    ) {
+      count += 1
+    }
+  }
+  return count
+}
+
+/** The cells a paint or clear write names, in the order it names them. */
+function cellsNamedBy(write: string) {
+  return [...write.matchAll(/\x1b\[(\d+);(\d+)H/g)].map((hit) => ({ row: Number(hit[1]), col: Number(hit[2]) }))
+}
+
+/**
+ * The retry half of the same boundary (@cto settle-experiment scope, 34129): before it retakes the
+ * pre-paint frame a read clears its own paint, so the retry frame is only truly a frame BEFORE the
+ * paint if that clear reached the screen. Nothing the read returns can tell the difference: it locates
+ * a pair either way. Only the frame does, which is why the study reads retained frames rather than read
+ * outcomes, and why a located read is never counted as a fresh one.
+ */
+test.each([
+  { lag: 1, stale: true },
+  { lag: 0, stale: false },
+])(
+  "a retry's pre-paint frame is stale exactly when its own clear has not reached the screen: %o (34129)",
+  async ({ lag, stale }) => {
+    const terminalAt = terminal({ x: 0, y: 0 })
+    let prePaints = 0
+    let captures = 0
+    let retryFrame: CapturedFrame | undefined
+    // The first capture lands a write behind, so it cannot see the paint and the read retries.
+    terminalAt.state.lag = 1
+    const read = await readThroughSentinel({
+      source: terminalAt.source,
+      prePaint: async () => {
+        prePaints += 1
+        if (prePaints === 1) return windowAt({ x: 0, y: 0 }, { painted: false })
+        // The retry has just written its clear; how much of that reached the screen is the question.
+        terminalAt.state.lag = lag
+        retryFrame = terminalAt.frameNow()
+        return retryFrame
+      },
+      capture: async (resolve) => {
+        captures += 1
+        // The first capture is the one that lags: it cannot see this read's paint and refuses.
+        if (captures === 1) return resolve({ frame: terminalAt.frameNow(), pixelGeometry })
+        terminalAt.state.lag = 0
+        return resolve({ frame: terminalAt.frameNow(), pixelGeometry })
+      },
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    })
+
+    // Location is not the discriminator: the read anchors its pair in both cases.
+    expect(read.witness).toBeDefined()
+    expect(prePaints).toBe(2)
+    // This read's own paint, as the frame would show it if the clear had not landed.
+    const painted = cellsNamedBy(terminalAt.writes[0] ?? "")
+    expect(painted.length).toBeGreaterThanOrEqual(1)
+    const corner = pixelOf(retryFrame as CapturedFrame, cellPixel(painted[0] as { row: number; col: number }))
+    if (stale) {
+      expect(corner).toEqual([...sentinel.rgb, 255])
+      // Both 2x2 blocks of this read's own paint are on the frame it calls pre-paint.
+      expect(sentinelPixels(retryFrame as CapturedFrame)).toBe(8)
+    } else {
+      // A truly restored full frame: the clear landed, so no pixel anywhere still carries the sentinel.
+      expect(corner).not.toEqual([...sentinel.rgb, 255])
+      expect(sentinelPixels(retryFrame as CapturedFrame)).toBe(0)
+    }
+  },
+)
+
 test("a frame without this read's painted cells refuses by name, and both cells are restored (33000)", async () => {
   const frame = windowAt({ x: 2, y: 2 }, { painted: false })
   const painted = source()
