@@ -72,6 +72,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/ordinary-open-run.ts",
   "packages/terminfo.dev/src/linux-capture.ts",
   "packages/terminfo.dev/src/capture-core.ts",
+  "packages/terminfo.dev/src/pre-paint-meter.ts",
   "packages/terminfo.dev/src/darwin-capture.ts",
   "packages/terminfo.dev/src/darwin-kernel-exec.ts",
   "packages/terminfo.dev/src/darwin-terminal-text.ts",
