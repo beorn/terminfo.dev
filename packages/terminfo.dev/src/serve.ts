@@ -50,6 +50,7 @@ import {
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { readThroughSentinel } from "./sentinel-read.ts"
+import { createPrePaintMeter, withPrePaintReading } from "./pre-paint-meter.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
 import {
@@ -853,7 +854,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
           // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
           // through this same adapter route and the same window (@cto 41cd2559 conditions 1-3).
-          return readThroughSentinel({
+          // 34261 pre-paint ruling: this route can take one complete frame before its paint, and
+          // again on a sentinel retry, all inside the caller's adapterCallbackMs. The meter is created
+          // per served capture and nothing about it is shared with the next one.
+          const prePaintMeter = createPrePaintMeter()
+          const read = await readThroughSentinel({
             source,
             ...(checkpoint.restoreAfterPaint !== undefined ? { restoreAfterPaint: checkpoint.restoreAfterPaint } : {}),
             // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
@@ -862,7 +867,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             settled: calibrated,
             ...(checkpoint.scroll !== undefined ? { scroll: checkpoint.scroll } : {}),
             prePaint: () =>
-              captureRawFrame(checkpoint.featureId, `${checkpoint.label}: pre-paint`, Date.now() + DEFAULT_TIMEOUT_MS),
+              prePaintMeter.run(() =>
+                captureRawFrame(
+                  checkpoint.featureId,
+                  `${checkpoint.label}: pre-paint`,
+                  Date.now() + DEFAULT_TIMEOUT_MS,
+                ),
+              ),
             capture: (resolve) => adapter.capture(checkpoint, resolve),
             label: checkpoint.label,
             sentinel,
@@ -874,6 +885,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           })
+          return withPrePaintReading(read, prePaintMeter.reading())
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture, row }) => {
           // 34306 AC1: the origin the rows before this one were graded against. This is the last
