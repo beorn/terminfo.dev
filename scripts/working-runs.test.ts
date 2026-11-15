@@ -42,8 +42,10 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { fullContextCensus } from "../docs/data/full-census.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
+import * as rawCaptureReader from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 import clientProbes, { loadFullProbes } from "../docs/data/probes.data.ts"
+import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 
 /**
  * A rollup as the hourly tool writes it into `summary.json` (#33600): probes data through the ONE
@@ -155,6 +157,57 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     save()
     return { parent, dir, summary, collected, save }
   }
+
+  // 33964 diagnostic: preserve every legitimate historical result while separating compact output
+  // from transient decode allocation. Existing two-run coverage does not measure this phase's growth.
+  it.each([2, 8])("33964 diagnoses %i complete collections through the existing trusted loader", (count) => {
+    const content = runsDir()
+    for (const name of ["features.json", "terminals.json"]) {
+      copyFileSync(join(root, "content", name), join(content, name))
+    }
+    for (const name of ["probes-apps", "probes-mux", "probes-libs", "artifacts"]) mkdirSync(join(content, name))
+    writeFileSync(join(content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+    {
+      const parent = runsDir()
+      for (let index = 0; index < count; index++) {
+        collection(parent, `2026-11-02T19-${String(index).padStart(2, "0")}-05-072Z-e8437509ec6a`)
+      }
+      collectGarbage()
+      const decodeHeaps: number[] = []
+      const readRaw = rawCaptureReader.loadRawCapture
+      const reader = vi.spyOn(rawCaptureReader, "loadRawCapture").mockImplementation((...args) => {
+        const loaded = readRaw(...args)
+        decodeHeaps.push(process.memoryUsage().heapUsed)
+        return loaded
+      })
+      const before = process.memoryUsage()
+      const history = siteWorkingHistory(content, { TERMINFO_SITE_WORKING_RUNS_DIR: parent })!
+      const after = process.memoryUsage()
+      reader.mockRestore()
+      expect(decodeHeaps).toHaveLength(count)
+      collectGarbage()
+      const retained = process.memoryUsage()
+      expect(history).toHaveLength(count)
+      expect(history.every((view) => view.contexts[0]?.cells.length === 0)).toBe(true)
+      expect(history.every((view) => Object.keys(view.contexts[0]?.states ?? {}).length === 273)).toBe(true)
+      writeFileSync(
+        2,
+        JSON.stringify({
+          diagnostic: "33964 trusted-history",
+          count,
+          pid: process.pid,
+          compactBytes: Buffer.byteLength(JSON.stringify(history)),
+          heapDelta: after.heapUsed - before.heapUsed,
+          rssDelta: after.rss - before.rss,
+          decodePeakHeap: Math.max(...decodeHeaps),
+          retainedHeapDelta: retained.heapUsed - before.heapUsed,
+          beforeHeap: before.heapUsed,
+          afterHeap: after.heapUsed,
+          retainedHeap: retained.heapUsed,
+        }) + "\n",
+      )
+    }
+  })
 
   it("loads the current collection and summary rollups without the retired pass layout", () => {
     const fixture = collection()

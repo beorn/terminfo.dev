@@ -1,4 +1,5 @@
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 /**
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
@@ -314,6 +315,34 @@ describe("consumer selection", () => {
       libSuite.catalogIds = ["sgr.bold"]
       libSuite.probes.lib = ["sgr.bold"]
       writeFileSync(suitePath, JSON.stringify(libSuite))
+      // 33964: unreferenced placements must leave the canonical selection unchanged. The existing
+      // freshness fixture never varied artifact population; use fresh cache keys for both real reads.
+      const emptyArtifacts = join(root, "empty-artifacts")
+      const extraArtifacts = join(root, "extra-artifacts")
+      mkdirSync(emptyArtifacts)
+      mkdirSync(extraArtifacts)
+      const selectedBefore = loadCurrentResults(join(root, "content"), { artifactDir: emptyArtifacts }).projection
+      expect(Object.keys(selectedBefore.contexts).length).toBeGreaterThan(0)
+      for (let index = 0; index < 64; index++) {
+        writeFileSync(join(extraArtifacts, `${index}.png`), Buffer.alloc(16_384, index))
+      }
+      collectGarbage()
+      const memoryBefore = process.memoryUsage()
+      const selectedAfter = loadCurrentResults(join(root, "content"), { artifactDir: extraArtifacts }).projection
+      const memoryAfter = process.memoryUsage()
+      expect(JSON.stringify(selectedAfter)).toBe(JSON.stringify(selectedBefore))
+      writeFileSync(
+        2,
+        JSON.stringify({
+          diagnostic: "33964 canonical-loader",
+          unreferencedFiles: 64,
+          unreferencedBytes: 64 * 16_384,
+          contexts: Object.keys(selectedAfter.contexts).length,
+          projectionBytes: Buffer.byteLength(JSON.stringify(selectedAfter)),
+          heapDelta: memoryAfter.heapUsed - memoryBefore.heapUsed,
+          rssDelta: memoryAfter.rss - memoryBefore.rss,
+        }) + "\n",
+      )
       const lock = join(root, "scripts", "sitefile.lock.json")
       const before = '{"unchanged":"a check does not regenerate inventory"}\n'
       writeFileSync(lock, before)
