@@ -656,11 +656,12 @@ test("a pre-paint frame one cleanup write behind still locates, so location is n
   const first = await read(terminalAt.frameNow(), () => {})
   expect(terminalAt.writes).toEqual([PAINT, CLEAR])
   expect(first.witness).toBeDefined()
+  const witnessBox = boxOf(first.witness, "the first read")
 
   // The clear has not reached the screen when the next read takes its pre-paint frame.
   terminalAt.state.lag = 1
   const stale = terminalAt.frameNow()
-  expect(pixelOf(stale, first.witness?.a.box ?? { x: 0, y: 0 })).toEqual([...sentinel.rgb, 255])
+  expect(pixelOf(stale, witnessBox)).toEqual([...sentinel.rgb, 255])
 
   // That frame still locates: the pair it paints sits in other cells, so the read succeeds and would
   // have reported nothing about the frame being one write behind.
@@ -670,10 +671,20 @@ test("a pre-paint frame one cleanup write behind still locates, so location is n
   expect(second.witness).toBeDefined()
   expect(terminalAt.writes[2]).not.toBe(PAINT)
 
-  // The discriminator: the same witness boxes on a truly restored frame carry the probe's own cells.
-  const restored = windowAt({ x: 0, y: 0 }, { painted: false })
-  expect(pixelOf(restored, first.witness?.a.box ?? { x: 0, y: 0 })).not.toEqual([...sentinel.rgb, 255])
+  // The discriminator: the terminal's own frame once the clear has been drawn, not a blank fixture
+  // frame. A fixture frame would only show that the witness box distinguishes SOME blank frame; this
+  // one shows the real post-cleanup frame is blank there (@dev/11 peer read, 34129).
+  const restored = terminalAt.frameNow()
+  expect(pixelOf(restored, witnessBox)).not.toEqual([...sentinel.rgb, 255])
+  expect(sentinelPixels(restored)).toBe(0)
 })
+
+/** A witness box that must exist: binding it once beats an `?? { x: 0, y: 0 }` that would measure pixel
+ * (0,0) and pass for the wrong reason if the guard above ever loosened (@dev/11 peer read, 34129). */
+function boxOf(witness: { a: { box: { x: number; y: number } } } | undefined, what: string) {
+  if (witness === undefined) throw new Error(`${what} anchored no witness, so there is nothing to read`)
+  return witness.a.box
+}
 
 /** Where the fixture paints a cell: the same 2x2 arithmetic its window uses, by absolute pixel. */
 function cellPixel(cell: { row: number; col: number }, origin = { x: 0, y: 0 }) {

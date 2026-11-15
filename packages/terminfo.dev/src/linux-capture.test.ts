@@ -573,7 +573,12 @@ test.runIf(process.platform === "linux")(
     // The settle actually ran for its delay: a relabelled constant would not have to be this large.
     // Both sides read the configured delay, so a run bound to a different delay is still pinned to
     // what it asked for rather than to the 150 that used to be spelled twice (34129 settle study).
-    expect(duration("settleElapsedMs")).toBeGreaterThanOrEqual(LINUX_CAPTURE_SETTLE_MS - 10)
+    // At a zero binding there is no wait to prove, and a `>= -10` floor would be vacuously true on
+    // exactly the heads a settle study measures; the configured pin above still holds at every binding
+    // (@dev/11 peer read, 34129).
+    if (LINUX_CAPTURE_SETTLE_MS > 0) {
+      expect(duration("settleElapsedMs")).toBeGreaterThanOrEqual(LINUX_CAPTURE_SETTLE_MS - 10)
+    }
     const total = duration("totalMs")
     expect(total).toBeGreaterThanOrEqual(duration("settleElapsedMs"))
     // The configured delay is recorded beside the elapsed one, never in place of it.
