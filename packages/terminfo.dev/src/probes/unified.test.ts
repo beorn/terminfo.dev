@@ -6705,4 +6705,45 @@ describe("the served capture path records its own caller intervals (34261)", () 
       probe.term = original
     }
   })
+  it("records the caller intervals on the text-cells kind, which shares the same wrapper", async () => {
+    // One wrapper serves both call sites, so the second one is proved rather than assumed: a cells
+    // capture keeps its own trace fields and gains the same measured intervals beside them.
+    verifiedBatchFixture()
+    let reads = 0
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({
+      ids: ["erase.el-with-attrs"],
+      captureKind: "text-cells",
+      captureGeometryRefusal: "the app answers no cell geometry",
+      capture: async ({ role, label }) => {
+        reads += 1
+        const ref = `sha256:${String(reads).padStart(64, "0")}`
+        return {
+          frame: {
+            kind: "text-cells" as const,
+            role,
+            label,
+            capturedAt: reads,
+            ref,
+            cellDigest: ref,
+            frameDigest: ref,
+            cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+          },
+          trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+        }
+      },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    const recorded = JSON.parse(batch.rawReplies["erase.el-with-attrs"]!)
+    expect(recorded.captures.length).toBeGreaterThan(0)
+    for (const capture of recorded.captures) {
+      expect(capture.trace.kind).toBe("text-cells")
+      expect(capture.trace.retained).toBe("snapshot.txt")
+      const caller = capture.trace.caller
+      expect(String(caller.basis)).toContain("caller monotonic")
+      expect(Number.isFinite(caller.entryToAdapterCallbackMs)).toBe(true)
+      expect(Number.isFinite(caller.adapterCallbackMs)).toBe(true)
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterCallbackMs))
+    }
+  })
 })
