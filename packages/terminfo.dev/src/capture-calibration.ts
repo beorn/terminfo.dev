@@ -229,6 +229,8 @@ function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, af
   const pixels = new Set<number>()
   for (let position = 0; position < length; position++) {
     const { line, paint } = positions(position)
+    let informative = false
+    let fractional = false
     for (let channel = 0; channel < 3; channel++) {
       const from = before.rgba[line + channel]
       const to = after.rgba[line + channel]
@@ -240,15 +242,35 @@ function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, af
         if (to !== from) return null
         continue
       }
+      informative = true
       const candidate = (to - from) / (paintChannel - from)
-      if (!(candidate > 0 && candidate < 1)) return null
-      if (alpha === undefined) alpha = candidate
-      else if (Math.abs(candidate - alpha) > 0.01) return null
-      if (Math.abs(to - (from + alpha * (paintChannel - from))) > 1) return null
+      if (candidate > 0 && candidate < 1) {
+        fractional = true
+        alpha ??= candidate
+      }
     }
+    // Rounding may put one component at an endpoint, but each changed pixel
+    // must itself witness fractional coverage; another pixel cannot supply it.
+    if (informative && !fractional) return null
     pixels.add((line / 4) | 0)
   }
   if (alpha === undefined) return null
+  // Infer first so an endpoint in an earlier RGB component is checked against
+  // the same actual fractional witness as every later component on the edge.
+  for (let position = 0; position < length; position++) {
+    const { line, paint } = positions(position)
+    for (let channel = 0; channel < 3; channel++) {
+      const from = before.rgba[line + channel]
+      const to = after.rgba[line + channel]
+      const paintChannel = after.rgba[paint + channel]
+      if (from === undefined || to === undefined || paintChannel === undefined) {
+        throw new Error(`Capture calibration frame is missing byte ${line + channel}`)
+      }
+      if (paintChannel === from) continue // Exact equality was checked before inference.
+      if (Math.abs((to - from) / (paintChannel - from) - alpha) > 0.01) return null
+      if (Math.abs(to - (from + alpha * (paintChannel - from))) > 1) return null
+    }
+  }
   return { edge, coordinate, alpha, pixels }
 }
 

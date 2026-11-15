@@ -110,13 +110,21 @@ test.each(["basic", "reverse", "neither"] as const)(
 )
 
 // The late 3px/1px pair has the same outer width and evades a two-cell sample.
-function rasterFrame(stage: "solid" | "columns" | "rows", uneven = false): CapturedFrame {
+function rasterFrame(
+  stage: "solid" | "columns" | "rows",
+  uneven = false,
+  paint?: readonly [number, number, number],
+): CapturedFrame {
   const result = frame()
   const edges = uneven ? [2, 4, 6, 9, 10] : [2, 4, 6, 8, 10]
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
       const rgb =
-        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? col : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+        stage === "solid"
+          ? (paint ?? [255, 0, 255])
+          : (stage === "columns" ? col : row) % 2 === 0
+            ? (paint ?? [255, 0, 0])
+            : [0, 0, 0]
       for (let y = 2 + row * 2; y < 4 + row * 2; y++) {
         for (let x = edges[col]!; x < edges[col + 1]!; x++) result.rgba.set([...rgb, 255], (y * 12 + x) * 4)
       }
@@ -898,6 +906,54 @@ for (const [edge, line] of [
     expect(measured.basis).toMatch(new RegExp(`edge blend solid ${line} alpha 0\\.851 \\(8 px\\)`))
   })
 }
+
+// Requirement: each pixel can prove a fractional blend even when one RGB component
+// rounds to an endpoint. Existing red/magenta fixtures have no such component.
+// The second palette puts that endpoint before the informative channel (076 run).
+test.each([{ paint: [241, 77, 212] as const }, { paint: [77, 241, 212] as const }])(
+  "a quantized edge component calibrates with paint $paint",
+  async ({ paint }) => {
+    const solid = blendEdge(rasterFrame("solid", false, paint), "bottom", 240 / 241)
+    const columns = blendEdge(rasterFrame("columns", false, paint), "bottom", 240 / 241)
+    const rows = blendEdge(rasterFrame("rows", false, paint), "bottom", 240 / 241)
+    const run = calibration({
+      geometry,
+      frames: {
+        "solid grid paint": [solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rows, rows],
+      },
+    })
+    const measured = await run.promise
+    expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+    expect(measured.basis).toContain("edge blend solid bottom y=10")
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
+
+// Requirement: a global alpha cannot excuse one wholly full-paint or unchanged
+// informative pixel. Existing alpha-1/partial-line cases do not cover these
+// near-endpoint pixels once another pixel has supplied a valid fractional alpha.
+test.each([
+  { pixel: "full paint", alpha: 240 / 241 },
+  { pixel: "unchanged", alpha: 1 / 241 },
+])("a quantized edge still refuses one $pixel pixel", async ({ pixel, alpha }) => {
+  const paint = [77, 241, 212] as const
+  const solid = rasterFrame("solid", false, paint)
+  const columns = blendEdge(rasterFrame("columns", false, paint), "bottom", alpha)
+  const rows = rasterFrame("rows", false, paint)
+  columns.rgba.set([...(pixel === "full paint" ? paint : [0, 0, 0]), 255], (10 * 12 + 3) * 4)
+  const run = calibration({
+    frames: {
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rows, rows],
+    },
+  })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+  expect(run.reads.get("column edge paint")).toBe(2)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
 
 test("a blend pixel 2 levels off the line's alpha refuses", async () => {
   // 219 is alpha 0.859, inside the 0.01 alpha window but 2 levels from the line's 217.
