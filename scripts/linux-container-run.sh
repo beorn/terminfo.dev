@@ -8,6 +8,13 @@ set -euo pipefail
 # A full WezTerm batch was still progressing when the shared 600s limit sent SIGTERM
 # on 2026-11-04 (OOMKilled=false) and when the 1200s limit sent SIGTERM at 1196.9s
 # (exit 143) on 2026-11-09 (#32889). Keep both consumers on the same shared batch budget.
+# #34398: the ladder, with the commit that bought each raise, so the next raise is a recorded decision
+# rather than a surprise. 180 was a literal timeout on the host attach line, before the budget was
+# declared once; the rest are value changes, each read from the value line at that commit:
+#   180 -> 600   d413a1ae5  declare 600s probe-batch timeout for curl and attach
+#   600 -> 900   73bf985cd  allow progressing full batches fifteen minutes
+#   900 -> 1200  b05c68dd6  allow shared probe batches twenty minutes
+#   1200 -> 1800 ba7e4a173  raise PROBE_BATCH_TIMEOUT_SECONDS from 1200 to 1800
 PROBE_BATCH_TIMEOUT_SECONDS=1800
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
