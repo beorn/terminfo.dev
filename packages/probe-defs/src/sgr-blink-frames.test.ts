@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { recordExecutedProbe } from "./helpers.ts"
-import { finalizeVisualResult, sgrProbes } from "./sgr.ts"
+import { blinkSeriesDecision, finalizeVisualResult, sgrProbes } from "./sgr.ts"
 import type { CaptureCells, ObservationFrame, TermProbeSource } from "./types.ts"
 
 function blink() {
@@ -302,14 +302,55 @@ test("a producer that settles 200 ms per acquisition records requested offsets b
     timing: Array<{ requestedOffsetMs: number; invokedMs: number; styledCapturedAt: number; plainCapturedAt: number }>
   }
   expect(timing.map((entry) => entry.requestedOffsetMs)).toEqual([
-    0, 512, 1043, 1581, 2083, 2604, 3101, 3636, 4106, 4615, 5078, 5610, 6018, 6544, 6985, 7500,
+    0, 470, 980, 1458, 1968, 2451, 2960, 3446, 3956, 4448, 4956, 5466, 5975, 6485, 6992, 7500,
   ])
+  const gaps = timing.slice(1).map((entry, index) => entry.requestedOffsetMs - timing[index]!.requestedOffsetMs)
+  expect(gaps).toHaveLength(SAMPLES - 1)
+  expect(Math.max(...gaps)).toBeLessThanOrEqual(510)
+  expect(gaps.reduce((sum, gap) => sum + gap, 0)).toBe(7500)
   // One settled acquisition per sample now (#33117): the plain control is cropped from the same
   // shot, so its timestamp IS the styled sample's, not a second settled acquisition later.
   expect(timing.at(-1)!.invokedMs).toBeGreaterThanOrEqual(7500)
   for (const entry of timing) {
     expect(entry.plainCapturedAt - entry.styledCapturedAt).toBe(0)
   }
+})
+
+// 34129 margin ruling: the requested schedule keeps one measured capture lag between it and the gate
+// ceiling. The previous schedule reached 538 ms against a 545.45 ms ceiling, so the explicit per-sample
+// lag steps below — the largest a measured host added to a request — broke it on one gap, while the
+// shipped schedule takes the same steps and still clears every achieved-gap check. This is a declared
+// fixture over whole-millisecond capturedAt, not a forecast of any host's capture lag.
+const OLD_BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515]
+// The last step is zero so the post-sampling repaint, which is captured after the final sample, keeps
+// its own place in capture order rather than inheriting that sample's lag.
+const CAPTURE_LAG_MS = [0, 8, 4, 34, 10, 6, 28, 2, 20, 12, 30, 6, 24, 0, 16, 0]
+
+test("a measured capture lag that broke the old schedule leaves the shipped one clear of the ceiling", async () => {
+  const laggedCapturedAt = (now: number, sample: number) => now + (CAPTURE_LAG_MS[sample] ?? 0)
+  const oldOffsets = [0]
+  for (const gap of OLD_BLINK_GAPS_MS) oldOffsets.push(oldOffsets.at(-1)! + gap)
+  expect(
+    blinkSeriesDecision({
+      styled: EQUAL,
+      plain: STEADY_PLAIN,
+      capturedAt: oldOffsets.map((offset, sample) => offset + (CAPTURE_LAG_MS[sample] ?? 0)),
+      focusQualified: true,
+    }),
+  ).toMatchObject({ kind: "open", reason: "capture-too-slow" })
+
+  // Same lag steps, shipped schedule, every live control: the flat series decides rather than staying
+  // open, so the margin is the schedule's and not a coincidence of this fixture's capture times.
+  const { context } = app({
+    styled: EQUAL,
+    plain: STEADY_PLAIN,
+    geometry: true,
+    controls: true,
+    capturedAt: laggedCapturedAt,
+  })
+  const result = await term(context)
+  expect(result.observation).toMatchObject({ outcome: "unsupported" })
+  expect(result.observation?.note ?? "").not.toContain("capture too slow")
 })
 
 test("without a measured raster the control and the blink samples go to review together", async () => {
