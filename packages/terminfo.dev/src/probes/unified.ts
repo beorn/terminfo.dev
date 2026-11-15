@@ -786,14 +786,29 @@ export async function runProbeBatch(
         if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
         captureGeometryRefusal = error.message
       } finally {
-        batch.rawReplies[`${calibrationId}.trace`] = JSON.stringify({
-          grid: preparationGrid,
-          geometryCorroboration: reported,
-          refusal: captureGeometryRefusal,
-          writes: calibrationEvents.filter((event) => event.kind === "write").map((event) => event.sequence),
-          queries: calibrationQueries,
-          events: calibrationEvents,
-          captures: calibrationCaptures,
+        // 34261 pre-paint retention: the recorder this preparation handed out keeps appending after it
+        // returns - every sentinel read takes one raw frame before it paints - so the trace is read when
+        // the batch is published rather than frozen into a string here, where those later rows were
+        // lost. Reading it late costs one serialization per reader; none is done per acquisition.
+        // This preparation's own outcome is settled here: `captureGeometryRefusal` is one variable the
+        // next preparation overwrites, so the late read must not report a later preparation's refusal.
+        const refusalAtPreparation = captureGeometryRefusal
+        const writesAtPreparation = calibrationEvents
+          .filter((event) => event.kind === "write")
+          .map((event) => event.sequence)
+        Object.defineProperty(batch.rawReplies, `${calibrationId}.trace`, {
+          enumerable: true,
+          configurable: true,
+          get: () =>
+            JSON.stringify({
+              grid: preparationGrid,
+              geometryCorroboration: reported,
+              refusal: refusalAtPreparation,
+              writes: writesAtPreparation,
+              queries: calibrationQueries,
+              events: calibrationEvents,
+              captures: calibrationCaptures,
+            }),
         })
         // A run-fatal calibration error drops this batch, so the failure draft keeps the trace only from here (30666).
         options.onCheckpoint?.(batch)

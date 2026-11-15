@@ -2461,6 +2461,212 @@ it.each([
   }
 })
 
+// @failure A capture recorded after capture preparation returns is frozen out of the published
+//   calibration trace, so every pre-paint frame a sentinel read pays for leaves no observation row.
+// @level l1
+// @consumer runProbeBatch -> collector.captureCalibration.trace captures[] and the pre-paint reading.
+it("keeps a capture recorded after preparation returns, with identical pixels kept as two rows", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const samePixels = `sha256:${"a".repeat(64)}`
+  let lateRecorder: ((captured: unknown) => void) | undefined
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const definition of definitions) {
+      delete definition.termNeedsGeometry
+      definition.termWrites = "query"
+      definition.term = async () => {
+        // 34261 retention: the same recorder the preparation handed out, invoked after it returned.
+        // Two acquisitions of identical pixels are two observations, so both rows must survive even
+        // though recordCapture deduplicates their shared content reference.
+        for (const capturedAt of [1_764_000_000_123, 1_764_000_000_456]) {
+          lateRecorder?.({
+            frame: { role: "control", ref: samePixels, capturedAt, label: "reset.ris: pre-paint" },
+            trace: { acquisition: { label: "reset.ris: pre-paint", role: "control", totalMs: 237 } },
+          })
+        }
+        return {
+          pass: false,
+          tests: [
+            { id: "criterion", status: "probe-todo", reason: "Late-acquisition fixture does not measure support" },
+          ],
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        source.write("calibration:1")
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${"1".repeat(64)}`,
+            capturedAt: 1_764_000_000_000,
+            label: "calibration witness",
+          },
+          trace: { captureCommand: "fixture-capture" },
+        })
+        // Handed out here, called by the callback below: the ordering the defect froze out.
+        lateRecorder = recordCapture as (captured: unknown) => void
+        source.captureGeometry = {
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+          source: "measured by complete raster calibration" as const,
+        }
+      },
+    })
+    const captureTrace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+    expect(captureTrace.captures.map((capture: { frame: { capturedAt: number } }) => capture.frame.capturedAt)).toEqual(
+      [1_764_000_000_000, 1_764_000_000_123, 1_764_000_000_456],
+    )
+    expect(captureTrace.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
+      "calibration witness",
+      "reset.ris: pre-paint",
+      "reset.ris: pre-paint",
+    ])
+    // Two rows, one content reference: the row count is observations, never deduplicated pixels.
+    expect(new Set(captureTrace.captures.map((capture: { frame: { ref: string } }) => capture.frame.ref)).size).toBe(2)
+    expect(batch.screenshotRefs.filter((ref) => ref === samePixels)).toEqual([samePixels])
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+// @failure A refused preparation loses the acquisitions it did record, so a failure cannot show what
+//   was actually observed before it.
+// @level l1
+// @consumer runProbeBatch -> failure draft collector.captureCalibration.trace.
+it("keeps the rows a refused preparation recorded before it refused", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  delete definitions[0]!.termNeedsGeometry
+  definitions[0]!.termWrites = "query"
+  definitions[0]!.term = async () => ({
+    pass: false,
+    tests: [{ id: "criterion", status: "probe-todo", reason: "Refused-preparation fixture does not measure support" }],
+  })
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        source.write("calibration:1")
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${"2".repeat(64)}`,
+            capturedAt: 1_764_000_000_200,
+            label: "before refusal",
+          },
+          trace: { captureCommand: "fixture-capture" },
+        })
+        throw Object.assign(new Error("refused after one frame"), { name: "CaptureCalibrationRefused" })
+      },
+    })
+    const captureTrace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+    expect(captureTrace).toMatchObject({ refusal: "refused after one frame", writes: ["calibration:1"] })
+    expect(captureTrace.captures).toHaveLength(1)
+    expect(captureTrace.captures[0]).toMatchObject({
+      frame: { label: "before refusal", capturedAt: 1_764_000_000_200 },
+    })
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+// @failure Late acquisitions land in whichever preparation happens to be newest, so a renewal is
+//   credited with frames taken under the preparation it replaced.
+// @level l1
+// @consumer runProbeBatch -> collector.captureCalibration[.renewal.N].trace capture ownership.
+it("keeps each preparation's late acquisitions with the preparation that handed them out", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris", "reset.decaln"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const recorders: Array<(captured: never) => void> = []
+  const settled = {
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+    source: "measured by complete raster calibration" as const,
+  }
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const [index, definition] of definitions.entries()) {
+      delete definition.termNeedsGeometry
+      definition.termWrites = "query"
+      definition.term = async (source) => {
+        if (index === 0) {
+          // RIS expires the geometry, so the next row prepares again; the first preparation's recorder
+          // is still the one that took this frame, and it must stay with that preparation.
+          source.write("\x1bc")
+          recorders[0]?.({
+            frame: {
+              role: "control",
+              ref: `sha256:${"3".repeat(64)}`,
+              capturedAt: 1_764_000_000_300,
+              label: "reset.ris: pre-paint",
+            },
+            trace: {},
+          } as never)
+        }
+        return {
+          pass: false,
+          tests: [
+            { id: "criterion", status: "probe-todo", reason: "Renewal-ownership fixture does not measure support" },
+          ],
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        const preparation = recorders.length
+        recorders.push(recordCapture as (captured: never) => void)
+        source.write(`calibration:${preparation + 1}`)
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${String(preparation + 4).repeat(64)}`,
+            capturedAt: 1_764_000_000_400 + preparation,
+            label: `preparation ${preparation}`,
+          },
+          trace: {},
+        })
+        source.captureGeometry = settled
+      },
+    })
+    expect(recorders).toHaveLength(2)
+    const initial = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+    const renewal = JSON.parse(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]!)
+    expect(initial.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
+      "preparation 0",
+      "reset.ris: pre-paint",
+    ])
+    expect(renewal.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
+      "preparation 1",
+    ])
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
 type CapturePreparation = NonNullable<NonNullable<Parameters<typeof runProbeBatch>[0]>["prepareCapture"]>
 
 it.each([undefined, "after-probes"] as const)(
