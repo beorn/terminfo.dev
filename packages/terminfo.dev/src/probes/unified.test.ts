@@ -2461,6 +2461,16 @@ it.each([
   }
 })
 
+/** The calibration trace as a retention assertion reads it back; `JSON.parse` is typed `unknown` here. */
+function retainedCaptureTrace(
+  batch: { rawReplies: Record<string, string> },
+  key: string,
+): { captures: Array<{ frame: { ref: string; label: string; capturedAt: number } }> } {
+  return JSON.parse(batch.rawReplies[key]!) as {
+    captures: Array<{ frame: { ref: string; label: string; capturedAt: number } }>
+  }
+}
+
 // @failure A capture recorded after capture preparation returns is frozen out of the published
 //   calibration trace, so every pre-paint frame a sentinel read pays for leaves no observation row.
 // @level l1
@@ -2521,17 +2531,17 @@ it("keeps a capture recorded after preparation returns, with identical pixels ke
         }
       },
     })
-    const captureTrace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
-    expect(captureTrace.captures.map((capture: { frame: { capturedAt: number } }) => capture.frame.capturedAt)).toEqual(
-      [1_764_000_000_000, 1_764_000_000_123, 1_764_000_000_456],
-    )
-    expect(captureTrace.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
+    const captureTrace = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
+    expect(captureTrace.captures.map((capture) => capture.frame.capturedAt)).toEqual([
+      1_764_000_000_000, 1_764_000_000_123, 1_764_000_000_456,
+    ])
+    expect(captureTrace.captures.map((capture) => capture.frame.label)).toEqual([
       "calibration witness",
       "reset.ris: pre-paint",
       "reset.ris: pre-paint",
     ])
     // Two rows, one content reference: the row count is observations, never deduplicated pixels.
-    expect(new Set(captureTrace.captures.map((capture: { frame: { ref: string } }) => capture.frame.ref)).size).toBe(2)
+    expect(new Set(captureTrace.captures.map((capture) => capture.frame.ref)).size).toBe(2)
     expect(batch.screenshotRefs.filter((ref) => ref === samePixels)).toEqual([samePixels])
   } finally {
     definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
@@ -2576,7 +2586,7 @@ it("keeps the rows a refused preparation recorded before it refused", async () =
         throw Object.assign(new Error("refused after one frame"), { name: "CaptureCalibrationRefused" })
       },
     })
-    const captureTrace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+    const captureTrace = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
     expect(captureTrace).toMatchObject({ refusal: "refused after one frame", writes: ["calibration:1"] })
     expect(captureTrace.captures).toHaveLength(1)
     expect(captureTrace.captures[0]).toMatchObject({
@@ -2653,15 +2663,10 @@ it("keeps each preparation's late acquisitions with the preparation that handed 
       },
     })
     expect(recorders).toHaveLength(2)
-    const initial = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
-    const renewal = JSON.parse(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]!)
-    expect(initial.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
-      "preparation 0",
-      "reset.ris: pre-paint",
-    ])
-    expect(renewal.captures.map((capture: { frame: { label: string } }) => capture.frame.label)).toEqual([
-      "preparation 1",
-    ])
+    const initial = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
+    const renewal = retainedCaptureTrace(batch, "collector.captureCalibration.renewal.1.trace")
+    expect(initial.captures.map((capture) => capture.frame.label)).toEqual(["preparation 0", "reset.ris: pre-paint"])
+    expect(renewal.captures.map((capture) => capture.frame.label)).toEqual(["preparation 1"])
   } finally {
     definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
   }
