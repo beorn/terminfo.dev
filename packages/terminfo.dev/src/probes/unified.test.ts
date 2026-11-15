@@ -6585,12 +6585,19 @@ describe("the served capture path records its own caller intervals (34261)", () 
   // assertions read is declared once instead of cast at every line.
   type CallerTrace = {
     basis: string
+    adapterCallbackContains: string
     entryToAdapterCallbackMs: number
     adapterCallbackMs: number
     adapterReturnToRecordedMs: number
     totalMs: number
   }
   type RecordedCapture = { trace: Record<string, unknown> & { caller: CallerTrace } }
+  const CALLER_INTERVALS = [
+    "entryToAdapterCallbackMs",
+    "adapterCallbackMs",
+    "adapterReturnToRecordedMs",
+    "totalMs",
+  ] as const satisfies ReadonlyArray<keyof CallerTrace>
   const readCaptures = (raw: string | undefined): RecordedCapture[] => {
     if (raw === undefined) throw new Error("the probe recorded no reply at all")
     return (JSON.parse(raw) as { captures: RecordedCapture[] }).captures
@@ -6622,14 +6629,14 @@ describe("the served capture path records its own caller intervals (34261)", () 
       })
       const recorded = readCaptures(batch.rawReplies[probe.id])
       expect(recorded).toHaveLength(1)
-      const trace = recorded[0].trace
+      const trace = recorded[0]!.trace
       // The existing buckets are untouched: the caller block is added beside them, not instead of them.
       expect(trace.acquisition).toEqual({ totalMs: 2 })
       expect(trace.finish).toEqual({ totalMs: 1 })
       const caller = trace.caller
       expect(String(caller.basis)).toContain("caller monotonic")
       expect(String(caller.adapterCallbackContains)).toContain("acquisition")
-      for (const key of ["entryToAdapterCallbackMs", "adapterCallbackMs", "adapterReturnToRecordedMs", "totalMs"]) {
+      for (const key of CALLER_INTERVALS) {
         expect(Number.isFinite(caller[key])).toBe(true)
         expect(Number(caller[key])).toBeGreaterThanOrEqual(0)
       }
@@ -6717,7 +6724,7 @@ describe("the served capture path records its own caller intervals (34261)", () 
       })
       const recorded = readCaptures(batch.rawReplies[probe.id])
       expect(recorded).toHaveLength(1)
-      const caller = recorded[0].trace.caller
+      const caller = recorded[0]!.trace.caller
       expect(Number(caller.entryToAdapterCallbackMs)).toBeGreaterThanOrEqual(10)
       expect(Number(caller.adapterCallbackMs)).toBeLessThan(10)
       expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.entryToAdapterCallbackMs))
