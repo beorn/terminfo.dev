@@ -1144,7 +1144,17 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       .update(Buffer.alloc(640 * 480 * 4))
       .digest("hex")}`,
   })
-  expect(plain.trace).toEqual({ fixture: "plain" })
+  // The caller's trace survives field for field; the only addition is the finish diagnostic block
+  // (34261). These cases are the supported ORDINARY decode path, so decodeMs is present here - the
+  // complement of the finalizer case that requires it absent when the pixels were already decoded.
+  const { finish: plainFinish, ...plainTrace } = plain.trace as Record<string, unknown>
+  expect(plainTrace).toEqual({ fixture: "plain" })
+  expect(plainFinish).toMatchObject({
+    retainMs: expect.any(Number),
+    decodeMs: expect.any(Number),
+    postDecodeMs: expect.any(Number),
+    totalMs: expect.any(Number),
+  })
   process.env.TEST_CAPTURE_FAIL = "conversion"
   await expect(
     finishCapture({
