@@ -26,7 +26,7 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-import { command, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
+import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -371,6 +371,13 @@ export async function createLinuxCapture(
     }
     const captureMs = mark()
     const capturedAt = Date.now()
+    const source = {
+      bytes: original,
+      format: pointerImage ? ("png" as const) : ("xwd" as const),
+      width: observedWindow.width,
+      height: observedWindow.height,
+      capturedAt,
+    }
     // Decode the acquired image once for both required outputs. The PNG remains retained evidence;
     // the existing predecoded-frame handoff keeps finalization from launching another decoder.
     const converted = await mkdtemp(join(directory, ".converted-"))
@@ -399,6 +406,13 @@ export async function createLinuxCapture(
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }
+    const expectedBytes = observedWindow.width * observedWindow.height * 4
+    if (rgba.length !== expectedBytes) {
+      // Keep the existing decoder's precise source/window extent diagnostic on malformed output.
+      // This is diagnostic only: even if a second decode succeeds, never accept the broken stream.
+      await decodeCapture({ source, featureId, deadline })
+      throw new Error(`Linux conversion for ${featureId} returned ${rgba.length} RGBA bytes, expected ${expectedBytes}`)
+    }
     const convertMs = mark()
     await assertOwned(deadline)
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
@@ -407,13 +421,7 @@ export async function createLinuxCapture(
       throw geometryChangedError(windowId, featureId, expectedGeometry, declaredGeometry)
     }
     return {
-      source: {
-        bytes: original,
-        format: pointerImage ? ("png" as const) : ("xwd" as const),
-        width: observedWindow.width,
-        height: observedWindow.height,
-        capturedAt,
-      },
+      source,
       png,
       decoded: { width: observedWindow.width, height: observedWindow.height, rgba },
       trace: {
