@@ -67,14 +67,16 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
  * frames-1), which grades differently instead of explaining, so the predicate and the number stay as
  * they are and only the refusal names the effective requirement (@cto 34261 ruling). The schedule is
  * a separate question: it must still request more than the minimum, but every requested gap has to
- * sit a measured capture lag below the ceiling rather than inside it (34129 margin ruling).
+ * leave room for the achieved-minus-requested steps actually observed rather than sit inside the
+ * ceiling (34129 margin ruling).
  */
 const BLINK_MIN_FRAMES = 12
 const BLINK_MIN_SPAN_MS = 6000
 // Irregular requested gaps, never a fixed interval, so the schedule cannot phase-lock to a blink
 // period the way a fixed interval can; they sum to the requested 7500 ms span. Every one is at most
-// 510 ms, leaving 35 ms under the gate ceiling for capture lag: the settle-0 study measured one host
-// adding up to 30 ms to a request, and the earlier 538 ms maximum left only 7.45 ms (34129 ruling).
+// 510 ms, keeping 35 ms of the gate ceiling free: the settle-0 study observed achieved gaps up to
+// 30 ms above their request, where achieved-minus-requested folds in capture lag and backlog and is
+// not an isolated measurement of either, and the earlier 538 ms maximum left only 7.45 ms.
 const BLINK_GAPS_MS = [470, 510, 478, 510, 483, 509, 486, 510, 492, 508, 510, 509, 510, 507, 508] as const
 const BLINK_SAMPLE_OFFSETS_MS: number[] = [0]
 let blinkOffsetMs = 0

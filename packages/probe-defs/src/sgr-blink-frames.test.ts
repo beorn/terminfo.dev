@@ -316,25 +316,27 @@ test("a producer that settles 200 ms per acquisition records requested offsets b
   }
 })
 
-// 34129 margin ruling: the requested schedule keeps one measured capture lag between it and the gate
-// ceiling. The previous schedule reached 538 ms against a 545.45 ms ceiling, so the explicit per-sample
-// lag steps below — the largest a measured host added to a request — broke it on one gap, while the
-// shipped schedule takes the same steps and still clears every achieved-gap check. This is a declared
-// fixture over whole-millisecond capturedAt, not a forecast of any host's capture lag.
+// 34129 margin ruling: the requested schedule leaves the observed achieved-minus-requested steps
+// between it and the gate ceiling. The previous schedule reached 538 ms against a 545.45 ms ceiling,
+// so the declared per-sample steps below — up to 30 ms, the largest such step the settle-0 study
+// observed on one host — broke it on a single gap, while the shipped schedule takes the same steps
+// and still clears every achieved-gap check. A declared fixture over whole-millisecond capturedAt:
+// those steps stand in for observed steps, they are not an isolated measurement of capture lag or
+// jitter, and this is not a forecast that any host passes.
 const OLD_BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515]
-// The last step is zero so the post-sampling repaint, which is captured after the final sample, keeps
-// its own place in capture order rather than inheriting that sample's lag.
-const CAPTURE_LAG_MS = [0, 8, 4, 34, 10, 6, 28, 2, 20, 12, 30, 6, 24, 0, 16, 0]
+// The last step is zero so the post-sampling repaint, captured after the final sample, keeps its own
+// place in capture order rather than inheriting that sample's step.
+const FIXTURE_LAG_MS = [0, 8, 4, 34, 10, 6, 28, 2, 20, 12, 30, 6, 24, 0, 16, 0]
 
-test("a measured capture lag that broke the old schedule leaves the shipped one clear of the ceiling", async () => {
-  const laggedCapturedAt = (now: number, sample: number) => now + (CAPTURE_LAG_MS[sample] ?? 0)
+test("declared lag steps that broke the old schedule leave the shipped one clear of the ceiling", async () => {
+  const laggedCapturedAt = (now: number, sample: number) => now + (FIXTURE_LAG_MS[sample] ?? 0)
   const oldOffsets = [0]
   for (const gap of OLD_BLINK_GAPS_MS) oldOffsets.push(oldOffsets.at(-1)! + gap)
   expect(
     blinkSeriesDecision({
       styled: EQUAL,
       plain: STEADY_PLAIN,
-      capturedAt: oldOffsets.map((offset, sample) => offset + (CAPTURE_LAG_MS[sample] ?? 0)),
+      capturedAt: oldOffsets.map((offset, sample) => offset + (FIXTURE_LAG_MS[sample] ?? 0)),
       focusQualified: true,
     }),
   ).toMatchObject({ kind: "open", reason: "capture-too-slow" })
