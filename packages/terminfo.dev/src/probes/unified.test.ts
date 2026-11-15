@@ -6622,7 +6622,7 @@ describe("the served capture path records its own caller intervals (34261)", () 
       })
       const recorded = readCaptures(batch.rawReplies[probe.id])
       expect(recorded).toHaveLength(1)
-      const trace = recorded.captures[0].trace
+      const trace = recorded[0].trace
       // The existing buckets are untouched: the caller block is added beside them, not instead of them.
       expect(trace.acquisition).toEqual({ totalMs: 2 })
       expect(trace.finish).toEqual({ totalMs: 1 })
