@@ -1765,11 +1765,11 @@ export async function runProbeBatch(
             ? callbackTests.map((test) =>
                 test.id === "criterion"
                   ? { ...test, status: "probe-invalid" as const, reason: colourDisagreement }
-                  : test
+                  : test,
               )
             : [
                 ...(callbackTests ?? []),
-                { id: "criterion", status: "probe-invalid" as const, reason: colourDisagreement }
+                { id: "criterion", status: "probe-invalid" as const, reason: colourDisagreement },
               ]
         }
         batch.observations.push({

@@ -6572,3 +6572,86 @@ describe("a colour-attempt disagreement reaches the recorded grade (osc104)", ()
     expect(result.status).toBe("supported")
   })
 })
+
+describe("the served capture path records its own caller intervals (34261)", () => {
+  const fixtureFrame = (label: string): ObservationFrame => ({
+    role: "control",
+    ref: `sha256:${"b".repeat(64)}`,
+    capturedAt: 1,
+    label,
+  })
+
+  it("records the caller intervals beside the existing buckets without replacing them", async () => {
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ featureId: probe.id, role: "control", label: "caller interval" })
+        return {
+          pass: false as const,
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "lifecycle fixture does not measure support" },
+          ],
+        }
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async (checkpoint) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 10))
+          return {
+            frame: fixtureFrame(checkpoint.label),
+            trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
+          }
+        },
+      })
+      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
+      expect(recorded.captures).toHaveLength(1)
+      const trace = recorded.captures[0].trace
+      // The existing buckets are untouched: the caller block is added beside them, not instead of them.
+      expect(trace.acquisition).toEqual({ totalMs: 2 })
+      expect(trace.finish).toEqual({ totalMs: 1 })
+      const caller = trace.caller
+      expect(String(caller.basis)).toContain("caller monotonic")
+      expect(String(caller.adapterCallbackContains)).toContain("acquisition")
+      for (const key of ["entryToAdapterCallbackMs", "adapterCallbackMs", "adapterReturnToRecordedMs", "totalMs"]) {
+        expect(Number.isFinite(caller[key])).toBe(true)
+        expect(Number(caller[key])).toBeGreaterThanOrEqual(0)
+      }
+      // The adapter itself awaited at least the delayed work, and the whole interval contains every part,
+      // so the pre-adapter interval is measured rather than lost outside the buckets.
+      expect(Number(caller.adapterCallbackMs)).toBeGreaterThanOrEqual(10)
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterCallbackMs))
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterReturnToRecordedMs))
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(
+        Number(caller.adapterCallbackMs) + Number(caller.adapterReturnToRecordedMs) - 1,
+      )
+    } finally {
+      probe.term = original
+    }
+  })
+
+  it("propagates a capture failure without recording a caller block", async () => {
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ featureId: probe.id, role: "control", label: "fails" })
+        throw new Error("unreachable: the capture adapter must fail")
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async () => {
+          throw new Error("adapter exploded")
+        },
+      })
+      const row = batch.results.find((result) => result.featureId === probe.id)
+      expect(JSON.stringify(row)).toContain("adapter exploded")
+      const recorded = JSON.parse(batch.rawReplies[probe.id]!)
+      expect(recorded.captures ?? []).toEqual([])
+    } finally {
+      probe.term = original
+    }
+  })
+})
