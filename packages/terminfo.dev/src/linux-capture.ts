@@ -26,7 +26,7 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
+import { command, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -371,12 +371,31 @@ export async function createLinuxCapture(
     }
     const captureMs = mark()
     const capturedAt = Date.now()
-    const png = await command(
-      "magick",
-      pointerImage ? ["png:-", ...PNG_CONVERSION_ARGS.slice(1)] : [...PNG_CONVERSION_ARGS],
-      original,
-      deadline,
-    )
+    // Decode the acquired image once for both required outputs. The PNG remains retained evidence;
+    // the existing predecoded-frame handoff keeps finalization from launching another decoder.
+    const converted = await mkdtemp(join(directory, ".converted-"))
+    let png: Buffer
+    let rgba: Buffer
+    try {
+      const output = join(converted, "frame.png")
+      rgba = await command(
+        "magick",
+        [
+          pointerImage ? "png:-" : PNG_CONVERSION_ARGS[0],
+          ...PNG_CONVERSION_ARGS.slice(1, -1),
+          "-write",
+          `png:${output}`,
+          "-depth",
+          "8",
+          "rgba:-",
+        ],
+        original,
+        deadline,
+      )
+      png = await readFile(output)
+    } finally {
+      await rm(converted, { recursive: true, force: true })
+    }
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }
@@ -396,6 +415,7 @@ export async function createLinuxCapture(
         capturedAt,
       },
       png,
+      decoded: { width: observedWindow.width, height: observedWindow.height, rgba },
       trace: {
         featureId,
         collectorPid: process.pid,
@@ -435,7 +455,7 @@ export async function createLinuxCapture(
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
     const acquired = await acquire(checkpoint.featureId, deadline, checkpoint)
-    const decoded = await decodeCapture({ source: acquired.source, featureId: checkpoint.featureId, deadline })
+    const decoded = acquired.decoded
     const result = await finishCapture({
       directory,
       onRetained,

@@ -347,6 +347,18 @@ export async function decodeCapture({
     throw new Error(`Invalid captured frame extent ${width}x${height}`)
   }
   const rgba = await command("magick", [`${format}:-`, "-depth", "8", "rgba:-"], bytes, deadline)
+  await validateCapturePixels(source, rgba, featureId, deadline)
+  return { width, height, rgba }
+}
+
+/** Both ordinary decoding and a converter's predecoded handoff preserve the same extent diagnostic. */
+async function validateCapturePixels(
+  source: CaptureSource,
+  rgba: Uint8Array,
+  featureId: string,
+  deadline?: number,
+): Promise<void> {
+  const { width, height, bytes, format } = source
   const expected = width * height * 4
   if (rgba.length !== expected) {
     const captured = capturePixels(
@@ -361,7 +373,6 @@ export async function decodeCapture({
       `Raw capture for ${featureId} is ${rgba.length} bytes; ${width}x${height} at depth 8 rgba is ${expected}`,
     )
   }
-  return { width, height, rgba }
 }
 
 /**
@@ -512,11 +523,12 @@ export async function finishCapture(input: {
   // Absent, never 0, when the caller already decoded: linux captureRaw decodes before this function,
   // so a measured zero must stay distinguishable from a decode that did not happen here (@cto 34261).
   const decodeMs = predecoded === undefined ? Math.round(performance.now() - decodeStart) : undefined
-  if (decoded.width !== width || decoded.height !== height || decoded.rgba.byteLength !== width * height * 4) {
+  if (decoded.width !== width || decoded.height !== height) {
     throw new Error(
       `Decoded capture for ${featureId} is ${decoded.width}x${decoded.height} with ${decoded.rgba.byteLength} bytes; source is ${width}x${height} with ${width * height * 4} depth-8 RGBA bytes`,
     )
   }
+  await validateCapturePixels(source, decoded.rgba, featureId, deadline)
   const postDecodeStart = performance.now()
   const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
