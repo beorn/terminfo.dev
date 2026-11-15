@@ -258,14 +258,20 @@ if [ -n "\${TEST_CAPTURE_MAGICK_ARGS:-}" ]; then printf '%s\\n' "$@" >> "$TEST_C
 cat > "$TEST_CAPTURE_STDIN"
 if [ "${"$"}TEST_CAPTURE_FAIL" = conversion ]; then printf 'conversion failed\\n' >&2; exit 19; fi
 rgba=
+png=
 crop=
 identify=
+previous=
 for arg; do
   [ "\$arg" = "rgba:-" ] && rgba=1
   [ "\$arg" = "info:" ] && identify=1
+  if [ "\$previous" = -write ]; then
+    case "\$arg" in png:*) png=\${arg#png:} ;; esac
+  fi
   case "\$arg" in
     *x*+*) crop=\$arg ;;
   esac
+  previous=\$arg
 done
 size=\${TEST_CAPTURE_FORCE_CAPTURE:-}
 if [ -z "\$size" ] && [ -f "$TEST_CAPTURE_XWD_SIZE" ]; then
@@ -279,6 +285,7 @@ if [ -n "\$identify" ]; then
   exit 0
 fi
 if [ -n "\$rgba" ]; then
+  if [ -n "\$png" ]; then cat "$TEST_CAPTURE_PNG" > "\$png"; fi
   if [ -n "\$crop" ]; then
     w=\${crop%%x*}
     rest=\${crop#*x}
@@ -688,26 +695,39 @@ test.runIf(process.platform === "linux")(
 )
 
 test.runIf(process.platform === "linux")(
-  "the capture conversion excludes the PNG date and time chunks (#30764)",
+  "one conversion retains unchanged PNG evidence and pixels for both Linux capture routes",
   async () => {
     const { directory, release } = fixture()
     const argsPath = join(directory, "magick-args")
     process.env.TEST_CAPTURE_MAGICK_ARGS = argsPath
     // The fixture xwd waits for this file before it hands over the frame, as a real capture does.
     writeFileSync(release, "continue")
-    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable(), () => {})
-    await captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
-    // Later magick calls decode the frame for pixels; the conversion is the first one.
-    // The literal pin, not the constant: a dropped flag has to fail here even where magick is absent.
-    expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, PNG_CONVERSION_ARGS.length)).toEqual([
+    const frames = join(directory, "frames")
+    const { captureRaw, capture } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    const raw = await captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
+    const ordinary = await capture(
+      { featureId: "fixture", role: "target", label: "ordinary frame" },
+      { origin: { x: 0, y: 0 }, basis: "fixture owned raster" },
+    )
+    const args = readFileSync(argsPath, "utf8").trim().split("\n")
+    // Both outputs are required: avoid decoding the same source in a second process (#34277).
+    expect(args.filter((arg) => arg === "xwd:-")).toHaveLength(2)
+    // Literal metadata flags still pin #30764 even where real ImageMagick is absent.
+    expect(args.slice(0, PNG_CONVERSION_ARGS.length - 1)).toEqual([
       "xwd:-",
       "-define",
       "png:exclude-chunks=date,time",
       "-set",
       "comment",
       "",
-      "png:-",
     ])
+    expect(raw.decoded.rgba).toEqual(Buffer.alloc(640 * 480 * 4))
+    expect(ordinary.frame.pixelsDigest).toBe(raw.result.frame.pixelsDigest)
+    expect(ordinary.frame.ref).toBe(raw.result.frame.ref)
+    const retained = readdirSync(frames).filter((file) => file.endsWith(".png"))
+    expect(retained).toHaveLength(1)
+    expect(readFileSync(join(frames, retained[0]!))).toEqual(readFileSync(join(directory, "sample.png")))
+    expect(readdirSync(frames).some((file) => file.startsWith(".converted-"))).toBe(false)
   },
 )
 
@@ -784,6 +804,21 @@ test.skipIf(realMagick === undefined)(
     expect(pngTextValue(fixed, "comment")).toBe("")
     // The whole point: identical pixels under a different window name are the same evidence.
     expect(createHash("sha256").update(renamed).digest("hex")).toBe(createHash("sha256").update(fixed).digest("hex"))
+
+    // The adapter's single decode must preserve those PNG bytes and the independent depth-8 pixels.
+    const converted = mkdtempSync(join(tmpdir(), "terminfo-converted-"))
+    temporary.push(converted)
+    const output = join(converted, "frame.png")
+    const rgba = convert(renamedXwd(screen, "first-window"), [
+      ...PNG_CONVERSION_ARGS.slice(0, -1),
+      "-write",
+      `png:${output}`,
+      "-depth",
+      "8",
+      "rgba:-",
+    ])
+    expect(readFileSync(output)).toEqual(fixed)
+    expect(rgba).toEqual(convert(renamedXwd(screen, "first-window"), ["xwd:-", "-depth", "8", "rgba:-"]))
 
     // Control: without the exclusion the same input is unstable, and that is what the tIME assert sees.
     const plain = pngChunks(convert(renamedXwd(screen, "first-window"), ["xwd:-", "png:-"]))
