@@ -682,9 +682,9 @@ test.each([
               exit = Number(body.slice(6))
               running = false
               output = currentOutput
-            } else if (body === "133;Z" && mode === "unknown-changes-output")
+            } else if (body === "133;Z" && mode === "unknown-changes-output") {
               output = "output changed by the unknown command"
-            else if (body?.startsWith("2;")) title = body.slice(2)
+            } else if (body?.startsWith("2;")) title = body.slice(2)
             else if (part[2]) {
               screen += part[2]
               if (running) currentOutput += part[2]
