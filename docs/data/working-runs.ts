@@ -462,7 +462,6 @@ function composeWorkingViewMode(
     const review =
       run.subject.kind === "lib" || candidate?.selected.subject?.os === run.subject.os ? candidate : undefined
     const suiteId = run.probeHash
-    const states: Record<string, FeatureResultStatus> = {}
     const cells: WorkingCell[] = []
     for (const result of run.results) {
       const cell = review?.selected.cells[result.featureId]
@@ -470,14 +469,21 @@ function composeWorkingViewMode(
       if (cell && status === undefined) {
         throw new Error(`Reviewed context ${review?.contextKey}/${result.featureId} lacks its computed feature result`)
       }
-      const suiteLabel =
-        cell && review && status !== undefined
-          ? originalRunFor(projection, review.contextKey, cell.run.runId).suiteFreshness
-          : undefined
-      if (includeCells) {
-        const reviewedSide: ReviewedSide | undefined =
-          cell && review && status !== undefined && suiteLabel !== undefined
-            ? {
+      if (cell && review && status !== undefined) {
+        const suiteLabel = originalRunFor(projection, review.contextKey, cell.run.runId).suiteFreshness
+        if (includeCells) {
+          cells.push(
+            workingCell(
+              {
+                featureId: result.featureId,
+                status: result.status,
+                ...(result.criterionBranch !== undefined && { criterionBranch: result.criterionBranch }),
+                runId: run.runId,
+                suiteId,
+                version: run.subject.version,
+                measuredAt: run.measuredAt,
+              },
+              {
                 status,
                 ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
                 runId: cell.run.runId,
@@ -485,8 +491,11 @@ function composeWorkingViewMode(
                 version: cell.run.subject.version,
                 measuredAt: cell.run.measuredAt,
                 suiteLabel,
-              }
-            : undefined
+              },
+            ),
+          )
+        }
+      } else if (includeCells) {
         cells.push(
           workingCell(
             {
@@ -498,12 +507,12 @@ function composeWorkingViewMode(
               version: run.subject.version,
               measuredAt: run.measuredAt,
             },
-            reviewedSide,
+            undefined,
           ),
         )
       }
-      states[result.featureId] = result.status
     }
+    const states = Object.fromEntries(run.results.map((result) => [result.featureId, result.status]))
     const { counts, positions } = rollupTerminalStatuses(states)
     return {
       contextKey,
