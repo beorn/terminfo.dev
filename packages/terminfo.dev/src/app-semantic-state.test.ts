@@ -601,87 +601,113 @@ test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected",
 // #32955: existing declaration/log tests cannot exercise the owned Kitty RPC's prompt, output and exit-state
 // observations. Drive the existing collector entry, with the real run socket and independently supplied RPC data.
 test.each([
-  ["extensions.osc133-a", "true"],
-  ["extensions.osc133-c", "terminfo-output-32955fff"],
-  ["extensions.osc133-d", "17"],
-  ["extensions.semantic-prompts", '[true,false,17,"terminfo-output-32955fff"]'],
-])("Kitty %s reads its own window with unknown, handled and target controls", async (featureId, expected) => {
-  const root = mkdtempSync(join(tmpdir(), "kitty-semantic-32955-"))
-  const capture = join(root, "artifacts")
-  mkdirSync(capture)
-  const runId = "a".repeat(32)
-  const socket = join(root, `kitty-${runId}.sock`)
-  const listener = Bun.listen({ unix: socket, socket: { data() {} } })
-  vi.stubEnv("TERMINFO_RUN_ID", runId)
-  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
-  vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
-  vi.stubEnv("KITTY_PID", "123")
-  vi.stubEnv("KITTY_WINDOW_ID", "7")
-  vi.stubEnv("KITTY_LISTEN_ON", `unix:${socket}`)
-  editorNonce.mockReturnValue("32955fff-0000-4000-8000-000000000001")
-  let prompt = false
-  let exit = 0
-  let title = "owned Kitty title"
-  let screen = ""
-  let output = ""
-  let currentOutput = ""
-  let running = false
-  const writes: string[] = []
-  vi.mocked(execFileSync).mockImplementation((file, args) => {
-    if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
-    expect(file).toBe("/owned/kitten")
-    expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
-    expect(args).toContain("id:7")
-    if (args?.includes("ls")) {
-      return JSON.stringify([
-        { tabs: [{ windows: [{ id: 7, pid: process.pid, at_prompt: prompt, last_cmd_exit_status: exit, title }] }] },
-      ])
-    }
-    if (args?.includes("get-text")) return args.includes("last_cmd_output") ? output : screen
-    throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
-  })
-  try {
-    const reading = await readAppSemanticState({
-      featureId,
-      runId,
-      executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
-      write(bytes) {
-        writes.push(bytes)
-        for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07|\x1b\[[0-9;?]*[A-Za-z]|([^\x1b]+)/g)) {
-          const body = part[1]
-          if (body === "133;A") prompt = true
-          else if (body === "133;C") {
-            prompt = false
-            running = true
-            currentOutput = ""
-          } else if (body?.startsWith("133;D;")) {
-            exit = Number(body.slice(6))
-            running = false
-            output = currentOutput
-          } else if (body?.startsWith("2;")) title = body.slice(2)
-          else if (part[2]) {
-            screen += part[2]
-            if (running) currentOutput += part[2]
-          }
-        }
-      },
+  ["extensions.osc133-a", "true", "valid"],
+  ["extensions.osc133-c", "terminfo-output-32955fff", "valid"],
+  ["extensions.osc133-d", "17", "valid"],
+  ["extensions.semantic-prompts", '[true,false,17,"terminfo-output-32955fff"]', "valid"],
+  ["extensions.osc133-a", "", "foreign-socket"],
+  ["extensions.osc133-a", "", "foreign-window"],
+  ["extensions.osc133-a", "", "malformed-response"],
+])(
+  "Kitty %s reads its own window with unknown, handled and target controls: expected %s, %s",
+  async (featureId, expected, mode) => {
+    const root = mkdtempSync(join(tmpdir(), "kitty-semantic-32955-"))
+    const capture = join(root, "artifacts")
+    mkdirSync(capture)
+    const runId = "a".repeat(32)
+    const socket = join(root, `kitty-${runId}.sock`)
+    const listener = Bun.listen({ unix: socket, socket: { data() {} } })
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", "123")
+    vi.stubEnv("KITTY_WINDOW_ID", "7")
+    vi.stubEnv("KITTY_LISTEN_ON", mode === "foreign-socket" ? "unix:/unowned/kitty.sock" : `unix:${socket}`)
+    editorNonce.mockReturnValue("32955fff-0000-4000-8000-000000000001")
+    let prompt = false
+    let exit = 0
+    let title = "owned Kitty title"
+    let screen = ""
+    let output = ""
+    let currentOutput = ""
+    let running = false
+    const writes: string[] = []
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
+      expect(file).toBe("/owned/kitten")
+      expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
+      expect(args).toContain("id:7")
+      if (args?.includes("ls")) {
+        if (mode === "malformed-response") return '[{"tabs":false}]'
+        return JSON.stringify([
+          {
+            tabs: [
+              {
+                windows: [
+                  {
+                    id: mode === "foreign-window" ? 8 : 7,
+                    pid: process.pid,
+                    at_prompt: prompt,
+                    last_cmd_exit_status: exit,
+                    title,
+                  },
+                ],
+              },
+            ],
+          },
+        ])
+      }
+      if (args?.includes("get-text")) return args.includes("last_cmd_output") ? output : screen
+      throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
     })
-    expect(reading.status).toBe("measured")
-    if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
-    expect(reading.runId).toBe(runId)
-    expect(reading.unknown.after).toBe(reading.unknown.before)
-    expect(reading.handled.after).toBe("terminfo-control-32955fff")
-    expect(reading.target.after).toBe(expected)
-    expect(reading.target.before).not.toBe(expected)
-    expect(writes.join("")).toContain("\x1b]133;Z\x07")
-    expect(title).toBe("owned Kitty title")
-  } finally {
-    listener.stop(true)
-    rmSync(root, { recursive: true, force: true })
-  }
-})
+    try {
+      const reading = await readAppSemanticState({
+        featureId,
+        runId,
+        executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+        write(bytes) {
+          writes.push(bytes)
+          for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07|\x1b\[[0-9;?]*[A-Za-z]|([^\x1b]+)/g)) {
+            const body = part[1]
+            if (body === "133;A") prompt = true
+            else if (body === "133;C") {
+              prompt = false
+              running = true
+              currentOutput = ""
+            } else if (body?.startsWith("133;D;")) {
+              exit = Number(body.slice(6))
+              running = false
+              output = currentOutput
+            } else if (body?.startsWith("2;")) title = body.slice(2)
+            else if (part[2]) {
+              screen += part[2]
+              if (running) currentOutput += part[2]
+            }
+          }
+        },
+      })
+      if (mode !== "valid") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/Kitty prompt/) })
+        expect(writes).toEqual([])
+        return
+      }
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+      expect(reading.runId).toBe(runId)
+      expect(reading.unknown.after).toBe(reading.unknown.before)
+      expect(reading.handled.after).toBe("terminfo-control-32955fff")
+      expect(reading.target.after).toBe(expected)
+      expect(reading.target.before).not.toBe(expected)
+      expect(writes.join("")).toContain("\x1b]133;Z\x07")
+      expect(title).toBe("owned Kitty title")
+    } finally {
+      listener.stop(true)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
 
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }

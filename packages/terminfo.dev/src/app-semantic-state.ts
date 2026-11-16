@@ -2104,13 +2104,20 @@ export async function readAppSemanticState(
       const readWindow = () => {
         const tree: unknown = JSON.parse(remote("ls"))
         if (!Array.isArray(tree)) throw new Error("Kitty prompt ls returned no window tree")
-        const windows: unknown[] = tree.flatMap((osWindow) => {
-          if (!Array.isArray(osWindow?.tabs)) throw new Error("Kitty prompt ls returned no tabs")
-          return osWindow.tabs.flatMap((tab: { windows?: unknown[] }) => {
-            if (!Array.isArray(tab.windows)) throw new Error("Kitty prompt ls returned no windows")
-            return tab.windows
-          })
-        })
+        const osWindows: readonly unknown[] = tree
+        const windows: unknown[] = []
+        for (const osWindow of osWindows) {
+          const tabs =
+            osWindow !== null && typeof osWindow === "object" ? (osWindow as Record<string, unknown>).tabs : undefined
+          if (!Array.isArray(tabs)) throw new Error("Kitty prompt ls returned no tabs")
+          const tabRecords: readonly unknown[] = tabs
+          for (const tab of tabRecords) {
+            const entries =
+              tab !== null && typeof tab === "object" ? (tab as Record<string, unknown>).windows : undefined
+            if (!Array.isArray(entries)) throw new Error("Kitty prompt ls returned no windows")
+            windows.push(...entries)
+          }
+        }
         const window = windows[0] as Record<string, unknown> | undefined
         if (
           windows.length !== 1 ||
@@ -2120,8 +2127,9 @@ export async function readAppSemanticState(
           typeof window.at_prompt !== "boolean" ||
           !Number.isSafeInteger(window.last_cmd_exit_status) ||
           typeof window.title !== "string"
-        )
+        ) {
           throw new Error("Kitty prompt ls did not identify this collector's window and semantic fields")
+        }
         return { prompt: window.at_prompt, exit: window.last_cmd_exit_status as number, title: window.title }
       }
       const output = () => remote("get-text", "--extent", "last_cmd_output").replace(/\r\n/g, "\n").trimEnd()
@@ -2130,12 +2138,15 @@ export async function readAppSemanticState(
       let serial = 0
       const phase = async (name: string, feed: string, title = `terminfo-${nonce}-${serial++}`) => {
         input.write(feed + osc(`2;${title}`))
-        const text = await until(
-          () => JSON.stringify(readWindow()),
-          (value) => JSON.parse(value).title === title,
+        let reading = readWindow()
+        await until(
+          () => {
+            reading = readWindow()
+            return reading.title
+          },
+          (value) => value === title,
           `${name} title fence`,
         )
-        const reading = JSON.parse(text) as ReturnType<typeof readWindow>
         detail.phases.push({ name, feed, reading })
         return reading
       }
