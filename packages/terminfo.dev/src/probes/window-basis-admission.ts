@@ -7,10 +7,10 @@
  *
  * 1. A ruling exclusion refuses by name before any byte — DECSTR, and the cells with no retained
  *    trace (@cto 69ad9f37). These are hand-written because they are rulings, not derived facts.
- * 2. A cell whose retained writes are not each one namable sequence refuses by name, because the
- *    ledger would otherwise hit an unclassifiable write at run time, which is run-fatal (@cto
- *    0.29.2 ruling point 2). The list is generated from the traces by
- *    `scripts/generate-window-basis-table.ts`, never guessed here.
+ * 2. A cell with a retained write that tokenizes onto none of @cto's closed lists refuses by name,
+ *    because the ledger would otherwise hit an unclassifiable write at run time, which is run-fatal
+ *    (@cto 0.29.2 ruling point 2). The list is generated from the traces by
+ *    `scripts/generate-window-basis-table.ts`, and each entry names its own cause, never guessed here.
  * 3. Anything else admits, with the pre-seed the ledger reads before the cell's first write and the
  *    state that cell's own cleanup leaves. Those are different values on purpose: a probe resets to the
  *    DEFAULT, not to the state it found, so a terminal that starts non-default would make pre differ

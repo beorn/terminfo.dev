@@ -13,11 +13,17 @@
  *
  * Run: bun scripts/generate-window-basis-table.ts [--check]
  */
+import { spawnSync } from "node:child_process"
 import { readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { TERM_FOOTPRINTS } from "../packages/probe-defs/src/term-footprints.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "../packages/terminfo.dev/src/probes/window-basis-rulings.ts"
-import { classifyWrite, touchedAttributes, attributeKey } from "../packages/terminfo.dev/src/probes/attribute-ledger.ts"
+import {
+  classifyWrite,
+  attributeKey,
+  type LedgerAttribute,
+} from "../packages/terminfo.dev/src/probes/attribute-ledger.ts"
+import { classifyWindowWrite } from "../packages/terminfo.dev/src/probes/window-basis-writes.ts"
 
 const ROOT = join(import.meta.dir, "..")
 const TRACES = join(ROOT, "content", "probes-apps")
@@ -77,6 +83,10 @@ interface Admitted {
 function restoreTargetOf(write: string): string | undefined {
   const mode = /^\x1b\[\??[0-9;]+([hl])$/.exec(write)
   if (mode) return mode[1] === "h" ? "1" : "2"
+  // The SGR reset form leaves the default rendition, which is exactly what DECRQSS `$q m` answers
+  // on a terminal nothing has re-styled, so its target is derivable too. Any other SGR write sets a
+  // rendition this script cannot read off the bytes, and is refused rather than guessed.
+  if (/^\x1b\[(?:0)?m$/.test(write)) return "0"
   return undefined
 }
 const admitted = new Map<string, Admitted>()
@@ -90,15 +100,25 @@ for (const cell of windowCells) {
     noTrace.push(cell)
     continue
   }
-  const { attributes, unclassified } = touchedAttributes(cellWrites)
-  if (unclassified.length > 0) {
-    // The counts carry the evidence and a specimen would only push the line past the formatter's width,
+  const classified = cellWrites.map((write) => classifyWindowWrite(write))
+  const refusedCount = classified.filter((entry) => "unclassified" in entry).length
+  if (refusedCount > 0) {
+    const first = classified.find((entry) => "unclassified" in entry)
+    const reason = first !== undefined && "unclassified" in first ? first.unclassified : "unknown"
+    // The counts carry the evidence and a specimen would only push the line past the formatter width,
     // so the sentence stays short and the generated file stays formatter-stable.
     unclassifiable.set(
       cell,
-      `write not classifiable until the tokenizer lands: ${unclassified.length} of ${cellWrites.length} retained writes are not one namable sequence`,
+      `write not on a closed list: ${refusedCount} of ${cellWrites.length} retained writes refuse because ${reason}`,
     )
     continue
+  }
+  const attributes: LedgerAttribute[] = []
+  for (const entry of classified) {
+    if ("unclassified" in entry) continue
+    for (const attribute of entry.attributes) {
+      if (!attributes.some((existing) => attributeKey(existing) === attributeKey(attribute))) attributes.push(attribute)
+    }
   }
   // What the cell's own cleanup leaves behind, per attribute. A probe resets to the DEFAULT, not to the
   // state it found, so a terminal that starts non-default would make pre differ from post and the ledger
@@ -106,24 +126,28 @@ for (const cell of windowCells) {
   // name before its first byte when the terminal is not in that state (@dev/brain e1b6910e1 review 1).
   const restoresTo: Record<string, string> = {}
   let derivable = true
-  for (const write of cellWrites) {
-    const classification = classifyWrite(write)
-    if ("unclassified" in classification) {
-      derivable = false
-      break
-    }
-    const target = restoreTargetOf(write)
-    for (const attribute of classification.attributes) {
-      if (target === undefined) {
-        unclassifiable.set(
-          cell,
-          `cleanup target not derivable: the last write to ${attributeKey(attribute)} is not a mode set/reset, so the state it leaves cannot be read back and compared`,
-        )
-        admitted.delete(cell)
+  for (const entry of classified) {
+    if ("unclassified" in entry) continue
+    for (const sequence of entry.attributeSequences) {
+      const target = restoreTargetOf(sequence)
+      const inner = classifyWrite(sequence)
+      if ("unclassified" in inner) {
         derivable = false
         break
       }
-      restoresTo[attributeKey(attribute)] = target
+      for (const attribute of inner.attributes) {
+        if (target === undefined) {
+          unclassifiable.set(
+            cell,
+            `cleanup target not derivable: the cell's last write to ${attributeKey(attribute)} leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared`,
+          )
+          admitted.delete(cell)
+          derivable = false
+          break
+        }
+        restoresTo[attributeKey(attribute)] = target
+      }
+      if (!derivable) break
     }
     if (!derivable) break
   }
@@ -151,8 +175,8 @@ const lines = [
   " * `WINDOW_BASIS_PRE_SEED` lists the attributes to read before a cell's first write, and",
   " * `WINDOW_BASIS_RESTORE_TARGET` the state that cell's own cleanup leaves; a cell absent",
   " * from both maps here, and from window-basis-rulings.ts, is not admitted at all.",
-  " * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes need the escape-sequence",
-  " * tokenizer before they can be classified (@cto: no hand-written splitter, and a run-time",
+  " * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes still refuse @cto's closed",
+  " * lists after tokenization, with the exact cause (@cto: no hand-written splitter, and a run-time",
   " * unclassifiable write is run-fatal, so the decision has to happen here).",
   " */",
   "",
@@ -181,7 +205,23 @@ const lines = [
   "",
 ]
 
-const generated = `${lines.join("\n")}`
+/**
+ * The committed table has to be formatter-stable: the repo formats every changed file, so a generator
+ * that emits layouts the formatter reflows turns the drift test red on bytes nobody edited. The repo's
+ * own formatter and config decide the layout here instead of a width guess in this script.
+ */
+function formatLikeRepo(source: string): string {
+  const binary = join(ROOT, "node_modules", ".bin", "oxfmt")
+  const run = spawnSync(binary, ["--stdin-filepath", "window-basis-table.ts", "-c", join(ROOT, ".oxfmtrc.json")], {
+    input: source,
+    encoding: "utf8",
+  })
+  if (run.error !== undefined) throw new Error(`oxfmt could not run from ${binary}: ${run.error.message}`)
+  if (run.status !== 0) throw new Error(`oxfmt exited ${String(run.status)}: ${run.stderr}`)
+  return run.stdout
+}
+
+const generated = formatLikeRepo(`${lines.join("\n")}\n`)
 if (process.argv.includes("--check")) {
   const current = readFileSync(OUT, "utf8")
   if (current !== generated) {
@@ -193,7 +233,7 @@ if (process.argv.includes("--check")) {
   writeFileSync(OUT, generated)
   console.log(
     `admitted ${sortedAdmitted.length} of ${windowCells.length} window cells; ` +
-      `excluded ${sortedUnclassifiable.length} needing the tokenizer, ` +
+      `excluded ${sortedUnclassifiable.length} with a named cause, ` +
       `${Object.keys(WINDOW_BASIS_RULING_EXCLUSIONS).length} by ruling`,
   )
 }

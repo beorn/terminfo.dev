@@ -73,14 +73,39 @@ describe("window basis admission (#34148)", () => {
     }
   })
 
-  test("a cell that needs the tokenizer refuses by name, not at run time", () => {
-    // extensions.reflow writes whole screens: erase, cursor moves and text in one event. A run-time
-    // unclassifiable write is run-fatal, so this must be decided here, before the cell writes.
+  test("a cell whose write refuses a closed list refuses by name, not at run time", () => {
+    // extensions.reflow writes whole screens and also saves and restores the cursor. The tokenizer
+    // names every other sequence, so what survives is specific: ESC 7/ESC 8 is on no closed list and
+    // no retained write proves its restore. A run-time unclassifiable write is run-fatal, so this is
+    // decided here, before the cell writes.
     const admission = windowBasisAdmission("extensions.reflow")
     expect(admission.admitted).toBe(false)
     if (!admission.admitted) {
-      expect(admission.reason).toContain("write not classifiable until the tokenizer lands")
+      expect(admission.reason).toContain("write not on a closed list")
+      expect(admission.reason).toContain("ESC 7/ESC 8")
       expect(admission.reason).toContain("extensions.reflow")
+    }
+  })
+
+  test("a cell the tokenizer classifies end to end now admits", () => {
+    // modes.auto-wrap was excluded before the tokenizer: its writes mix text, erases and cursor moves
+    // with the mode write. It is admitted only when every retained write is on a closed list.
+    const admission = windowBasisAdmission("modes.auto-wrap")
+    expect(admission.admitted).toBe(true)
+    if (admission.admitted) {
+      expect(admission.preSeed).toEqual([{ kind: "dec-mode", mode: 7 }])
+      expect(admission.restoreTarget).toEqual({ "dec:7": "1" })
+    }
+  })
+
+  test("a cell whose pointer-shape reset has no readable post-state refuses by name", () => {
+    // ESC ] 22 ; BEL restores the default pointer shape, but no retained readback shows what a
+    // terminal answers for the default, so the post-state cannot be named without a live capture.
+    const admission = windowBasisAdmission("extensions.osc22-pointer")
+    expect(admission.admitted).toBe(false)
+    if (!admission.admitted) {
+      expect(admission.reason).toContain("cleanup target not derivable")
+      expect(admission.reason).toContain("osc:22")
     }
   })
 

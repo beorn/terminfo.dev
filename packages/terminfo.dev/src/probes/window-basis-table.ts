@@ -5,44 +5,63 @@
  * `WINDOW_BASIS_PRE_SEED` lists the attributes to read before a cell's first write, and
  * `WINDOW_BASIS_RESTORE_TARGET` the state that cell's own cleanup leaves; a cell absent
  * from both maps here, and from window-basis-rulings.ts, is not admitted at all.
- * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes need the escape-sequence
- * tokenizer before they can be classified (@cto: no hand-written splitter, and a run-time
+ * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes still refuse @cto's closed
+ * lists after tokenization, with the exact cause (@cto: no hand-written splitter, and a run-time
  * unclassifiable write is run-fatal, so the decision has to happen here).
  */
 
 import type { LedgerAttribute } from "./attribute-ledger.ts"
 
 export const WINDOW_BASIS_PRE_SEED: Readonly<Record<string, readonly LedgerAttribute[]>> = {
+  "modes.auto-wrap": [{ kind: "dec-mode", mode: 7 }],
   "modes.color-scheme-reporting": [{ kind: "dec-mode", mode: 2031 }],
+  "modes.deccolm": [
+    { kind: "dec-mode", mode: 3 },
+    { kind: "dec-mode", mode: 40 },
+  ],
   "modes.decsclm": [{ kind: "dec-mode", mode: 4 }],
   "modes.focus-tracking": [{ kind: "dec-mode", mode: 1004 }],
   "modes.synchronized-output": [{ kind: "dec-mode", mode: 2026 }],
+  "modes.utf8-mouse-1005": [
+    { kind: "dec-mode", mode: 1000 },
+    { kind: "dec-mode", mode: 1002 },
+    { kind: "dec-mode", mode: 1003 },
+    { kind: "dec-mode", mode: 1005 },
+    { kind: "dec-mode", mode: 1006 },
+    { kind: "dec-mode", mode: 1015 },
+    { kind: "dec-mode", mode: 1016 },
+  ],
+  "text.wrap": [{ kind: "dec-mode", mode: 7 }],
 }
 
 export const WINDOW_BASIS_RESTORE_TARGET: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "modes.auto-wrap": { "dec:7": "1" },
   "modes.color-scheme-reporting": { "dec:2031": "2" },
+  "modes.deccolm": { "dec:3": "2", "dec:40": "1" },
   "modes.decsclm": { "dec:4": "2" },
   "modes.focus-tracking": { "dec:1004": "2" },
   "modes.synchronized-output": { "dec:2026": "2" },
+  "modes.utf8-mouse-1005": {
+    "dec:1000": "2",
+    "dec:1002": "2",
+    "dec:1003": "2",
+    "dec:1005": "2",
+    "dec:1006": "2",
+    "dec:1015": "2",
+    "dec:1016": "2",
+  },
+  "text.wrap": { "dec:7": "1" },
 }
 
 export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {
   "extensions.osc22-pointer":
-    "write not classifiable until the tokenizer lands: 21 of 75 retained writes are not one namable sequence",
+    "cleanup target not derivable: the cell's last write to osc:22 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
   "extensions.reflow":
-    "write not classifiable until the tokenizer lands: 222 of 222 retained writes are not one namable sequence",
+    "write not on a closed list: 72 of 222 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.alt-screen.enter":
-    "write not classifiable until the tokenizer lands: 294 of 354 retained writes are not one namable sequence",
-  "modes.auto-wrap":
-    "write not classifiable until the tokenizer lands: 60 of 72 retained writes are not one namable sequence",
-  "modes.deccolm":
-    "write not classifiable until the tokenizer lands: 40 of 80 retained writes are not one namable sequence",
+    "write not on a closed list: 4 of 354 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.reverse-video":
-    "write not classifiable until the tokenizer lands: 500 of 604 retained writes are not one namable sequence",
-  "modes.utf8-mouse-1005":
-    "write not classifiable until the tokenizer lands: 81 of 103 retained writes are not one namable sequence",
+    "write not on a closed list: 48 of 604 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "scrollback.viewport-hold-output":
-    "write not classifiable until the tokenizer lands: 123 of 123 retained writes are not one namable sequence",
-  "text.wrap":
-    "write not classifiable until the tokenizer lands: 235 of 247 retained writes are not one namable sequence",
+    "write not on a closed list: 12 of 123 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
 }
