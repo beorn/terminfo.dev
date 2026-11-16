@@ -9,7 +9,9 @@ import type {
   TextQualification,
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
-import type { CurrentResult } from "./current-results.ts"
+import { classifyProjectionSetups, type CurrentResult } from "./current-results.ts"
+import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
+import type { SetupStanding } from "./run-selection.ts"
 import type { AppCellStatus, JoinedApp } from "./app-cells.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
@@ -185,6 +187,11 @@ export type PublicFeatureResult = Omit<PublicProbeResult, "status"> &
   }
 
 export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
+  /**
+   * The context's standing among its own app's setups: the group's newest setup, or one strictly behind it. Explicit on
+   * every published context, so no reader can read an absence as current (@cto 026fd6fd rule 2).
+   */
+  standing: SetupStanding
   featureResults: Record<
     string,
     PublicFeatureResult & {
@@ -333,7 +340,10 @@ export function publicResults(
   subjects: ReadonlyMap<string, CurrentResult>,
   /** The same-suite join for every chosen subject (`joinedAppCells`); omitted by readers that hold one context. */
   joined?: ReadonlyMap<string, JoinedApp>,
+  /** The history the setup order reads; a fixture passes a stub rather than a repository. */
+  history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
 ) {
+  const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
@@ -442,10 +452,15 @@ export function publicResults(
         }),
       )
       const { cells: _cells, ...metadata } = context
+      const standing = setups.standings.get(key)
+      if (standing === undefined) {
+        throw new Error(`Context ${key} has no setup standing; every published context is classified`)
+      }
       return [
         key,
         {
           ...metadata,
+          standing,
           contributingRunIds: context.contributingRunIds,
           featureResults,
           sources,

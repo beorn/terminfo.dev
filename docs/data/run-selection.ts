@@ -306,3 +306,147 @@ function pickByLineage<T extends ContextCandidate>(
     }
   )
 }
+
+/** The physical facts that separate one setup from another: every context-key field except `config`. */
+export interface SetupSubject {
+  kind: string
+  id: string
+  os: string | null
+  osVersion: string | null
+  outerTerminal: string | null
+  mux: string | null
+  permissions: string | null
+}
+
+/** One context as the setup classifier sees it: what it was measured as, and the runs behind it. */
+export interface SetupContext {
+  key: string
+  subject: SetupSubject
+  runs: readonly LineageRun[]
+}
+
+/**
+ * A context's standing among the setups of one app on one machine: the group's newest setup, or one strictly behind
+ * it. Only `config` may differ inside a group, so a second font measured by the newest run is likewise current.
+ */
+export type SetupStanding = "current" | "older setup"
+
+export interface SetupClassification {
+  /** Every classified context, with an explicit standing. A context absent from this map was never classified. */
+  standings: Map<string, SetupStanding>
+  /** Groups whose order the version-and-ancestry rule cannot decide, named; nothing in them is older. */
+  undecidable: string[]
+}
+
+/** The group a context belongs to: setups that differ only in `config`. */
+function setupGroupKey(subject: SetupSubject): string {
+  return JSON.stringify([
+    subject.kind,
+    subject.id,
+    subject.os,
+    subject.osVersion,
+    subject.outerTerminal,
+    subject.mux,
+    subject.permissions,
+  ])
+}
+
+/** A readable name for a group, so an undecidable one is named rather than defaulted (@cto 026fd6fd rule 4). */
+function setupGroupName(subject: SetupSubject): string {
+  const parts = [`${subject.kind}:${subject.id}`, subject.os ?? "no OS"]
+  if (subject.osVersion) parts.push(subject.osVersion)
+  if (subject.outerTerminal) parts.push(`outer ${subject.outerTerminal}`)
+  if (subject.mux) parts.push(`mux ${subject.mux}`)
+  if (subject.permissions) parts.push(`permissions ${subject.permissions}`)
+  return parts.join(" · ")
+}
+
+/**
+ * Which setup of an app is current, and which are older, by the one order the site already uses (33587): the highest
+ * app version, then the source revision that descends from every other. A context is current only when it sits AT the
+ * group's newest position; every context strictly behind it is "older setup". Ties are not broken: two configs at the
+ * newest position, such as two fonts measured by the same run, are both current.
+ *
+ * A group whose order cannot be decided — a run without an app version, runs of one version from unrelated source
+ * revisions, or tips that no single revision descends from — classifies NOTHING in it as older and names the group.
+ * There is no default in either direction (@cto 026fd6fd rules 1-4).
+ */
+export function classifySetups(
+  contexts: readonly SetupContext[],
+  history: Pick<SourceHistory, "isAncestor">,
+): SetupClassification {
+  const groups = new Map<string, SetupContext[]>()
+  for (const context of contexts) {
+    const key = setupGroupKey(context.subject)
+    const group = groups.get(key) ?? []
+    group.push(context)
+    groups.set(key, group)
+  }
+  const standings = new Map<string, SetupStanding>()
+  const undecidable: string[] = []
+  for (const group of groups.values()) {
+    const [first] = group
+    if (!first) continue
+    // A group of one is its own newest setup; no order is needed, so no history is read.
+    if (group.length === 1) {
+      standings.set(first.key, "current")
+      continue
+    }
+    const named = setupGroupName(first.subject)
+    const facts = group.map((context) => {
+      if (context.runs.length === 0) return { context, undecidable: `no contributing run` }
+      if (context.runs.some((run) => run.version === null)) {
+        return { context, undecidable: `a run records no app version` }
+      }
+      const version = context.runs
+        .map((run) => run.version as string)
+        .sort((left, right) => versionCompare(right, left))[0] as string
+      const revisions = [
+        ...new Set(
+          context.runs
+            .filter((run) => run.version === version)
+            .map((run) => {
+              if (run.sourceRevision === null) return ""
+              return run.sourceRevision
+            }),
+        ),
+      ]
+      if (revisions.some((revision) => revision === "")) {
+        return { context, undecidable: `a run of version ${version} records no source revision` }
+      }
+      const tip = descendantOfAll(revisions, history)
+      if (tip === undefined) {
+        return {
+          context,
+          undecidable: `version ${version} from unrelated source revisions ${revisions.join(", ")}`,
+        }
+      }
+      return { context, version, tip }
+    })
+    const refused = facts.find((fact) => fact.undecidable !== undefined)
+    if (refused) {
+      undecidable.push(`${named}: ${refused.undecidable}`)
+      for (const context of group) standings.set(context.key, "current")
+      continue
+    }
+    const settled = facts as Array<{ context: SetupContext; version: string; tip: string }>
+    const top = settled.map((fact) => fact.version).sort((left, right) => versionCompare(right, left))[0] as string
+    const atTop = settled.filter((fact) => fact.version === top)
+    const winner = descendantOfAll(
+      atTop.map((fact) => fact.tip),
+      history,
+    )
+    if (winner === undefined) {
+      undecidable.push(
+        `${named}: version ${top} from unrelated source revisions ${atTop.map((fact) => fact.tip).join(", ")}`,
+      )
+      for (const context of group) standings.set(context.key, "current")
+      continue
+    }
+    for (const fact of settled) {
+      const current = fact.version === top && fact.tip === winner
+      standings.set(fact.context.key, current ? "current" : "older setup")
+    }
+  }
+  return { standings, undecidable }
+}

@@ -13,7 +13,14 @@ import {
   type SelectedContextSummary,
   statesFor,
 } from "./selected-results.ts"
-import { candidateFromSelected, pickContextRun, type LineageRun } from "./run-selection.ts"
+import {
+  candidateFromSelected,
+  classifySetups,
+  pickContextRun,
+  type LineageRun,
+  type SetupClassification,
+  type SetupContext,
+} from "./run-selection.ts"
 import { joinContextCells, type ContextCellFacts, type ContextFacts, type JoinedApp } from "./app-cells.ts"
 import { definitionDiffers, gitSourceHistory, type SourceHistory } from "./source-history.ts"
 import { suiteEntryHashes } from "./legacy-entry-hashes.ts"
@@ -169,8 +176,25 @@ export function loadCurrentResults(
   return results
 }
 
+/**
+ * Every context the projection holds with evidence, classified as the group's newest setup or one strictly behind it.
+ * One call, so the API document and the preview never hold two classifications (@cto 026fd6fd rules 1-2).
+ */
+export function classifyProjectionSetups(
+  projection: Pick<SelectedProjection, "contexts">,
+  history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
+): SetupClassification {
+  const contexts: SetupContext[] = []
+  for (const [key, summary] of Object.entries(projection.contexts)) {
+    if (summary.contributingRunIds.length === 0) continue
+    if (!summary.subject) throw new Error(`Context ${key} has evidence without physical subject facts`)
+    contexts.push({ key, subject: summary.subject, runs: contributingRuns(summary) })
+  }
+  return classifySetups(contexts, history)
+}
+
 /** Every run that contributed a cell to `summary`, with the app version and source revision the pick orders by. */
-function contributingRuns(summary: SelectedContextSummary): LineageRun[] {
+export function contributingRuns(summary: SelectedContextSummary): LineageRun[] {
   const runs = new Map<string, LineageRun>()
   for (const cell of Object.values(summary.cells)) {
     runs.set(cell.run.runId, {
