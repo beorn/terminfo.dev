@@ -1304,6 +1304,19 @@ independently of the human explanation. Conclusive observations carry no unknown
 
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
 
+The Kitty 0.49.2 Linux App prompt reader uses the launch's private Unix socket and
+collector window ID. `kitten @ ls` must identify that collector and supply prompt,
+exit-status and title fields; `get-text --extent=last_cmd_output` reads its output
+range. OSC 2 title fences order each native read. Unknown `133;Z` must preserve
+semantic state, an independent title control must change its own state, and the
+target observes prompt start, output range, exit status or the A/C/D lifecycle.
+The shared App grader keeps unavailable reads and failed controls distinct from
+capability negatives. Cleanup restores the observed title and exit status and
+clears the disposable grid; prior command-output history remains replaced by the fixture.
+This reader adds no declaration for another version and leaves OSC 133 B/P and
+other exact-version declarations unchanged. Native before/after qualification and
+the remaining-row comparison are separate from hermetic reader tests.
+
 A marked fenced silence defaults to Unsupported. The optional `switchable` silence rule maps it to PROBE INVALID;
 the catalog refuses declarations until a collector route carries them. A silence rule cannot declare Untestable.
 
