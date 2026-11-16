@@ -22,6 +22,7 @@ import { join } from "node:path"
 import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
+import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
 import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
 import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
 import {
@@ -608,6 +609,7 @@ test.each([
   ["extensions.osc133-a", "", "foreign-socket"],
   ["extensions.osc133-a", "", "foreign-window"],
   ["extensions.osc133-a", "", "malformed-response"],
+  ["extensions.osc133-a", "true", "unknown-changes-output"],
 ])(
   "Kitty %s reads its own window with unknown, handled and target controls: expected %s, %s",
   async (featureId, expected, mode) => {
@@ -680,7 +682,9 @@ test.each([
               exit = Number(body.slice(6))
               running = false
               output = currentOutput
-            } else if (body?.startsWith("2;")) title = body.slice(2)
+            } else if (body === "133;Z" && mode === "unknown-changes-output")
+              output = "output changed by the unknown command"
+            else if (body?.startsWith("2;")) title = body.slice(2)
             else if (part[2]) {
               screen += part[2]
               if (running) currentOutput += part[2]
@@ -688,13 +692,17 @@ test.each([
           }
         },
       })
-      if (mode !== "valid") {
+      if (["foreign-socket", "foreign-window", "malformed-response"].includes(mode)) {
         expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/Kitty prompt/) })
         expect(writes).toEqual([])
         return
       }
       expect(reading.status).toBe("measured")
       if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+      if (mode === "unknown-changes-output") {
+        expect(gradeAppSemanticState(reading)).toMatchObject({ tests: [{ id: "criterion", status: "probe-invalid" }] })
+        return
+      }
       expect(reading.runId).toBe(runId)
       expect(reading.unknown.after).toBe(reading.unknown.before)
       expect(reading.handled.after).toBe("terminfo-control-32955fff")

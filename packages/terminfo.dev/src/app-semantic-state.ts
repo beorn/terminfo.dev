@@ -2160,7 +2160,9 @@ export async function readAppSemanticState(
             osc("133;D;0") +
             (input.featureId === "extensions.osc133-c" ? osc("133;A") : ""),
         )
+        const initialOutput = output()
         const unknown = await phase("unknown", osc("133;Z"))
+        const unknownOutput = output()
         const handled = await phase("handled", "", `terminfo-control-${nonce}`)
         let before: string
         let after: string
@@ -2191,8 +2193,8 @@ export async function readAppSemanticState(
           reader: "state",
           runId: input.runId,
           unknown: {
-            before: JSON.stringify([initial.prompt, initial.exit]),
-            after: JSON.stringify([unknown.prompt, unknown.exit]),
+            before: JSON.stringify([initial.prompt, initial.exit, initialOutput]),
+            after: JSON.stringify([unknown.prompt, unknown.exit, unknownOutput]),
           },
           handled: { before: unknown.title, after: handled.title, expected: `terminfo-control-${nonce}` },
           target: { before, after, expected },

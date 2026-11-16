@@ -1311,7 +1311,8 @@ range. OSC 2 title fences order each native read. Unknown `133;Z` must preserve
 semantic state, an independent title control must change its own state, and the
 target observes prompt start, output range, exit status or the A/C/D lifecycle.
 The shared App grader keeps unavailable reads and failed controls distinct from
-capability negatives. Title and fixture state are restored before returning.
+capability negatives. Cleanup restores the observed title and exit status and
+clears the disposable grid; prior command-output history remains replaced by the fixture.
 This reader adds no declaration for another version and leaves OSC 133 B/P and
 other exact-version declarations unchanged. Native before/after qualification and
 the remaining-row comparison are separate from hermetic reader tests.
