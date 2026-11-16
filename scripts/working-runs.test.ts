@@ -39,6 +39,7 @@ import {
   type LoadedWorkingRun,
 } from "../docs/data/working-runs.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import * as currentResults from "../docs/data/current-results.ts"
 import { fullContextCensus } from "../docs/data/full-census.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
@@ -514,7 +515,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Accepted history requirement: page data retains older complete collections automatically.
   // The existing manual reopen test cannot detect a newest-only page loader.
-  it("retains complete ordinary history in page data without changing accepted results", () => {
+  it("retains complete ordinary history in page data without changing accepted results", { timeout: 30_000 }, () => {
     const older = collection()
     collection(older.parent, PARTIAL)
     run(older.parent, WRITING, undefined, false)
@@ -562,6 +563,75 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     expect(new Set(refs)).toEqual(new Set([0]))
     expect(client.workingStates).toEqual([server[0]!.contexts[0]!.states])
   })
+
+  // 33964 (@cto e8f74d99): history composition drops per-cell allocations, but must still run reviewed-cell
+  // featureResult and originalRunFor provenance checks, failing on the newest run while classifying an older
+  // run's failure as a visible history gap alongside standalone full-cell views.
+  it.each(["missing featureResult", "missing originalRunFor"] as const)(
+    "enforces reviewed cell provenance (%s) in siteWorkingHistory with newest-error vs older-gap semantics",
+    (failure) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+      const base = loadCurrentResults(join(root, "content")).projection
+      const vtermEntry = [...compatibilitySubjects(base, join(root, "content")).values()].find(
+        (candidate) => candidate.selected.subject?.id === "vterm",
+      )!
+      const vtermKey = vtermEntry.contextKey
+      const vtermContext = vtermEntry.selected
+      const boldCell = vtermContext.cells["sgr.bold"]!
+      const brokenProjection = {
+        ...base,
+        contexts: {
+          ...base.contexts,
+          [vtermKey]: {
+            ...vtermContext,
+            cells: {
+              ...vtermContext.cells,
+              "sgr.bold":
+                failure === "missing featureResult"
+                  ? { ...boldCell, featureResult: undefined }
+                  : { ...boldCell, run: { ...boldCell.run, runId: "missing-original-run" } },
+            },
+          },
+        },
+      }
+      const expectedError =
+        failure === "missing featureResult"
+          ? `Reviewed context ${vtermKey}/sgr.bold lacks its computed feature result`
+          : `Context ${vtermKey} names missing original run missing-original-run`
+
+      const historyParent = runsDir()
+      run(historyParent, OLD, { complete: true })
+      collection(historyParent, PARTIAL)
+      const resultsSpy = vi
+        .spyOn(currentResults, "loadCurrentResults")
+        .mockReturnValue({ projection: brokenProjection })
+      try {
+        expect(() =>
+          siteWorkingHistory(join(root, "content"), { TERMINFO_SITE_WORKING_RUNS_DIR: historyParent }),
+        ).toThrow(expectedError)
+        expect(warning).toHaveBeenCalledOnce()
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining("headless/collection.json"))
+      } finally {
+        resultsSpy.mockRestore()
+      }
+
+      const history = siteWorkingHistory(join(root, "content"), {
+        TERMINFO_SITE_WORKING_RUNS_DIR: historyParent,
+      })!
+      expect(history.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+      expect(history[0]?.contexts).toEqual([])
+      expect(history[0]?.unreadable?.reason).toContain("headless/collection.json")
+      expect(history[1]?.contexts[0]?.cells).toEqual([])
+      expect(Object.keys(history[1]?.contexts[0]?.states ?? {})).toHaveLength(273)
+
+      const fullView = siteWorkingView(join(root, "content"), {
+        TERMINFO_SITE_WORKING_RUNS_DIR: historyParent,
+      })
+      expect(fullView?.run.id).toBe(PARTIAL)
+      expect(fullView?.contexts[0]?.cells).toHaveLength(273)
+    },
+    30_000,
+  )
 
   // Selected-original history is required on feature pages and for Mac contexts without raw stores.
   // Raw collection tests cannot catch dropping these originals or leaking their full evidence payload.

@@ -435,6 +435,15 @@ export function composeWorkingView(
   reviewed: ReadonlyMap<string, CurrentResult>,
   working: LoadedWorkingRun,
 ): WorkingView {
+  return composeWorkingViewMode(projection, reviewed, working, true)
+}
+
+function composeWorkingViewMode(
+  projection: SelectedProjection,
+  reviewed: ReadonlyMap<string, CurrentResult>,
+  working: LoadedWorkingRun,
+  includeCells: boolean,
+): WorkingView {
   const admitted = admittedContextKeys(projection.versions)
   const bySubject = new Map<string, CurrentResult>()
   for (const entry of reviewed.values()) {
@@ -453,40 +462,49 @@ export function composeWorkingView(
     const review =
       run.subject.kind === "lib" || candidate?.selected.subject?.os === run.subject.os ? candidate : undefined
     const suiteId = run.probeHash
-    const cells = run.results.map((result) => {
+    const states: Record<string, FeatureResultStatus> = {}
+    const cells: WorkingCell[] = []
+    for (const result of run.results) {
       const cell = review?.selected.cells[result.featureId]
       const status = isEnvironmentGroup(result.featureId) ? cell?.result.status : cell?.featureResult?.status
       if (cell && status === undefined) {
         throw new Error(`Reviewed context ${review?.contextKey}/${result.featureId} lacks its computed feature result`)
       }
-      const reviewedSide: ReviewedSide | undefined =
+      const suiteLabel =
         cell && review && status !== undefined
-          ? {
-              status,
-              ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
-              runId: cell.run.runId,
-              suiteId: cell.run.probeHash ?? cell.run.suiteId,
-              version: cell.run.subject.version,
-              measuredAt: cell.run.measuredAt,
-              suiteLabel: originalRunFor(projection, review.contextKey, cell.run.runId).suiteFreshness,
-            }
+          ? originalRunFor(projection, review.contextKey, cell.run.runId).suiteFreshness
           : undefined
-      return workingCell(
-        {
-          featureId: result.featureId,
-          status: result.status,
-          ...(result.criterionBranch !== undefined && { criterionBranch: result.criterionBranch }),
-          runId: run.runId,
-          suiteId,
-          version: run.subject.version,
-          measuredAt: run.measuredAt,
-        },
-        reviewedSide,
-      )
-    })
-    const { counts, positions } = rollupTerminalStatuses(
-      Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
-    )
+      if (includeCells) {
+        const reviewedSide: ReviewedSide | undefined =
+          cell && review && status !== undefined && suiteLabel !== undefined
+            ? {
+                status,
+                ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
+                runId: cell.run.runId,
+                suiteId: cell.run.probeHash ?? cell.run.suiteId,
+                version: cell.run.subject.version,
+                measuredAt: cell.run.measuredAt,
+                suiteLabel,
+              }
+            : undefined
+        cells.push(
+          workingCell(
+            {
+              featureId: result.featureId,
+              status: result.status,
+              ...(result.criterionBranch !== undefined && { criterionBranch: result.criterionBranch }),
+              runId: run.runId,
+              suiteId,
+              version: run.subject.version,
+              measuredAt: run.measuredAt,
+            },
+            reviewedSide,
+          ),
+        )
+      }
+      states[result.featureId] = result.status
+    }
+    const { counts, positions } = rollupTerminalStatuses(states)
     return {
       contextKey,
       reviewedContextKey: review?.contextKey ?? null,
@@ -500,6 +518,7 @@ export function composeWorkingView(
       cells,
       counts,
       positions,
+      ...(!includeCells && { states }),
     }
   })
   contexts.sort((a, b) => a.engine.localeCompare(b.engine) || a.contextKey.localeCompare(b.contextKey))
@@ -705,13 +724,11 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
       const loaded = app
         ? loadAppWorkingRun(selection, app, dir, Object.keys(loadFeatures(contentDir)))
         : loadedSiteWorkingRun(selection, selection.id === newest.id)
-      const view = composeWorkingView(projection, reviewed, loaded)
+      const view = composeWorkingViewMode(projection, reviewed, loaded, false)
       if (app) view.run.id = `apps/${app.context}/${selection.id}`
       else if (selection.id === newest.id) view.unmeasured = [...view.unmeasured, ...gaps]
       const fingerprints = new Map<string, string | undefined>()
       for (const context of view.contexts) {
-        context.states = Object.fromEntries(context.cells.map((cell) => [cell.featureId, cell.raw.status]))
-        context.cells = []
         const original = loaded.runs.find((run) => run.subject.id === context.engine)
         context.sha256 = original?.sha256
         context.identity = original?.identity
