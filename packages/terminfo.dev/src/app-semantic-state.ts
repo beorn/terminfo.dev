@@ -45,7 +45,7 @@ type AppSemanticCapability = {
   reason?: string
   requiresMissingSessionBus?: true
   outerCommands?: true
-  reader?: "grid" | "cycle" | "cwd" | "report" | "osc8"
+  reader?: "grid" | "cycle" | "cwd" | "report" | "osc8" | "kitty-prompt"
   command?: { code: string; body: string }
   reportControls?: {
     sentinel: { code: string; body: string; line: string }
@@ -665,8 +665,7 @@ const declarations: readonly AppSemanticCapability[] = [
       version: "0.49.2",
       os: "linux",
       featureId,
-      reason:
-        "Untestable (no setup): Kitty 0.49.2 parses OSC 133 A/C/D into prompt marks and exit status, which are readable via kitten @ ls (at_prompt, last_cmd_exit_status) and kitten @ get-text --extent=last_cmd_output when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 133. Read tag v0.49.2 kitty/screen.c:3591-3613, kitty/window.py:2351,2356 and kitty/rc/get_text.py:105; enabling -o allow_remote_control=socket-only --listen-on unix:<path> with before/after App qualification is tracked in #32955.",
+      reader: "kitty-prompt" as const,
     }),
   ),
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
@@ -2086,6 +2085,114 @@ export async function readAppSemanticState(
         status: "unavailable",
         reason: `No reviewed App semantic reader for ${subject.id} ${subject.version} ${input.featureId}`,
         detail,
+      }
+    }
+    if (row.reader === "kitty-prompt") {
+      const socket = env.KITTY_LISTEN_ON
+      const windowId = env.KITTY_WINDOW_ID
+      const socketPath = join(dirname(capture), `kitty-${input.runId}.sock`)
+      if (
+        socket !== `unix:${socketPath}` ||
+        !windowId ||
+        !/^[1-9]\d*$/.test(windowId) ||
+        !statSync(socketPath).isSocket()
+      ) {
+        throw new Error("Kitty prompt read requires this run's private socket and window ID")
+      }
+      const kitten = join(dirname(input.executable.path), "kitten")
+      const remote = (...args: string[]) => run([kitten, "@", "--to", socket, ...args, "--match", `id:${windowId}`])
+      const readWindow = () => {
+        const tree: unknown = JSON.parse(remote("ls"))
+        if (!Array.isArray(tree)) throw new Error("Kitty prompt ls returned no window tree")
+        const windows: unknown[] = tree.flatMap((osWindow) => {
+          if (!Array.isArray(osWindow?.tabs)) throw new Error("Kitty prompt ls returned no tabs")
+          return osWindow.tabs.flatMap((tab: { windows?: unknown[] }) => {
+            if (!Array.isArray(tab.windows)) throw new Error("Kitty prompt ls returned no windows")
+            return tab.windows
+          })
+        })
+        const window = windows[0] as Record<string, unknown> | undefined
+        if (
+          windows.length !== 1 ||
+          !window ||
+          window.id !== Number(windowId) ||
+          window.pid !== process.pid ||
+          typeof window.at_prompt !== "boolean" ||
+          !Number.isSafeInteger(window.last_cmd_exit_status) ||
+          typeof window.title !== "string"
+        )
+          throw new Error("Kitty prompt ls did not identify this collector's window and semantic fields")
+        return { prompt: window.at_prompt, exit: window.last_cmd_exit_status as number, title: window.title }
+      }
+      const output = () => remote("get-text", "--extent", "last_cmd_output").replace(/\r\n/g, "\n").trimEnd()
+      const original = readWindow()
+      if (/[\x00-\x1f\x7f]/.test(original.title)) throw new Error("Kitty prompt fixture cannot restore its title")
+      let serial = 0
+      const phase = async (name: string, feed: string, title = `terminfo-${nonce}-${serial++}`) => {
+        input.write(feed + osc(`2;${title}`))
+        const text = await until(
+          () => JSON.stringify(readWindow()),
+          (value) => JSON.parse(value).title === title,
+          `${name} title fence`,
+        )
+        const reading = JSON.parse(text) as ReturnType<typeof readWindow>
+        detail.phases.push({ name, feed, reading })
+        return reading
+      }
+      const commandOutput = `terminfo-output-${nonce}`
+      try {
+        input.write("\x1b[2J\x1b[3J\x1b[H")
+        const initial = await phase(
+          "baseline",
+          osc("133;C") +
+            `terminfo-baseline-${nonce}\r\n` +
+            osc("133;D;0") +
+            (input.featureId === "extensions.osc133-c" ? osc("133;A") : ""),
+        )
+        const unknown = await phase("unknown", osc("133;Z"))
+        const handled = await phase("handled", "", `terminfo-control-${nonce}`)
+        let before: string
+        let after: string
+        let expected: string
+        if (input.featureId === "extensions.osc133-a") {
+          before = String(handled.prompt)
+          after = String((await phase("target", osc("133;A"))).prompt)
+          expected = "true"
+        } else if (input.featureId === "extensions.osc133-c") {
+          before = output()
+          await phase("target", osc("133;C") + commandOutput + "\r\n" + osc("133;D;0"))
+          after = output()
+          expected = commandOutput
+        } else if (input.featureId === "extensions.osc133-d") {
+          before = String(handled.exit)
+          after = String((await phase("target", osc("133;C") + commandOutput + "\r\n" + osc("133;D;17"))).exit)
+          expected = "17"
+        } else {
+          before = JSON.stringify([initial.prompt, initial.prompt, initial.exit, output()])
+          const prompt = await phase("prompt", osc("133;A"))
+          const running = await phase("output", osc("133;C") + commandOutput + "\r\n")
+          const ended = await phase("end", osc("133;D;17"))
+          after = JSON.stringify([prompt.prompt, running.prompt, ended.exit, output()])
+          expected = JSON.stringify([true, false, 17, commandOutput])
+        }
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          unknown: {
+            before: JSON.stringify([initial.prompt, initial.exit]),
+            after: JSON.stringify([unknown.prompt, unknown.exit]),
+          },
+          handled: { before: unknown.title, after: handled.title, expected: `terminfo-control-${nonce}` },
+          target: { before, after, expected },
+          detail,
+        }
+      } finally {
+        await phase(
+          "restored",
+          osc("133;C") + osc(`133;D;${original.exit}`) + (original.prompt ? osc("133;A") : "") + "\x1b[2J\x1b[3J\x1b[H",
+          original.title,
+        )
       }
     }
     const namespace = input.featureId.includes("633") ? "633" : "133"

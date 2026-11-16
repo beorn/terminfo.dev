@@ -598,17 +598,98 @@ test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected",
   },
 )
 
+// #32955: existing declaration/log tests cannot exercise the owned Kitty RPC's prompt, output and exit-state
+// observations. Drive the existing collector entry, with the real run socket and independently supplied RPC data.
+test.each([
+  ["extensions.osc133-a", "true"],
+  ["extensions.osc133-c", "terminfo-output-32955fff"],
+  ["extensions.osc133-d", "17"],
+  ["extensions.semantic-prompts", '[true,false,17,"terminfo-output-32955fff"]'],
+])("Kitty %s reads its own window with unknown, handled and target controls", async (featureId, expected) => {
+  const root = mkdtempSync(join(tmpdir(), "kitty-semantic-32955-"))
+  const capture = join(root, "artifacts")
+  mkdirSync(capture)
+  const runId = "a".repeat(32)
+  const socket = join(root, `kitty-${runId}.sock`)
+  const listener = Bun.listen({ unix: socket, socket: { data() {} } })
+  vi.stubEnv("TERMINFO_RUN_ID", runId)
+  vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+  vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+  vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+  vi.stubEnv("KITTY_PID", "123")
+  vi.stubEnv("KITTY_WINDOW_ID", "7")
+  vi.stubEnv("KITTY_LISTEN_ON", `unix:${socket}`)
+  editorNonce.mockReturnValue("32955fff-0000-4000-8000-000000000001")
+  let prompt = false
+  let exit = 0
+  let title = "owned Kitty title"
+  let screen = ""
+  let output = ""
+  let currentOutput = ""
+  let running = false
+  const writes: string[] = []
+  vi.mocked(execFileSync).mockImplementation((file, args) => {
+    if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
+    expect(file).toBe("/owned/kitten")
+    expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
+    expect(args).toContain("id:7")
+    if (args?.includes("ls")) {
+      return JSON.stringify([
+        { tabs: [{ windows: [{ id: 7, pid: process.pid, at_prompt: prompt, last_cmd_exit_status: exit, title }] }] },
+      ])
+    }
+    if (args?.includes("get-text")) return args.includes("last_cmd_output") ? output : screen
+    throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
+  })
+  try {
+    const reading = await readAppSemanticState({
+      featureId,
+      runId,
+      executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+      write(bytes) {
+        writes.push(bytes)
+        for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07|\x1b\[[0-9;?]*[A-Za-z]|([^\x1b]+)/g)) {
+          const body = part[1]
+          if (body === "133;A") prompt = true
+          else if (body === "133;C") {
+            prompt = false
+            running = true
+            currentOutput = ""
+          } else if (body?.startsWith("133;D;")) {
+            exit = Number(body.slice(6))
+            running = false
+            output = currentOutput
+          } else if (body?.startsWith("2;")) title = body.slice(2)
+          else if (part[2]) {
+            screen += part[2]
+            if (running) currentOutput += part[2]
+          }
+        }
+      },
+    })
+    expect(reading.status).toBe("measured")
+    if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+    expect(reading.runId).toBe(runId)
+    expect(reading.unknown.after).toBe(reading.unknown.before)
+    expect(reading.handled.after).toBe("terminfo-control-32955fff")
+    expect(reading.target.after).toBe(expected)
+    expect(reading.target.before).not.toBe(expected)
+    expect(writes.join("")).toContain("\x1b]133;Z\x07")
+    expect(title).toBe("owned Kitty title")
+  } finally {
+    listener.stop(true)
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
-    "extensions.osc133-a",
     "extensions.osc133-b",
-    "extensions.osc133-c",
-    "extensions.osc133-d",
     "extensions.osc133-p",
     "extensions.osc3008-context",
     "extensions.osc8",
-    "extensions.semantic-prompts",
   ])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
   const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
@@ -1322,7 +1403,7 @@ test("Ghostty 1.4.0 declares osc133-d and semantic-prompts untestable from the s
   }
 })
 
-test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {
+test("remaining Linux App semantic-prompt declarations retain exact-version citations and routes not taken (#32947)", () => {
   const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
   for (const id of [
     "extensions.osc633-a",
@@ -1354,9 +1435,7 @@ test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestab
     "extensions.osc133-d",
     "extensions.semantic-prompts",
   ] as const) {
-    expect(kitty[id]).toMatch(/^Untestable \(no setup\): Kitty 0\.49\.2 parses OSC 133/)
-    expect(kitty[id]).toContain("kitten @")
-    expect(kitty[id]).toContain("#32955")
+    expect(kitty[id]).toBeUndefined()
   }
 
   const wezterm = appSemanticDeclarations({
