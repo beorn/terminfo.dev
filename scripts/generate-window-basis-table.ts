@@ -76,16 +76,20 @@ interface Admitted {
 }
 
 /**
- * The value a cell's cleanup write leaves, read off the write itself. `h` sets (1) and `l` resets (2),
- * which is what DECRPM answers with. Only mode writes can be read this way; a class whose final state
- * cannot be derived from its last write is refused at admission rather than guessed.
+ * The EXPECTED value a cell's cleanup write leaves, read off the write itself. `h` sets (1) and `l`
+ * resets (2), which is what DECRPM answers with; the bare SGR reset form names the default-rendition
+ * target. Naming it proves nothing on its own: the live pre-read and post-read still decide whether
+ * the terminal was in that state and came back to it, and a missing or different reply refuses the
+ * cell. A class whose final state this script cannot name from its last write is refused at
+ * admission rather than guessed.
  */
 function restoreTargetOf(write: string): string | undefined {
   const mode = /^\x1b\[\??[0-9;]+([hl])$/.exec(write)
   if (mode) return mode[1] === "h" ? "1" : "2"
-  // The SGR reset form leaves the default rendition, which is exactly what DECRQSS `$q m` answers
-  // on a terminal nothing has re-styled, so its target is derivable too. Any other SGR write sets a
-  // rendition this script cannot read off the bytes, and is refused rather than guessed.
+  // The SGR reset form leaves the default rendition, and the target exists to name what the ledger
+  // should see back (SGR0, DECRQSS `m`). A terminal that serialises the default differently, or that
+  // was not in it to begin with, refuses at the live read; this line does not assert either. Any
+  // other SGR write sets a rendition this script cannot name from the bytes, and is refused.
   if (/^\x1b\[(?:0)?m$/.test(write)) return "0"
   return undefined
 }

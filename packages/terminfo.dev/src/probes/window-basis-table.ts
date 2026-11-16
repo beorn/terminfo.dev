@@ -57,11 +57,11 @@ export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {
   "extensions.osc22-pointer":
     "cleanup target not derivable: the cell's last write to osc:22 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
   "extensions.reflow":
-    "write not on a closed list: 72 of 222 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+    "write not on a closed list: 96 of 256 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.alt-screen.enter":
     "write not on a closed list: 4 of 354 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.reverse-video":
-    "write not on a closed list: 48 of 604 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+    "write not on a closed list: 92 of 678 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "scrollback.viewport-hold-output":
-    "write not on a closed list: 12 of 123 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+    "write not on a closed list: 16 of 130 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
 }
