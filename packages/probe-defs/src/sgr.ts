@@ -1544,75 +1544,101 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   }
 }
 
+// 34567: the hosted macOS image moved 20261102.0473.1 to 20261112.0504.1, raising measured per-capture cost from
+// 0.912 s to 1.158 s (cmux; Cursor 0.851 to 1.067) with frame counts unchanged. The attribute rows below sat at 78 to
+// 96 percent of the 30 s default before the bump, so they were cut mid-capture. Each wall is capture count x 1.158 s
+// x 1.20 headroom, rounded up to the next 15 s: 24 to 32 captures need 45 s, 132 need 195 s.
+// /hh/var/@dev-brain/collector-slow-1117.md.
 export const sgrProbes: ProbeDefinition[] = [
   // ── Attributes ──
 
-  sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }),
+  { ...sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }), wallMs: 45_000 },
 
-  sgrProbe(
-    "sgr.faint",
-    "\x1b[2m",
-    (cell) => (cell.dim == null ? null : cell.dim),
-    undefined,
-    { require: [2] },
-    "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.faint",
+      "\x1b[2m",
+      (cell) => (cell.dim == null ? null : cell.dim),
+      undefined,
+      { require: [2] },
+      "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.italic",
-    "\x1b[3m",
-    (cell) => (cell.italic == null ? null : cell.italic),
-    undefined,
-    { require: [3] },
-    "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.italic",
+      "\x1b[3m",
+      (cell) => (cell.italic == null ? null : cell.italic),
+      undefined,
+      { require: [3] },
+      "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
+  {
+    ...sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.double",
-    "\x1b[21m",
-    (cell) => cell.underline === "double",
-    undefined,
-    { require: [21] },
-    "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.double",
+      "\x1b[21m",
+      (cell) => cell.underline === "double",
+      undefined,
+      { require: [21] },
+      "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.curly",
-    "\x1b[4:3m",
-    (cell) => cell.underline === "curly",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:3"],
-    },
-    "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.curly",
+      "\x1b[4:3m",
+      (cell) => cell.underline === "curly",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:3"],
+      },
+      "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.dotted",
-    "\x1b[4:4m",
-    (cell) => cell.underline === "dotted",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:4"],
-    },
-    "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.dotted",
+      "\x1b[4:4m",
+      (cell) => cell.underline === "dotted",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:4"],
+      },
+      "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.dashed",
-    "\x1b[4:5m",
-    (cell) => cell.underline === "dashed",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:5"],
-    },
-    "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.dashed",
+      "\x1b[4:5m",
+      (cell) => cell.underline === "dashed",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:5"],
+      },
+      "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
+    ),
+    wallMs: 45_000,
+  },
 
   sgrProbe(
     "sgr.blink",
@@ -1624,39 +1650,51 @@ export const sgrProbes: ProbeDefinition[] = [
     blinkCapture,
   ),
 
-  sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
+  {
+    ...sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.hidden",
-    "\x1b[8m",
-    (cell) => (cell.hidden == null ? null : cell.hidden === true),
-    (cell) =>
-      cell.hidden == null
-        ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
-        : null,
-    { require: [8] },
-    "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.hidden",
+      "\x1b[8m",
+      (cell) => (cell.hidden == null ? null : cell.hidden === true),
+      (cell) =>
+        cell.hidden == null
+          ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
+          : null,
+      { require: [8] },
+      "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.strikethrough",
-    "\x1b[9m",
-    (cell) => (cell.strikethrough == null ? null : cell.strikethrough),
-    undefined,
-    { require: [9] },
-    "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.strikethrough",
+      "\x1b[9m",
+      (cell) => (cell.strikethrough == null ? null : cell.strikethrough),
+      undefined,
+      { require: [9] },
+      "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.overline",
-    "\x1b[53m",
-    (cell) => (cell.overline == null ? null : cell.overline === true),
-    (cell) =>
-      cell.overline == null
-        ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
-        : null,
-    { require: [53] },
-  ),
+  {
+    ...sgrProbe(
+      "sgr.overline",
+      "\x1b[53m",
+      (cell) => (cell.overline == null ? null : cell.overline === true),
+      (cell) =>
+        cell.overline == null
+          ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
+          : null,
+      { require: [53] },
+    ),
+    wallMs: 45_000,
+  },
 
   // ── Underline color ──
 
@@ -1781,6 +1819,7 @@ export const sgrProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
+    wallMs: 45_000,
   },
 
   rgbUnderlineProbe("sgr.underline-color-rgb"),
@@ -1920,8 +1959,9 @@ export const sgrProbes: ProbeDefinition[] = [
       preserve: ["italic", "underline"],
       preserveMode: "any",
     }),
-    // 34641: Linux WezTerm took up to 115.5 s over 132 captures (run 2026-11-17T13-06Z), 96 percent of the old 120 s wall; 150 s puts it at 77 percent.
-    wallMs: 150_000,
+    // 34641 sized this at 150 s from the Linux WezTerm span; on the Nov 12 hosted image cmux runs the whole 150 s
+    // over 132 captures (34567), so 195 s is 132 x 1.158 s x 1.20 headroom rounded up.
+    wallMs: 195_000,
   },
 
   resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),

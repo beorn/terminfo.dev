@@ -2307,6 +2307,9 @@ const modeDefinitions: ProbeDefinition[] = [
     termNeedsGeometry: true,
     cellReadback: true,
     textClaim: "characters",
+    // 34567: cmux on the Nov 12 hosted image hit the 30 s default mid-capture on this row, which takes 22 captures
+    // (19.6 s on the same row before the image bump); 22 x 1.158 s x 1.20 headroom rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // Bracketed paste
@@ -3231,8 +3234,9 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 34567: 66 captures at 1.158 s per capture
+    // on the Nov 12 hosted image is 76 s, so 105 s is that with 20 percent headroom, rounded up to the next 15 s.
+    wallMs: 105_000,
   },
 
   // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
@@ -3265,8 +3269,9 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 34567: 66 captures at 1.158 s per capture
+    // on the Nov 12 hosted image is 76 s, so 105 s is that with 20 percent headroom, rounded up to the next 15 s.
+    wallMs: 105_000,
   },
 
   // DECSSCLS — presentation speed with no query; measured by a settled jump control and a timed
