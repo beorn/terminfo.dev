@@ -1649,6 +1649,14 @@ export type TerminalScrollbackReset = Readonly<{
 
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /**
+   * Wall-clock milliseconds, exactly `Date.now()` on a live source (#30932 S2). A callback's deadline and
+   * schedule reads go through this method rather than the global clock, so the source recorder keeps each
+   * value and an offline replay asks for the same polls the live row asked for. Read it only through
+   * `sourceNow`, which refuses a source without one: a log recorded before this method existed has no clock to
+   * give, and nothing falls back to the replaying machine's time.
+   */
+  now?: () => number
   /** Verified multiplexer identity when this run's subject is a multiplexer (#32774). */
   mux?: "tmux" | "screen"
   /** Same-session owned history. Absent when the terminal exposes no complete reading. */

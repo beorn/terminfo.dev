@@ -1,3 +1,4 @@
+import { sourceNow } from "./source-clock.ts"
 import type {
   CaptureCells,
   ObservationFrame,
@@ -250,7 +251,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       keyRead = (
         await ctx.readInput(/^a$/, 1000, async () => {
           await input.injectKey("a")
-          keyAt = Date.now()
+          keyAt = sourceNow(ctx)
         })
       )?.[0]
     } catch (error) {
@@ -269,11 +270,12 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     styled: ObservationFrame
     plain?: ObservationFrame
   }> = []
-  const start = Date.now()
+  // #30932 S2: the schedule reads the source's clock, so the recorder keeps it and a replay asks for the same samples.
+  const start = sourceNow(ctx)
   for (const offsetMs of BLINK_SAMPLE_OFFSETS_MS) {
-    const wait = start + offsetMs - Date.now()
+    const wait = start + offsetMs - sourceNow(ctx)
     if (wait > 0) await kittyWait(wait)
-    const invokedMs = Date.now() - start
+    const invokedMs = sourceNow(ctx) - start
     const styled = await shoot(
       "target",
       `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
