@@ -85,10 +85,6 @@ interface AppDef {
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
     prepare?: (run: Run, markerValue: string) => void
-    /** The capture route this recipe is ruled for (#30518 D5). Declared only where a frame route is
-     * ruled — today Ghostty's owned process arm. It hands the collector
-     * TERMINFO_CAPTURE_DIRECTORY=<run>/artifacts; an app that declares nothing keeps no capture. */
-    capture?: "artifact-directory"
   }
 }
 
@@ -284,7 +280,6 @@ const APPS: AppDef[] = [
     // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
     // owner is resolved from, never the spawned handle, which a running instance can absorb.
     cliLaunch: {
-      capture: "artifact-directory",
       spawnPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       markerFlag: "--config-file",
@@ -328,7 +323,6 @@ const APPS: AppDef[] = [
       executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
       markerFlag: "--config-file",
       markerValue: weztermConfigPath,
-      capture: "artifact-directory",
       prepare: (_run, markerValue) => {
         writeFileSync(markerValue, "return {}\n", { flag: "wx", mode: 0o600 })
       },
@@ -617,14 +611,10 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 }
 
 function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "probe"): AppLaunch {
-  const captureDirectory =
-    app.id === "kitty" ||
-    app.id === "terminal-app" ||
-    app.id === "iterm2" ||
-    app.cliLaunch?.capture === "artifact-directory"
-      ? join(run.directory, "artifacts")
-      : undefined
-  const serveCmd = serveCommand(run, captureDirectory)
+  // Every owned Mac launch hands its collector the run's artifact directory (31743, @cto 0822). The
+  // directory alone captures nothing: the collector installs a capture only for the window the owner
+  // proof binds, and refuses a Darwin directory that arrives with no owner claim.
+  const serveCmd = serveCommand(run, join(run.directory, "artifacts"))
   const identityPath =
     app.id === "kitty"
       ? join(run.directory, "owner-identity.txt")
@@ -1209,7 +1199,7 @@ async function runApp(
       outcome = { success: true }
     } else {
       const outerLaunch =
-        app.id === "ghostty" && app.cliLaunch?.capture === "artifact-directory"
+        app.id === "ghostty"
           ? measureOuterLaunchRecord(
               run,
               launch,
@@ -1218,7 +1208,9 @@ async function runApp(
                   ? ownedWindow.kittyPid
                   : ownedWindow.ownerPid
                 : (() => {
-                    throw new Error(`${app.name} declares a capture route but its owned window has no process owner`)
+                    throw new Error(
+                      `${app.name} needs an outer launch record but its owned window has no process owner`,
+                    )
                   })(),
             )
           : undefined
