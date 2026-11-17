@@ -1628,6 +1628,17 @@ test.each(["granted", "unreadable", "other-app"] as const)(
 // TERMINFO_TARGET_ID and that version the Darwin cwd reader refuses and osc633-p is never decided.
 test.each([
   { app: "ghostty", plist: "1.4.0", cli: undefined, exit: 0, id: "ghostty", version: "1.4.0", error: "" },
+  // 34570: the hosted iTerm2 prompt reader binds to TERMINFO_TARGET_VERSION 3.6.11 (run 44133870892 refused without it).
+  { app: "iterm2", plist: "3.6.11", cli: undefined, exit: 0, id: "iterm2", version: "3.6.11", error: "" },
+  {
+    app: "iterm2",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "iterm2 bundle version is empty",
+  },
   {
     app: "ghostty",
     plist: "",
