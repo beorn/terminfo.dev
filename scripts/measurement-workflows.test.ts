@@ -946,7 +946,7 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
   const retained = new Map<string, string>()
   const run = (app: string) =>
     runInNewContext(`(async () => {${source}\n})()`, {
-      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner" } },
+      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner", WARP_STABLE_VERSION: "v0.2026.10.14.08.27.stable_01" } },
       Bun: {
         spawn: (argv: string[]) => {
           launched.push(argv)
@@ -1793,6 +1793,28 @@ test.each([
     version: "1.142.0",
     error: "",
   },
+  // 34672: nothing was exported for Warp, so its hosted record carried intendedSubject {kind:"term"} and no
+  // declaration could bind. Warp.app's plist says 0.2026.10.14.08.27.01 while the measured release is the channel
+  // string the DMG download uses, so the export names the channel version and refuses an empty one loudly.
+  {
+    app: "warp",
+    plist: "0.2026.10.14.08.27.01",
+    cli: undefined,
+    exit: 0,
+    id: "warp",
+    version: "v0.2026.10.14.08.27.stable_01",
+    error: "",
+  },
+  {
+    app: "warp",
+    plist: "0.2026.10.14.08.27.01",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "Warp channel version is empty",
+    warpVersion: "",
+  },
   // cmux's id is out of 34666's scope, named there: version only until the declaration that touches it.
   { app: "cmux", plist: "0.65.2", cli: undefined, exit: 0, id: "", version: "0.65.2", error: "" },
   {
@@ -1851,7 +1873,9 @@ test.each([
   },
 ])(
   "hosted macOS $app export names the subject from bundle version '$plist' and CLI $cli.out",
-  ({ app, plist, cli, exit, id, version, error }) => {
+  (row) => {
+    const { app, plist, cli, exit, id, version, error } = row
+    const warpVersion = "warpVersion" in row ? row.warpVersion : undefined
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
     const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
@@ -1872,7 +1896,12 @@ test.each([
       const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
       const result = spawnSync("/bin/bash", ["-c", script], {
         encoding: "utf8",
-        env: { PATH: process.env.PATH, APP_ID: app, APP_BUNDLE: bundle },
+        env: {
+          PATH: process.env.PATH,
+          APP_ID: app,
+          APP_BUNDLE: bundle,
+          WARP_STABLE_VERSION: warpVersion ?? "v0.2026.10.14.08.27.stable_01",
+        },
       })
       expect(result.status, result.stderr).toBe(exit)
       if (exit === 0) {
