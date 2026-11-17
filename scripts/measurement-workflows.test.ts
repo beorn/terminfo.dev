@@ -62,7 +62,11 @@ test("the hosted collector's poll budget is the job wall, measured from job star
   const limit = /^\s*JOB_LIMIT_S=\$\(\((\d+) \* 60\)\)$/mu.exec(collect?.run ?? "")
   expect(limit, "the collect step declares JOB_LIMIT_S as minutes * 60").not.toBeNull()
   expect(Number(limit![1])).toBe(job["timeout-minutes"])
-  expect(collect!.run).toMatch(/^\s*elapsed=\$\(\( \$\(date \+%s\) - JOB_START_EPOCH \)\)$/mu)
+  // The poll ends on the clock: each sleep-1 iteration took ~1.13 s on that run, so an iteration count would
+  // run ~5.6 min past a 70-minute wall and lose the flush (@dev/18, 34567).
+  expect(collect!.run).toMatch(/^\s*deadline=\$\(\( JOB_START_EPOCH \+ JOB_LIMIT_S - FLUSH_MARGIN_S \)\)$/mu)
+  expect(collect!.run).toMatch(/^\s*\[ "\$\(date \+%s\)" -lt "\$deadline" \] \|\| break$/mu)
+  expect(collect!.run).not.toMatch(/attempt<=poll_s/u)
   expect(job.steps[0]!.run, "the first step records the job start the budget is measured from").toContain(
     'printf \'JOB_START_EPOCH=%s\\n\' "$(date +%s)" >> "$GITHUB_ENV"',
   )

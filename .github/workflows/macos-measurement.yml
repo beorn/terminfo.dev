@@ -681,12 +681,14 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
-          # The poll is the job limit minus the flush margin and the time the job has already used.
+          # The poll ends on the clock, at the job limit minus the flush margin, counted from job start. A count of
+          # sleep-1 iterations drifts: each took ~1.13 s on run 44112785444, 250 s over 31 min, which at 70 min
+          # would run past the job wall and lose the flush (34567, @dev/18).
+          deadline=$(( JOB_START_EPOCH + JOB_LIMIT_S - FLUSH_MARGIN_S ))
           elapsed=$(( $(date +%s) - JOB_START_EPOCH ))
-          poll_s=$(( JOB_LIMIT_S - FLUSH_MARGIN_S - elapsed ))
-          if [ "$poll_s" -lt 1 ]; then poll_s=1; fi
+          poll_s=$(( deadline - $(date +%s) ))
           echo "$APP_ID collector poll ${poll_s}s (job ${JOB_LIMIT_S}s, flush margin ${FLUSH_MARGIN_S}s, elapsed ${elapsed}s)"
-          for ((attempt=1; attempt<=poll_s; attempt++)); do
+          while :; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
               test "$status" = 0 || {
@@ -703,6 +705,7 @@ jobs:
               test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
               exit 0
             fi
+            [ "$(date +%s)" -lt "$deadline" ] || break
             sleep 1
           done
           if [ -f "$OUT/collector.pid" ]; then
