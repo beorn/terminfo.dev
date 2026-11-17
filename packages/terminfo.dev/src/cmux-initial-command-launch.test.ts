@@ -142,23 +142,17 @@ test("a started pid whose parents never reach the cmux process refuses and close
   expect(readFileSync(f.configPath, "utf8")).toBe(OPERATOR_CONFIG)
 })
 
-test("a key naming a run's command file whose run directory is gone is ours: removed, not refused (34302 finding 2)", async () => {
+test("a key whose command file is gone is refused by name and left in place, whatever its file name (34302 finding 2, @cto 7a21b97a)", async () => {
   const f = fixture(null)
   const goneRun = join(f.dir, "runs", "gone-run")
   mkdirSync(goneRun, { recursive: true })
   const goneCommand = join(goneRun, "cmux-command.sh")
-  writeFileSync(f.configPath, `${OPERATOR_CONFIG}initial-command = /bin/bash '${goneCommand}'\n`)
+  const config = `${OPERATOR_CONFIG}initial-command = /bin/bash '${goneCommand}'\n`
+  writeFileSync(f.configPath, config)
   rmSync(goneRun, { recursive: true })
-  const launch = await launchCmuxInitialCommand(
-    baseOpts(f),
-    deps({
-      openApp: () => writeFileSync(f.startedMarkerPath, "777 4242\n"),
-    }),
-  )
-  expect(launch.removedStaleKey).toBe(true)
-  expect(readFileSync(f.configPath, "utf8")).not.toContain("gone-run")
-  launch.restore()
-  expect(readFileSync(f.configPath, "utf8")).toBe(OPERATOR_CONFIG)
+  await expect(launchCmuxInitialCommand(baseOpts(f), deps({}))).rejects.toThrow("cmux-initial-command-unproven")
+  expect(readFileSync(f.configPath, "utf8")).toBe(config)
+  expect(existsSync(f.commandPath)).toBe(false)
 })
 
 test("a key whose command file exists but cannot be read refuses by name and changes nothing (34302 finding 2)", async () => {
