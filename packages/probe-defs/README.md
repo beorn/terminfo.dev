@@ -190,7 +190,7 @@ feature-to-reason map only after an unresolved callback; observations, command r
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
 no-setup reasons additionally require this run's absent session-bus address and an absent default
 socket, retained as `collector.sessionBus`; unreadable socket paths remain unresolved.
-The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
+The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 412 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
 The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
@@ -198,7 +198,7 @@ declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's cont
 its recognized command reaches an empty callback, with no stored context or public readback.
 Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
 parser and named optional debug diagnostic remain outside this declaration group.
-The same selector declares the reviewed OSC7 observation gaps for xterm 411 and Screen 5.0.2,
+The same selector declares the reviewed OSC7 observation gaps for xterm 412 and Screen 5.0.2,
 and Screen 5.0.2's DECSCLM gap, on Linux only. Their parser citations qualify an unavailable
 observation; they establish no measured negative and do not apply to other versions.
 

@@ -717,6 +717,33 @@ test.each([
   },
 )
 
+// 34534: the Linux runner measured XTerm(412); rows still bound to 411 left the prompt-mark and OSC 8 cells probe-todo.
+test("xterm 412, the runner's measured version, selects the reviewed prompt-mark and OSC 8 declarations", () => {
+  const xterm = { kind: "term" as const, id: "xterm", version: "412", os: "linux" }
+  const declared = appSemanticDeclarations(xterm)
+  for (const featureId of [
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.osc-633-vscode",
+    "extensions.semantic-prompts",
+    "extensions.osc8",
+  ]) {
+    expect(declared[featureId], featureId).toMatch(
+      /^Untestable \(no way\): xterm 412 .*xterm-412\.tgz \(SHA256 b48bc780\)/,
+    )
+  }
+  expect(appSemanticDeclarations({ ...xterm, version: "411" })).toEqual({})
+})
+
 test("reader capability rows do not become declarations or lend their identity to another version", () => {
   const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
   expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
