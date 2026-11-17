@@ -1020,8 +1020,12 @@ export async function runProbeBatch(
       }
     }
     let rowSentRis = false
+    // The refusal paths below retain "this row sent no bytes" as a fact, so they read a counter the row's
+    // own source feeds rather than asserting an empty list (@dev/11 peer on 34677).
+    const rowWrites: string[] = []
     const probeSource = createTermProbeSource({
       onWrite(text) {
+        rowWrites.push(text)
         rowSentRis ||= text.includes("\x1bc")
         options.onWrite?.(text)
       },
@@ -1499,7 +1503,7 @@ export async function runProbeBatch(
       const reason = `Rows-only geometry conflict needs this run's complete-raster proof before ${probe.id} may use the grid: ${
         captureGeometryRefusal ?? "no proof was installed"
       }`
-      batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
+      batch.rawReplies[probe.id] = JSON.stringify({ writes: rowWrites, queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
       const attempt =
