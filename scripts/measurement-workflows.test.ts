@@ -1599,3 +1599,34 @@ test.each(["granted", "unreadable", "other-app"] as const)(
     }
   },
 )
+
+// 34562 (@chief 4e807612): the hosted macOS Ghostty run recorded intendedSubject {kind:"term"} with no id or
+// version, so no reviewed Ghostty 1.4.0 declaration could ever bind to it. The collect step's own export block
+// must name the app and its bundle version, and refuse an empty version loudly.
+test.each([
+  { app: "ghostty", plist: "1.4.0", exit: 0, id: "ghostty", version: "1.4.0" },
+  { app: "ghostty", plist: "", exit: 1, id: undefined, version: undefined },
+])("hosted macOS $app export names the subject from bundle version '$plist'", ({ app, plist, exit, id, version }) => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
+  const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
+  if (!block) throw new Error("The collect step's target export block is absent")
+  const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
+  try {
+    const plistBuddy = join(directory, "PlistBuddy")
+    writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
+    const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
+    const result = spawnSync("/bin/bash", ["-c", script], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, APP_ID: app, APP_BUNDLE: `/Applications/${app}.app` },
+    })
+    expect(result.status, result.stderr).toBe(exit)
+    if (exit === 0) {
+      expect(result.stdout.split("\n").slice(0, 2)).toEqual([id, version])
+    } else {
+      expect(result.stderr).toContain(`${app} bundle version is empty`)
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
