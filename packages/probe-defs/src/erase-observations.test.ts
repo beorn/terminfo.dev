@@ -838,6 +838,67 @@ test("erase.screen.scrollback declares untestable when wheel-up does not change 
   expect(recorded.reason).toBe("wheel-up did not change captured pixels; cannot observe history")
 })
 
+// #34563 (@cto 34448): a collapsed frame is untestable only when nothing else can observe it. When the
+// same context also carries an owned history reader, the reader decides — skipping it declared a row
+// unobservable that this run could read, and hid a failed reader behind the declaration.
+test("erase.screen.scrollback hands a collapsed frame to the owned history reader", async () => {
+  const { ctx, keys, clicks, writes } = scrollbackApp({ wheelMoves: false })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return { viewportOffset: 0, totalLines, screenLines: ctx.rows }
+    },
+  }
+  const result = await byId("erase.screen.scrollback").term(withReader)
+  expect(keys).toEqual(["a"])
+  expect(clicks).toEqual([4, 5])
+  expect(readerCalls).toBe(3)
+  expect(writes.join("")).toContain("\x1b[3J")
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.note).toContain(
+    `owned history 37 -> 0 lines above a ${ctx.rows}-line screen, and 5 after ${ctx.rows + 5} more`,
+  )
+})
+
+test("erase.screen.scrollback grades a collapsed frame unsupported when the owned reader sees history remain", async () => {
+  const { ctx } = scrollbackApp({ wheelMoves: false })
+  let readerCalls = 0
+  const readings = [ctx.rows + 37, ctx.rows + 12]
+  const withReader: TermProbeSource = {
+    ...ctx,
+    getScrollback: async () => {
+      const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
+      readerCalls += 1
+      return { viewportOffset: 0, totalLines, screenLines: ctx.rows }
+    },
+  }
+  const result = await byId("erase.screen.scrollback").term(withReader)
+  expect(readerCalls).toBe(2)
+  expect(result.notTested).toBeUndefined()
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(result.note).toMatch(/ED3 left the history in place/)
+})
+
+test("erase.screen.scrollback names a failed reader instead of declaring a collapsed frame untestable", async () => {
+  const { ctx } = scrollbackApp({ wheelMoves: false })
+  const withReader: TermProbeSource = {
+    ...ctx,
+    getScrollback: async () => {
+      throw new Error("cmux-read-empty: cmux read-screen returned no lines")
+    },
+  }
+  const result = await byId("erase.screen.scrollback").term(withReader)
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "collector-error" })
+  expect(result.observation?.note).toMatch(/cmux-read-empty/)
+})
+
 test("erase.screen.scrollback is inconclusive, naming the cause, when wheel-down does not restore the bottom", async () => {
   const { ctx, clicks } = scrollbackApp({ restore: false })
   const result = await byId("erase.screen.scrollback").term(ctx)

@@ -44,9 +44,11 @@ on the four rows `scrollback.accumulate`, `scrollback.total-lines`, `erase.scree
 carries the feature's static rows, OSC 720's geometry row included: `termNeedsGeometry` says what a definition
 needs when it can run, not what one run could measure. When that run's geometry is unavailable or conflicting, the row reads the geometry refusal instead of the declaration, like every flagged geometry probe. The declaration is field-driven and reversible — without
 the field every row keeps its existing reader and screenshot behaviour, and an app version that grows a read
-removes it (`erase.screen.scrollback`'s frame-only non-mux XTEST path also returns `declaredUntestableResult`
-when `wheel-up did not change captured pixels; cannot observe history`, while its mux and owned-reader paths
-remain count-decided). A missing, failed or unimplemented reader is never a declaration: it stays PROBE TODO.
+removes it (`erase.screen.scrollback`'s frame-only non-mux XTEST path, with no mux and no owned reader, also
+returns `declaredUntestableResult` when `wheel-up did not change captured pixels; cannot observe history`,
+while its mux and owned-reader paths remain count-decided — a context carrying both frames and a reader hands
+a collapsed frame to that reader, #34563 @cto 34448). A missing, failed or unimplemented reader is never a
+declaration: it stays PROBE TODO.
 
 An arm that cannot reach a read the app does expose names its own missing prerequisite instead:
 `scrollbackProbeTodo` on the probe source (copied from `OwnedTerminal.scrollbackProbeTodo`) makes the same
