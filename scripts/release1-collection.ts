@@ -749,23 +749,10 @@ export async function collectPass(
         os: context.kind === "lib" ? process.platform : context.os,
       },
     })
-    let path: string
-    if (context.kind === "lib") {
-      // #32038 (@cto a6dbdad3): the pre-resolution headless draft is an intermediate for forensics,
-      // written under <pass>/first-pass/<engine>.draft.json outside the pass output set.
-      const firstPass = join(directory, "first-pass")
-      mkdirSync(firstPass, { recursive: true })
-      const firstPassReadme = join(firstPass, "README.md")
-      if (!existsSync(firstPassReadme)) {
-        writeFileSync(
-          firstPassReadme,
-          "# Historical first-pass drafts\n\nPre-resolution intermediate drafts retained for collector forensics, not run outputs; `../pass.json` (`contexts[].rawRun`) is the sole authority for which draft was graded.\n",
-        )
-      }
-      path = join(firstPass, `${context.id}.draft.json`)
-    } else {
-      path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
-    }
+    const path = firstPassDraftPath(
+      directory,
+      context.kind === "lib" ? context.id : `${context.kind}-${context.id}-${context.os}`,
+    )
     recordCollectorSelection(draft, probeIds ?? snapshot.probes[context.kind])
     if (probeIds?.length === 0) {
       recordCollectorAttempt(draft, { ids: [], result: "empty" })
@@ -1123,6 +1110,24 @@ export async function collectPass(
 }
 
 /**
+ * Where a pre-measure seed draft goes (#32038 @cto a6dbdad3; #34623 for App and supplement seeds): under
+ * <pass>/first-pass/<name>.draft.json, outside the pass output set, so a seed whose run later lands elsewhere is
+ * never read as that run. `../pass.json` rawRun stays the sole authority; on a failure it may name the seed here.
+ */
+function firstPassDraftPath(directory: string, name: string): string {
+  const firstPass = join(directory, "first-pass")
+  mkdirSync(firstPass, { recursive: true })
+  const firstPassReadme = join(firstPass, "README.md")
+  if (!existsSync(firstPassReadme)) {
+    writeFileSync(
+      firstPassReadme,
+      "# Historical first-pass drafts\n\nPre-resolution intermediate drafts retained for collector forensics, not run outputs; `../pass.json` (`contexts[].rawRun`, `contexts[].supplements[].rawRun`) is the sole authority for which draft was graded.\n",
+    )
+  }
+  return join(firstPass, `${name}.draft.json`)
+}
+
+/**
  * One supplement launch: its own draft and run id, only its declared ids (narrowed by the pass's selection), and its
  * classified run kept beside the default row. A failure stays on the supplement and never touches the default row.
  */
@@ -1159,7 +1164,10 @@ function runSupplement(
       intendedSubject: { kind: context.kind, id: context.id, os: context.os },
     })
     recordCollectorSelection(draft, ids)
-    const draftPath = join(pass.directory, `${context.kind}-${context.id}-${context.os}.${supplement.name}.draft.json`)
+    const draftPath = firstPassDraftPath(
+      pass.directory,
+      `${context.kind}-${context.id}-${context.os}.${supplement.name}`,
+    )
     writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
     row.rawRun = draftPath
     const output = join(pass.directory, "linux", `${context.id}.${supplement.name}`)
