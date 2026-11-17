@@ -5175,7 +5175,13 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       checkpoint: request,
       source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
       png,
-      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      // A paint witness reads painted at once. An unchanged witness would poll to a wall-clock
+      // deadline, which no call log records, so its poll count would differ under load in replay.
+      decoded: {
+        width: 160,
+        height: 96,
+        rgba: new Uint8Array(160 * 96 * 4).fill(label.includes("paint witness") ? 0 : 255),
+      },
       origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
       trace: {},
     })
