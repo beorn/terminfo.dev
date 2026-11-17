@@ -207,13 +207,15 @@ it.each([
 it.each([
   { app: "com.microsoft.VSCode", failed: false },
   { app: "cursor", failed: false },
-])("drives $app native execution rows from the collector's own marks", ({ app, failed }) => {
-  home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
-  const result = spawnSync(
-    process.execPath,
-    [
-      "-e",
-      String.raw`
+])(
+  "drives $app native execution rows from the collector's own marks",
+  ({ app, failed }) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -353,25 +355,27 @@ it.each([
       for (const subscription of subscriptions) subscription.dispose()
     }
   `,
-    ],
-    {
-      cwd: packageRoot,
-      env: {
-        ...process.env,
-        HOME: home,
-        EDITOR_APP: app,
-        EDITOR_FAILED: failed ? "yes" : "no",
-        TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
-        TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
-        TERMINFO_RUNTIME_PROVENANCE: "",
-        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          EDITOR_APP: app,
+          EDITOR_FAILED: failed ? "yes" : "no",
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
+          TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        },
+        encoding: "utf8",
+        timeout: 110000,
       },
-      encoding: "utf8",
-      timeout: 110000,
-    },
-  )
-  expect(result.status, result.stderr).toBe(0)
-}, 120_000)
+    )
+    expect(result.status, result.stderr).toBe(0)
+  },
+  120_000,
+)
 
 // The owner factory has its own live-custody tests. The collector consumes the owner-level proof:
 // Darwin has no clipboard adapter, and a second clipboard home could hide a missing owner proof.
