@@ -11,11 +11,18 @@
  * matches a whole string, so a write that carries two sequences or trailing text does not match and
  * is unclassified. That is why this script adds no parser of its own.
  *
- * Run: bun scripts/generate-window-basis-table.ts [--check]
+ * Its inputs are FROZEN (34682): the exact window-cell trace entries it reads live in
+ * test-fixtures/window-basis/inputs.json, each with its source path, the revision it was read at, and
+ * digests. Placing a new run into content/probes-apps changes nothing here; the table, and the suite
+ * id it feeds, move only when someone deliberately re-freezes (`--freeze <revision>`), and then the
+ * fixture and the table change together in one commit. A missing, corrupt or edited input throws.
+ *
+ * Run: bun scripts/generate-window-basis-table.ts [--check | --freeze <git revision>] [--inputs <file>]
  */
 import { spawnSync } from "node:child_process"
-import { readdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { createHash } from "node:crypto"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { TERM_FOOTPRINTS } from "../packages/probe-defs/src/term-footprints.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "../packages/terminfo.dev/src/probes/window-basis-rulings.ts"
 import {
@@ -26,7 +33,13 @@ import {
 import { classifyWindowWrite } from "../packages/terminfo.dev/src/probes/window-basis-writes.ts"
 
 const ROOT = join(import.meta.dir, "..")
-const TRACES = join(ROOT, "content", "probes-apps")
+const TRACES = "content/probes-apps"
+/** `--inputs <file>` reads another frozen set, so a test can show an altered copy fails the check. */
+const inputsAt = process.argv.indexOf("--inputs")
+const FIXTURE =
+  inputsAt >= 0 && process.argv[inputsAt + 1] !== undefined
+    ? (process.argv[inputsAt + 1] as string)
+    : join(ROOT, "test-fixtures", "window-basis", "inputs.json")
 const OUT = join(ROOT, "packages", "terminfo.dev", "src", "probes", "window-basis-table.ts")
 
 const windowCells = Object.entries(TERM_FOOTPRINTS)
@@ -34,32 +47,149 @@ const windowCells = Object.entries(TERM_FOOTPRINTS)
   .map(([id]) => id)
   .sort()
 
-/** Every write event the retained traces hold for each cell, in file order. */
-const writes = new Map<string, string[]>()
-for (const file of readdirSync(TRACES).sort()) {
-  if (!file.endsWith(".json")) continue
-  let data: { rawReplies?: Record<string, unknown> }
+const TRACE_KEY_SUFFIX = /\.(trace|callLog|ledger|spillover|outerCommands|declarationCollision)$/
+
+const sha256 = (bytes: string | Buffer): string => createHash("sha256").update(bytes).digest("hex")
+
+/** One trace entry exactly as its source file held it: the derivation parses `raw` and nothing else. */
+interface FrozenEntry {
+  readonly key: string
+  readonly sha256: string
+  readonly raw: string
+}
+interface FrozenSource {
+  readonly path: string
+  /** sha256 of the whole source file at `revision`, so each entry traces back to the run it came from. */
+  readonly sha256: string
+  readonly entries: readonly FrozenEntry[]
+}
+interface FrozenInputs {
+  readonly schema: 1
+  readonly revision: string
+  readonly note: string
+  readonly sources: readonly FrozenSource[]
+}
+
+/** The string writes an entry holds, or the reason it holds none: not JSON, or no writes array. */
+function entryWrites(raw: string): string[] | { readonly unreadable: string } {
+  let parsed: { writes?: unknown }
   try {
-    data = JSON.parse(readFileSync(join(TRACES, file), "utf8")) as { rawReplies?: Record<string, unknown> }
-  } catch {
-    continue
+    parsed = JSON.parse(raw) as { writes?: unknown }
+  } catch (error) {
+    return { unreadable: `not JSON (${(error as Error).message})` }
   }
-  for (const [key, raw] of Object.entries(data.rawReplies ?? {})) {
-    const cell = key.replace(/\.(trace|callLog|ledger|spillover|outerCommands|declarationCollision)$/, "")
-    if (!windowCells.includes(cell) || typeof raw !== "string") continue
-    let parsed: { writes?: unknown }
+  if (!Array.isArray(parsed.writes)) return { unreadable: "no writes array" }
+  return parsed.writes.filter((write): write is string => typeof write === "string")
+}
+
+/**
+ * The deliberate re-freeze: read content/probes-apps as committed at `revision` and keep every
+ * window-cell entry that carries writes, in file order — the same selection the generator made when
+ * it read the directory live. A file that is not JSON holds no entry and is counted out loud.
+ */
+function freeze(revision: string): FrozenInputs {
+  const git = (...args: string[]): Buffer => {
+    const run = spawnSync("git", args, { cwd: ROOT, maxBuffer: 1 << 30 })
+    if (run.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${run.stderr.toString()}`)
+    return run.stdout
+  }
+  const commit = git("rev-parse", "--verify", `${revision}^{commit}`).toString().trim()
+  const files = git("ls-tree", "--name-only", commit, `${TRACES}/`)
+    .toString()
+    .split("\n")
+    .filter((path) => path.endsWith(".json"))
+    .sort()
+  const sources: FrozenSource[] = []
+  let notJson = 0
+  let notWrites = 0
+  for (const path of files) {
+    const bytes = git("show", `${commit}:${path}`)
+    let data: { rawReplies?: Record<string, unknown> }
     try {
-      parsed = JSON.parse(raw) as { writes?: unknown }
+      data = JSON.parse(bytes.toString("utf8")) as { rawReplies?: Record<string, unknown> }
     } catch {
+      notJson++
       continue
     }
-    if (!Array.isArray(parsed.writes)) continue
-    for (const write of parsed.writes) {
-      if (typeof write !== "string") continue
-      const list = writes.get(cell) ?? []
-      list.push(write)
-      writes.set(cell, list)
+    const entries: FrozenEntry[] = []
+    for (const [key, raw] of Object.entries(data.rawReplies ?? {})) {
+      if (!windowCells.includes(key.replace(TRACE_KEY_SUFFIX, "")) || typeof raw !== "string") continue
+      if (!Array.isArray(entryWrites(raw))) {
+        // Such an entry contributed nothing when the generator read the directory live, so freezing
+        // keeps that selection; the count is printed below.
+        notWrites++
+        continue
+      }
+      entries.push({ key, sha256: sha256(raw), raw })
     }
+    if (entries.length > 0) sources.push({ path, sha256: sha256(bytes), entries })
+  }
+  console.log(
+    `froze ${sources.length} of ${files.length} trace files at ${commit}` +
+      (notJson > 0 ? `; ${notJson} file(s) were not JSON and hold no entry` : "") +
+      (notWrites > 0 ? `; ${notWrites} window-cell entr(ies) held no readable writes and were left out` : ""),
+  )
+  return {
+    schema: 1,
+    revision: commit,
+    note: "Frozen inputs of scripts/generate-window-basis-table.ts (34682). Re-freeze only on purpose, together with the table, in one commit.",
+    sources,
+  }
+}
+
+/** Load the frozen inputs, refusing a missing file, a wrong shape, an unsorted list or an edited entry. */
+function loadFrozen(): FrozenInputs {
+  let text: string
+  try {
+    text = readFileSync(FIXTURE, "utf8")
+  } catch (error) {
+    throw new Error(`frozen inputs missing at ${FIXTURE}: ${(error as Error).message}`)
+  }
+  const inputs = JSON.parse(text) as FrozenInputs
+  if (inputs.schema !== 1 || typeof inputs.revision !== "string" || !Array.isArray(inputs.sources)) {
+    throw new Error(`${FIXTURE} is not schema 1 frozen inputs`)
+  }
+  const paths = inputs.sources.map((source) => source.path)
+  if (paths.some((path, index) => index > 0 && path <= (paths[index - 1] as string))) {
+    throw new Error(`${FIXTURE}: sources must be unique and sorted by path, the order the derivation reads them in`)
+  }
+  for (const source of inputs.sources) {
+    for (const entry of source.entries) {
+      if (sha256(entry.raw) !== entry.sha256) {
+        throw new Error(
+          `${FIXTURE}: ${source.path} ${entry.key} does not match its digest; re-freeze instead of editing`,
+        )
+      }
+      if (!windowCells.includes(entry.key.replace(TRACE_KEY_SUFFIX, ""))) {
+        throw new Error(`${FIXTURE}: ${source.path} ${entry.key} is not a window cell's entry`)
+      }
+      const read = entryWrites(entry.raw)
+      if (!Array.isArray(read)) throw new Error(`${FIXTURE}: ${source.path} ${entry.key} is ${read.unreadable}`)
+    }
+  }
+  return inputs
+}
+
+const freezeAt = process.argv.indexOf("--freeze")
+if (freezeAt >= 0) {
+  const revision = process.argv[freezeAt + 1]
+  if (revision === undefined || revision.startsWith("--")) throw new Error("--freeze needs a git revision")
+  mkdirSync(dirname(FIXTURE), { recursive: true })
+  writeFileSync(FIXTURE, `${JSON.stringify(freeze(revision), null, 1)}\n`)
+}
+const frozen = loadFrozen()
+
+/** Every write event the frozen traces hold for each cell, in file order. */
+const writes = new Map<string, string[]>()
+for (const source of frozen.sources) {
+  for (const entry of source.entries) {
+    const cell = entry.key.replace(TRACE_KEY_SUFFIX, "")
+    const read = entryWrites(entry.raw)
+    // loadFrozen already refused an unreadable entry; this only narrows the type.
+    if (!Array.isArray(read)) throw new Error(`${FIXTURE}: ${source.path} ${entry.key} is ${read.unreadable}`)
+    const list = writes.get(cell) ?? []
+    list.push(...read)
+    writes.set(cell, list)
   }
 }
 
