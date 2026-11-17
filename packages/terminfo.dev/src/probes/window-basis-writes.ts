@@ -52,7 +52,7 @@ type TokenClassification =
   | { readonly attributes: readonly LedgerAttribute[] }
   | { readonly unclassified: string }
 
-function classifyToken(token: AnsiToken): TokenClassification {
+function classifyToken(token: AnsiToken, touched: readonly LedgerAttribute[]): TokenClassification {
   switch (token.type) {
     case "text":
       return isScreenText(token.value)
@@ -64,12 +64,12 @@ function classifyToken(token: AnsiToken): TokenClassification {
       if (CSI_ERASE.test(token.value)) return { kind: "erase" }
       if (CSI_CURSOR_MOVE.test(token.value)) return { kind: "cursor-move" }
       if (CSI_WINDOW_SIZE.test(token.value)) return { kind: "window-size" }
-      const classification = classifyWrite(token.value)
+      const classification = classifyWrite(token.value, touched)
       if ("attributes" in classification) return { attributes: classification.attributes }
       return { unclassified: `CSI is on no closed list: ${JSON.stringify(token.value.slice(0, 24))}` }
     }
     case "osc": {
-      const classification = classifyWrite(token.value)
+      const classification = classifyWrite(token.value, touched)
       if ("attributes" in classification) return { attributes: classification.attributes }
       return { unclassified: `OSC is on no closed list: ${JSON.stringify(token.value.slice(0, 24))}` }
     }
@@ -89,13 +89,20 @@ function classifyToken(token: AnsiToken): TokenClassification {
  * Classify one write. A truncated CSI or OSC tokenizes as `csi`/`osc` with no final byte, so the
  * anchored lists above never match it: an incomplete sequence classifies nothing. A bare `ESC ( B`
  * charset designation is an `esc` token and is likewise named, never treated as screen text.
+ *
+ * `touched` is what the cell changed before this write; the restore ledger passes it so a union reset
+ * (DECSTR, OSC 104) can name what it resets, the same rule `classifyWrite` applies (34579). Attributes
+ * an earlier token of this same write changed count as touched too.
  */
-export function classifyWindowWrite(write: string): WindowWriteClassification {
+export function classifyWindowWrite(
+  write: string,
+  touched: readonly LedgerAttribute[] = [],
+): WindowWriteClassification {
   const kinds: WindowWriteKind[] = []
   const attributes: LedgerAttribute[] = []
   const attributeSequences: string[] = []
   for (const token of tokenizeAnsi(write)) {
-    const classification = classifyToken(token)
+    const classification = classifyToken(token, [...touched, ...attributes])
     if ("unclassified" in classification) return { unclassified: classification.unclassified }
     if ("kind" in classification) {
       if (!kinds.includes(classification.kind)) kinds.push(classification.kind)
