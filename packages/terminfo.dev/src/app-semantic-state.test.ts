@@ -1570,3 +1570,40 @@ test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac fron
   const linux = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
   for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
 })
+
+// 34591/34586: WezTerm 20240203 and cmux 0.65.2 on macOS declare exactly the six OSC 133 prompt ids from source reads
+// at their own tags. The 633 ids and osc8 stay probe-decidable (no row), and no other version or OS binds these rows.
+test.each([
+  {
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    otherVersion: "0-unstable-2026-11-08",
+    cite: "performer.rs:882-884",
+  },
+  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", cite: "semantic_prompt.zig:22-31" },
+])("$id $version on macOS declares the six OSC 133 prompt ids and nothing else in the family", (app) => {
+  const subject = { kind: "term" as const, id: app.id, version: app.version, os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  const prompt = Object.keys(mac).filter((id) => /osc133|semantic-prompts|osc633|osc-633|^extensions\.osc8$/.test(id))
+  expect(prompt.sort()).toEqual([
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.semantic-prompts",
+  ])
+  for (const id of prompt) expect(mac[id]).toMatch(/^Untestable \(no way\): (WezTerm|cmux) \S+ on macOS /)
+  const allText = prompt.map((id) => mac[id]).join("\n")
+  expect(allText).toContain(app.cite)
+  // Trap 1 (WezTerm): this tag's empty CommandStatus arm is :882-884; the Linux line numbers are cited only as Linux's.
+  if (app.id === "wezterm") expect(mac["extensions.osc133-d"]).not.toMatch(/performer\.rs:904-906 is/)
+  // Trap 2 (cmux): D's exit code is parsed and unread; the unread stream handler is never claimed to discard it.
+  if (app.id === "cmux") expect(allText).not.toMatch(/discard/i)
+  const otherVersion = appSemanticDeclarations({ ...subject, version: app.otherVersion })
+  const linux = appSemanticDeclarations({ ...subject, os: "linux" })
+  for (const id of prompt) {
+    expect(otherVersion[id]).toBeUndefined()
+    expect(linux[id] ?? "").not.toContain("on macOS")
+  }
+})

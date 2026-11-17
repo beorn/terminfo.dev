@@ -675,6 +675,47 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 on macOS parses OSC 133 A/B/C/P into core row state that no public macOS surface reads back. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b), the source of the bundle version 1.4.0 the hosted run records. src/terminal/osc.zig:1180 and src/terminal/osc/parsers/semantic_prompt.zig:23-32 parse it. The app's src/termio/stream_handler.zig:350,1475-1508 stores it through Terminal.semanticPrompt (src/terminal/Terminal.zig:2156), and it then drives only click handling and the jump_to_prompt viewport move (src/Surface.zig:4306,4370,5429). The Mac surfaces carry no mark. The C API text read ghostty_surface_read_text (src/apprt/embedded.zig:1929-1960) returns plain characters from Screen.selectionString (src/Surface.zig:2042-2051) in ghostty_text_s (include/ghostty.h:449-456). The Shortcuts intent Get Terminal Details returns only the title, the working directory or that plain text (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47). The AppleScript dictionary exposes id, name, working directory, pid and tty, and its perform action returns only a boolean (macos/Ghostty.sdef:89-100,162-166). Only the debug inspector (src/inspector/widgets/page.zig:291, opened by the inspector binding at src/input/Binding.zig:688-691) and the session snapshot serializer (src/terminal/snapshot/grid.zig:259) see row.semantic_prompt, and neither is a default-launch reader. Running jump_to_prompt through perform action and reading the visible text back is scraping UI state, not a non-intrusive prompt-mark reader.",
   })),
+  // 34591: WezTerm's six macOS prompt rows. The version names its own commit, so nothing rebinds from the Linux
+  // nightly; this tag's empty CommandStatus arm is performer.rs:882-884 (the Linux rows cite :904-906 at e2a98e1b8af1).
+  // The 633 ids and osc8 are probe-decidable, so they carry no row here (spec /hh/var/@dev11, 2026-11-17).
+  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+    kind: "term" as const,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): WezTerm 20240203-110809-5046fc22 on macOS parses OSC 133 A/B/C/P into in-process SemanticZone state that no default-launch surface reads back. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:439 defines FinalTermSemanticPrompt = "133" with dispatch at :326-327 and the action parser at :627-696; term/src/terminalstate/performer.rs:845-880 sets the pen semantic type for each mark; term/src/terminalstate/mod.rs:2704 is get_semantic_zones and mux/src/pane.rs:283 is its trait method. No client can ask: mux/src/lib.rs (1441 lines) has zero "semantic", the CLI\'s 17 verbs at this tag read no zones, and wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes only. The macOS frontend names no semantic state (window/src/os/macos, all eight .rs files, zero "semantic") and the app ships no AppleScript dictionary. The one reader is user Lua through docs/config/lua/pane/get_semantic_zones.md, and injecting a config script is not a default-launch reader.',
+  })),
+  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+    kind: "term" as const,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): WezTerm 20240203-110809-5046fc22 on macOS records each OSC 133 mark but exposes neither it nor a command-exit status, so it cannot observe 133 D or the complete A/C/D cycle. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): term/src/terminalstate/performer.rs:882-884 is FinalTermSemanticPrompt::CommandStatus { .. } => {} (an empty arm, no status stored), the other mark arms at :845-880 store only a pen semantic type, and term/src/terminalstate/mod.rs:2704 get_semantic_zones returns SemanticZone spans with no status field. No surface reads them back on default launch: mux/src/lib.rs has zero "semantic", the CLI\'s 17 verbs read no zones, wezterm/src/cli/get_text.rs:34,86-87 prints text or escapes only, and the macOS frontend (window/src/os/macos, eight .rs files) names no semantic state. The upstream Linux row records the same empty arm at performer.rs:904-906 (e2a98e1b8af1); this arm is shared core term code, not a frontend path.',
+  })),
+  // 34586: cmux's six macOS prompt rows. They say only that D's exit code is parsed and never read back: the fork's
+  // stream handler (src/termio/stream_handler.zig at cb1ef709) was not read, so no claim that the status is discarded.
+  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+    kind: "term" as const,
+    id: "cmux",
+    version: "0.65.2",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 A/B/C/P into core prompt state and no public surface reads a mark back. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists 133 in the command table and :862 dispatches it to parsers.semantic_prompt.parse, whose action set is L,A,N,P,B,I,C,D (src/terminal/osc/parsers/semantic_prompt.zig:22-31). All three complete read surfaces at that commit were enumerated and carry no mark: the control-socket read plane (Packages/macOS/CmuxControlSocket/Sources/CmuxControlSocket/Wire/ControlCommandExecutionPolicy+ReadPlane.swift enumerates every read-only method as surface.list/current/read_text, workspace.list/current, window.list/current/displays, pane.list/surfaces and system.identify/tree/top/memory), cmux-tui/spec/sdk-schema.json (protocol 11, 101 commands, 46 events, zero case-insensitive "prompt"), and docs/cli-contract.md (read-screen returns {text} only, vt-state returns the PTY byte stream, and jump-to-last-prompt only moves focus, answering {"opened": false} when there is no prompt: ControlCommandCoordinator+SurfaceJumpToLastPrompt.swift).',
+  })),
+  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+    kind: "term" as const,
+    id: "cmux",
+    version: "0.65.2",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 D with its exit-code option and reports it nowhere, so neither the mark nor a command-exit status is observable. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc/parsers/semantic_prompt.zig:30 defines end_command for D, :105,118 carries exit_code as a typed option and :359 parses it, so the sequence is understood rather than dropped. No surface reads it back: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) exposes only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 11, 101 commands, 46 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no verb returning a prompt mark or an exit status (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
+  })),
   {
     kind: "term",
     id: "kitty",
