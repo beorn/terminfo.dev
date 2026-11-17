@@ -70,7 +70,6 @@ export function silentChecksumRequest(
   const window = `${String(DECRQCRA_DA1_ALONE_TIMEOUT_MS)} ms`
   if (!loneDa1Answer(before)) {
     return {
-      pass: false,
       response,
       ...replyFailure(
         `no usable checksum reply; the DA1 asked alone just before request ${String(request)} got no lone DA1 answer within ${window}`,
@@ -80,7 +79,6 @@ export function silentChecksumRequest(
   if (!loneDa1Answer(after)) {
     if (after.raw.trim() === "") {
       return {
-        pass: false,
         response,
         ...replyFailure(
           `no usable checksum reply; the DA1 asked alone just before request ${String(request)} answered, and the one asked after it got no answer within ${window}`,
