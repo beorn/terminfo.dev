@@ -348,7 +348,12 @@ async function shadowRow(
   try {
     input = liveOnlyInput(validated, stored)
   } catch (error) {
-    return { featureId, family, outcome: "incomplete", reason: `live inputs unreadable: ${errorName(error)}: ${errorMessage(error)}` }
+    return {
+      featureId,
+      family,
+      outcome: "incomplete",
+      reason: `live inputs unreadable: ${errorName(error)}: ${errorMessage(error)}`,
+    }
   }
   if (input) return { featureId, family, outcome: "not-comparable", input, storedStatus: stored.status }
   let replayed: ReplayedRow
