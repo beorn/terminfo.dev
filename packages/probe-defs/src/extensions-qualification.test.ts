@@ -1175,7 +1175,7 @@ test.each(appResetProbes)(
     const seed = `\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     const putBack = `\x1b]${setCode};${indexPart}rgb:0000/0000/0000\x07`
-    const run = async (replies: Array<string | Error>) => {
+    const run = async (replies: Array<string | Error>, failingWrite?: string) => {
       const writes: string[] = []
       const queue = [...replies]
       const exchange = async (_sequence: string, pattern: RegExp) => {
@@ -1192,6 +1192,7 @@ test.each(appResetProbes)(
       const source = {
         write: (bytes: string) => {
           writes.push(bytes)
+          if (bytes === failingWrite) throw new Error("pty write lost")
         },
         queryWithSentinelOutcome: exchange,
       } as unknown as TermProbeSource
@@ -1222,6 +1223,24 @@ test.each(appResetProbes)(
     const thrown = await run([black, new Error("capture lost"), black])
     expect(String(thrown.error), id).toContain("capture lost")
     expect(thrown.writes, id).toEqual([seed, putBack])
+
+    // 34558 (@cto 1aa54f2f): a put-back whose own write or read throws after a completed failed reset
+    // is unproved cleanup too, so it carries the run-stop name, the cell, the start colour and the cause.
+    for (const [label, replies, failingWrite, cause] of [
+      ["write", [black, rgb("aa/bb/cc"), rgb("aa/bb/cc")], putBack, "pty write lost"],
+      ["read", [black, rgb("aa/bb/cc"), rgb("aa/bb/cc"), new Error("readback lost")], undefined, "readback lost"],
+    ] as const) {
+      const failed = await run([...replies], failingWrite)
+      expect(failed.result, `${id} put-back ${label}`).toBeUndefined()
+      expect((failed.error as Error).name, `${id} put-back ${label}`).toBe("MutationRestoreRefused")
+      expect(String(failed.error), `${id} put-back ${label}`).toContain(id)
+      expect(String(failed.error), `${id} put-back ${label}`).toContain("rgb:0000/0000/0000")
+      expect(
+        (failed.error as AggregateError).errors.map((error: unknown) => String(error)),
+        `${id} put-back ${label}`,
+      ).toContainEqual(expect.stringContaining(cause))
+      expect(failed.writes, `${id} put-back ${label}`).toEqual([seed, reset, putBack])
+    }
 
     // A reset that restores needs no put-back.
     const restored = await run([black, rgb("aa/bb/cc"), black])

@@ -1990,8 +1990,17 @@ async function colorResetAppProbe(
   const start = before.rgb
   const putBack = `\x1b]${spec.setCode};${indexPart}${start}\x07`
   const putBackAndProve = async () => {
-    ctx.write(putBack)
-    const proof = await read()
+    let proof: Awaited<ReturnType<typeof read>>
+    try {
+      ctx.write(putBack)
+      proof = await read()
+    } catch (cause) {
+      // 34558: a put-back that throws is unproved cleanup too; it stops the run like a mismatch.
+      throw colourRestoreRefused(
+        `${spec.id}: cleanup could not restore the starting OSC ${spec.setCode} colour ${start}; putting it back threw; the run stops here rather than grading later rows on a polluted colour`,
+        [cause],
+      )
+    }
     if (!proof.rgb || !sameRgbText(proof.rgb, start)) {
       throw colourRestoreRefused(
         `${spec.id}: cleanup could not restore the starting OSC ${spec.setCode} colour ${start}; the readback after putting it back was ${JSON.stringify(proof.outcome.raw)}; the run stops here rather than grading later rows on a polluted colour`,
