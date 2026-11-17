@@ -5208,6 +5208,60 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     calibrationId: "collector.captureCalibration",
     outcome: "installed",
   })
+  // The association is evidence checked inside the bound read, never an override: each fault is a
+  // named incomplete replay, and none of them touches the stored row.
+  const tampered = (label: string, edit: (rawReplies: Record<string, string>) => void) => {
+    const rawReplies = { ...draft.rawReplies }
+    edit(rawReplies)
+    const candidateBytes = Buffer.from(JSON.stringify({ ...draft, rawReplies }))
+    const candidatePath = "binding-" + label + ".json"
+    writeFileSync(join(directory, candidatePath), candidateBytes, { flag: "wx" })
+    return () =>
+      readProbeCapture(
+        directory,
+        { ...source, trace: { path: candidatePath, sha256: createHash("sha256").update(candidateBytes).digest("hex") } },
+        expected,
+      )
+  }
+  const binding = JSON.parse(draft.rawReplies["sgr.reset.captureBinding"]!) as Record<string, unknown>
+  const otherGeometry = {
+    ...binding,
+    captureGeometry: { ...(binding.captureGeometry as object), geometry: { ...geometry, cellWidth: 3 } },
+  }
+  const faults: Array<[string, (rawReplies: Record<string, string>) => void, string]> = [
+    [
+      "missing",
+      (rawReplies) => delete rawReplies["sgr.reset.captureBinding"],
+      "no capture binding recorded (run predates it) (sgr.reset)",
+    ],
+    [
+      "malformed",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({ ...binding, version: 2 })),
+      "capture binding malformed: version (sgr.reset)",
+    ],
+    [
+      "wrong-calibration",
+      (rawReplies) =>
+        (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })),
+      "capture binding names collector.captureCalibration.renewal.1, which this run did not record (sgr.reset)",
+    ],
+    [
+      "unrecorded-calibration",
+      (rawReplies) => delete rawReplies["collector.captureCalibration.callLog"],
+      "capture binding names collector.captureCalibration, which this run did not record (sgr.reset)",
+    ],
+    [
+      "other-geometry",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)),
+      "capture binding differs from the geometry the recorded callback was handed (sgr.reset)",
+    ],
+  ]
+  for (const [label, edit, message] of faults) {
+    expect(tampered(label, edit), label).toThrow("replay-incomplete: " + message)
+  }
   const log = readCallLog(JSON.parse(validated.rawReplies["sgr.reset.callLog"]!))
   const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
   expect(replay.context.captureGeometry?.geometry).toEqual(geometry)
