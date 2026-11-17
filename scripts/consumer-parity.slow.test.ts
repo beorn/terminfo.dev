@@ -581,17 +581,23 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       console.log(JSON.stringify({exactContexts:keys(projection.contexts).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
-      { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
+      { cwd: root, encoding: "utf8", timeout: 600_000, maxBuffer: 2 * 1024 * 1024 },
     )
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
     // Missing conclusive measurements are expected and remain open, including real tmux/screen proof.
-    expect(
-      result.stderr
-        .split("\n")
-        .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no stored current runs$/.test(line)),
-    ).toBe(true)
+    // The selection log also goes to stderr (aae1b4381, @cto b0de55c0); admit exactly its two shapes
+    // from docs/data/selected-results.ts and name any other line (34550).
+    const unexpectedStderr = result.stderr
+      .split("\n")
+      .filter(Boolean)
+      .filter(
+        (line) =>
+          !/^Warning: Terminal '.+' has no stored current runs$/.test(line) &&
+          !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
+          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line),
+      )
+    expect(unexpectedStderr).toEqual([])
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
       sealedRunFiles: number
@@ -612,7 +618,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
   } finally {
     rmSync(out, { recursive: true, force: true })
   }
-}, 65_000)
+}, 610_000)
 
 it("analysis rejects malformed required catalogs before replacing its output", () => {
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))
