@@ -10,9 +10,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
 
-// Copying the live content tree plus the validator runs is past the 5s default.
-// Measured 6.7s on 2026-11-10; 30s leaves room when the host is busy.
-test("validates retained runs through the canonical decoder and names rejected input", { timeout: 30_000 }, () => {
+// Copying the live content tree plus TWO validator runs is past the 5s default, and both budgets have to
+// clear that cost: 2 x ~11 s measured 2026-11-17 on an idle host, more when a grouped run shares the
+// host (measured 84 s of load-81 time on 32 cores). The inner spawn budget is 30 s, so the outer
+// timeout must sit above two of them plus the copy: 60 s guards a hang without pushing the body past it.
+test("validates retained runs through the canonical decoder and names rejected input", { timeout: 60_000 }, () => {
   const source = join(import.meta.dirname, "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-validate-"))
   try {
