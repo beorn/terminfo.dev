@@ -21,15 +21,24 @@ import {
 /**
  * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
  * homes the cursor there itself, and a cursor row is excluded from every compared region. Both
- * frames park the cursor on the last row and the witness cell sits on row 4. The expected frame is a
- * full grid of E written PLAINLY in the same run, which is exactly what ESC # 8 should leave behind.
+ * frames park the cursor on the last row and the witness cell sits on row 4. The expected frame is
+ * rows 1-4 of E written PLAINLY in the same run, which is what ESC # 8 leaves there.
+ *
+ * DECALN fills EVERY cell, and the read's sentinel pair needs blank cells to anchor on (33981), so a
+ * frame left as DECALN drew it can never be read (34546: "no blank cell exists ... because every cell
+ * carries ink" on Alacritty, WezTerm and xterm). Only rows 1-4 carry the evidence; the seed inks only
+ * them, and the edit erases from row 5 down right after ESC # 8. Rows 5 to the row above the cursor
+ * stay blank in every frame for the pair, and the compared rows still hold only what DECALN wrote.
  */
-function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixelGeometry"> | null {
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 5 || cols < 9) return null
+const DECALN_INKED_ROWS = 4
+export function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixelGeometry"> | null {
+  // Rows 1-4 of evidence, at least two blank rows for the sentinel pair, and the cursor's own last row.
+  const minRows = DECALN_INKED_ROWS + 3
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < 9) return null
   const park = `\x1b[${rows};1H`
   const screen = (line: string): string => {
     let writes = "\x1b[0m\x1b[2J\x1b[H"
-    for (let row = 1; row <= rows; row++) writes += `\x1b[${row};1H${line}`
+    for (let row = 1; row <= DECALN_INKED_ROWS; row++) writes += `\x1b[${row};1H${line}`
     return `${writes}${park}`
   }
   return {
@@ -37,11 +46,11 @@ function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixel
     sentinel: { row: 4, col: 1 },
     cursorRow: rows,
     seed: screen("AB".repeat(Math.ceil(cols / 2)).slice(0, cols)),
-    edit: `\x1b#8${park}`,
+    edit: `\x1b#8\x1b[${DECALN_INKED_ROWS + 1};1H\x1b[J${park}`,
     expected: screen("E".repeat(cols)),
     timeoutMs: 5000,
     pollMs: 250,
-    minRows: 5,
+    minRows,
     minCols: 9,
   }
 }
