@@ -608,7 +608,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
     if (!mux && sameFrame(history, bottom)) {
-      return notTestedResult("wheel-up did not change captured pixels; cannot observe history", {
+      return declaredUntestableResult("wheel-up did not change captured pixels; cannot observe history", {
         control,
         bottom,
         history,

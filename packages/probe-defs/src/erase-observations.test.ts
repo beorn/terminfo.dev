@@ -9,7 +9,12 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { decodeCollectorDraft, parseRun } from "@terminfo/run-parser"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
-import { initializeRunDraft, recordExecutedProbe } from "./helpers.ts"
+import {
+  DECLARED_UNTESTABLE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  initializeRunDraft,
+  recordExecutedProbe,
+} from "./helpers.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
@@ -585,6 +590,7 @@ function scrollbackApp(script: {
   encodingOnly?: boolean
   divergentPixels?: boolean
   cursorOneCell?: boolean
+  constantFrame?: boolean
 }): {
   ctx: TermProbeSource
   keys: string[]
@@ -640,7 +646,10 @@ function scrollbackApp(script: {
       captureCount += 1
       let ref: string
       let pixelsDigest: string
-      if (script.afterRef && captureCount >= 5) {
+      if (script.constantFrame) {
+        ref = BOTTOM_REF
+        pixelsDigest = BOTTOM_PIX
+      } else if (script.afterRef && captureCount >= 5) {
         ref = script.afterRef
         pixelsDigest = OTHER_PIX
       } else if (viewport === "history" && historyExists) {
@@ -789,7 +798,7 @@ test("erase.screen.scrollback aborts when plain a does not reach the app", async
   expect(writes.join("")).not.toContain("\x1b[3J")
 })
 
-test("erase.screen.scrollback is not tested when wheel-up does not change the capture", async () => {
+test("erase.screen.scrollback declares untestable when wheel-up does not change a frame-only capture (#34448)", async () => {
   const { ctx, keys, clicks, writes } = scrollbackApp({ wheelMoves: false })
   const result = await byId("erase.screen.scrollback").term(ctx)
   expect(keys).toEqual(["a"])
@@ -797,9 +806,36 @@ test("erase.screen.scrollback is not tested when wheel-up does not change the ca
   expect(writes.join("")).not.toContain("\x1b[3J")
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/wheel-up|history|pixels/i),
+    noObservable: "wheel-up did not change captured pixels; cannot observe history",
   })
+  expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+  expect(result.tests).toEqual([
+    {
+      id: DECLARED_UNTESTABLE_TEST,
+      status: "untestable",
+      reason: "wheel-up did not change captured pixels; cannot observe history",
+    },
+  ])
   expect(result.observation).toBeUndefined()
+  const recorded = recordExecutedProbe({
+    featureId: "erase.screen.scrollback",
+    attempt: { scope: "probe", startedAt: "2026-11-17T03:30:00.000Z" },
+    rawReplyRef: "erase.screen.scrollback",
+    assertions: [],
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+    ...(result.notTested
+      ? {
+          coverage: {
+            featureId: "erase.screen.scrollback",
+            rawReplyRef: "erase.screen.scrollback",
+            ...result.notTested,
+          },
+        }
+      : {}),
+  })
+  expect(recorded.status).toBe("untestable")
+  expect(recorded.reason).toBe("wheel-up did not change captured pixels; cannot observe history")
 })
 
 test("erase.screen.scrollback is inconclusive, naming the cause, when wheel-down does not restore the bottom", async () => {
@@ -977,8 +1013,9 @@ test("multiplexer erase.screen.scrollback decides from tmux and screen history c
   const runMux = async (
     mux: "tmux" | "screen",
     readings: Array<{ totalLines: number; screenLines: number } | Error>,
+    constantFrame = false,
   ) => {
-    const base = scrollbackApp({ wheelMoves: false, clears: true })
+    const base = scrollbackApp({ wheelMoves: false, clears: true, constantFrame })
     const reads = [...readings]
     const ctx: TermProbeSource = {
       ...base.ctx,
@@ -1108,6 +1145,21 @@ test("multiplexer erase.screen.scrollback decides from tmux and screen history c
   expect(JSON.parse(screenKept.parsed.assertions?.[0]?.observed ?? "null")).toMatchObject({
     muxHistory: { mux: "screen", before: 22, after: 22 },
   })
+
+  // #34448: screen run with muxHistory {screen, 1000 -> 1000} and all five captures sharing one ref (constantFrame: true)
+  // keeps unsupported; an owned-reader ctx keeps supported.
+  const screen1000 = await runMux("screen", [history(1000, 20), history(1000, 20)], true)
+  expect(screen1000.recorded.status).toBe("unsupported")
+  expect(screen1000.recorded.reason).toMatch(/screen history 1000 -> 1000.*ED3 left the history in place/)
+  const screen1000Observed = JSON.parse(screen1000.parsed.assertions?.[0]?.observed ?? "null") as {
+    muxHistory?: { mux: string; before: number; after: number }
+    frames?: Array<{ ref: string; label: string }>
+  }
+  expect(screen1000Observed.muxHistory).toEqual({ mux: "screen", before: 1000, after: 1000 })
+  expect(new Set((screen1000Observed.frames ?? []).map((f) => f.ref)).size).toBe(1)
+
+  const ownedSupported = await byId("erase.screen.scrollback").term(ownedHistoryApp([30, 0, 5]).ctx)
+  expect(ownedSupported.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 
   // #32786 / @cto 57c9ba53: mux socket history reads (`tmux display-message` and `screen -X hardcopy -h`)
   // run out-of-band from the inner PTY, so each read requires a DSR 6 cursor-position reply fence after
