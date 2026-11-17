@@ -561,6 +561,17 @@ async function scrollbackEraseHistory(
   )
 }
 
+/** Screen ED3 seed. Each history line starts with its row index so a one-line scroll changes pixels. */
+export function screenEd3Seed(rows: number, cols: number): { history: string; bottom: string } {
+  const mark = Math.min(cols, 40)
+  const history = Array.from({ length: rows + 2 }, (_, index) => {
+    const label = String(index + 1)
+    const line = label.length >= mark ? label.slice(0, mark) : label + ".".repeat(mark - label.length)
+    return `${line}\r\n`
+  }).join("")
+  return { history, bottom: "B".repeat(mark) }
+}
+
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
   if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
@@ -599,10 +610,10 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     // differs from the seeded bottom frame by one cell and the arm grades its own cursor.
     beginCaptureLifecycle(ctx)
     const mux = ctx.mux
-    const mark = Math.min(ctx.cols, 40)
     ctx.write("\x1b[2J\x1b[H")
-    ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
-    ctx.write("B".repeat(mark))
+    const seed = screenEd3Seed(ctx.rows, ctx.cols)
+    ctx.write(seed.history)
+    ctx.write(seed.bottom)
     const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
     const historyBefore = mux ? await muxHistoryLines(ctx, mux, "seed") : undefined
     await input.injectClick(4)
