@@ -25,6 +25,7 @@ import {
   type TextQualification,
   type TermProbeSource,
   type AppSemanticReading,
+  type ProbeDefinition,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
@@ -7126,6 +7127,112 @@ describe("the served capture path records its own caller intervals (34261)", () 
       expect(Number.isFinite(caller.entryToAdapterCallbackMs)).toBe(true)
       expect(Number.isFinite(caller.adapterCallbackMs)).toBe(true)
       expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterCallbackMs))
+    }
+  })
+})
+
+/**
+ * @failure A history row that holds the viewport and outlives its wall leaves the window scrolled, or its
+ *   in-flight hold lands during the next row, so that row reads a held window as its own (34645, @cto e1cfff79
+ *   items 2-3). The #33431 wall test above covers TTY writes only, never a dispatched input step.
+ * @level l1
+ * @consumer runProbeBatch wall -> viewport route returnToBottom -> next row
+ * @testonly none
+ */
+describe("the row wall returns a held viewport to the bottom before the next row", () => {
+  const ids = ["scrollback.accumulate", "scrollback.total-lines"] as const
+  function heldRows(slowTerm: ProbeDefinition["term"], nextTerm: ProbeDefinition["term"]) {
+    const [slow, next] = ids.map((id) => ALL_PROBES.find((probe) => probe.id === id)!)
+    const original = [slow, next].map((probe) => ({
+      probe,
+      saved: { term: probe.term, termWrites: probe.termWrites, wallMs: probe.wallMs },
+    }))
+    slow.term = slowTerm
+    slow.wallMs = 80
+    next.term = nextTerm
+    next.wallMs = 20_000
+    return () => {
+      for (const { probe, saved } of original) Object.assign(probe, saved)
+    }
+  }
+
+  it("settles the dispatched hold, posts the bottom once, then runs the next row", async () => {
+    verifiedBatchFixture()
+    const order: string[] = []
+    let releaseTheWall!: () => void
+    const afterTheWall = new Promise<void>((resolve) => (releaseTheWall = resolve))
+    let held = false
+    const restore = heldRows(
+      async (source) => {
+        await source.viewportScroll?.press("pageUp")
+        await afterTheWall
+        await source.viewportScroll?.press("pageDown").catch((error: Error) => order.push(`late:${error.message}`))
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+      },
+      async () => {
+        order.push(`next:held=${held}`)
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran" }] }
+      },
+    )
+    try {
+      const batch = await runProbeBatch({
+        ids: [...ids],
+        subject: { kind: "term", id: "alacritty", os: "darwin" },
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        viewportScroll: {
+          route: "fixture route",
+          press: async (step) => {
+            order.push(`press:${step}`)
+            held = step !== "bottom"
+          },
+          async returnToBottom() {
+            order.push("back")
+            if (!held) return "not-held"
+            held = false
+            return "bottom-pressed"
+          },
+        },
+      })
+      expect(batch.results.find((row) => row.featureId === ids[0])?.reason).toBe("Probe exceeded 80ms")
+      expect(batch.rawReplies[`${ids[0]}.viewportAfterWall`]).toBe("bottom-pressed")
+      expect(order.slice(0, 3)).toEqual(["press:pageUp", "back", "next:held=false"])
+    } finally {
+      releaseTheWall()
+      restore()
+    }
+  })
+
+  it("stops the run when the dispatched input cannot be shown settled within the row's wall", async () => {
+    verifiedBatchFixture()
+    const order: string[] = []
+    const restore = heldRows(
+      async (source) => {
+        await source.viewportScroll?.press("pageUp")
+        await new Promise(() => {})
+        return { pass: false, tests: [] }
+      },
+      async () => {
+        order.push("next:started")
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran" }] }
+      },
+    )
+    try {
+      await expect(
+        runProbeBatch({
+          ids: [...ids],
+          subject: { kind: "term", id: "alacritty", os: "darwin" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          viewportScroll: {
+            route: "fixture route",
+            press: async () => {},
+            // The helper never settles: the dispatched hold may still land.
+            returnToBottom: () => new Promise(() => {}),
+          },
+        }),
+      ).rejects.toThrow(/did not settle within another 80ms; the window may still be held/)
+      expect(order).toEqual([])
+    } finally {
+      restore()
     }
   })
 })

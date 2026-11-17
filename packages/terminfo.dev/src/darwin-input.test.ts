@@ -23,6 +23,7 @@ import {
 } from "./darwin-input.ts"
 import { ALACRITTY_0_17_VIEWPORT_KEYS } from "./owned-terminal.ts"
 import { describeInputContract, fakeInputMechanism } from "./testing/input-contract.ts"
+import { withTTYOperation, withTTYQueryTrace } from "./tty.ts"
 import type { InputMechanism } from "./input-fixture.ts"
 
 function options(overrides: Partial<DarwinInputOptions> = {}): DarwinInputOptions {
@@ -397,5 +398,84 @@ describe("the viewport route over keys-only input (34313)", () => {
     await expect(route.press("pageUp")).rejects.toThrow(
       /viewport input not installed \(34313\): self-test key did not echo/,
     )
+  })
+
+  /**
+   * @failure A hold dispatched before a row's wall lands after the bottom was put back, or during the next row,
+   *   so a later row reads a scrolled window as its own (@cto e1cfff79 items 2-3, 34645). Existing tests press
+   *   synchronously and see neither an in-flight post nor one that lands and then rejects.
+   * @level l1
+   * @consumer The held-viewport reader and the row wall, which return to the bottom through this route.
+   * @testonly none
+   */
+  it("settles every dispatched step before returning to the bottom, and covers a post that landed then rejected", async () => {
+    const posted: string[] = []
+    let finishHold: (() => void) | undefined
+    const input = {
+      injectKey: (keys: string) => {
+        posted.push(keys)
+        if (keys === "shift+Page_Up") return new Promise<void>((resolve) => (finishHold = resolve))
+        if (keys === "shift+Home") return Promise.reject(new Error("helper exited 1 after posting"))
+        return Promise.resolve()
+      },
+      injectClick: async () => {},
+    }
+    const route = viewportScrollRoute(viewport, { input })
+    const hold = route.press("pageUp")
+    const returning = route.returnToBottom?.()
+    await Promise.resolve()
+    // The bottom must not be posted while the hold is still in flight.
+    expect(posted).toEqual(["shift+Page_Up"])
+    finishHold?.()
+    await hold
+    await expect(returning).resolves.toBe("bottom-pressed")
+    expect(posted).toEqual(["shift+Page_Up", "shift+End"])
+    // Exactly once: a route already back at the bottom has nothing left to post.
+    await expect(route.returnToBottom?.()).resolves.toBe("not-held")
+    // A post that may have landed before its helper failed still counts as held.
+    await expect(route.press("top")).rejects.toThrow(/after posting/)
+    await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
+    expect(posted).toEqual(["shift+Page_Up", "shift+End", "shift+Home", "shift+End"])
+  })
+
+  /**
+   * @failure An abandoned callback wakes after its wall and posts a step into the next row's window (34645).
+   * @level l1
+   * @consumer The row wall in probes/unified.ts.
+   * @testonly none
+   */
+  it("refuses a step, or a return to the bottom, asked from a row abandoned at its wall", async () => {
+    const posted: string[] = []
+    const input = { injectKey: async (keys: string) => void posted.push(keys), injectClick: async () => {} }
+    const route = viewportScrollRoute(viewport, { input })
+    let scope: { abandon(): void } | undefined
+    const late = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            await route.press("pageUp")
+            scope?.abandon()
+            const press = await route.press("bottom").then(
+              () => "posted",
+              (error: Error) => error.message,
+            )
+            const back = await route.returnToBottom?.().then(
+              (value) => value,
+              (error: Error) => error.message,
+            )
+            return { press, back }
+          },
+          { onScope: (value) => (scope = value) },
+        ),
+      { write: () => true } as unknown as NodeJS.WriteStream,
+    )
+    expect(late.press).toMatch(/abandoned at its wall/)
+    expect(late.back).toMatch(/abandoned at its wall/)
+    expect(posted).toEqual(["shift+Page_Up"])
+    // The wall, outside the abandoned scope, still owns the bottom.
+    await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
+    expect(posted).toEqual(["shift+Page_Up", "shift+End"])
   })
 })

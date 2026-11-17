@@ -614,6 +614,14 @@ export interface ViewportScroll {
   /** Names the route and its mapping in every result that used it. */
   readonly route: string
   press(step: ViewportStep): Promise<void>
+  /**
+   * Put the viewport back at the bottom (34645, @cto e1cfff79 items 2-3): first settle every step this route
+   * dispatched, so none can land afterwards, then post `bottom` once if a non-bottom step was dispatched since
+   * the last bottom settled; a step that landed and then rejected counts as dispatched. `bottom-pressed` says
+   * the step was posted, never that the view moved. Rejects by name when asked from a row abandoned at its wall
+   * (the wall owns it then), or when the bottom step itself fails. Absent on a route that installed no input.
+   */
+  returnToBottom?(): Promise<"not-held" | "bottom-pressed">
 }
 
 /**
