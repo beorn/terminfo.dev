@@ -1595,13 +1595,17 @@ test.each([
     id: "wezterm",
     version: "20240203-110809-5046fc22",
     otherVersion: "0-unstable-2026-11-08",
-    reader: "extensions.osc633-p",
+    // 34621 (@cto 17dda1f9): OSC 8 is not "no way" here. The pinned CLI's `get-text --escapes` serializes hyperlink
+    // attributes (get_text.rs -> codec extract_data -> lines_to_escapes -> terminfo.rs SetHyperlink), so the row stays
+    // Probe TODO until a Mac reader is wired.
+    undeclared: ["extensions.osc633-p", "extensions.osc8"],
   },
-  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", reader: undefined },
+  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", undeclared: [] as string[] },
 ])("$id $version on macOS declares every prompt-family id the darwin reader cannot read", (app) => {
   const subject = { kind: "term" as const, id: app.id, version: app.version, os: "macos" }
   const mac = appSemanticDeclarations(subject)
-  const expected = PROMPT_FAMILY.filter((id) => id !== app.reader)
+  const expected = PROMPT_FAMILY.filter((id) => !app.undeclared.includes(id))
+  for (const id of app.undeclared) expect(mac[id], id).toBeUndefined()
   expect(
     Object.keys(mac)
       .filter((id) => PROMPT_FAMILY.includes(id))
