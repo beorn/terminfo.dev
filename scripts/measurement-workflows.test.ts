@@ -1605,8 +1605,8 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 // 30729: @cto later found the LaunchServices route is not this job's: Terminal is driven by osascript
 // the job runs itself, so the responsible process is the hosted agent and Terminal needs an
 // Automation row too (run 42479488706's consent dialog named "hosted-compute-agent"). The route-B note
-// that forbade every Apple-event row is history; this test now requires the row for terminal-app and
-// its absence for every other self-responsible app.
+// that forbade every Apple-event row is history. 34601 moved that row into its own Automation step (tested
+// below), so the Screen Recording step now writes no Apple-event row for any app.
 test.each(["granted", "unreadable", "other-app"] as const)(
   "Screen Recording grant step for self-responsible apps: %s",
   (scenario) => {
@@ -1681,13 +1681,90 @@ test.each(["granted", "unreadable", "other-app"] as const)(
         expect(inserts.length).toBeGreaterThan(0)
         expect(new Set(inserts).size).toBe(1)
         expect(inserts[0]).toBe(17)
-        const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'${Buffer.from("csreq").toString("hex")}'`
-        if (scenario === "other-app") {
-          expect(calls).not.toContain("kTCCServiceAppleEvents")
-        } else {
-          expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES(${events}`)
-          expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES(${events}`)
-        }
+        expect(calls).not.toContain("kTCCServiceAppleEvents")
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// 34601: the apps the job drives through Apple events (Terminal's own osascript; Ghostty's collector cwd read,
+// spawned from the job shell) need an Automation row for the hosted agent against the TARGET app's own bundle
+// id. Run 44146186014's Ghostty read timed out on the unanswered consent dialog because only Terminal had one.
+// This executes the step with the macOS commands as fixtures: it runs for exactly those two apps, before
+// collect, writes the 17-value row in both TCC databases, and fails the job when a row does not read back.
+test.each([
+  { app: "terminal-app", bundleId: "com.apple.Terminal", readsBack: true },
+  { app: "ghostty", bundleId: "com.mitchellh.ghostty", readsBack: true },
+  { app: "ghostty", bundleId: "com.mitchellh.ghostty", readsBack: false },
+])(
+  "Automation grant step for apps driven by Apple events: $app, reads back $readsBack",
+  ({ app, bundleId, readsBack }) => {
+    const steps = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")).jobs[
+      "measure-macos"
+    ].steps as { name?: string; id?: string; if?: string; env: Record<string, string>; run: string }[]
+    const grant = steps.find((step) => step.name?.startsWith("Grant Automation"))
+    if (!grant?.if) throw new Error("the macOS workflow has no Automation grant condition")
+    expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
+    for (const id of ["terminal-app", "ghostty"]) expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
+    for (const id of ["alacritty", "wezterm", "warp", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+      expect(runInNewContext(grant.if, { matrix: { id } })).toBe(false)
+    }
+    const directory = mkdtempSync(join(tmpdir(), "automation-grant-"))
+    const bin = join(directory, "bin")
+    const journal = join(directory, "journal")
+    mkdirSync(bin)
+    const fixture = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/bin/bash\nprintf '%s\\0' ${name} "$@" >> ${shellQuote(journal)}\n${body}\n`, {
+        mode: 0o755,
+      })
+    try {
+      fixture("PlistBuddy", `echo ${bundleId}`)
+      fixture("codesign", `echo 'designated => identifier "${bundleId}"'`)
+      fixture("csreq", `cat > /dev/null; printf 'csreq' > "$3"`)
+      fixture("xxd", `od -An -tx1 "$2" | tr -d ' '`)
+      fixture("sudo", `exec "$@"`)
+      fixture("sqlite3", `case "$2" in SELECT*) ${readsBack ? "echo 2" : "true"} ;; esac`)
+      const run = spawnSync(
+        "/bin/bash",
+        ["-c", grant.run.replaceAll("/usr/libexec/PlistBuddy", join(bin, "PlistBuddy"))],
+        {
+          encoding: "utf8",
+          env: {
+            PATH: `${bin}:${process.env.PATH}`,
+            HOME: directory,
+            RUNNER_TEMP: directory,
+            ...Object.fromEntries(
+              Object.entries(grant.env).map(([key, expression]) => [
+                key,
+                runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+                  matrix: { id: app, bundle: "/Applications/Term.app" },
+                }),
+              ]),
+            ),
+          },
+        },
+      )
+      const calls = readFileSync(journal, "utf8").split("\0").join(" ")
+      const system = "/Library/Application Support/com.apple.TCC/TCC.db"
+      const user = `${directory}/Library/Application Support/com.apple.TCC/TCC.db`
+      const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'${bundleId}',X'${Buffer.from("csreq").toString("hex")}'`
+      expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES(${events}`)
+      const inserts = [...calls.matchAll(/INSERT OR REPLACE INTO access VALUES\(([^)]*)\)/gu)].map(
+        (match) => (match[1] ?? "").split(",").length,
+      )
+      expect(new Set(inserts)).toEqual(new Set([17]))
+      expect(calls).not.toContain("kTCCServiceScreenCapture")
+      if (readsBack) {
+        expect(run.status, run.stderr).toBe(0)
+        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES(${events}`)
+      } else {
+        expect(run.status).toBe(1)
+        expect(run.stderr).toContain(
+          `Automation grant for /opt/hca/hosted-compute-agent to ${bundleId} did not read back from ${system}`,
+        )
+        expect(calls).not.toContain(`sqlite3 ${user}`)
       }
     } finally {
       rmSync(directory, { recursive: true, force: true })
