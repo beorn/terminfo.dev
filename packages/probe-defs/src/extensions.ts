@@ -62,6 +62,7 @@ import {
   unhandledSequenceVerdict,
   UNHANDLED_OSC_CONTROL_TITLE,
   type StackReading,
+  heldViewportReadTodo,
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
@@ -3395,6 +3396,9 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
   if (ctx.mux === "tmux") return osc720ScrollUpTmux(ctx)
   // The subject app itself has no permitted read of its pane (#31741, @cto 20b9ffed): the wheel arm
   // below reads the viewport it moved, and this app cannot report where that viewport went.
+  // An applicable viewport route (34313) is our missing held-frame reader, not the app's absence: TODO first.
+  const heldTodo = heldViewportReadTodo(ctx)
+  if (heldTodo) return heldTodo
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
   if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
 

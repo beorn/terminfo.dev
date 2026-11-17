@@ -18,6 +18,7 @@ import {
   validSize,
   HEADLESS_OBSERVABLE_REVIEW,
   libvtermHistoryReview,
+  heldViewportReadTodo,
 } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -824,6 +825,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const heldTodo = heldViewportReadTodo(ctx)
+        if (heldTodo) return heldTodo
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
         if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, false)
@@ -941,6 +944,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const heldTodo = heldViewportReadTodo(ctx)
+        if (heldTodo) return heldTodo
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
         if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
         if (ctx.getScrollback) return appHistory(ctx, true)

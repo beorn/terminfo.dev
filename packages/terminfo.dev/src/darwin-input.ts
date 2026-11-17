@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-import type { InputFixture } from "@terminfo/probe-defs"
+import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
 import { createInjectedInput, type InputButton, type InputMechanism, type OwnedFrame } from "./input-fixture.ts"
 
@@ -107,6 +107,13 @@ export interface DarwinInputOptions {
    * run's own TTY only the two fixed self-test keys may be posted (@cto 60e39dfc a, c, d).
    */
   readonly ownedHost?: boolean
+  /**
+   * A hosted app whose window its own capture install selected (34313, @cto cf1ffd6d): keys only,
+   * posted to that window id under the helper's per-post key-window proof, with NO tab tty, because the
+   * helper's selected-tab query is Terminal.app's. Every pointer verb refuses by name, and, as on an
+   * owned host, only the fixed self-test keys may be posted until one echoes on the run's own TTY.
+   */
+  readonly keysOnly?: boolean
   /** Test seam: the platform operations, in place of the built helper. */
   readonly mechanism?: InputMechanism
 }
@@ -189,6 +196,26 @@ export function ownedHostMechanism(mechanism: InputMechanism, delivered: () => b
       }
       await mechanism.key(keys)
     },
+  }
+}
+
+/**
+ * The keys-only limit over any mechanism (34313): a hosted app's window is proved only for keys, so a
+ * pointer verb never reaches the mechanism, and keys keep the owned-host pre-delivery restriction.
+ */
+export function keysOnlyMechanism(mechanism: InputMechanism, delivered: () => boolean): InputMechanism {
+  const owned = ownedHostMechanism(mechanism, delivered)
+  const refused = (verb: string): Promise<never> =>
+    Promise.reject(new Error(`macOS ${verb} refused: this hosted install posts keys only (34313)`))
+  return {
+    focus: () => mechanism.focus(),
+    // Only pointer placement reads the frame, so the refusal lands before any window read.
+    geometry: () => refused("pointer placement"),
+    moveTo: () => refused("pointer movement"),
+    click: () => refused("a click"),
+    press: () => refused("a button press"),
+    release: () => refused("a button release"),
+    key: (keys) => owned.key(keys),
   }
 }
 
@@ -279,6 +306,15 @@ function helperMechanism(
  */
 export async function createDarwinInput(options: DarwinInputOptions): Promise<InputFixture> {
   requireAppPid(options.appPid)
+  if (options.keysOnly && options.ownedHost) {
+    throw new Error("keys-only and owned-host input are separate routes; a run installs one of them")
+  }
+  if (options.keysOnly && options.windowId === undefined) {
+    throw new Error(
+      "keys-only macOS input needs the window its capture install selected, so every key targets the window " +
+        "the run reads (34313)",
+    )
+  }
   if (options.ownedHost && (options.windowId === undefined || options.windowTty === undefined)) {
     throw new Error(
       "macOS input on an owned host needs the run's own window id and tab tty, so every key can prove the " +
@@ -311,6 +347,7 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
   }
   let proven = false
   if (options.ownedHost) mechanism = ownedHostMechanism(mechanism, () => proven)
+  if (options.keysOnly) mechanism = keysOnlyMechanism(mechanism, () => proven)
   const input = createInjectedInput(mechanism, "CGEvent")
   const delivered = (echoed: string | null): boolean =>
     echoed !== null && echoed.includes(DARWIN_INPUT_SELF_TEST_KEYSYM)
@@ -334,7 +371,13 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
   }
   proven = true
   options.report?.(
-    `darwin input installed${options.ownedHost ? " (owned host: keys and pointer addressed to the run's own window, one posting at a time)" : ""}: ` +
+    `darwin input installed${
+      options.ownedHost
+        ? " (owned host: keys and pointer addressed to the run's own window, one posting at a time)"
+        : options.keysOnly
+          ? ` (keys only: the capture's window ${options.windowId}, a key-window proof per post, no pointer)`
+          : ""
+    }: ` +
       `pid ${options.appPid}, window ${options.windowId ?? "largest"}, ` +
       `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}` +
       // The permission is not ours on an owned host: it belongs to the ssh session's parent, so a
@@ -346,4 +389,24 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
         : ""),
   )
   return input
+}
+
+/**
+ * A subject owner's viewport route over its keys-only install (34313, @cto cf1ffd6d). The owner holds the step-to-key
+ * map; a refused install keeps the route with its refusal in the label, and every press fails by name, so a row
+ * reports an apparatus TODO instead of losing the route and falling back to the app's declaration.
+ */
+export function viewportScrollRoute(
+  viewport: { readonly route: string; readonly keys: Readonly<Record<ViewportStep, string>> },
+  installed: { readonly input: Pick<InputFixture, "injectKey"> } | { readonly refusal: string },
+): ViewportScroll {
+  if ("refusal" in installed) {
+    const reason = installed.refusal
+    return {
+      route: `${viewport.route}; input not installed: ${reason}`,
+      press: () => Promise.reject(new Error(`viewport input not installed (34313): ${reason}`)),
+    }
+  }
+  const input = installed.input
+  return { route: viewport.route, press: (step) => input.injectKey(viewport.keys[step]) }
 }

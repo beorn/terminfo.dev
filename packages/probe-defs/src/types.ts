@@ -601,6 +601,21 @@ export interface PixelCellCrop {
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
 }
 
+/** A portable viewport step; the subject's owner maps it to that app's own input (34313). */
+export type ViewportStep = "pageUp" | "pageDown" | "top" | "bottom"
+
+/**
+ * A subject owner's viewport scroll route (34313, @cto cf1ffd6d). Probe definitions name only the
+ * portable step; the owner holds the platform key names. `press` resolves once the owner's input posted
+ * the step under its own delivery proof, and rejects by name when the route's input is not installed.
+ * Resolution says the step was posted, never that the viewport moved: the caller observes that.
+ */
+export interface ViewportScroll {
+  /** Names the route and its mapping in every result that used it. */
+  readonly route: string
+  press(step: ViewportStep): Promise<void>
+}
+
 /**
  * The viewport hold a probe declares on its capture request (34163). A held viewport renders the
  * painted sentinel pair N rows off the calibrated grid, so a declared read crops at the settled
@@ -1630,6 +1645,14 @@ export interface TermProbeSource {
    * version; this one says the arm, not the app, is the obstacle.
    */
   scrollbackProbeTodo?: string
+  /**
+   * The viewport scroll route this run's subject owner installed (34313, @cto cf1ffd6d): present exactly
+   * when the route APPLIES to the qualified subject, whether or not its input installed. A failed install
+   * keeps the field and its `press` rejects by name, so the history rows report an apparatus TODO instead of
+   * falling back to `scrollbackUnavailable`. Only the viewport-history callbacks read it; it is not an
+   * input fixture and grants no other callback a route.
+   */
+  viewportScroll?: ViewportScroll
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,

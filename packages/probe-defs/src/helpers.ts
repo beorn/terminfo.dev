@@ -2670,6 +2670,22 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
   }
 }
 
+/**
+ * The four viewport-history rows on a subject whose viewport route applies (34313, @cto held-reader correction
+ * 2026-11-17 10:49): no capture read returns a qualified scrolled-back frame today (the declared-hold reader
+ * refuses every hold), so the rows are a named apparatus PROBE TODO, checked BEFORE the app's declared Untestable,
+ * and they press no key and write nothing. A held-frame reader replaces this branch with the measurement.
+ */
+export function heldViewportReadTodo(ctx: TermProbeSource): NotTestedCoverageResult | undefined {
+  const route = ctx.viewportScroll
+  if (!route) return undefined
+  return notTestedResult(
+    `held-viewport read not available: viewport route "${route.route}" applies, but no capture read returns a ` +
+      "qualified scrolled-back frame (CaptureHoldUnresolved)",
+    { viewportRoute: route.route },
+  )
+}
+
 /** Internal fallback after a caller has qualified its own missing-setup controls. */
 export function noSetupResult(result: ProbeCallbackResult, reason: string, state: object): ProbeCallbackResult {
   if (reportsDecidedOutcome(result) || result.tests?.some((test) => test.status === "probe-invalid")) return result

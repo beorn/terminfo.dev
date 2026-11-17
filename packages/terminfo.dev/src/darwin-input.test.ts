@@ -11,14 +11,17 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   createDarwinInput,
+  keysOnlyMechanism,
   ownedHostHelperPath,
   ownedHostMechanism,
   DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO,
   DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
   DARWIN_INPUT_SELF_TEST_KEYSYM,
   selectDarwinInputWindow,
+  viewportScrollRoute,
   type DarwinInputOptions,
 } from "./darwin-input.ts"
+import { ALACRITTY_0_17_VIEWPORT_KEYS } from "./owned-terminal.ts"
 import { describeInputContract, fakeInputMechanism } from "./testing/input-contract.ts"
 import type { InputMechanism } from "./input-fixture.ts"
 
@@ -216,6 +219,82 @@ describe("macOS input on an owned host", () => {
   })
 })
 
+describe("macOS input, keys only, on a hosted app named by its capture (34313)", () => {
+  it("refuses every pointer verb by name and keeps the pre-delivery key restriction", async () => {
+    const fake = fakeInputMechanism()
+    let delivered = false
+    const keys = keysOnlyMechanism(fake.mechanism, () => delivered)
+    await keys.key(DARWIN_INPUT_SELF_TEST_KEYSYM)
+    await expect(keys.key("shift+Page_Up")).rejects.toThrow(/only the fixed self-test keys/)
+    delivered = true
+    await keys.key("shift+Page_Up")
+    await expect(keys.moveTo(1, 2, { verifyPointer: true, dragged: false })).rejects.toThrow(
+      /pointer movement refused: this hosted install posts keys only/,
+    )
+    await expect(keys.geometry()).rejects.toThrow(/pointer placement refused: this hosted install posts keys only/)
+    await expect(keys.click(4)).rejects.toThrow(/a click refused: this hosted install posts keys only/)
+    await expect(keys.press(1)).rejects.toThrow(/a button press refused/)
+    await expect(keys.release(1)).rejects.toThrow(/a button release refused/)
+    expect(fake.calls.map((call) => call.op)).toEqual(["key", "key"])
+  })
+
+  it("posts each key to the captured window with no tab tty, so the helper runs no Terminal.app query", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-input-keys-"))
+    const argv = join(directory, "argv.txt")
+    const helper = join(directory, "helper")
+    writeFileSync(
+      helper,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> '${argv}'`,
+        'case "$1" in',
+        '  key) printf \'posted=key route=pid frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        "esac",
+        "",
+      ].join("\n"),
+    )
+    chmodSync(helper, 0o755)
+    const facts: string[] = []
+    try {
+      const input = await createDarwinInput(
+        options({
+          appName: "alacritty",
+          mechanism: undefined,
+          helperPath: helper,
+          windowId: 51,
+          windowTty: "/dev/ttys007",
+          keysOnly: true,
+          report: (fact) => facts.push(fact),
+          selfTest: async (inject) => {
+            await inject()
+            return DARWIN_INPUT_SELF_TEST_KEYSYM
+          },
+        }),
+      )
+      await input.injectKey("shift+Page_Up")
+      await expect(input.injectClick(4)).rejects.toThrow(/posts keys only/)
+      const calls = readFileSync(argv, "utf8").trim().split("\n")
+      // Four arguments after the verb, never a fifth: a tab tty sends the helper's selected-tab query to Terminal.app.
+      expect(calls.filter((call) => call.startsWith("key "))).toEqual(["key 4242 51 z", "key 4242 51 shift+Page_Up"])
+      expect(calls.filter((call) => call.startsWith("mouse "))).toEqual([])
+      expect(facts[0]).toMatch(
+        /^darwin input installed \(keys only: the capture's window 51, a key-window proof per post, no pointer\)/,
+      )
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("refuses a keys-only install without the captured window id, or combined with an owned host", async () => {
+    await expect(createDarwinInput(options({ keysOnly: true }))).rejects.toThrow(
+      /keys-only macOS input needs the window its capture install selected/,
+    )
+    await expect(
+      createDarwinInput(options({ keysOnly: true, ownedHost: true, windowId: 51, windowTty: "/dev/ttys007" })),
+    ).rejects.toThrow(/keys-only and owned-host input are separate routes/)
+  })
+})
+
 describe("macOS input on an owned host: tab and helper", () => {
   it("refuses an owned host install without the run's own window id and tab tty", async () => {
     await expect(createDarwinInput(options({ ownedHost: true, windowId: 33 }))).rejects.toThrow(
@@ -277,5 +356,46 @@ describe("macOS input window selection", () => {
       /has no finite width/,
     )
     expect(() => selectDarwinInputWindow("nope", 4242)).toThrow(/is not an array/)
+  })
+})
+
+describe("the viewport route over keys-only input (34313)", () => {
+  const viewport = { route: "hosted alacritty 0.17.0 default bindings", keys: ALACRITTY_0_17_VIEWPORT_KEYS }
+
+  /**
+   * @failure A portable step reaches the app as the wrong key, or as anything but a key, so a page press scrolls
+   *   nothing (or clicks) and the rows read an unmoved viewport as the feature's absence.
+   * @level l1
+   * @consumer The viewport-history rows on hosted alacritty 0.17.0.
+   * @testonly none
+   */
+  it("maps each portable step to its reviewed key and posts nothing else", async () => {
+    const posted: string[] = []
+    const input = {
+      injectKey: async (keys: string) => void posted.push(keys),
+      injectClick: async () => {
+        throw new Error("a viewport step must never click")
+      },
+    }
+    const route = viewportScrollRoute(viewport, { input })
+    expect(route.route).toBe(viewport.route)
+    for (const step of ["pageUp", "pageDown", "top", "bottom"] as const) await route.press(step)
+    expect(posted).toEqual(["shift+Page_Up", "shift+Page_Down", "shift+Home", "shift+End"])
+  })
+
+  /**
+   * @failure A refused keys-only install removes the route, so the rows fall back to the app's declared
+   *   "no pane read" Untestable: our missing input reads as the app's missing feature (@cto cf1ffd6d amendment 4).
+   * @level l1
+   * @consumer The viewport-history rows on a hosted run whose Accessibility grant or self-test failed.
+   * @testonly none
+   */
+  it("keeps the route after a refused install, names the refusal, and fails every press by name", async () => {
+    const route = viewportScrollRoute(viewport, { refusal: "self-test key did not echo" })
+    expect(route.route).toContain(viewport.route)
+    expect(route.route).toContain("input not installed: self-test key did not echo")
+    await expect(route.press("pageUp")).rejects.toThrow(
+      /viewport input not installed \(34313\): self-test key did not echo/,
+    )
   })
 })

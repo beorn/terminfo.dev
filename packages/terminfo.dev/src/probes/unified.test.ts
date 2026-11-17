@@ -1455,6 +1455,36 @@ it("carries the owned collector's no-pane-read declaration into every history ro
   }
 })
 
+// @failure serve.ts builds hosted alacritty's viewport route, but the batch handoff drops it, so the four history
+//   rows report the app's "no pane read" declaration instead of our missing held-frame reader (34313).
+// @level l1
+// @consumer App batch -> probe source handoff -> history rows on hosted alacritty 0.17.0.
+it("carries the owner's viewport route into every history row ahead of the declaration, pressing nothing", async () => {
+  verifiedBatchFixture()
+  const ids = [
+    "scrollback.accumulate",
+    "scrollback.total-lines",
+    "erase.screen.scrollback",
+    "extensions.osc720-scroll-up",
+  ]
+  const pressed: string[] = []
+  const batch = await runProbeBatch({
+    ids,
+    subject: { kind: "term", id: "alacritty", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), scrollbackUnavailable: "no pane read on this app" },
+    viewportScroll: { route: "hosted alacritty 0.17.0 fixture route", press: async (step) => void pressed.push(step) },
+  })
+  const rows = batch.results.filter((result) => ids.includes(result.featureId))
+  expect(rows).toHaveLength(4)
+  for (const row of rows) {
+    expect(row.status, row.featureId).toBe("probe-todo")
+    expect(row.reason, row.featureId).toContain("held-viewport read not available")
+    expect(row.reason, row.featureId).toContain("hosted alacritty 0.17.0 fixture route")
+    expect(row.tests?.some((item) => item.id === "declared-untestable") ?? false, row.featureId).toBe(false)
+  }
+  expect(pressed).toEqual([])
+})
+
 // @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding
 //   that this run could not establish the grid its row needs (@cto 34005 ruling: the refusal wins).
 // @level l1
