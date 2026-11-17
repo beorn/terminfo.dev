@@ -21,17 +21,7 @@ import {
 import { createHeldViewportReader, type HeldViewportGeometry } from "./held-viewport.ts"
 import type { TTYTraceMark } from "./tty.ts"
 
-const ROWS = 14
 const COLS = 12
-const geometry: HeldViewportGeometry = {
-  origin: { x: 2, y: 2 },
-  cell: { width: 2, height: 2 },
-  cols: COLS,
-  rows: ROWS,
-  window: "window 7",
-}
-const WIDTH = geometry.origin.x * 2 + COLS * geometry.cell.width
-const HEIGHT = geometry.origin.y * 2 + ROWS * geometry.cell.height
 
 interface Behaviour {
   /** Lines history keeps; Infinity keeps all. */
@@ -43,10 +33,26 @@ interface Behaviour {
   /** pageUp and top stop this many rows short of history (a transient stop). */
   readonly short?: Partial<Record<"pageUp" | "top", number>>
   readonly route?: string
+  /** pageUp and top both stop at this offset when history is deeper: a stable intermediate stop. */
+  readonly stall?: number
+  /** The terminal ignores every viewport key. */
+  readonly ignoreKeys?: boolean
+  /** Screen rows; 14 unless a case needs the 24-row example. */
+  readonly rows?: number
 }
 
 /** A text terminal for the fixture's escapes, painted as pixels a reader crops: one colour per line text. */
 function terminal(behaviour: Behaviour = {}) {
+  const ROWS = behaviour.rows ?? 14
+  const geometry: HeldViewportGeometry = {
+    origin: { x: 2, y: 2 },
+    cell: { width: 2, height: 2 },
+    cols: COLS,
+    rows: ROWS,
+    window: "window 7",
+  }
+  const WIDTH = geometry.origin.x * 2 + COLS * geometry.cell.width
+  const HEIGHT = geometry.origin.y * 2 + ROWS * geometry.cell.height
   const keep = behaviour.keep ?? Number.POSITIVE_INFINITY
   let history: string[] = []
   let screen: string[] = Array.from({ length: ROWS }, () => "")
@@ -87,7 +93,8 @@ function terminal(behaviour: Behaviour = {}) {
     }
   }
   const press = async (step: ViewportStep) => {
-    const most = history.length
+    if (behaviour.ignoreKeys) return
+    const most = Math.min(history.length, behaviour.stall ?? Number.POSITIVE_INFINITY)
     if (step === "pageUp") offset = Math.max(0, Math.min(most - (behaviour.short?.pageUp ?? 0), offset + ROWS))
     if (step === "pageDown") offset = Math.max(0, offset - ROWS)
     if (step === "top") offset = Math.max(0, most - (behaviour.short?.top ?? 0))
@@ -163,6 +170,28 @@ function citesItsFrames(result: ProbeCallbackResult) {
   expect(new Set(frames.map((frame) => frame.ref)).size).toBe(frames.length)
 }
 
+describe("the 24-row example", () => {
+  it.each([
+    ["scrollback.accumulate", {}],
+    ["scrollback.total-lines", {}],
+    ["erase.screen.scrollback", {}],
+    ["extensions.osc720-scroll-up", { osc720: 5 }],
+  ] as const)("%s grades on a 24-row grid", async (id, behaviour) => {
+    const result = await grade(id, { rows: 24, ...behaviour })
+    expect(status(result)).toBe("supported")
+    citesItsFrames(result)
+  })
+})
+
+describe("viewport keys ignored", () => {
+  it.each(["scrollback.accumulate", "scrollback.total-lines", "erase.screen.scrollback"])(
+    "%s stays TODO: an unmoved view is no observation",
+    async (id) => {
+      expect(status(await grade(id, { ignoreKeys: true }))).toBe("probe-todo")
+    },
+  )
+})
+
 describe("scrollback.accumulate", () => {
   it("is Supported when a pageUp hold shows the written lines, equal to their observed reference", async () => {
     const result = await grade("scrollback.accumulate")
@@ -195,6 +224,14 @@ describe("scrollback.total-lines", () => {
     expect(status(result)).toBe("probe-todo")
   })
 
+  it("stays TODO when both routes agree on a count short of what was written", async () => {
+    // The one-line empty check passes; after growth top and pageUp both land 8 lines up out of 11. They agree,
+    // and agreement is not an endpoint.
+    const result = await grade("scrollback.total-lines", { stall: 8 })
+    expect(status(result)).toBe("probe-todo")
+    expect(result.note).toMatch(/needs a proved endpoint/)
+  })
+
   it("claims no endpoint on a route whose bindings are not bound", async () => {
     const result = await grade("scrollback.total-lines", { route: "some other route" })
     expect(status(result)).toBe("probe-todo")
@@ -213,6 +250,14 @@ describe("erase.screen.scrollback", () => {
     const result = await grade("erase.screen.scrollback", { ed3: false })
     expect(status(result)).toBe("unsupported")
     citesItsFrames(result)
+  })
+
+  it("stays TODO when both routes stop on the same transient offset where ED3's result would be (@cto 1154 falsifier)", async () => {
+    // ED3 ignored, and top and pageUp both stall one line up: the view at s=1 is the same lines either way. The
+    // positive control before ED3 (pageUp at s >= 2) is what refuses it.
+    const result = await grade("erase.screen.scrollback", { ed3: false, stall: 1 })
+    expect(status(result)).toBe("probe-todo")
+    expect(result.note).toMatch(/positive control/)
   })
 
   it("stays TODO when top stops short after ED3 and the routes disagree", async () => {
