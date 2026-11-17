@@ -59,9 +59,9 @@ export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {
   "extensions.reflow":
     "write not on a closed list: 192 of 392 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.alt-screen.enter":
-    "write not on a closed list: 92 of 502 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+    "write not on a closed list: 4 of 354 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.reverse-video":
-    "write not on a closed list: 252 of 978 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+    "write not on a closed list: 136 of 762 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "scrollback.viewport-hold-output":
     "write not on a closed list: 32 of 158 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
 }
