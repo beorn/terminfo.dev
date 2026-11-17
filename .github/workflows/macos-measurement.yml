@@ -848,6 +848,12 @@ jobs:
                 throw new Error(`${prefix} measured receipt lacks its launch ID or executable`);
               receiptRunId = receipt.runId;
               appLaunch = receipt.appLaunch;
+              // 34687: the launch is documented by the collect step start through the measured receipt (about 9 s for
+              // cmux), not the whole collect step (44 min in run 44178738960), whose log show outran its 20 s wall.
+              if (Number.isFinite(Date.parse(receipt.collectedAt ?? "")) && Date.parse(receipt.collectedAt) >= Date.parse(launchStart)) {
+                launchEnd = receipt.collectedAt;
+                intervalSource = "collect-step-start-through-measured-receipt";
+              }
             } catch (error) {
               failures.push({ label: "launch-record", error: String(error) });
               console.error(`${prefix} launch identity unmeasured; see failure evidence`, error);
@@ -898,21 +904,31 @@ jobs:
             console.error(`${prefix} log unmeasured: launch time unavailable`);
           }
           for (const [label, argv, bound] of commands) {
+            let timedOut = false;
             try {
               const row = await run(label, argv, bound);
-              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed`);
+              timedOut = row.outerTimedOut;
+              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed${row.outerTimedOut ? ` (killed at its ${bound} ms wall)` : ""}`);
               if (label === "screen" && (await stat(join(out, `${prefix}-screen.png`))).size === 0) throw new Error("Display screenshot is empty");
               if (label === "windows") {
                 const census = JSON.parse(row.stdout.text);
                 if (!Array.isArray(census) || !census.every(w => typeof w.id === "number" && typeof w.ownerPid === "number" && typeof w.layer === "number" && w.bounds && [w.bounds.x, w.bounds.y, w.bounds.width, w.bounds.height].every(v => typeof v === "number"))) throw new Error("Invalid CoreGraphics identity or point-bounds census");
               }
-            } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
+            } catch (error) { failures.push({ label, error: String(error), ...(timedOut ? { timedOut: true } : {}) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
+          }
+          // 34687: after a successful collection, a capture killed at its wall is a named diagnostic gap, not a failed
+          // measurement; any other evidence failure still fails the job. Either way the job summary names it.
+          const timeoutsOnly = failures.length > 0 && failures.every(f => f.timedOut);
+          const nonFatal = timeoutsOnly && process.env.COLLECT_OUTCOME === "success";
+          if (failures.length && process.env.GITHUB_STEP_SUMMARY) {
+            const named = failures.map(f => `${f.label}: ${f.error}`).join("; ");
+            await writeFile(process.env.GITHUB_STEP_SUMMARY, `- ${prefix} launch evidence incomplete (${nonFatal ? "non-fatal: the collection succeeded" : "fails this step"}): ${named}\n`, { flag: "a" });
           }
           await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource, editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
           // Capture failures remain in artifacts and stderr after a successful editor collection (Cursor or VS Code):
           // the evidence is diagnostic, and a log window spanning a 40-minute collect step can outrun its wall (34597).
           const successfulEditor = editor && process.env.COLLECT_OUTCOME === "success";
-          if (failures.length && !terminal && !successfulEditor) process.exitCode = 1;
+          if (failures.length && !terminal && !successfulEditor && !nonFatal) process.exitCode = 1;
           '
 
       - name: Retain editor launch files and close only its owned GUI

@@ -794,6 +794,89 @@ test.each([
   },
 )
 
+// 34687: run 44178738960's cmux job measured all 273 rows, then went red because this always-run evidence step's
+// log show spanned the whole 44-minute collect step and was killed at its 20 s wall. The window now ends at the
+// measured receipt, and a capture killed at its wall after a successful collection is named, not fatal.
+test.each([
+  { collectOutcome: "success", screenFails: false, expectedExit: 0, verdict: "non-fatal: the collection succeeded" },
+  { collectOutcome: "failure", screenFails: false, expectedExit: 1, verdict: "fails this step" },
+  { collectOutcome: "success", screenFails: true, expectedExit: 1, verdict: "fails this step" },
+])(
+  "cmux evidence bounds its log to the receipt and names a wall-killed capture (collect: $collectOutcome, screen fails: $screenFails)",
+  ({ collectOutcome, screenFails, expectedExit, verdict }) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+    const step = workflow.jobs["measure-macos"].steps.find(
+      (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
+    )
+    const source = (step.run as string).match(/^bun --eval '([\s\S]*)'\s*$/)?.[1]
+    expect(source).toBeDefined()
+    const directory = mkdtempSync(join(tmpdir(), "hosted-evidence-timeout-"))
+    const out = join(directory, "measurement-artifacts")
+    mkdirSync(out)
+    const summaryFile = join(directory, "step-summary.md")
+    writeFileSync(
+      join(out, "host-measured.json"),
+      JSON.stringify({
+        runId: "b".repeat(32),
+        collectedAt: "2026-11-17T21:53:07.735Z",
+        appLaunch: {
+          bundlePath: "/Applications/cmux.app",
+          executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
+        },
+      }),
+    )
+    const windows = [{ id: 37, ownerPid: 4242, layer: 0, bounds: { x: 0, y: 0, width: 460, height: 639 } }]
+    // The log command outlives its wall; only the 20 s wall is shortened so the kill happens inside the test.
+    const prelude = `const originalSpawn = Bun.spawn, originalTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms, ...rest) => originalTimeout(fn, ms === 20000 ? 200 : ms, ...rest);
+    Bun.spawn = (argv, options) => {
+      const command = argv[0];
+      if (command.endsWith("log")) return originalSpawn(["/bin/sleep", "30"], options);
+      if (command.endsWith("screencapture")) {
+        if (${screenFails}) return originalSpawn(["/bin/bash", "-c", "exit 1"], options);
+        require("node:fs").writeFileSync(argv.at(-1), "fixture image bytes");
+      }
+      const output = command.endsWith("osascript") ? ${JSON.stringify(JSON.stringify(windows))}
+        : command.endsWith("ps") ? "PID PPID PGID TTY COMM\\n4242 1 4242 ?? cmux\\n" : "";
+      return originalSpawn(["/bin/bash", "-c", "printf '%s' \\\"$1\\\"", "fixture", output], options);
+    };\n`
+    try {
+      const result = spawnSync(BUN, ["--eval", prelude + source], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          APP_ID: "cmux",
+          COLLECT_OUTCOME: collectOutcome,
+          RUNNER_TEMP: directory,
+          GITHUB_WORKSPACE: root,
+          GITHUB_STEP_SUMMARY: summaryFile,
+          COLLECT_STARTED_AT: "2026-11-17T21:52:58Z",
+          ITERM_LAUNCH_START: "",
+          ITERM_LAUNCH_END: "",
+        },
+      })
+      expect(result.status, result.stderr).toBe(expectedExit)
+      const log = JSON.parse(readFileSync(join(out, "cmux-log.json"), "utf8"))
+      // Collect start through the measured receipt (whole final second included), not through this step.
+      expect(log.argv).toEqual(expect.arrayContaining(["2026-11-17 21:52:58+0000", "2026-11-17 21:53:08+0000"]))
+      expect(log).toHaveProperty("outerTimedOut", true)
+      const evidence = JSON.parse(readFileSync(join(out, "cmux-failure-evidence.json"), "utf8"))
+      expect(evidence).toHaveProperty("intervalSource", "collect-step-start-through-measured-receipt")
+      expect(evidence.failures).toContainEqual({
+        label: "log",
+        error: "Error: log capture failed (killed at its 20000 ms wall)",
+        timedOut: true,
+      })
+      if (screenFails) expect(evidence.failures).toContainEqual(expect.objectContaining({ label: "screen" }))
+      const summary = readFileSync(summaryFile, "utf8")
+      expect(summary).toContain(`cmux launch evidence incomplete (${verdict})`)
+      expect(summary).toContain("log: Error: log capture failed (killed at its 20000 ms wall)")
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 // 30729: Terminal must be launched and closed through the owned-window helpers, not `open -a`, and the
 // close has to survive collection failure so a hosted job never leaves a Terminal window behind.
 test("hosted Terminal launch owns its window and closes only it before upload", () => {
