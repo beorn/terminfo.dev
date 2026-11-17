@@ -353,7 +353,7 @@ it.each([
       if (inputChange.startsWith("linux-poststart") && command === "bash") {
         const output = args.at(-1)
         if (typeof output !== "string") throw new Error("Expected Linux fixture output")
-        const draftPath = join(dirname(dirname(output)), "term-alacritty-linux.draft.json")
+        const draftPath = join(dirname(dirname(output)), "first-pass", "term-alacritty-linux.draft.json")
         const draft = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
         actualRouteRunId = draft.runId
         expect(options?.env?.TERMINFO_CAPTURE_RUN_ID).toBe(draft.runId)
@@ -507,7 +507,10 @@ it.each([
               writeFileSync(join(folder, "job-start.json"), JSON.stringify({ phase: "job-start" }))
               if (inputChange !== "macos-prestart") {
                 const draft = JSON.parse(
-                  readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8"),
+                  readFileSync(
+                    join(dirname(dirname(dirname(artifacts))), "first-pass", `term-${id}-macos.draft.json`),
+                    "utf8",
+                  ),
                 ) as RunDraft
                 const delegatedRunId = draft.runId
                 draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
@@ -653,7 +656,10 @@ it.each([
         // 33497: the real failed Screen supplement (run 2026-11-11T11-36-01-969Z) exited 2 after its collector
         // retained the delegated draft, attempt and prerequisite naming the cause under raw/artifacts.
         const draft = JSON.parse(
-          readFileSync(join(dirname(dirname(output)), "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
+          readFileSync(
+            join(dirname(dirname(output)), "first-pass", "mux-screen-linux.truecolor-on.draft.json"),
+            "utf8",
+          ),
         ) as RunDraft
         expect(options?.env?.TERMINFO_CAPTURE_RUN_ID).toBe(draft.runId)
         draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
@@ -898,7 +904,7 @@ it.each([
           const ids = Object.fromEntries(
             contexts.map((row) => {
               const draft = JSON.parse(
-                readFileSync(join(pass.directory, `term-${row.context.id}-${os}.draft.json`), "utf8"),
+                readFileSync(join(pass.directory, "first-pass", `term-${row.context.id}-${os}.draft.json`), "utf8"),
               ) as RunDraft
               const expectedIds = selection.ids ?? versions.probeSuiteSnapshot().probes.term
               expect(readCollectorSelection(draft.rawReplies)).toEqual({ ids: expectedIds })
@@ -1271,6 +1277,7 @@ it.each([
             .map((row) => {
               const draftPath = join(
                 pass.directory,
+                "first-pass",
                 `${row.context.kind}-${row.context.id}-${row.context.os}.draft.json`,
               )
               const initialized = JSON.parse(readFileSync(draftPath, "utf8")) as { runId: string }
@@ -2116,7 +2123,7 @@ it("admits the identity the host consumed, not a fixture identity", async () => 
     expect(row.error).toBeUndefined()
     expect(row.status).toBe("classified")
     expect(row.summary).toBeDefined()
-    const draftPath = join(pass.directory, "term-terminal-app-macos.draft.json")
+    const draftPath = join(pass.directory, "first-pass", "term-terminal-app-macos.draft.json")
     const handed = parseJsonStrict(draftPath, readFileSync(draftPath, "utf8")) as { runId: string }
     // The identity the host was given, the identity it handed back, and the identity the pass graded
     // are one run — not a fixture that was minted before the pass and could never disagree.
@@ -2251,7 +2258,7 @@ it.each([
     ) {
       const output = String(args.at(-1))
       const draft = JSON.parse(
-        readFileSync(join(dirname(dirname(output)), "term-alacritty-linux.draft.json"), "utf8"),
+        readFileSync(join(dirname(dirname(output)), "first-pass", "term-alacritty-linux.draft.json"), "utf8"),
       ) as RunDraft
       const run = {
         ...draft,
@@ -2295,7 +2302,7 @@ it.each([
       // 33151: Screen's truecolor-on supplement run as the mux records it: its config, and no permissions.
       const output = String(args.at(-1))
       const draft = JSON.parse(
-        readFileSync(join(dirname(dirname(output)), "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
+        readFileSync(join(dirname(dirname(output)), "first-pass", "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
       ) as RunDraft
       const muxRun = {
         ...structuredClone(draft),
@@ -2328,7 +2335,7 @@ it.each([
     ) {
       const output = String(args.at(-1))
       const draft = JSON.parse(
-        readFileSync(join(dirname(dirname(output)), "term-alacritty-linux.draft.json"), "utf8"),
+        readFileSync(join(dirname(dirname(output)), "first-pass", "term-alacritty-linux.draft.json"), "utf8"),
       ) as RunDraft
       const appRun = {
         ...structuredClone(draft),
@@ -2590,6 +2597,24 @@ it.each([
         expect(snapshots).toContain("v3-run.draft.json")
         expect(snapshots).toHaveLength(1)
         expect(appRow.rawRun).toBe(join(dirname(appRow.rawRun!), "v3-run.draft.json"))
+        // 34623: an App's pre-measure seed (273 probe-todo, "Required probe test has not started") sat beside
+        // pass.json after a classified run and was read as the run's result. Every draft at the top of the pass
+        // folder is one pass.json names; App and supplement seeds live under first-pass/ like library seeds.
+        const named = new Set(
+          pass.contexts.flatMap((entry) => [entry.rawRun, ...(entry.supplements ?? []).map((s) => s.rawRun)]),
+        )
+        const unnamed = readdirSync(pass.directory)
+          .filter((name) => name.endsWith(".draft.json"))
+          .map((name) => join(pass.directory, name))
+          .filter((path) => !named.has(path))
+        expect(unnamed, "top-level drafts pass.json does not name").toEqual([])
+        expect(existsSync(join(pass.directory, "first-pass", "term-alacritty-linux.draft.json"))).toBe(true)
+        expect(existsSync(join(pass.directory, "first-pass", "term-alacritty-linux.read-allowed.draft.json"))).toBe(
+          true,
+        )
+        expect(existsSync(join(pass.directory, "first-pass", "README.md"))).toBe(true)
+        // Whatever pass.json names, classified or failed, exists and is the evidence.
+        for (const path of named) if (path !== undefined) expect(existsSync(path), path).toBe(true)
       }
     } else if (fault === "missing-collection-receipt") {
       expect(row.status).toBe("not-started")
