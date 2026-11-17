@@ -1625,20 +1625,24 @@ export async function readITermPromptMarks(input: {
     // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
     // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
     let reading: AppSemanticReading
-    let failure: string | undefined
     try {
       reading = await measureRow()
     } catch (error) {
-      failure = `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`
-      reading = { status: "invalid", reason: failure, detail }
+      reading = {
+        status: "invalid",
+        reason: `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`,
+        detail,
+      }
     }
     try {
       await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
     } catch (error) {
       const restore = `restoring the session failed: ${message(error)}`
+      // Any unsuccessful reading, thrown or returned, keeps its own reason first (@cto 5a892117).
+      const primary = reading.status === "measured" ? undefined : reading.reason
       reading = {
         status: "invalid",
-        reason: failure === undefined ? `iTerm2 prompt row was read, but ${restore}` : `${failure}; then ${restore}`,
+        reason: primary === undefined ? `iTerm2 prompt row was read, but ${restore}` : `${primary}; then ${restore}`,
         detail,
       }
     }

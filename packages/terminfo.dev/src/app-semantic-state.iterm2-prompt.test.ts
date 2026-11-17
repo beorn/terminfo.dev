@@ -16,7 +16,14 @@ import type { ITermPromptMark, ITermPromptRead, ITermPromptSession } from "./ite
  * exactly one rule, so each row's verdict follows from the rule it names.
  */
 function fakeITerm(
-  variant: { ignore?: string; noMarks?: boolean; zAddsMark?: boolean; markAtB?: boolean; noFence?: boolean } = {},
+  variant: {
+    ignore?: string
+    noMarks?: boolean
+    zAddsMark?: boolean
+    markAtB?: boolean
+    noFence?: boolean
+    failRestore?: boolean
+  } = {},
 ) {
   const marks: { id: string; command: boolean; output: boolean; code?: number }[] = []
   let fence: unknown = null
@@ -28,7 +35,9 @@ function fakeITerm(
     const sequences = /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07/g
     for (const [, letter, code, value] of text.matchAll(sequences)) {
       if (value !== undefined) {
-        if (!variant.noFence) fence = Buffer.from(value, "base64").toString()
+        const decoded = Buffer.from(value, "base64").toString()
+        if (variant.failRestore && decoded.endsWith("-restored")) throw new Error("fixture session write refused")
+        if (!variant.noFence) fence = decoded
         continue
       }
       const last = marks.at(-1)
@@ -162,3 +171,21 @@ test("a fence that never appears is reported by its own phase, not masked by the
     phases: [{ name: "baseline user-variable fence" }, { name: "restored user-variable fence" }],
   })
 }, 20_000)
+
+// @cto 5a892117: a RETURNED unsuccessful reading (PROMPT_UNAVAILABLE, a baseline that missed its start) keeps its
+// own reason when the session cleanup also fails; the cleanup failure is appended, and the row stays invalid.
+// The case above covers only a THROWN phase failure. Each primary case runs with and without the failed cleanup.
+test.each([
+  { variant: { noMarks: true }, primary: /PROMPT_UNAVAILABLE after the baseline OSC 133 sequence/ },
+  { variant: { markAtB: true }, primary: /did not reach this row's baseline/ },
+])("a returned $primary reason survives a failed session cleanup", async ({ variant, primary }) => {
+  const control = await fakeITerm(variant).read("extensions.osc133-b")
+  expect(control.status === "measured" ? "" : control.reason).toMatch(primary)
+  expect(control.status === "measured" ? "" : control.reason).not.toContain("restoring the session failed")
+  const reading = await fakeITerm({ ...variant, failRestore: true }).read("extensions.osc133-b")
+  expect(reading.status).toBe("invalid")
+  const reason = reading.status === "invalid" ? reading.reason : ""
+  expect(reason.startsWith(control.status === "measured" ? "?" : control.reason)).toBe(true)
+  expect(reason).toMatch(/; then restoring the session failed: fixture session write refused$/)
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-invalid")
+})
