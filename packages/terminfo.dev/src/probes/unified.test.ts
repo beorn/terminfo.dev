@@ -7142,17 +7142,23 @@ describe("the served capture path records its own caller intervals (34261)", () 
 describe("the row wall returns a held viewport to the bottom before the next row", () => {
   const ids = ["scrollback.accumulate", "scrollback.total-lines"] as const
   function heldRows(slowTerm: ProbeDefinition["term"], nextTerm: ProbeDefinition["term"]) {
-    const [slow, next] = ids.map((id) => ALL_PROBES.find((probe) => probe.id === id)!)
-    const original = [slow, next].map((probe) => ({
-      probe,
-      saved: { term: probe.term, termWrites: probe.termWrites, wallMs: probe.wallMs },
-    }))
+    const find = (id: string) => {
+      const probe = ALL_PROBES.find((entry) => entry.id === id)
+      if (!probe) throw new Error(`no probe ${id} in ALL_PROBES`)
+      return probe
+    }
+    const slow = find(ids[0])
+    const next = find(ids[1])
+    const saved = [slow, next].map((probe) => ({ probe, term: probe.term, wallMs: probe.wallMs }))
     slow.term = slowTerm
     slow.wallMs = 80
     next.term = nextTerm
     next.wallMs = 20_000
     return () => {
-      for (const { probe, saved } of original) Object.assign(probe, saved)
+      for (const { probe, term, wallMs } of saved) {
+        probe.term = term
+        probe.wallMs = wallMs
+      }
     }
   }
 
@@ -7209,7 +7215,7 @@ describe("the row wall returns a held viewport to the bottom before the next row
       async (source) => {
         await source.viewportScroll?.press("pageUp")
         await new Promise(() => {})
-        return { pass: false, tests: [] }
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "never" }] }
       },
       async () => {
         order.push("next:started")
