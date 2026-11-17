@@ -209,21 +209,27 @@ export async function requestDaemonProbe(
   if (ids !== undefined) body = { ...body, ids }
   await verifyDaemonInfo(daemon)
   let response: Response
+  const started = Date.now()
   try {
+    // Bun's own fetch timeout aborts a silent body at ~362s and wins over AbortSignal.timeout
+    // (34477 run 2328c7a7). timeout:false leaves the signal as the only bound.
     response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
       method: body ? "POST" : "GET",
       headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
       ...(body && { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS),
+      timeout: false,
     })
   } catch (error) {
     // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
     if (error instanceof Error && error.name === "TimeoutError") {
+      const elapsed = Date.now() - started
+      const signalFired = elapsed >= DAEMON_PROBE_TIMEOUT_MS - 5_000
+      const bound = signalFired
+        ? `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`
+        : `${elapsed} ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal`
       throw Object.assign(
-        new Error(
-          `Daemon on port ${daemon.port} did not answer /probe within ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`,
-          { cause: error },
-        ),
+        new Error(`Daemon on port ${daemon.port} did not answer /probe within ${bound}`, { cause: error }),
         { name: "TimeoutError" },
       )
     }
