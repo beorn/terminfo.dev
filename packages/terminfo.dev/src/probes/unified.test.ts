@@ -2541,17 +2541,55 @@ it.each([
     // #30932 S1: each row names the installation it was handed. The earlier row keeps the first
     // one after a later renewal, and a refusal is carried as the refusal, never as stale geometry.
     const header = { format: "terminfo.capture-binding", version: 1 }
-    const bindingFor = (calibrationId: string, refusal: string | undefined, geometry: typeof initial) =>
+    const bindingFor = (
+      calibrationId: string,
+      rowIndex: number,
+      refusal: string | undefined,
+      geometry: typeof initial,
+    ) =>
       refusal === undefined
-        ? { ...header, calibrationId, outcome: "installed", captureGeometry: geometry }
-        : { ...header, calibrationId, outcome: "refused", refusal }
-    const first = bindingFor("collector.captureCalibration", initialRefusal ? "initial refused" : undefined, initial)
-    expect(JSON.parse(batch.rawReplies[ids[0] + ".captureBinding"]!)).toEqual(first)
+        ? { ...header, calibrationId, rowIndex, outcome: "installed", captureGeometry: geometry }
+        : { ...header, calibrationId, rowIndex, outcome: "refused", refusal }
+    const initialRefused = initialRefusal ? "initial refused" : undefined
+    expect(JSON.parse(batch.rawReplies[ids[0] + ".captureBinding"]!)).toEqual(
+      bindingFor("collector.captureCalibration", 0, initialRefused, initial),
+    )
     expect(JSON.parse(batch.rawReplies[ids[1] + ".captureBinding"]!)).toEqual(
       resets
-        ? bindingFor("collector.captureCalibration.renewal.1", renewalRefusal ? "renewal refused" : undefined, renewed)
-        : first,
+        ? bindingFor("collector.captureCalibration.renewal.1", 1, renewalRefusal ? "renewal refused" : undefined, renewed)
+        : bindingFor("collector.captureCalibration", 1, initialRefused, initial),
     )
+    // The reader resolves each association to the NAMED installation's own record (#30932 S1 review):
+    // its preparing row, its run position and what it handed. Both rows read back as recorded.
+    const rawReplies: Record<string, string> = { ...batch.rawReplies }
+    for (const id of ids) {
+      expect(readCaptureBinding(rawReplies, id)).toEqual(JSON.parse(rawReplies[id + ".captureBinding"]!))
+    }
+    if (resets) {
+      // A recorded but wrong reference fails at equal dimensions too, whether only the id is wrong or
+      // the rows' whole associations are swapped.
+      const withBinding = (id: string, binding: Record<string, unknown>) => ({
+        ...rawReplies,
+        [id + ".captureBinding"]: JSON.stringify(binding),
+      })
+      const stored = (id: string) => JSON.parse(rawReplies[id + ".captureBinding"]!) as Record<string, unknown>
+      const renewal = "collector.captureCalibration.renewal.1"
+      expect(() =>
+        readCaptureBinding(withBinding(ids[0]!, { ...stored(ids[0]!), calibrationId: renewal }), ids[0]!),
+      ).toThrow(`replay-incomplete: capture binding names ${renewal}, installed at row ${ids[1]}, after this row ran`)
+      expect(() =>
+        readCaptureBinding(
+          withBinding(ids[1]!, { ...stored(ids[1]!), calibrationId: "collector.captureCalibration" }),
+          ids[1]!,
+        ),
+      ).toThrow(`but ${renewal} was installed at row ${ids[1]}, before this row ran (${ids[1]})`)
+      expect(() => readCaptureBinding(withBinding(ids[0]!, stored(ids[1]!)), ids[0]!)).toThrow(
+        `capture binding names ${renewal}, but this row prepared collector.captureCalibration (${ids[0]})`,
+      )
+      expect(() => readCaptureBinding(withBinding(ids[1]!, stored(ids[0]!)), ids[1]!)).toThrow(
+        `capture binding names collector.captureCalibration, but this row prepared ${renewal} (${ids[1]})`,
+      )
+    }
     expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
       captures: [{ frame: { ref: `sha256:${"f".repeat(64)}` } }],
     })
@@ -5209,7 +5247,13 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     format: "terminfo.capture-binding",
     version: 1,
     calibrationId: "collector.captureCalibration",
+    rowIndex: 0,
     outcome: "installed",
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  // The installation records the row it was prepared for and what it handed, under its own id.
+  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+    preparedAt: { row: "sgr.reset", index: 0 },
     captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
   })
   batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
@@ -5282,13 +5326,38 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       "capture binding malformed: version (sgr.reset)",
     ],
     [
-      "wrong-calibration",
+      "unrecorded-renewal",
       (rawReplies) =>
         (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
           ...binding,
           calibrationId: "collector.captureCalibration.renewal.1",
         })),
       "capture binding names collector.captureCalibration.renewal.1, which this run did not record (sgr.reset)",
+    ],
+    [
+      // A recorded but wrong reference at equal dimensions: a later renewal handed the same geometry
+      // (another origin), and this row's association names it instead of the installation it ran on.
+      "recorded-wrong-renewal",
+      (rawReplies) => {
+        rawReplies["collector.captureCalibration.renewal.1.trace"] = JSON.stringify({
+          ...JSON.parse(rawReplies["collector.captureCalibration.trace"]!),
+          preparedAt: { row: "sgr.later", index: 1 },
+        })
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })
+      },
+      "capture binding names collector.captureCalibration.renewal.1, installed at row sgr.later, after this row ran (sgr.reset)",
+    ],
+    [
+      "installation-predates",
+      (rawReplies) => {
+        const trace = JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>
+        delete trace.preparedAt
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify(trace)
+      },
+      "collector.captureCalibration records no preparing row (run predates it) (sgr.reset)",
     ],
     [
       "unrecorded-calibration",
@@ -5301,19 +5370,42 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     [
       "other-geometry",
       (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)),
+      "capture binding names collector.captureCalibration, whose recorded geometry differs from the one this row carries (sgr.reset)",
+    ],
+    [
+      // The installation record and the association agree with each other but not with the context
+      // the recorded callback read: the call log stays the authority for what the row was handed.
+      "other-geometry-recorded",
+      (rawReplies) => {
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify({
+          ...JSON.parse(rawReplies["collector.captureCalibration.trace"]!),
+          captureGeometry: otherGeometry.captureGeometry,
+        })
+      },
       "capture binding differs from the geometry the recorded callback was handed (sgr.reset)",
     ],
   ]
   // A preparation that refused by throwing keeps its trace but no finished paint log; its refused
-  // association is still evidence of a recorded installation.
+  // association is checked against the refusal that installation recorded.
   const refused = { ...binding, outcome: "refused", refusal: "fixture refused" }
   delete (refused as Record<string, unknown>).captureGeometry
+  const refusedTrace = JSON.stringify({ preparedAt: { row: "row", index: 0 }, refusal: "fixture refused" })
   expect(
     readCaptureBinding(
-      { "row.captureBinding": JSON.stringify(refused), "collector.captureCalibration.trace": "{}" },
+      { "row.captureBinding": JSON.stringify(refused), "collector.captureCalibration.trace": refusedTrace },
       "row",
     ),
   ).toEqual(refused)
+  expect(() =>
+    readCaptureBinding(
+      {
+        "row.captureBinding": JSON.stringify({ ...refused, refusal: "another refusal" }),
+        "collector.captureCalibration.trace": refusedTrace,
+      },
+      "row",
+    ),
+  ).toThrow("whose recorded refusal differs from the one this row carries (row)")
   for (const [label, edit, message] of faults) {
     expect(tampered(label, edit), label).toThrow("replay-incomplete: " + message)
   }

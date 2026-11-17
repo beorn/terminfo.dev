@@ -25,6 +25,8 @@ export type CaptureBinding =
       version: typeof CAPTURE_BINDING_VERSION
       /** The raw-reply id of the installation's own paint log: `collector.captureCalibration` or `…renewal.N`. */
       calibrationId: string
+      /** The row's position in the run's selected order: a reader places it between installations. */
+      rowIndex: number
       outcome: "installed"
       /** Exactly the context the callback was handed, measured raster geometry and sentinel included. */
       captureGeometry: InstalledGeometry
@@ -33,6 +35,7 @@ export type CaptureBinding =
       format: typeof CAPTURE_BINDING_FORMAT
       version: typeof CAPTURE_BINDING_VERSION
       calibrationId: string
+      rowIndex: number
       outcome: "refused"
       refusal: string
     }
@@ -40,9 +43,10 @@ export type CaptureBinding =
 /** The association for a row handed `source`, or undefined when no installation reached it. */
 export function captureBinding(
   calibrationId: string,
+  rowIndex: number,
   source: Pick<TermProbeSource, "captureGeometry" | "captureGeometryRefusal">,
 ): CaptureBinding | undefined {
-  const base = { format: CAPTURE_BINDING_FORMAT, version: CAPTURE_BINDING_VERSION, calibrationId } as const
+  const base = { format: CAPTURE_BINDING_FORMAT, version: CAPTURE_BINDING_VERSION, calibrationId, rowIndex } as const
   if (source.captureGeometry) {
     // Plain recorded data: a JSON copy keeps the binding independent of the live context object.
     const captureGeometry = JSON.parse(JSON.stringify(source.captureGeometry)) as InstalledGeometry
@@ -82,15 +86,18 @@ export function parseCaptureBinding(value: unknown): CaptureBinding {
   ) {
     throw new CaptureBindingMalformed("calibrationId")
   }
+  if (!Number.isSafeInteger(value.rowIndex) || (value.rowIndex as number) < 0) {
+    throw new CaptureBindingMalformed("rowIndex")
+  }
   if (value.outcome === "refused") {
-    if (Object.keys(value).sort().join(",") !== "calibrationId,format,outcome,refusal,version") {
+    if (Object.keys(value).sort().join(",") !== "calibrationId,format,outcome,refusal,rowIndex,version") {
       throw new CaptureBindingMalformed("fields")
     }
     if (typeof value.refusal !== "string" || !value.refusal) throw new CaptureBindingMalformed("refusal")
     return value as CaptureBinding
   }
   if (value.outcome !== "installed") throw new CaptureBindingMalformed("outcome")
-  if (Object.keys(value).sort().join(",") !== "calibrationId,captureGeometry,format,outcome,version") {
+  if (Object.keys(value).sort().join(",") !== "calibrationId,captureGeometry,format,outcome,rowIndex,version") {
     throw new CaptureBindingMalformed("fields")
   }
   const installed = value.captureGeometry

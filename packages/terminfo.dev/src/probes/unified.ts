@@ -697,6 +697,7 @@ export async function runProbeBatch(
     preGeometry?: GeometryMeasurement,
     calibrationId = "collector.captureCalibration",
     askingRow?: string,
+    rowIndex?: number,
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -800,6 +801,12 @@ export async function runProbeBatch(
         // This preparation's own outcome is settled here: `captureGeometryRefusal` is one variable the
         // next preparation overwrites, so the late read must not report a later preparation's refusal.
         const refusalAtPreparation = captureGeometryRefusal
+        // #30932 S1: what this installation handed its rows, and the run position of the row it was
+        // prepared for, so a row's stored association is checked against this record (never re-derived).
+        const geometryAtPreparation =
+          refusalAtPreparation === undefined && captureGeometry
+            ? (JSON.parse(JSON.stringify(captureGeometry)) as NonNullable<TermProbeSource["captureGeometry"]>)
+            : undefined
         const writesAtPreparation = calibrationEvents
           .filter((event) => event.kind === "write")
           .map((event) => event.sequence)
@@ -811,6 +818,8 @@ export async function runProbeBatch(
               grid: preparationGrid,
               geometryCorroboration: reported,
               refusal: refusalAtPreparation,
+              ...(rowIndex !== undefined && { preparedAt: { row: probe.id, index: rowIndex } }),
+              ...(geometryAtPreparation && { captureGeometry: geometryAtPreparation }),
               writes: writesAtPreparation,
               queries: calibrationQueries,
               events: calibrationEvents,
@@ -1450,6 +1459,7 @@ export async function runProbeBatch(
         preGeometry,
         calibrationId,
         calibrationId === "collector.captureCalibration" ? undefined : probe.id,
+        selected.indexOf(probe),
       )
       activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
@@ -1460,7 +1470,7 @@ export async function runProbeBatch(
     // beside its call log. The geometry is the one the callback context carries; nothing here
     // re-derives it, and a renewal inside the callback stays ordered in that row's own call log.
     if (options.prepareCapture && activeCalibrationId !== undefined) {
-      const binding = captureBinding(activeCalibrationId, probeSource)
+      const binding = captureBinding(activeCalibrationId, selected.indexOf(probe), probeSource)
       if (binding) batch.rawReplies[probe.id + CAPTURE_BINDING_SUFFIX] = JSON.stringify(binding)
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }

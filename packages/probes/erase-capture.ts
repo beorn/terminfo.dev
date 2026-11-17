@@ -121,7 +121,11 @@ export function readProbeCapture(
   for (const result of capture.results ?? []) {
     const key = result.featureId + ".callLog"
     const raw = capture.rawReplies[key]
-    if (raw === undefined) continue
+    if (raw === undefined) {
+      // A row with no call log still has its association checked against the installation records.
+      readCaptureBinding(capture.rawReplies, result.featureId)
+      continue
+    }
     const log = readCallLog(parseJsonStrict(key, raw), {
       onOperation(operation) {
         if (operation.path === "context.capture" && "value" in operation.outcome) {
@@ -209,10 +213,52 @@ export function readEraseCapture(
   return { capture, log }
 }
 
+/** One installation's own record, read from its `.trace`: the row it was prepared for and what it handed. */
+type RecordedInstallation = {
+  preparedAt: { row: string; index: number }
+  refusal: string | undefined
+  captureGeometry: unknown
+}
+
+function recordedInstallation(
+  rawReplies: Readonly<Record<string, string>>,
+  calibrationId: string,
+  featureId: string,
+): RecordedInstallation | undefined {
+  const raw = rawReplies[calibrationId + ".trace"]
+  if (raw === undefined) return undefined
+  const trace = parseJsonStrict(calibrationId + ".trace", raw)
+  const preparedAt = object(trace) ? trace.preparedAt : undefined
+  if (
+    !object(trace) ||
+    !object(preparedAt) ||
+    typeof preparedAt.row !== "string" ||
+    typeof preparedAt.index !== "number" ||
+    !Number.isSafeInteger(preparedAt.index)
+  ) {
+    throw new IncompleteReplay(
+      `replay-incomplete: ${calibrationId} records no preparing row (run predates it) (${featureId})`,
+    )
+  }
+  return {
+    preparedAt: { row: preparedAt.row, index: preparedAt.index },
+    refusal: typeof trace.refusal === "string" ? trace.refusal : undefined,
+    captureGeometry: trace.captureGeometry,
+  }
+}
+
+/** Installations are numbered in run order: the first, then `renewal.1`, `renewal.2`, and so on. */
+function nextCalibrationId(calibrationId: string): string {
+  const renewal = /\.renewal\.([1-9][0-9]*)$/.exec(calibrationId)
+  return `collector.captureCalibration.renewal.${renewal ? Number(renewal[1]) + 1 : 1}`
+}
+
 /**
  * #30932 S1: one row's stored association to the capture installation it was handed, validated, or
- * undefined when the row has none. A malformed record, or one naming an installation this run did not
- * record, is a named incomplete replay; the stored status of the row is never touched here.
+ * undefined when the row has none. It is checked against the NAMED installation's own record: the row
+ * runs at or after that installation's preparing row and before the next installation's, and the
+ * geometry or refusal it carries is the one that installation recorded. Any failure is a named
+ * incomplete replay; the stored status of the row is never touched here.
  */
 export function readCaptureBinding(
   rawReplies: Readonly<Record<string, string>>,
@@ -229,15 +275,36 @@ export function readCaptureBinding(
     }
     throw error
   }
-  // Every preparation retains its `.trace`; its paint `.callLog` exists only when the traced scope
-  // finished, so a preparation that refused by throwing has the trace alone.
-  if (
-    rawReplies[binding.calibrationId + ".trace"] === undefined &&
-    rawReplies[binding.calibrationId + ".callLog"] === undefined
-  ) {
-    throw new IncompleteReplay(
-      `replay-incomplete: capture binding names ${binding.calibrationId}, which this run did not record (${featureId})`,
-    )
+  const id = binding.calibrationId
+  const incomplete = (reason: string): never => {
+    throw new IncompleteReplay(`replay-incomplete: capture binding names ${id}, ${reason} (${featureId})`)
+  }
+  // Every preparation retains its `.trace`, refused ones included; its paint `.callLog` exists only
+  // when the traced scope finished, so the trace is the installation's record.
+  const installation = recordedInstallation(rawReplies, id, featureId) ?? incomplete("which this run did not record")
+  const { preparedAt } = installation
+  if (binding.rowIndex < preparedAt.index) incomplete(`installed at row ${preparedAt.row}, after this row ran`)
+  if (featureId === preparedAt.row && binding.rowIndex !== preparedAt.index) {
+    incomplete("whose preparing row is this row at another run position")
+  }
+  const next = nextCalibrationId(id)
+  const following = recordedInstallation(rawReplies, next, featureId)
+  if (following !== undefined && following.preparedAt.index <= binding.rowIndex) {
+    incomplete(`but ${next} was installed at row ${following.preparedAt.row}, before this row ran`)
+  }
+  // The row a preparation ran for is recorded by that installation alone, so a row that prepared one
+  // installation can never be associated with another, wherever its stored run position says it was.
+  for (let other = "collector.captureCalibration"; ; other = nextCalibrationId(other)) {
+    const recorded = other === id ? installation : recordedInstallation(rawReplies, other, featureId)
+    if (recorded === undefined) break
+    if (other !== id && recorded.preparedAt.row === featureId) incomplete(`but this row prepared ${other}`)
+  }
+  if (binding.outcome === "installed") {
+    if (!isDeepStrictEqual(binding.captureGeometry, installation.captureGeometry)) {
+      incomplete("whose recorded geometry differs from the one this row carries")
+    }
+  } else if (installation.captureGeometry !== undefined || installation.refusal !== binding.refusal) {
+    incomplete("whose recorded refusal differs from the one this row carries")
   }
   return binding
 }
