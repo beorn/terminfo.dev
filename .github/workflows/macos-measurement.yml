@@ -361,6 +361,11 @@ jobs:
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
+          elif [ "$APP_ID" = ghostty ]; then
+            # 34562: a Ghostty run with no id or version in its subject can bind no reviewed declaration.
+            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
+            test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "$bundle_version")"
           fi
           PROBE_IDS_ARGS=""
           if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_ARGS="$(printf ' --probe-ids %q' "$PROBE_IDS")"; fi
