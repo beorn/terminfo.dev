@@ -845,8 +845,21 @@ test("erase.screen.scrollback hands a collapsed frame to the owned history reade
   const { ctx, keys, clicks, writes } = scrollbackApp({ wheelMoves: false })
   let readerCalls = 0
   const readings = [ctx.rows + 37, ctx.rows, ctx.rows + 5]
+  // 34588: one ordered log of clicks and writes, so the handoff order is pinned and not only its membership.
+  const order: string[] = []
   const withReader: TermProbeSource = {
     ...ctx,
+    write(text) {
+      order.push(`write:${text}`)
+      ctx.write(text)
+    },
+    input: {
+      ...ctx.input!,
+      async injectClick(button) {
+        order.push(`click:${button}`)
+        await ctx.input!.injectClick(button)
+      },
+    },
     getScrollback: async () => {
       const totalLines = readings[Math.min(readerCalls, readings.length - 1)] ?? ctx.rows
       readerCalls += 1
@@ -863,6 +876,17 @@ test("erase.screen.scrollback hands a collapsed frame to the owned history reade
   expect(result.note).toContain(
     `owned history 37 -> 0 lines above a ${ctx.rows}-line screen, and 5 after ${ctx.rows + 5} more`,
   )
+  // The capture lifecycle restores the viewport and closes before the history seed, so its cleanup writes cannot
+  // land inside the seeded rows (@dev/18 mutants M3 and M5).
+  const firstSeedRow = order.findIndex((event) => event.startsWith("write:E"))
+  const restoreClick = order.lastIndexOf("click:5")
+  const cursorShown = order.lastIndexOf("write:\x1b[?25h")
+  const lifecycleClear = order.lastIndexOf("write:\x1b[0m\x1b[2J\x1b[H")
+  expect(firstSeedRow).toBeGreaterThan(-1)
+  expect(restoreClick, "wheel-down restore precedes the history seed").toBeGreaterThan(-1)
+  expect(restoreClick).toBeLessThan(cursorShown)
+  expect(cursorShown, "lifecycle end shows the cursor before the history seed").toBeLessThan(lifecycleClear)
+  expect(lifecycleClear, "lifecycle end clears before the history seed").toBeLessThan(firstSeedRow)
 })
 
 test("erase.screen.scrollback grades a collapsed frame unsupported when the owned reader sees history remain", async () => {
