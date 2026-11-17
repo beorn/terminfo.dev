@@ -26,11 +26,39 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047", "sgr.underline.color", 
 test.each([
   ["reset.sgr", 150_000],
   ["sgr.reset", 150_000],
-  ["sgr.selective-reset.bold", 150_000],
   ["modes.xtsave", 90_000],
   ["modes.xtpushsgr", 90_000],
   ["modes.xtpopsgr", 90_000],
 ] as const)("%s declares a %d ms wall", (id, wallMs) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs).toBe(wallMs)
+})
+
+// 34567: the hosted macOS image moved 20261102.0473.1 to 20261112.0504.1 and raised measured per-capture cost from
+// 0.912 s to 1.158 s on cmux (Cursor 0.851 to 1.067) with frame counts unchanged, so 13 Cursor rows and 11 cmux
+// rows crossed the 30 s default while still capturing (/hh/var/@dev-brain/collector-slow-1117.md). Each wall below is
+// capture count x 1.158 s x 1.20 headroom, rounded up to the next 15 s: 22 to 32 captures need 45 s, 66 need 105 s,
+// 132 need 195 s. Rows the measurement did not cut keep their walls and the 30 s default stays.
+test.each([
+  ["sgr.bold", 45_000],
+  ["sgr.faint", 45_000],
+  ["sgr.italic", 45_000],
+  ["sgr.inverse", 45_000],
+  ["sgr.strikethrough", 45_000],
+  ["sgr.overline", 45_000],
+  ["sgr.hidden", 45_000],
+  ["sgr.underline.single", 45_000],
+  ["sgr.underline.double", 45_000],
+  ["sgr.underline.curly", 45_000],
+  ["sgr.underline.dashed", 45_000],
+  ["sgr.underline.dotted", 45_000],
+  ["sgr.underline-color-indexed", 45_000],
+  ["modes.alt-screen.exit", 45_000],
+  ["modes.xtpushcolors", 105_000],
+  ["modes.xtpopcolors", 105_000],
+  ["sgr.selective-reset.bold", 195_000],
+] as const)("%s declares a %d ms capture-bound wall", (id, wallMs) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()
   expect(definition?.wallMs).toBe(wallMs)
