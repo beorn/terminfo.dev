@@ -40,6 +40,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/probes/window-basis-admission.ts",
   "packages/terminfo.dev/src/probes/window-basis-rulings.ts",
   "packages/terminfo.dev/src/probes/window-basis-table.ts",
+  "packages/terminfo.dev/src/probes/window-basis-writes.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/clipboard-config.ts",

@@ -150,7 +150,10 @@ describe("ledgerOmega over admitted mixed writes (34579)", () => {
   // the closed grammar, so the restore ledger must read the same grammar, not whole writes.
   const retained = JSON.parse(
     readFileSync(
-      new URL("../../../../content/probes-apps/terminal-app-2.15-macos-1991f8e4251a87f27fdc6dc085b2ab62.json", import.meta.url),
+      new URL(
+        "../../../../content/probes-apps/terminal-app-2.15-macos-1991f8e4251a87f27fdc6dc085b2ab62.json",
+        import.meta.url,
+      ),
       "utf8",
     ),
   ) as { rawReplies: Record<string, string> }
@@ -179,7 +182,10 @@ describe("ledgerOmega over admitted mixed writes (34579)", () => {
   it("still refuses a mixed write carrying a token on no closed list, by name", () => {
     for (const write of [`${ESC}[?7lab${ESC}7`, `${ESC}[?7lab\tc`]) {
       const omega = ledgerOmega({ writes: [write], reads: reads(`${ESC}[?7;1$y`, `${ESC}[?7;1$y`) })
-      expect(omega).toMatchObject({ status: "refused", failures: [{ attribute: JSON.stringify(write), reason: "unclassified" }] })
+      expect(omega).toMatchObject({
+        status: "refused",
+        failures: [{ attribute: JSON.stringify(write), reason: "unclassified" }],
+      })
       expect(touchedAttributes([write]).unclassified).toEqual([write])
     }
   })
