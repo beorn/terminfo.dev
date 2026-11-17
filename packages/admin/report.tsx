@@ -177,11 +177,11 @@ export function CensusReport({
               : undefined
           // D132 B (#30917): the nine environment positions are manual by design and no collection
           // selects them, so the collector's "not selected" reason must not print as uncollected work.
-          const note = isEnvironmentGroup(id)
-            ? cell === undefined
-              ? undefined
-              : ENVIRONMENT_GROUP_NOTE
-            : [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
+          // Only that TODO reason is replaced (#34587): a stored environment result keeps its own reason.
+          const note =
+            isEnvironmentGroup(id) && cell?.result.status === "probe-todo"
+              ? ENVIRONMENT_GROUP_NOTE
+              : [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
           if (!note) {
             return []
           }

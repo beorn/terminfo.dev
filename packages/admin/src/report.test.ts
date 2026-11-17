@@ -230,6 +230,77 @@ test("report notes the nine environment positions as manual by design, never as 
     expect(plain, id).toContain(`${id}: N/M manual by design (catalogue): no automatable probe exists for this feature`)
   }
   expect(plain).not.toContain("Not selected for this collection")
+
+  // #34587: the catalogue wording replaces only the TODO reason. A stored environment result keeps
+  // its own reason, as the matrix keeps its status; the ungraded score and the raw run do not move.
+  const [supportedId, failedId] = ENVIRONMENT_GROUP_IDS
+  const attempt = { scope: "probe" as const, startedAt: measuredAt }
+  const supportedReason = "Retained successful environment observation"
+  const failedReason = "Retained environment reader failure"
+  const storedJson = JSON.stringify({
+    ...draft,
+    subject: {
+      kind: "term",
+      id: "xterm",
+      version: "390",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt,
+    origin: { kind: "collector" },
+    results: draft.results.map((result) =>
+      result.featureId === supportedId
+        ? {
+            featureId: supportedId,
+            status: "supported",
+            reason: supportedReason,
+            assertionType: "query_reply",
+            rawReplyRef: supportedId,
+            attempt,
+            tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0], rawReplyRef: supportedId }],
+          }
+        : result.featureId === failedId
+          ? {
+              featureId: failedId,
+              status: "probe-invalid",
+              reason: failedReason,
+              attempt,
+              tests: [{ id: "collection", status: "probe-invalid", attempt, reason: failedReason }],
+            }
+          : result,
+    ),
+    rawReplies: { [supportedId!]: "OK" },
+    assertions: [
+      {
+        featureId: supportedId,
+        kind: "positive",
+        assertionType: "query_reply",
+        rawReplyRef: supportedId,
+        expected: "OK",
+        observed: "OK",
+      },
+    ],
+  })
+  const stored = parseRun("environment-stored.json", storedJson, catalogIds, new Map([[manifest.probeHash, manifest]]))
+  const original = JSON.stringify(stored)
+  const storedProjection = projectResults([stored], catalogIds, { currentProbeHash: manifest.probeHash }, [])
+  const storedPlain = (await renderReport(storedProjection, catalogIds)).replace(/\x1b\[[0-9;]*m/g, "")
+  const notes = storedPlain.split("Observation reasons and notes")[1] ?? ""
+  expect(notes).toContain(`${supportedId}: ${supportedReason}`)
+  expect(notes).toContain(`${failedId}: ${failedReason}`)
+  for (const id of ENVIRONMENT_GROUP_IDS.slice(2)) {
+    expect(notes, id).toContain(`${id}: N/M manual by design (catalogue): no automatable probe exists for this feature`)
+  }
+  const cells = storedProjection.contexts["term:xterm"]?.cells
+  expect(cells?.[supportedId!]?.result.status).toBe("supported")
+  expect(cells?.[failedId!]?.result.status).toBe("probe-invalid")
+  expect(storedProjection.contexts["term:xterm"]?.score).toEqual(projection.contexts["term:xterm"]?.score)
+  expect(JSON.stringify(stored)).toBe(original)
 })
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
