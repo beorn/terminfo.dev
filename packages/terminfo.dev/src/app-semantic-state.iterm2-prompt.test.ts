@@ -14,6 +14,11 @@ import type { ITermPromptMark, ITermPromptRead, ITermPromptSession } from "./ite
  * A fake iTerm2 session with 3.6.11's mark rules (PTYSession getPromptResponseForMark): A adds a mark,
  * B sets its command range, C its output start (RUNNING), D;n its code (FINISHED). Each variant breaks
  * exactly one rule, so each row's verdict follows from the rule it names.
+ *
+ * The rules also need the text a shell prints (34570, hosted run 44146186014 read every mark EDITING).
+ * VT100ScreenMutableState.m at v3.6.11: promptEndedAndCommandStartedAt drops B as a duplicate when nothing
+ * moved the cursor since A; commandDidEndWithRange records C only when the command text since B is
+ * non-blank; setReturnCodeOfLastCommand puts D's code on lastCommandMark, the last mark that ran a command.
  */
 function fakeITerm(
   variant: {
@@ -25,15 +30,23 @@ function fakeITerm(
     failRestore?: boolean
   } = {},
 ) {
-  const marks: { id: string; command: boolean; output: boolean; code?: number }[] = []
+  const marks: { id: string; command: boolean; output: boolean; ran?: boolean; code?: number }[] = []
+  let sinceA = ""
+  let sinceB: string | undefined
   let fence: unknown = null
   let opened = 0
   const writes: string[] = []
   const add = (command = false) => marks.push({ id: `mark-${marks.length}`, command, output: false })
   const write = (text: string) => {
     writes.push(text)
-    const sequences = /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07/g
-    for (const [, letter, code, value] of text.matchAll(sequences)) {
+    const tokens =
+      /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07|\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07)|([^\x1b]+)/g
+    for (const [, letter, code, value, printed] of text.matchAll(tokens)) {
+      if (printed !== undefined) {
+        sinceA += printed
+        if (sinceB !== undefined) sinceB += printed
+        continue
+      }
       if (value !== undefined) {
         const decoded = Buffer.from(value, "base64").toString()
         if (variant.failRestore && decoded.endsWith("-restored")) throw new Error("fixture session write refused")
@@ -41,13 +54,24 @@ function fakeITerm(
         continue
       }
       const last = marks.at(-1)
-      if (variant.noMarks || letter === variant.ignore) continue
-      if (letter === "A" && !variant.markAtB) add()
-      else if (letter === "B" && variant.markAtB) add(true)
-      else if (letter === "B" && last) last.command = true
-      else if (letter === "C" && last) last.output = true
-      else if (letter === "D" && last) last.code = Number(code ?? 0)
-      else if (letter === "Z" && variant.zAddsMark) add()
+      if (letter === undefined || variant.noMarks || letter === variant.ignore) continue
+      if (letter === "A" && !variant.markAtB) {
+        add()
+        sinceA = ""
+        sinceB = undefined
+      } else if (letter === "B" && variant.markAtB) {
+        add(true)
+        sinceB = ""
+      } else if (letter === "B" && last && sinceA !== "") {
+        last.command = true
+        sinceB = ""
+      } else if (letter === "C" && last && sinceB?.trim()) {
+        last.output = true
+        last.ran = true
+      } else if (letter === "D") {
+        const ran = marks.findLast((mark) => mark.ran)
+        if (ran) ran.code = Number(code ?? 0)
+      } else if (letter === "Z" && variant.zAddsMark) add()
     }
   }
   const range = { start: { x: 0, y: "1" }, end: { x: 1, y: "1" } }

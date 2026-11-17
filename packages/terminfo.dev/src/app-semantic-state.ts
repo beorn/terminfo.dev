@@ -1508,6 +1508,14 @@ export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
 ])
 
 const promptOsc = (value: string) => `\x1b]${value}\x07`
+/**
+ * What a shell prints around the marks (34570; hosted run 44146186014 read every mark EDITING without it).
+ * iTerm2 3.6.11 VT100ScreenMutableState.m drops B as a duplicate when nothing moved the cursor since A
+ * (promptEndedAndCommandStartedAt, shortCircuitDups), records C only when the command text since B is
+ * non-blank (commandDidEndWithRange), and puts D's code on the last mark that ran a command.
+ */
+const ITERM_PROMPT_TEXT = "$ "
+const itermCommand = (nonce: string) => `terminfo-command-${nonce}`
 const EDITING_NEW = { mark: "new", state: "EDITING", command: "unset", output: "unset", exit: "absent" }
 
 /**
@@ -1522,19 +1530,25 @@ const ITERM_PROMPT_ROWS: Record<
 > = {
   "extensions.osc133-a": { tail: () => "", feeds: [() => promptOsc("133;A")], expected: [EDITING_NEW] },
   "extensions.osc133-b": {
-    tail: () => promptOsc("133;A"),
+    tail: () => promptOsc("133;A") + ITERM_PROMPT_TEXT,
     from: { mark: "same", state: "EDITING", command: "unset", output: "unset", exit: "absent" },
     feeds: [() => promptOsc("133;B")],
     expected: [{ mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" }],
   },
   "extensions.osc133-c": {
-    tail: () => promptOsc("133;A") + promptOsc("133;B"),
+    tail: (nonce) => promptOsc("133;A") + ITERM_PROMPT_TEXT + promptOsc("133;B") + itermCommand(nonce),
     from: { mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" },
     feeds: [() => promptOsc("133;C")],
     expected: [{ mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" }],
   },
   "extensions.osc133-d": {
-    tail: (nonce) => promptOsc("133;A") + promptOsc("133;B") + promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+    tail: (nonce) =>
+      promptOsc("133;A") +
+      ITERM_PROMPT_TEXT +
+      promptOsc("133;B") +
+      itermCommand(nonce) +
+      promptOsc("133;C") +
+      `\r\nterminfo-output-${nonce}\r\n`,
     from: { mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" },
     feeds: [() => promptOsc("133;D;17")],
     expected: [{ mark: "same", state: "FINISHED", command: "set", output: "set", exit: 17 }],
@@ -1542,9 +1556,9 @@ const ITERM_PROMPT_ROWS: Record<
   "extensions.semantic-prompts": {
     tail: () => "",
     feeds: [
-      () => promptOsc("133;A"),
-      () => promptOsc("133;B"),
-      (nonce) => promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+      () => promptOsc("133;A") + ITERM_PROMPT_TEXT,
+      (nonce) => promptOsc("133;B") + itermCommand(nonce),
+      (nonce) => promptOsc("133;C") + `\r\nterminfo-output-${nonce}\r\n`,
       () => promptOsc("133;D;17"),
     ],
     expected: [
@@ -1611,7 +1625,8 @@ export async function readITermPromptMarks(input: {
       phases.push({ name, feed, fence: observed, read })
       return { read, fence: observed }
     }
-    const finished = osc("133;A") + osc("133;B") + osc("133;C") + `terminfo-baseline-${nonce}\r\n` + osc("133;D;0")
+    const finished =
+      osc("133;A") + ITERM_PROMPT_TEXT + osc("133;B") + itermCommand(nonce) + osc("133;C") + "\r\n" + osc("133;D;0")
     const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
     // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
     // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
