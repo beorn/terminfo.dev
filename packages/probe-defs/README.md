@@ -442,6 +442,7 @@ cell that did not come back byte-identical is named rather than assumed.
 Every confirmation compares consecutive complete frames under one fixed deadline.
 Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;
 the chosen form and attempt outcomes are retained, and stripe colors come from the captured pixels.
+For solid, column and row geometry, each witnessed paint forms an occupied-member colour class anchored at the observed mode within Chebyshev radius `R <= 1` in decoded 8-bit RGB space (with minimum pair separation `G >= 16` codes on both column and row stripe-class pairs, and rows inheriting the column anchors while admitting their own observed dither phases), recorded in the calibration `basis` prose so consumers do not read it as exact single-colour evidence; baseline confirmation, outside-grid comparisons and relational restoration against the original confirmed baseline remain exact (`34480`).
 Both forms missing leaves a named no-capture outcome; complete geometry and restoration checks still apply.
 Every session, launched by the collector or not, runs the shared capture lifecycle: SGR reset and
 DECTCEM off before the first paint, DECTCEM restored set on the way out, because a hidden cursor is
