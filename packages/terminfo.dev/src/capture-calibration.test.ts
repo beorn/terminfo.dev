@@ -1257,8 +1257,8 @@ const WARP_FRAMES: Record<string, string> = {
 }
 
 /** Decode one retained 8-bit RGBA, non-interlaced PNG (the collector's own frame format) without magick. */
-function retainedFrame(name: string): CapturedFrame {
-  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${WARP_FRAMES[name]}.png`, import.meta.url))
+function retainedFrame(name: string, frames: Record<string, string> = WARP_FRAMES): CapturedFrame {
+  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${frames[name]}.png`, import.meta.url))
   let offset = 8
   let width = 0
   let height = 0
@@ -1300,7 +1300,9 @@ function retainedFrame(name: string): CapturedFrame {
 // retained these five frames; the pill is 797 px at x 835-925, y 6-29 on the row and restore frames only.
 const WARP_TITLE_BAR: CaptureChromeBand = { y: 0, height: 40, reason: "Warp title bar" }
 function warpRun(chromeBand?: CaptureChromeBand) {
-  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map(retainedFrame)
+  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map((name) =>
+    retainedFrame(name),
+  )
   return calibration({
     rows: 39,
     cols: 123,
@@ -1341,6 +1343,42 @@ test("a change outside both the grid and the declared band still refuses", async
 test("a declared band that reaches the grid is refused", async () => {
   const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
   await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
+})
+
+// 34664: hosted iTerm2 3.6.11 run 44161536804 retained these calibration frames. Its rounded window corner is drawn in
+// alpha: the bottom-left rim is alpha 0, 4, 70, 207 with the paint's RGB, so an RGB-only class counted the alpha-4
+// pixel as paint, split the corner cut, and refused "non-solid grid: 203837 pixels in 560x364".
+const ITERM2_FRAMES: Record<string, string> = {
+  before: "1a21d43f55843b2466ba495fe9148e3d6851541c44914ac9563e194ef347d691",
+  solid: "e9c56d4324b725634f54cea7130cc509602c37f91aaf65a50db2bcfce9b9c02d",
+}
+
+function iterm2SolidRun(solid = retainedFrame("solid", ITERM2_FRAMES)) {
+  const before = retainedFrame("before", ITERM2_FRAMES)
+  return calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: { "before grid paint": [before, before], "solid grid paint": [solid, solid] },
+  })
+}
+
+test("the retained iTerm2 transparent corner rim joins the fillet instead of splitting the grid", async () => {
+  const run = iterm2SolidRun()
+  const message = await run.promise.then(
+    () => "",
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
+  expect(message).not.toMatch(/non-solid grid/)
+  // Proven stage: column stripes are read only after the solid grid validated.
+  expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
+})
+
+test("a translucent pixel inside the retained iTerm2 grid is still an interior hole", async () => {
+  const solid = retainedFrame("solid", ITERM2_FRAMES)
+  // The paint's own RGB at alpha 4, well inside the grid: a hole no corner reaches.
+  solid.rgba[(300 * solid.width + 300) * 4 + 3] = 4
+  await expect(iterm2SolidRun(solid).promise).rejects.toThrow(/holes or separate patches/)
 })
 
 // 34480 (@cto 34480-fresh-owner-contract-go-2141): deterministic +-1-code content-coordinate ordered dither

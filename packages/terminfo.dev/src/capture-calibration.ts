@@ -368,7 +368,15 @@ function chebyshevRgb(left: RgbTriple, right: RgbTriple): number {
   return Math.max(Math.abs(left[0] - right[0]), Math.abs(left[1] - right[1]), Math.abs(left[2] - right[2]))
 }
 
+/**
+ * Paint is an opaque pixel whose RGB is a class member. A window's rounded corner can be drawn as alpha rather than
+ * as an opaque mask: hosted iTerm2 3.6.11 (run 44161536804) draws its bottom-left rim at alpha 0, 4, 70, 207 while the
+ * RGB stays the paint's, so an RGB-only test counted the alpha-4 pixel as paint and split the corner cut (34664).
+ * A pixel the window does not cover opaquely is outside its shape, so it joins the fillet instead. Linux frames carry
+ * no alpha channel and decode opaque.
+ */
 function inColorClass(frame: CapturedFrame, offset: number, colorClass: PaintColorClass): boolean {
+  if (frame.rgba[offset + 3] !== 255) return false
   const red = frame.rgba[offset]
   const green = frame.rgba[offset + 1]
   const blue = frame.rgba[offset + 2]
