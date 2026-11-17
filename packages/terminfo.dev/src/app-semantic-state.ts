@@ -2154,7 +2154,11 @@ async function readNativeEditorState(input: {
           observation: await input.editor.capture(input.featureId, "failed-read"),
         })
       } catch (error) {
-        reading = { status: "invalid", reason: `Native editor evidence capture failed: ${String(error)}`, detail }
+        reading = {
+          status: "invalid",
+          reason: `Native editor evidence capture failed: ${redactNativeEditorPaths(String(error))}`,
+          detail,
+        }
       }
     }
     if (mutated && restore !== undefined) {
@@ -2162,7 +2166,11 @@ async function readNativeEditorState(input: {
         input.write(osc(`633;P;Cwd=${restore}`))
         await sample("restored", pathToFileURL(restore).toString())
       } catch (error) {
-        reading = { status: "invalid", reason: `Native editor fixture restoration failed: ${String(error)}`, detail }
+        reading = {
+          status: "invalid",
+          reason: `Native editor fixture restoration failed: ${redactNativeEditorPaths(String(error))}`,
+          detail,
+        }
       }
     } else if (mutated) {
       detail.restoration = {
