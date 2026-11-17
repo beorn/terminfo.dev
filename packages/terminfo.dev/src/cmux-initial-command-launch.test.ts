@@ -5,7 +5,7 @@
  * @consumer Shared cmux initial-command launcher used by admin and measurement workflows.
  * @testonly none
  */
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
@@ -140,4 +140,52 @@ test("a started pid whose parents never reach the cmux process refuses and close
     ),
   ).rejects.toThrow("cmux-initial-command-parent-mismatch")
   expect(readFileSync(f.configPath, "utf8")).toBe(OPERATOR_CONFIG)
+})
+
+test("a key naming a run's command file whose run directory is gone is ours: removed, not refused (34302 finding 2)", async () => {
+  const f = fixture(null)
+  const goneRun = join(f.dir, "runs", "gone-run")
+  mkdirSync(goneRun, { recursive: true })
+  const goneCommand = join(goneRun, "cmux-command.sh")
+  writeFileSync(f.configPath, `${OPERATOR_CONFIG}initial-command = /bin/bash '${goneCommand}'\n`)
+  rmSync(goneRun, { recursive: true })
+  const launch = await launchCmuxInitialCommand(
+    baseOpts(f),
+    deps({
+      openApp: () => writeFileSync(f.startedMarkerPath, "777 4242\n"),
+    }),
+  )
+  expect(launch.removedStaleKey).toBe(true)
+  expect(readFileSync(f.configPath, "utf8")).not.toContain("gone-run")
+  launch.restore()
+  expect(readFileSync(f.configPath, "utf8")).toBe(OPERATOR_CONFIG)
+})
+
+test("a key whose command file exists but cannot be read refuses by name and changes nothing (34302 finding 2)", async () => {
+  const f = fixture(null)
+  const locked = join(f.dir, "locked-command.sh")
+  writeFileSync(locked, "# terminfo-cmux-initial-command run-locked\n")
+  chmodSync(locked, 0o000)
+  const config = `${OPERATOR_CONFIG}initial-command = /bin/bash '${locked}'\n`
+  writeFileSync(f.configPath, config)
+  try {
+    await expect(launchCmuxInitialCommand(baseOpts(f), deps({}))).rejects.toThrow("cmux-initial-command-unreadable")
+    expect(readFileSync(f.configPath, "utf8")).toBe(config)
+    expect(existsSync(f.commandPath)).toBe(false)
+  } finally {
+    chmodSync(locked, 0o600)
+  }
+})
+
+test("restore removes a config the run created, leaving no file behind (34302 finding 3)", async () => {
+  const f = fixture(null)
+  const launch = await launchCmuxInitialCommand(
+    baseOpts(f),
+    deps({
+      openApp: () => writeFileSync(f.startedMarkerPath, "777 4242\n"),
+    }),
+  )
+  expect(readFileSync(f.configPath, "utf8")).toBe(`initial-command = /bin/bash '${f.commandPath}'\n`)
+  expect(launch.restore()).toBe("removed")
+  expect(existsSync(f.configPath)).toBe(false)
 })
