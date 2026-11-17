@@ -1916,7 +1916,8 @@ export const sgrProbes: ProbeDefinition[] = [
       preserve: ["italic", "underline"],
       preserveMode: "any",
     }),
-    wallMs: 120_000,
+    // 34641: Linux WezTerm took up to 115.5 s over 132 captures (run 2026-11-17T13-06Z), 96 percent of the old 120 s wall; 150 s puts it at 77 percent.
+    wallMs: 150_000,
   },
 
   resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
@@ -1930,7 +1931,8 @@ export const sgrProbes: ProbeDefinition[] = [
   // Run 42853381528: 72 captures at about 400ms, so the 30s wall cuts the probe mid-capture.
   {
     ...resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
-    wallMs: 120_000,
+    // 34641: Linux WezTerm took up to 110.1 s over 132 captures (run 2026-11-17T13-06Z), 92 percent of the old 120 s wall; 150 s puts it at 73 percent.
+    wallMs: 150_000,
   },
 ]
 

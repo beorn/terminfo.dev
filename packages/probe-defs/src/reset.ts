@@ -203,8 +203,8 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // Hosted Mac run 42836445788 still had this callback running at 30s.
-    wallMs: 120_000,
+    // 34641: Linux WezTerm took up to 118.7 s over 132 captures (run 2026-11-17T13-06Z), 99 percent of the old 120 s wall; 150 s puts it at 79 percent.
+    wallMs: 150_000,
   },
 
   {

@@ -3082,8 +3082,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 54.9 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
+    wallMs: 90_000,
   },
 
   // XTPOPSGR — pop SGR stack (CSI # })
@@ -3116,8 +3116,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 55.1 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
+    wallMs: 90_000,
   },
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
@@ -3152,8 +3152,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 54.7 s over 66 captures (run 2026-11-17T13-06Z), 91 percent of the old 60 s wall; 90 s puts it at 61 percent.
+    wallMs: 90_000,
   },
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.

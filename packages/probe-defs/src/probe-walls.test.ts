@@ -19,3 +19,19 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047", "sgr.underline.color", 
     expect(definition?.wallMs).toBe(45_000)
   },
 )
+
+// 34641: on Linux WezTerm these ran at 79-99 percent of their walls (capture spans from frame.capturedAt, runs
+// 2026-11-17T12-44Z and 13-06Z; worst median capture gap 921 ms), so they flipped between graded and cut run to run.
+// Each wall is sized from that measured span with at least 20 percent headroom: 132 captures need 150 s, 66 need 90 s.
+test.each([
+  ["reset.sgr", 150_000],
+  ["sgr.reset", 150_000],
+  ["sgr.selective-reset.bold", 150_000],
+  ["modes.xtsave", 90_000],
+  ["modes.xtpushsgr", 90_000],
+  ["modes.xtpopsgr", 90_000],
+] as const)("%s declares a %d ms wall", (id, wallMs) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs).toBe(wallMs)
+})
