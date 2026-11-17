@@ -700,6 +700,17 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         ]
       : [{ row: "reset.sgr-0", from: pixelGeometry, fromOrigin: at(57), to: pixelGeometry, toOrigin: at(597) }]
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, expectedRenewals)
+    // #30932 S1: the fact names the origin of its own installation and, frozen, the run's first one;
+    // an in-row renewal moves neither. The pre-flight ran once, through the recorder, under its own key,
+    // and each reply keeps the query layer's own match.
+    const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
+    assert.deepEqual(fact.initialOrigin, at(57))
+    assert.deepEqual(fact.origin, proofState === "source-capable" ? at(1137) : at(57))
+    assert.equal(fact.preflight, "collector.captureCalibration.preflight.callLog")
+    assert.ok(fact.queries.length > 0)
+    for (const query of fact.queries) assert.ok(Array.isArray(query.match), query.sequence + " keeps its match")
+    const { readCallLog } = await import("viprobe")
+    readCallLog(JSON.parse(run.rawReplies["collector.captureCalibration.preflight.callLog"]))
     assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
     assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,

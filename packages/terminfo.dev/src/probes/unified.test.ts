@@ -24,6 +24,7 @@ import {
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type CaptureRequest,
   type AppSemanticReading,
   type ProbeDefinition,
 } from "@terminfo/probe-defs"
@@ -35,8 +36,9 @@ import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
-import { readProbeCapture } from "../../../probes/erase-capture.ts"
+import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
+import { currentTrace } from "../../../../docs/data/run-trace.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
 import { finishCapture } from "../capture-core.ts"
@@ -2420,13 +2422,21 @@ it.each([
     renewalRefusal: true,
   },
   { name: "RIS renews after an initial refusal", sequence: "\x1bc", initialRefusal: true, renewalRefusal: false },
+  // #30932 S1: a renewal at equal dimensions is still a second installation, which only its id tells apart.
+  {
+    name: "RIS renews at equal dimensions",
+    sequence: "\x1bc",
+    initialRefusal: false,
+    renewalRefusal: false,
+    sameSize: true,
+  },
   {
     name: "DECSTR preserves the existing calibration",
     sequence: "\x1b[!p",
     initialRefusal: false,
     renewalRefusal: false,
   },
-])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal }) => {
+])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal, sameSize }) => {
   verifiedBatchFixture()
   const ids = ["reset.ris", "reset.decaln"]
   const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
@@ -2439,7 +2449,9 @@ it.each([
     geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
     source: "measured by complete raster calibration" as const,
   }
-  const renewed = { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
+  const renewed = sameSize
+    ? { ...initial, geometry: { ...initial.geometry } }
+    : { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
   const order: string[] = []
   const observedWrites: string[] = []
   const handedSources: TermProbeSource[] = []
@@ -2527,6 +2539,63 @@ it.each([
         captures: [{ frame: { ref: `sha256:${"2".repeat(64)}` } }],
       })
     } else expect(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]).toBeUndefined()
+    // #30932 S1: each row names the installation it was handed. The earlier row keeps the first
+    // one after a later renewal, and a refusal is carried as the refusal, never as stale geometry.
+    const header = { format: "terminfo.capture-binding", version: 1 }
+    const bindingFor = (
+      calibrationId: string,
+      rowIndex: number,
+      refusal: string | undefined,
+      geometry: typeof initial,
+    ) =>
+      refusal === undefined
+        ? { ...header, calibrationId, rowIndex, outcome: "installed", captureGeometry: geometry }
+        : { ...header, calibrationId, rowIndex, outcome: "refused", refusal }
+    const initialRefused = initialRefusal ? "initial refused" : undefined
+    expect(JSON.parse(batch.rawReplies[ids[0] + ".captureBinding"]!)).toEqual(
+      bindingFor("collector.captureCalibration", 0, initialRefused, initial),
+    )
+    expect(JSON.parse(batch.rawReplies[ids[1] + ".captureBinding"]!)).toEqual(
+      resets
+        ? bindingFor(
+            "collector.captureCalibration.renewal.1",
+            1,
+            renewalRefusal ? "renewal refused" : undefined,
+            renewed,
+          )
+        : bindingFor("collector.captureCalibration", 1, initialRefused, initial),
+    )
+    // The reader resolves each association to the NAMED installation's own record (#30932 S1 review):
+    // its preparing row, its run position and what it handed. Both rows read back as recorded.
+    const rawReplies: Record<string, string> = { ...batch.rawReplies }
+    for (const id of ids) {
+      expect(readCaptureBinding(rawReplies, id)).toEqual(JSON.parse(rawReplies[id + ".captureBinding"]!))
+    }
+    if (resets) {
+      // A recorded but wrong reference fails at equal dimensions too, whether only the id is wrong or
+      // the rows' whole associations are swapped.
+      const withBinding = (id: string, binding: Record<string, unknown>) => ({
+        ...rawReplies,
+        [id + ".captureBinding"]: JSON.stringify(binding),
+      })
+      const stored = (id: string) => JSON.parse(rawReplies[id + ".captureBinding"]!) as Record<string, unknown>
+      const renewal = "collector.captureCalibration.renewal.1"
+      expect(() =>
+        readCaptureBinding(withBinding(ids[0]!, { ...stored(ids[0]!), calibrationId: renewal }), ids[0]!),
+      ).toThrow(`replay-incomplete: capture binding names ${renewal}, installed at row ${ids[1]}, after this row ran`)
+      expect(() =>
+        readCaptureBinding(
+          withBinding(ids[1]!, { ...stored(ids[1]!), calibrationId: "collector.captureCalibration" }),
+          ids[1]!,
+        ),
+      ).toThrow(`but ${renewal} was installed at row ${ids[1]}, before this row ran (${ids[1]})`)
+      expect(() => readCaptureBinding(withBinding(ids[0]!, stored(ids[1]!)), ids[0]!)).toThrow(
+        `capture binding names ${renewal}, but this row prepared collector.captureCalibration (${ids[0]})`,
+      )
+      expect(() => readCaptureBinding(withBinding(ids[1]!, stored(ids[0]!)), ids[1]!)).toThrow(
+        `capture binding names collector.captureCalibration, but this row prepared ${renewal} (${ids[1]})`,
+      )
+    }
     expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
       captures: [{ frame: { ref: `sha256:${"f".repeat(64)}` } }],
     })
@@ -5108,6 +5177,291 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
   expect(readFileSync(path)).toEqual(bytes)
 })
 
+// #30932 S1 (@cto PROCEED 1220, R4): the real positive beside the negative control above. A
+// collector-installed measured raster reaches the SGR callback, the batch persists the row's
+// association to the calibration it used, the bound reader validates that association, and the
+// callback replays offline with every live route forbidden, keeping the live status and order.
+it("binds an SGR row to its installed calibration and replays it offline with the live status", async (context) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  let sgrState = "0"
+  process.stdout.write = ((value: string) => {
+    writes.push(value)
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
+    }
+    return true
+  }) as typeof process.stdout.write
+  // 80x24 cells of 2x4 pixels: the whole text area is one small decoded frame.
+  const geometry = { cellWidth: 2, cellHeight: 4, textWidth: 160, textHeight: 96 }
+  const sentinel = { form: "basic" as const, rgb: [255, 0, 0] as const }
+  const captured: Array<{ label: string; pixelGeometry: unknown }> = []
+  // A real retained frame through the capture writer, so the bound reader checks its blob.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-capture-binding-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
+  let captures = 0
+  const capture = async (request: CaptureRequest & { featureId: string }) => {
+    const { featureId, role, label, pixelGeometry } = request
+    captures += 1
+    captured.push({ label, pixelGeometry })
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+      "base64",
+    )
+    return finishCapture({
+      directory: artifacts,
+      onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+      checkpoint: request,
+      source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
+      png,
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+      trace: {},
+    })
+  }
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source: probeSource }) => {
+            probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration", sentinel }
+          },
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  const live = batch.results.find(({ featureId }) => featureId === "sgr.reset")
+  if (!live) throw new Error("Missing live SGR reset row")
+  // The measured raster, never a query-derived size, is what the row's crops used.
+  expect(captured.length).toBeGreaterThan(0)
+  for (const request of captured) expect(request.pixelGeometry).toEqual(geometry)
+  expect(JSON.parse(batch.rawReplies["sgr.reset.captureBinding"]!)).toEqual({
+    format: "terminfo.capture-binding",
+    version: 1,
+    calibrationId: "collector.captureCalibration",
+    rowIndex: 0,
+    outcome: "installed",
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  // The installation records the row it was prepared for and what it handed, under its own id.
+  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+    preparedAt: { row: "sgr.reset", index: 0 },
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
+  const bytes = readFileSync(path)
+  const source = {
+    kind: "trace" as const,
+    trace: { path: basename(path), sha256: createHash("sha256").update(bytes).digest("hex") },
+    captureRunId: draft.runId,
+    captureSuiteId: draft.suiteId,
+    captureSourceRevision: draft.sourceRevision,
+  }
+  const expected = { manifest, sourceRevision, subject: draft.subject }
+  const { capture: validated } = readProbeCapture(directory, source, expected)
+  expect(readCaptureBinding(validated.rawReplies, "sgr.reset")).toMatchObject({
+    calibrationId: "collector.captureCalibration",
+    outcome: "installed",
+  })
+  // R2: the association stays private. The public trace reads a raw reply only through a result's
+  // rawReplyRef, and the stored run with the new record publishes none of it.
+  const publicTrace = currentTrace({
+    ...draft,
+    schemaVersion: 4,
+    sha256: source.trace.sha256,
+    probeHash: draft.suiteId,
+    catalogIds: manifest.catalogIds ?? [],
+    results: draft.results ?? [],
+    readRaw: () => ({ rawReplies: draft.rawReplies, assertions: draft.assertions ?? [], identity: draft.identity }),
+  } as unknown as Parameters<typeof currentTrace>[0])
+  expect(publicTrace?.bytes).toBeDefined()
+  expect(publicTrace?.bytes).not.toContain("terminfo.capture-binding")
+  expect(publicTrace?.bytes).not.toContain("captureBinding")
+  // The association is evidence checked inside the bound read, never an override: each fault is a
+  // named incomplete replay, and none of them touches the stored row.
+  const tampered = (label: string, edit: (rawReplies: Record<string, string>) => void) => {
+    const rawReplies = { ...draft.rawReplies }
+    edit(rawReplies)
+    const candidateBytes = Buffer.from(JSON.stringify({ ...draft, rawReplies }))
+    const candidatePath = "binding-" + label + ".json"
+    writeFileSync(join(directory, candidatePath), candidateBytes, { flag: "wx" })
+    return () =>
+      readProbeCapture(
+        directory,
+        {
+          ...source,
+          trace: { path: candidatePath, sha256: createHash("sha256").update(candidateBytes).digest("hex") },
+        },
+        expected,
+      )
+  }
+  const binding = JSON.parse(draft.rawReplies["sgr.reset.captureBinding"]!) as Record<string, unknown>
+  const otherGeometry = {
+    ...binding,
+    captureGeometry: { ...(binding.captureGeometry as object), geometry: { ...geometry, cellWidth: 3 } },
+  }
+  const faults: Array<[string, (rawReplies: Record<string, string>) => void, string]> = [
+    [
+      "missing",
+      (rawReplies) => delete rawReplies["sgr.reset.captureBinding"],
+      "no capture binding recorded (run predates it) (sgr.reset)",
+    ],
+    [
+      "malformed",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({ ...binding, version: 2 })),
+      "capture binding malformed: version (sgr.reset)",
+    ],
+    [
+      "unrecorded-renewal",
+      (rawReplies) =>
+        (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })),
+      "capture binding names collector.captureCalibration.renewal.1, which this run did not record (sgr.reset)",
+    ],
+    [
+      // A recorded but wrong reference at equal dimensions: a later renewal handed the same geometry
+      // (another origin), and this row's association names it instead of the installation it ran on.
+      "recorded-wrong-renewal",
+      (rawReplies) => {
+        rawReplies["collector.captureCalibration.renewal.1.trace"] = JSON.stringify({
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
+          preparedAt: { row: "sgr.later", index: 1 },
+        })
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })
+      },
+      "capture binding names collector.captureCalibration.renewal.1, installed at row sgr.later, after this row ran (sgr.reset)",
+    ],
+    [
+      "installation-predates",
+      (rawReplies) => {
+        const trace = JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>
+        delete trace.preparedAt
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify(trace)
+      },
+      "collector.captureCalibration records no preparing row (run predates it) (sgr.reset)",
+    ],
+    [
+      "unrecorded-calibration",
+      (rawReplies) => {
+        delete rawReplies["collector.captureCalibration.callLog"]
+        delete rawReplies["collector.captureCalibration.trace"]
+      },
+      "capture binding names collector.captureCalibration, which this run did not record (sgr.reset)",
+    ],
+    [
+      "other-geometry",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)),
+      "capture binding names collector.captureCalibration, whose recorded geometry differs from the one this row carries (sgr.reset)",
+    ],
+    [
+      // The installation record and the association agree with each other but not with the context
+      // the recorded callback read: the call log stays the authority for what the row was handed.
+      "other-geometry-recorded",
+      (rawReplies) => {
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify({
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
+          captureGeometry: otherGeometry.captureGeometry,
+        })
+      },
+      "capture binding differs from the geometry the recorded callback was handed (sgr.reset)",
+    ],
+  ]
+  // A preparation that refused by throwing keeps its trace but no finished paint log; its refused
+  // association is checked against the refusal that installation recorded.
+  const refused = { ...binding, outcome: "refused", refusal: "fixture refused" }
+  delete (refused as Record<string, unknown>).captureGeometry
+  const refusedTrace = JSON.stringify({ preparedAt: { row: "row", index: 0 }, refusal: "fixture refused" })
+  expect(
+    readCaptureBinding(
+      { "row.captureBinding": JSON.stringify(refused), "collector.captureCalibration.trace": refusedTrace },
+      "row",
+    ),
+  ).toEqual(refused)
+  expect(() =>
+    readCaptureBinding(
+      {
+        "row.captureBinding": JSON.stringify({ ...refused, refusal: "another refusal" }),
+        "collector.captureCalibration.trace": refusedTrace,
+      },
+      "row",
+    ),
+  ).toThrow("whose recorded refusal differs from the one this row carries (row)")
+  for (const [label, edit, message] of faults) {
+    expect(tampered(label, edit), label).toThrow("replay-incomplete: " + message)
+  }
+  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.reset.callLog"]!))
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  expect(replay.context.captureGeometry?.geometry).toEqual(geometry)
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.reset")?.term
+  if (!callback) throw new Error("Missing SGR reset callback")
+  const beforeReplay = writes.length
+  const liveCaptures = captures
+  // The paint-witness polls run to a wall-clock deadline, which no call log records, so their count
+  // follows the clock (a #30932 S2 shadow finding, not this slice). Replay on the same fake clock as
+  // the live run, so the recorded order is the one the replay asks for.
+  const onLiveClock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    vi.useFakeTimers()
+    try {
+      const [value] = await Promise.all([operation(), vi.runAllTimersAsync()])
+      return value
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+  const result = await onLiveClock(() => callback(replay.context))
+  replay.finish()
+  expect(writes).toHaveLength(beforeReplay)
+  expect(captures).toBe(liveCaptures)
+  // The replay reaches the live row's observation from the recorded calls alone.
+  const liveObservation = batch.observations.find(({ featureId }) => featureId === "sgr.reset")
+  if (!liveObservation) throw new Error("Missing live SGR reset observation")
+  expect(result.observation).toMatchObject({
+    outcome: liveObservation.outcome,
+    assertionType: liveObservation.assertionType,
+    ...(liveObservation.reason !== undefined && { reason: liveObservation.reason }),
+  })
+  const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
+    throw new Error("Offline SGR assertion attempted native runtime discovery")
+  })
+  try {
+    const record = await onLiveClock(() =>
+      runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" }),
+    )
+    for (const assertion of record.assertions) {
+      const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
+      expect(replayed?.status).toBe(live.status)
+    }
+  } finally {
+    nativeIdentity.mockRestore()
+  }
+}, 60_000)
+
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
 // Images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
@@ -5785,6 +6139,114 @@ it("keeps a rows-only conflict blocking a row when the raster proof fails", asyn
   expect((JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as { refusal?: string }).refusal).toBe(
     refusal,
   )
+})
+
+// 34672 condition 3 covers every geometry-dependent row, not only the rows that capture: a query row
+// reaches its verdict from the same conflicting grid, so it may not run before this run's complete-raster
+// proof is installed (@cto rows-only finding, cursor.position-report).
+const rowsOnlyConflictReply = () => {
+  const raw = "\x1b[8;39;123t"
+  return {
+    status: "conflict-rows-only" as const,
+    rows: 39,
+    cols: 123,
+    query: {
+      sequence: "\x1b[18t" as const,
+      outbound: "\x1b[18t\x1b[c" as const,
+      reason: "reply" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    },
+  }
+}
+
+const serveCursorReplies = (writes: string[]) => {
+  const replies = ["\x1b[1;4R", "\x1b[3;6R"]
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text.includes("\x1b[6n")) {
+      const reply = replies.shift()
+      if (reply) queueMicrotask(() => process.stdin.emit("data", Buffer.from(reply)))
+    }
+    return true
+  }) as typeof process.stdout.write
+  return replies
+}
+
+it("blocks a geometry-dependent query row when a rows-only conflict has no installed proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+  expect(row?.status).toBe("probe-invalid")
+  expect(row?.reason).toContain("complete-raster proof")
+  expect(batch.observations.find((item) => item.featureId === "cursor.position-report")).toBeUndefined()
+})
+
+it("blocks a geometry-dependent query row when the renewal refuses after RIS", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  let preparations = 0
+  const batch = await runProbeBatch({
+    ids: ["reset.ris", "cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      preparations++
+      if (preparations === 1) {
+        source.captureGeometry = {
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+          source: "measured by complete raster calibration" as const,
+        }
+      } else {
+        source.captureGeometryRefusal = "renewal fixture refused"
+      }
+    },
+  })
+  const reset = batch.results.find((result) => result.featureId === "reset.ris")
+  const cursor = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(reset?.reason, "the first row runs on the installed proof").not.toContain("complete-raster proof")
+  expect(cursor?.status).toBe("probe-invalid")
+  expect(cursor?.reason).toContain("renewal fixture refused")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+})
+
+it("runs a geometry-dependent query row when the rows-only conflict carries this run's proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  const replies = serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      source.captureGeometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+        source: "measured by complete raster calibration" as const,
+      }
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(row?.status, "an installed proof keeps the row independent").toBe("supported")
+  expect(replies, "both CPR replies are consumed by the row that ran").toHaveLength(0)
 })
 
 // Condition 1: the owned grid must still be the one the grant measured. A move since the grant keeps its

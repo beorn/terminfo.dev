@@ -1257,8 +1257,8 @@ const WARP_FRAMES: Record<string, string> = {
 }
 
 /** Decode one retained 8-bit RGBA, non-interlaced PNG (the collector's own frame format) without magick. */
-function retainedFrame(name: string): CapturedFrame {
-  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${WARP_FRAMES[name]}.png`, import.meta.url))
+function retainedFrame(name: string, frames: Record<string, string> = WARP_FRAMES): CapturedFrame {
+  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${frames[name]}.png`, import.meta.url))
   let offset = 8
   let width = 0
   let height = 0
@@ -1300,7 +1300,9 @@ function retainedFrame(name: string): CapturedFrame {
 // retained these five frames; the pill is 797 px at x 835-925, y 6-29 on the row and restore frames only.
 const WARP_TITLE_BAR: CaptureChromeBand = { y: 0, height: 40, reason: "Warp title bar" }
 function warpRun(chromeBand?: CaptureChromeBand) {
-  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map(retainedFrame)
+  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map((name) =>
+    retainedFrame(name),
+  )
   return calibration({
     rows: 39,
     cols: 123,
@@ -1341,6 +1343,98 @@ test("a change outside both the grid and the declared band still refuses", async
 test("a declared band that reaches the grid is refused", async () => {
   const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
   await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
+})
+
+// 34664: hosted iTerm2 3.6.11 run 44161536804 retained these calibration frames. Its rounded window corner is drawn in
+// alpha: the bottom-left rim is alpha 0, 4, 70, 207 with the paint's RGB, so an RGB-only class counted the alpha-4
+// pixel as paint, split the corner cut, and refused "non-solid grid: 203837 pixels in 560x364".
+const ITERM2_FRAMES: Record<string, string> = {
+  before: "1a21d43f55843b2466ba495fe9148e3d6851541c44914ac9563e194ef347d691",
+  solid: "e9c56d4324b725634f54cea7130cc509602c37f91aaf65a50db2bcfce9b9c02d",
+}
+
+function iterm2SolidRun(solid = retainedFrame("solid", ITERM2_FRAMES)) {
+  const before = retainedFrame("before", ITERM2_FRAMES)
+  return calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: { "before grid paint": [before, before], "solid grid paint": [solid, solid] },
+  })
+}
+
+test("the retained iTerm2 transparent corner rim joins the fillet instead of splitting the grid", async () => {
+  // These frames were taken under iTerm2's 61 pt "clear scrollback history?" strip, raised by the run's own CSI 3 J,
+  // whose shadow darkens rows 94..97 just above the grid in both frames. With the rim no longer splitting the corner,
+  // calibration gets past the solid-grid check and refuses on that shadow instead, which is the next stage's
+  // refusal. The hosted launch now sets PreventEscapeSequenceFromClearingHistory, so the strip is never raised.
+  await expect(iterm2SolidRun().promise).rejects.toThrow(
+    /^(?!.*non-solid grid).*paint changed pixels outside the witnessed grid/s,
+  )
+})
+
+test("a translucent pixel inside the retained iTerm2 grid is still an interior hole", async () => {
+  const solid = retainedFrame("solid", ITERM2_FRAMES)
+  // The paint's own RGB at alpha 4, well inside the grid: a hole no corner reaches.
+  solid.rgba[(300 * solid.width + 300) * 4 + 3] = 4
+  await expect(iterm2SolidRun(solid).promise).rejects.toThrow(/holes or separate patches/)
+})
+
+// 34664: hosted iTerm2 3.6.11 run 44178738960 (suite eddeab8ab928), with no clear-scrollback strip. Every stage changes
+// only the 560x425 grid at x 5..564, y 35..459, and the restore frame equals the before frame; six pixels of the rounded
+// bottom-left corner are translucent (alpha 4 to 207) and take each stage's colour at their own alpha.
+const ITERM2_RUN2_FRAMES: Record<string, string> = {
+  firstBefore: "23c43a4df0e2a6c8403328b520b17be3641b04c7d6a4824bdeaae49848f715c1",
+  before: "f2e561f72d5d8f8d87569a0beaac845122e9effd8caf23cbda8c50f3eb55e5b0",
+  solid: "7ccdc0222c95134e45610327fce648675a98c81deda3e2fb8d8628da311caddc",
+  columns: "ca266edce439840d0977e688c30dfc8fe3ed77718b540dbe594d5322705e1ad5",
+  rows: "b74946be6e957f3b807853cdc7b92afcda8e37832832af7d65fb6cdd659ced97",
+}
+
+test("the retained strip-free iTerm2 calibration measures its 80x25 grid at 7x17 through a translucent corner", async () => {
+  const frame = (name: string) => retainedFrame(name, ITERM2_RUN2_FRAMES)
+  const run = calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: {
+      // The run's own order: the first before capture still shows a title-bar button settling, the confirmations do not.
+      "before grid paint": [frame("firstBefore"), frame("before"), frame("before"), frame("before")],
+      "solid grid paint": Array.from({ length: 4 }, () => frame("solid")),
+      "column edge paint": Array.from({ length: 4 }, () => frame("columns")),
+      "row edge paint": Array.from({ length: 4 }, () => frame("rows")),
+      "restore grid paint": Array.from({ length: 4 }, () => frame("before")),
+    },
+  })
+  const measured = await run.promise
+  expect(measured.basis).toMatch(/80 columns x 25 rows/)
+  expect(measured.basis).toMatch(/7x17/)
+})
+
+test("a translucent window has no opaque paint and refuses where the opaque window calibrates", async () => {
+  // The same frames at alpha 128 throughout: identical RGB, but no pixel the window covers opaquely.
+  const translucent = (source: CapturedFrame): CapturedFrame => ({
+    ...source,
+    rgba: source.rgba.map((value, index) => (index % 4 === 3 ? 128 : value)),
+  })
+  // Scripted frames past their list's end advance the clock, so each stage repeats enough for the whole run.
+  const repeated = (source: CapturedFrame) => Array.from({ length: 16 }, () => translucent(source))
+  await expect(calibration().promise).resolves.toBeDefined()
+  const run = calibration({
+    frames: {
+      "before grid paint": repeated(blank),
+      "solid grid paint": repeated(rasterFrame("solid")),
+      "column edge paint": repeated(rasterFrame("columns")),
+      "row edge paint": repeated(rasterFrame("rows")),
+      "restore grid paint": repeated(blank),
+    },
+  })
+  const message = await run.promise.then(
+    () => "calibrated",
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
+  expect(message).toMatch(/^Capture calibration/)
+  expect(message).not.toMatch(/timed out|deadline/i)
 })
 
 // 34480 (@cto 34480-fresh-owner-contract-go-2141): deterministic +-1-code content-coordinate ordered dither

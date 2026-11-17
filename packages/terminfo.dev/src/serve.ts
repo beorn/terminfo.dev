@@ -68,6 +68,9 @@ import {
   queryOutcome,
   queryWithSentinelOutcome,
   readResponse,
+  withTTYQueryTrace,
+  type TTYQueryTrace,
+  type TTYTraceEvent,
   currentTTYTraceMark,
 } from "./tty.ts"
 import { createHeldViewportReader } from "./held-viewport.ts"
@@ -447,7 +450,12 @@ interface CaptureCalibrationQuery {
   reason: TerminalQueryOutcome["reason"]
   raw: string
   rawBase64: string
+  /** The query layer's own match for this reply (#30932 S1); absent on runs recorded before it. */
+  match?: TerminalQueryOutcome["match"]
 }
+
+/** #30932 S1: the raw viprobe call log (format version 1) of the geometry pre-flight, kept once per run. */
+const CAPTURE_PREFLIGHT_LOG = "collector.captureCalibration.preflight.callLog"
 
 /**
  * How this run's cell-to-pixel geometry was established, or why it was refused, as ONE recorded fact.
@@ -466,6 +474,15 @@ interface CaptureCalibrationFact {
   basis?: PixelGeometrySource
   /** The measured geometry a frame request is checked against, present on the same terms as basis. */
   geometry?: PixelGeometry
+  /** The measured grid origin of THIS installation, beside its geometry (#30932 S1). A later in-row
+   * renewal moves the live origin and is named in `renewals`; it never rewrites this field. */
+  origin?: CaptureOriginCoordinate
+  /** The origin of the run's FIRST successful installation, frozen there (#30932 S1), so a row graded
+   * before any renewal names its origin even after a later installation replaces this fact. */
+  initialOrigin?: CaptureOriginCoordinate
+  /** The raw-reply key of the pre-flight's own call log, present exactly when that pre-flight ran
+   * through the recorder; every installation that reused its report refers to the same one log. */
+  preflight?: typeof CAPTURE_PREFLIGHT_LOG
   /** Complete raster witness, including any collector-launch cursor default. */
   rasterBasis?: string
   /** Every reply the pre-flight read, in the order it asked, so the refusal is re-derivable. */
@@ -806,6 +823,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     /** The origin the last SUCCESSFUL install left behind. Kept across a refused attempt, so a row
      * that retries a renewal still records the origin it left rather than losing the pair (#34306).*/
     let installedOrigin: { pixelGeometry: PixelGeometry; origin: CaptureOriginCoordinate } | undefined
+    /** #30932 S1: the first successful installation's origin, never moved by a later install or hook. */
+    let initialOrigin: CaptureOriginCoordinate | undefined
+    /** #30932 S1: the pre-flight's serialized call log, present only once the pre-flight ran. */
+    let preflightCallLog: string | undefined
     let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
     /**
@@ -961,12 +982,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                           toOrigin: textOrigin.origin,
                         },
                   ]
+            initialOrigin ??= textOrigin.origin
             const installedCalibration: CaptureCalibrationFact = {
               outcome: "installed",
               basis: probeSource.captureGeometry.source,
               geometry: textOrigin.pixelGeometry,
+              origin: textOrigin.origin,
+              initialOrigin,
               rasterBasis: textOrigin.basis,
               queries,
+              ...(preflightCallLog !== undefined && { preflight: CAPTURE_PREFLIGHT_LOG }),
               installCensus,
               ...(renewals.length > 0 && { renewals }),
             }
@@ -1077,6 +1102,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             captureCalibration = {
               outcome: "refused",
               queries,
+              ...(preflightCallLog !== undefined && { preflight: CAPTURE_PREFLIGHT_LOG }),
+              ...(initialOrigin !== undefined && { initialOrigin }),
               refusal: error.message,
               causes,
               installCensus,
@@ -1087,18 +1114,34 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       preflightPixelCapture = async () => {
         const queries: CaptureCalibrationQuery[] = []
-        const report = await queryPixelGeometry({
-          queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
-            const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
-            queries.push({
-              sequence,
-              reason: outcome.reason,
-              raw: outcome.raw,
-              rawBase64: outcome.rawBase64,
-            })
-            return outcome
+        // #30932 S1: the pre-flight runs through the recorder once, under its own key, so its replies
+        // are a replayable call log beside the paint log rather than only this side list. It is
+        // recorded only because it ran; a renewal reuses this report and refers to this one log.
+        const traceQueries: TTYQueryTrace[] = []
+        const traceEvents: TTYTraceEvent[] = []
+        const report = await withTTYQueryTrace(
+          traceQueries,
+          traceEvents,
+          () =>
+            queryPixelGeometry({
+              queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
+                const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
+                queries.push({
+                  sequence,
+                  reason: outcome.reason,
+                  raw: outcome.raw,
+                  rawBase64: outcome.rawBase64,
+                  match: outcome.match,
+                })
+                return outcome
+              },
+            }),
+          {
+            onLog(log) {
+              preflightCallLog = JSON.stringify(log)
+            },
           },
-        })
+        )
         if ("missing" in report) {
           // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
           // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
@@ -1568,6 +1611,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               if (captureCalibration) {
                 result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
               }
+              if (preflightCallLog !== undefined) result.rawReplies[CAPTURE_PREFLIGHT_LOG] = preflightCallLog
               if (!disposeQualifiedWindow) await drainStdin(1000)
               return result
             },

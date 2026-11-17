@@ -76,6 +76,7 @@ import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipbo
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
+import { CAPTURE_BINDING_SUFFIX, captureBinding } from "@terminfo/probe-defs"
 import {
   ownedTerminalVerifiedFor,
   ownedTerminalProcessBasisFor,
@@ -683,6 +684,9 @@ export async function runProbeBatch(
   let capturePreparations = 0
   let captureGeometry: TermProbeSource["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
+  // #30932 S1: the preparation every later row's crops are measured against, by the id its own
+  // paint log is retained under, so a replayed row names the installation it actually used.
+  let activeCalibrationId: string | undefined
   const recordCapture = (
     featureId: string,
     captures: CapturedProbeFrame[],
@@ -707,6 +711,7 @@ export async function runProbeBatch(
     preGeometry?: GeometryMeasurement,
     calibrationId = "collector.captureCalibration",
     askingRow?: string,
+    rowIndex?: number,
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -822,6 +827,12 @@ export async function runProbeBatch(
         // This preparation's own outcome is settled here: `captureGeometryRefusal` is one variable the
         // next preparation overwrites, so the late read must not report a later preparation's refusal.
         const refusalAtPreparation = captureGeometryRefusal
+        // #30932 S1: what this installation handed its rows, and the run position of the row it was
+        // prepared for, so a row's stored association is checked against this record (never re-derived).
+        const geometryAtPreparation =
+          refusalAtPreparation === undefined && captureGeometry
+            ? (JSON.parse(JSON.stringify(captureGeometry)) as NonNullable<TermProbeSource["captureGeometry"]>)
+            : undefined
         const writesAtPreparation = calibrationEvents
           .filter((event) => event.kind === "write")
           .map((event) => event.sequence)
@@ -833,6 +844,8 @@ export async function runProbeBatch(
               grid: preparationGrid,
               geometryCorroboration: reported,
               refusal: refusalAtPreparation,
+              ...(rowIndex !== undefined && { preparedAt: { row: probe.id, index: rowIndex } }),
+              ...(geometryAtPreparation && { captureGeometry: geometryAtPreparation }),
               writes: writesAtPreparation,
               queries: calibrationQueries,
               events: calibrationEvents,
@@ -963,6 +976,11 @@ export async function runProbeBatch(
     let geometryStartedAt: string | undefined
     let preGeometry: GeometryMeasurement | undefined
     let geometryCheck: (typeof geometryChecks)[number] | undefined
+    // A rows-only conflict is admitted past the pre-check only so the one complete-raster calibration can
+    // test the owned candidate (condition 2). Until that same run installs its proof, no row that reads the
+    // grid may execute - a query row grades from the same conflicting grid a capture row would paint
+    // (@cto 34672 rows-only finding; cursor.position-report never calls capture).
+    let rowsOnlyConflict = false
     if (probe.termNeedsGeometry) {
       geometryCheck = { featureId: probe.id }
       geometryChecks.push(geometryCheck)
@@ -980,10 +998,9 @@ export async function runProbeBatch(
           : preGeometry?.status !== "measured"
             ? `Pre-callback geometry unavailable: ${preGeometry?.status === "unavailable" ? preGeometry.diagnostic : "no measurement"}`
             : // 34672 (@cto warp-geometry-ruling-1252 condition 1): a rows-only conflict stops blocking a row
-              // only while the preconditions that make it testable still hold - the same columns and the same
-              // owned grid the grant measured. Whether the row may then capture is decided by the one
-              // complete-raster calibration authority, not here: a refused or failed proof leaves
-              // `captureGeometryRefusal` set and the row takes its named no-capture branch.
+              // here only while the preconditions that make it testable still hold - the same columns and the
+              // same owned grid the grant measured. It never authorizes the row by itself: `rowsOnlyConflict`
+              // makes the row wait for this run's complete-raster proof below (condition 3).
               corroboration?.status === "conflict-rows-only"
               ? corroboration.cols !== preGeometry.cols ||
                 preGeometry.rows !== grant.rows ||
@@ -996,6 +1013,7 @@ export async function runProbeBatch(
                     (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
                   ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
                   : undefined
+      if (diagnostic === undefined && corroboration?.status === "conflict-rows-only") rowsOnlyConflict = true
       if (diagnostic) {
         geometryCheck.diagnostic = diagnostic
 
@@ -1015,8 +1033,12 @@ export async function runProbeBatch(
       }
     }
     let rowSentRis = false
+    // The refusal paths below retain "this row sent no bytes" as a fact, so they read a counter the row's
+    // own source feeds rather than asserting an empty list (@dev/11 peer on 34677).
+    const rowWrites: string[] = []
     const probeSource = createTermProbeSource({
       onWrite(text) {
+        rowWrites.push(text)
         rowSentRis ||= text.includes("\x1bc")
         options.onWrite?.(text)
       },
@@ -1485,10 +1507,38 @@ export async function runProbeBatch(
         preGeometry,
         calibrationId,
         calibrationId === "collector.captureCalibration" ? undefined : probe.id,
+        selected.indexOf(probe),
       )
+      activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
+    }
+    if (rowsOnlyConflict && probeSource.captureGeometry === undefined) {
+      const reason = `Rows-only geometry conflict needs this run's complete-raster proof before ${probe.id} may use the grid: ${
+        captureGeometryRefusal ?? "no proof was installed"
+      }`
+      batch.rawReplies[probe.id] = JSON.stringify({ writes: rowWrites, queries, events })
+      const pending = batch.results.find((result) => result.featureId === probe.id)
+      if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
+      const attempt =
+        preGeometry?.status === "measured"
+          ? { scope: "probe" as const, startedAt: new Date().toISOString() }
+          : { scope: "none" as const }
+      pending.status = preGeometry?.status === "measured" ? "probe-invalid" : "probe-todo"
+      pending.attempt = attempt
+      pending.reason = reason
+      pending.rawReplyRef = probe.id
+      pending.tests = [{ id: "geometry", status: pending.status, attempt, reason, rawReplyRef: probe.id }]
+      options.onCheckpoint?.(batch)
+      continue
+    }
+    // #30932 S1 (@cto 1220): associate this row with the installation it is handed, as evidence
+    // beside its call log. The geometry is the one the callback context carries; nothing here
+    // re-derives it, and a renewal inside the callback stays ordered in that row's own call log.
+    if (options.prepareCapture && activeCalibrationId !== undefined) {
+      const binding = captureBinding(activeCalibrationId, selected.indexOf(probe), probeSource)
+      if (binding) batch.rawReplies[probe.id + CAPTURE_BINDING_SUFFIX] = JSON.stringify(binding)
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
@@ -2149,6 +2199,7 @@ export async function runProbeBatch(
         capturePrepared = false
         captureGeometry = undefined
         captureGeometryRefusal = undefined
+        activeCalibrationId = undefined
       }
       options.onCheckpoint?.(batch)
     }
