@@ -27,6 +27,7 @@ import {
   decrpmPs,
   decrpmReplyPattern,
 } from "@terminfo/probe-defs"
+import { classifyWindowWrite } from "./window-basis-writes.ts"
 
 /** One attribute a cell can change. The key is what the ledger compares. */
 export type LedgerAttribute =
@@ -289,6 +290,10 @@ export interface LedgerInput {
 /**
  * Every attribute a cell's writes touch, plus the writes that could not be classified. The collector
  * uses this to know what to read back after the callback, in the same walk `ledgerOmega` performs.
+ * A write is full terminal output, so both walk it through `classifyWindowWrite`: the same tokenizer
+ * and closed grammar window-basis admission accepted it under. Text, erase, cursor-move and
+ * window-size tokens touch no attribute; any token on no closed list still makes the whole write
+ * unclassified (34579).
  */
 export function touchedAttributes(writes: readonly string[]): {
   readonly attributes: readonly LedgerAttribute[]
@@ -297,7 +302,7 @@ export function touchedAttributes(writes: readonly string[]): {
   const attributes: LedgerAttribute[] = []
   const unclassified: string[] = []
   for (const write of writes) {
-    const classification = classifyWrite(write, attributes)
+    const classification = classifyWindowWrite(write, attributes)
     if ("unclassified" in classification) {
       unclassified.push(write)
       continue
@@ -319,7 +324,7 @@ export function ledgerOmega(input: LedgerInput): LedgerOmega {
   const touched: LedgerAttribute[] = []
   const failures: LedgerFailure[] = []
   for (const write of input.writes) {
-    const classification = classifyWrite(write, touched)
+    const classification = classifyWindowWrite(write, touched)
     if ("unclassified" in classification) {
       failures.push({ attribute: JSON.stringify(write), reason: "unclassified", detail: classification.unclassified })
       continue
