@@ -5340,7 +5340,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       "recorded-wrong-renewal",
       (rawReplies) => {
         rawReplies["collector.captureCalibration.renewal.1.trace"] = JSON.stringify({
-          ...JSON.parse(rawReplies["collector.captureCalibration.trace"]!),
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
           preparedAt: { row: "sgr.later", index: 1 },
         })
         rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
@@ -5379,7 +5379,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       (rawReplies) => {
         rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)
         rawReplies["collector.captureCalibration.trace"] = JSON.stringify({
-          ...JSON.parse(rawReplies["collector.captureCalibration.trace"]!),
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
           captureGeometry: otherGeometry.captureGeometry,
         })
       },
