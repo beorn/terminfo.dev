@@ -5183,7 +5183,9 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
       await expect(
         runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.reset" }),
         fault,
-      ).rejects.toThrow(fault === "tty-root" ? /Source shape does not match its live capture: sgr.reset/ : /SGR replay:/)
+      ).rejects.toThrow(
+        fault === "tty-root" ? /Source shape does not match its live capture: sgr.reset/ : /SGR replay:/,
+      )
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
         { featureId: "sgr.reset", status: "probe-invalid" },
       ])

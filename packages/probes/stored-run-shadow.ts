@@ -114,7 +114,7 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
     : new Proxy(session.context, {
         get(target, key) {
           if (key === "now") clockRequested = true
-          return Reflect.get(target, key)
+          return Reflect.get(target, key) as unknown
         },
       })
   const startedAt = new Date().toISOString()
@@ -157,8 +157,7 @@ export function recordReplayedRow(input: {
     // Coverage requires retained raw state; its absent trace must still fail the parser.
     coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
     diagnostic:
-      input.precondition &&
-      !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
+      input.precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
         ? { kind: "collector-error", name: "PreconditionFailed", message: input.precondition }
         : undefined,
     rawReplyRef,
@@ -228,7 +227,9 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
   const id = stored.featureId
   if (stored.harnessOutcome) return "harness outcome " + stored.harnessOutcome
   const diagnostic = validated.ungradedDiagnostics?.[id]
-  if (diagnostic) return "live diagnostic " + (diagnostic.kind === "collector-error" ? diagnostic.name : diagnostic.kind)
+  if (diagnostic) {
+    return "live diagnostic " + (diagnostic.kind === "collector-error" ? diagnostic.name : diagnostic.kind)
+  }
   if (validated.observations.some((entry) => entry.featureId === id && entry.outcome === "error")) {
     return "live callback-error arm"
   }
@@ -297,7 +298,8 @@ export async function shadowStoredRun(
     ).capture
   } catch (error) {
     // The bound reader refused the run: an unbound, unparsable or tampered artifact is not replayable.
-    report.runIncomplete = error instanceof IncompleteReplay ? error.message : `${errorName(error)}: ${errorMessage(error)}`
+    report.runIncomplete =
+      error instanceof IncompleteReplay ? error.message : `${errorName(error)}: ${errorMessage(error)}`
   }
   const excluded = new Map<string, string[]>()
   for (const result of stored.results ?? []) {
@@ -348,9 +350,7 @@ async function shadowRow(
     replayed = await replayRow(validated, featureId)
   } catch (error) {
     const reason =
-      error instanceof IncompleteReplay
-        ? error.message
-        : `replay threw ${errorName(error)}: ${errorMessage(error)}`
+      error instanceof IncompleteReplay ? error.message : `replay threw ${errorName(error)}: ${errorMessage(error)}`
     return { featureId, family, outcome: "incomplete", reason }
   }
   const domain = recordReplayedRow({ featureId, ...replayed, rawReplies: {}, assertions: [] })
