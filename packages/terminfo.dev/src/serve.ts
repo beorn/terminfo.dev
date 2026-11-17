@@ -52,7 +52,7 @@ import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { readThroughSentinel } from "./sentinel-read.ts"
 import { createPrePaintMeter, withPrePaintReading } from "./pre-paint-meter.ts"
 import { detectTerminal } from "./detect.ts"
-import { appSemanticDeclarations, readSessionBus } from "./app-semantic-state.ts"
+import { appSemanticDeclarations, declarationDrift, readSessionBus } from "./app-semantic-state.ts"
 import {
   COMPLETE_DA2,
   COMPLETE_XTVERSION,
@@ -1470,6 +1470,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(finishCapture && { finishCapture }),
               })
               if (sessionBus) result.rawReplies["collector.sessionBus"] = JSON.stringify(sessionBus)
+              const drift =
+                declarationVersion === undefined
+                  ? undefined
+                  : declarationDrift({
+                      kind: muxSubject?.kind ?? "term",
+                      id: measuredTerminal.name,
+                      version: declarationVersion,
+                      os: terminal.os,
+                    })
+              // 34555: the run file names a version with no reviewed rows next to the versions that have them.
+              if (drift) result.rawReplies["collector.declarationDrift"] = JSON.stringify(drift)
               if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw

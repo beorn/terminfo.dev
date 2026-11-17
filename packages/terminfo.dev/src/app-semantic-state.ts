@@ -793,6 +793,21 @@ export function appSemanticDeclarations(
   )
 }
 
+/**
+ * The reviewed versions of this exact App and OS when the measured version has no reviewed row of its own (34555).
+ * Without it a version bump reads as "No semantic reader for this App" on every cell (34534); undefined otherwise.
+ */
+export function declarationDrift(
+  subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">,
+): { measured: string; reviewed: string[] } | undefined {
+  const sameApp = declarations.filter(
+    (row) => row.reason !== undefined && row.kind === subject.kind && row.id === subject.id && row.os === subject.os,
+  )
+  if (subject.version === undefined || sameApp.some((row) => row.version === subject.version)) return undefined
+  const reviewed = [...new Set(sameApp.map((row) => row.version))].sort()
+  return reviewed.length === 0 ? undefined : { measured: subject.version, reviewed }
+}
+
 /** One file-custody owner for App reports, outer commands and a not-yet-created native reply. */
 export function openAppCommandLog(capture: string, pendingReplyPath?: string) {
   const log = pendingReplyPath ?? join(dirname(capture), "daemon.log")
