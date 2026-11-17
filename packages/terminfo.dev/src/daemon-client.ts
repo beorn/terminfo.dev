@@ -175,11 +175,24 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
  */
 const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
 
+/**
+ * 34507: the documented bound is ONE signal — the 30 min AbortSignal at the fetch below — and only Bun's fetch
+ * lets us clear its own abort with `timeout:false`. Node's fetch takes no per-request option for its 300 s
+ * headers timeout, so a silent /probe there aborts at 300 s and this client would report it as the 30 min
+ * signal. Until a Node transport exists that honours the bound, refuse that runtime by name.
+ */
+export function probeRuntimeRefusal(bunVersion: string | undefined): string | null {
+  if (bunVersion !== undefined && bunVersion !== "") return null
+  return "Daemon /probe needs the Bun runtime (34507): Node's fetch aborts a silent response at 300 s, not the documented 30 min signal, and no transport here clears it. Run the collector with bun."
+}
+
 export async function requestDaemonProbe(
   daemon: DaemonRegistration,
   request?: DaemonOwnerRequest,
   ids?: string[],
 ): Promise<Response> {
+  const refusal = probeRuntimeRefusal(process.versions.bun)
+  if (refusal !== null) throw new Error(refusal)
   if (!Number.isInteger(daemon.port) || daemon.port < 1 || daemon.port > 65535) {
     throw new Error(`Invalid daemon port: ${daemon.port}`)
   }
