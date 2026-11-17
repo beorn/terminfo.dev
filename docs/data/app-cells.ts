@@ -114,6 +114,15 @@ export type DefinitionCheck = (featureId: string, left: string, right: string) =
 
 const isDecided = (status: string): status is FeatureResultStatus => DECIDED.has(status)
 
+/**
+ * The joined context whose grade stands in for the primary on one row: only when the primary did not decide it
+ * (@cto c5ddabf3). Its run is then a source of the app's published summary and of its analysis (34533).
+ */
+export function standInGrade(cell: JoinedCell, primary: string): JoinedCellSource | undefined {
+  if (cell.from.some((grade) => grade.context === primary)) return undefined
+  return cell.from.find((grade) => grade.context !== primary)
+}
+
 type NamedCell = { context: string } & ContextCellFacts
 
 /** The first of the three join tests `cell` fails against `anchor` for `featureId`, or null when it joins. */
