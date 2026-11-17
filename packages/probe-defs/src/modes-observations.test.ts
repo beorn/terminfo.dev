@@ -2678,7 +2678,18 @@ function stackStateSource(
   target: Record<string, string>,
   identicalReferences = false,
   fresh = true,
+  /** Each plane's glyph ink colour, so a frame carries rendering axes as a real pixel crop does (34547). */
+  ink?: Readonly<Record<string, string>>,
 ) {
+  const background = "#000000"
+  /** One glyph's worth of ink on every non-blank plane, the same coverage for each, in that plane's colour. */
+  const renderingOf = (plane: string) => {
+    if (ink === undefined) return {}
+    const inked = plane !== "blank"
+    const coverage = new Uint8Array(32).fill(inked ? 255 : 0)
+    const inkColour = inked ? (ink[plane] ?? "#808080") : background
+    return { rendering: { background, inkColour, inkCount: inked ? 32 : 0, contrast: inked ? 200 : 0, coverage } }
+  }
   const source = captureSource(24, 80, writes, frames, fresh)
   const witness = source.capture!
   source.capture = async (request) => {
@@ -2709,6 +2720,7 @@ function stackStateSource(
           kind: "pixels" as const,
           regionDigest: plane,
           pixelsDigest: `whole:${plane}`,
+          ...renderingOf(plane),
           regionRectangle: {
             x: (cells.left - 1) * pixelGeometry.cellWidth,
             y: (cells.top - 1) * pixelGeometry.cellHeight,
@@ -2796,6 +2808,29 @@ test.each(
     }
   },
 )
+
+// 34547: on real pixels a no-op color stack's PUSH fixture leaves green Y where the earlier-contrast read
+// expects magenta and contrasts blue. The oracle grades that third colour unsupported (colour-only), and the
+// stack read took every unsupported as "matched the contrast", so it recorded "earlier" and Alacritty and
+// WezTerm stayed "POP fixture persisted, PUSH fixture earlier" forever. Only a target equal to the ignored
+// frame is the contrast; the persisted contrast is then measured and both rows are decided negative.
+test("a no-op color stack is decided negative when the earlier contrast reads as a third colour", async () => {
+  const target = { "POP fixture": "persisted", "PUSH fixture": "persisted" }
+  const ink = { restored: "#ff00ff", earlier: "#0000ff", persisted: "#00ff00" }
+  for (const id of ["modes.xtpushcolors", "modes.xtpopcolors"]) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(stackStateSource([], frames, target, false, true, ink))
+    expect(result.observation?.note, id).toContain("push then pop restored no earlier state")
+    expect(result.observation?.outcome, id).toBe("unsupported")
+    expect(JSON.parse(String(result.response)), id).toMatchObject({ pop: "persisted", push: "persisted" })
+    expect(
+      frames.some(({ label }) => label.includes("PUSH fixture (persisted contrast)")),
+      `${id} measures the persisted contrast`,
+    ).toBe(true)
+  }
+})
 
 // #31742: only a painted, unchanged palette has no setup; failed paint and SGR stay Open.
 test.each(

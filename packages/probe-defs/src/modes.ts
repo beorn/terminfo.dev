@@ -452,7 +452,24 @@ async function captureStackFixture(
   if (!result) throw new Error(`${id}: owned ${fixture} capture disappeared`)
   const outcome = result.observation?.outcome
   if (outcome === undefined) return result
-  return { match: outcome === "supported" ? "expected" : outcome === "unsupported" ? "ignored" : "other", result }
+  if (outcome !== "unsupported") return { match: outcome === "supported" ? "expected" : "other", result }
+  return { match: targetMatchedIgnored(id, fixture, result) ? "ignored" : "other", result }
+}
+
+/**
+ * Whether an unsupported fixture read IS its ignored contrast: the oracle's recorded target digest
+ * equals its ignored-frame digest. The oracle also calls an untouched screen and a colour-only
+ * mismatch unsupported; on a stack fixture those are a third reading, never the contrast. Reading
+ * them as the contrast turned a no-op stack's persisted PUSH fixture into "earlier" on Alacritty and
+ * WezTerm, so neither stack row could ever be decided (34547).
+ */
+function targetMatchedIgnored(id: string, fixture: string, result: ProbeCallbackResult): boolean {
+  const recorded = typeof result.response === "string" ? (JSON.parse(result.response) as unknown) : undefined
+  const digests = recorded as { after?: unknown; ignored?: unknown } | undefined
+  if (typeof digests?.after !== "string" || typeof digests.ignored !== "string") {
+    throw new Error(`${id}: ${fixture} was graded unsupported without a recorded target and ignored-frame digest`)
+  }
+  return digests.after === digests.ignored
 }
 
 /** One row's grade from its fixture readings, with every fixture's frames kept as its evidence. */
