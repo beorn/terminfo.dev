@@ -723,12 +723,12 @@ test.each([
 // The cases above stop at the row's own verdict; this one reads the scene the next row's capture sees.
 test("a progress row's made-up control leaves no notification for the next row's capture", async () => {
   const { context, writes } = calibratedIterm2Arm({ effect: "progress", progress: "ignored", notification: "badge" })
-  const before = await context.capture({ role: "control", label: "scene before the progress row" })
+  const before = await context.capture!({ role: "control", label: "scene before the progress row" })
   const result = await find("extensions.osc9-progress").term!(context)
   expect(result.note).toBe(OSC9_PROGRESS_APP_NO_OBSERVER)
   expect(writes.filter((bytes) => /\x1b\]9;(?!4;)/.test(bytes))).toEqual([])
   expect(writes).toContain("\x1b]99999\x07")
-  const after = await context.capture({ role: "control", label: "next row's calibration baseline" })
+  const after = await context.capture!({ role: "control", label: "next row's calibration baseline" })
   expect(after.pixelsDigest).toBe(before.pixelsDigest)
 })
 
