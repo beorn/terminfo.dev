@@ -1211,14 +1211,89 @@ it("preserves explicit tab and checksum reply failures", async () => {
   const checksum = editingProbes.find((row) => row.id === "editing.decrqcra")!
   const native = await checksum.term!({
     write() {},
+    queryOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
   expect(record(native)).toMatchObject({
     status: "probe-invalid",
-    reason: "no usable checksum reply",
+    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
   })
   const lib = await checksum.lib!({ feed() {}, feedCapture: () => "" } as unknown as LibProbeSource)
   expect(record(lib)).toMatchObject({ status: "probe-invalid", reason: "no usable checksum reply" })
+})
+// 34664 (@cto f5e2b27c): iTerm2 3.6.11 in run 44178738960 answered neither the checksum request nor the DA1 written
+// beside it (sent "\x1b[1;1;1;1;1;5*y\x1b[c", received "", timeout 2000 ms), and the row read "no usable checksum
+// reply" whatever the terminal did. Each graded request now gets a DA1 asked alone just before it, and a request that
+// drew no byte gets one just after it; these drive the live arm and the recorder over each outcome of those controls.
+const DA1_REPLY = "\x1b[?62;4;22c"
+const TIMED_OUT = { reason: "timeout", raw: "", match: null }
+const da1 = (raw: string | null) =>
+  raw === null
+    ? TIMED_OUT
+    : { reason: "reply", raw, match: /\x1b\[\?[0-9;]+c/.exec(raw) ? [/\x1b\[\?[0-9;]+c/.exec(raw)![0]] : null }
+const checksum = (raw: string) => ({ reason: "reply", raw, match: [raw] })
+const runChecksum = async (alone: readonly (string | null)[], pair: readonly object[]) => {
+  const order: string[] = []
+  let a = 0
+  let p = 0
+  const result = await editingProbes.find((row) => row.id === "editing.decrqcra")!.term!({
+    write() {},
+    queryOutcome: async (sequence: string) => {
+      order.push(`alone ${JSON.stringify(sequence)}`)
+      return da1(alone[a++] ?? null)
+    },
+    queryWithSentinelOutcome: async () => {
+      order.push("request")
+      return pair[p++] ?? TIMED_OUT
+    },
+  } as unknown as TermProbeSource)
+  return { order, result }
+}
+it("brackets a checksum request that drew no byte with DA1 asked alone, and grades only on both controls", async () => {
+  // Both controls answered alone: the fenced silence, graded by the row's rule (none declared: Unsupported).
+  const inert = await runChecksum([DA1_REPLY, DA1_REPLY], [])
+  expect(inert.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(inert.result.response).toBe(
+    JSON.stringify({ request: 1, sent: "\x1b[1;1;1;1;1;5*y\x1b[c", da1Before: DA1_REPLY, da1After: DA1_REPLY }),
+  )
+  expect(inert.result.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
+  expect(record(inert.result)).toMatchObject({ status: "unsupported" })
+
+  // The control before went unanswered: its own measured failure.
+  const noBefore = await runChecksum([null], [])
+  expect(noBefore.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(record(noBefore.result)).toMatchObject({
+    status: "probe-invalid",
+    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
+  })
+
+  // The control after went unanswered: named as that, never as proof the terminal stopped for good.
+  const noAfter = await runChecksum([DA1_REPLY, null], [])
+  expect(record(noAfter.result)).toMatchObject({
+    status: "probe-invalid",
+    reason:
+      "no usable checksum reply; the DA1 asked alone just before request 1 answered, and the one asked after it got no answer within 2000 ms",
+  })
+
+  // A late checksum frame, or any other bytes, beside the control after: unattributed, so inconclusive.
+  for (const after of [`\x1bP1!~014F\x1b\\${DA1_REPLY}`, "\x1bP1!~01"]) {
+    const late = await runChecksum([DA1_REPLY, after], [])
+    expect(late.result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    expect(record(late.result).status).not.toBe("unsupported")
+  }
+})
+it("takes the DA1 baseline before each graded request, so a silent second request is judged by its own", async () => {
+  const second = await runChecksum([DA1_REPLY, DA1_REPLY, DA1_REPLY], [checksum("\x1bP1!~014F\x1b\\")])
+  expect(second.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(JSON.parse(second.result.response as string)).toMatchObject({ request: 2 })
+  expect(record(second.result)).toMatchObject({ status: "unsupported" })
+
+  const working = await runChecksum(
+    [DA1_REPLY, DA1_REPLY],
+    [checksum("\x1bP1!~014F\x1b\\"), checksum("\x1bP1!~0150\x1b\\")],
+  )
+  expect(working.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"', "request"])
+  expect(working.result).toMatchObject({ pass: true })
 })
 // Prior tests only inspected the retained frames/inconclusive observation. These exercise both real
 // callback branches through the production result recorder and seal boundary, where the bug lived.
