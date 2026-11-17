@@ -35,3 +35,12 @@ test.each([
   expect(definition, id).toBeDefined()
   expect(definition?.wallMs).toBe(wallMs)
 })
+
+// 34645: the held-viewport arm of these rows takes about 18 raw frames (two empty-history brackets, two endpoint
+// brackets, their observed references) plus 10 key posts, at up to ~1 s a frame; 90 s holds that with headroom
+// until the hosted macOS run measures it.
+test.each(["scrollback.total-lines", "erase.screen.scrollback"])("%s declares a 90 s wall", (id) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs).toBe(90_000)
+})

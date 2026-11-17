@@ -6,7 +6,9 @@ import type {
   HeldViewportFrame,
   HeldViewportReading,
   HeldViewportUnavailable,
+  ObservationFrame,
   ReadHeldViewport,
+  ReadViewportReference,
   ViewportScroll,
 } from "@terminfo/probe-defs"
 import type { CapturedFrame } from "./capture-core.ts"
@@ -23,7 +25,7 @@ export interface HeldViewportGeometry {
 
 /** One raw capture through the existing record route: the recorded result's identity and its decoded bytes. */
 export interface RecordedRawFrame {
-  readonly recorded: { readonly ref: string; readonly capturedAt: number }
+  readonly recorded: ObservationFrame
   readonly decoded: CapturedFrame
 }
 
@@ -34,7 +36,7 @@ export interface HeldViewportReaderOptions {
   /** Undefined until calibration settles an origin for this row. */
   readonly geometry: () => HeldViewportGeometry | undefined
   /** Takes and records one raw frame; the adapter asserts window ownership before and after it. */
-  readonly captureRaw: (label: string, deadline: number) => Promise<RecordedRawFrame>
+  readonly captureRaw: (label: string, deadline: number, role: ObservationFrame["role"]) => Promise<RecordedRawFrame>
   /** The live TTY trace mark of the row this read runs in (tty.ts currentTTYTraceMark). */
   readonly mark: () => TTYTraceMark | undefined
   readonly timeoutMs: number
@@ -139,11 +141,71 @@ export function uniqueRowShift(bottom: readonly string[], held: readonly string[
  * write nothing to the TTY. Restoration runs at most once: the in-line `bottom` discharges it, and otherwise
  * the `finally` returns to the bottom through the route, unless the row was abandoned, when the wall owns it.
  */
-export function createHeldViewportReader(options: HeldViewportReaderOptions): ReadHeldViewport {
+export function createHeldViewportReader(options: HeldViewportReaderOptions): {
+  read: ReadHeldViewport
+  reference: ReadViewportReference
+} {
   const now = options.now ?? Date.now
   const references = new Map<string, Cropped>()
   let reads = 0
-  return async (hold, label, bottom) => {
+  /** One raw frame through the recorded route, cropped and digested from its own bytes. */
+  const takeCrop = async (
+    label: string,
+    geometry: HeldViewportGeometry,
+    role: ObservationFrame["role"],
+    deadline: number,
+  ): Promise<Cropped> => {
+    let raw: RecordedRawFrame
+    try {
+      raw = await options.captureRaw(label, deadline, role)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      throw new Stop(/identity or bounds changed/.test(message) ? "geometry-changed" : "capture-failed", message)
+    }
+    const cut = cropRows(raw.decoded, geometry)
+    const frame: HeldViewportFrame = {
+      ref: raw.recorded.ref,
+      capturedAt: raw.recorded.capturedAt,
+      regionDigest: cut.digest,
+      regionRectangle: cut.rectangle,
+      recorded: raw.recorded,
+    }
+    return { frame, rows: cut.rows, geometry: JSON.stringify(geometry) }
+  }
+  /**
+   * The grid as it stands, with no key and no TTY write, recorded as a reference this row's reads can bind to:
+   * the bottom before an already-held trigger (@cto e1cfff79 item 1), or an observed reference painted after the
+   * row's last bracket (@cto 1154: observed post-bracket references). It claims nothing about where the view is.
+   */
+  const reference: ReadViewportReference = async (label) => {
+    const opening = options.mark()
+    if (!opening) {
+      return { status: "unavailable", reason: "no-trace-scope", detail: "the read ran outside a live row's TTY trace" }
+    }
+    if (opening.mode === "replay") {
+      return { status: "unavailable", reason: "replay", detail: "a replayed row has no live viewport to read" }
+    }
+    if (opening.abandoned) {
+      return {
+        status: "unavailable",
+        reason: "trace-abandoned",
+        detail: "the row was abandoned at its wall before the read",
+      }
+    }
+    const geometry = options.geometry()
+    if (!geometry) {
+      return { status: "unavailable", reason: "capture-failed", detail: "no calibrated origin is settled for this row" }
+    }
+    try {
+      const cropped = await takeCrop(`${label}: reference`, geometry, "control", now() + options.timeoutMs)
+      references.set(cropped.frame.ref, cropped)
+      return { status: "reference", frame: cropped.frame }
+    } catch (error) {
+      if (!(error instanceof Stop)) throw error
+      return { status: "unavailable", reason: error.reason, detail: error.message }
+    }
+  }
+  const read: ReadHeldViewport = async (hold, label, bottom) => {
     const frames: HeldViewportFrame[] = []
     let restored: "not-held" | "bottom-pressed" | "restore-failed" | "left-to-wall" = "not-held"
     let owesBottom = false
@@ -159,38 +221,37 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
     const inTime = (step: string) => {
       if (now() > deadline) throw new Stop("deadline", `the ${options.timeoutMs}ms read deadline passed before ${step}`)
     }
-    const crop = async (step: string, geometry: HeldViewportGeometry): Promise<Cropped> => {
+    const crop = async (
+      step: string,
+      geometry: HeldViewportGeometry,
+      role: ObservationFrame["role"] = "control",
+    ): Promise<Cropped> => {
       inTime(step)
-      let raw: RecordedRawFrame
-      try {
-        raw = await options.captureRaw(`${label}: ${step}`, deadline)
-      } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause)
-        throw new Stop(/identity or bounds changed/.test(message) ? "geometry-changed" : "capture-failed", message)
-      }
-      const cut = cropRows(raw.decoded, geometry)
-      const frame: HeldViewportFrame = {
-        ref: raw.recorded.ref,
-        capturedAt: raw.recorded.capturedAt,
-        regionDigest: cut.digest,
-        regionRectangle: cut.rectangle,
-      }
-      frames.push(frame)
-      return { frame, rows: cut.rows, geometry: JSON.stringify(geometry) }
+      const cropped = await takeCrop(`${label}: ${step}`, geometry, role, deadline)
+      frames.push(cropped.frame)
+      return cropped
     }
     const opening = options.mark()
     if (!opening) return unavailable("no-trace-scope", "the read ran outside a live row's TTY trace")
     if (opening.mode === "replay") return unavailable("replay", "a replayed row has no live viewport to read")
     if (opening.abandoned) return unavailable("trace-abandoned", "the row was abandoned at its wall before the read")
     if (!route) return unavailable("route-missing", "this source has no viewport route")
-    const geometry = options.geometry()
-    if (!geometry) return unavailable("capture-failed", "no calibrated origin is settled for this row")
+    // The caller's trigger already held the view, outside this route's keys: restoration is owed from here, on
+    // every exit below, and the route learns of the hold so its own return and the row wall see it too (@cto
+    // e1cfff79 item 3; 34680, @cto 1359). Nothing awaits between the opening mark and this adoption.
+    const adopted = hold === "already-held" && route.adoptHold !== undefined
+    if (hold === "already-held") {
+      route.adoptHold?.()
+      owesBottom = true
+    }
     try {
+      const geometry = options.geometry()
+      if (!geometry) throw new Stop("capture-failed", "no calibrated origin is settled for this row")
       let b0: Cropped
       if (hold === "already-held") {
         const known = bottom ? references.get(bottom.ref) : undefined
         if (!known || known.frame.regionDigest !== bottom?.regionDigest) {
-          return unavailable(
+          throw new Stop(
             "no-bound-reference",
             bottom
               ? `bottom reference ${bottom.ref} was not recorded by this row's reader`
@@ -198,12 +259,10 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
           )
         }
         if (known.geometry !== JSON.stringify(geometry)) {
-          return unavailable("geometry-changed", "the settled grid changed since the bottom reference was taken")
+          throw new Stop("geometry-changed", "the settled grid changed since the bottom reference was taken")
         }
         b0 = known
         frames.push(b0.frame)
-        // The caller's trigger already held the view: restoration is owed from here (@cto e1cfff79 item 3).
-        owesBottom = true
       } else {
         b0 = await crop("bottom reference before the hold", geometry)
         references.set(b0.frame.ref, b0)
@@ -224,8 +283,8 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
           throw new Stop("route-rejected", cause instanceof Error ? cause.message : String(cause))
         }
       }
-      const first = await crop("held crop 1", geometry)
-      const second = await crop("held crop 2", geometry)
+      const first = await crop("held crop 1", geometry, "target")
+      const second = await crop("held crop 2", geometry, "target")
       const m1 = options.mark()
       if (!m1 || m1.abandoned) throw new Stop("trace-abandoned", "the row was abandoned at its wall")
       if (m1.unsettled > 0) {
@@ -282,7 +341,12 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
         if (options.mark()?.abandoned) restored = "left-to-wall"
         else {
           try {
-            restored = route.returnToBottom ? await route.returnToBottom() : await pressBottom(route)
+            // The route's return knows every key hold and an adopted one; a route that could not adopt this
+            // already-held view would answer not-held, so the bottom is pressed directly instead.
+            restored =
+              route.returnToBottom && (hold !== "already-held" || adopted)
+                ? await route.returnToBottom()
+                : await pressBottom(route)
           } catch (cause) {
             restored = "restore-failed"
             restoreError = cause
@@ -301,6 +365,7 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
       })
     }
   }
+  return { read, reference }
 }
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))

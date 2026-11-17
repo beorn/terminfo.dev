@@ -1,3 +1,4 @@
+import { heldOsc720, heldViewportReader } from "./held-viewport-rows.ts"
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
@@ -3400,6 +3401,8 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
   // The subject app itself has no permitted read of its pane (#31741, @cto 20b9ffed): the wheel arm
   // below reads the viewport it moved, and this app cannot report where that viewport went.
   // An applicable viewport route (34313) is our missing held-frame reader, not the app's absence: TODO first.
+  const heldReader = heldViewportReader(ctx)
+  if (heldReader) return heldOsc720(ctx, heldReader)
   const heldTodo = heldViewportReadTodo(ctx)
   if (heldTodo) return heldTodo
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})

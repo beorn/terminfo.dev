@@ -857,8 +857,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
        * timeout, and recorded so the artifact can account for it. Calibration uses it to confirm
        * geometry; each sentinel read uses it for the frame taken BEFORE its paint (33981).
        */
-      const captureRawRecorded = async (featureId: string, label: string, deadline: number) => {
-        const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
+      const captureRawRecorded = async (
+        featureId: string,
+        label: string,
+        deadline: number,
+        role: ObservationFrame["role"] = "control",
+      ) => {
+        const result = await adapter.captureRaw({ featureId, role, label }, deadline)
         frameRecord?.(result.result)
         return result
       }
@@ -929,6 +934,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           probeSource.captureGeometry = undefined
           probeSource.captureGeometryRefusal = undefined
           probeSource.readHeldViewport = undefined
+          probeSource.readViewportReference = undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
           await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {
@@ -996,7 +1002,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // renewal moves it too, and takes its frames through the same recorded raw route.
             const heldWindow = darwinCaptureWindowId
             if (viewportScroll && heldWindow !== undefined) {
-              probeSource.readHeldViewport = createHeldViewportReader({
+              const heldReader = createHeldViewportReader({
                 featureId,
                 route: () => probeSource.viewportScroll,
                 geometry: () => {
@@ -1013,13 +1019,15 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                     window: `darwin window ${heldWindow}`,
                   }
                 },
-                captureRaw: async (label, deadline) => {
-                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline)
-                  return { recorded: { ref: result.frame.ref, capturedAt: result.frame.capturedAt }, decoded }
+                captureRaw: async (label, deadline, role) => {
+                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline, role)
+                  return { recorded: result.frame, decoded }
                 },
                 mark: currentTTYTraceMark,
                 timeoutMs: DEFAULT_TIMEOUT_MS,
               })
+              probeSource.readHeldViewport = heldReader.read
+              probeSource.readViewportReference = heldReader.reference
             }
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
