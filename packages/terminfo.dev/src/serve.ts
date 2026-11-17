@@ -68,7 +68,9 @@ import {
   queryOutcome,
   queryWithSentinelOutcome,
   readResponse,
+  currentTTYTraceMark,
 } from "./tty.ts"
+import { createHeldViewportReader } from "./held-viewport.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
@@ -834,11 +836,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
        * timeout, and recorded so the artifact can account for it. Calibration uses it to confirm
        * geometry; each sentinel read uses it for the frame taken BEFORE its paint (33981).
        */
-      const captureRawFrame = async (featureId: string, label: string, deadline: number) => {
+      const captureRawRecorded = async (featureId: string, label: string, deadline: number) => {
         const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
         frameRecord?.(result.result)
-        return result.decoded
+        return result
       }
+      const captureRawFrame = async (featureId: string, label: string, deadline: number) =>
+        (await captureRawRecorded(featureId, label, deadline)).decoded
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
@@ -903,6 +907,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           frameRecord = recordCapture
           probeSource.captureGeometry = undefined
           probeSource.captureGeometryRefusal = undefined
+          probeSource.readHeldViewport = undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
           await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {
@@ -961,6 +966,36 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             }
             captureCalibration = installedCalibration
             installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }
+            // 34645: the held-viewport reader, only beside the owner's viewport route on the Darwin window
+            // this install selected. It crops the grid this calibration settled, read at each call so a
+            // renewal moves it too, and takes its frames through the same recorded raw route.
+            const heldWindow = darwinCaptureWindowId
+            if (viewportScroll && heldWindow !== undefined) {
+              probeSource.readHeldViewport = createHeldViewportReader({
+                featureId,
+                route: () => probeSource.viewportScroll,
+                geometry: () => {
+                  if (!textOrigin) return undefined
+                  const { cellWidth, cellHeight, textWidth, textHeight } = textOrigin.pixelGeometry
+                  const cols = textWidth / cellWidth
+                  const rows = textHeight / cellHeight
+                  if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows)) return undefined
+                  return {
+                    origin: textOrigin.origin,
+                    cell: { width: cellWidth, height: cellHeight },
+                    cols,
+                    rows,
+                    window: `darwin window ${heldWindow}`,
+                  }
+                },
+                captureRaw: async (label, deadline) => {
+                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline)
+                  return { recorded: { ref: result.frame.ref, capturedAt: result.frame.capturedAt }, decoded }
+                },
+                mark: currentTTYTraceMark,
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+              })
+            }
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
              * row 35 lower, footprint unchanged), so the probe asks for the origin again instead of

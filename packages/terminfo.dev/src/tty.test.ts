@@ -20,6 +20,7 @@ import {
   withRawMode,
   withTTYOperation,
   withTTYQueryTrace,
+  currentTTYTraceMark,
   writeTTY,
   type TTYTraceEvent,
   type TTYQueryTrace,
@@ -1086,5 +1087,73 @@ describe("UTF-8 decode context measurement", () => {
     expect(writes).toContain("\x1b[0m\u00eb")
     expect(writes).toContain("\x1b[2;1H\x1b[2X")
     expect(writes.at(-1)).toBe("\x1b8")
+  })
+})
+
+// 34645 (@cto e1cfff79 item 1): a held-viewport bracket reads its own row's live trace. The projected
+// `queries`/`events` arrays stay empty until the callback ends, so a mark taken from them inside the callback
+// cannot see a write. The mark reads the recording itself, which records every operation as it starts.
+describe("live TTY trace mark", () => {
+  const sink = () => ({ write: () => true }) as unknown as NodeJS.WriteStream
+
+  it("sees a write started inside the callback that the projected arrays cannot yet see", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const marks = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, async () => {
+          const before = currentTTYTraceMark()
+          writeTTY("\x1b[5n")
+          const after = currentTTYTraceMark()
+          return { before, after, eventsInside: events.length }
+        }),
+      sink(),
+    )
+    expect(marks.before).toEqual({ mode: "record", started: 0, unsettled: 0, abandoned: false })
+    expect(marks.after).toEqual({ mode: "record", started: 1, unsettled: 0, abandoned: false })
+    expect(marks.eventsInside).toBe(0)
+    expect(events).toEqual([{ kind: "write", sequence: "\x1b[5n" }])
+  })
+
+  it("counts a query still awaiting its reply as unsettled", async () => {
+    const seen = await withTTYOperation(
+      () =>
+        withTTYQueryTrace([], [], async () => {
+          const pending = queryOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 200)
+          await Promise.resolve()
+          const inFlight = currentTTYTraceMark()
+          reply("\x1b[?1;2c")
+          await pending
+          return { inFlight, settled: currentTTYTraceMark() }
+        }),
+      sink(),
+    )
+    expect(seen.inFlight?.unsettled).toBeGreaterThan(0)
+    expect(seen.settled?.unsettled).toBe(0)
+    expect(seen.settled?.started).toBeGreaterThan(0)
+  })
+
+  it("reports an abandoned scope and is absent outside any trace", async () => {
+    expect(currentTTYTraceMark()).toBeUndefined()
+    let scope: { abandon(): void; mark(): unknown } | undefined
+    const marks = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            scope?.abandon()
+            return { inside: currentTTYTraceMark(), viaScope: scope?.mark() }
+          },
+          {
+            onScope(value) {
+              scope = value
+            },
+          },
+        ),
+      sink(),
+    )
+    expect(marks.inside).toMatchObject({ abandoned: true })
+    expect(marks.viaScope).toMatchObject({ abandoned: true })
   })
 })

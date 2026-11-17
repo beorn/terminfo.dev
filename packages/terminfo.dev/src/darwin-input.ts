@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
 import { createInjectedInput, type InputButton, type InputMechanism, type OwnedFrame } from "./input-fixture.ts"
+import { currentTTYTraceMark } from "./tty.ts"
 
 /** The compiled helper the macOS job builds from native/darwin-input/main.swift; never a committed binary. */
 export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
@@ -408,5 +409,48 @@ export function viewportScrollRoute(
     }
   }
   const input = installed.input
-  return { route: viewport.route, press: (step) => input.injectKey(viewport.keys[step]) }
+  // 34645 (@cto e1cfff79 items 2-3): the route owns every step it dispatched. Steps run one after another, a
+  // hold is recorded as held BEFORE it is dispatched (a post can land and its helper still fail), and the bottom
+  // clears it only when it settles with no hold dispatched after it.
+  let last: Promise<unknown> = Promise.resolve()
+  let order = 0
+  let lastHold = 0
+  let held = false
+  const abandonedRow = (what: string) =>
+    currentTTYTraceMark()?.abandoned === true
+      ? new Error(`viewport ${what} refused: the row that asked was abandoned at its wall (34645)`)
+      : undefined
+  const dispatch = (step: ViewportStep): Promise<void> => {
+    const position = ++order
+    if (step === "bottom") {
+      const previous = last
+      const run = (async () => {
+        await previous
+        await input.injectKey(viewport.keys[step])
+        if (lastHold < position) held = false
+      })()
+      last = run.catch(() => {})
+      return run
+    }
+    held = true
+    lastHold = position
+    const run = last.then(() => input.injectKey(viewport.keys[step]))
+    last = run.catch(() => {})
+    return run
+  }
+  return {
+    route: viewport.route,
+    press(step) {
+      const refused = abandonedRow(step)
+      return refused ? Promise.reject(refused) : dispatch(step)
+    },
+    async returnToBottom() {
+      const refused = abandonedRow("return to the bottom")
+      if (refused) throw refused
+      await last
+      if (!held) return "not-held"
+      await dispatch("bottom")
+      return "bottom-pressed"
+    },
+  }
 }

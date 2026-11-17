@@ -583,6 +583,26 @@ export function snapshotCallLog(log: CallLog): unknown {
   return { ...settled, calls }
 }
 
+/**
+ * How far a live recording has got, read in place (34645). `recordCall` pushes each call before its
+ * method runs, and each callback before its body runs, so `started` grows the moment any operation
+ * begins and never shrinks; `unsettled` counts the ones not yet finished. Equal `started` across an
+ * interval with nothing unsettled at either end means no operation began or was in flight in it.
+ * Only meaningful against the same handle: two logs with equal counts say nothing about each other.
+ */
+export function callLogProgress(log: CallLog): { readonly started: number; readonly unsettled: number } {
+  const state = handles.get(log)
+  if (!state) throw new IncompleteReplay("call log handle required; persisted data must be validated first")
+  let started = 0
+  let unsettled = 0
+  for (const call of state.data.calls) {
+    started += 1 + call.callbacks.length
+    if (!call.finished) unsettled++
+    for (const callback of call.callbacks) if (!callback.finished) unsettled++
+  }
+  return { started, unsettled }
+}
+
 export function withCallLog<Subject extends object>(
   subject: Subject,
   options: { mode: "record"; log: CallLog },

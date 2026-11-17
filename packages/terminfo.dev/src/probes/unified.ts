@@ -430,6 +430,14 @@ function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string
   return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
 }
 
+/** Run-fatal: a row's wall could not prove its held viewport back at the bottom (34645, @cto e1cfff79 item 2). */
+class ViewportReturnRefused extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ViewportReturnRefused"
+  }
+}
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
@@ -1302,9 +1310,11 @@ export async function runProbeBatch(
       // 34313: the owner's viewport route reaches the four history rows through THIS handoff, each press under
       // the same TTY lease as every input action; the public input fixture stays absent on this arm.
       const viewport = options.viewportScroll
+      const returnToBottom = viewport.returnToBottom?.bind(viewport)
       probeSource.viewportScroll = {
         route: viewport.route,
         press: (step) => withTTYOperation(() => viewport.press(step), out, verify),
+        ...(returnToBottom && { returnToBottom: () => withTTYOperation(returnToBottom, out, verify) }),
       }
     }
     const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT
@@ -1515,6 +1525,8 @@ export async function runProbeBatch(
       const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
       let result: ProbeCallbackResult
       let probeWallExceeded = false
+      /** Set when the wall could not return a held viewport; thrown outside the per-probe catch (34645). */
+      let viewportNotSettled: ViewportReturnRefused | undefined
       try {
         // A probe may declare its own wall. The default stays 30s. Run 42836445788 cut
         // font-ligatures, reset.sgr and modes.xtrestore at that default.
@@ -1569,6 +1581,41 @@ export async function runProbeBatch(
             sourceSession?.abandon()
             releaseTTYQueue()
           }
+          // 34645 (@cto e1cfff79 items 2-3): a step the abandoned row dispatched may still land, and the route
+          // now refuses that row's later steps, so the wall owns the way back to the bottom. It settles every
+          // dispatched step first. It runs after the trace is abandoned and the queue released, so neither
+          // waits on it, and it is bounded by this row's own wall. A window it cannot prove settled stops the
+          // run here: no later row is graded on a viewport that may still be held.
+          const backToBottom = options.viewportScroll?.returnToBottom?.bind(options.viewportScroll)
+          if (backToBottom) {
+            let bound: ReturnType<typeof setTimeout> | undefined
+            // Not under the TTY lease the wall just released: a helper that never settles would hold that
+            // queue for good and hang the run instead of stopping it by name.
+            const settled = await Promise.race([
+              backToBottom().then(
+                (value) => ({ value }),
+                (error: unknown) => ({ error }),
+              ),
+              new Promise<{ unsettled: true }>((resolve) => {
+                bound = setTimeout(() => resolve({ unsettled: true }), wallMs)
+              }),
+            ])
+            clearTimeout(bound)
+            if ("unsettled" in settled) {
+              viewportNotSettled = new ViewportReturnRefused(
+                `${probe.id}: viewport input dispatched before the ${wallMs}ms wall did not settle within another ${wallMs}ms; ` +
+                  "the window may still be held, so no later row is graded on it (34645)",
+              )
+            } else if ("error" in settled) {
+              const reason = settled.error instanceof Error ? settled.error.message : String(settled.error)
+              viewportNotSettled = new ViewportReturnRefused(
+                `${probe.id}: returning the viewport to the bottom after the wall failed: ${reason}; ` +
+                  "no later row is graded on that window (34645)",
+              )
+            } else {
+              batch.rawReplies[`${probe.id}.viewportAfterWall`] = settled.value
+            }
+          }
           result = {
             pass: false,
             tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
@@ -1605,6 +1652,9 @@ export async function runProbeBatch(
         // after it is what the timed-out row is judged against (#33431).
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
+      // Outside the per-probe catch, like the window-basis refusal below: the run stops here, with this row's
+      // evidence retained, and nothing after it is graded on a window that may still be held.
+      if (viewportNotSettled) throw viewportNotSettled
       if (windowBasis) {
         // Fold 2's verdict: every attribute this cell's own writes touched is read back now and compared
         // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the
@@ -1909,7 +1959,10 @@ export async function runProbeBatch(
       // into that cell's result, so both stop the RUN here rather than becoming this cell's
       // collector-error (@cto 34148 REVISE blocking 1). Their `.ledger` / `.spillover` record is
       // written before the throw, so the failure draft keeps the diff.
-      if (name === "MutationRestoreRefused" || name === "SpilloverRefused") throw error
+      // 34645: a held viewport the wall could not prove back at the bottom leaves state behind the same way.
+      if (name === "MutationRestoreRefused" || name === "SpilloverRefused" || name === "ViewportReturnRefused") {
+        throw error
+      }
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).

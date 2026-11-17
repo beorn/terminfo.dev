@@ -614,7 +614,103 @@ export interface ViewportScroll {
   /** Names the route and its mapping in every result that used it. */
   readonly route: string
   press(step: ViewportStep): Promise<void>
+  /**
+   * Put the viewport back at the bottom (34645, @cto e1cfff79 items 2-3): first settle every step this route
+   * dispatched, so none can land afterwards, then post `bottom` once if a non-bottom step was dispatched since
+   * the last bottom settled; a step that landed and then rejected counts as dispatched. `bottom-pressed` says
+   * the step was posted, never that the view moved. Rejects by name when asked from a row abandoned at its wall
+   * (the wall owns it then), or when the bottom step itself fails. Absent on a route that installed no input.
+   */
+  returnToBottom?(): Promise<"not-held" | "bottom-pressed">
 }
+
+/** Why a held-viewport read returned no candidate (34645). Each names the first check that failed. */
+export type HeldViewportUnavailable =
+  | "no-trace-scope" // not inside a live row's TTY trace
+  | "replay" // the row replays a recorded trace
+  | "trace-unsettled" // a query or callback was still pending at a bracket mark
+  | "trace-moved" // a TTY operation started inside the bracket
+  | "trace-abandoned" // the row's wall fired
+  | "route-missing" // this source has no viewport route
+  | "route-rejected" // a viewport step rejected (its own message kept)
+  | "no-bound-reference" // "already-held" without a bottom reference this reader recorded for this row
+  | "capture-failed" // no calibrated origin, or a raw capture threw (message kept)
+  | "geometry-changed" // the owned window's identity or bounds changed during a capture
+  | "no-unique-shift" // the held crops are unstable, or show no unique full-height row shift
+  | "reference-mismatch" // the bottom reference after the hold is not the one before it
+  | "deadline" // the read's one deadline passed
+
+/**
+ * One raw frame the reader took, exactly as the capture record stored it (@cto e1cfff79 item 4): `ref` and
+ * `capturedAt` come from that recorded result, and `regionDigest` is derived from the same decoded bytes at
+ * `regionRectangle`. Never a looked-up or synthesized frame.
+ */
+export interface HeldViewportFrame {
+  readonly ref: string
+  readonly capturedAt: number
+  readonly regionDigest: string
+  readonly regionRectangle: CaptureRectangle
+}
+
+/** The trace bracket around the hold and its observation: one per read. */
+export interface HeldViewportBracket {
+  readonly id: string
+  /** TTY operations started by the bracket's opening mark; equal at its closing mark. */
+  readonly started: number
+  readonly openedAt: number
+  readonly closedAt: number
+}
+
+/**
+ * What one read saw: a bottom reference, two held crops with one unique full-height row shift against it, and
+ * the bottom reference again after `bottom`. A candidate is evidence, never a grade (`qualified: false`): only
+ * the row's grader may qualify it against its own observed reference.
+ */
+export interface HeldViewportCandidate {
+  readonly kind: "held-viewport-candidate"
+  readonly featureId: string
+  readonly label: string
+  readonly route: string
+  readonly hold: Exclude<ViewportStep, "bottom"> | "already-held"
+  readonly geometry: {
+    readonly origin: { readonly x: number; readonly y: number }
+    readonly cell: { readonly width: number; readonly height: number }
+    readonly cols: number
+    readonly rows: number
+    readonly window: string
+  }
+  readonly bracket: HeldViewportBracket
+  readonly b0: HeldViewportFrame
+  readonly held: readonly [HeldViewportFrame, HeldViewportFrame]
+  readonly b1: HeldViewportFrame
+  /** Text rows the held view sits above the bottom: held row r shows bottom row r - shift. */
+  readonly shift: number
+  readonly qualified: false
+}
+
+export type HeldViewportReading =
+  | { readonly status: "candidate"; readonly candidate: HeldViewportCandidate }
+  | {
+      readonly status: "unavailable"
+      readonly reason: HeldViewportUnavailable
+      readonly detail: string
+      /** The frames recorded before the read stopped. */
+      readonly frames: readonly HeldViewportFrame[]
+      /** `bottom-pressed` proves only that the step was posted; `left-to-wall` means the row's wall owns it. */
+      readonly restored: "not-held" | "bottom-pressed" | "restore-failed" | "left-to-wall"
+    }
+
+/**
+ * Read a held viewport (34645, @cto e1cfff79). With a step, the reader takes the bottom reference itself,
+ * then holds with that step. With `"already-held"`, the caller has triggered the hold, and `bottom` must be a
+ * reference this reader recorded earlier in the same row, taken before the trigger: the reader then writes
+ * nothing to the TTY before its held crops. Without one, it reports `no-bound-reference` before any step.
+ */
+export type ReadHeldViewport = (
+  hold: Exclude<ViewportStep, "bottom"> | "already-held",
+  label: string,
+  bottom?: HeldViewportFrame,
+) => Promise<HeldViewportReading>
 
 /**
  * The viewport hold a probe declares on its capture request (34163). A held viewport renders the
@@ -1653,6 +1749,11 @@ export interface TermProbeSource {
    * input fixture and grants no other callback a route.
    */
   viewportScroll?: ViewportScroll
+  /**
+   * The held-viewport reader (34645): installed only beside a viewport route on a calibrated raw-capture
+   * arm. Absent means the history rows keep their apparatus TODO.
+   */
+  readHeldViewport?: ReadHeldViewport
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
