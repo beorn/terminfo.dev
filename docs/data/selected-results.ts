@@ -41,6 +41,7 @@ import {
   readCollectorSelection,
   readCollectorAttempt,
   isHarnessOutcome,
+  type HarnessOutcome,
 } from "@terminfo/probe-defs"
 import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import {
@@ -238,6 +239,12 @@ export interface SelectedContextCell {
    * `noted`: a decided default cell keeps its status, reason and tests; the supplement's decided status is only a note
    * (#33151, a supplement that declares notesDecided).
    */
+  /**
+   * 34675 (@cto go-r2-1341): set only when a newer same-version, same-suite attempt's harness reading did not finish and
+   * this older decided cell was kept against it. It names the NEWEST such refused row; the cell's own origin, status
+   * and reason stay the older decision's. A later real replacement drops it, a later refusal replaces it.
+   */
+  refusedAttempt?: { runId: string; resultId: string; measuredAt: string; harnessOutcome: HarnessOutcome }
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
@@ -865,6 +872,15 @@ function composeContextSummaries(
       const streak = (keptStreak.get(result.featureId) ?? 0) + 1
       keptStreak.set(result.featureId, streak)
       keptCount += 1
+      cells[result.featureId] = {
+        ...prior,
+        refusedAttempt: {
+          runId: run.runId,
+          resultId: result.featureId,
+          measuredAt: run.measuredAt,
+          harnessOutcome: result.harnessOutcome,
+        },
+      }
       log?.(
         `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
       )

@@ -55,6 +55,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   endCaptureLifecycle,
 } from "./region-readback.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -1608,6 +1609,7 @@ interface DecssclsPair {
 async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const captureCallback = ctx.capture
   if (!captureCallback) {
+    raiseRefusedCapture(ctx, "DECSSCLS needs rendered frames")
     return notTestedResult(
       "DECSSCLS needs rendered frames; this context exposes no pixel capture callback (a text-only arm keeps its buffer, not its viewport)",
       { capture: false },
@@ -1635,6 +1637,9 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const cols = ctx.cols
   const geometry = ctx.captureGeometry?.geometry
   if (!Number.isSafeInteger(cols) || cols < 1 || geometry === undefined) {
+    if (Number.isSafeInteger(cols) && cols >= 1 && geometry === undefined) {
+      raiseRefusedCapture(ctx, "DECSSCLS needs a measured pixel geometry to digest a cell region")
+    }
     const refusal = ctx.captureGeometryRefusal
     return notTestedResult(
       refusal === undefined
@@ -3065,6 +3070,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3102,6 +3108,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -3135,6 +3142,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3171,6 +3179,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -3204,6 +3213,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3240,6 +3250,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),

@@ -26,6 +26,7 @@ import {
   queryPixelGeometry,
   type RegionReadback,
 } from "./region-readback.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /**
  * CUP inside a DECSTBM region with DECOM on is region-relative, so the marker must land on the
@@ -227,6 +228,9 @@ export const cursorProbes: ProbeDefinition[] = [
         const rows = ctx.rows
         const cols = ctx.cols
         const capture = ctx.capture
+        if (!capture && Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 3 && cols >= 6) {
+          raiseRefusedCapture(ctx, "Cursor pixel fixture needs capture")
+        }
         if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 3 || cols < 6) {
           const note = `Cursor pixel fixture needs capture and measured 3x6 geometry; measured ${rows}x${cols}`
           return {

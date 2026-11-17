@@ -17,6 +17,7 @@ import {
   sgrReadbackDecision,
   type DecrpmPs,
 } from "./helpers.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /**
  * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
@@ -189,6 +190,7 @@ export const resetProbes: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor advance does not measure SGR styling after reset")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -462,6 +464,9 @@ export const resetProbes: ProbeDefinition[] = [
           // The verdict path owns this row wherever the run can map cells onto its own window.
           const verdict = await captureRegionCallbackResult(ctx, "reset.decaln", readback)
           if (verdict) return verdict
+        }
+        if (!capture && Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 2 && cols >= 2) {
+          raiseRefusedCapture(ctx, "DECALN pixel fixture needs capture")
         }
         if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           const note = `DECALN pixel fixture needs capture and measured 2x2 geometry; measured ${rows}x${cols}`

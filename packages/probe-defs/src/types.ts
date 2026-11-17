@@ -159,6 +159,8 @@ export const HARNESS_OUTCOMES = [
   "probe-exceeded",
   "unfinished-calls",
   "capture-refused",
+  // 34675: the pre-callback geometry gate refused this row, so its callback never ran.
+  "geometry-refused",
   // Written by the 33048 expiry path, not by this package.
   "killed-mid-probe",
   "never-started",
@@ -1774,6 +1776,13 @@ export interface TermProbeSource {
    * no adapter is installed, and absent in every run recorded before text frames existed, where the
    * only adapter that could have been installed was a pixel one. */
   captureKind?: "pixels" | "text-cells"
+  /**
+   * The run's capture kind, set for every row whether or not this row gets an adapter (34675, like
+   * `captureSettleMs`). `captureKind` above says what THIS row's adapter reads and is absent without
+   * one; this says what the run captures, so a pixel branch on a text run can tell that its missing
+   * adapter is the run's kind, not a refused calibration.
+   */
+  runCaptureKind?: "pixels" | "text-cells"
   /** Present only when an owned OS input adapter is installed for this run. */
   input?: InputFixture
   /**

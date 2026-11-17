@@ -44,6 +44,7 @@ import {
   underlineColourIndexedCaptureResult,
   underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
+import { raiseRefusedCapture, refusedCaptureError } from "./refused-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -809,6 +810,7 @@ async function consumedSgr(
         `${encoding ? `${encoding}; ` : ""}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
+    if (pos.row === 1 && pos.col === 2) raiseRefusedCapture(ctx, note)
     return {
       pass: false,
       note,
@@ -872,6 +874,7 @@ async function consumedSgrReset(
         `${prefix}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
+    if (pos.row === 1 && pos.col === 3) raiseRefusedCapture(ctx, note)
     return {
       pass: false,
       note,
@@ -1139,6 +1142,7 @@ async function consumedResetSgr(
       )
     }
     const advanced = pos.row === 1 && pos.col === 3
+    if (advanced) raiseRefusedCapture(ctx, "Cursor advance does not verify SGR reset")
     return {
       pass: false,
       response: `${pos.row};${pos.col}`,
@@ -1997,6 +2001,12 @@ export function finalizeVisualResult(
   recorded: ProbeResult,
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
+  /**
+   * 34675 (@cto go-r2-1341): the row's recorded capture-geometry refusal, passed only by a pixel run's collector.
+   * When set, a paint row left without rendered evidence raises the named FrameUnavailable diagnostic for the
+   * caller to record, instead of an ordinary open result. Absent, nothing is inferred from a missing screenshot.
+   */
+  captureRefusal?: string,
 ): ProbeResult {
   const encoding = sgrColourEncoding(
     COLOUR_CAPTURE[recorded.featureId]?.edit ??
@@ -2108,6 +2118,7 @@ export function finalizeVisualResult(
     ? recorded.reason
     : `Selected ${encoding}${recorded.reason ? `; ${recorded.reason}` : ""}`
   const reason = encoding ? `${prior}; ${diagnostic}` : diagnostic
+  if (captureRefusal) throw refusedCaptureError(reason, captureRefusal)
   return finalizeProbeResult({
     ...recorded,
     reason,

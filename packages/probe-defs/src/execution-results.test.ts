@@ -963,23 +963,39 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     ),
     ["reset.sgr", "Cursor advance does not measure SGR styling after reset", 2],
   ] as const
+  // 34675 (@cto go-r2-1341): on a pixel run, an arm whose own pixel reading is the missing one now raises the named
+  // FrameUnavailable diagnostic instead of returning the note. A text-cells run, and the arms whose missing reading
+  // is not pixels (OSC 720 viewport, OSC 8 click), keep the note exactly as before.
+  const notPixelCaused = new Set(["extensions.osc720-scroll-up", "extensions.osc8"])
   for (const [id, priorNote, col] of cases) {
     const term = rows.find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
-    for (const refusal of [undefined, "", "calibration G"]) {
-      const callback = await term({
-        rows: 24,
-        cols: 80,
-        write() {},
-        captureGeometryRefusal: refusal,
-        queryCursorPosition: async () => ({ row: 1, col }),
-        queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
-      } as unknown as TermProbeSource)
-      expect(record(callback).reason, `${id}: ${String(refusal)}`).toBe(
-        `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
-      )
-      expect(record(callback).status, id).toBe("probe-todo")
-      expect(callback.observation, id).toBeUndefined()
+    for (const runCaptureKind of [undefined, "pixels", "text-cells"] as const) {
+      for (const refusal of [undefined, "", "calibration G"]) {
+        const label = `${id}: ${String(refusal)} ${String(runCaptureKind)}`
+        const run = term({
+          rows: 24,
+          cols: 80,
+          write() {},
+          captureGeometryRefusal: refusal,
+          runCaptureKind,
+          queryCursorPosition: async () => ({ row: 1, col }),
+          queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+        } as unknown as TermProbeSource)
+        if (refusal && runCaptureKind !== "text-cells" && !notPixelCaused.has(id)) {
+          await expect(run, label).rejects.toMatchObject({
+            name: "FrameUnavailable",
+            message: expect.stringContaining(`this run refused capture geometry: ${refusal}`),
+          })
+          continue
+        }
+        const callback = await run
+        expect(record(callback).reason, label).toBe(
+          `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
+        )
+        expect(record(callback).status, id).toBe("probe-todo")
+        expect(callback.observation, id).toBeUndefined()
+      }
     }
   }
   const term = sgrProbes.find((row) => row.id === "sgr.underline-color-indexed")!.term!

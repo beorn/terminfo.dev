@@ -121,6 +121,7 @@ import {
   sixelReadback,
 } from "./sixel-capture.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 // The OSC 7/9 public-interface census qualifies these exact sources, not every
 // version carrying the same backend name. Real readers take precedence at each caller.
@@ -6382,6 +6383,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write("\x1b[38;2;255;128;0mX\x1b[0m")
           const pos = await ctx.queryCursorPosition()
           if (!pos) return unverifiedEffect(ctx, `${encoding}; no cursor response; RGB color was not measured`)
+          if (pos.col === 2) raiseRefusedCapture(ctx, `${encoding}; SGR was consumed; RGB cell color was not measured`)
           return unverifiedEffect(
             ctx,
             pos.col === 2
@@ -6411,6 +6413,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       async (ctx) => {
         const id = "extensions.font-ligatures"
         if (!ctx.capture || ctx.captureKind === "text-cells") {
+          if (!ctx.capture) raiseRefusedCapture(ctx, "Font ligatures need rendered pixels")
           return notTestedResult(
             "Font ligatures need rendered pixels; this context exposes no pixel capture callback",
             {

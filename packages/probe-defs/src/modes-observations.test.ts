@@ -3318,6 +3318,17 @@ test("modes.decsscls names a refused capture geometry instead of claiming the ru
   const context = captureSource(24, 80, writes, frames)
   context.captureGeometryRefusal = "cell-to-pixel calibration answered no DA1 reply"
   context.captureGeometry = undefined
+  // 34675 (@cto go-r2-1341): on a pixel run the refused geometry is the missing reading, so the row raises the named
+  // FrameUnavailable diagnostic for the collector to record as capture-refused; it writes nothing first.
+  await expect(decsscls().term!(context)).rejects.toMatchObject({
+    name: "FrameUnavailable",
+    message: expect.stringContaining(
+      "this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply",
+    ),
+  })
+  expect(writes).toEqual([])
+  // A text-cells run keeps the in-band note: pixels were never this run's reading.
+  context.runCaptureKind = "text-cells"
   const result = await decsscls().term!(context)
   expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   expect(result.note).toContain("this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply")
