@@ -867,9 +867,10 @@ jobs:
             } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
           await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
-          // Capture failures remain in artifacts and stderr after a successful Cursor collection.
-          const successfulCursor = process.env.APP_ID === "cursor" && process.env.COLLECT_OUTCOME === "success";
-          if (failures.length && !terminal && !successfulCursor) process.exitCode = 1;
+          // Capture failures remain in artifacts and stderr after a successful editor collection (Cursor or VS Code):
+          // the evidence is diagnostic, and a log window spanning a 40-minute collect step can outrun its wall (34597).
+          const successfulEditor = editor && process.env.COLLECT_OUTCOME === "success";
+          if (failures.length && !terminal && !successfulEditor) process.exitCode = 1;
           '
 
       - name: Retain editor launch files and close only its owned GUI

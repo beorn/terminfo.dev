@@ -560,6 +560,10 @@ test.each([
   { appId: "com.microsoft.VSCode", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
   { appId: "cursor", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
   { appId: "cursor", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
+  // 34597: VSCode's evidence capture (a 42-minute log window killed at its 20 s wall) failed run 44138709249's job
+  // after a successful collection; an editor's successful collection keeps its outcome, as Cursor's does.
+  { appId: "com.microsoft.VSCode", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "com.microsoft.VSCode", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
 ])(
   "$appId diagnostics preserve collection outcome (missing launch: $missingLaunch, collect: $collectOutcome)",
   ({ appId, missingLaunch, collectOutcome, expectedExit }) => {
