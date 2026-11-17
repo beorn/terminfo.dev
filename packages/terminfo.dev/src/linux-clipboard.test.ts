@@ -7,7 +7,7 @@
  */
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -21,6 +21,13 @@ import {
   type ClipboardTraceEvent,
 } from "./linux-clipboard.ts"
 
+
+test("spawned bun -e children do not bind the import name assert", () => {
+  const source = readFileSync(fileURLToPath(import.meta.url), "utf8")
+  const binding = "import " + "assert" + " from"
+  expect(source.includes(binding)).toBe(false)
+})
+
 const originalCapture = process.env.TERMINFO_CAPTURE_DIRECTORY
 const measuredExecutable = { path: process.execPath, sha256: "0".repeat(64) }
 const directories: string[] = []
@@ -30,7 +37,7 @@ const directories: string[] = []
 test.runIf(process.platform === "linux")("mux clipboard grant tests the measured attachment before every read", () => {
   const sourceRoot = dirname(fileURLToPath(import.meta.url))
   const child = String.raw`
-import assert from "node:assert/strict"
+import nodeAssert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import * as fs from "node:fs"
 import * as os from "node:os"
@@ -112,27 +119,27 @@ mock.module("node:fs", () => ({...fs,
 }))
 mock.module("node:child_process", () => ({...cp,
   spawnSync(file,args,options) {
-    assert.equal(file,exe("screen"))
-    assert.equal(options.env.SCREENDIR,root)
+    nodeAssert.equal(file,exe("screen"))
+    nodeAssert.equal(options.env.SCREENDIR,root)
     screenSpawns.push({file,session:args[1],screenDir:options.env.SCREENDIR,args:[...args]})
     if (args[2] === "-X" && args[3] === "scrollback") {
-      assert.equal(args[0],"-S")
-      assert.equal(args[1],muxTarget.session)
-      assert(args[4] === "0" || args[4] === "100")
+      nodeAssert.equal(args[0],"-S")
+      nodeAssert.equal(args[1],muxTarget.session)
+      nodeAssert(args[4] === "0" || args[4] === "100")
       if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
       if(variant==="screen-refused-restore" && args[4]==="100")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen restore refusal")}
       if(variant==="screen-owner-lost" && args[4]==="100")variant="detached"
       return {status:0,stdout:Buffer.alloc(0),stderr:Buffer.alloc(0)}
     }
     if (args[2] === "-Q") {
-      assert.deepEqual(args,["-S",muxTarget.session,"-Q","number"])
+      nodeAssert.deepEqual(args,["-S",muxTarget.session,"-Q","number"])
       return {status:0,stdout:Buffer.from("0 (bash)\n"),stderr:Buffer.alloc(0)}
     }
-    assert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
+    nodeAssert.deepEqual(args.slice(0,5),["-S",muxTarget.session,"-X","hardcopy","-h"])
     const path=args[5]
-    assert.equal(path.slice(0,path.lastIndexOf("/")),join(root,"artifacts"))
-    assert(path.includes(muxTarget.session))
-    assert(!hardcopies.includes(path),"each Screen read needs its own retained hardcopy")
+    nodeAssert.equal(path.slice(0,path.lastIndexOf("/")),join(root,"artifacts"))
+    nodeAssert(path.includes(muxTarget.session))
+    nodeAssert(!hardcopies.includes(path),"each Screen read needs its own retained hardcopy")
     hardcopies.push(path)
     if(variant==="screen-refused")return {status:2,stdout:Buffer.alloc(0),stderr:Buffer.from("screen fixture refusal")}
     const used = variant === "screen-more" ? 21 : 20
@@ -160,23 +167,23 @@ mock.module("node:child_process", () => ({...cp,
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
       if(args.includes("display-message")) {
-        assert.deepEqual(args,["-S",socket,"display-message","-p","-t",muxTarget.session,"#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}"])
+        nodeAssert.deepEqual(args,["-S",socket,"display-message","-p","-t",muxTarget.session,"#{history_size} #{pane_height} #{scroll_position} #{pane_in_mode}"])
         if(variant==="scrollback-failed")callback(new Error("tmux history command failed"),"")
         else callback(null,variant==="scrollback-malformed"?"not counts\n":variant==="scrollback-bottom"?"20 24  0\n":variant==="scrollback-empty-mode"?"20 24  1\n":"20 24 3 1\n")
         return {}
       }
       if(args.includes("show-options")) {
-        assert.deepEqual(args,["-S",socket,"show-options","-s","-v","set-clipboard"])
+        nodeAssert.deepEqual(args,["-S",socket,"show-options","-s","-v","set-clipboard"])
         callback(null,tmuxSetClipboard+"\n")
         return {}
       }
       if(args.includes("list-buffers")) {
-        assert.deepEqual(args,["-S",socket,"list-buffers","-F","#{buffer_name}"])
+        nodeAssert.deepEqual(args,["-S",socket,"list-buffers","-F","#{buffer_name}"])
         callback(null,tmuxBuffers.length?tmuxBuffers.join("\n")+"\n":"")
         return {}
       }
       if(args.includes("delete-buffer")) {
-        assert.deepEqual(args.slice(0,4),["-S",socket,"delete-buffer","-b"])
+        nodeAssert.deepEqual(args.slice(0,4),["-S",socket,"delete-buffer","-b"])
         tmuxDeleteCalls.push(args[4])
         if(variant!=="tmux-buffer-restore-stuck") tmuxBuffers=tmuxBuffers.filter(name=>name!==args[4])
         callback(null,"")
@@ -234,41 +241,41 @@ try {
   // PRIMARY alone, and CLIPBOARD stays untouched; a receipt without it exposes no PRIMARY transaction at all.
   initialize("tmux","valid",true)
   const primaryAdapter=await factory()
-  assert.equal(typeof primaryAdapter.withPrimaryFixture,"function","a PRIMARY receipt must expose its transaction")
+  nodeAssert.equal(typeof primaryAdapter.withPrimaryFixture,"function","a PRIMARY receipt must expose its transaction")
   let seen
   await primaryAdapter.withPrimaryFixture(async fixture=>{
     seen=await fixture.readText()
     await fixture.writeText("pasted nonce")
-    assert.equal(primaryValue,"pasted nonce","the write must land on PRIMARY")
-    assert.equal(baselineValue,baseline,"a PRIMARY write must leave CLIPBOARD untouched")
+    nodeAssert.equal(primaryValue,"pasted nonce","the write must land on PRIMARY")
+    nodeAssert.equal(baselineValue,baseline,"a PRIMARY write must leave CLIPBOARD untouched")
     return {pass:true}
   },()=>{},primaryAdapter.assertOwned)
-  assert.equal(seen,primaryBaseline,"the read must come from PRIMARY")
-  assert.equal(primaryValue,primaryBaseline,"PRIMARY must be restored to its own baseline")
+  nodeAssert.equal(seen,primaryBaseline,"the read must come from PRIMARY")
+  nodeAssert.equal(primaryValue,primaryBaseline,"PRIMARY must be restored to its own baseline")
   await primaryAdapter.dispose()
   initialize("tmux","valid",false)
   const clipboardOnly=await factory()
-  assert.equal(clipboardOnly.withPrimaryFixture,undefined,"no PRIMARY receipt means no PRIMARY transaction")
+  nodeAssert.equal(clipboardOnly.withPrimaryFixture,undefined,"no PRIMARY receipt means no PRIMARY transaction")
   await clipboardOnly.dispose()
   for(const kind of ["tmux","screen"]) {
     initialize(kind,"valid")
     const adapter=await factory()
-    assert(adapter.muxAttachmentProof,kind+" attachment snapshot missing")
-    assert.equal(adapter.muxAttachmentProof.captureRunId,capture)
-    assert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
-    assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
-    assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
+    nodeAssert(adapter.muxAttachmentProof,kind+" attachment snapshot missing")
+    nodeAssert.equal(adapter.muxAttachmentProof.captureRunId,capture)
+    nodeAssert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
+    nodeAssert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
+    nodeAssert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
     if (kind === "tmux") {
-      assert.equal(adapter.resetScrollback,undefined,"tmux must not expose Screen history reset")
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:17})
+      nodeAssert.equal(adapter.resetScrollback,undefined,"tmux must not expose Screen history reset")
+      nodeAssert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:17})
       variant="scrollback-bottom"
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:20})
+      nodeAssert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,viewportOffset:20})
       variant="scrollback-empty-mode"
-      await assert.rejects(()=>adapter.getScrollback(),/copy mode reports no scroll position/)
+      await nodeAssert.rejects(()=>adapter.getScrollback(),/copy mode reports no scroll position/)
       variant="scrollback-malformed"
-      await assert.rejects(()=>adapter.getScrollback(),/scrollback.*malformed/i)
+      await nodeAssert.rejects(()=>adapter.getScrollback(),/scrollback.*malformed/i)
       variant="scrollback-failed"
-      await assert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
+      await nodeAssert.rejects(()=>adapter.getScrollback(),/tmux history command failed/)
       variant="valid"
       tmuxBuffers=["buffer0001"]
       tmuxSetClipboard="external"
@@ -278,18 +285,18 @@ try {
         tmuxBuffers=["buffer0002","buffer0001"]
         return {pass:true}
       },()=>{},adapter.assertOwned)
-      assert.equal(observedSetClipboard,"external","tmux fixture must expose measured server set-clipboard")
-      assert.deepEqual(tmuxDeleteCalls,["buffer0002"],"newly added tmux paste buffer must be deleted in finally")
-      assert.deepEqual(tmuxBuffers,["buffer0001"],"pre-existing tmux paste buffers must remain intact")
-      assert.equal(baselineValue,baseline,"OS clipboard baseline must be restored")
+      nodeAssert.equal(observedSetClipboard,"external","tmux fixture must expose measured server set-clipboard")
+      nodeAssert.deepEqual(tmuxDeleteCalls,["buffer0002"],"newly added tmux paste buffer must be deleted in finally")
+      nodeAssert.deepEqual(tmuxBuffers,["buffer0001"],"pre-existing tmux paste buffers must remain intact")
+      nodeAssert.equal(baselineValue,baseline,"OS clipboard baseline must be restored")
       tmuxDeleteCalls=[]
-      await assert.rejects(adapter.withClipboardFixture(async ()=>{
+      await nodeAssert.rejects(adapter.withClipboardFixture(async ()=>{
         tmuxBuffers=["buffer0003","buffer0001"]
         throw new Error("callback boom")
       },()=>{},adapter.assertOwned),/callback boom/)
-      assert.deepEqual(tmuxDeleteCalls,["buffer0003"],"tmux buffer cleanup must run even when callback throws")
+      nodeAssert.deepEqual(tmuxDeleteCalls,["buffer0003"],"tmux buffer cleanup must run even when callback throws")
       variant="tmux-buffer-restore-stuck"
-      await assert.rejects(adapter.withClipboardFixture(async ()=>{
+      await nodeAssert.rejects(adapter.withClipboardFixture(async ()=>{
         tmuxBuffers=["buffer0004","buffer0001"]
         return {pass:true}
       },()=>{},adapter.assertOwned),/Owned clipboard restoration failed:.*tmux paste buffer/)
@@ -297,44 +304,44 @@ try {
       tmuxBuffers=[]
       tmuxDeleteCalls=[]
     } else {
-      assert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
-      assert.equal(typeof adapter.resetScrollback,"function","owned Screen history reset must be reachable")
+      nodeAssert.equal(typeof adapter.getScrollback,"function","owned Screen history reader must be reachable")
+      nodeAssert.equal(typeof adapter.resetScrollback,"function","owned Screen history reset must be reachable")
       screenSpawns.length=0
-      assert.deepEqual(await adapter.resetScrollback(),{status:"reset",capacity:100})
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,capacity:100})
-      assert.deepEqual(screenSpawns.slice(0,2).map(s=>s.args),[
+      nodeAssert.deepEqual(await adapter.resetScrollback(),{status:"reset",capacity:100})
+      nodeAssert.deepEqual(await adapter.getScrollback(),{totalLines:44,screenLines:24,capacity:100})
+      nodeAssert.deepEqual(screenSpawns.slice(0,2).map(s=>s.args),[
         ["-S",muxTarget.session,"-X","scrollback","0"],
         ["-S",muxTarget.session,"-X","scrollback","100"],
       ])
       // @cto c901817a: reset and read must spawn with the exact same executable, session, and SCREENDIR.
       const [resetZero, resetRestore, readHardcopy, readQuery] = screenSpawns
-      assert.deepEqual(
+      nodeAssert.deepEqual(
         [resetZero.file, resetZero.session, resetZero.screenDir],
         [readHardcopy.file, readHardcopy.session, readHardcopy.screenDir],
       )
-      assert.deepEqual(
+      nodeAssert.deepEqual(
         [resetRestore.file, resetRestore.session, resetRestore.screenDir],
         [readQuery.file, readQuery.session, readQuery.screenDir],
       )
       variant="screen-more"
-      assert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24,capacity:100})
-      for(const path of hardcopies)assert(real.existsSync(path),"hardcopy evidence must remain retained")
+      nodeAssert.deepEqual(await adapter.getScrollback(),{totalLines:45,screenLines:24,capacity:100})
+      for(const path of hardcopies)nodeAssert(real.existsSync(path),"hardcopy evidence must remain retained")
       variant="screen-refused"
-      await assert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
-      await assert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 0 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      await nodeAssert.rejects(()=>adapter.getScrollback(),{message:'screen hardcopy exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
+      await nodeAssert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 0 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen fixture refusal" stdout=""'})
       variant="screen-refused-restore"
-      await assert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 100 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen restore refusal" stdout=""'})
+      await nodeAssert.rejects(()=>adapter.resetScrollback(),{message:'screen scrollback 100 exited 2 at SCREENDIR='+JSON.stringify(root)+': stderr="screen restore refusal" stdout=""'})
       variant="detached"
       const before=hardcopies.length
       const spawnsBefore=screenSpawns.length
-      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
-      await assert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
-      assert.equal(hardcopies.length,before,"ownership refusal must precede the Screen command")
-      assert.equal(screenSpawns.length,spawnsBefore,"ownership refusal must precede Screen reset")
+      await nodeAssert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      await nodeAssert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
+      nodeAssert.equal(hardcopies.length,before,"ownership refusal must precede the Screen command")
+      nodeAssert.equal(screenSpawns.length,spawnsBefore,"ownership refusal must precede Screen reset")
       variant="screen-owner-lost"
-      await assert.rejects(()=>adapter.getScrollback(),/attached|display/i)
+      await nodeAssert.rejects(()=>adapter.getScrollback(),/attached|display/i)
       variant="screen-owner-lost"
-      await assert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
+      await nodeAssert.rejects(()=>adapter.resetScrollback(),/attached|display/i)
       variant="valid"
     }
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
@@ -345,19 +352,19 @@ try {
         if (++tests >= failAt) throw refusal
         await adapter.assertOwned()
       }
-      await assert.rejects(adapter.withClipboardFixture(async fixture=>{
+      await nodeAssert.rejects(adapter.withClipboardFixture(async fixture=>{
         callbacks++
         await fixture.writeText("must remain unowned")
         return {pass:true}
       },()=>{},verify),new RegExp("transaction custody lost at "+site))
-      assert.equal(callbacks,site==="write"?1:0)
-      assert.equal(tests,failAt+1,"restoration must use the same refused verifier")
+      nodeAssert.equal(callbacks,site==="write"?1:0)
+      nodeAssert.equal(tests,failAt+1,"restoration must use the same refused verifier")
     }
     // The same grant must notice detach before the next clipboard operation.
     variant="detached"
     const previousReads=reads
-    await assert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{},adapter.assertOwned),/attached|display/i)
-    assert.equal(reads,previousReads)
+    await nodeAssert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{},adapter.assertOwned),/attached|display/i)
+    nodeAssert.equal(reads,previousReads)
     await adapter.dispose()
     const refusals = {
       detached: kind === "tmux" ? /exactly one attached client; found 0/ : /exactly one attached display/,
@@ -371,8 +378,8 @@ try {
     }
     for(const [bad, message] of Object.entries(refusals)) {
       initialize(kind,bad)
-      await assert.rejects(factory(),message,kind+" "+bad)
-      assert.equal(reads,0,kind+" "+bad+" accessed clipboard before rejecting")
+      await nodeAssert.rejects(factory(),message,kind+" "+bad)
+      nodeAssert.equal(reads,0,kind+" "+bad+" accessed clipboard before rejecting")
     }
     // Filesystem faults must name the broken custody link and retain the original error.
     for(const [bad, message] of Object.entries({
@@ -383,12 +390,12 @@ try {
       ...(kind === "screen" ? {"fd-directory-io": /Screen server fd directory/, "fd-link-io": /Screen server fd link/} : {}),
     })) {
       initialize(kind,bad)
-      await assert.rejects(factory(),error=>{
-        assert.match(error.message,message)
-        assert.equal(error.cause,fsFault)
+      await nodeAssert.rejects(factory(),error=>{
+        nodeAssert.match(error.message,message)
+        nodeAssert.equal(error.cause,fsFault)
         return true
       })
-      assert.equal(reads,0)
+      nodeAssert.equal(reads,0)
     }
     // Loss inside the callback must refuse both a requested write and finally restoration.
     for(const operation of ["write","restore"]) {
@@ -396,35 +403,35 @@ try {
       const revoked=await factory(), events=[]
       const beforeSpawns=spawns
       let afterLossReads
-      await assert.rejects(revoked.withClipboardFixture(async fixture=>{
+      await nodeAssert.rejects(revoked.withClipboardFixture(async fixture=>{
         variant="detached";afterLossReads=reads
         if(operation === "write") await fixture.writeText("unowned mutation")
         return {pass:true}
       },event=>events.push(event),revoked.assertOwned),/Owned clipboard restoration failed:.*(?:attached client|attached display)/)
-      assert.equal(reads,afterLossReads)
-      assert.equal(spawns,beforeSpawns)
-      assert(events.some(event=>event.kind === "clipboard-restore" && event.status === "error"))
-      assert.equal(events.some(event=>event.kind === "clipboard-write" && event.status === "error"),operation === "write")
+      nodeAssert.equal(reads,afterLossReads)
+      nodeAssert.equal(spawns,beforeSpawns)
+      nodeAssert(events.some(event=>event.kind === "clipboard-restore" && event.status === "error"))
+      nodeAssert.equal(events.some(event=>event.kind === "clipboard-write" && event.status === "error"),operation === "write")
       await revoked.dispose()
     }
     initialize(kind,"valid")
     const changedChain=await factory()
     table.get(kind === "tmux" ? 145 : 147).start="999"
     const beforeChainRead=reads
-    await assert.rejects(changedChain.assertOwned(), /process chain changed since grant/)
-    assert.equal(reads,beforeChainRead)
+    await nodeAssert.rejects(changedChain.assertOwned(), /process chain changed since grant/)
+    nodeAssert.equal(reads,beforeChainRead)
     await changedChain.dispose()
     if (kind === "tmux") {
       // A private socket with one valid client can still belong to a second server outside this collector's chain.
       initialize(kind,"foreign-server")
-      await assert.rejects(factory(), /tmux socket server differs from the collector's nearest tmux ancestor/)
-      assert.equal(reads,0,"foreign server accessed clipboard before rejecting")
+      await nodeAssert.rejects(factory(), /tmux socket server differs from the collector's nearest tmux ancestor/)
+      nodeAssert.equal(reads,0,"foreign server accessed clipboard before rejecting")
       initialize(kind,"valid")
       const changedClient=await factory()
       variant="client-changed"
       const beforeClientRead=reads
-      await assert.rejects(changedClient.assertOwned(), /attached client PID\/start ticks differ/)
-      assert.equal(reads,beforeClientRead)
+      await nodeAssert.rejects(changedClient.assertOwned(), /attached client PID\/start ticks differ/)
+      nodeAssert.equal(reads,beforeClientRead)
       await changedClient.dispose()
     }
   }
@@ -506,7 +513,7 @@ test.runIf(process.platform === "linux")(
     const sourceRoot = dirname(fileURLToPath(import.meta.url))
     const codeRoot = resolve(sourceRoot, "../../..")
     const child = String.raw`
-import assert from "node:assert/strict"
+import nodeAssert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import * as realChildProcess from "node:child_process"
 import * as realFs from "node:fs"
@@ -533,7 +540,7 @@ let iconProperties = {
 const spawnSyncBeforeMock = realChildProcess.spawnSync
 const foreignFd = Number(process.env.TERMINFO_FOREIGN_TTY_FD)
 const root = process.env.TERMINFO_TEST_SOURCE_ROOT
-assert(root && isatty(0) && isatty(1) && isatty(foreignFd))
+nodeAssert(root && isatty(0) && isatty(1) && isatty(foreignFd))
 const launch = "a".repeat(32)
 const capture = "b".repeat(32)
 const digest = (value) => createHash("sha256").update(value).digest("hex")
@@ -591,21 +598,21 @@ try {
         if (args[0] === "--version") return { status: 0, stdout: "wezterm " + weztermCliVersion, stderr: "" }
         weztermReads++
         if (cwdActive) {
-          assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
+          nodeAssert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
           if (args.includes("list")) return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
-          assert.ok(args.includes("get-text"))
+          nodeAssert.ok(args.includes("get-text"))
           return { status: 0, stdout: Buffer.from(cwdText + "\n".repeat(24)), stderr: Buffer.alloc(0) }
         }
-        assert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
-        assert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
-        assert.equal(options.env.WEZTERM_PANE, "17")
+        nodeAssert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
+        nodeAssert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
+        nodeAssert.equal(options.env.WEZTERM_PANE, "17")
         if (weztermRefused) return { status: 2, stdout: Buffer.from("partial"), stderr: Buffer.from("owned WezTerm fixture refusal") }
         return { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24) + "\n"), stderr: Buffer.alloc(0) }
       }
       if (file !== join(dir, "kitten")) return spawnSyncBeforeMock(file, args, options)
       kittyReads++
-      assert.equal(args[2], process.env.KITTY_LISTEN_ON)
-      assert.equal(args.at(-1), "id:42")
+      nodeAssert.equal(args[2], process.env.KITTY_LISTEN_ON)
+      nodeAssert.equal(args.at(-1), "id:42")
       if (kittyRefused) return { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.from("owned Kitty fixture refusal") }
       const count = args[args.indexOf("--extent") + 1] === "all" ? 44 : 24
       return { status: 0, stdout: Buffer.from("row\r\n".repeat(count)), stderr: Buffer.alloc(0) }
@@ -614,7 +621,7 @@ try {
       if (_file === "xprop") {
         xpropReads++
         const name = args.at(-1)
-        assert.deepEqual(args, ["-id", "42", "-f", name, "8c", name])
+        nodeAssert.deepEqual(args, ["-id", "42", "-f", name, "8c", name])
         const property = iconProperties[name]
         const output = name === "_NET_WM_ICON_NAME" && iconFault !== null ? iconFault :
           property ? name + "(" + property.type + ") = " + property.bytes.join(", ") + "\n" : name + ":  not found.\n"
@@ -653,39 +660,39 @@ try {
     verifier.createOwnedTerminal({ expectedLaunchRunId: launch, captureRunId: run, out,
       linux: { receiptPath, executable: live }, onRetained: artifact => cwdArtifacts.push(artifact) })
   if (mode === "no-ctty") {
-    await assert.rejects(factory(process.stdout), /controlling tty_nr 0/)
+    await nodeAssert.rejects(factory(process.stdout), /controlling tty_nr 0/)
   } else {
-    await assert.rejects(factory(process.stdout, capture, { ...executable, sha256: "0".repeat(64) }),
+    await nodeAssert.rejects(factory(process.stdout, capture, { ...executable, sha256: "0".repeat(64) }),
       /Live executable digest mismatch/)
     const fake = { fd: 1, columns: 80, write() { throw new Error("fake output was written") } }
-    await assert.rejects(factory(fake), /not a real TTY stream/)
-    await assert.rejects(factory(process.stderr), /not a TTY/)
+    await nodeAssert.rejects(factory(fake), /not a real TTY stream/)
+    await nodeAssert.rejects(factory(process.stderr), /not a TTY/)
     const foreign = new WriteStream(foreignFd)
-    await assert.rejects(factory(foreign), /Owned output device/)
+    await nodeAssert.rejects(factory(foreign), /Owned output device/)
     const adapter = await factory(process.stdout)
     const writeIcon = bytes => {
       const m = /^\x1b\](1|2);([^\x07]*)\x07$/.exec(bytes)
-      assert(m, "fixture cleanup must use only recorded OSC1/OSC2")
+      nodeAssert(m, "fixture cleanup must use only recorded OSC1/OSC2")
       if (failIconCleanup) return
       if (m[1] === "2") nativeTitle = m[2]
       else iconProperties._NET_WM_ICON_NAME = {type:"UTF8_STRING",bytes:[...Buffer.from(m[2],"utf8")]}
     }
     const originalTitle = nativeTitle
     const transaction = await adapter.clipboard.withIconNameFixture(writeIcon, async read => {
-      assert.equal(await read(), "", "present empty UTF8 must win over the legacy label")
+      nodeAssert.equal(await read(), "", "present empty UTF8 must win over the legacy label")
       nativeTitle = "mutated title"
       iconProperties._NET_WM_ICON_NAME.bytes = [120]
       return {status:"unavailable",reason:"transaction boundary fixture"}
     })
-    assert.equal(transaction.status,"unavailable")
-    assert.equal(nativeTitle,originalTitle)
-    assert.deepEqual(iconProperties._NET_WM_ICON_NAME.bytes,[])
-    assert.equal(transaction.detail.iconFixture.cleanup.propertiesExact,true)
+    nodeAssert.equal(transaction.status,"unavailable")
+    nodeAssert.equal(nativeTitle,originalTitle)
+    nodeAssert.deepEqual(iconProperties._NET_WM_ICON_NAME.bytes,[])
+    nodeAssert.equal(transaction.detail.iconFixture.cleanup.propertiesExact,true)
     nativeTitle = "baseline-title"
     let latched = false
     const wezterm = await adapter.clipboard.withIconNameFixture((bytes) => {
       const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
-      assert(match, "wezterm cleanup sequence")
+      nodeAssert(match, "wezterm cleanup sequence")
       const code = match[1]
       const payload = match[2] ?? ""
       if (code === "1") {
@@ -705,9 +712,9 @@ try {
       latched = true
       return { status: "unavailable", reason: "wezterm title latch" }
     })
-    assert.equal(wezterm.status, "unavailable")
-    assert.equal(nativeTitle, "baseline-title")
-    assert.match(wezterm.detail.iconFixture.cleanup.note, /OSC 0 cleared it/)
+    nodeAssert.equal(wezterm.status, "unavailable")
+    nodeAssert.equal(nativeTitle, "baseline-title")
+    nodeAssert.match(wezterm.detail.iconFixture.cleanup.note, /OSC 0 cleared it/)
     for (const bad of [
       '_NET_WM_ICON_NAME(UTF8_STRING) = "quoted"\n',
       '_NET_WM_ICON_NAME(UTF8_STRING) = 256\n',
@@ -718,29 +725,29 @@ try {
       iconFault=bad
       let ran=false
       const reading=await adapter.clipboard.withIconNameFixture(()=>{throw Error("stimulus before valid setup")},async()=>{ran=true;return {status:"unavailable",reason:"must not run"}})
-      assert.equal(reading.status,"unavailable")
-      assert.equal(ran,false,"malformed property must stop before stimulus")
+      nodeAssert.equal(reading.status,"unavailable")
+      nodeAssert.equal(ran,false,"malformed property must stop before stimulus")
     }
     iconFault=null
     delete iconProperties._NET_WM_ICON_NAME
     iconProperties.WM_ICON_NAME={type:"STRING",bytes:[233]}
     const legacy=await adapter.clipboard.withIconNameFixture(writeIcon,async read=>{
-      assert.equal(await read(),"é","legacy STRING is latin-1, not UTF8")
+      nodeAssert.equal(await read(),"é","legacy STRING is latin-1, not UTF8")
       return {status:"unavailable",reason:"legacy fixture"}
     })
-    assert.equal(legacy.status,"unavailable")
-    assert.equal(legacy.detail.iconFixture.cleanup.propertiesExact,false,"OSC can create the formerly absent modern property")
-    assert.match(legacy.detail.iconFixture.cleanup.note,/OSC-only/)
+    nodeAssert.equal(legacy.status,"unavailable")
+    nodeAssert.equal(legacy.detail.iconFixture.cleanup.propertiesExact,false,"OSC can create the formerly absent modern property")
+    nodeAssert.match(legacy.detail.iconFixture.cleanup.note,/OSC-only/)
     delete iconProperties._NET_WM_ICON_NAME
     delete iconProperties.WM_ICON_NAME
     let absentRan = false
     const absent = await adapter.clipboard.withIconNameFixture(writeIcon, async (read) => {
       absentRan = true
-      assert.equal(await read(), null, "a missing icon property is an observation")
+      nodeAssert.equal(await read(), null, "a missing icon property is an observation")
       return { status: "unavailable", reason: "absent icon is observable" }
     })
-    assert.equal(absentRan, true)
-    assert.equal(absent.status, "unavailable")
+    nodeAssert.equal(absentRan, true)
+    nodeAssert.equal(absent.status, "unavailable")
     iconProperties.WM_ICON_NAME = { type: "COMPOUND_TEXT", bytes: [97] }
     let malformedRan = false
     const malformed = await adapter.clipboard.withIconNameFixture(
@@ -752,28 +759,28 @@ try {
         return { status: "unavailable", reason: "must not run" }
       },
     )
-    assert.equal(malformed.status, "unavailable")
-    assert.equal(malformedRan, false)
+    nodeAssert.equal(malformed.status, "unavailable")
+    nodeAssert.equal(malformedRan, false)
     iconProperties={WM_ICON_NAME:{type:"STRING",bytes:[97]},_NET_WM_ICON_NAME:{type:"UTF8_STRING",bytes:[98]}}
     const beforeForeign=xpropReads
     const revokedIcon=await adapter.clipboard.withIconNameFixture(writeIcon,async()=>{throw Error("foreign callback")},async()=>{throw Error("fixture owner revoked")})
-    assert.equal(revokedIcon.status,"unavailable")
-    assert.equal(xpropReads,beforeForeign,"owner check must precede every property read")
+    nodeAssert.equal(revokedIcon.status,"unavailable")
+    nodeAssert.equal(xpropReads,beforeForeign,"owner check must precede every property read")
     const brokenCleanup=await adapter.clipboard.withIconNameFixture(writeIcon,async()=>{
       iconProperties._NET_WM_ICON_NAME.bytes=[99];failIconCleanup=true
       return {status:"unavailable",reason:"cleanup fixture"}
     })
-    assert.equal(brokenCleanup.status,"invalid")
-    assert.match(brokenCleanup.reason,/cleanup failed/)
+    nodeAssert.equal(brokenCleanup.status,"invalid")
+    nodeAssert.match(brokenCleanup.reason,/cleanup failed/)
     failIconCleanup=false
-    assert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
-    assert.equal(adapter.resetScrollback, undefined, "App target must not expose Screen history reset")
+    nodeAssert.equal(typeof adapter.getScrollback, "function", "owned Linux Kitty history callback is missing")
+    nodeAssert.equal(adapter.resetScrollback, undefined, "App target must not expose Screen history reset")
     const history = await adapter.getScrollback()
     const { receipt, ...counts } = history
-    assert.deepEqual(counts, { totalLines: 44, screenLines: 24 })
-    assert.equal("viewportOffset" in history, false)
+    nodeAssert.deepEqual(counts, { totalLines: 44, screenLines: 24 })
+    nodeAssert.equal("viewportOffset" in history, false)
     // The count's identity record names the pane and the socket's presence, and no host path (@cto 41fcd747).
-    assert.deepEqual(JSON.parse(receipt ?? "null"), {
+    nodeAssert.deepEqual(JSON.parse(receipt ?? "null"), {
       surface: "kitty",
       pane: "42",
       listedTty: null,
@@ -782,9 +789,9 @@ try {
       socketPresent: true,
       executable: "kitten",
     })
-    assert.equal(/[\\/]/u.test(receipt ?? ""), false)
+    nodeAssert.equal(/[\\/]/u.test(receipt ?? ""), false)
     kittyRefused = true
-    await assert.rejects(adapter.getScrollback(), /Kitty all get-text unavailable: .*"status":2/)
+    await nodeAssert.rejects(adapter.getScrollback(), /Kitty all get-text unavailable: .*"status":2/)
     kittyRefused = false
     const liveAssert = adapter.clipboard.assertOwned
     const lostOwner = new Error("owned Kitty attachment lost")
@@ -795,46 +802,46 @@ try {
         if (++checks === boundary) throw lostOwner
         await liveAssert()
       }
-      await assert.rejects(adapter.getScrollback(), error => error === lostOwner)
-      assert.equal(kittyReads - readsBefore, boundary === 1 ? 0 : 2)
+      await nodeAssert.rejects(adapter.getScrollback(), error => error === lostOwner)
+      nodeAssert.equal(kittyReads - readsBefore, boundary === 1 ? 0 : 2)
     }
     adapter.clipboard.assertOwned = liveAssert
     const readsBefore = kittyReads
     forwardMuxHistory = true
     const muxOwner = await factory(process.stdout, "e".repeat(32))
-    assert.equal(muxOwner.resetScrollback, undefined, "tmux OwnedTerminal must not expose resetScrollback")
-    assert.deepEqual(await muxOwner.getScrollback(), { totalLines: 55, screenLines: 24, viewportOffset: 17 })
+    nodeAssert.equal(muxOwner.resetScrollback, undefined, "tmux OwnedTerminal must not expose resetScrollback")
+    nodeAssert.deepEqual(await muxOwner.getScrollback(), { totalLines: 55, screenLines: 24, viewportOffset: 17 })
     await muxOwner.dispose()
     forwardMuxHistory = "screen"
     const screenMuxOwner = await factory(process.stdout, "2".repeat(32))
-    assert.equal(typeof screenMuxOwner.resetScrollback, "function", "Screen OwnedTerminal must expose resetScrollback")
-    assert.deepEqual(await screenMuxOwner.resetScrollback(), { status: "reset", capacity: 1000 })
-    assert.equal(screenResetCount, 1)
+    nodeAssert.equal(typeof screenMuxOwner.resetScrollback, "function", "Screen OwnedTerminal must expose resetScrollback")
+    nodeAssert.deepEqual(await screenMuxOwner.resetScrollback(), { status: "reset", capacity: 1000 })
+    nodeAssert.equal(screenResetCount, 1)
     const { ALL_PROBES: probeDefsForScreen } = await import("@terminfo/probe-defs")
     const risDef = probeDefsForScreen.find(probe => probe.id === "reset.ris")
     const savedRisTerm = risDef.term
     try {
       risDef.term = async context => {
-        assert.equal(typeof context.resetScrollback, "function", "runProbeBatch must wire resetScrollback onto TermProbeSource")
-        assert.deepEqual(await context.resetScrollback(), { status: "reset", capacity: 1000 })
+        nodeAssert.equal(typeof context.resetScrollback, "function", "runProbeBatch must wire resetScrollback onto TermProbeSource")
+        nodeAssert.deepEqual(await context.resetScrollback(), { status: "reset", capacity: 1000 })
         return { observation: { outcome: "supported", assertionType: "query_reply" } }
       }
       await withRawMode(() => runProbeBatch({ ids: ["reset.ris"], captureRunId: "2".repeat(32),
         ownedTerminal: screenMuxOwner, out: process.stdout }))
-      assert.equal(screenResetCount, 2)
+      nodeAssert.equal(screenResetCount, 2)
     } finally {
       risDef.term = savedRisTerm
     }
     await screenMuxOwner.dispose()
-    await assert.rejects(screenMuxOwner.resetScrollback(), /no live bound capture/)
+    await nodeAssert.rejects(screenMuxOwner.resetScrollback(), /no live bound capture/)
     forwardMuxHistory = false
     process.env.TERMINFO_TARGET_ID = "xterm"
     const otherApp = await factory(process.stdout, "f".repeat(32))
-    assert.equal(otherApp.getScrollback, undefined, "foreign Kitty child variables cannot select the App reader")
-    assert.equal(otherApp.resetScrollback, undefined)
+    nodeAssert.equal(otherApp.getScrollback, undefined, "foreign Kitty child variables cannot select the App reader")
+    nodeAssert.equal(otherApp.resetScrollback, undefined)
     await otherApp.dispose()
     process.env.TERMINFO_TARGET_ID = "kitty"
-    assert.equal(kittyReads, readsBefore, "a mux or other App must never query the outer Kitty")
+    nodeAssert.equal(kittyReads, readsBefore, "a mux or other App must never query the outer Kitty")
     // Reader-only tests miss registration: this real owner fixture must reach the WezTerm callback
     // despite foreign KITTY_* variables and preserve physical blank history rows without an offset.
     process.env.TERMINFO_TARGET_ID = "wezterm"
@@ -843,12 +850,12 @@ try {
     process.env.WEZTERM_UNIX_SOCKET = join(dir, "wezterm.sock")
     process.env.WEZTERM_PANE = "17"
     const weztermOwner = await factory(process.stdout, "1".repeat(32))
-    assert.equal(typeof weztermOwner.getScrollback, "function", "owned Linux WezTerm history callback is missing")
-    assert.equal(weztermOwner.resetScrollback, undefined)
+    nodeAssert.equal(typeof weztermOwner.getScrollback, "function", "owned Linux WezTerm history callback is missing")
+    nodeAssert.equal(weztermOwner.resetScrollback, undefined)
     const { receipt: wezTermReceipt, ...wezTermCounts } = await weztermOwner.getScrollback()
-    assert.deepEqual(wezTermCounts, { totalLines: 27, screenLines: 24 })
+    nodeAssert.deepEqual(wezTermCounts, { totalLines: 27, screenLines: 24 })
     // Linux WezTerm lists no pane tty and measures none, so the record says so instead of claiming a match.
-    assert.deepEqual(JSON.parse(wezTermReceipt ?? "null"), {
+    nodeAssert.deepEqual(JSON.parse(wezTermReceipt ?? "null"), {
       surface: "wezterm",
       pane: "17",
       listedTty: null,
@@ -857,9 +864,9 @@ try {
       socketPresent: true,
       executable: "wezterm",
     })
-    assert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
+    nodeAssert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
     weztermRefused = true
-    await assert.rejects(weztermOwner.getScrollback(), error =>
+    await nodeAssert.rejects(weztermOwner.getScrollback(), error =>
       /WezTerm owned get-text unavailable/.test(error.message) &&
       error.message.includes(Buffer.from("partial").toString("base64")) &&
       error.message.includes(Buffer.from("owned WezTerm fixture refusal").toString("base64")))
@@ -872,13 +879,13 @@ try {
         if (++checks === boundary) throw lostOwner
         await weztermAssert()
       }
-      await assert.rejects(weztermOwner.getScrollback(), error => error === lostOwner)
-      assert.equal(weztermReads - before, boundary === 1 ? 0 : 1)
+      await nodeAssert.rejects(weztermOwner.getScrollback(), error => error === lostOwner)
+      nodeAssert.equal(weztermReads - before, boundary === 1 ? 0 : 1)
     }
     weztermOwner.clipboard.assertOwned = weztermAssert
     // The direct history fixture misses CWD's private writer and checks between writes and reads.
     // Keep the real Linux grant and PTY; supply only the native OSC effect and CLI directory/text.
-    assert.equal(typeof weztermOwner.readAppSemanticState, "function")
+    nodeAssert.equal(typeof weztermOwner.readAppSemanticState, "function")
     const cwdInitial = cwd
     const cwdTtyWrite = process.stdout.write
     cwdActive = true
@@ -902,16 +909,16 @@ try {
       const reading = await weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {
         throw new Error("CWD used the publishable writer")
       })
-      assert.equal(reading.status, "measured", JSON.stringify(reading))
-      assert.equal(cwd, cwdInitial, "restore must keep the exact initial public URI")
-      assert.equal(cwdWrites, 4)
-      assert.equal(JSON.stringify(reading).includes("private-person"), false)
-      assert.equal(typeof reading.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
-      assert.deepEqual(JSON.parse(reading.detail.ownershipReceipt), {
+      nodeAssert.equal(reading.status, "measured", JSON.stringify(reading))
+      nodeAssert.equal(cwd, cwdInitial, "restore must keep the exact initial public URI")
+      nodeAssert.equal(cwdWrites, 4)
+      nodeAssert.equal(JSON.stringify(reading).includes("private-person"), false)
+      nodeAssert.equal(typeof reading.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
+      nodeAssert.deepEqual(JSON.parse(reading.detail.ownershipReceipt), {
         surface: "wezterm", pane: "17", listedTty: null, measuredTty: null,
         ttyMatch: null, socketPresent: true, executable: "wezterm",
       })
-      assert.equal(/[\\/]/u.test(reading.detail.ownershipReceipt), false)
+      nodeAssert.equal(/[\\/]/u.test(reading.detail.ownershipReceipt), false)
       // An owned process alone cannot widen the reviewed version or borrow the launch's identity.
       for (const [reported, launched] of [["unreviewed-version", "0-unstable-2026-10-10"], ["0-unstable-2026-10-10", "unreviewed-version"]]) {
         weztermCliVersion = reported
@@ -921,20 +928,20 @@ try {
         const refused = await wrongVersion.readAppSemanticState("extensions.osc7-cwd", () => {
           throw new Error("unreviewed CWD used the publishable writer")
         })
-        assert.equal(refused.status, "invalid", JSON.stringify(refused))
-        assert.equal(weztermReads, before, "unreviewed or mismatched versions must issue no pane command")
-        assert.equal(cwdWrites, 4)
+        nodeAssert.equal(refused.status, "invalid", JSON.stringify(refused))
+        nodeAssert.equal(weztermReads, before, "unreviewed or mismatched versions must issue no pane command")
+        nodeAssert.equal(cwdWrites, 4)
         await wrongVersion.dispose()
       }
       weztermCliVersion = "0-unstable-2026-10-10"
       process.env.TERMINFO_TARGET_VERSION = weztermCliVersion
       loseCwdOwnerAfterWrite = true
       const before = weztermReads
-      await assert.rejects(weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {
+      await nodeAssert.rejects(weztermOwner.readAppSemanticState("extensions.osc7-cwd", () => {
         throw new Error("CWD used the publishable writer")
       }), /restoration failed: the pane's reported directory was left changed/)
-      assert.equal(weztermReads - before, 1, "after ownership loss no CLI read may follow the initial list")
-      assert.equal(cwdWrites, 5, "after ownership loss no restoration write may reach the pane")
+      nodeAssert.equal(weztermReads - before, 1, "after ownership loss no CLI read may follow the initial list")
+      nodeAssert.equal(cwdWrites, 5, "after ownership loss no restoration write may reach the pane")
     } finally {
       cwdActive = false
       cwdLost = false
@@ -944,21 +951,21 @@ try {
     }
     await weztermOwner.dispose()
     process.env.TERMINFO_TARGET_ID = "kitty"
-    assert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],
+    nodeAssert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],
       ["measured", 24, 61])
-    assert.deepEqual(JSON.parse(adapter.summary).geometryAtGrant, adapter.geometryAtGrant)
+    nodeAssert.deepEqual(JSON.parse(adapter.summary).geometryAtGrant, adapter.geometryAtGrant)
     const changedSize = realChildProcess.spawnSync("stty", ["rows", "31", "cols", "73"],
       { stdio: [0, "ignore", "pipe"] })
-    assert.equal(changedSize.status, 0, changedSize.stderr?.toString())
+    nodeAssert.equal(changedSize.status, 0, changedSize.stderr?.toString())
     const resized = await adapter.readGeometry()
-    assert.deepEqual([resized.status, resized.rows, resized.cols], ["measured", 31, 73])
+    nodeAssert.deepEqual([resized.status, resized.rows, resized.cols], ["measured", 31, 73])
     const originalPath = process.env.PATH
     const sttyFixture = join(dir, "stty")
     try {
       process.env.PATH = dir
       const missing = await adapter.readGeometry()
-      assert.equal(missing.status, "unavailable")
-      assert.match(missing.diagnostic, /stty size failed/)
+      nodeAssert.equal(missing.status, "unavailable")
+      nodeAssert.match(missing.diagnostic, /stty size failed/)
       process.env.PATH = dir + ":" + originalPath
       for (const [script, expected] of [
         ["#!/bin/sh\nprintf 'bad size\\n'\n", /invalid rows and cols/],
@@ -968,27 +975,27 @@ try {
       ]) {
         realFs.writeFileSync(sttyFixture, script, { mode: 0o700 })
         const unavailable = await adapter.readGeometry()
-        assert.equal(unavailable.status, "unavailable")
-        assert.match(unavailable.diagnostic, expected)
+        nodeAssert.equal(unavailable.status, "unavailable")
+        nodeAssert.match(unavailable.diagnostic, expected)
       }
     } finally {
       process.env.PATH = originalPath
       realFs.rmSync(sttyFixture, { force: true })
     }
     const stdoutBinding = JSON.parse(adapter.summary).outputBinding
-    assert.equal(stdoutBinding.matched, "pty")
-    assert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.inputRdev)
-    assert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.outputRdev)
+    nodeAssert.equal(stdoutBinding.matched, "pty")
+    nodeAssert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.inputRdev)
+    nodeAssert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.outputRdev)
     const exactOutput = realFs.fstatSync(1, { bigint: true })
-    assert.deepEqual(stdoutBinding.outputDevice, {
+    nodeAssert.deepEqual(stdoutBinding.outputDevice, {
       dev: exactOutput.dev.toString(),
       rdev: exactOutput.rdev.toString(),
       ino: exactOutput.ino.toString(),
     })
-    assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), true)
-    assert.equal(verifier.ownedTerminalVerifiedFor(adapter, "c".repeat(32), process.stdout), false)
-    assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)
-    assert.equal(verifier.ownedTerminalVerifiedFor({ ...adapter }, capture, process.stdout), false)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), true)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor(adapter, "c".repeat(32), process.stdout), false)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor({ ...adapter }, capture, process.stdout), false)
     // A genuine granted owner must also remain current at each consumer boundary (CTO 7acc71d2).
     // Temporary loss must also reject after recovery, including a probe that catches the error.
     // The permanent cases and counters still detect a final-check-only placebo.
@@ -1026,18 +1033,18 @@ try {
             if (boundary === "input") await context.input.injectKey("a")
           } catch (error) {
             if (!temporary) throw error
-            assert.equal(error, refusal)
+            nodeAssert.equal(error, refusal)
           }
           return {observation:{outcome:"supported",assertionType:"query_reply"}}
         }
         try {
-          await assert.rejects(withRawMode(() => runProbeBatch({ids:["reset.ris"], captureRunId:capture,
+          await nodeAssert.rejects(withRawMode(() => runProbeBatch({ids:["reset.ris"], captureRunId:capture,
             ownedTerminal:adapter,out:process.stdout,
             capture:async()=>{touched++;throw Error("unowned capture ran")},
             input:{injectKey:async()=>{touched++},injectClick:async()=>{touched++}},
           })), error=>error===refusal, boundary+" must name the custody failure")
-          assert.equal(touched,0,boundary+" crossed the refused boundary")
-          if (boundary === "callback") assert.equal(callbacks,0,"revoked callback ran")
+          nodeAssert.equal(touched,0,boundary+" crossed the refused boundary")
+          if (boundary === "callback") nodeAssert.equal(callbacks,0,"revoked callback ran")
         } catch(error) { failures.push((temporary ? "temporary " : "permanent ")+boundary+": "+error.message) }
       }
     } finally {
@@ -1046,58 +1053,58 @@ try {
       process.stdout.write = originalWrite
       revoked = false
     }
-    assert.deepEqual(failures,[])
+    nodeAssert.deepEqual(failures,[])
     const owned = await withRawMode(() => runProbeBatch({ ids: ["reset.ris", "extensions.osc52-write"], captureRunId: capture,
       ownedTerminal: adapter, out: process.stdout }))
-    assert.match(owned.rawReplies["reset.ris"], /\\u001bc/)
-    assert.equal(owned.ungradedDiagnostics["reset.ris"], undefined)
+    nodeAssert.match(owned.rawReplies["reset.ris"], /\\u001bc/)
+    nodeAssert.equal(owned.ungradedDiagnostics["reset.ris"], undefined)
     const reset = owned.observations.find((item) => item.featureId === "reset.ris")
-    assert.equal(reset.outcome, "supported")
-    assert.equal(reset.assertionType, "query_reply")
-    assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris.callbackResponse"]), {
+    nodeAssert.equal(reset.outcome, "supported")
+    nodeAssert.equal(reset.assertionType, "query_reply")
+    nodeAssert.deepEqual(JSON.parse(owned.rawReplies["reset.ris.callbackResponse"]), {
       before: { row: 5, col: 5 }, after: { row: 1, col: 1 }
     })
-    assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
+    nodeAssert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
       ["\x1b[5;5R", "\x1b[1;1R"])
-    assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
+    nodeAssert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
+    nodeAssert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "probe-todo")
     // #31741: an owned run now carries its own recording pasteboard, so a run that names no subject
     // is refused for the missing binding rather than for a missing fixture. The row is still not sent.
-    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "this run records a clipboard fixture but declares no subject to bind it to")
-    assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
+    nodeAssert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "this run records a clipboard fixture but declares no subject to bind it to")
+    nodeAssert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
-      assert.deepEqual(refused.observations, [])
-      assert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
-      assert.match(refused.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
-      assert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
+      nodeAssert.deepEqual(refused.observations, [])
+      nodeAssert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
+      nodeAssert.match(refused.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
+      nodeAssert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
     }
     const alias = openControllingTTY()
     const aliasAdapter = await factory(alias, "d".repeat(32))
     const aliasBinding = JSON.parse(aliasAdapter.summary).outputBinding
-    assert.equal(aliasBinding.matched, "dev-tty")
-    assert.equal(aliasBinding.outputRdev, 1280)
-    assert.equal(aliasBinding.controllingTtyNr, aliasBinding.inputRdev)
-    assert.equal(verifier.ownedTerminalVerifiedFor(aliasAdapter, "d".repeat(32), alias), true)
-    assert.deepEqual([aliasAdapter.geometryAtGrant.status, aliasAdapter.geometryAtGrant.rows, aliasAdapter.geometryAtGrant.cols],
+    nodeAssert.equal(aliasBinding.matched, "dev-tty")
+    nodeAssert.equal(aliasBinding.outputRdev, 1280)
+    nodeAssert.equal(aliasBinding.controllingTtyNr, aliasBinding.inputRdev)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor(aliasAdapter, "d".repeat(32), alias), true)
+    nodeAssert.deepEqual([aliasAdapter.geometryAtGrant.status, aliasAdapter.geometryAtGrant.rows, aliasAdapter.geometryAtGrant.cols],
       ["measured", 31, 73])
     const aliasSize = await aliasAdapter.readGeometry()
-    assert.deepEqual([aliasSize.status, aliasSize.rows, aliasSize.cols], ["measured", 31, 73])
+    nodeAssert.deepEqual([aliasSize.status, aliasSize.rows, aliasSize.cols], ["measured", 31, 73])
     const aliasBatch = await withRawMode(() => runProbeBatch({ ids: ["reset.ris"], captureRunId: "d".repeat(32),
       ownedTerminal: aliasAdapter, out: alias }), alias)
-    assert.match(aliasBatch.rawReplies["reset.ris"], /\\u001bc/)
+    nodeAssert.match(aliasBatch.rawReplies["reset.ris"], /\\u001bc/)
     await aliasAdapter.dispose()
     await new Promise((resolve) => alias.end(resolve))
     await adapter.dispose()
-    await assert.rejects(adapter.getScrollback(), /no live bound capture/)
-    await assert.rejects(adapter.readGeometry(), /no live bound capture/)
-    assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
+    await nodeAssert.rejects(adapter.getScrollback(), /no live bound capture/)
+    await nodeAssert.rejects(adapter.readGeometry(), /no live bound capture/)
+    nodeAssert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
       ownedTerminal: adapter, out: process.stdout })
-    assert.deepEqual(disposed.observations, [])
-    assert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
-    assert.match(disposed.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
-    assert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
+    nodeAssert.deepEqual(disposed.observations, [])
+    nodeAssert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "probe-todo")
+    nodeAssert.match(disposed.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
+    nodeAssert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
     await new Promise((resolve) => foreign.end(resolve))
   }
 } finally {
