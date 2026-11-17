@@ -735,14 +735,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 D with its exit-code option and reports it nowhere, so neither the mark nor a command-exit status is observable. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc/parsers/semantic_prompt.zig:30 defines end_command for D, :105,118 carries exit_code as a typed option and :359 parses it, so the sequence is understood rather than dropped. No surface reads it back: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) exposes only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no verb returning a prompt mark or an exit status (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
   })),
-  // 34586: no OSC 633 parser in the fork, and no Darwin carve-out means nothing on the Mac can read one anyway.
+  // 34586: no OSC 633 parser in the fork, and no Mac surface reads a mark or a command line. osc633-p is not here
+  // (34671, @cto 34586-cmux-cwd-finding-1246): workspace.current returns the focused panel's reported directory, which
+  // OSC 7 moves, so P has an observable; until a reader measures it, it stays Probe TODO.
   ...[
     "extensions.osc633-a",
     "extensions.osc633-b",
     "extensions.osc633-c",
     "extensions.osc633-d",
     "extensions.osc633-e",
-    "extensions.osc633-p",
     "extensions.osc-633-vscode",
   ].map((featureId) => ({
     kind: "term" as const,
@@ -760,7 +761,7 @@ const declarations: readonly AppSemanticCapability[] = [
     os: "macos",
     featureId: "extensions.osc8",
     reason:
-      'Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns them. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @"8" in the command table, :832 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. Nothing reads it back: ReadScreenResult carries only {text} (ReadScreenResult.java:13-23), VtStateResult carries only cols, rows, data bytes and the kitty graphics/image-alias fields (VtStateResult.java:13-18) with no hyperlink field, cmux-tui/spec/sdk-schema.json has no hyperlink verb, and docs/cli-contract.md documents read-screen, vt-state and jump-to-last-prompt only.',
+      "Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns a cell's link. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @\"8\" in the command table, :832 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. The text read returns text only (read-screen returns {text}: ReadScreenResult.java:13-23). The vt-state bytes cannot carry a cell's link: cmux-tui replays through the fork's VT formatter (cmux-tui server.rs:9959-9985, crates/ghostty-vt terminal.rs:4037-4065), which emits cell hyperlinks only for HTML (src/terminal/formatter.zig:1361-1366, \"We currently only emit hyperlinks for HTML\"); in VT output only an OSC 8 still open at the cursor is written (:524-526, :670-686), which is cursor state, not a cell's link. vt-state is also not a route to the app: cmux-tui serves its own PTY sessions over $TMPDIR/cmux-tui-<uid>/<session>.sock (cmux-tui/README.md:48, server.rs:1-14), while the native app's surfaces are in-process libghostty (Sources/TerminalSurface+RuntimeSurfaceCreation.swift:370). cmux-tui/spec/sdk-schema.json has no hyperlink verb.",
   },
   // 34596 (REVISION 3): 633;E has no parser and no Mac surface carries a command line.
   {

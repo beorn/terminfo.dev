@@ -1571,8 +1571,8 @@ test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac fron
   for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
 })
 
-// 34591/34586: on macOS no reader exists for these prompt ids (only WezTerm's osc633-p is read on darwin), so
-// WezTerm 20240203 declares the other 13 and cmux 0.65.2 all 14, from source reads at each app's own tag.
+// 34591/34586: on macOS no reader exists for these prompt ids, so each app declares the ids its own source shows no
+// way to observe, read at that app's tag. An id with an observable but no wired reader stays Probe TODO, undeclared.
 // Existing tests pin other subjects only; a typo in either subject would leave every Mac cell probe-todo silently.
 const PROMPT_FAMILY = [
   "extensions.osc-633-vscode",
@@ -1600,7 +1600,14 @@ test.each([
     // Probe TODO until a Mac reader is wired.
     undeclared: ["extensions.osc633-p", "extensions.osc8"],
   },
-  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", undeclared: [] as string[] },
+  {
+    id: "cmux",
+    version: "0.65.2",
+    otherVersion: "0.65.1",
+    // 34671 (@cto 34586-cmux-cwd-finding-1246): workspace.current returns the focused panel's reported directory, which
+    // OSC 7 moves, so OSC 633;P has an observable. Source predicts it unchanged; until a reader measures it, Probe TODO.
+    undeclared: ["extensions.osc633-p"],
+  },
 ])("$id $version on macOS declares every prompt-family id the darwin reader cannot read", (app) => {
   const subject = { kind: "term" as const, id: app.id, version: app.version, os: "macos" }
   const mac = appSemanticDeclarations(subject)
@@ -1621,6 +1628,10 @@ test.each([
     // Trap 2: D's exit code is parsed and unread; the unread stream handler is never claimed to discard it.
     expect(mac["extensions.osc133-d"]).toContain("semantic_prompt.zig:30")
     expect(allText).not.toMatch(/discard/i)
+    // 34671: OSC 8's reason rests on the bytes, not on a missing result field: the fork's VT formatter emits cell
+    // hyperlinks only for HTML, and cmux-tui's vt-state serves its own PTY sessions, not the native app's surfaces.
+    expect(mac["extensions.osc8"]).toContain("formatter.zig:1361-1366")
+    expect(mac["extensions.osc8"]).not.toMatch(/no hyperlink field/)
   }
   const otherVersion = appSemanticDeclarations({ ...subject, version: app.otherVersion })
   const linux = appSemanticDeclarations({ ...subject, os: "linux" })
