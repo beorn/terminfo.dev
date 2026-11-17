@@ -29,7 +29,7 @@ import {
   type Run,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
-import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
+import { retainCollectedRun, shadowCollectedRun, writeCollectedRun } from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
@@ -157,8 +157,12 @@ async function probeDaemon(
     if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
     const data = retained.run
     const intended = { kind: "mux" as const, id: muxId, version }
-    if (outputDirectory !== undefined) retainCollectedRun(data, retained.path, intended, outputDirectory)
-    else writeCollectedRun(data, retained.path, intended)
+    const retainedRun =
+      outputDirectory !== undefined
+        ? retainCollectedRun(data, retained.path, intended, outputDirectory)
+        : writeCollectedRun(data, retained.path, intended).retained
+    // #30932 S2: once, for either path, from the saved private run.
+    await shadowCollectedRun(retainedRun)
     const mode = outputDirectory === undefined ? "written" : "retained privately"
     const catalogIds = data.results.map((result) => result.featureId)
     const aggregate = aggregateCurrentResults(data.results, catalogIds)

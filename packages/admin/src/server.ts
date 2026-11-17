@@ -13,7 +13,7 @@ import {
  */
 
 import { readRetainedDaemonProbeResponse, requestDaemonProbe } from "../../terminfo.dev/src/daemon-client.ts"
-import { writeCollectedRun } from "./collected-run.ts"
+import { shadowCollectedRun, writeCollectedRun } from "./collected-run.ts"
 
 export async function handleServer(
   daemon: string | undefined,
@@ -94,8 +94,10 @@ export async function handleServer(
         ...data,
         rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
       }
-      writeCollectedRun(run, retained.path)
+      const { retained: retainedRun } = writeCollectedRun(run, retained.path)
       saved++
+      // #30932 S2: from the saved private run; it never changes what was saved or counted.
+      await shadowCollectedRun(retainedRun)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       failures.push(`${label}: ${msg}`)

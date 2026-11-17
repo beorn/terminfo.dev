@@ -40,6 +40,8 @@ import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import { shadowStoredRun } from "../../../probes/stored-run-shadow.ts"
+import { shadowCollectedRun, shadowReportPath } from "../../../admin/src/collected-run.ts"
+import * as serveModule from "../serve.ts"
 import { currentTrace } from "../../../../docs/data/run-trace.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
@@ -5751,6 +5753,64 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
       },
     ])
     expect(report.families[0]).toMatchObject({ notComparable: 1, agree: 0, disagree: 0 })
+  }, 60_000)
+
+  it("keeps the collection's report private beside the run, where a reader of the run directory never sees it", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockReturnValue({ manifest, collectorRevision: sourceRevision })
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    await shadowCollectedRun(recorded.path)
+    const path = shadowReportPath(recorded.path)
+    expect(path).toBe(join(recorded.directory, "shadow", basename(recorded.path, ".json") + ".shadow.json"))
+    expect(nodeFs.statSync(path).mode & 0o777).toBe(0o600)
+    expect(nodeFs.statSync(join(recorded.directory, "shadow")).mode & 0o777).toBe(0o700)
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(
+      JSON.parse(JSON.stringify(await shadowStoredRun(recorded.path, recorded.suite))),
+    )
+    expect(String(log.mock.calls.at(-1)?.[0])).toContain("Shadow sgr 1 rows: 1 agree, 0 disagree")
+    // The run's own bytes are unchanged, and the directory still holds exactly one run JSON.
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+    expect(nodeFs.readdirSync(recorded.directory).filter((name) => name.endsWith(".json"))).toEqual([
+      basename(recorded.path),
+    ])
+  }, 60_000)
+
+  it("records a failed replay as an error, never agreement, and leaves the run and the collection's result alone", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockImplementation(() => {
+      throw new Error("Collector source is uncommitted: fixture detail")
+    })
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    await expect(shadowCollectedRun(recorded.path)).resolves.toBeUndefined()
+    const report = JSON.parse(readFileSync(shadowReportPath(recorded.path), "utf8"))
+    expect(report).toMatchObject({
+      format: "terminfo.shadow-report",
+      outcome: "shadow-error",
+      run: basename(recorded.path),
+      error: { name: "Error", message: "Collector source is uncommitted: fixture detail" },
+    })
+    expect(report).not.toHaveProperty("rows")
+    const line = String(error.mock.calls.at(-1)?.[0])
+    expect(line).toContain("FAILED (Error)")
+    // The raw error stays in the private report.
+    expect(line).not.toContain("fixture detail")
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+  }, 60_000)
+
+  it("names a report it could not write, without overwriting what is there or touching the run", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    const path = shadowReportPath(recorded.path)
+    mkdirSync(join(recorded.directory, "shadow"), { mode: 0o700 })
+    writeFileSync(path, "earlier report\n")
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockReturnValue({ manifest, collectorRevision: sourceRevision })
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    await expect(shadowCollectedRun(recorded.path)).resolves.toBeUndefined()
+    expect(String(error.mock.calls.at(-1)?.[0])).toMatch(/Shadow report for .* NOT WRITTEN to .* \(EEXIST\)/)
+    expect(readFileSync(path, "utf8")).toBe("earlier report\n")
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
   }, 60_000)
 })
 
