@@ -5175,13 +5175,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       checkpoint: request,
       source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
       png,
-      // A paint witness reads painted at once. An unchanged witness would poll to a wall-clock
-      // deadline, which no call log records, so its poll count would differ under load in replay.
-      decoded: {
-        width: 160,
-        height: 96,
-        rgba: new Uint8Array(160 * 96 * 4).fill(label.includes("paint witness") ? 0 : 255),
-      },
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
       origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
       trace: {},
     })
@@ -5211,9 +5205,6 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   // The measured raster, never a query-derived size, is what the row's crops used.
   expect(captured.length).toBeGreaterThan(0)
   for (const request of captured) expect(request.pixelGeometry).toEqual(geometry)
-  // No witness was polled toward its deadline, so the recorded call order does not depend on load.
-  const witnessReads = captured.filter(({ label }) => label.includes("paint witness")).map(({ label }) => label)
-  expect(witnessReads).toEqual([...new Set(witnessReads)])
   expect(JSON.parse(batch.rawReplies["sgr.reset.captureBinding"]!)).toEqual({
     format: "terminfo.capture-binding",
     version: 1,
@@ -5333,7 +5324,19 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   if (!callback) throw new Error("Missing SGR reset callback")
   const beforeReplay = writes.length
   const liveCaptures = captures
-  const result = await callback(replay.context)
+  // The paint-witness polls run to a wall-clock deadline, which no call log records, so their count
+  // follows the clock (a #30932 S2 shadow finding, not this slice). Replay on the same fake clock as
+  // the live run, so the recorded order is the one the replay asks for.
+  const onLiveClock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    vi.useFakeTimers()
+    try {
+      const [value] = await Promise.all([operation(), vi.runAllTimersAsync()])
+      return value
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+  const result = await onLiveClock(() => callback(replay.context))
   replay.finish()
   expect(writes).toHaveLength(beforeReplay)
   expect(captures).toBe(liveCaptures)
@@ -5349,7 +5352,9 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     throw new Error("Offline SGR assertion attempted native runtime discovery")
   })
   try {
-    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
+    const record = await onLiveClock(() =>
+      runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" }),
+    )
     for (const assertion of record.assertions) {
       const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
       expect(replayed?.status).toBe(live.status)
