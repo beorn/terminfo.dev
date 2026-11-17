@@ -51,6 +51,27 @@ test("hosted Mac scripts parse and keep command-substitution comments compatible
   expect(checkedBodies).toBeGreaterThan(0)
 })
 
+// 34567: timeout-minutes went from 35 to 70, but the collect step kept its own JOB_LIMIT_S=35*60 and flushed
+// cursor and VS Code at ~31.6 min (run 44112785444). The poll budget is the job wall, counted from the first step.
+test("the hosted collector's poll budget is the job wall, measured from job start", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const job = workflow.jobs["measure-macos"] as { "timeout-minutes": number; steps: { name?: string; run?: string }[] }
+  const collect = job.steps.find(
+    (step) => step.name === "Launch, emit the receipt, and collect as the last mutating step",
+  )
+  const limit = /^\s*JOB_LIMIT_S=\$\(\((\d+) \* 60\)\)$/mu.exec(collect?.run ?? "")
+  expect(limit, "the collect step declares JOB_LIMIT_S as minutes * 60").not.toBeNull()
+  expect(Number(limit![1])).toBe(job["timeout-minutes"])
+  // The poll ends on the clock: each sleep-1 iteration took ~1.13 s on that run, so an iteration count would
+  // run ~5.6 min past a 70-minute wall and lose the flush (@dev/18, 34567).
+  expect(collect!.run).toMatch(/^\s*deadline=\$\(\( JOB_START_EPOCH \+ JOB_LIMIT_S - FLUSH_MARGIN_S \)\)$/mu)
+  expect(collect!.run).toMatch(/^\s*\[ "\$\(date \+%s\)" -lt "\$deadline" \] \|\| break$/mu)
+  expect(collect!.run).not.toMatch(/attempt<=poll_s/u)
+  expect(job.steps[0]!.run, "the first step records the job start the budget is measured from").toContain(
+    'printf \'JOB_START_EPOCH=%s\\n\' "$(date +%s)" >> "$GITHUB_ENV"',
+  )
+})
+
 test("hosted collector build runs at background priority", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const build = workflow.jobs["measure-macos"].steps.find(
