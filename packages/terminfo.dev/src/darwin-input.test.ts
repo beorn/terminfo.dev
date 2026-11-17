@@ -478,4 +478,51 @@ describe("the viewport route over keys-only input (34313)", () => {
     await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
     expect(posted).toEqual(["shift+Page_Up", "shift+End"])
   })
+
+  /**
+   * @failure A row's return to the bottom starts before its wall, waits on a hold still in flight, and posts the
+   *   bottom after the wall fired; the wall then posts it a second time (@dev/18 5c1280e5 note a, 34645).
+   * @level l1
+   * @consumer The held-viewport reader's failure return and the row wall in probes/unified.ts.
+   * @testonly none
+   */
+  it("posts nothing from a return that began before the wall and finished after it", async () => {
+    const posted: string[] = []
+    let finishHold: (() => void) | undefined
+    const input = {
+      injectKey: (keys: string) => {
+        posted.push(keys)
+        return keys === "shift+Page_Up" ? new Promise<void>((resolve) => (finishHold = resolve)) : Promise.resolve()
+      },
+      injectClick: async () => {},
+    }
+    const route = viewportScrollRoute(viewport, { input })
+    let scope: { abandon(): void } | undefined
+    const late = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            const hold = route.press("pageUp")
+            const back = route.returnToBottom?.().then(
+              (value) => value,
+              (error: Error) => error.message,
+            )
+            await Promise.resolve()
+            scope?.abandon()
+            finishHold?.()
+            await hold
+            return back
+          },
+          { onScope: (value) => (scope = value) },
+        ),
+      { write: () => true } as unknown as NodeJS.WriteStream,
+    )
+    expect(late).toMatch(/abandoned at its wall/)
+    expect(posted).toEqual(["shift+Page_Up"])
+    // Exactly one bottom, from the wall.
+    await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
+    expect(posted).toEqual(["shift+Page_Up", "shift+End"])
+  })
 })

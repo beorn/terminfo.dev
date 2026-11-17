@@ -448,6 +448,10 @@ export function viewportScrollRoute(
       const refused = abandonedRow("return to the bottom")
       if (refused) throw refused
       await last
+      // The wall may have fired while the earlier steps settled: it owns the bottom from then on, so a
+      // return that started before it posts nothing (@dev/18 5c1280e5 note a).
+      const lateRefusal = abandonedRow("return to the bottom")
+      if (lateRefusal) throw lateRefusal
       if (!held) return "not-held"
       await dispatch("bottom")
       return "bottom-pressed"

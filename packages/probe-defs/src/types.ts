@@ -650,6 +650,8 @@ export interface HeldViewportFrame {
   readonly capturedAt: number
   readonly regionDigest: string
   readonly regionRectangle: CaptureRectangle
+  /** The frame the capture record stored: held crops are `target`, bottom references `control`. */
+  readonly recorded: ObservationFrame
 }
 
 /** The trace bracket around the hold and its observation: one per read. */
@@ -706,6 +708,13 @@ export type HeldViewportReading =
  * reference this reader recorded earlier in the same row, taken before the trigger: the reader then writes
  * nothing to the TTY before its held crops. Without one, it reports `no-bound-reference` before any step.
  */
+/** A reference crop with no key and no TTY write, recorded so this row's reads can bind to it (34645). */
+export type HeldViewportReferenceReading =
+  | { readonly status: "reference"; readonly frame: HeldViewportFrame }
+  | { readonly status: "unavailable"; readonly reason: HeldViewportUnavailable; readonly detail: string }
+
+export type ReadViewportReference = (label: string) => Promise<HeldViewportReferenceReading>
+
 export type ReadHeldViewport = (
   hold: Exclude<ViewportStep, "bottom"> | "already-held",
   label: string,
@@ -1754,6 +1763,8 @@ export interface TermProbeSource {
    * arm. Absent means the history rows keep their apparatus TODO.
    */
   readHeldViewport?: ReadHeldViewport
+  /** Installed with `readHeldViewport`: the grid as it stands, recorded as a reference for this row's reads. */
+  readViewportReference?: ReadViewportReference
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,

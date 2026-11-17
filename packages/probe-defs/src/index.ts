@@ -44,6 +44,8 @@ export type {
   HeldViewportReading,
   HeldViewportUnavailable,
   ReadHeldViewport,
+  ReadViewportReference,
+  HeldViewportReferenceReading,
   CaptureLocated,
   CalibrationSentinel,
 } from "./types.ts"

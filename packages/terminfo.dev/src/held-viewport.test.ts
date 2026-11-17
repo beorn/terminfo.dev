@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import type { ViewportStep } from "@terminfo/probe-defs"
+import type { ObservationFrame, ViewportStep } from "@terminfo/probe-defs"
 import { createHeldViewportReader, cropRows, uniqueRowShift, type HeldViewportGeometry } from "./held-viewport.ts"
 import type { TTYTraceMark } from "./tty.ts"
 
@@ -66,10 +66,11 @@ function terminalModel(options: { lines?: number; snapOnWrite?: boolean } = {}) 
       if (options.snapOnWrite) state.offset = 0
     },
     route: { route: "model route (alacritty 0.17.0 defaults)", press },
-    captureRaw: async (label: string) => {
+    captureRaw: async (label: string, _deadline = 0, role: "control" | "target" = "control") => {
       log.push(`capture:${label.split(": ")[1]}`)
       state.refs++
-      return { recorded: { ref: `sha256:frame-${state.refs}`, capturedAt: 1000 + state.refs }, decoded: render() }
+      const recorded = { kind: "png", role, ref: `sha256:frame-${state.refs}`, capturedAt: 1000 + state.refs, label }
+      return { recorded: recorded as unknown as ObservationFrame, decoded: render() }
     },
     mark: (): TTYTraceMark | undefined => ({
       mode: "record",
@@ -92,7 +93,7 @@ function reader(
     mark: model.mark,
     timeoutMs: 10_000,
     ...overrides,
-  })
+  }).read
 }
 
 describe("held viewport reader", () => {
@@ -106,6 +107,9 @@ describe("held viewport reader", () => {
     expect(reading.candidate.b1.regionDigest).toBe(reading.candidate.b0.regionDigest)
     expect(reading.candidate.held[0].ref).toBe("sha256:frame-2")
     expect(reading.candidate.held[0].capturedAt).toBe(1002)
+    // The frames the record stored: held crops are targets, so a grade can cite them (run-parser observations.ts).
+    expect(reading.candidate.held.map((frame) => frame.recorded.role)).toEqual(["target", "target"])
+    expect([reading.candidate.b0.recorded.role, reading.candidate.b1.recorded.role]).toEqual(["control", "control"])
     expect(reading.candidate.bracket.id).toBe("scrollback.accumulate:after accumulate:1")
     expect(model.log).toEqual([
       "capture:bottom reference before the hold",
@@ -151,6 +155,7 @@ describe("held viewport reader", () => {
       capturedAt: 1,
       regionDigest: "sha256:made-up",
       regionRectangle: { x: 2, y: 2, width: 6, height: 8 },
+      recorded: { ref: "sha256:made-up" } as unknown as ObservationFrame,
     })
     expect(forged).toMatchObject({ status: "unavailable", reason: "no-bound-reference" })
     expect(model.log).toEqual([])
@@ -176,9 +181,9 @@ describe("held viewport reader", () => {
   it("leaves the bottom to the wall when the row is abandoned inside the bracket", async () => {
     const model = terminalModel()
     const read = reader(model, {
-      captureRaw: async (label) => {
+      captureRaw: async (label, deadline, role) => {
         if (label.endsWith("held crop 2")) model.state.abandoned = true
-        return model.captureRaw(label)
+        return model.captureRaw(label, deadline, role)
       },
     })
     const reading = await read("pageUp", "after accumulate")
@@ -190,9 +195,9 @@ describe("held viewport reader", () => {
   it("names a TTY operation that started inside the bracket, and one still pending at the opening mark", async () => {
     const moved = terminalModel()
     const movedRead = reader(moved, {
-      captureRaw: async (label) => {
+      captureRaw: async (label, deadline, role) => {
         if (label.endsWith("held crop 1")) moved.write("\x1b[5n")
-        return moved.captureRaw(label)
+        return moved.captureRaw(label, deadline, role)
       },
     })
     expect(await movedRead("pageUp", "x")).toMatchObject({ reason: "trace-moved", restored: "bottom-pressed" })
@@ -206,9 +211,9 @@ describe("held viewport reader", () => {
   it("returns the bottom when a capture throws, and names a changed window", async () => {
     const failing = terminalModel()
     const read = reader(failing, {
-      captureRaw: async (label) => {
+      captureRaw: async (label, deadline, role) => {
         if (label.endsWith("held crop 1")) throw new Error("Darwin screenshot capture failed")
-        return failing.captureRaw(label)
+        return failing.captureRaw(label, deadline, role)
       },
     })
     expect(await read("pageUp", "x")).toMatchObject({
@@ -218,11 +223,11 @@ describe("held viewport reader", () => {
     })
     const moved = terminalModel()
     const movedRead = reader(moved, {
-      captureRaw: async (label) => {
+      captureRaw: async (label, deadline, role) => {
         if (label.endsWith("held crop 1")) {
           throw new Error("Darwin owned window 7 identity or bounds changed during capture")
         }
-        return moved.captureRaw(label)
+        return moved.captureRaw(label, deadline, role)
       },
     })
     expect(await movedRead("pageUp", "x")).toMatchObject({ reason: "geometry-changed", restored: "bottom-pressed" })
@@ -285,6 +290,54 @@ describe("held viewport reader", () => {
     expect(await reader(model, { geometry: () => undefined })("pageUp", "x")).toMatchObject({
       reason: "capture-failed",
     })
+    expect(model.log).toEqual([])
+  })
+})
+
+describe("reference reads", () => {
+  const pair = (model: ReturnType<typeof terminalModel>) =>
+    createHeldViewportReader({
+      featureId: "extensions.osc720-scroll-up",
+      route: () => model.route,
+      geometry: () => geometry,
+      captureRaw: model.captureRaw,
+      mark: model.mark,
+      timeoutMs: 10_000,
+    })
+
+  it("binds an already-held read to a reference taken before the trigger, with no key and no write", async () => {
+    const model = terminalModel({ snapOnWrite: true })
+    const reader = pair(model)
+    const before = await reader.reference("before OSC 720")
+    if (before.status !== "reference") throw new Error(`expected a reference, got ${JSON.stringify(before)}`)
+    expect(before.frame.recorded.role).toBe("control")
+    // The caller's trigger holds the view; nothing the reader does may write after it.
+    model.state.offset = 2
+    const held = await reader.read("already-held", "after OSC 720", before.frame)
+    expect(held.status).toBe("candidate")
+    if (held.status === "candidate") expect(held.candidate.shift).toBe(2)
+    expect(model.log).toEqual([
+      "capture:reference",
+      "capture:held crop 1",
+      "capture:held crop 2",
+      "press:bottom",
+      "capture:bottom reference after the hold",
+    ])
+  })
+
+  it("reports outside a live trace and on an abandoned row, taking no frame", async () => {
+    const model = terminalModel()
+    const outside = createHeldViewportReader({
+      featureId: "x",
+      route: () => model.route,
+      geometry: () => geometry,
+      captureRaw: model.captureRaw,
+      mark: () => undefined,
+      timeoutMs: 10_000,
+    })
+    expect(await outside.reference("r")).toMatchObject({ status: "unavailable", reason: "no-trace-scope" })
+    model.state.abandoned = true
+    expect(await pair(model).reference("r")).toMatchObject({ status: "unavailable", reason: "trace-abandoned" })
     expect(model.log).toEqual([])
   })
 })
