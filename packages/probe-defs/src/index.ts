@@ -38,6 +38,12 @@ export type {
   DeclaredViewportHold,
   ViewportScroll,
   ViewportStep,
+  HeldViewportBracket,
+  HeldViewportCandidate,
+  HeldViewportFrame,
+  HeldViewportReading,
+  HeldViewportUnavailable,
+  ReadHeldViewport,
   CaptureLocated,
   CalibrationSentinel,
 } from "./types.ts"
