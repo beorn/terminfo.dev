@@ -35,7 +35,6 @@ import {
   existsSync,
   openSync,
   closeSync,
-  statSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -156,6 +155,106 @@ export interface OwnedAppRemoteOptions {
   readonly argv: readonly string[]
 }
 
+/** A counter rsync reported, or "unmeasured" when its stats were missing or unreadable: never a zero. */
+export type RsyncCounter = number | "unmeasured"
+
+/**
+ * #33797 (@cto 16:10Z): one rsync call's own `--stats`, parsed from what rsync printed. Every count
+ * is in the unit its name says. `logicalTransferredFileSizeBytes` is rsync's "Total transferred file
+ * size": the LOGICAL size of the files rsync chose to transfer, not payload or network bytes; the
+ * delta payload is `literalDataBytes`, the reused bytes `matchedDataBytes`, and the wire totals
+ * `sentBytes`/`receivedBytes`. A field this rsync build does not print stays "unmeasured".
+ */
+export interface RsyncCallStats {
+  readonly label: string
+  readonly direction: "stage" | "copy-back"
+  readonly files: RsyncCounter
+  readonly regularFilesTransferred: RsyncCounter
+  readonly totalFileSizeBytes: RsyncCounter
+  readonly logicalTransferredFileSizeBytes: RsyncCounter
+  readonly literalDataBytes: RsyncCounter
+  readonly matchedDataBytes: RsyncCounter
+  readonly sentBytes: RsyncCounter
+  readonly receivedBytes: RsyncCounter
+  /** Why no counter was read at all, when that is the case. */
+  readonly unmeasured?: string
+  /** The call's complete rsync log, which holds the --stats block the counters were read from. */
+  readonly statsLog: string
+}
+
+const RSYNC_STAT_LINES = {
+  files: "Number of files",
+  regularFilesTransferred: "Number of regular files transferred",
+  totalFileSizeBytes: "Total file size",
+  logicalTransferredFileSizeBytes: "Total transferred file size",
+  literalDataBytes: "Literal data",
+  matchedDataBytes: "Matched data",
+  sentBytes: "Total bytes sent",
+  receivedBytes: "Total bytes received",
+} as const
+
+/** A line rsync's `--stats` block and its closing summary print, or a blank line. */
+const RSYNC_STATS_LINE =
+  /^(?:\s*|Number of [a-z ]+: .*|Total [a-z ]+: .*|Literal data: .*|Matched data: .*|File list [a-z ]+: .*|sent \S+ bytes\s+received \S+ bytes.*|total size is .*)$/
+
+/** Parse rsync's `--stats` block. A line that is absent, or whose number is not plain digits (with
+ * thousands separators), reads "unmeasured": a scaled "1.2K" is never rounded into a count. */
+export function parseRsyncStats(
+  text: string,
+  label: string,
+  direction: RsyncCallStats["direction"],
+  statsLog: string,
+): RsyncCallStats {
+  const counters = {} as Record<keyof typeof RSYNC_STAT_LINES, RsyncCounter>
+  let read = 0
+  for (const [field, name] of Object.entries(RSYNC_STAT_LINES) as [keyof typeof RSYNC_STAT_LINES, string][]) {
+    const match = new RegExp(`^${name}: ([0-9][0-9,]*)(?: bytes)?(?:\\s|$)`, "m").exec(text)
+    counters[field] = match?.[1] === undefined ? "unmeasured" : Number(match[1].replaceAll(",", ""))
+    if (counters[field] !== "unmeasured") read += 1
+  }
+  return {
+    label,
+    direction,
+    ...counters,
+    ...(read === 0 ? { unmeasured: "rsync printed no readable --stats block" } : {}),
+    statsLog,
+  }
+}
+
+/** One named interval on this driver's own monotonic clock (performance.now), in milliseconds from
+ * the driver's start; `within` names the interval it nests in. Never compared with a host's clock. */
+export interface PhaseInterval {
+  readonly name: string
+  readonly within: string | null
+  readonly startMs: number
+  readonly durationMs: number
+}
+
+const PHASE_CLOCK = "the driving host's monotonic clock (performance.now), milliseconds from the driver's start"
+
+function phaseClock() {
+  const origin = performance.now()
+  const stack: { name: string; start: number }[] = []
+  const done: PhaseInterval[] = []
+  return {
+    begin(name: string): void {
+      stack.push({ name, start: performance.now() })
+    },
+    end(name: string): void {
+      const open = stack.pop()
+      if (open?.name !== name) throw new Error(`phase clock: ended ${name} while ${open?.name ?? "nothing"} was open`)
+      const now = performance.now()
+      done.push({
+        name,
+        within: stack.at(-1)?.name ?? null,
+        startMs: Math.round(open.start - origin),
+        durationMs: Math.round(now - open.start),
+      })
+    },
+    intervals: (): PhaseInterval[] => [...done],
+  }
+}
+
 export interface OwnedAppTransportProof {
   readonly runner: string
   readonly hostKeyFingerprint: string
@@ -164,6 +263,8 @@ export interface OwnedAppTransportProof {
   readonly receiptSha256: string
   readonly remoteOutput: string
   readonly check: CheckDepth
+  /** #33797: measured after the receipt was sealed, so recorded here at the driver's own output, not in it. */
+  readonly afterSeal: { readonly clock: string; readonly phases: PhaseInterval[]; readonly transfers: RsyncCallStats[] }
 }
 
 function fail(name: string, detail: string): never {
@@ -734,7 +835,8 @@ function rsync(
   source: string,
   destination: string,
   extra: readonly string[] = [],
-): void {
+  direction: RsyncCallStats["direction"] = "stage",
+): RsyncCallStats {
   // Dependency trees can produce more diagnostics than spawnSync's pipe buffer holds.
   // Keep the complete child output even when the transfer fails before copy-back exists.
   mkdirSync(options.output, { recursive: true, mode: 0o700 })
@@ -743,9 +845,10 @@ function rsync(
   let result: ReturnType<typeof spawnSync>
   try {
     // Shared source trees can inherit setgid; runtime resources keep ordinary modes, not host privilege bits.
+    // #33797: `--stats` prints rsync's own counters into the same complete log, read back below.
     result = spawnSync(
       "rsync",
-      ["-a", "-e", sshCommandLine(options), "--chmod=ug-s", ...extra, "--", source, destination],
+      ["-a", "-e", sshCommandLine(options), "--chmod=ug-s", "--stats", ...extra, "--", source, destination],
       {
         stdio: ["ignore", descriptor, descriptor],
         timeout: options.rsyncTimeoutMs,
@@ -769,7 +872,12 @@ function rsync(
       `rsync ${source} -> ${destination} exited ${String(result.status)}; diagnostics: ${diagnostics}`,
     )
   }
-  if (statSync(diagnostics).size > 0) console.error(`rsync ${label} diagnostics: ${diagnostics}`)
+  // The log now always holds the --stats block; its path is still named only when rsync said more.
+  const logged = readFileSync(diagnostics, "utf8")
+  if (logged.split("\n").some((line) => !RSYNC_STATS_LINE.test(line))) {
+    console.error(`rsync ${label} diagnostics: ${diagnostics}`)
+  }
+  return parseRsyncStats(logged, label, direction, diagnostics)
 }
 
 function main(options: Parsed): OwnedAppTransportProof {
@@ -798,6 +906,9 @@ function main(options: Parsed): OwnedAppTransportProof {
   // The local manifest is bound before a single byte is staged: source from git archive, resources
   // from the code tree that will actually be copied.
   const scratch = mkdtempSync(join(tmpdir(), "owned-app-transport-"))
+  // #33797: named intervals of this run, and each stage rsync's own counters, sealed into the receipt.
+  const clock = phaseClock()
+  const transfers: RsyncCallStats[] = []
   // Set once this run has CREATED the stage: from then on a failed run still honours
   // --remove-stage, except after a timeout, when the remote side may still be using it. A stage
   // that already existed (an earlier run's, marked by this driver) is reused but never removed:
@@ -809,6 +920,7 @@ function main(options: Parsed): OwnedAppTransportProof {
   // held, and a proof that omits it cannot say the projection was replaced.
   let stageRebuild: string | null = null
   try {
+    clock.begin("transport")
     // A light run's two trusts are read before any hashing: the stage's resource marker, which
     // names the lock its node_modules trees were installed from, and the local lock's own bytes.
     // Every refusal here sends the run down the full path; none of them shortens a check silently.
@@ -827,6 +939,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       }
     }
     if (light && trusted === undefined) fail("invalid check", "a light run holds no stage marker to trust")
+    clock.begin("local manifest")
     const linkDirs = bundleLinkDirs()
     const declared = [...RESOURCE_DIRS, ...linkDirs, ...RESOURCE_FILES]
     // A light run hashes everything it stages EXCEPT the node_modules trees, which it trusts
@@ -865,6 +978,8 @@ function main(options: Parsed): OwnedAppTransportProof {
     localLines.sort()
     const local = digestValue(localLines)
     if (local.files === 0) fail("resource manifest mismatch", "the declared resources produced no files")
+    clock.end("local manifest")
+    clock.begin("stage")
     // A stage that already exists must be one this driver made; a stranger's directory is refused,
     // never adopted and never deleted.
     const ownership = sshRun(
@@ -895,7 +1010,10 @@ function main(options: Parsed): OwnedAppTransportProof {
     // revision and its tree were checked against git objects above, so nothing is moved.
     if (!light) {
       const bundle = createBundle(options, scratch)
-      rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
+      clock.begin("bundle transfer")
+      transfers.push(rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`))
+      clock.end("bundle transfer")
+      clock.begin("stage checkout")
       // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
       // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
       const rebuildMarker = `${stage}/${STAGE_REBUILD_MARKER}`
@@ -971,20 +1089,25 @@ function main(options: Parsed): OwnedAppTransportProof {
         `git -C ${shq(checkout)} status --porcelain`,
       ).stdout.trim()
       if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+      clock.end("stage checkout")
     }
+
+    clock.begin("resource transfer")
 
     if (!light) {
       // A former closure root is outside every current per-root --delete. Reconcile the owned
       // source projection against the archived source list, protecting current resources and Git
       // metadata. Existing tracked bytes stay with the verified checkout; runs/ is outside source/.
       // Archive equals the tracked tree here; adding export-ignore attributes breaks that assumption.
-      rsync(options, "resource root reconciliation", `${archive}/`, `${userAndHost}:${source}/`, [
-        "--delete",
-        "--existing",
-        "--ignore-existing",
-        "--exclude=.git",
-        ...[...RESOURCE_DIRS, ...linkDirs, ...extras, ...RESOURCE_FILES].map((entry) => `--exclude=/${entry}`),
-      ])
+      transfers.push(
+        rsync(options, "resource root reconciliation", `${archive}/`, `${userAndHost}:${source}/`, [
+          "--delete",
+          "--existing",
+          "--ignore-existing",
+          "--exclude=.git",
+          ...[...RESOURCE_DIRS, ...linkDirs, ...extras, ...RESOURCE_FILES].map((entry) => `--exclude=/${entry}`),
+        ]),
+      )
     }
 
     for (const [from, entry] of [
@@ -995,14 +1118,22 @@ function main(options: Parsed): OwnedAppTransportProof {
       // The node_modules trees are what the marker already stands for; a light run never re-sends
       // them, which is the other half of the saving beside their hashes.
       if (light && entry === "node_modules") continue
-      rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
-        "--delete",
-        ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
-      ])
+      transfers.push(
+        rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
+          "--delete",
+          ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
+        ]),
+      )
     }
     for (const entry of RESOURCE_FILES) {
-      rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`)
+      transfers.push(
+        rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`),
+      )
     }
+    clock.end("resource transfer")
+    clock.end("stage")
+
+    clock.begin("remote witness")
 
     const bun = sshRun(options, "bun lookup", "bun absent", "command -v bun").stdout.trim()
     if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
@@ -1053,6 +1184,8 @@ function main(options: Parsed): OwnedAppTransportProof {
       )
     }
 
+    clock.end("remote witness")
+
     const kitty = sshRun(
       options,
       "kitty lookup",
@@ -1061,7 +1194,9 @@ function main(options: Parsed): OwnedAppTransportProof {
     ).stdout.trim()
     if (!kitty) fail("kitty absent", `no kitty at ${KITTY} on ${hostname}, the path the owned-app producer launches`)
 
-    const remoteOutput = `${stage}/runs/${options.sourceRevision.slice(0, 12)}-${options.context}`
+    // #33797 (@cto 16:10Z Q1): the run's own validated identity ends the path, so distinct runs at one
+    // revision and context keep distinct directories, and a replay of THIS run still meets the refusal.
+    const remoteOutput = `${stage}/runs/${options.sourceRevision.slice(0, 12)}-${options.context}-${options.runId}`
     sshRun(options, "remote output directory", "output collision", `mkdir -m 700 ${shq(remoteOutput)}`)
 
     // EEXIST is the refusal: mkdir without --parents fails on an existing directory instead of
@@ -1076,6 +1211,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (runtime !== "bun") {
       fail("invalid argv", `the owned-app argv must start with the bun runtime token, got ${JSON.stringify(runtime)}`)
     }
+    clock.begin("probe")
     const probe = sshRun(
       options,
       "owned-app probe",
@@ -1088,6 +1224,8 @@ function main(options: Parsed): OwnedAppTransportProof {
     writeFileSync(join(localOutput, "launcher.stdout.log"), probe.stdout)
     writeFileSync(join(localOutput, "launcher.stderr.log"), probe.stderr)
 
+    clock.end("probe")
+    clock.begin("output measure")
     const measured = sshRun(
       options,
       "output listing",
@@ -1116,6 +1254,8 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     // The sampler is a tracked file of the staged checkout, and the os is named as its argument,
     // explicitly: an owned host is not a hosted runner, so no hosted-runner variable is set.
+    clock.end("output measure")
+    clock.begin("host identity")
     const sampled = sshRun(
       options,
       "identity sample",
@@ -1139,6 +1279,8 @@ function main(options: Parsed): OwnedAppTransportProof {
       `${shq(kitty)} --version 2>/dev/null || true`,
     ).stdout.trim()
     if (!kittyVersion) fail("receipt mismatch", `${kitty} reported no version; the runtime identity is incomplete`)
+    clock.end("host identity")
+    clock.end("transport")
     const receipt = {
       schemaVersion: 1,
       kind: TRANSPORT_RECEIPT_KIND,
@@ -1160,13 +1302,18 @@ function main(options: Parsed): OwnedAppTransportProof {
       ...(stageRebuild === null ? {} : { stageRebuild }),
       stage: { directory: stage, marker: STAGE_MARKER_VALUE },
       output: { directory: remoteOutput, files: outputs },
+      // #33797: work completed before this seal; copy-back and collection are measured at their own boundaries.
+      clock: PHASE_CLOCK,
+      phases: clock.intervals(),
+      transfers,
     }
     const bytes = `${JSON.stringify(receipt, null, 2)}\n`
     sshRun(options, "receipt write", "receipt mismatch", `cat > ${shq(`${remoteOutput}/transport-receipt.json`)}`, {
       input: bytes,
     })
 
-    rsync(options, "copy-back", `${userAndHost}:${remoteOutput}/`, `${localOutput}/`)
+    clock.begin("copy-back")
+    const copyBack = rsync(options, "copy-back", `${userAndHost}:${remoteOutput}/`, `${localOutput}/`, [], "copy-back")
     for (const file of outputs) {
       const localPath = join(localOutput, file.path)
       if (!existsSync(localPath)) fail("rsync incomplete", `${file.path} did not arrive from ${hostname}`)
@@ -1180,6 +1327,8 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (receiptSha256 !== sha256(bytes)) {
       fail("receipt mismatch", "the returned receipt differs from the bytes written on the host")
     }
+    clock.end("copy-back")
+    const sealed = new Set(receipt.phases.map((phase) => phase.name))
 
     if (options.removeStage && created) {
       owned = false
@@ -1195,6 +1344,11 @@ function main(options: Parsed): OwnedAppTransportProof {
       remoteOutput,
       check: light ? "light" : "full",
       ...(stageRebuild === null ? {} : { stageRebuild }),
+      afterSeal: {
+        clock: PHASE_CLOCK,
+        phases: clock.intervals().filter((phase) => !sealed.has(phase.name)),
+        transfers: [copyBack],
+      },
     }
   } catch (error) {
     if (options.removeStage && owned && !isTimeout(error)) {

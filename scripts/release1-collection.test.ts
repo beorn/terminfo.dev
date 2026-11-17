@@ -2137,6 +2137,36 @@ it("admits the identity the host consumed, not a fixture identity", async () => 
   }
 }, 120_000)
 
+/**
+ * @failure #33797 (@cto 16:10Z Q3): the window-22 rerun had no interval for the owned-app child or for
+ *          the collection after it, so a slow pass could not say which side was slow; collection sits
+ *          outside the transport and its sealed receipt, so its time is the pass row's to record.
+ * @level    l1 — the real collectPass on the local owned route, with a host stub for the producer.
+ */
+it("times the owned-app child and the collection after it on the pass row, and only a collection that finished", async () => {
+  const graded = await composedOwnedPass()
+  try {
+    const row = graded.pass.contexts[0]!
+    expect(row.status).toBe("classified")
+    expect(row.phases?.clock).toContain("monotonic")
+    expect(row.phases?.intervals.map((interval) => interval.name)).toEqual(["owned-app child", "collection"])
+    for (const interval of row.phases!.intervals) {
+      expect(Number.isInteger(interval.durationMs) && interval.durationMs >= 0, interval.name).toBe(true)
+    }
+  } finally {
+    rmSync(graded.directory, { recursive: true, force: true })
+  }
+  // A collection that refused never reports a collection interval: the child's own time still stands.
+  const refused = await composedOwnedPass("ffffffffffffffffffffffffffffffff")
+  try {
+    const row = refused.pass.contexts[0]!
+    expect(row.error).toBeDefined()
+    expect(row.phases?.intervals.map((interval) => interval.name)).toEqual(["owned-app child"])
+  } finally {
+    rmSync(refused.directory, { recursive: true, force: true })
+  }
+}, 240_000)
+
 it("refuses by name when the host hands back an identity it was not given", async () => {
   const { pass, directory } = await composedOwnedPass("ffffffffffffffffffffffffffffffff")
   try {

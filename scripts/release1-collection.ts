@@ -372,6 +372,9 @@ export interface CollectionPass {
     classification?: ReturnType<typeof classifyDevelopmentRun>
     summary?: CurrentAggregate
     transport?: CollectionPass["transport"]
+    /** #33797 (@cto 16:10Z Q3): an owned-app context's intervals at this pass's own boundary, on this
+     * process's monotonic clock; the transport's inner phases live in its sealed receipt instead. */
+    phases?: { clock: string; intervals: Array<{ name: string; durationMs: number }> }
     error?: string
     reason?: string
     /**
@@ -550,6 +553,9 @@ export function ownedAppCommand(
     label: `${labelOf(context)} owned-app transport`,
   }
 }
+
+/** #33797: the clock an owned-app context's pass-level intervals are read on. */
+const OWNED_APP_PHASE_CLOCK = "the collecting host's monotonic clock (performance.now), milliseconds"
 
 /** Read the host-written transport receipt as the pass's own evidence shape. It grants nothing:
  * the receipt is a record of where a run started and what bytes it moved, never a permission.
@@ -833,6 +839,8 @@ export async function collectPass(
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
+    // #33797: set once an owned-app child returns, so "collection" is timed from there to classification.
+    let collectionStart: number | undefined
     pass.contexts.push(row)
     const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
     if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
@@ -876,6 +884,7 @@ export async function collectPass(
         row.directory = output
         mkdirSync(output, { recursive: true })
         const command = ownedAppCommand(context, output, ownedApp, sourceRevision, handed.draft.runId, probeIds)
+        const childStart = performance.now()
         runChild(
           command.argv,
           command.label,
@@ -885,6 +894,11 @@ export async function collectPass(
           },
           { TERMINFO_CAPTURE_RUN_ID: handed.draft.runId },
         )
+        collectionStart = performance.now()
+        row.phases = {
+          clock: OWNED_APP_PHASE_CLOCK,
+          intervals: [{ name: "owned-app child", durationMs: Math.round(collectionStart - childStart) }],
+        }
         // One home for the transport's artifacts: the driver writes the run JSON and the receipt
         // into <output>/transport, so the collector reads them from exactly there.
         const runsDirectory = ownedAppRunsDirectory(output, ownedApp.runner)
@@ -985,6 +999,9 @@ export async function collectPass(
       row.summary = aggregateCurrentResults(run.results, run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
+      if (collectionStart !== undefined && row.phases) {
+        row.phases.intervals.push({ name: "collection", durationMs: Math.round(performance.now() - collectionStart) })
+      }
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
       if ((context.route === "linux-container" || context.route === "hosted-workflow") && row.directory) {
