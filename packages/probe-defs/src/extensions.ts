@@ -1953,7 +1953,7 @@ async function wholeWindowOscAppCapture(
  */
 async function colorResetAppProbe(
   ctx: TermProbeSource,
-  spec: { setCode: number; resetCode: number; index?: number },
+  spec: { id: string; setCode: number; resetCode: number; index?: number },
 ): Promise<ProbeCallbackResult> {
   const indexPart = spec.index === undefined ? "" : `${spec.index};`
   const query = `\x1b]${spec.setCode};${indexPart}?\x07`
@@ -1984,10 +1984,36 @@ async function colorResetAppProbe(
     return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
-  ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
-  const changed = await read()
-  ctx.write(reset)
-  const restored = await read()
+  // 34532: the probe owns its seed. A reset that does not restore (Screen Linux 2026-11-17 kept
+  // OSC 11 aa/bb/cc) would paint every later frame on it, so put back the colour read before the
+  // seed and prove it; an unproved put-back names this cell and fails it, never a grade.
+  const start = before.rgb
+  const putBack = `\x1b]${spec.setCode};${indexPart}${start}\x07`
+  const putBackAndProve = async () => {
+    ctx.write(putBack)
+    const proof = await read()
+    if (!proof.rgb || !sameRgbText(proof.rgb, start)) {
+      throw colourRestoreRefused(
+        `${spec.id}: cleanup could not restore the starting OSC ${spec.setCode} colour ${start}; the readback after putting it back was ${JSON.stringify(proof.outcome.raw)}; the run stops here rather than grading later rows on a polluted colour`,
+      )
+    }
+  }
+  let changed: Awaited<ReturnType<typeof read>>
+  let restored: Awaited<ReturnType<typeof read>>
+  try {
+    ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
+    changed = await read()
+    ctx.write(reset)
+    restored = await read()
+  } catch (primary) {
+    try {
+      await putBackAndProve()
+    } catch (cleanup) {
+      throw colourRestoreRefused(`${spec.id}: colour exchange and its cleanup both failed`, [primary, cleanup])
+    }
+    throw primary
+  }
+  if (!restored.rgb || !sameRgbText(restored.rgb, start)) await putBackAndProve()
   const response = JSON.stringify({
     originalRaw: before.outcome.raw,
     changedRaw: changed.outcome.raw,
@@ -2024,13 +2050,23 @@ async function colorResetAppProbe(
   }
 }
 
+/**
+ * An unproved colour put-back leaves the terminal on the seed. The collector stops the run on this
+ * name (unified.ts, #34148 fold 2) instead of grading later cells on that state (34532).
+ */
+function colourRestoreRefused(message: string, errors?: unknown[]): Error {
+  const error = errors ? new AggregateError(errors, message) : new Error(message)
+  error.name = "MutationRestoreRefused"
+  return error
+}
+
 /** The reset features mutate and read back, so they require verified disposable authority. */
 function resetProbe(id: string, setCode: number, resetCode: number, index?: number): ProbeDefinition {
   return {
     ...probe(
       id,
       colorResetProbe(id, setCode, resetCode, index),
-      (ctx) => colorResetAppProbe(ctx, { setCode, resetCode, index }),
+      (ctx) => colorResetAppProbe(ctx, { id, setCode, resetCode, index }),
       "query_reply",
     ),
     termNeedsDisposable: true,
@@ -5017,12 +5053,13 @@ async function liveClipboardProbe(
     if (kind === "read") {
       const control = await ctx.queryCursorPosition()
       // probe-todo, never the declared-untestable shape: the channel was not measured, nothing was declared absent.
-      if (!control)
+      if (!control) {
         return {
           pass: false,
           note: "cursor-position control before the OSC 52 read",
           tests: [{ id: "criterion", status: "probe-todo", reason: "cursor-position control before the OSC 52 read" }],
         }
+      }
     }
     if (mux) {
       const settled = await settledClipboardReply(
