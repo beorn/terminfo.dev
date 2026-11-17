@@ -30,6 +30,7 @@ import {
   createProbeRun,
   findOwnedDaemon,
   readRawDaemonProbeResponse,
+  probeRuntimeRefusal,
   readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
@@ -509,6 +510,15 @@ it("names the daemon port and the bound when a collection outlasts it", async ()
 
 // 34477 run 2328c7a7: Bun fetch self-aborts a silent body at ~362s and this
 // client reported that as the 30 min signal. The documented signal is the only bound.
+// 34507 caveat: Node's fetch has a 300 s headers timeout and no per-request way to raise it, so a silent
+// /probe there is not the documented 30 min signal. The probe refuses that runtime by name rather than
+// reporting a 300 s abort as 30 min.
+it("refuses a runtime whose fetch cannot honour the 30 min probe signal", () => {
+  expect(probeRuntimeRefusal("1.3.3")).toBeNull()
+  expect(probeRuntimeRefusal(undefined)).toMatch(/needs the Bun runtime .*not the documented 30 min signal/u)
+  expect(probeRuntimeRefusal("")).toMatch(/needs the Bun runtime/u)
+})
+
 it("a silent /probe is not aborted by Bun before the 30 min signal", async () => {
   const runId = "b".repeat(32)
   const silent = createServer((req, res) => {
