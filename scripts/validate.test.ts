@@ -24,7 +24,11 @@ test("validates retained runs through the canonical decoder and names rejected i
     const script = join(root, "scripts", "validate.ts")
     // bun, as the scripts run (package.json, CI): a Node-launched vitest would hand validate.ts to Node, whose
     // strip-only TypeScript refuses corpus-placement.ts's parameter property (33336).
-    const run = () => spawnSync("bun", [script], { encoding: "utf8", timeout: 10_000 })
+    // Measured 2026-11-17 on an idle host: the script alone takes 9.7-10.9 s over three runs at two
+    // commits, i.e. straight through the old 10 s budget, so this assert failed on host load rather than
+    // on a hang. Keep the budget equal to the test timeout above: it guards a hang, and the assertions
+    // below are what actually judge the run.
+    const run = () => spawnSync("bun", [script], { encoding: "utf8", timeout: 30_000 })
     const baseline = run()
     expect(baseline.error).toBeUndefined()
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0)
