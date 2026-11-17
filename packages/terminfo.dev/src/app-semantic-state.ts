@@ -16,6 +16,7 @@ import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
+import type { ITermPromptRead, ITermPromptSession } from "./iterm2-protocol.ts"
 import { retain as retainCaptureArtifact } from "./capture-core.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -770,6 +771,36 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns them. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @"8" in the command table, :832 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. Nothing reads it back: ReadScreenResult carries only {text} (ReadScreenResult.java:13-23), VtStateResult carries only cols, rows, data bytes and the kitty graphics/image-alias fields (VtStateResult.java:13-18) with no hyperlink field, cmux-tui/spec/sdk-schema.json has no hyperlink verb, and docs/cli-contract.md documents read-screen, vt-state and jump-to-last-prompt only.',
   },
+  // 34596 (REVISION 3): 633;E has no parser and no Mac surface carries a command line.
+  {
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId: "extensions.osc633-e",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 on macOS has no OSC 633 parser and no Mac surface that carries a command line. Read tag v1.4.0 (SHA256 d692bb9b, the source of the bundle version 1.4.0 the hosted run records): the accepted-number table at src/terminal/osc.zig:447-490 lists 133 and no 633, and src/termio/Termio.zig:14,66 drives the same terminal.Stream with the one StreamHandler every app runtime uses, with no OS branch in src/terminal/osc.zig or stream.zig; src/apprt/embedded.zig and macos/Sources contain zero 633. Nothing on the Mac reads a command line back either: the AppleScript dictionary exposes id, name, name override, working directory, pid and tty only (macos/Ghostty.sdef:89-100), Get Terminal Details returns the title, the working directory and plain screen text (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47), and the C API text read returns plain characters (src/apprt/embedded.zig:1929-1960 into src/Surface.zig:2042-2051 selectionString).",
+  },
+  // 34596 (REVISION 3.1, @dev/fixer 08:20): osc8 is a readback cell with no click arm, so the row is honest.
+  {
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 on macOS stores OSC 8 hyperlinks in core page state and no Mac surface reads a URI back. Read tag v1.4.0 (SHA256 d692bb9b, the source of the bundle version the hosted run records): src/terminal/osc.zig:447,1160 and src/terminal/osc/parsers/hyperlink.zig parse and store the link in page.hyperlink_set (src/terminal/Screen.zig:2199,2222), read internally only by Surface.osc8URI (src/Surface.zig:4603-4613) for the hover and open-url paths. The one Mac consumer is the click action, macos/Sources/Ghostty/Ghostty.App.swift:808 openURL routing the osc8 kind to openUntrustedURL (:860-883), and hover only sets dirty.hyperlink_hover (src/Surface.zig:1717). There is no readback: src/apprt/embedded.zig and macos/Sources contain zero occurrences of hyperlink, so no C API, Swift API, AppleScript property (macos/Ghostty.sdef:89-100) or Shortcuts intent (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47) returns a URI, and hyperlink-emitting serialization is reached only from the snapshot serializers (src/terminal/snapshot/grid.zig:405,412, src/terminal/snapshot/screen.zig:2526, src/terminal/snapshot/page.zig:1140,1145,1242) which have no CLI state-dump verb. The instrument's link-metadata read has no macOS provider, and its plain term fallback cannot stand in: it writes the link, reads the cursor, and always returns probe-todo because cursor movement cannot verify OSC 8 link metadata or click behaviour (packages/probe-defs/src/extensions.ts:7395-7402).",
+  },
+  // 34596 (REVISION 3): a no-setup reason, not a no-way one.
+  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no setup): at shipped defaults Ghostty 1.4.0 on macOS raises nothing a run can read when OSC 133;D arrives, so the cell is undecidable without a user config change. Traced in tag v1.4.0 (SHA256 d692bb9b): src/terminal/osc.zig:1180 parses 133, the exit code is an option of that parser (src/terminal/osc/parsers/semantic_prompt.zig:77-111), src/terminal/stream_terminal.zig:918-965 passes it to the effect callback, src/termio/stream_handler.zig:1475-1508 turns end_command into stop_command at :1493, and src/Surface.zig:1198-1225 emits command_finished with the exit code and the measured duration. The Mac app returns immediately on the shipped default: macos/Sources/Ghostty/Ghostty.App.swift:1642-1712 reads notifyOnCommandFinish and returns when it is never (src/config/Config.zig:1214), the action defaults to bell without notify (:1228) behind a five-second floor (:1265), and only a user setting that gate reaches the bell or a UNUserNotificationCenter banner (:1599,:1620) outside the text cells and window screenshot the run measures. The D mark and the A/B/C cycle are stored as row content, visible only to the debug inspector (src/inspector/widgets/page.zig:291 via src/input/Binding.zig:688-691) and the snapshot serializer (src/terminal/snapshot/grid.zig:259), neither of which is a default-launch reader.",
+  })),
   {
     kind: "term",
     id: "kitty",
@@ -1473,6 +1504,197 @@ export async function untilAppSemanticRead(
   } while (Date.now() < deadline)
   phases.push({ name, incomplete: last })
   throw new Error(`App semantic reader did not observe ${name} completion`)
+}
+
+/** The OSC 133 prompt rows the iTerm2 prompt-mark reader answers (34570). */
+export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.semantic-prompts",
+])
+
+const promptOsc = (value: string) => `\x1b]${value}\x07`
+const EDITING_NEW = { mark: "new", state: "EDITING", command: "unset", output: "unset", exit: "absent" }
+
+/**
+ * Each prompt row: the feed appended after the finished baseline mark, the mark state that feed must
+ * produce (`from`, default a finished mark), the target feeds in order, and the expected projection after
+ * each. B is the command-entry boundary (command range set, still EDITING), C begins execution (output
+ * start set, RUNNING), D;17 finishes with that code (iTerm2 3.6.11 PTYSession getPromptResponseForMark).
+ */
+const ITERM_PROMPT_ROWS: Record<
+  string,
+  { tail: (nonce: string) => string; from?: object; feeds: ((nonce: string) => string)[]; expected: object[] }
+> = {
+  "extensions.osc133-a": { tail: () => "", feeds: [() => promptOsc("133;A")], expected: [EDITING_NEW] },
+  "extensions.osc133-b": {
+    tail: () => promptOsc("133;A"),
+    from: { mark: "same", state: "EDITING", command: "unset", output: "unset", exit: "absent" },
+    feeds: [() => promptOsc("133;B")],
+    expected: [{ mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" }],
+  },
+  "extensions.osc133-c": {
+    tail: () => promptOsc("133;A") + promptOsc("133;B"),
+    from: { mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" },
+    feeds: [() => promptOsc("133;C")],
+    expected: [{ mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" }],
+  },
+  "extensions.osc133-d": {
+    tail: (nonce) => promptOsc("133;A") + promptOsc("133;B") + promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+    from: { mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" },
+    feeds: [() => promptOsc("133;D;17")],
+    expected: [{ mark: "same", state: "FINISHED", command: "set", output: "set", exit: 17 }],
+  },
+  "extensions.semantic-prompts": {
+    tail: () => "",
+    feeds: [
+      () => promptOsc("133;A"),
+      () => promptOsc("133;B"),
+      (nonce) => promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+      () => promptOsc("133;D;17"),
+    ],
+    expected: [
+      EDITING_NEW,
+      { mark: "new", state: "EDITING", command: "set", output: "unset", exit: "absent" },
+      { mark: "new", state: "RUNNING", command: "set", output: "set", exit: "absent" },
+      { mark: "new", state: "FINISHED", command: "set", output: "set", exit: 17 },
+    ],
+  },
+}
+
+/**
+ * One controlled iTerm2 prompt-mark observation per row (34570, @cto REVISE-1 R2-R5). Each phase writes its
+ * feed plus an OSC 1337 SetUserVar fence, waits until the session reports that fence, then takes a FRESH
+ * GetPrompt read of the session's last prompt mark; no row borrows another row's read. A read is projected
+ * to the fields a row can change, with the mark named relative to the baseline mark: `same`, `new` or
+ * `absent` (never an absolute id or row). The handled control is the fence variable itself, as Kitty's is
+ * its title. OSC 133;P has no handler in iTerm2 3.6.11 (PromptStateMachine handles A/B/C/D only) and no
+ * prompt field, so its row stays unresolved rather than certified by another letter (R3).
+ */
+export async function readITermPromptMarks(input: {
+  featureId: string
+  runId: string
+  write: (text: string) => void | Promise<void>
+  /** Opens the owned session's prompt API for one row; only rows that read anything open it. */
+  withSession: (work: (session: ITermPromptSession) => Promise<AppSemanticReading>) => Promise<AppSemanticReading>
+}): Promise<AppSemanticReading> {
+  if (input.featureId === "extensions.osc133-p") {
+    return {
+      status: "unavailable",
+      reason:
+        "iTerm2 3.6.11 has no OSC 133 P handler (PromptStateMachine handles A, B, C and D only) and its prompt API has no field that could observe P; unresolved",
+    }
+  }
+  return input.withSession(async (session) => {
+    const osc = (value: string) => `\x1b]${value}\x07`
+    const nonce = randomUUID().slice(0, 8)
+    const phases: object[] = []
+    const detail = { reader: "iterm2-prompt", nonce, phases }
+    let baselineId: string | undefined
+    let serial = 0
+    const describe = (read: ITermPromptRead) => {
+      if (read.status === "prompt-unavailable") return { mark: "prompt-unavailable" }
+      const { mark } = read
+      return {
+        mark: mark.uniquePromptId === undefined ? "absent" : mark.uniquePromptId === baselineId ? "same" : "new",
+        state: mark.promptState ?? "absent",
+        command: mark.commandRange === undefined ? "unset" : "set",
+        output: mark.outputRange === undefined ? "unset" : "set",
+        exit: mark.exitStatus ?? "absent",
+      }
+    }
+    let current = "first"
+    const phase = async (name: string, feed: string, fence = `terminfo-${nonce}-${serial++}`) => {
+      current = name
+      await input.write(feed + osc(`1337;SetUserVar=terminfo_fence=${Buffer.from(fence).toString("base64")}`))
+      const observed = await untilAppSemanticRead(
+        async () => String(await session.readUserVariable("terminfo_fence")),
+        (value) => value === fence,
+        `${name} user-variable fence`,
+        phases,
+      )
+      const read = await session.readPrompt()
+      phases.push({ name, feed, fence: observed, read })
+      return { read, fence: observed }
+    }
+    const finished = osc("133;A") + osc("133;B") + osc("133;C") + `terminfo-baseline-${nonce}\r\n` + osc("133;D;0")
+    const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+    // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
+    // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
+    let reading: AppSemanticReading
+    let failure: string | undefined
+    try {
+      reading = await measureRow()
+    } catch (error) {
+      failure = `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`
+      reading = { status: "invalid", reason: failure, detail }
+    }
+    try {
+      await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
+    } catch (error) {
+      const restore = `restoring the session failed: ${message(error)}`
+      reading = {
+        status: "invalid",
+        reason: failure === undefined ? `iTerm2 prompt row was read, but ${restore}` : `${failure}; then ${restore}`,
+        detail,
+      }
+    }
+    return reading
+
+    async function measureRow(): Promise<AppSemanticReading> {
+      const baseline = await phase(
+        "baseline",
+        "\x1b[2J\x1b[3J\x1b[H" + finished + (ITERM_PROMPT_ROWS[input.featureId]?.tail(nonce) ?? ""),
+      )
+      if (baseline.read.status === "prompt-unavailable") {
+        return {
+          status: "unavailable",
+          reason:
+            "iTerm2 answered PROMPT_UNAVAILABLE after the baseline OSC 133 sequence: the session has no prompt mark (the API's own status, not proof shell integration is absent)",
+          detail,
+        }
+      }
+      baselineId = baseline.read.mark.uniquePromptId
+      const finishedMark = { mark: "same", state: "FINISHED", command: "set", output: "set", exit: 0 }
+      const row = ITERM_PROMPT_ROWS[input.featureId]
+      if (!row) throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
+      // The row's experiment holds only from its assumed starting mark. A baseline that did not reach it
+      // is reported, never graded: a target compared against the wrong start could read as unsupported.
+      // The controls run from that start, so an unknown letter that moves the mark fails the controls.
+      const start = describe(baseline.read)
+      if (JSON.stringify(start) !== JSON.stringify(row.from ?? finishedMark)) {
+        return {
+          status: "invalid",
+          reason: `iTerm2 prompt mark did not reach this row's baseline ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(start)}`,
+          detail,
+        }
+      }
+      const unknown = await phase("unknown", osc("133;Z"))
+      const handled = await phase("handled", "", `terminfo-control-${nonce}`)
+      const before = describe(handled.read)
+      const after: object[] = []
+      for (const [index, feed] of row.feeds.entries()) {
+        after.push(describe((await phase(`target-${index}`, feed(nonce))).read))
+      }
+      const single = row.feeds.length === 1
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: JSON.stringify(describe(baseline.read)), after: JSON.stringify(describe(unknown.read)) },
+        handled: { before: unknown.fence, after: handled.fence, expected: `terminfo-control-${nonce}` },
+        target: {
+          before: JSON.stringify(single ? before : row.feeds.map(() => before)),
+          after: JSON.stringify(single ? after[0] : after),
+          expected: JSON.stringify(single ? row.expected[0] : row.expected),
+        },
+        detail,
+      }
+    }
+  })
 }
 
 /**

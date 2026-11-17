@@ -293,7 +293,7 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
   { kind: "term", id: "alacritty", version: "0.17.0" },
-  { kind: "term", id: "xterm", version: "411" },
+  { kind: "term", id: "xterm", version: "412" },
   { kind: "mux", id: "screen", version: "5.0.2" },
   { kind: "mux", id: "tmux", version: "3.8" },
 ] as const)("uses current-run bus absence for both $id notification cells", async (subject) => {
@@ -348,10 +348,10 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
   // #32955: kitty's prompt state is read through owned remote control (eae044269), so its declarations
   // drop from 10 to 6 and osc133-a / semantic-prompts are no longer declarations but reader runs.
@@ -368,18 +368,18 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -398,7 +398,7 @@ it.each([
   // #32948: Linux App and mux OSC 8 hyperlink declarations. WezTerm's is no longer one: c0651cbe8 (33001)
   // reads its owned OSC 8 link spans, so its declarations drop to 8 and omit extensions.osc8 (33455).
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
   { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc8" },

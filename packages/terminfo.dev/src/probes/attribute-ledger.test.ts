@@ -5,7 +5,16 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { MutationRestoreRefused, attributeKey, classifyWrite, ledgerOmega, readbackFor } from "./attribute-ledger"
+import { readFileSync } from "node:fs"
+import {
+  MutationRestoreRefused,
+  attributeKey,
+  classifyWrite,
+  ledgerOmega,
+  readbackFor,
+  touchedAttributes,
+} from "./attribute-ledger"
+import { windowBasisAdmission } from "./window-basis-admission.ts"
 
 const ESC = "\x1b"
 
@@ -120,7 +129,7 @@ describe("ledgerOmega", () => {
   it("refuses a class whose query drew no reply, and an unclassified write", () => {
     const sgr = ledgerOmega({ writes: [`${ESC}[31m`], reads: new Map() })
     expect(sgr).toMatchObject({ failures: [{ attribute: "sgr", reason: "no-pre-state" }] })
-    const unknown = ledgerOmega({ writes: [`${ESC}[2J`], reads: new Map() })
+    const unknown = ledgerOmega({ writes: [`${ESC}7`], reads: new Map() })
     expect(unknown).toMatchObject({ failures: [{ reason: "unclassified" }] })
   })
 
@@ -132,5 +141,59 @@ describe("ledgerOmega", () => {
     })
     expect(refusal.name).toBe("MutationRestoreRefused")
     expect(refusal.message).toContain("dec:7 (diverged)")
+  })
+})
+
+describe("ledgerOmega over admitted mixed writes (34579)", () => {
+  // The real retained Terminal.app modes.auto-wrap trace @cto's RED used: six writes, five of them
+  // mixing a mode change with erase, cursor-move and screen text. Admission accepts all six through
+  // the closed grammar, so the restore ledger must read the same grammar, not whole writes.
+  const retained = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../../content/probes-apps/terminal-app-2.15-macos-1991f8e4251a87f27fdc6dc085b2ab62.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as { rawReplies: Record<string, string> }
+  const writes = (JSON.parse(retained.rawReplies["modes.auto-wrap"] ?? "{}") as { writes: string[] }).writes
+  const reads = (before: string, after: string) => new Map([["dec:7", { before, after }]])
+
+  it("restores the admitted auto-wrap trace when dec:7 reads back equal", () => {
+    expect(writes).toHaveLength(6)
+    expect(windowBasisAdmission("modes.auto-wrap").admitted).toBe(true)
+    expect(touchedAttributes(writes)).toEqual({ attributes: [{ kind: "dec-mode", mode: 7 }], unclassified: [] })
+    expect(ledgerOmega({ writes, reads: reads(`${ESC}[?7;1$y`, `${ESC}[?7;1$y`) })).toEqual({
+      status: "restored",
+      touched: ["dec:7"],
+    })
+  })
+
+  it("still refuses the same trace when dec:7 diverges", () => {
+    const omega = ledgerOmega({ writes, reads: reads(`${ESC}[?7;1$y`, `${ESC}[?7;2$y`) })
+    expect(omega).toEqual({
+      status: "refused",
+      touched: ["dec:7"],
+      failures: [{ attribute: "dec:7", reason: "diverged", before: "1", after: "2" }],
+    })
+  })
+
+  it("still refuses a mixed write carrying a token on no closed list, by name", () => {
+    for (const write of [`${ESC}[?7lab${ESC}7`, `${ESC}[?7lab\tc`]) {
+      const omega = ledgerOmega({ writes: [write], reads: reads(`${ESC}[?7;1$y`, `${ESC}[?7;1$y`) })
+      expect(omega).toMatchObject({
+        status: "refused",
+        failures: [{ attribute: JSON.stringify(write), reason: "unclassified" }],
+      })
+      expect(touchedAttributes([write]).unclassified).toEqual([write])
+    }
+  })
+
+  it("folds a union reset inside a mixed write onto what the write already touched", () => {
+    const restored = ledgerOmega({ writes: [`${ESC}[?7lx${ESC}[!p`], reads: reads(`${ESC}[?7;1$y`, `${ESC}[?7;1$y`) })
+    expect(restored).toEqual({ status: "restored", touched: ["dec:7"] })
+    const nothingTouched = ledgerOmega({ writes: [`x${ESC}[!p`], reads: new Map() })
+    expect(nothingTouched).toMatchObject({ status: "refused", failures: [{ reason: "unclassified" }] })
   })
 })

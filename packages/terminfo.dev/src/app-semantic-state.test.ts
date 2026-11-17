@@ -1625,3 +1625,31 @@ test.each([
     expect(linux[id], id).not.toBe(mac[id])
   }
 })
+
+// 34596 (@cto 764d55f5: per-id source qualification, no predetermined result): four more Ghostty 1.4.0 macOS rows.
+// osc633-p stays undeclared because a public cwd reader exists (AppleScript / Get Terminal Details), and the two
+// command-finish rows are no setup, never no way: a user setting makes the finish observable as a banner.
+test("Ghostty 1.4.0 on macOS declares osc633-e, osc8, osc133-d and semantic-prompts by their own reasons, and not osc633-p", () => {
+  const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(mac["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
+  expect(mac["extensions.osc633-e"]).toContain("macos/Ghostty.sdef:89-100")
+  expect(mac["extensions.osc8"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS stores OSC 8 hyperlinks/)
+  expect(mac["extensions.osc8"]).toContain("packages/probe-defs/src/extensions.ts:7395-7402")
+  for (const id of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+    expect(mac[id]).toMatch(/^Untestable \(no setup\): /)
+    expect(mac[id]).toContain("src/config/Config.zig:1214")
+    expect(mac[id]).toContain("Ghostty.App.swift:1642-1712")
+  }
+  expect(mac["extensions.osc633-p"]).toBeUndefined()
+  for (const id of [
+    "extensions.osc633-e",
+    "extensions.osc8",
+    "extensions.osc133-d",
+    "extensions.semantic-prompts",
+  ] as const) {
+    expect(mac[id]).toContain("SHA256 d692bb9b")
+    // Mac rows carry no Linux-only runtime path (the GTK apprt) or X11 evidence.
+    expect(mac[id]).not.toMatch(/X11|apprt\/gtk/u)
+    expect(appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.3.1", os: "macos" })[id]).toBeUndefined()
+  }
+})
