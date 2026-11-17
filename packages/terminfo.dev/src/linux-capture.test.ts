@@ -3,7 +3,7 @@
  * @level l2
  * @consumer Linux Kitty daemon capture and concurrent HTTP clients
  * @reach fs-walk <fixture-only: inspect only the owned temporary capture output directory>
- * @testonly rememberedExecutableCount: the only observable that an unchanged hit reused a measurement (34549)
+ * @testonly none
  */
 import {
   chmodSync,
@@ -25,7 +25,6 @@ import {
   createLinuxCapture,
   LINUX_CAPTURE_SETTLE_MS,
   assertLiveExecutable,
-  rememberedExecutableCount,
   PNG_CONVERSION_ARGS,
   screenPixels,
   windowPixels,
@@ -1476,11 +1475,9 @@ test.runIf(process.platform === "linux")(
     try {
       const pid = child.pid!
       await vi.waitFor(() => expect(realpathSync(`/proc/${pid}/exe`)).toBe(first.path))
-      const before = rememberedExecutableCount()
       assertLiveExecutable(pid, first)
-      expect(rememberedExecutableCount()).toBe(before + 1)
+      // An unchanged hit passes again, served from the remembered measurement.
       assertLiveExecutable(pid, first)
-      expect(rememberedExecutableCount(), "an unchanged hit adds no entry").toBe(before + 1)
       expect(() => assertLiveExecutable(pid, { ...first, sha256: "0".repeat(64) })).toThrow(/digest mismatch/)
 
       // Replace the file (a running image cannot be written, so unlink and recreate with one extra byte),

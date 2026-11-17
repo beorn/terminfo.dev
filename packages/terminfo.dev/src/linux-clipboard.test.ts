@@ -21,7 +21,6 @@ import {
   type ClipboardTraceEvent,
 } from "./linux-clipboard.ts"
 
-
 test("spawned bun -e children do not bind the import name assert", () => {
   const source = readFileSync(fileURLToPath(import.meta.url), "utf8")
   const binding = "import " + "assert" + " from"
@@ -114,6 +113,12 @@ mock.module("node:fs", () => ({...fs,
     if (path === socket) return {isSocket:()=>true,uid:process.getuid(),mode:0o140700}
     if (path === "/dev/pts/0" || path === "/proc/147/fd/3") return {isCharacterDevice:()=>true,rdev:34816}
     if (path === "/dev/pts/2" || path === "/proc/147/fd/7") return {isCharacterDevice:()=>true,rdev:34818}
+    const exe = /^\/proc\/(\d+)\/exe$/.exec(path)
+    if (exe) {
+      const p = table.get(Number(exe[1]))
+      if (!p) throw Error("fixture missing process " + exe[1])
+      return real.statSync(p.exe,...args)
+    }
     return real.statSync(path,...args)
   },
 }))

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { type BigIntStats, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs"
+import { mkdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
@@ -22,30 +22,20 @@ const verifiedExecutables = new Set<string>()
 const VERIFIED_EXECUTABLE_LIMIT = 64
 
 /**
- * The reuse key of one live process image, or undefined when its start time or file identity cannot
- * be read. Undefined is never a pass: the caller takes the full hash path, so a missing or unreadable
- * /proc entry still fails exactly where it failed before this cache existed.
+ * The reuse key of one live process image. A /proc entry that cannot be read throws here, as the hash
+ * read below would; a start time that cannot be parsed is a broken /proc contract and throws too.
  */
-function liveExecutableKey(pid: number, expected: LiveExecutable): string | undefined {
-  let stat: string
-  let file: BigIntStats
-  try {
-    stat = readFileSync(`/proc/${pid}/stat`, "utf8")
-    file = statSync(`/proc/${pid}/exe`, { bigint: true })
-  } catch {
-    return undefined
-  }
+function liveExecutableKey(pid: number, expected: LiveExecutable): string {
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+  const file = statSync(`/proc/${pid}/exe`, { bigint: true })
   // Field 22 (starttime) is the 20th after the parenthesised command name, which may itself hold spaces.
   const startTime = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
-  if (startTime === undefined || !/^\d+$/.test(startTime)) return undefined
+  if (startTime === undefined || !/^\d+$/.test(startTime)) {
+    throw new Error(`Live executable start time unreadable for PID ${pid}`)
+  }
   return [expected.path, expected.sha256, pid, startTime, file.dev, file.ino, file.size, file.mtimeNs, file.ctimeNs]
     .map(String)
     .join(":")
-}
-
-/** How many successful measurements are remembered; for the cache's own tests only. */
-export function rememberedExecutableCount(): number {
-  return verifiedExecutables.size
 }
 
 /** Bind a launched process to the same actual ELF bytes recorded by the launcher. */
@@ -61,11 +51,10 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   const path = realpathSync(`/proc/${pid}/exe`)
   if (path !== expected.path) throw new Error(`Live executable path mismatch for PID ${pid}: ${path}`)
   const key = liveExecutableKey(pid, expected)
-  if (key !== undefined && verifiedExecutables.has(key)) return
+  if (verifiedExecutables.has(key)) return
   if (digest(readFileSync(`/proc/${pid}/exe`)) !== expected.sha256) {
     throw new Error(`Live executable digest mismatch for PID ${pid}`)
   }
-  if (key === undefined) return
   verifiedExecutables.add(key)
   if (verifiedExecutables.size > VERIFIED_EXECUTABLE_LIMIT) {
     const oldest = verifiedExecutables.values().next().value
