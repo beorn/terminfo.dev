@@ -1630,7 +1630,7 @@ test.each([
     const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
     const { tmpdir } = await import("node:os")
     const { join } = await import("node:path")
-    const { randomUUID } = await import("node:crypto")
+    const { randomUUID, createHash } = await import("node:crypto")
     const directory = fs.mkdtempSync(join(tmpdir(), "terminfo-editor-execution-"))
     const subscriptions: Array<{ dispose: () => void }> = []
     const intervals: Array<() => unknown> = []
@@ -1673,7 +1673,7 @@ test.each([
         require: (id: string) => {
           if (id === "node:fs") return fs
           if (id === "node:path") return { join }
-          if (id === "node:crypto") return { randomUUID }
+          if (id === "node:crypto") return { randomUUID, createHash }
           if (id !== "vscode") throw new Error(`Unexpected emitted fixture import: ${id}`)
           return {
             version: "native-version",
@@ -1715,7 +1715,14 @@ test.each([
         at: number
         execution: string
         startSeen?: boolean
-        commandLine: { present: boolean; value?: string; confidence?: number; isTrusted?: boolean; reason?: string }
+        commandLine: {
+          present: boolean
+          valueSha256?: string
+          valueLength?: number
+          confidence?: { present: boolean; value?: number; reason?: string }
+          isTrusted?: { present: boolean; value?: boolean; reason?: string }
+          reason?: string
+        }
         exitCode?: { present: boolean; value?: number; reason?: string }
       }
       const sample = async (phase: string) => {
@@ -1736,7 +1743,7 @@ test.each([
           evaluatedAt: number
           executionApi: typeof activation.executionApi
           executions: Fact[]
-          executionWindow: { since: number; until: number }
+          executionWindow: { since: number; until: number; attribution: string }
         }
       }
       if (!api) {
@@ -1767,14 +1774,19 @@ test.each([
       handlers.end!({ terminal: nativeTerminal, execution: bare, exitCode: undefined })
       handlers.end!({ terminal: otherTerminal, execution: bare, exitCode: 1 })
       const target = await sample("target")
-      expect(target.executionWindow).toEqual({ since: first.evaluatedAt, until: target.evaluatedAt })
-      expect(target.executions.map((fact) => [fact.kind, fact.execution, fact.commandLine.value])).toEqual([
-        ["start", "execution-1", "printf ok"],
-        ["end", "execution-1", "printf ok"],
-        ["start", "execution-2", "false"],
-        ["end", "execution-2", "false"],
+      expect(target.executionWindow).toMatchObject({ since: first.evaluatedAt, until: target.evaluatedAt })
+      // Co-location in a window is not stimulus attribution, and the fact says so (@dev/11 peer, 34666).
+      expect(target.executionWindow.attribution).toContain("not attributed to this request's stimulus")
+      const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+      expect(target.executions.map((fact) => [fact.kind, fact.execution, fact.commandLine.valueSha256])).toEqual([
+        ["start", "execution-1", digest("printf ok")],
+        ["end", "execution-1", digest("printf ok")],
+        ["start", "execution-2", digest("false")],
+        ["end", "execution-2", digest("false")],
         ["end", "execution-3", undefined],
       ])
+      // The reply is retained into the committed run record, so it carries no command text (@dev/11 peer, 34666).
+      expect(JSON.stringify(target)).not.toContain("printf ok")
       expect(target.executions.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5])
       for (const fact of target.executions) {
         expect(fact.at).toBeGreaterThanOrEqual(first.evaluatedAt)
@@ -1782,15 +1794,14 @@ test.each([
       }
       expect(target.executions[0]!.commandLine).toEqual({
         present: true,
-        value: "printf ok",
-        confidence: 2,
-        isTrusted: true,
+        valueSha256: digest("printf ok"),
+        valueLength: 9,
+        confidence: { present: true, value: 2 },
+        isTrusted: { present: true, value: true },
       })
-      expect(target.executions[2]!.commandLine).toEqual({
-        present: true,
-        value: "false",
-        confidence: 1,
-        isTrusted: false,
+      expect(target.executions[2]!.commandLine).toMatchObject({
+        confidence: { present: true, value: 1 },
+        isTrusted: { present: true, value: false },
       })
       expect(target.executions[1]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 0 } })
       expect(target.executions[3]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 17 } })
@@ -1801,12 +1812,18 @@ test.each([
       })
       expect(target.executions[4]!.exitCode).not.toHaveProperty("value")
       // Delivered once: the next phase starts empty, then carries only what arrived after the target reply.
-      const later = { commandLine: { value: "printf later", confidence: 2, isTrusted: true } }
+      // A native command line without confidence or trust records each absence by name.
+      const later = { commandLine: { value: "printf later" } }
       const restore = await sample("restore")
       expect(restore.executions).toEqual([])
       handlers.start!({ terminal: nativeTerminal, execution: later })
       const after = await sample("after")
       expect(after.executions.map((fact) => [fact.eventSequence, fact.execution])).toEqual([[6, "execution-4"]])
+      expect(after.executions[0]!.commandLine).toMatchObject({
+        present: true,
+        confidence: { present: false, reason: expect.any(String) },
+        isTrusted: { present: false, reason: expect.any(String) },
+      })
       // Private evidence keeps every owned event in arrival order; the other terminal's never appear.
       const logged = fs
         .readFileSync(join(directory, "editor-executions.jsonl"), "utf8")
@@ -1815,6 +1832,15 @@ test.each([
         .map((line) => JSON.parse(line) as Fact & { activationNonce: string })
       expect(logged.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5, 6])
       expect(logged.every((fact) => fact.activationNonce === activation.activationNonce)).toBe(true)
+      // The raw command text lives only in this private run-directory log.
+      expect(logged.map((fact) => (fact as unknown as { commandLineValue?: string }).commandLineValue)).toEqual([
+        "printf ok",
+        "printf ok",
+        "false",
+        "false",
+        undefined,
+        "printf later",
+      ])
       expect(JSON.stringify(logged)).not.toContain("not ours")
     } finally {
       for (const disposable of subscriptions.reverse()) disposable.dispose()
