@@ -5797,8 +5797,8 @@ const rowsOnlyConflictReply = () => {
     rows: 39,
     cols: 123,
     query: {
-      sequence: "\x1b[18t",
-      outbound: "\x1b[18t\x1b[c",
+      sequence: "\x1b[18t" as const,
+      outbound: "\x1b[18t\x1b[c" as const,
       reason: "reply" as const,
       raw,
       rawBase64: Buffer.from(raw).toString("base64"),
