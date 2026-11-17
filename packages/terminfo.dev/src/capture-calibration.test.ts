@@ -1380,6 +1380,32 @@ test("a translucent pixel inside the retained iTerm2 grid is still an interior h
   await expect(iterm2SolidRun(solid).promise).rejects.toThrow(/holes or separate patches/)
 })
 
+test("a translucent window has no opaque paint and refuses where the opaque window calibrates", async () => {
+  // The same frames at alpha 128 throughout: identical RGB, but no pixel the window covers opaquely.
+  const translucent = (source: CapturedFrame): CapturedFrame => ({
+    ...source,
+    rgba: source.rgba.map((value, index) => (index % 4 === 3 ? 128 : value)),
+  })
+  // Scripted frames past their list's end advance the clock, so each stage repeats enough for the whole run.
+  const repeated = (source: CapturedFrame) => Array.from({ length: 16 }, () => translucent(source))
+  await expect(calibration().promise).resolves.toBeDefined()
+  const run = calibration({
+    frames: {
+      "before grid paint": repeated(blank),
+      "solid grid paint": repeated(rasterFrame("solid")),
+      "column edge paint": repeated(rasterFrame("columns")),
+      "row edge paint": repeated(rasterFrame("rows")),
+      "restore grid paint": repeated(blank),
+    },
+  })
+  const message = await run.promise.then(
+    () => "calibrated",
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
+  expect(message).toMatch(/^Capture calibration/)
+  expect(message).not.toMatch(/timed out|deadline/i)
+})
+
 // 34480 (@cto 34480-fresh-owner-contract-go-2141): deterministic +-1-code content-coordinate ordered dither
 // (26 occupied triples in the 3x3x3 L_infinity ball around each paint mode, period 32x32) modeled from the
 // retained Terminal.app 2.15 macOS specimen (860x499 window, 840x450 grid at 10,39 for 120x30 cells, 7x15 pitch).
