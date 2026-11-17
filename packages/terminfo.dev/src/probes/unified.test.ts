@@ -5785,6 +5785,7 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
       throw new Error("Collector source is uncommitted: fixture detail")
     })
     const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
     await expect(shadowCollectedRun(recorded.path)).resolves.toBeUndefined()
     const report = JSON.parse(readFileSync(shadowReportPath(recorded.path), "utf8"))
     expect(report).toMatchObject({
@@ -5798,6 +5799,7 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
     expect(line).toContain("FAILED (Error)")
     // The raw error stays in the private report.
     expect(line).not.toContain("fixture detail")
+    expect(String(log.mock.calls.at(-1)?.[0])).toContain("Shadow FAILED (Error); private report")
     expect(readFileSync(recorded.path).equals(before)).toBe(true)
   }, 60_000)
 
