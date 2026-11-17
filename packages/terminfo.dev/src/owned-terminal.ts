@@ -2550,7 +2550,7 @@ export async function createOwnedTerminal(options: {
                 appExecutablePath === undefined ||
                 realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(appExecutablePath)), "wezterm")
               ) {
-                throw new Error("WezTerm cwd CLI is outside the verified App bundle")
+                throw new Error("WezTerm CLI is outside the verified App bundle")
               }
             }
             if (ownedOsc8) {

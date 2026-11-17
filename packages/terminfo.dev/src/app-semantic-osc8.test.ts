@@ -107,7 +107,8 @@ test.each([
 test.each([
   { id: "wezterm", version: "20240101-000000-00000000", featureId: "extensions.osc8" },
   { id: "ghostty", version: "1.4.0", featureId: "extensions.osc8" },
-  { id: "wezterm", version: "20240203-110809-5046fc22", featureId: "extensions.osc1-icon" },
+  // osc7-cwd reaches the port's own gate; osc1-icon would be answered by the icon branch before it (@dev/fixer).
+  { id: "wezterm", version: "20240203-110809-5046fc22", featureId: "extensions.osc7-cwd" },
 ])("an unreviewed $id $version $featureId never reads through the port", async ({ id, version, featureId }) => {
   ownedLaunch(id, version)
   const pane = weztermPane("supported")
@@ -118,6 +119,6 @@ test.each([
     write: pane.write,
     readRows: pane.readRows,
   })
-  expect(reading.status).toBe("unavailable")
+  expect(reading).toMatchObject({ status: "unavailable", reason: "No reviewed owned row reader for this App/feature" })
   expect(pane.reads).toEqual([])
 })
