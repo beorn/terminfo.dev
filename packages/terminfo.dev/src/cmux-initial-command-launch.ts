@@ -16,7 +16,7 @@
  */
 import { spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
-import { basename, dirname } from "node:path"
+import { dirname } from "node:path"
 import { shellQuote } from "./daemon-client.ts"
 
 export interface CmuxLaunchDeps {
@@ -91,19 +91,20 @@ function keyBashPath(command: string): string | null {
   return raw.split(/\s+/)[0] ?? null
 }
 
-/** The file name every run's command file has (`join(run.directory, COMMAND_FILE_NAME)` in the admin arm). */
-export const COMMAND_FILE_NAME = "cmux-command.sh"
-
 /**
- * Ours: the file the key names carries this launcher's header (C2 recognition), or the file is gone and the
- * key names this launcher's command file, the trace a run leaves when it crashed before restore() and its
- * run directory was later removed (@agy/1 34302 finding 2). A file that exists but cannot be read is not
- * guessed either way: the read error is thrown with its path (Fail Loud).
+ * Ours: the file the key names carries this launcher's header (C2 recognition). Nothing else proves it: a
+ * file name is shared by anyone, so a key whose file is gone (a crashed run whose run directory was later
+ * removed, @agy/1 34302 finding 2) is refused by name and left in place for the operator, never removed on a
+ * guess (@cto 7a21b97a). A file that exists but cannot be read is refused the same way (Fail Loud).
  */
 export function isOurKey(command: string): boolean {
   const path = keyBashPath(command)
   if (path === null) return false
-  if (!existsSync(path)) return basename(path) === COMMAND_FILE_NAME
+  if (!existsSync(path)) {
+    throw new Error(
+      `cmux-initial-command-unproven: the initial-command key names ${path}, which no longer exists, so nothing proves this launcher wrote it; the line is left in place: remove it from the config by hand if it is a crashed run's`,
+    )
+  }
   let text: string
   try {
     text = readFileSync(path, "utf8")
