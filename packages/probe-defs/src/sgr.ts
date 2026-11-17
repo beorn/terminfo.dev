@@ -1546,9 +1546,11 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
 
 // 34567: the hosted macOS image moved 20261102.0473.1 to 20261112.0504.1, raising measured per-capture cost from
 // 0.912 s to 1.158 s (cmux; Cursor 0.851 to 1.067) with frame counts unchanged. The attribute rows below sat at 78 to
-// 96 percent of the 30 s default before the bump, so they were cut mid-capture. Each wall is capture count x 1.158 s
-// x 1.20 headroom, rounded up to the next 15 s: 24 to 32 captures need 45 s, 132 need 195 s.
-// /hh/var/@dev-brain/collector-slow-1117.md.
+// 96 percent of the 30 s default before the bump, so they were cut mid-capture. Each wall is that row's need x 1.20
+// headroom, rounded up to the next 15 s, where the need is the greater of its capture count x 1.158 s and its old
+// elapsed time scaled by its app's per-frame rise (a row can spend time outside its captures). 24 to 32 captures need
+// 45 s, sgr.underline.double needs 60 s (old cmux elapsed 30.0 s scales to 38.0 s, above its 37.1 s of captures),
+// 132 need 195 s. /hh/var/@dev-brain/collector-slow-1117.md.
 export const sgrProbes: ProbeDefinition[] = [
   // ── Attributes ──
 
@@ -1592,7 +1594,9 @@ export const sgrProbes: ProbeDefinition[] = [
       { require: [21] },
       "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
     ),
-    wallMs: 45_000,
+    // 60, not 45: the old cmux elapsed (30.0 s) scales to 38.0 s on the new image, more than this row's 32 captures
+    // x 1.158 s, and 38.0 x 1.20 rounds up past 45.
+    wallMs: 60_000,
   },
 
   {
