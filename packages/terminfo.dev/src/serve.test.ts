@@ -199,6 +199,180 @@ it.each([
   expect(result.status, result.stderr).toBe(0)
 })
 
+// Requirement (34685, @cto 34685-execution-scope-ruling-1435): the actual generated extension, native reader,
+// grader and collector qualify OSC 133/633 C, D and 633 E only from execution events that the collector's own
+// written marks cause. The native source below fires events solely from the bytes the collector writes, so a
+// collector that graded from anything else, or an extension that dropped or relabelled events, would fail here.
+// The osc633-p case above has no execution events and cannot see this.
+it.each([
+  { app: "com.microsoft.VSCode", failed: false },
+  { app: "cursor", failed: false },
+])("drives $app native execution rows from the collector's own marks", ({ app, failed }) => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    import { runInNewContext } from "node:vm"
+    const app = process.env.EDITOR_APP, failed = process.env.EDITOR_FAILED === "yes"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+      manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+        probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] } },
+      collectorRevision: "b".repeat(40),
+    }
+    const cursorSetup = await import("./packages/admin/src/cursor-onboarding.ts")
+    mock.module("./packages/admin/src/cursor-onboarding.ts", () => ({ ...cursorSetup, assertCursorBundlePinsShipped: () => {} }))
+    const runId = "c".repeat(32), directory = join(process.env.HOME, "private-launch")
+    mkdirSync(directory)
+    const run = { id: runId, directory, scriptPath: join(directory, "serve.sh") }
+    const { prepareCliLaunch } = await import("./packages/admin/src/app.ts")
+    prepareCliLaunch(app, run)
+    const prefix = app === "cursor" ? "cursor" : "vscode"
+    let nativeCwd = "file:///native-original"
+    const subscriptions = [], captures = []
+    const disposable = () => ({ dispose() {} })
+    const executionHandlers = { start: [], end: [] }
+    let current, pendingLine
+    const terminal = {
+      name: failed ? "" : "exact native terminal",
+      processId: Promise.resolve(process.pid),
+      get shellIntegration() { return { cwd: new URL(nativeCwd) } },
+      show() {}, dispose() {},
+    }
+    const vscode = {
+      env: { appName: "Native " + app }, version: "native-api-1",
+      commands: { executeCommand: async () => {} },
+      RelativePattern: class {},
+      workspace: { createFileSystemWatcher: () => ({ dispose() {}, onDidCreate: disposable, onDidChange: disposable }) },
+      window: {
+        createTerminal: options => { Object.assign(process.env, options.env); return terminal },
+        onDidCloseTerminal: disposable, onDidChangeTerminalShellIntegration: disposable,
+        onDidStartTerminalShellExecution: handler => (executionHandlers.start.push(handler), disposable()),
+        onDidEndTerminalShellExecution: handler => (executionHandlers.end.push(handler), disposable()),
+      },
+    }
+    const exported = {}
+    runInNewContext(readFileSync(join(directory, prefix + "-fixture", "extension.cjs"), "utf8"), {
+      exports: exported, require: id => id === "vscode" ? vscode : require(id),
+      process, Date, setInterval, clearInterval, setTimeout, clearTimeout,
+    })
+    await exported.activate({ subscriptions })
+    process.env.TERMINFO_RUN_ID = runId
+    process.env.TERMINFO_MUX_KIND = ""
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const { readAppSemanticState } = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const geometry = { status: "measured", rows: 24, cols: 80 }
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+      detectTerminal: () => ({ name: app, version: "counted-build", os: "macos", osVersion: "fixture" }),
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => undefined,
+    }))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+      ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => true,
+      createOwnedTerminal: async options => ({
+        hostedAppId: app, appPid: 4242, geometryAtGrant: geometry, geometrySource: "fixture",
+        summary: "owner OS boundary fixture", readGeometry: async () => geometry, dispose: async () => {},
+        readAppSemanticState: (featureId, write) => readAppSemanticState({ featureId, write, runId,
+          editor: { appId: app, assertProcess: async () => {}, capture: options.appSemanticCapture } }),
+      }),
+    }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      writeTTY: text => {
+        // The independent native source: shell-integration marks the terminal parsed become execution events.
+        for (const [, selector, letter, argument] of text.matchAll(/\x1b\](133|633);([A-E])(?:;([^\x07]*))?\x07/gu)) {
+          if (letter === "E" && selector === "633") pendingLine = argument.split(";")[0]
+          if (letter === "C") {
+            current = { commandLine: pendingLine === undefined ? undefined : { value: pendingLine, confidence: 2, isTrusted: false } }
+            pendingLine = undefined
+            for (const handler of executionHandlers.start) handler({ terminal, execution: current })
+          }
+          if (letter === "D") {
+            const execution = current
+            current = undefined
+            for (const handler of executionHandlers.end) handler({ terminal, execution, exitCode: Number(argument) })
+          }
+        }
+        const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(text)?.[1]
+        if (cwd !== undefined) nativeCwd = "file://" + cwd
+      },
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const raw = sequence === "\x1b[18t" ? "\x1b[8;24;80t" : sequence === "\x1b[16t" ? "\x1b[6;17;8t" : sequence === "\x1b[14t" ? "\x1b[4;408;640t" : "\x1b[?1;2c"
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      },
+    }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+      calibrateCaptureOrigin: async () => { throw Object.assign(new Error("No crop in native-read fixture"), { name: "CaptureCalibrationRefused" }) },
+    }))
+    mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+      createDarwinCapture: async (captureDirectory, options) => ({
+        captureRaw: async checkpoint => {
+          assert.equal(options.appPid, 4242)
+          captures.push({ phase: checkpoint.label, nativeCwd })
+          mkdirSync(captureDirectory, { recursive: true })
+          const path = join(captureDirectory, "native-window-" + captures.length + ".png")
+          const bytes = Buffer.from("owned pixel adapter fixture bytes")
+          const sha256 = createHash("sha256").update(bytes).digest("hex")
+          writeFileSync(path, bytes)
+          options.onRetained({ path, sha256 })
+          return { result: { frame: { kind: "pixels", path, sha256 }, trace: { label: checkpoint.label } } }
+        },
+      }),
+    }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    try {
+      const rows = ["extensions.osc633-c", "extensions.osc133-d", "extensions.osc633-e"]
+      const returned = await collectProbeRun({ ids: rows, captureRunId: "editor-execution" })
+      const record = JSON.parse(JSON.stringify(returned))
+      for (const featureId of rows) {
+        const publicReading = record.rawReplies[featureId + ".callbackResponse"]
+        const reading = JSON.parse(publicReading)
+        assert.equal(reading.status, "measured", featureId + ": " + reading.reason)
+        assert.equal(record.results.find(row => row.featureId === featureId).status, "supported", featureId)
+        // Digest-only public record: no command text, terminal name, private path or process id (34666 rule).
+        for (const secret of ["terminfo-target-", "terminfo-control-", "exact native terminal", directory, '"extensionPid"']) {
+          assert.equal(publicReading.includes(secret), false, featureId + " " + secret)
+        }
+      }
+      // The command text exists only in the private run-directory log, recorded by the real extension.
+      const logged = readFileSync(join(directory, "editor-executions.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line))
+      assert.ok(logged.some(fact => String(fact.commandLineValue).startsWith("terminfo-target-")))
+      assert.ok(logged.some(fact => fact.kind === "end" && fact.exitCode.value === 17))
+    } finally {
+      for (const subscription of subscriptions) subscription.dispose()
+    }
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        HOME: home,
+        EDITOR_APP: app,
+        EDITOR_FAILED: failed ? "yes" : "no",
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
+        TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
+        TERMINFO_RUNTIME_PROVENANCE: "",
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+      },
+      encoding: "utf8",
+      timeout: 110000,
+    },
+  )
+  expect(result.status, result.stderr).toBe(0)
+}, 120_000)
+
 // The owner factory has its own live-custody tests. The collector consumes the owner-level proof:
 // Darwin has no clipboard adapter, and a second clipboard home could hide a missing owner proof.
 it.each(["tmux", "screen", "darwin-screen"])(

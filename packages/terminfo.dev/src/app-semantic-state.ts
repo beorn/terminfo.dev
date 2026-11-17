@@ -1882,6 +1882,40 @@ type NativeEditorReply = Pick<NativeEditorActivation, "runId" | "activationNonce
     processId: { present: boolean; value?: number; reason?: string }
     shellIntegrationCwd: { present: boolean; value?: string; reason?: string }
   }
+  executionApi?: Partial<Record<"start" | "end", { present: boolean; reason?: string }>>
+  executions?: NativeExecutionFact[]
+  awaitedEvent?: { kind: string; met: boolean }
+}
+
+/** One native execution event as the 34666 observer publishes it: digests only, never command text. */
+type NativeExecutionFact = {
+  eventSequence: number
+  kind: "start" | "end"
+  execution: string
+  commandLine?: {
+    present: boolean
+    valueSha256?: string
+    confidence?: { present: boolean; value?: number; reason?: string }
+    isTrusted?: { present: boolean; value?: boolean; reason?: string }
+    reason?: string
+  }
+  exitCode?: { present: boolean; value?: number; reason?: string }
+}
+
+/**
+ * Native editor rows qualified from execution events that the collector's own written marks cause (34685, @cto
+ * 34685-execution-scope-ruling-1435). C and D use the opposite selector as the handled control; 633 E uses a known
+ * E payload, since OSC 133 has no E. Every other editor row keeps its refusal.
+ */
+const NATIVE_EXECUTION_ROWS: Record<
+  string,
+  { mark: "c" | "d" | "e"; selector: "133" | "633"; control: "133" | "633" }
+> = {
+  "extensions.osc633-c": { mark: "c", selector: "633", control: "133" },
+  "extensions.osc133-c": { mark: "c", selector: "133", control: "633" },
+  "extensions.osc633-d": { mark: "d", selector: "633", control: "133" },
+  "extensions.osc133-d": { mark: "d", selector: "133", control: "633" },
+  "extensions.osc633-e": { mark: "e", selector: "633", control: "633" },
 }
 
 /** Public diagnostic for a native editor reading, which the committed run record keeps verbatim (34666). */
@@ -1915,6 +1949,7 @@ async function readNativeEditorState(input: {
     captures: Array<{ phase: string; observation: unknown }>
     restoration?: object
     nativeFailure?: NativeFailure
+    executionTrials?: Array<{ phase: string; selector: string; state: string; commandLine?: object }>
   } = { nativeObservations: [], captures: [] }
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (!captureDirectory || !isAbsolute(captureDirectory)) {
@@ -1959,7 +1994,11 @@ async function readNativeEditorState(input: {
   }
   let lastSequence = 0
   let unavailableReason: string | undefined
-  const sample = async (phase: string, expectedCwd?: string): Promise<string | undefined> => {
+  const exchange = async (
+    phase: string,
+    options: { expectedCwd?: string; awaitEvent?: "start" | "end"; deadlineMs?: number } = {},
+  ): Promise<NativeEditorReply> => {
+    const { expectedCwd, awaitEvent } = options
     const current = statSync(activationPath)
     if (
       current.dev !== activationIdentity.dev ||
@@ -1988,8 +2027,9 @@ async function readNativeEditorState(input: {
       nonce,
       activationNonce: activation.activationNonce,
       requestedAt,
-      deadline: requestedAt + 4500,
+      deadline: requestedAt + (options.deadlineMs ?? 4500),
       ...(expectedCwd === undefined ? {} : { expectedCwd }),
+      ...(awaitEvent === undefined ? {} : { awaitEvent }),
     }
     const temporary = `${activation.requestPath}.${nonce}.tmp`
     writeFileSync(temporary, JSON.stringify(request), { flag: "wx", mode: 0o600 })
@@ -2077,6 +2117,10 @@ async function readNativeEditorState(input: {
     ) {
       throw new Error("Native editor reply does not distinguish a CWD value from native API absence")
     }
+    return reply
+  }
+  const sample = async (phase: string, expectedCwd?: string): Promise<string | undefined> => {
+    const cwd = (await exchange(phase, { expectedCwd })).terminal.shellIntegrationCwd
     if (expectedCwd !== undefined && (!cwd.present || cwd.value !== expectedCwd)) {
       unavailableReason =
         "Native editor did not observe the expected CWD; unchanged or absent state does not decide support"
@@ -2085,6 +2129,186 @@ async function readNativeEditorState(input: {
     return cwd.present ? cwd.value : undefined
   }
   const osc = (value: string) => `\x1b]${value}\x07`
+  // 34685: staged native execution trials. Each trial is read after A/B, after C (before D), then after D, and
+  // joined by execution identity; extra, stale, unpaired or other-execution facts make the row invalid, never a
+  // grade. Reads whose emptiness could decide Unsupported wait the full deadline; reads expected empty use a short
+  // one, since a late event then shows up as an extra fact in a later window and invalidates the row.
+  async function readNativeExecutionRow(row: (typeof NATIVE_EXECUTION_ROWS)[string]): Promise<AppSemanticReading> {
+    let lastEventSequence = 0
+    let executionCaptured = false
+    let executionReading: AppSemanticReading | undefined
+    const trials: NonNullable<typeof detail.executionTrials> = []
+    detail.executionTrials = trials
+    const facts = (reply: NativeEditorReply) => {
+      for (const kind of ["start", "end"] as const) {
+        const api = reply.executionApi?.[kind]
+        if (api?.present === false && typeof api.reason === "string" && api.reason !== "") {
+          unavailableReason = `Native editor execution event API is unavailable: ${api.reason}`
+          throw new Error(unavailableReason)
+        }
+        if (api?.present !== true) throw new Error("Native editor reply has no execution event API record")
+      }
+      if (!Array.isArray(reply.executions)) throw new Error("Native editor reply has no execution window")
+      for (const fact of reply.executions) {
+        if (
+          !Number.isSafeInteger(fact.eventSequence) ||
+          fact.eventSequence <= lastEventSequence ||
+          (fact.kind !== "start" && fact.kind !== "end") ||
+          typeof fact.execution !== "string"
+        ) {
+          throw new Error("Native editor execution facts are stale, out of order or malformed")
+        }
+        lastEventSequence = fact.eventSequence
+      }
+      return reply.executions
+    }
+    const read = async (phase: string, awaitEvent: "start" | "end", full: boolean) => {
+      const reply = await exchange(phase, { awaitEvent, ...(full ? {} : { deadlineMs: 1500 }) })
+      if (reply.awaitedEvent?.kind !== awaitEvent || typeof reply.awaitedEvent.met !== "boolean") {
+        throw new Error("Native editor reply did not honour the awaited execution event")
+      }
+      const window = facts(reply)
+      if (reply.awaitedEvent.met !== window.some((fact) => fact.kind === awaitEvent)) {
+        throw new Error("Native editor execution window contradicts its awaited-event record")
+      }
+      return window
+    }
+    const trial = async (
+      phase: string,
+      selector: string,
+      options: { code?: number; command?: string; commandSelector?: string; full: boolean },
+    ) => {
+      input.write(osc(`${selector};A`) + osc(`${selector};B`))
+      if ((await read(`${phase}-ab`, "start", false)).length !== 0) {
+        throw new Error(`Native editor execution event arrived before C in ${phase}; the trial cannot be attributed`)
+      }
+      const command =
+        options.command === undefined ? "" : osc(`${options.commandSelector ?? selector};E;${options.command}`)
+      input.write(command + osc(`${selector};C`))
+      const afterC = await read(`${phase}-c`, "start", options.full)
+      if (afterC.length > 1 || afterC.some((fact) => fact.kind !== "start")) {
+        throw new Error(`Native editor execution window after C in ${phase} holds extra or unpaired facts`)
+      }
+      const start = afterC[0]
+      input.write(osc(`${selector};D;${options.code ?? 0}`))
+      const afterD = await read(`${phase}-d`, "end", options.full && start !== undefined)
+      if (afterD.length > 1 || afterD.some((fact) => fact.kind !== "end")) {
+        throw new Error(`Native editor execution window after D in ${phase} holds extra or unpaired facts`)
+      }
+      const end = afterD[0]
+      if (start !== undefined && end !== undefined && end.execution !== start.execution) {
+        throw new Error(`Native editor execution end in ${phase} belongs to another execution`)
+      }
+      return { start, end }
+    }
+    type Trial = Awaited<ReturnType<typeof trial>>
+    const started = (result: Trial) => (result.start === undefined ? "none" : "start")
+    const ended = (result: Trial) =>
+      result.end === undefined
+        ? "none"
+        : result.start === undefined
+          ? "end-unpaired"
+          : result.end.exitCode?.present === true
+            ? `end:${result.end.exitCode.value}`
+            : "end:absent"
+    const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+    const commanded = (result: Trial, command: string) =>
+      result.start?.commandLine?.present === true && result.start.commandLine.valueSha256 === digest(command)
+        ? "cmd:match"
+        : "cmd:absent"
+    const record = (phase: string, selector: string, state: string, result: Trial) => {
+      const line = result.start?.commandLine
+      trials.push({
+        phase,
+        selector,
+        state,
+        ...(row.mark === "e" && line !== undefined
+          ? {
+              commandLine: {
+                present: line.present,
+                ...(line.reason === undefined ? {} : { reason: line.reason }),
+                confidence: line.confidence,
+                isTrusted: line.isTrusted,
+              },
+            }
+          : {}),
+      })
+      return state
+    }
+    try {
+      facts(await exchange("initial"))
+      let unknown: { before: string; after: string }
+      let handled: { before: string; after: string; expected: string }
+      let target: { before: string; after: string; expected: string }
+      if (row.mark === "c") {
+        const control = await trial("unknown", "9999", { full: false })
+        unknown = { before: "none", after: record("unknown", "9999", started(control), control) }
+        const known = await trial("handled", row.control, { full: true })
+        handled = { before: "none", after: record("handled", row.control, started(known), known), expected: "start" }
+        const result = await trial("target", row.selector, { full: true })
+        target = { before: "none", after: record("target", row.selector, started(result), result), expected: "start" }
+      } else if (row.mark === "d") {
+        const control = await trial("unknown", "9999", { code: 0, full: false })
+        unknown = { before: "none", after: record("unknown", "9999", ended(control), control) }
+        const pair = async (phase: string, selector: string) => {
+          const states = []
+          for (const code of [0, 17]) {
+            const result = await trial(`${phase}-${code}`, selector, { code, full: true })
+            states.push(record(`${phase}-${code}`, selector, ended(result), result))
+          }
+          return states.join("|")
+        }
+        handled = { before: "none|none", after: await pair("handled", row.control), expected: "end:0|end:17" }
+        target = { before: "none|none", after: await pair("target", row.selector), expected: "end:0|end:17" }
+      } else {
+        // An E under an unknown selector must not set the command line; known and target payloads differ.
+        const unknownCommand = `terminfo-unknown-${randomUUID()}`
+        const control = await trial("unknown", "633", { command: unknownCommand, commandSelector: "9999", full: true })
+        unknown = { before: "cmd:absent", after: record("unknown", "633", commanded(control, unknownCommand), control) }
+        const knownCommand = `terminfo-control-${randomUUID()}`
+        const known = await trial("handled", "633", { command: knownCommand, full: true })
+        handled = {
+          before: "cmd:absent",
+          after: record("handled", "633", commanded(known, knownCommand), known),
+          expected: "cmd:match",
+        }
+        const targetCommand = `terminfo-target-${randomUUID()}`
+        const result = await trial("target", "633", { command: targetCommand, full: true })
+        target = {
+          before: "cmd:absent",
+          after: record("target", "633", commanded(result, targetCommand), result),
+          expected: "cmd:match",
+        }
+      }
+      detail.captures.push({ phase: "target", observation: await input.editor.capture(input.featureId, "target") })
+      executionCaptured = true
+      executionReading = { status: "measured", reader: "state", runId: input.runId, unknown, handled, target, detail }
+    } catch (error) {
+      executionReading = {
+        status: unavailableReason === undefined ? "invalid" : "unavailable",
+        reason: redactNativeEditorPaths(error instanceof Error ? error.message : String(error)),
+        detail,
+      }
+    } finally {
+      if (!executionCaptured) {
+        try {
+          detail.captures.push({
+            phase: "failed-read",
+            observation: await input.editor.capture(input.featureId, "failed-read"),
+          })
+        } catch (error) {
+          executionReading = {
+            status: "invalid",
+            reason: `Native editor evidence capture failed: ${redactNativeEditorPaths(String(error))}`,
+            detail,
+          }
+        }
+      }
+    }
+    return executionReading
+  }
+  const executionRow = NATIVE_EXECUTION_ROWS[input.featureId]
+  if (executionRow !== undefined) return readNativeExecutionRow(executionRow)
   let restore: string | undefined
   let mutated = false
   let captured = false
