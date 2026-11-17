@@ -74,7 +74,13 @@ import {
   currentTTYTraceMark,
 } from "./tty.ts"
 import { createHeldViewportReader } from "./held-viewport.ts"
-import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
+import {
+  ALL_PROBES,
+  runProbeBatch,
+  type GeometryCorroboration,
+  type HeldViewportReaderFor,
+  type ProbeCapture,
+} from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
@@ -810,7 +816,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           /** The row whose read asked for this preparation, on a renewal; absent on the pre-flight. */
           row?: string
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
-        }) => Promise<void>)
+        }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>)
       | undefined
     let finishCapture: typeof prepareCapture
     /**
@@ -933,8 +939,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           frameRecord = recordCapture
           probeSource.captureGeometry = undefined
           probeSource.captureGeometryRefusal = undefined
-          probeSource.readHeldViewport = undefined
-          probeSource.readViewportReference = undefined
+          // 34693: returned to the batch, never installed on this preparation source: each row builds its own.
+          let heldViewportReaderFor: HeldViewportReaderFor | undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
           await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
           try {
@@ -1002,32 +1008,32 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // renewal moves it too, and takes its frames through the same recorded raw route.
             const heldWindow = darwinCaptureWindowId
             if (viewportScroll && heldWindow !== undefined) {
-              const heldReader = createHeldViewportReader({
-                featureId,
-                route: () => probeSource.viewportScroll,
-                geometry: () => {
-                  if (!textOrigin) return undefined
-                  const { cellWidth, cellHeight, textWidth, textHeight } = textOrigin.pixelGeometry
-                  const cols = textWidth / cellWidth
-                  const rows = textHeight / cellHeight
-                  if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows)) return undefined
-                  return {
-                    origin: textOrigin.origin,
-                    cell: { width: cellWidth, height: cellHeight },
-                    cols,
-                    rows,
-                    window: `darwin window ${heldWindow}`,
-                  }
-                },
-                captureRaw: async (label, deadline, role) => {
-                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline, role)
-                  return { recorded: result.frame, decoded }
-                },
-                mark: currentTTYTraceMark,
-                timeoutMs: DEFAULT_TIMEOUT_MS,
-              })
-              probeSource.readHeldViewport = heldReader.read
-              probeSource.readViewportReference = heldReader.reference
+              heldViewportReaderFor = ({ featureId: rowId, source: rowSource, record }) =>
+                createHeldViewportReader({
+                  featureId: rowId,
+                  route: () => rowSource.viewportScroll,
+                  geometry: () => {
+                    if (!textOrigin) return undefined
+                    const { cellWidth, cellHeight, textWidth, textHeight } = textOrigin.pixelGeometry
+                    const cols = textWidth / cellWidth
+                    const rows = textHeight / cellHeight
+                    if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows)) return undefined
+                    return {
+                      origin: textOrigin.origin,
+                      cell: { width: cellWidth, height: cellHeight },
+                      cols,
+                      rows,
+                      window: `darwin window ${heldWindow}`,
+                    }
+                  },
+                  captureRaw: async (label, deadline, role = "control") => {
+                    const { result, decoded } = await adapter.captureRaw({ featureId: rowId, role, label }, deadline)
+                    record(result)
+                    return { recorded: result.frame, decoded }
+                  },
+                  mark: currentTTYTraceMark,
+                  timeoutMs: DEFAULT_TIMEOUT_MS,
+                })
             }
             /**
              * 33774: a row that writes RIS re-lays-out a block terminal's window (Warp: every absolute
@@ -1110,6 +1116,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(refusalRenewals.length > 0 && { renewals: refusalRenewals }),
             }
           }
+          return heldViewportReaderFor && { heldViewportReaderFor }
         }
       }
       preflightPixelCapture = async () => {
