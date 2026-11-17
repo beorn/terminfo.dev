@@ -1,5 +1,6 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
+export { ALACRITTY_0_17_VIEWPORT_ROUTE } from "./held-viewport-rows.ts"
 export type { SourceAnswerSubject } from "./source-answers.ts"
 export type {
   HostInputName,

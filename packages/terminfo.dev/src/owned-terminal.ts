@@ -63,6 +63,7 @@ import {
 } from "./cmux-owned-history.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
   ScrollbackReadingUnavailable,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
@@ -685,7 +686,7 @@ export function hostedViewportKeys(subject: {
   }
   return {
     viewportKeys: {
-      route: "hosted alacritty 0.17.0 default bindings (shift+Page_Up/Page_Down/Home/End), keys-only CGEvent",
+      route: ALACRITTY_0_17_VIEWPORT_ROUTE,
       keys: ALACRITTY_0_17_VIEWPORT_KEYS,
     },
   }

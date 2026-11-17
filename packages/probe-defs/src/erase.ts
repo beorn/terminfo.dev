@@ -1,3 +1,4 @@
+import { HELD_VIEWPORT_WALL_MS, heldEraseScrollback, heldViewportReader } from "./held-viewport-rows.ts"
 import type {
   ObservationFrame,
   ObservationReason,
@@ -574,6 +575,8 @@ export function screenEd3Seed(rows: number, cols: number): { history: string; bo
 }
 
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const heldReader = heldViewportReader(ctx)
+  if (heldReader) return heldEraseScrollback(ctx, heldReader)
   const heldTodo = heldViewportReadTodo(ctx)
   if (heldTodo) return heldTodo
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
@@ -794,6 +797,8 @@ export function createEraseProbes(
         scrollbackEraseApp,
       ),
       termNeedsGeometry: true,
+      // 34645: same held-viewport arm and frame count as scrollback.total-lines.
+      wallMs: HELD_VIEWPORT_WALL_MS,
     },
   ]
 }
