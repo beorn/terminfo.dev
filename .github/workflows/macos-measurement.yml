@@ -467,6 +467,17 @@ jobs:
                 exit 1
               }
               printf -v launch_command '/bin/bash %q' "$COMMAND_PATH"
+              # 34664: our OSC 133 probes record a command; once it scrolls off, iTerm2 pins it as a 32 px bar over the
+              # grid's top rows ("Show Offscreen Command line", ITAddressBookMgr.h:257, PTYSession.m:17954), which moved
+              # every renewal's grid in run 44178738960. A dynamic profile turns only that off and inherits everything
+              # else; the launcher below makes it the default (ITAddressBookMgr.m:254-261). Kept beside launcher.log.
+              iterm_profiles="$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+              if ! mkdir -p "$iterm_profiles" || ! printf '%s\n' '{"Profiles":[{"Name":"terminfo-measure","Guid":"terminfo-measure-0001","Show Offscreen Command line":false}]}' > "$iterm_profiles/terminfo-measure.json" || ! cp "$iterm_profiles/terminfo-measure.json" "$OUT/iterm2-dynamic-profile.json"; then
+                echo "iTerm2 dynamic profile could not be written to $iterm_profiles" >&2
+                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
               if node - "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
           const { spawnSync } = require('node:child_process');
           const [bundle, command] = process.argv.slice(2);
@@ -502,6 +513,9 @@ jobs:
           // true removes only the strip and leaves every erase reading as the default install gives it.
           const scrollback = run('scrollback clear policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'PreventEscapeSequenceFromClearingHistory', '-bool', 'true']);
           if (scrollback.status !== 0) throw new Error(`iTerm2 scrollback clear policy failed (${scrollback.status})`);
+          // 34664: the dynamic profile written before this script (offscreen command line off) becomes the default.
+          const profile = run('default profile', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'Default Bookmark Guid', '-string', 'terminfo-measure-0001']);
+          if (profile.status !== 0) throw new Error(`iTerm2 default profile failed (${profile.status})`);
           const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
           if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
           ITERM_STARTUP

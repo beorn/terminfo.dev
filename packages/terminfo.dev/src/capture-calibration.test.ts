@@ -1380,6 +1380,37 @@ test("a translucent pixel inside the retained iTerm2 grid is still an interior h
   await expect(iterm2SolidRun(solid).promise).rejects.toThrow(/holes or separate patches/)
 })
 
+// 34664: hosted iTerm2 3.6.11 run 44178738960 (suite eddeab8ab928), with no clear-scrollback strip. Every stage changes
+// only the 560x425 grid at x 5..564, y 35..459, and the restore frame equals the before frame; six pixels of the rounded
+// bottom-left corner are translucent (alpha 4 to 207) and take each stage's colour at their own alpha.
+const ITERM2_RUN2_FRAMES: Record<string, string> = {
+  firstBefore: "23c43a4df0e2a6c8403328b520b17be3641b04c7d6a4824bdeaae49848f715c1",
+  before: "f2e561f72d5d8f8d87569a0beaac845122e9effd8caf23cbda8c50f3eb55e5b0",
+  solid: "7ccdc0222c95134e45610327fce648675a98c81deda3e2fb8d8628da311caddc",
+  columns: "ca266edce439840d0977e688c30dfc8fe3ed77718b540dbe594d5322705e1ad5",
+  rows: "b74946be6e957f3b807853cdc7b92afcda8e37832832af7d65fb6cdd659ced97",
+}
+
+test("the retained strip-free iTerm2 calibration measures its 80x25 grid at 7x17 through a translucent corner", async () => {
+  const frame = (name: string) => retainedFrame(name, ITERM2_RUN2_FRAMES)
+  const run = calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: {
+      // The run's own order: the first before capture still shows a title-bar button settling, the confirmations do not.
+      "before grid paint": [frame("firstBefore"), frame("before"), frame("before"), frame("before")],
+      "solid grid paint": Array.from({ length: 4 }, () => frame("solid")),
+      "column edge paint": Array.from({ length: 4 }, () => frame("columns")),
+      "row edge paint": Array.from({ length: 4 }, () => frame("rows")),
+      "restore grid paint": Array.from({ length: 4 }, () => frame("before")),
+    },
+  })
+  const measured = await run.promise
+  expect(measured.basis).toMatch(/80 columns x 25 rows/)
+  expect(measured.basis).toMatch(/7x17/)
+})
+
 test("a translucent window has no opaque paint and refuses where the opaque window calibrates", async () => {
   // The same frames at alpha 128 throughout: identical RGB, but no pixel the window covers opaquely.
   const translucent = (source: CapturedFrame): CapturedFrame => ({
