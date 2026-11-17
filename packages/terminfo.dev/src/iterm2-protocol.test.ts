@@ -10,7 +10,7 @@ import { join } from "node:path"
 import protobuf from "protobufjs"
 import { afterEach, expect, test, vi } from "vitest"
 import type WebSocketType from "ws"
-import { readITermCells } from "./iterm2-protocol.ts"
+import { readITermCells, withITermPromptSession } from "./iterm2-protocol.ts"
 
 const fixture = vi.hoisted(() => ({ home: "" }))
 vi.mock("node:os", async () => ({
@@ -239,6 +239,119 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
     }
   } finally {
     sends.mockRestore()
+    server.stop(true)
+  }
+})
+
+// 34570 (@cto REVISE-1 R4): a prompt read keeps proto2 presence and names each status. An absent
+// prompt_state is absent, never the EDITING default; PROMPT_UNAVAILABLE (3) is a result, while
+// SESSION_NOT_FOUND (1) and REQUEST_MALFORMED (2) are distinct named failures, never one generic refusal.
+test("a prompt read keeps field presence and names each status", async () => {
+  fixture.home = mkdtempSync("/var/tmp/i-")
+  directories.push(fixture.home)
+  const socket = join(fixture.home, "Library/Application Support/iTerm2/private/socket")
+  mkdirSync(join(socket, ".."), { recursive: true })
+  const root = protobuf.parse(readFileSync(new URL("./iterm2-api.proto", import.meta.url), "utf8"), {
+    keepCase: true,
+  }).root
+  const client = root.lookupType("iterm2.ClientOriginatedMessage")
+  const serverType = root.lookupType("iterm2.ServerOriginatedMessage")
+  const range = (y: number) => ({ start: { x: 0, y }, end: { x: 4, y } })
+  const prompts: Record<string, unknown>[] = [
+    {
+      status: 0,
+      prompt_state: 1,
+      unique_prompt_id: "mark-1",
+      prompt_range: range(7),
+      command_range: range(7),
+      output_range: range(8),
+    },
+    { status: 0, unique_prompt_id: "mark-2" },
+    { status: 3 },
+    { status: 1 },
+    { status: 2 },
+  ]
+  const promptRequests: unknown[] = []
+  const server = Bun.serve({
+    unix: socket,
+    fetch(request, server) {
+      if (server.upgrade(request, { headers: { "Sec-WebSocket-Protocol": "api.iterm2.com" } })) return
+      return new Response("upgrade failed", { status: 400 })
+    },
+    websocket: {
+      message(ws, bytes) {
+        if (typeof bytes === "string") throw new Error("Expected protobuf binary request")
+        const request = client.toObject(client.decode(bytes), { longs: String })
+        let reply: Record<string, unknown>
+        if (request.list_sessions_request) {
+          reply = {
+            list_sessions_response: {
+              windows: [
+                {
+                  tabs: [
+                    {
+                      root: {
+                        links: [{ session: { unique_identifier: "owned", grid_size: { width: 4, height: 2 } } }],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          }
+        } else if (request.variable_request) {
+          const [name] = request.variable_request.get as string[]
+          const value = name === "tty" ? "/dev/ttys004" : name === "user.terminfo_fence" ? "fence-1" : null
+          reply = { variable_response: { status: 0, values: [JSON.stringify(value)] } }
+        } else {
+          promptRequests.push(request.get_prompt_request)
+          reply = { get_prompt_response: prompts.shift() }
+        }
+        ws.send(serverType.encode(serverType.fromObject({ id: request.id, ...reply })).finish())
+      },
+    },
+  })
+  const retained: Uint8Array[] = []
+  try {
+    const reads = await withITermPromptSession(
+      { tty: "/dev/ttys004", deadlineMs: 5000, onReply: (bytes) => retained.push(bytes) },
+      async (session) => [
+        await session.readUserVariable("terminfo_fence"),
+        await session.readPrompt(),
+        await session.readPrompt(),
+        await session.readPrompt(),
+      ],
+    )
+    expect(reads).toEqual([
+      "fence-1",
+      {
+        status: "mark",
+        mark: {
+          promptState: "RUNNING",
+          uniquePromptId: "mark-1",
+          promptRange: { start: { x: 0, y: "7" }, end: { x: 4, y: "7" } },
+          commandRange: { start: { x: 0, y: "7" }, end: { x: 4, y: "7" } },
+          outputRange: { start: { x: 0, y: "8" }, end: { x: 4, y: "8" } },
+        },
+      },
+      // Absent prompt_state, ranges and exit status stay absent: no EDITING default, no invented range.
+      { status: "mark", mark: { uniquePromptId: "mark-2" } },
+      { status: "prompt-unavailable" },
+    ])
+    expect(promptRequests).toEqual([{ session: "owned" }, { session: "owned" }, { session: "owned" }])
+    expect(retained.length).toBeGreaterThan(0)
+    for (const [status, name] of [
+      [1, "SESSION_NOT_FOUND"],
+      [2, "REQUEST_MALFORMED"],
+    ] as const) {
+      const failure = await withITermPromptSession({ tty: "/dev/ttys004", deadlineMs: 5000 }, (session) =>
+        session.readPrompt(),
+      ).catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(Error)
+      expect((failure as Error).message).toBe(`get_prompt_response ${name} (status ${status})`)
+      expect((failure as Error).message).not.toContain("test-cookie")
+    }
+  } finally {
     server.stop(true)
   }
 })

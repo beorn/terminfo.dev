@@ -24,7 +24,13 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
-import { readAppSemanticState, readWezTermCwd, untilAppSemanticRead } from "./app-semantic-state.ts"
+import {
+  ITERM_PROMPT_FEATURES,
+  readAppSemanticState,
+  readITermPromptMarks,
+  readWezTermCwd,
+  untilAppSemanticRead,
+} from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
@@ -83,7 +89,7 @@ import {
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
-import { readITermCells } from "./iterm2-protocol.ts"
+import { readITermCells, withITermPromptSession } from "./iterm2-protocol.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -2306,6 +2312,72 @@ export async function createOwnedTerminal(options: {
           }
         },
       }),
+      // 34570: the hosted iTerm2 tab's own prompt marks, through the same API owner and TTY-matched
+      // session as its cell read. Only the prompt rows take it; every other row keeps its own callback.
+      ...(darwinTextApp === "iterm2" &&
+        darwinTextTty !== undefined &&
+        muxAttachmentProof === undefined && {
+          appSemanticStateFeatures: ITERM_PROMPT_FEATURES,
+          async readAppSemanticState(featureId: string, write: (text: string) => void) {
+            const check = () => {
+              if (!verifiedTerminalOwners.has(owner)) throw new Error("iTerm2 prompt read has no live owned terminal")
+            }
+            const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+            const onRetained = options.onRetained
+            if (
+              process.env.TERMINFO_TARGET_VERSION !== "3.6.11" ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              !captureDirectory ||
+              !isAbsolute(captureDirectory) ||
+              onRetained === undefined
+            ) {
+              return {
+                status: "invalid" as const,
+                reason:
+                  "iTerm2 prompt read requires the reviewed 3.6.11 target, this run's launch id and a capture directory",
+              }
+            }
+            try {
+              check()
+              await owner.readGeometry()
+              return await readITermPromptMarks({
+                featureId,
+                runId: expectedLaunchRunId,
+                write,
+                withSession: (work) =>
+                  withITermPromptSession(
+                    {
+                      tty: darwinTextTty,
+                      deadlineMs: 45_000,
+                      // Raw server frames only, as the cell read keeps them; never auth headers.
+                      onReply: (bytes) => {
+                        retain(captureDirectory, Buffer.from(bytes), "bin", onRetained)
+                      },
+                    },
+                    async (session) => {
+                      const reading = await work({
+                        readPrompt: async () => {
+                          check()
+                          return session.readPrompt()
+                        },
+                        readUserVariable: async (name) => {
+                          check()
+                          return session.readUserVariable(name)
+                        },
+                      })
+                      check()
+                      return reading
+                    },
+                  ),
+              })
+            } catch (error) {
+              return {
+                status: "invalid" as const,
+                reason: `iTerm2 prompt read failed: ${error instanceof Error ? error.message : String(error)}`,
+              }
+            }
+          },
+        }),
       ...(binding.platform === "darwin" &&
         ownedAppId === "wezterm" && {
           appSemanticStateFeatures: new Set(["extensions.osc7-cwd", "extensions.osc633-p"]),

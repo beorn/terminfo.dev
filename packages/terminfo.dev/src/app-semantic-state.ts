@@ -16,6 +16,7 @@ import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { MUX_PROFILE_CONFIG_FILES } from "./disposable-receipt.ts"
 import { readWindowsWezTermRows } from "./windows-wezterm-text.ts"
+import type { ITermPromptRead, ITermPromptSession } from "./iterm2-protocol.ts"
 import { retain as retainCaptureArtifact } from "./capture-core.ts"
 
 // Reviewed declarations match the exact App/mux version.
@@ -1378,6 +1379,197 @@ export async function untilAppSemanticRead(
   } while (Date.now() < deadline)
   phases.push({ name, incomplete: last })
   throw new Error(`App semantic reader did not observe ${name} completion`)
+}
+
+/** The OSC 133 prompt rows the iTerm2 prompt-mark reader answers (34570). */
+export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.semantic-prompts",
+])
+
+const promptOsc = (value: string) => `\x1b]${value}\x07`
+const EDITING_NEW = { mark: "new", state: "EDITING", command: "unset", output: "unset", exit: "absent" }
+
+/**
+ * Each prompt row: the feed appended after the finished baseline mark, the mark state that feed must
+ * produce (`from`, default a finished mark), the target feeds in order, and the expected projection after
+ * each. B is the command-entry boundary (command range set, still EDITING), C begins execution (output
+ * start set, RUNNING), D;17 finishes with that code (iTerm2 3.6.11 PTYSession getPromptResponseForMark).
+ */
+const ITERM_PROMPT_ROWS: Record<
+  string,
+  { tail: (nonce: string) => string; from?: object; feeds: ((nonce: string) => string)[]; expected: object[] }
+> = {
+  "extensions.osc133-a": { tail: () => "", feeds: [() => promptOsc("133;A")], expected: [EDITING_NEW] },
+  "extensions.osc133-b": {
+    tail: () => promptOsc("133;A"),
+    from: { mark: "same", state: "EDITING", command: "unset", output: "unset", exit: "absent" },
+    feeds: [() => promptOsc("133;B")],
+    expected: [{ mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" }],
+  },
+  "extensions.osc133-c": {
+    tail: () => promptOsc("133;A") + promptOsc("133;B"),
+    from: { mark: "same", state: "EDITING", command: "set", output: "unset", exit: "absent" },
+    feeds: [() => promptOsc("133;C")],
+    expected: [{ mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" }],
+  },
+  "extensions.osc133-d": {
+    tail: (nonce) => promptOsc("133;A") + promptOsc("133;B") + promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+    from: { mark: "same", state: "RUNNING", command: "set", output: "set", exit: "absent" },
+    feeds: [() => promptOsc("133;D;17")],
+    expected: [{ mark: "same", state: "FINISHED", command: "set", output: "set", exit: 17 }],
+  },
+  "extensions.semantic-prompts": {
+    tail: () => "",
+    feeds: [
+      () => promptOsc("133;A"),
+      () => promptOsc("133;B"),
+      (nonce) => promptOsc("133;C") + `terminfo-output-${nonce}\r\n`,
+      () => promptOsc("133;D;17"),
+    ],
+    expected: [
+      EDITING_NEW,
+      { mark: "new", state: "EDITING", command: "set", output: "unset", exit: "absent" },
+      { mark: "new", state: "RUNNING", command: "set", output: "set", exit: "absent" },
+      { mark: "new", state: "FINISHED", command: "set", output: "set", exit: 17 },
+    ],
+  },
+}
+
+/**
+ * One controlled iTerm2 prompt-mark observation per row (34570, @cto REVISE-1 R2-R5). Each phase writes its
+ * feed plus an OSC 1337 SetUserVar fence, waits until the session reports that fence, then takes a FRESH
+ * GetPrompt read of the session's last prompt mark; no row borrows another row's read. A read is projected
+ * to the fields a row can change, with the mark named relative to the baseline mark: `same`, `new` or
+ * `absent` (never an absolute id or row). The handled control is the fence variable itself, as Kitty's is
+ * its title. OSC 133;P has no handler in iTerm2 3.6.11 (PromptStateMachine handles A/B/C/D only) and no
+ * prompt field, so its row stays unresolved rather than certified by another letter (R3).
+ */
+export async function readITermPromptMarks(input: {
+  featureId: string
+  runId: string
+  write: (text: string) => void | Promise<void>
+  /** Opens the owned session's prompt API for one row; only rows that read anything open it. */
+  withSession: (work: (session: ITermPromptSession) => Promise<AppSemanticReading>) => Promise<AppSemanticReading>
+}): Promise<AppSemanticReading> {
+  if (input.featureId === "extensions.osc133-p") {
+    return {
+      status: "unavailable",
+      reason:
+        "iTerm2 3.6.11 has no OSC 133 P handler (PromptStateMachine handles A, B, C and D only) and its prompt API has no field that could observe P; unresolved",
+    }
+  }
+  return input.withSession(async (session) => {
+    const osc = (value: string) => `\x1b]${value}\x07`
+    const nonce = randomUUID().slice(0, 8)
+    const phases: object[] = []
+    const detail = { reader: "iterm2-prompt", nonce, phases }
+    let baselineId: string | undefined
+    let serial = 0
+    const describe = (read: ITermPromptRead) => {
+      if (read.status === "prompt-unavailable") return { mark: "prompt-unavailable" }
+      const { mark } = read
+      return {
+        mark: mark.uniquePromptId === undefined ? "absent" : mark.uniquePromptId === baselineId ? "same" : "new",
+        state: mark.promptState ?? "absent",
+        command: mark.commandRange === undefined ? "unset" : "set",
+        output: mark.outputRange === undefined ? "unset" : "set",
+        exit: mark.exitStatus ?? "absent",
+      }
+    }
+    let current = "first"
+    const phase = async (name: string, feed: string, fence = `terminfo-${nonce}-${serial++}`) => {
+      current = name
+      await input.write(feed + osc(`1337;SetUserVar=terminfo_fence=${Buffer.from(fence).toString("base64")}`))
+      const observed = await untilAppSemanticRead(
+        async () => String(await session.readUserVariable("terminfo_fence")),
+        (value) => value === fence,
+        `${name} user-variable fence`,
+        phases,
+      )
+      const read = await session.readPrompt()
+      phases.push({ name, feed, fence: observed, read })
+      return { read, fence: observed }
+    }
+    const finished = osc("133;A") + osc("133;B") + osc("133;C") + `terminfo-baseline-${nonce}\r\n` + osc("133;D;0")
+    const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+    // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
+    // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
+    let reading: AppSemanticReading
+    let failure: string | undefined
+    try {
+      reading = await measureRow()
+    } catch (error) {
+      failure = `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`
+      reading = { status: "invalid", reason: failure, detail }
+    }
+    try {
+      await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
+    } catch (error) {
+      const restore = `restoring the session failed: ${message(error)}`
+      reading = {
+        status: "invalid",
+        reason: failure === undefined ? `iTerm2 prompt row was read, but ${restore}` : `${failure}; then ${restore}`,
+        detail,
+      }
+    }
+    return reading
+
+    async function measureRow(): Promise<AppSemanticReading> {
+      const baseline = await phase(
+        "baseline",
+        "\x1b[2J\x1b[3J\x1b[H" + finished + (ITERM_PROMPT_ROWS[input.featureId]?.tail(nonce) ?? ""),
+      )
+      if (baseline.read.status === "prompt-unavailable") {
+        return {
+          status: "unavailable",
+          reason:
+            "iTerm2 answered PROMPT_UNAVAILABLE after the baseline OSC 133 sequence: the session has no prompt mark (the API's own status, not proof shell integration is absent)",
+          detail,
+        }
+      }
+      baselineId = baseline.read.mark.uniquePromptId
+      const finishedMark = { mark: "same", state: "FINISHED", command: "set", output: "set", exit: 0 }
+      const row = ITERM_PROMPT_ROWS[input.featureId]
+      if (!row) throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
+      // The row's experiment holds only from its assumed starting mark. A baseline that did not reach it
+      // is reported, never graded: a target compared against the wrong start could read as unsupported.
+      // The controls run from that start, so an unknown letter that moves the mark fails the controls.
+      const start = describe(baseline.read)
+      if (JSON.stringify(start) !== JSON.stringify(row.from ?? finishedMark)) {
+        return {
+          status: "invalid",
+          reason: `iTerm2 prompt mark did not reach this row's baseline ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(start)}`,
+          detail,
+        }
+      }
+      const unknown = await phase("unknown", osc("133;Z"))
+      const handled = await phase("handled", "", `terminfo-control-${nonce}`)
+      const before = describe(handled.read)
+      const after: object[] = []
+      for (const [index, feed] of row.feeds.entries()) {
+        after.push(describe((await phase(`target-${index}`, feed(nonce))).read))
+      }
+      const single = row.feeds.length === 1
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: JSON.stringify(describe(baseline.read)), after: JSON.stringify(describe(unknown.read)) },
+        handled: { before: unknown.fence, after: handled.fence, expected: `terminfo-control-${nonce}` },
+        target: {
+          before: JSON.stringify(single ? before : row.feeds.map(() => before)),
+          after: JSON.stringify(single ? after[0] : after),
+          expected: JSON.stringify(single ? row.expected[0] : row.expected),
+        },
+        detail,
+      }
+    }
+  })
 }
 
 /**
