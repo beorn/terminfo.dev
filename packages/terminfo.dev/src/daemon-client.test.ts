@@ -500,10 +500,43 @@ it("names the daemon port and the bound when a collection outlasts it", async ()
   const failure = await requestDaemonProbe(registration).catch((error: unknown) => error)
   expect(failure).toMatchObject({
     name: "TimeoutError",
-    message: "Daemon on port 12345 did not answer /probe within 30 min",
+    message: expect.stringMatching(
+      /^Daemon on port 12345 did not answer \/probe within \d+ ms, not the 30 min signal$/,
+    ),
     cause,
   })
 })
+
+// 34477 run 2328c7a7: Bun fetch self-aborts a silent body at ~362s and this
+// client reported that as the 30 min signal. The documented signal is the only bound.
+it("a silent /probe is not aborted by Bun before the 30 min signal", async () => {
+  const runId = "b".repeat(32)
+  const silent = createServer((req, res) => {
+    if (req.url === "/info") {
+      res.end(JSON.stringify({ runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
+    }
+  })
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", () => resolve()))
+  const address = silent.address()
+  if (address === null || typeof address === "string") throw new Error("silent probe server has no port")
+  const pending = requestDaemonProbe({
+    runId,
+    pid: 222,
+    port: address.port,
+    token: "c".repeat(64),
+    terminal: "kitty",
+    terminalVersion: "0.49.1",
+  }).then(
+    () => "resolved" as const,
+    (error: unknown) => error,
+  )
+  const outcome = await Promise.race([
+    pending,
+    new Promise<"still-waiting">((resolve) => setTimeout(() => resolve("still-waiting"), 370_000)),
+  ])
+  silent.close()
+  expect(outcome).toBe("still-waiting")
+}, 400_000)
 
 // A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
 it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
