@@ -197,7 +197,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     continuation: false,
   })
 
-  it("renders a headless parser-state cell with 'Input bytes were not stored by this run', source revision, parser state, and identity", () => {
+  it("renders a headless parser-state cell with 'Input bytes were not stored by this run', source revision, parser state, and no draft identity line", () => {
     const document = {
       version: 1 as const,
       runId: "29e1f818-4988-445c-a498-ef369021bd6d",
@@ -252,7 +252,8 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 29e1f818 · 2026-10-16 · buffer_state · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
+    expect(panes.tested.identityLine).toBeUndefined()
+    expect(panes.tested.text).not.toContain("in run file")
     expect(panes.tested.notKeptLine).toContain("Not kept: screenshot (headless parser has none), input bytes")
 
     expect(panes.expected.sequence).toBe("ESC [ 49 m")
@@ -262,7 +263,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.referenceStatus).toBe("No reference image recorded")
   })
 
-  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and unverified identity", () => {
+  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and no unverified identity line", () => {
     const document = {
       version: 1 as const,
       runId: "c70e8c3c37c8a735cb5f395052698c35",
@@ -322,7 +323,8 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
+    expect(panes.tested.identityLine).toBeUndefined()
+    expect(panes.tested.text).not.toContain("in run file")
     expect(panes.tested.notKeptLine).toBe(
       "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file",
     )
@@ -330,7 +332,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.behavior).toBe("sgr.bg.default: DECRQSS reports  after ESC [ 42 m ESC [ 49 m")
   })
 
-  it("renders an unlisted-reply cell with 'Observed bytes not reviewed for publication.' and its identity state", () => {
+  it("renders an unlisted-reply cell with 'Observed bytes not reviewed for publication.' and no draft identity line", () => {
     const document = {
       version: 1 as const,
       runId: "trace-run-unlisted",
@@ -375,7 +377,8 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
       { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
-    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
+    expect(panes.tested.identityLine).toBeUndefined()
+    expect(panes.tested.text).not.toContain("in run file")
     expect(panes.expected.sequence).toBe("ESC [ 21 t")
     expect(panes.expected.behavior).toBe("no window title report")
   })
@@ -442,7 +445,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(noQueryPanes.tested.text).not.toContain("secret-clipboard")
   })
 
-  it("renders an empty-trace policy-refused cell with reader-safe reason text, Sent/Observed Nothing, identity, and no private collector note", () => {
+  it("renders an empty-trace policy-refused cell with reader-safe reason text, Sent/Observed Nothing, no draft identity line, and no private collector note", () => {
     const document = {
       version: 1 as const,
       runId: "3105bbe99bf76151e86f4d90eb21c179",
@@ -488,7 +491,8 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
+    expect(panes.tested.identityLine).toBeUndefined()
+    expect(panes.tested.text).not.toContain("in run file")
     expect(panes.tested.text).not.toContain("terminal-ownership receipt")
     expect(panes.tested.text).not.toContain("Attempt refused before sending probe bytes")
     expect(panes.expected.sequence).toBe("ESC [ 48;5;N m")

@@ -5,6 +5,7 @@
  * @testonly none
  * @reach fs-read vendor/terminfo.dev/content/features.json vendor/terminfo.dev/content/suites/**
  * @reach fs-walk <fixture-only: isolated collection and content directories>
+ * @reach fs-read vendor/terminfo.dev/packages/** (the identity-rule source closure the rule revision hashes)
  */
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -16,11 +17,19 @@ import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
-import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
+import {
+  IDENTITY_RULE_SOURCES,
+  identityRuleRevision,
+  identityRuleSourceRevision,
+  loadStoredRuns,
+  placeCollectedRun,
+} from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { loadSelectedResults, projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
+import { currentTrace } from "../docs/data/run-trace.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -1094,4 +1103,142 @@ test.each([
       expect(existsSync(join(f.content, "suites"))).toBe(false)
     }
   }
+})
+
+// #34617 (@cto 34617-current-rule-contract-go-1347): a stored run's trace states that, at trace build, its
+// retained identity evidence matched this build's identity rule, and the panel reads that object back through
+// the real serialize -> readCellTrace -> describeTracePanes path. Pure reader tests cannot prove the producer
+// gives it only to stored runs, so this goes through the stored-run loader and the public documents.
+function storedTracePanes(f: ReturnType<typeof fixture>, workingRuns: ReturnType<typeof parseRun>[] = []) {
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash, { workingRuns })
+  const published = publicResults(projection, new Map())
+  const entry = [...published.documents].find(([, value]) => "featureResults" in value.document)
+  if (!entry) throw new Error("Missing stored trace fixture")
+  const [, { bytes, document }] = entry
+  if (!("featureResults" in document)) throw new Error("Missing stored trace cells")
+  const [featureId] = Object.keys(document.featureResults)
+  if (!featureId) throw new Error("Missing stored trace cell")
+  const sha = hash(new TextEncoder().encode(bytes))
+  const expectation = {
+    schemaVersion: 4,
+    runId: f.run.runId,
+    runSha256: document.runSha256,
+    featureId,
+    expectedSha256: sha,
+    actualSha256: sha,
+  }
+  const loaded = readCellTrace(JSON.parse(bytes), expectation)
+  return { projection, document, bytes, expectation, loaded, panes: describeTracePanes(loaded) }
+}
+
+test("a stored run's trace names this build's identity-rule match; a working run of the same bytes gets none", () => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const working = parseRun(
+    f.source,
+    readFileSync(f.source, "utf8"),
+    f.manifest.catalogIds!,
+    new Map([[f.manifest.probeHash, f.manifest]]),
+  )
+  const { projection, document, loaded, panes } = storedTracePanes(f, [working])
+  const revision = identityRuleRevision()
+  expect(revision).toMatch(/^[0-9a-f]{12}$/)
+  expect(document.identity).toEqual({
+    recorded: "verified",
+    currentRuleCheck: { checkedAt: "build", rule: "runtime-identity", ruleRevision: revision },
+  })
+  expect(loaded.identity.currentRuleCheck).toEqual(document.identity.currentRuleCheck)
+  expect(panes.tested.identityLine).toBe(
+    `At trace build, retained identity evidence matched the runtime-identity identity rule (rule revision ${revision}).`,
+  )
+  expect(panes.tested.text).toContain(panes.tested.identityLine)
+  expect(panes.tested.text).not.toMatch(/admission|in run file/i)
+
+  // The working original of the very same run never carries the claim and never reuses the stored memo.
+  const [workingOriginal] = Object.values(projection.workingOriginals).flat()
+  if (!workingOriginal) throw new Error("Missing working original")
+  expect(workingOriginal.identityRuleCheck).toBeUndefined()
+  const workingTrace = currentTrace(workingOriginal)
+  expect(workingTrace?.document.identity).toEqual({ recorded: "verified" })
+  const stored = Object.values(projection.versions).flat()[0]
+  expect(stored?.identityRuleCheck?.ruleRevision).toBe(revision)
+  expect(workingOriginal.traceMemo).not.toBe(stored?.traceMemo)
+  expect(currentTrace(stored!)?.document.identity.currentRuleCheck?.ruleRevision).toBe(revision)
+
+  // The public version metadata never repeats the claim outside the trace document.
+  const publicVersion = Object.values(publicResults(projection, new Map()).projection.versions).flat()[0]
+  expect(publicVersion?.runId).toBe(f.run.runId)
+  expect(publicVersion).not.toHaveProperty("identityRuleCheck")
+})
+
+test("a disputed stored run gets no identity-rule object and no panel line, and its selection is unchanged", () => {
+  const verified = fixture()
+  placeCollectedRun(verified.source, verified.manifest, verified.content)
+  const before = storedTracePanes(verified)
+
+  const f = fixture()
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  const stored = JSON.parse(readFileSync(destination, "utf8")) as Record<string, unknown>
+  writeFileSync(destination, JSON.stringify({ ...stored, identity: "disputed" }))
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+  const { projection, document, panes } = storedTracePanes(f)
+  expect(errors.mock.calls.flat().join("\n")).toContain("current identity rule refused (identity-disputed)")
+  errors.mockRestore()
+  expect(document.identity).toEqual({ recorded: "disputed" })
+  expect(panes.tested.identityLine).toBeUndefined()
+  expect(panes.tested.text).not.toMatch(/identity/i)
+  const contributing = (p: typeof projection) =>
+    Object.values(p.contexts).flatMap((context) => context.contributingRunIds)
+  expect(contributing(projection)).toEqual(contributing(before.projection))
+})
+
+test.each([
+  ["a wrong checkedAt", { checkedAt: "admission" }],
+  ["an empty rule", { rule: "" }],
+  ["a revision that is not 12 hex", { ruleRevision: "abc" }],
+  ["a missing revision", { ruleRevision: undefined }],
+  ["a non-string XTVERSION", { xtversion: 7 }],
+  ["a receipt without its version", { receipt: {} }],
+  ["an unknown key", { verifiedAt: "admission" }],
+])("a trace whose identity-rule object has %s is the existing structure error, never a claim", (_name, patch) => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const { bytes, expectation } = storedTracePanes(f)
+  const parsed = JSON.parse(bytes) as { identity: { currentRuleCheck?: unknown } }
+  parsed.identity.currentRuleCheck = JSON.parse(
+    JSON.stringify({ ...(parsed.identity.currentRuleCheck as object), ...patch }),
+  )
+  expect(() => readCellTrace(parsed, expectation)).toThrow(
+    "Trace document identity or structure does not match this result",
+  )
+  delete parsed.identity.currentRuleCheck
+  expect(describeTracePanes(readCellTrace(parsed, expectation)).tested.identityLine).toBeUndefined()
+})
+
+test("the rule revision covers every identity-rule source and is deterministic for unchanged bytes", () => {
+  // The closure @cto named: the rule table and helpers, the Linux version tokens and the Windows comm base.
+  expect(IDENTITY_RULE_SOURCES).toEqual([
+    "admin/corpus-placement.ts",
+    "terminfo.dev/src/identity-guard.ts",
+    "run-parser/src/index.ts",
+    "terminfo.dev/src/windows-process-ancestry.ts",
+  ])
+  const packagesDir = join(import.meta.dirname, "../packages")
+  const copy = mkdtempSync(join(tmpdir(), "terminfo-rule-revision-"))
+  dirs.push(copy)
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    mkdirSync(dirname(join(copy, relative)), { recursive: true })
+    copyFileSync(join(packagesDir, relative), join(copy, relative))
+  }
+  const revision = identityRuleSourceRevision(copy)
+  expect(revision).toBe(identityRuleRevision())
+  expect(identityRuleSourceRevision(copy)).toBe(revision)
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    const original = readFileSync(join(copy, relative))
+    writeFileSync(join(copy, relative), Buffer.concat([original, Buffer.from("\n")]))
+    expect(identityRuleSourceRevision(copy), relative).not.toBe(revision)
+    writeFileSync(join(copy, relative), original)
+  }
+  expect(identityRuleSourceRevision(copy)).toBe(revision)
 })

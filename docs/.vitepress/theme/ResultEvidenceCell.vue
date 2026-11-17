@@ -519,7 +519,7 @@ onBeforeUnmount(() => {
             <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
             <template v-if="tracePaneCopy">
               <span>{{ tracePaneCopy.tested.sourceLine }}</span>
-              <span>{{ tracePaneCopy.tested.identityLine }}</span>
+              <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
               <span>{{ tracePaneCopy.tested.notKeptLine }}</span>
             </template>
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
