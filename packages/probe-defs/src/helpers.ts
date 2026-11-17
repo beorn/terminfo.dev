@@ -27,6 +27,7 @@ import type {
 } from "./types.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { sgrAttributeCaptureResult } from "./region-readback.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /** Translate a screen row into the absolute buffer retained by the library source. */
 export function activeScreenRow(ctx: LibProbeSource, row: number): number {
@@ -1762,6 +1763,8 @@ export function sgrProbe(
           "no parsable cursor position reply; the public projection returned null and retained no bytes",
         )
       }
+      // 34675: only a cursor that reached its column is a passed control; a wrong position stays untagged.
+      if (pos.col === 2) raiseRefusedCapture(ctx, "Cursor advance does not verify SGR styling")
       // Cursor should be at col 2 (wrote 1 char "X")
       return {
         pass: pos.col === 2,

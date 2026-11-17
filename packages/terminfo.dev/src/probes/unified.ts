@@ -1027,6 +1027,9 @@ export async function runProbeBatch(
         pending.attempt = attempt
         pending.reason = diagnostic
         pending.rawReplyRef = probe.id
+        // 34675 (@cto go-r2-1341): this gate's refusing arm is a harness reading that did not finish; the
+        // row keeps its real reason, attempt and raw reference, and a passage above never reaches here.
+        pending.harnessOutcome = "geometry-refused"
         pending.tests = [{ id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id }]
         options.onCheckpoint?.(batch)
         continue
@@ -1421,6 +1424,8 @@ export async function runProbeBatch(
     // A run-level fact, set for every row whether or not this row gets the adapter: a row may state
     // what no capture in this run can see (#33032).
     if (options.captureSettleMs !== undefined) probeSource.captureSettleMs = options.captureSettleMs
+    // 34675: the run's own capture kind, beside the row's adapter, so a refusal is attributed only on a pixel run.
+    probeSource.runCaptureKind = options.captureKind ?? "pixels"
     // A text run hands its adapter to the region readback alone: it is the one consumer whose
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
@@ -2081,7 +2086,7 @@ export async function runProbeBatch(
       const index = batch.results.findIndex((result) => result.featureId === probe.id)
       if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
-      const recorded = recordExecutedProbe({
+      const recordInput = {
         featureId: probe.id,
         attempt,
         observation,
@@ -2096,7 +2101,8 @@ export async function runProbeBatch(
         rawReplyRef: probe.id,
         criterionBranch,
         ...(wallFired ? { harnessOutcome: "probe-exceeded" as const } : {}),
-      })
+      }
+      const recorded = recordExecutedProbe(recordInput)
       const commands =
         recorded.status === "unsupported" &&
         recorded.criterionBranch === "sgr-attribute-same-run" &&
@@ -2113,14 +2119,27 @@ export async function runProbeBatch(
       // visual finalizer must still validate this probe's own captured frame first.
       const visualInput =
         commands?.status === "measured" ? { ...recorded, criterionBranch: "sgr-attribute-outer-command" } : recorded
-      let finalized =
-        subject?.kind === "term" || subject?.kind === "mux"
-          ? finalizeVisualResult(
-              visualInput,
-              subject,
-              captures.map(({ frame }) => frame),
-            )
-          : recorded
+      // 34675 (@cto go-r2-1341 amendment 2): a pixel run hands the finalizer this row's recorded refusal; its
+      // missing-paint arm then raises the named FrameUnavailable diagnostic HERE, after the callback catch, so it
+      // is caught at this boundary and recorded through the same recorder as the callback's own diagnostics.
+      // Any other error keeps propagating, so a fatal custody failure is never swallowed or replaced.
+      const finalizerRefusal = options.captureKind === "text-cells" ? undefined : probeSource.captureGeometryRefusal
+      let finalized = recorded
+      if (subject?.kind === "term" || subject?.kind === "mux") {
+        try {
+          finalized = finalizeVisualResult(
+            visualInput,
+            subject,
+            captures.map(({ frame }) => frame),
+            finalizerRefusal,
+          )
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "FrameUnavailable") throw error
+          const refused = { kind: "collector-error" as const, name: error.name, message: error.message }
+          batch.ungradedDiagnostics[probe.id] = refused
+          finalized = recordExecutedProbe({ ...recordInput, diagnostic: refused })
+        }
+      }
       if (commands?.status === "measured" && finalized.status === "unsupported") {
         if (commands.targetSent) {
           const reason = `${subject?.id}: SGR ${commands.target} was passed to outer terminal ${subject?.outerTerminal}; the controlled sample still drew no distinct target effect`

@@ -997,6 +997,115 @@ it("a harness outcome keeps a decided cell of the same probe", () => {
   expect(cell?.result.status).toBe("supported")
 })
 
+// @failure A kept decided cell hides that a newer same-suite attempt refused, or keeps naming a refusal after a real
+//   replacement, or a refusal-only run is promoted to a contributing run (34675, @cto go-r2-1341 item 4).
+// @level l1
+// @consumer projectResults keptDecidedCell -> publicResults featureResults[id].refusedAttempt.
+it("a kept cell names its newest refused attempt publicly, and a real replacement clears it", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const attemptRun = (runId: string, at: string, row: Partial<ProbeResult>, extra: Record<string, unknown> = {}) => {
+    const results = todos()
+    const emittedAttempt = { scope: "probe" as const, startedAt: at }
+    results[0] = {
+      featureId,
+      status: "probe-todo",
+      attempt: emittedAttempt,
+      tests: [{ id: "criterion", status: "probe-todo", attempt: emittedAttempt, reason: "refused" }],
+      reason: "refused",
+      ...row,
+    } as ProbeResult
+    const next = raw(results)
+    return parse({
+      ...next,
+      runId,
+      measuredAt: at,
+      rawReplies: {
+        ...next.rawReplies,
+        "collector.selection": JSON.stringify({ ids: [featureId] }),
+        "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt: at, result: "completed" }),
+        ...(extra.rawReplies as Record<string, string> | undefined),
+      },
+      ...(extra.assertions ? { assertions: extra.assertions } : {}),
+    })
+  }
+  const capture = attemptRun("capture-run", "2026-10-21T07:00:00.000Z", { harnessOutcome: "capture-refused" })
+  const geometry = attemptRun("geometry-run", "2026-10-21T08:00:00.000Z", { harnessOutcome: "geometry-refused" })
+  const contraryAttempt = { scope: "probe" as const, startedAt: "2026-10-21T09:00:00.000Z" }
+  const contrary = attemptRun(
+    "contrary-run",
+    "2026-10-21T09:00:00.000Z",
+    {
+      status: "unsupported",
+      assertionType: "query_reply",
+      rawReplyRef: featureId,
+      reason: undefined,
+      tests: [
+        {
+          id: "criterion",
+          status: "unsupported",
+          attempt: contraryAttempt,
+          assertionRefs: [0],
+          rawReplyRef: featureId,
+        },
+      ],
+    },
+    {
+      rawReplies: { [featureId]: "NAK" },
+      assertions: [
+        {
+          featureId,
+          kind: "negative",
+          assertionType: "query_reply",
+          rawReplyRef: featureId,
+          expected: "ACK",
+          observed: "NAK",
+        },
+      ],
+    },
+  )
+  const select = (runs: ReturnType<typeof parse>[]) =>
+    projectResults(runs, ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]!
+
+  const once = select([prior, capture])
+  expect(once.cells[featureId]).toMatchObject({
+    origin: { runId: prior.runId },
+    result: { status: "supported" },
+    refusedAttempt: {
+      runId: "capture-run",
+      resultId: featureId,
+      measuredAt: "2026-10-21T07:00:00.000Z",
+      harnessOutcome: "capture-refused",
+    },
+  })
+  // A refusal-only run records provenance; it is never promoted into the context's contributing runs.
+  expect(once.contributingRunIds).not.toContain("capture-run")
+  const projected = projectResults([prior, capture], ids, { currentProbeHash: suite.probeHash }, [])
+  const published = publicResults(projected, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
+  expect(published).toMatchObject({
+    status: "supported",
+    origin: { runId: prior.runId },
+    refusedAttempt: {
+      runId: "capture-run",
+      resultId: featureId,
+      measuredAt: "2026-10-21T07:00:00.000Z",
+      harnessOutcome: "capture-refused",
+    },
+  })
+
+  // A second refusal replaces the note; the cell itself is still the older decision.
+  expect(select([prior, capture, geometry]).cells[featureId]).toMatchObject({
+    origin: { runId: prior.runId },
+    refusedAttempt: { runId: "geometry-run", harnessOutcome: "geometry-refused" },
+  })
+
+  // A valid contrary result replaces the cell and drops the note.
+  const replaced = select([prior, capture, geometry, contrary]).cells[featureId]!
+  expect(replaced.origin.runId).toBe("contrary-run")
+  expect(replaced.result.status).toBe("unsupported")
+  expect(replaced.refusedAttempt).toBeUndefined()
+})
+
 // Fails without the selected-results.ts keep. The writer test is recordExecutedProbe's IncompleteReplay path.
 it("unfinished-calls keeps a decided cell of the same probe", () => {
   const prior = supportedBaseline()

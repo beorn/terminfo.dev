@@ -29,6 +29,7 @@ import {
   type ProbeDefinition,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
+import { raiseRefusedCapture } from "../../../probe-defs/src/refused-capture.ts"
 import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
@@ -1718,6 +1719,92 @@ it.each([false, true])("binds the title reader and its raw readings only to the 
   }
 })
 
+// @failure A pixel run whose capture calibration was refused records a row that lost its own pixel reading as an
+//   ordinary open result, which reopens an older decided cell; or the finalizer's diagnostic escapes its finally and
+//   aborts the run; or a text-cells run, a run with no refusal, or a row decided another way is relabelled (34675).
+// @level l1
+// @consumer runProbeBatch -> buildProbeResult -> selected-results keep (selected-results.ts keptDecidedCell).
+it.each([
+  { runKind: "pixels", refusal: "calibration refused for the fixture", tagged: true },
+  { runKind: "text-cells", refusal: "calibration refused for the fixture", tagged: false },
+  { runKind: "pixels", refusal: undefined, tagged: false },
+] as const)(
+  "attributes a refused capture only where the row's own pixel reading was lost ($runKind, refusal $refusal)",
+  async ({ runKind, refusal, tagged }) => {
+    verifiedBatchFixture()
+    vi.spyOn(process.stdout, "write").mockReturnValue(true)
+    const ids = ["sgr.bold", "sgr.italic", "device.primary-da"]
+    const definitions = ids.map((featureId) => ALL_PROBES.find((probe) => probe.id === featureId)!)
+    const originals = definitions.map(({ term, termWrites, termNeedsGeometry }) => ({
+      term,
+      termWrites,
+      termNeedsGeometry,
+    }))
+    try {
+      for (const definition of definitions) {
+        definition.termWrites = "query"
+        delete definition.termNeedsGeometry
+      }
+      // A paint row decided by a status reply alone: the finalizer, after the callback catch, is where it is open.
+      definitions[0]!.term = async () => ({
+        pass: true,
+        response: "status reply 1m",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ assertionType: "query_reply", kind: "positive", expected: "SGR 1", observed: "1m" }],
+      })
+      // A callback arm whose own pixel reading is the missing one raises inside the callback.
+      definitions[1]!.term = async (ctx) => {
+        raiseRefusedCapture(ctx, "Italic needs rendered pixels")
+        return {
+          pass: false,
+          response: "cursor 1;2",
+          tests: [{ id: "criterion", status: "probe-todo", reason: "Italic pixels were not read" }],
+        }
+      }
+      definitions[2]!.term = async () => ({
+        pass: true,
+        response: "1;2c",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ assertionType: "query_reply", kind: "positive", expected: "DA1", observed: "1;2c" }],
+      })
+      const batch = await runProbeBatch({
+        ids,
+        subject: { kind: "term", id: "refused-capture-fixture", os: "linux" },
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        captureKind: runKind,
+        prepareCapture: async ({ source }) => {
+          source.captureGeometryRefusal = refusal
+        },
+      })
+      const row = (id: string) => batch.results.find((result) => result.featureId === id)!
+      // The run went on: the row after both refused rows still ran and decided.
+      expect(row("device.primary-da").status).toBe("supported")
+      // The row's retained trace and its reference survive whatever the grade.
+      for (const id of ["sgr.bold", "sgr.italic"]) {
+        expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ writes: [], queries: [], events: [] })
+        expect(row(id).rawReplyRef, id).toBe(id)
+      }
+      for (const id of ["sgr.bold", "sgr.italic"]) {
+        expect(row(id).status, id).toBe("probe-todo")
+        if (tagged) {
+          expect(row(id).harnessOutcome, id).toBe("capture-refused")
+          expect(batch.ungradedDiagnostics[id], id).toMatchObject({
+            kind: "collector-error",
+            name: "FrameUnavailable",
+            message: expect.stringContaining(`this run refused capture geometry: ${refusal}`),
+          })
+        } else {
+          expect(row(id).harnessOutcome, id).toBeUndefined()
+          expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
+        }
+      }
+      if (!tagged) expect(row("sgr.italic").reason).toBe("Italic pixels were not read")
+    } finally {
+      definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+    }
+  },
+)
+
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
 it.each([
@@ -2367,7 +2454,11 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     ids: ["reset.ris"],
     ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
   })
-  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-todo" })
+  // 34675 (@cto go-r2-1341): the gate's refusing arm is tagged as an unfinished harness reading.
+  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
+    status: "probe-todo",
+    harnessOutcome: "geometry-refused",
+  })
   expect(
     decodeCollectorDraft(
       "missing-geometry.json",
@@ -2396,7 +2487,10 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       },
     },
   })
-  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-invalid" })
+  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
+    status: "probe-invalid",
+    harnessOutcome: "geometry-refused",
+  })
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
     source: darwinGeometrySource,

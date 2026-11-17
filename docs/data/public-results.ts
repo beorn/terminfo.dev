@@ -214,6 +214,12 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       held?: SelectedContextCell["held"]
       /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
       declared?: SelectedContextCell["declared"]
+      /**
+       * Present only when this older decision was kept against a newer same-suite attempt whose harness reading did
+       * not finish (34675). The cell's own status, reason and origin stay the older decision's; this names the newest
+       * refused attempt, its time read from that run's own original.
+       */
+      refusedAttempt?: NonNullable<SelectedContextCell["refusedAttempt"]>
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -446,6 +452,13 @@ export function publicResults(
               }),
               ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
               ...(cell.declared && { declared: cell.declared, reason: publicDeclaredReason(cell.declared) }),
+              // 34675: qualified through the existing original-run store; a refusal-only run need not contribute.
+              ...(cell.refusedAttempt && {
+                refusedAttempt: {
+                  ...cell.refusedAttempt,
+                  measuredAt: originalRunFor(projection, key, cell.refusedAttempt.runId).measuredAt,
+                },
+              }),
             },
           ]
         }),
