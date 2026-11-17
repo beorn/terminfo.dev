@@ -5211,6 +5211,9 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   // The measured raster, never a query-derived size, is what the row's crops used.
   expect(captured.length).toBeGreaterThan(0)
   for (const request of captured) expect(request.pixelGeometry).toEqual(geometry)
+  // No witness was polled toward its deadline, so the recorded call order does not depend on load.
+  const witnessReads = captured.filter(({ label }) => label.includes("paint witness")).map(({ label }) => label)
+  expect(witnessReads).toEqual([...new Set(witnessReads)])
   expect(JSON.parse(batch.rawReplies["sgr.reset.captureBinding"]!)).toEqual({
     format: "terminfo.capture-binding",
     version: 1,
