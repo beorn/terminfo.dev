@@ -5735,7 +5735,11 @@ it("lets the complete-raster calibration test the owned grid on a rows-only conf
     },
   })
   expect(handed, "the only candidate painted is the owned PTY grid").toEqual([[45, 123]])
-  const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+  const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as {
+    grid?: { rows: number; cols: number }
+    refusal?: string
+    geometryCorroboration?: { status: string; rows?: number; cols?: number }
+  }
   expect(trace.grid, "the reply's 39 rows never becomes the candidate").toEqual({ rows: 45, cols: 123 })
   expect(trace.refusal, "a verified candidate is not a refusal").toBeUndefined()
   expect(trace.geometryCorroboration, "the conflict is preserved as observed").toMatchObject({
@@ -5777,7 +5781,9 @@ it("keeps a rows-only conflict blocking a row when the raster proof fails", asyn
   expect(row?.reason, "the row names the failed proof, not a silent pass").toContain(refusal)
   expect(row?.status).not.toBe("supported")
   expect(batch.observations.find((item) => item.featureId === "extensions.osc8")?.assertionType).not.toBe("pixels")
-  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!).refusal).toBe(refusal)
+  expect((JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as { refusal?: string }).refusal).toBe(
+    refusal,
+  )
 })
 
 // Condition 1: the owned grid must still be the one the grant measured. A move since the grant keeps its
