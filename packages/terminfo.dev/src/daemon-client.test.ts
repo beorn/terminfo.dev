@@ -516,26 +516,45 @@ it("a silent /probe is not aborted by Bun before the 30 min signal", async () =>
       res.end(JSON.stringify({ runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
     }
   })
-  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", () => resolve()))
-  const address = silent.address()
-  if (address === null || typeof address === "string") throw new Error("silent probe server has no port")
-  const pending = requestDaemonProbe({
-    runId,
-    pid: 222,
-    port: address.port,
-    token: "c".repeat(64),
-    terminal: "kitty",
-    terminalVersion: "0.49.1",
-  }).then(
-    () => "resolved" as const,
-    (error: unknown) => error,
-  )
-  const outcome = await Promise.race([
-    pending,
-    new Promise<"still-waiting">((resolve) => setTimeout(() => resolve("still-waiting"), 370_000)),
-  ])
-  silent.close()
-  expect(outcome).toBe("still-waiting")
+  // 34593: this case owns its server, request and timer, so it releases all three itself, also when an
+  // early settlement fails the assertion: close() alone left the request's connection open and unsettled.
+  let pending: Promise<unknown> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", () => resolve()))
+    const address = silent.address()
+    if (address === null || typeof address === "string") throw new Error("silent probe server has no port")
+    pending = requestDaemonProbe({
+      runId,
+      pid: 222,
+      port: address.port,
+      token: "c".repeat(64),
+      terminal: "kitty",
+      terminalVersion: "0.49.1",
+    }).then(
+      () => "resolved" as const,
+      (error: unknown) => error,
+    )
+    const outcome = await Promise.race([
+      pending,
+      new Promise<"still-waiting">((resolve) => {
+        timer = setTimeout(() => resolve("still-waiting"), 370_000)
+      }),
+    ])
+    expect(outcome).toBe("still-waiting")
+  } finally {
+    clearTimeout(timer)
+    silent.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      silent.close((error) =>
+        error === undefined || (error as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING"
+          ? resolve()
+          : reject(error),
+      ),
+    )
+    // Dropping the connection settles the request; `pending` maps a rejection to a value, so this cannot throw.
+    await pending
+  }
 }, 400_000)
 
 // A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
