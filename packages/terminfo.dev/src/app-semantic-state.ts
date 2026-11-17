@@ -1455,7 +1455,9 @@ export async function readITermPromptMarks(input: {
         exit: mark.exitStatus ?? "absent",
       }
     }
+    let current = "first"
     const phase = async (name: string, feed: string, fence = `terminfo-${nonce}-${serial++}`) => {
+      current = name
       await input.write(feed + osc(`1337;SetUserVar=terminfo_fence=${Buffer.from(fence).toString("base64")}`))
       const observed = await untilAppSemanticRead(
         async () => String(await session.readUserVariable("terminfo_fence")),
@@ -1468,7 +1470,30 @@ export async function readITermPromptMarks(input: {
       return { read, fence: observed }
     }
     const finished = osc("133;A") + osc("133;B") + osc("133;C") + `terminfo-baseline-${nonce}\r\n` + osc("133;D;0")
+    const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+    // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
+    // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
+    let reading: AppSemanticReading
+    let failure: string | undefined
     try {
+      reading = await measureRow()
+    } catch (error) {
+      failure = `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`
+      reading = { status: "invalid", reason: failure, detail }
+    }
+    try {
+      await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
+    } catch (error) {
+      const restore = `restoring the session failed: ${message(error)}`
+      reading = {
+        status: "invalid",
+        reason: failure === undefined ? `iTerm2 prompt row was read, but ${restore}` : `${failure}; then ${restore}`,
+        detail,
+      }
+    }
+    return reading
+
+    async function measureRow(): Promise<AppSemanticReading> {
       const baseline = await phase(
         "baseline",
         "\x1b[2J\x1b[3J\x1b[H" + finished + (ITERM_PROMPT_ROWS[input.featureId]?.tail(nonce) ?? ""),
@@ -1517,8 +1542,6 @@ export async function readITermPromptMarks(input: {
         },
         detail,
       }
-    } finally {
-      await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
     }
   })
 }

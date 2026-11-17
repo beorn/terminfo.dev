@@ -15,7 +15,9 @@ import type { ITermPromptMark, ITermPromptRead, ITermPromptSession } from "./ite
  * B sets its command range, C its output start (RUNNING), D;n its code (FINISHED). Each variant breaks
  * exactly one rule, so each row's verdict follows from the rule it names.
  */
-function fakeITerm(variant: { ignore?: string; noMarks?: boolean; zAddsMark?: boolean; markAtB?: boolean } = {}) {
+function fakeITerm(
+  variant: { ignore?: string; noMarks?: boolean; zAddsMark?: boolean; markAtB?: boolean; noFence?: boolean } = {},
+) {
   const marks: { id: string; command: boolean; output: boolean; code?: number }[] = []
   let fence: unknown = null
   let opened = 0
@@ -26,7 +28,7 @@ function fakeITerm(variant: { ignore?: string; noMarks?: boolean; zAddsMark?: bo
     const sequences = /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07/g
     for (const [, letter, code, value] of text.matchAll(sequences)) {
       if (value !== undefined) {
-        fence = Buffer.from(value, "base64").toString()
+        if (!variant.noFence) fence = Buffer.from(value, "base64").toString()
         continue
       }
       const last = marks.at(-1)
@@ -146,3 +148,17 @@ test("osc133-p stays unresolved and never opens the API", async () => {
   expect(reading).toMatchObject({ status: "unavailable" })
   expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
 })
+
+// @dev/review2 7551f8f9: a session that never reports its fence (SetUserVar not seen on a real 3.6.11)
+// is reported by the phase that failed, with the phase log kept; the restore still runs and its own
+// failure is appended, never put in place of the first.
+test("a fence that never appears is reported by its own phase, not masked by the restore", async () => {
+  const reading = await fakeITerm({ noFence: true }).read("extensions.osc133-b")
+  expect(reading.status).toBe("invalid")
+  const reason = reading.status === "invalid" ? reading.reason : ""
+  expect(reason).toMatch(/^iTerm2 prompt read failed in the baseline phase: .*baseline user-variable fence/)
+  expect(reason).toMatch(/; then restoring the session failed: .*restored user-variable fence/)
+  expect(reading.status === "invalid" && reading.detail).toMatchObject({
+    phases: [{ name: "baseline user-variable fence" }, { name: "restored user-variable fence" }],
+  })
+}, 20_000)
