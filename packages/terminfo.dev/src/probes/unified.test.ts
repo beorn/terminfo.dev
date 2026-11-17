@@ -5001,6 +5001,8 @@ it.each([false, true])(
 // #30932 AC3: a TTY-only log loses the source's optional capture method. The saved-rendition
 // reference now needs pixel geometry before capture; replay must retain that same source shape
 // and named refusal rather than taking a different no-capture path.
+// #30932 S2: this row replays sgr.reset on real timers (the recorded paint-witness schedule waits for real), so
+// it sits near the 5 s default under load; the explicit timeout matches its neighbours.
 it("retains SGR capture source shape and pixel-geometry refusal for strict offline replay", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
@@ -5274,7 +5276,7 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     nativeIdentity.mockRestore()
   }
   expect(readFileSync(path)).toEqual(bytes)
-})
+}, 30_000)
 
 // #30932 S1 (@cto PROCEED 1220, R4): the real positive beside the negative control above. A
 // collector-installed measured raster reaches the SGR callback, the batch persists the row's
@@ -5724,6 +5726,22 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
     const missingReport = await shadowStoredRun(missing.path, missing.suite)
     expect(missingReport.rows).toEqual([expect.objectContaining({ featureId: "sgr.reset", outcome: "incomplete" })])
     expect(missingReport.excluded.map(({ reason }) => reason)).toEqual(["not executed in this run"])
+  }, 60_000)
+
+  it("leaves one row incomplete, not the whole run, when a live input it checks cannot be read", async () => {
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.rawReplies["collector.geometry"] = "{not json"
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(report.runIncomplete).toBeUndefined()
+    expect(report.rows).toEqual([
+      expect.objectContaining({
+        featureId: "sgr.reset",
+        outcome: "incomplete",
+        reason: expect.stringMatching(/^live inputs unreadable: /),
+      }),
+    ])
   }, 60_000)
 
   it("calls an over-time row and a refused capture not-comparable even where the statuses are equal", async () => {

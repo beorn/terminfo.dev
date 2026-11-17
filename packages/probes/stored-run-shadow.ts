@@ -342,8 +342,14 @@ async function shadowRow(
 ): Promise<ShadowRow> {
   const { featureId } = stored
   if (!validated) return { featureId, family, outcome: "incomplete", reason: runIncomplete ?? "run not validated" }
-  // Comparability is decided before any status is compared.
-  const input = liveOnlyInput(validated, stored)
+  // Comparability is decided before any status is compared. A live input that cannot be read (a malformed
+  // geometry check, say) leaves this one row incomplete, never the whole run.
+  let input: string | undefined
+  try {
+    input = liveOnlyInput(validated, stored)
+  } catch (error) {
+    return { featureId, family, outcome: "incomplete", reason: `live inputs unreadable: ${errorName(error)}: ${errorMessage(error)}` }
+  }
   if (input) return { featureId, family, outcome: "not-comparable", input, storedStatus: stored.status }
   let replayed: ReplayedRow
   try {
