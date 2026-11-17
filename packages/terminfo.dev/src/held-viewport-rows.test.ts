@@ -37,6 +37,13 @@ interface Behaviour {
   readonly stall?: number
   /** The terminal ignores every viewport key. */
   readonly ignoreKeys?: boolean
+  /**
+   * ED2 pushes the screen's lines into history, as alacritty's clear_viewport does (default): painting a reference
+   * adds history, which is why references are painted after the last bracket (@dev/18 638ae628 note 2).
+   */
+  readonly ed2PushesHistory?: boolean
+  /** Lines already in history before the row runs, and kept through RIS (ED3 still erases them). */
+  readonly leftover?: number
   /** Screen rows; 14 unless a case needs the 24-row example. */
   readonly rows?: number
 }
@@ -54,7 +61,7 @@ function terminal(behaviour: Behaviour = {}) {
   const WIDTH = geometry.origin.x * 2 + COLS * geometry.cell.width
   const HEIGHT = geometry.origin.y * 2 + ROWS * geometry.cell.height
   const keep = behaviour.keep ?? Number.POSITIVE_INFINITY
-  let history: string[] = []
+  let history: string[] = Array.from({ length: behaviour.leftover ?? 0 }, (_, index) => `leftover-${index}`)
   let screen: string[] = Array.from({ length: ROWS }, () => "")
   let cursor = 0
   let offset = 0
@@ -77,6 +84,11 @@ function terminal(behaviour: Behaviour = {}) {
       } else if (token === "\x1b[3J") {
         if (behaviour.ed3 ?? true) history = []
       } else if (token === "\x1b[2J") {
+        if (behaviour.ed2PushesHistory ?? true) {
+          const last = screen.findLastIndex((text) => text !== "")
+          for (const text of screen.slice(0, last + 1)) history.push(text)
+          if (history.length > keep) history = history.slice(history.length - keep)
+        }
         screen = screen.map(() => "")
       } else if (token === "\x1b[H") {
         cursor = 0
@@ -190,6 +202,23 @@ describe("viewport keys ignored", () => {
       expect(status(await grade(id, { ignoreKeys: true }))).toBe("probe-todo")
     },
   )
+})
+
+describe("observed references come after the last bracket", () => {
+  it.each(["scrollback.total-lines", "erase.screen.scrollback"])(
+    "%s grades the same whether ED2 pushes history or not",
+    async (id) => {
+      expect(status(await grade(id, { ed2PushesHistory: true }))).toBe("supported")
+      expect(status(await grade(id, { ed2PushesHistory: false }))).toBe("supported")
+    },
+  )
+
+  it("refuses a view that moved past the lines the row wrote, never painting a short reference", async () => {
+    // ED3 ignored keeps 3 lines from before the row: pageUp shows 13, the row wrote 10 above the screen.
+    const result = await grade("scrollback.accumulate", { ed3: false, leftover: 3 })
+    expect(status(result)).toBe("probe-todo")
+    expect(result.note).toMatch(/past the 10 this row wrote/)
+  })
 })
 
 describe("scrollback.accumulate", () => {

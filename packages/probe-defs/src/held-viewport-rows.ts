@@ -174,6 +174,12 @@ async function heldRow(
         return `${seen.name}: ${seen.reading.reason} (${seen.reading.detail}; restored ${seen.reading.restored})`
       }
       const { candidate } = seen.reading
+      // The model can paint only lines this row wrote: a shift past them is not a view of this fixture, and a
+      // negative slice start would paint a short reference from the end (@dev/18 638ae628 note 1).
+      const above = seen.length - ctx.rows
+      if (candidate.shift > above) {
+        return `${seen.name}: the view moved ${candidate.shift} lines up, past the ${above} this row wrote above the screen`
+      }
       const key = `${seen.length}:${candidate.shift}`
       let reference = painted.get(key)
       if (reference === undefined) {
