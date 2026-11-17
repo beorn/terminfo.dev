@@ -798,12 +798,20 @@ test.each([
 // log show spanned the whole 44-minute collect step and was killed at its 20 s wall. The window now ends at the
 // measured receipt, and a capture killed at its wall after a successful collection is named, not fatal.
 test.each([
-  { collectOutcome: "success", screenFails: false, expectedExit: 0, verdict: "non-fatal: the collection succeeded" },
-  { collectOutcome: "failure", screenFails: false, expectedExit: 1, verdict: "fails this step" },
-  { collectOutcome: "success", screenFails: true, expectedExit: 1, verdict: "fails this step" },
+  {
+    collectOutcome: "success",
+    screenFails: false,
+    censusHangs: false,
+    expectedExit: 0,
+    verdict: "non-fatal: the collection succeeded",
+  },
+  { collectOutcome: "failure", screenFails: false, censusHangs: false, expectedExit: 1, verdict: "fails this step" },
+  { collectOutcome: "success", screenFails: true, censusHangs: false, expectedExit: 1, verdict: "fails this step" },
+  // The window census is the owned-window evidence: its wall kill stays fatal even after a good collection.
+  { collectOutcome: "success", screenFails: false, censusHangs: true, expectedExit: 1, verdict: "fails this step" },
 ])(
-  "cmux evidence bounds its log to the receipt and names a wall-killed capture (collect: $collectOutcome, screen fails: $screenFails)",
-  ({ collectOutcome, screenFails, expectedExit, verdict }) => {
+  "cmux evidence bounds its log to the receipt and names a wall-killed capture (collect: $collectOutcome, screen fails: $screenFails, census hangs: $censusHangs)",
+  ({ collectOutcome, screenFails, censusHangs, expectedExit, verdict }) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const step = workflow.jobs["measure-macos"].steps.find(
       (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
@@ -826,12 +834,13 @@ test.each([
       }),
     )
     const windows = [{ id: 37, ownerPid: 4242, layer: 0, bounds: { x: 0, y: 0, width: 460, height: 639 } }]
-    // The log command outlives its wall; only the 20 s wall is shortened so the kill happens inside the test.
+    // The log command outlives its wall; the 10 s and 20 s walls are shortened so a kill happens inside the test.
     const prelude = `const originalSpawn = Bun.spawn, originalTimeout = globalThis.setTimeout;
-    globalThis.setTimeout = (fn, ms, ...rest) => originalTimeout(fn, ms === 20000 ? 200 : ms, ...rest);
+    globalThis.setTimeout = (fn, ms, ...rest) => originalTimeout(fn, ms >= 10000 ? 200 : ms, ...rest);
     Bun.spawn = (argv, options) => {
       const command = argv[0];
       if (command.endsWith("log")) return originalSpawn(["/bin/sleep", "30"], options);
+      if (command.endsWith("osascript") && ${censusHangs}) return originalSpawn(["/bin/sleep", "30"], options);
       if (command.endsWith("screencapture")) {
         if (${screenFails}) return originalSpawn(["/bin/bash", "-c", "exit 1"], options);
         require("node:fs").writeFileSync(argv.at(-1), "fixture image bytes");
@@ -856,11 +865,13 @@ test.each([
         },
       })
       expect(result.status, result.stderr).toBe(expectedExit)
-      const log = JSON.parse(readFileSync(join(out, "cmux-log.json"), "utf8"))
+      const log = JSON.parse(readFileSync(join(out, "cmux-log.json"), "utf8")) as { argv: string[] }
       // Collect start through the measured receipt (whole final second included), not through this step.
       expect(log.argv).toEqual(expect.arrayContaining(["2026-11-17 21:52:58+0000", "2026-11-17 21:53:08+0000"]))
       expect(log).toHaveProperty("outerTimedOut", true)
-      const evidence = JSON.parse(readFileSync(join(out, "cmux-failure-evidence.json"), "utf8"))
+      const evidence = JSON.parse(readFileSync(join(out, "cmux-failure-evidence.json"), "utf8")) as {
+        failures: unknown[]
+      }
       expect(evidence).toHaveProperty("intervalSource", "collect-step-start-through-measured-receipt")
       expect(evidence.failures).toContainEqual({
         label: "log",
@@ -868,6 +879,9 @@ test.each([
         timedOut: true,
       })
       if (screenFails) expect(evidence.failures).toContainEqual(expect.objectContaining({ label: "screen" }))
+      if (censusHangs) {
+        expect(evidence.failures).toContainEqual(expect.objectContaining({ label: "windows", timedOut: true }))
+      }
       const summary = readFileSync(summaryFile, "utf8")
       expect(summary).toContain(`cmux launch evidence incomplete (${verdict})`)
       expect(summary).toContain("log: Error: log capture failed (killed at its 20000 ms wall)")

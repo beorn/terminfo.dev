@@ -916,9 +916,10 @@ jobs:
               }
             } catch (error) { failures.push({ label, error: String(error), ...(timedOut ? { timedOut: true } : {}) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
-          // 34687: after a successful collection, a capture killed at its wall is a named diagnostic gap, not a failed
-          // measurement; any other evidence failure still fails the job. Either way the job summary names it.
-          const timeoutsOnly = failures.length > 0 && failures.every(f => f.timedOut);
+          // 34687: after a successful collection, a log capture killed at its wall is a named diagnostic gap, not a failed
+          // measurement; any other evidence failure (the window census and screen shot included) still fails the job.
+          // Either way the job summary names it.
+          const timeoutsOnly = failures.length > 0 && failures.every(f => f.label === "log" && f.timedOut);
           const nonFatal = timeoutsOnly && process.env.COLLECT_OUTCOME === "success";
           if (failures.length && process.env.GITHUB_STEP_SUMMARY) {
             const named = failures.map(f => `${f.label}: ${f.error}`).join("; ");
