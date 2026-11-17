@@ -1884,6 +1884,22 @@ type NativeEditorReply = Pick<NativeEditorActivation, "runId" | "activationNonce
   }
 }
 
+/** Public diagnostic for a native editor reading, which the committed run record keeps verbatim (34666). */
+type NativeFailure = { diagnostic: string; privateEvidence?: string; sha256?: string; bytes?: number }
+
+/** A native editor reason reaches the committed record: name the private directories instead of printing them. */
+function redactNativeEditorPaths(text: string) {
+  let redacted = text
+  for (const [name, label] of [
+    ["TERMINFO_EDITOR_RUN_DIRECTORY", "<private editor run directory>"],
+    ["TERMINFO_CAPTURE_DIRECTORY", "<owned capture directory>"],
+  ] as const) {
+    const path = process.env[name]
+    if (path) redacted = redacted.split(path).join(label)
+  }
+  return redacted
+}
+
 /** Native API replies from the single Terminal object held by this run's generated extension. */
 async function readNativeEditorState(input: {
   featureId: string
@@ -1893,10 +1909,12 @@ async function readNativeEditorState(input: {
 }): Promise<AppSemanticReading> {
   const detail: {
     identity?: object
-    nativeObservations: Array<{ phase: string; artifact: string; raw: string }>
+    /** A digest of each native reply: the committed record never carries its bytes (terminal name, paths, PID,
+     * command lines). The bytes stay in the private retained artifact this entry names (34666, @chief 01ff2c88). */
+    nativeObservations: Array<{ phase: string; artifact: string; sha256: string; bytes: number }>
     captures: Array<{ phase: string; observation: unknown }>
     restoration?: object
-    nativeFailure?: string
+    nativeFailure?: NativeFailure
   } = { nativeObservations: [], captures: [] }
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (!captureDirectory || !isAbsolute(captureDirectory)) {
@@ -1929,9 +1947,13 @@ async function readNativeEditorState(input: {
   await input.editor.assertProcess(activation.extensionPid)
   const activationArtifact = join(captureDirectory, "editor-activation-retained.json")
   writeFileSync(activationArtifact, activationRaw)
+  // Bounded public identity: the process id and launch paths stay in the private retained artifact (34666).
   detail.identity = {
-    ...activation,
-    artifact: activationArtifact,
+    runId: activation.runId,
+    activationNonce: activation.activationNonce,
+    app: { name: activation.app.name, version: activation.app.version },
+    activatedAt: activation.activatedAt,
+    privateEvidence: basename(activationArtifact),
     sha256: createHash("sha256").update(activationRaw).digest("hex"),
     evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
   }
@@ -1977,13 +1999,27 @@ async function readNativeEditorState(input: {
     const retained = await reader.read(0, `editor-${input.featureId}-${phase}-${nonce}.json`, (text) =>
       text.length === 0 ? undefined : text.length,
     )
-    detail.nativeObservations.push({ phase, artifact: retained.path, raw: retained.text })
+    detail.nativeObservations.push({
+      phase,
+      artifact: basename(retained.path),
+      sha256: createHash("sha256").update(retained.text).digest("hex"),
+      bytes: Buffer.byteLength(retained.text),
+    })
     if (!retained.complete) {
       try {
-        detail.nativeFailure = readFileSync(join(directory, "editor-reader-errors.jsonl"), "utf8")
+        // The extension's error record names private paths: retain its exact bytes privately, publish a digest.
+        const bytes = readFileSync(join(directory, "editor-reader-errors.jsonl"))
+        const privateEvidence = `editor-reader-errors-${phase}.jsonl`
+        writeFileSync(join(captureDirectory, privateEvidence), bytes)
+        detail.nativeFailure = {
+          diagnostic: "Native reader error record retained privately",
+          privateEvidence,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          bytes: bytes.length,
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-        detail.nativeFailure = "No native reader error record was created before the reply deadline"
+        detail.nativeFailure = { diagnostic: "No native reader error record was created before the reply deadline" }
       }
       unavailableReason = "Native editor reply deadline expired; no fresh API observation"
       throw new Error(unavailableReason)
@@ -2107,7 +2143,7 @@ async function readNativeEditorState(input: {
   } catch (error) {
     reading = {
       status: unavailableReason === undefined ? "invalid" : "unavailable",
-      reason: error instanceof Error ? error.message : String(error),
+      reason: redactNativeEditorPaths(error instanceof Error ? error.message : String(error)),
       detail,
     }
   } finally {
@@ -2180,14 +2216,14 @@ export async function readAppSemanticState(
       } catch (error) {
         // Setup can fail before sampling starts (for example, activation never completed).
         // The caller already verified its owner; retain that window on this failure too.
-        const reason = error instanceof Error ? error.message : String(error)
+        const reason = redactNativeEditorPaths(error instanceof Error ? error.message : String(error))
         try {
           const observation = await input.editor.capture(input.featureId, "failed-read")
           return {
             status: "invalid",
             reason,
             detail: {
-              nativeFailure: reason,
+              nativeFailure: { diagnostic: reason },
               nativeObservations: [],
               captures: [{ phase: "failed-read", observation }],
             },
@@ -2195,8 +2231,11 @@ export async function readAppSemanticState(
         } catch (captureError) {
           return {
             status: "invalid",
-            reason: `${reason}; native editor evidence capture failed: ${String(captureError)}`,
-            detail: { nativeFailure: reason, captureFailure: String(captureError) },
+            reason: `${reason}; native editor evidence capture failed: ${redactNativeEditorPaths(String(captureError))}`,
+            detail: {
+              nativeFailure: { diagnostic: reason },
+              captureFailure: redactNativeEditorPaths(String(captureError)),
+            },
           }
         }
       }

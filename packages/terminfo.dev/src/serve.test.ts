@@ -154,7 +154,16 @@ it.each([
       assert.equal(reading.status, failed ? "invalid" : "measured")
       assert.equal(reading.detail.identity.app.name, "Native " + app)
       assert.ok(reading.detail.nativeObservations.length >= (failed ? 1 : 7))
-      for (const observation of reading.detail.nativeObservations) assert.equal(readFileSync(observation.artifact, "utf8"), observation.raw)
+      // The JSON boundary carries a digest of each native reply, never its bytes (34666).
+      for (const observation of reading.detail.nativeObservations) {
+        assert.equal("raw" in observation, false)
+        const retained = readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, observation.artifact))
+        assert.equal(createHash("sha256").update(retained).digest("hex"), observation.sha256)
+      }
+      const publicReading = record.rawReplies["extensions.osc633-p.callbackResponse"]
+      for (const secret of ["exact native terminal", directory, '"extensionPid"', '"requestPath"', '"replyDirectory"']) {
+        assert.equal(publicReading.includes(secret), false, secret)
+      }
       assert.equal(reading.detail.captures.length, 1)
       const frame = reading.detail.captures[0].observation.frame
       assert.equal(createHash("sha256").update(readFileSync(frame.path)).digest("hex"), frame.sha256)
