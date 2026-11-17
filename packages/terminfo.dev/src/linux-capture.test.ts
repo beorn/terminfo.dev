@@ -3,11 +3,12 @@
  * @level l2
  * @consumer Linux Kitty daemon capture and concurrent HTTP clients
  * @reach fs-walk <fixture-only: inspect only the owned temporary capture output directory>
- * @testonly none
+ * @testonly rememberedExecutableCount: the only observable that an unchanged hit reused a measurement (34549)
  */
 import {
   chmodSync,
   existsSync,
+  statSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -24,6 +25,7 @@ import {
   createLinuxCapture,
   LINUX_CAPTURE_SETTLE_MS,
   assertLiveExecutable,
+  rememberedExecutableCount,
   PNG_CONVERSION_ARGS,
   screenPixels,
   windowPixels,
@@ -1450,41 +1452,55 @@ test.runIf(process.platform === "linux")(
   },
 )
 
-// 34549: each capture checks the terminal's live executable twice, and hashing a 12-29 MB binary each
-// time slowed sgr.blink's samples past its gap bound. A verified file is remembered by device, inode
-// and ctime, never by pid or path: a different binary at the same path, in a new process, is hashed
-// again and refused, and a cached file still refuses a digest it was never shown to have.
-test("a remembered executable never vouches for a different binary at the same path", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-live-exe-"))
-  temporary.push(directory)
-  const source = realpathSync("/proc/self/exe")
-  const path = join(directory, "sleeper")
-  const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex")
-  const children: ReturnType<typeof spawn>[] = []
-  const launch = () => {
-    const child = spawn(path, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" })
-    children.push(child)
-    return child.pid!
-  }
-  try {
-    writeFileSync(path, readFileSync(source))
+// 34549 (@cto 1c9a7980): a successful byte measurement is reused only for the same expected path and
+// digest, process lifetime and image file. Controls: an unchanged hit adds no entry and still passes; a
+// changed expected digest takes the full hash path and fails; the SAME pid exec'ing a replaced file at the
+// same path is a new image and fails; a gone process fails where it always did, never from the cache.
+test.runIf(process.platform === "linux")(
+  "a remembered executable measurement never vouches for another image",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-live-exe-"))
+    temporary.push(directory)
+    const shell = realpathSync("/bin/sh")
+    const path = join(directory, "image")
+    const flag = join(directory, "exec-now")
+    const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
+    const original = readFileSync(shell)
+    writeFileSync(path, original)
     chmodSync(path, 0o755)
-    const first = { path: realpathSync(path), sha256: sha(path) }
-    const firstPid = launch()
-    await vi.waitFor(() => expect(realpathSync(`/proc/${firstPid}/exe`)).toBe(first.path))
-    assertLiveExecutable(firstPid, first)
-    assertLiveExecutable(firstPid, first)
-    expect(() => assertLiveExecutable(firstPid, { ...first, sha256: "0".repeat(64) })).toThrow(/digest mismatch/)
+    const first = { path: realpathSync(path), sha256: sha(original) }
+    // The process waits for the flag, then execs whatever file is at `path` by then, in the same pid.
+    const child = spawn(path, ["-c", `while [ ! -e '${flag}' ]; do sleep 0.05; done; exec '${path}' -c 'sleep 30'`], {
+      stdio: "ignore",
+    })
+    try {
+      const pid = child.pid!
+      await vi.waitFor(() => expect(realpathSync(`/proc/${pid}/exe`)).toBe(first.path))
+      const before = rememberedExecutableCount()
+      assertLiveExecutable(pid, first)
+      expect(rememberedExecutableCount()).toBe(before + 1)
+      assertLiveExecutable(pid, first)
+      expect(rememberedExecutableCount(), "an unchanged hit adds no entry").toBe(before + 1)
+      expect(() => assertLiveExecutable(pid, { ...first, sha256: "0".repeat(64) })).toThrow(/digest mismatch/)
 
-    // The same path, different bytes: the old file is unlinked (a running one cannot be written) and a
-    // new one with one extra trailing byte takes its name, so a new process runs a new inode.
-    rmSync(path)
-    writeFileSync(path, Buffer.concat([readFileSync(source), Buffer.from([0])]))
-    chmodSync(path, 0o755)
-    const secondPid = launch()
-    await vi.waitFor(() => expect(realpathSync(`/proc/${secondPid}/exe`)).toBe(first.path))
-    expect(() => assertLiveExecutable(secondPid, first)).toThrow(/digest mismatch/)
-  } finally {
-    for (const child of children) child.kill("SIGKILL")
-  }
-})
+      // Replace the file (a running image cannot be written, so unlink and recreate with one extra byte),
+      // then let the same pid exec it: same pid, same start time, a different image.
+      const startTime = () => readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.split(" ")[19]
+      const startedAt = startTime()
+      const inode = statSync(`/proc/${pid}/exe`).ino
+      rmSync(path)
+      writeFileSync(path, Buffer.concat([original, Buffer.from([0])]))
+      chmodSync(path, 0o755)
+      writeFileSync(flag, "")
+      await vi.waitFor(() => expect(statSync(`/proc/${pid}/exe`).ino).not.toBe(inode))
+      expect(startTime(), "exec keeps the pid's start time").toBe(startedAt)
+      expect(() => assertLiveExecutable(pid, first)).toThrow(/digest mismatch/)
+
+      child.kill("SIGKILL")
+      await vi.waitFor(() => expect(() => realpathSync(`/proc/${pid}/exe`)).toThrow())
+      expect(() => assertLiveExecutable(pid, first), "a gone process is never answered from the cache").toThrow()
+    } finally {
+      child.kill("SIGKILL")
+    }
+  },
+)
