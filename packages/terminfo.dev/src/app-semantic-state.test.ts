@@ -313,7 +313,7 @@ test.each([
   { featureId: "extensions.osc133-d", source: "leaky-unknown", outcome: "controls-failed" },
   { featureId: "extensions.osc633-e", source: "leaky-unknown", outcome: "controls-failed" },
   { featureId: "extensions.osc633-c", source: "stray-execution", outcome: "invalid" },
-  { featureId: "extensions.osc633-d", source: "unpaired-end", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-d", source: "unpaired-end", outcome: "invalid" },
 ] as const)(
   "editor execution row $featureId from a $source native source grades $outcome",
   async ({ featureId, source, outcome }) => {
@@ -469,8 +469,10 @@ test.each([
       // Stages are written apart: A/B, then C (with E), then D; never the whole sequence in one write.
       const selector = featureId.includes("133") ? "133" : "633"
       const target = commands.filter((bytes) => bytes.includes(`]${selector};`))
-      expect(target.some((bytes) => bytes.includes(`]${selector};A`) && !bytes.includes(`]${selector};C`))).toBe(true)
-      expect(target.some((bytes) => bytes.includes(`]${selector};C`) && !bytes.includes(`]${selector};D`))).toBe(true)
+      if (reading.status === "measured") {
+        expect(target.some((bytes) => bytes.includes(`]${selector};A`) && !bytes.includes(`]${selector};C`))).toBe(true)
+        expect(target.some((bytes) => bytes.includes(`]${selector};C`) && !bytes.includes(`]${selector};D`))).toBe(true)
+      }
       expect(commands.join("")).not.toContain("executeCommand")
       if (featureId === "extensions.osc633-d" && outcome === "supported") {
         expect(commands.join("")).toContain("\x1b]633;D;17\x07")

@@ -2196,6 +2196,10 @@ async function readNativeEditorState(input: {
         throw new Error(`Native editor execution window after D in ${phase} holds extra or unpaired facts`)
       }
       const end = afterD[0]
+      if (end !== undefined && start === undefined) {
+        // An end with no start in this trial cannot be attributed to these bytes (@cto 1435 amendment 1).
+        throw new Error(`Native editor execution end in ${phase} has no start in this trial; the event is unpaired`)
+      }
       if (start !== undefined && end !== undefined && end.execution !== start.execution) {
         throw new Error(`Native editor execution end in ${phase} belongs to another execution`)
       }
@@ -2206,11 +2210,9 @@ async function readNativeEditorState(input: {
     const ended = (result: Trial) =>
       result.end === undefined
         ? "none"
-        : result.start === undefined
-          ? "end-unpaired"
-          : result.end.exitCode?.present === true
-            ? `end:${result.end.exitCode.value}`
-            : "end:absent"
+        : result.end.exitCode?.present === true
+          ? `end:${result.end.exitCode.value}`
+          : "end:absent"
     const digest = (text: string) => createHash("sha256").update(text).digest("hex")
     const commanded = (result: Trial, command: string) =>
       result.start?.commandLine?.present === true && result.start.commandLine.valueSha256 === digest(command)
