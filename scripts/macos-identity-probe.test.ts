@@ -402,6 +402,7 @@ test("iTerm startup records window and transfer consent policies before launch a
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
     ]
     const spawnSync = vi.fn((_file, _args, _options) => ({
       stderr: "",
@@ -436,10 +437,15 @@ test("iTerm startup records window and transfer consent policies before launch a
       "/usr/bin/defaults",
       ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
     ],
+    // 34664: the dynamic profile with the offscreen command line off becomes the default profile.
+    [
+      "/usr/bin/defaults",
+      ["write", "com.googlecode.iterm2", "Default Bookmark Guid", "-string", "terminfo-measure-0001"],
+    ],
     ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
   // The retained launch log must disclose the configured permission state.
-  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 9)
+  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 10)
   expect(policies).toMatchObject([
     {
       name: "transfer consent policy",
@@ -456,9 +462,14 @@ test("iTerm startup records window and transfer consent policies before launch a
       args: ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
       status: 0,
     },
+    {
+      name: "default profile",
+      args: ["write", "com.googlecode.iterm2", "Default Bookmark Guid", "-string", "terminfo-measure-0001"],
+      status: 0,
+    },
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 9 }, () =>
+    ...Array.from({ length: 10 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -483,8 +494,10 @@ test("iTerm startup records window and transfer consent policies before launch a
     [7, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
     [8, { status: 1 }, "scrollback clear policy"],
     [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "scrollback clear policy"],
-    [9, { status: 1 }, "open"],
-    [9, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [9, { status: 1 }, "default profile"],
+    [9, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "default profile"],
+    [10, { status: 1 }, "open"],
+    [10, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)
