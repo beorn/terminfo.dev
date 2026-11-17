@@ -102,6 +102,9 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** A hosted Git origin: scp-like `user@host:path` or an ssh/git/http(s) URL. Not a path or file: URL. */
+const HOSTED_ORIGIN = /^(?:[\w.-]+@[\w.-]+:(?!\/)|(?:ssh|git|https?):\/\/[^/])/
+
 function git(repo: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim()
 }
@@ -272,9 +275,18 @@ function sourceIntegrity(
   const revision = git(repo, "rev-parse", "HEAD")
   const treeOid = git(repo, "rev-parse", `HEAD:${packagePath}`)
   const cleanTree = !git(repo, "status", "--porcelain", "--", packagePath)
+  const repository = git(repo, "remote", "get-url", "origin")
+  // 34537: a local path or file URL is where a clone was borrowed from, not the hosted repository
+  // the identity names. Recording it made every exact-identity declaration silently stop matching
+  // (13:04Z run, 32 cells to PROBE TODO), so this backend's identity is unmeasured and it is not graded.
+  if (!HOSTED_ORIGIN.test(repository)) {
+    throw new Error(
+      `Engine identity unmeasured: source checkout ${recordedPath(repo)} has origin ${JSON.stringify(repository)}, a local path or file URL rather than its hosted repository; this backend is not graded. Restore the checkout's hosted origin (submodule materializer, 34531).`,
+    )
+  }
   return {
     kind: "source",
-    repository: git(repo, "remote", "get-url", "origin"),
+    repository,
     revision,
     treeOid,
     cleanTree,
