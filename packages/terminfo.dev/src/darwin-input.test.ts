@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   createDarwinInput,
+  keysOnlyMechanism,
   ownedHostHelperPath,
   ownedHostMechanism,
   DARWIN_INPUT_SELF_TEST_KEYCODE_ECHO,
@@ -213,6 +214,82 @@ describe("macOS input on an owned host", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
+  })
+})
+
+describe("macOS input, keys only, on a hosted app named by its capture (34313)", () => {
+  it("refuses every pointer verb by name and keeps the pre-delivery key restriction", async () => {
+    const fake = fakeInputMechanism()
+    let delivered = false
+    const keys = keysOnlyMechanism(fake.mechanism, () => delivered)
+    await keys.key(DARWIN_INPUT_SELF_TEST_KEYSYM)
+    await expect(keys.key("shift+Page_Up")).rejects.toThrow(/only the fixed self-test keys/)
+    delivered = true
+    await keys.key("shift+Page_Up")
+    await expect(keys.moveTo(1, 2, { verifyPointer: true, dragged: false })).rejects.toThrow(
+      /pointer movement refused: this hosted install posts keys only/,
+    )
+    await expect(keys.geometry()).rejects.toThrow(/pointer placement refused: this hosted install posts keys only/)
+    await expect(keys.click(4)).rejects.toThrow(/a click refused: this hosted install posts keys only/)
+    await expect(keys.press(1)).rejects.toThrow(/a button press refused/)
+    await expect(keys.release(1)).rejects.toThrow(/a button release refused/)
+    expect(fake.calls.map((call) => call.op)).toEqual(["key", "key"])
+  })
+
+  it("posts each key to the captured window with no tab tty, so the helper runs no Terminal.app query", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-input-keys-"))
+    const argv = join(directory, "argv.txt")
+    const helper = join(directory, "helper")
+    writeFileSync(
+      helper,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> '${argv}'`,
+        'case "$1" in',
+        '  key) printf \'posted=key route=pid frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        "esac",
+        "",
+      ].join("\n"),
+    )
+    chmodSync(helper, 0o755)
+    const facts: string[] = []
+    try {
+      const input = await createDarwinInput(
+        options({
+          appName: "alacritty",
+          mechanism: undefined,
+          helperPath: helper,
+          windowId: 51,
+          windowTty: "/dev/ttys007",
+          keysOnly: true,
+          report: (fact) => facts.push(fact),
+          selfTest: async (inject) => {
+            await inject()
+            return DARWIN_INPUT_SELF_TEST_KEYSYM
+          },
+        }),
+      )
+      await input.injectKey("shift+Page_Up")
+      await expect(input.injectClick(4)).rejects.toThrow(/posts keys only/)
+      const calls = readFileSync(argv, "utf8").trim().split("\n")
+      // Four arguments after the verb, never a fifth: a tab tty sends the helper's selected-tab query to Terminal.app.
+      expect(calls.filter((call) => call.startsWith("key "))).toEqual(["key 4242 51 z", "key 4242 51 shift+Page_Up"])
+      expect(calls.filter((call) => call.startsWith("mouse "))).toEqual([])
+      expect(facts[0]).toMatch(
+        /^darwin input installed \(keys only: the capture's window 51, a key-window proof per post, no pointer\)/,
+      )
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("refuses a keys-only install without the captured window id, or combined with an owned host", async () => {
+    await expect(createDarwinInput(options({ keysOnly: true }))).rejects.toThrow(
+      /keys-only macOS input needs the window its capture install selected/,
+    )
+    await expect(
+      createDarwinInput(options({ keysOnly: true, ownedHost: true, windowId: 51, windowTty: "/dev/ttys007" })),
+    ).rejects.toThrow(/keys-only and owned-host input are separate routes/)
   })
 })
 
