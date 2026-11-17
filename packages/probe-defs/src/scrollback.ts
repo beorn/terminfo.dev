@@ -1,3 +1,4 @@
+import { HELD_VIEWPORT_WALL_MS, heldAccumulate, heldTotalLines, heldViewportReader } from "./held-viewport-rows.ts"
 import {
   frameDigests,
   type ProbeDefinition,
@@ -825,6 +826,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const heldReader = heldViewportReader(ctx)
+        if (heldReader) return heldAccumulate(ctx, heldReader)
         const heldTodo = heldViewportReadTodo(ctx)
         if (heldTodo) return heldTodo
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
@@ -944,6 +947,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const heldReader = heldViewportReader(ctx)
+        if (heldReader) return heldTotalLines(ctx, heldReader)
         const heldTodo = heldViewportReadTodo(ctx)
         if (heldTodo) return heldTodo
         if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
@@ -1027,6 +1032,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 34645: the held-viewport arm takes about 18 raw frames and 10 key posts (0.92 s median capture gap measured
+    // on Linux, 34641); 90 s holds that with headroom until the hosted macOS run measures it.
+    wallMs: HELD_VIEWPORT_WALL_MS,
   },
 
   ...regionReadbackProbes(scrollbackReadbackRows),
