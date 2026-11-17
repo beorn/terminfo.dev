@@ -102,8 +102,12 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-/** A hosted Git origin: scp-like `user@host:path` or an ssh/git/http(s) URL. Not a path or file: URL. */
-const HOSTED_ORIGIN = /^(?:[\w.-]+@[\w.-]+:(?!\/)|(?:ssh|git|https?):\/\/[^/])/
+/**
+ * A hosted Git origin: an ssh/git/http(s) URL, or git-clone's scp-like `[user@]host:path`, which git
+ * recognizes when no slash comes before the first colon (the path may be absolute). Never a local
+ * path or a file: URL (https://git-scm.com/docs/git-clone#_git_urls, 34557).
+ */
+const HOSTED_ORIGIN = /^(?:(?:ssh|git|https?|git\+ssh|ssh\+git):\/\/[^/]|[^/:]+:(?!\/\/))/
 
 function git(repo: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim()

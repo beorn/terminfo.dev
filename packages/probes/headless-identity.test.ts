@@ -274,6 +274,10 @@ test.each([
   { origin: "file:///hh/dev/vendor/vterm", hosted: false },
   { origin: "git@github.com:beorn/vterm.git", hosted: true },
   { origin: "https://github.com/beorn/vterm.git", hosted: true },
+  // git-clone's scp-like form takes an optional user and an absolute remote path (34557, @cto 4c84d8db).
+  { origin: "example.com:org/repo.git", hosted: true },
+  { origin: "git@example.com:/srv/repo.git", hosted: true },
+  { origin: "ssh://git@example.com/srv/repo.git", hosted: true },
 ])("a source engine whose checkout origin is $origin is graded only from a hosted origin", ({ origin, hosted }) => {
   const set = spawnSync("git", ["-C", fixture.vterm, "remote", "set-url", "origin", origin], { encoding: "utf8" })
   expect(set.status, set.stderr).toBe(0)
