@@ -104,6 +104,9 @@ jobs:
               "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$source?ref=$MEASURED_SHA"
           done
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
+          # The collect step's poll budget is measured from here, the first step, so it spends the job wall
+          # (timeout-minutes) rather than restarting the clock after install and grants (34567).
+          printf 'JOB_START_EPOCH=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
 
       # Suite declaration checks HEAD against origin/main; retain full refs/history on hosted runners.
       - uses: actions/checkout@v4
@@ -340,8 +343,10 @@ jobs:
           COLLECTOR_BUN="$(command -v bun)"
           printf 'collect_started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
           COLLECT_EPOCH="$(date +%s)"
-          # 35 minutes leaves about 300s above the 1200s Terminal.app needed on 42844675013, after this 180s flush margin.
-          JOB_LIMIT_S=$((35 * 60))
+          # The job wall, timeout-minutes above; scripts/measurement-workflows.test.ts pins that the two agree. A second
+          # 35-minute bound here flushed cursor and VS Code at ~31.6 min under the 70-minute wall (run 44112785444, 34567).
+          JOB_LIMIT_S=$((70 * 60))
+          : "${JOB_START_EPOCH:?the bootstrap step records JOB_START_EPOCH; the poll budget is measured from it}"
           FLUSH_MARGIN_S=180
           BUN_DIR="$(dirname "$COLLECTOR_BUN")"
           TARGET_VERSION_EXPORT=""
@@ -676,8 +681,8 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
-          # The poll is the 25 minute job limit minus the flush margin and the time already used.
-          elapsed=$(( $(date +%s) - COLLECT_EPOCH ))
+          # The poll is the job limit minus the flush margin and the time the job has already used.
+          elapsed=$(( $(date +%s) - JOB_START_EPOCH ))
           poll_s=$(( JOB_LIMIT_S - FLUSH_MARGIN_S - elapsed ))
           if [ "$poll_s" -lt 1 ]; then poll_s=1; fi
           echo "$APP_ID collector poll ${poll_s}s (job ${JOB_LIMIT_S}s, flush margin ${FLUSH_MARGIN_S}s, elapsed ${elapsed}s)"
