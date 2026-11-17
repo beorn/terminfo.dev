@@ -603,6 +603,12 @@ test.each([
         executablePath: "/Applications/Editor.app/Contents/MacOS/Editor",
         marker: { flag: "--user-data-dir", value: "/fixture/owned-run/profile" },
         tty: "/dev/ttys001",
+        // 34597: the launcher's measured owner birth; failure evidence queries only this interval.
+        ownerBirth: {
+          pid: 4242,
+          startedAtEpochSeconds: Date.parse("2026-10-20T02:00:00Z") / 1000,
+          observedAt: "2026-10-20T02:00:12.255Z",
+        },
       },
     }
     if (!missingLaunch) writeFileSync(join(out, "editor-launch.json"), JSON.stringify(editorLaunch))
@@ -680,7 +686,18 @@ test.each([
       const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
       expect(log).toHaveProperty("argv", expect.arrayContaining(["2026-10-20 02:00:00+0000"]))
       expect(log).toHaveProperty("stdout.text", "[]")
-      if (editor && !missingLaunch) expect(summary).toHaveProperty("editorLaunch", editorLaunch)
+      if (editor && !missingLaunch) {
+        expect(summary).toHaveProperty("editorLaunch", editorLaunch)
+        // 34597: the log window is the owner's birth through its observation, never the whole collect step.
+        expect(summary).toHaveProperty("intervalSource", "editor-owner-birth-through-observation")
+        expect(log).toHaveProperty(
+          "argv",
+          expect.arrayContaining(["2026-10-20 02:00:00+0000", "2026-10-20 02:00:13+0000"]),
+        )
+      }
+      if (editor && missingLaunch) {
+        expect(summary).toHaveProperty("intervalSource", "collect-step-start-through-failure-evidence")
+      }
       if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
       if (terminal) {
         // Existing artifact transport retains ancestry and collector status; narrowing diagnostics
