@@ -335,8 +335,71 @@ function rectangle(frame: CapturedFrame, selected: (offset: number) => boolean):
   return { grid, fillets }
 }
 
-function rgbAt(frame: CapturedFrame, offset: number, rgb: readonly number[]): boolean {
-  return frame.rgba[offset] === rgb[0] && frame.rgba[offset + 1] === rgb[1] && frame.rgba[offset + 2] === rgb[2]
+const CLASS_RADIUS_MAX = 1
+const CLASS_SEPARATION_MIN = 16
+
+type RgbTriple = readonly [number, number, number]
+
+interface PaintColorClass {
+  readonly anchor: RgbTriple
+  readonly members: ReadonlySet<number>
+  readonly triples: readonly RgbTriple[]
+}
+
+function packRgb(red: number, green: number, blue: number): number {
+  return (red << 16) | (green << 8) | blue
+}
+
+function unpackRgb(packed: number): RgbTriple {
+  return [(packed >> 16) & 255, (packed >> 8) & 255, packed & 255]
+}
+
+function chebyshevRgb(left: RgbTriple, right: RgbTriple): number {
+  return Math.max(Math.abs(left[0] - right[0]), Math.abs(left[1] - right[1]), Math.abs(left[2] - right[2]))
+}
+
+function inColorClass(frame: CapturedFrame, offset: number, colorClass: PaintColorClass): boolean {
+  const red = frame.rgba[offset]
+  const green = frame.rgba[offset + 1]
+  const blue = frame.rgba[offset + 2]
+  if (red === undefined || green === undefined || blue === undefined) return false
+  return colorClass.members.has(packRgb(red, green, blue))
+}
+
+/**
+ * Occupied-member colour class anchored at `anchor` within Chebyshev radius R=1 (34480, @cto 34480-fresh-owner-contract-go-2141):
+ * only RGB triples actually present in `occupiedCounts` within one code per channel of `anchor` are admitted.
+ */
+function buildPaintColorClass(occupiedCounts: ReadonlyMap<number, number>, anchor: RgbTriple): PaintColorClass {
+  const members = new Set<number>([packRgb(anchor[0], anchor[1], anchor[2])])
+  for (const packed of occupiedCounts.keys()) {
+    if (chebyshevRgb(unpackRgb(packed), anchor) <= CLASS_RADIUS_MAX) members.add(packed)
+  }
+  return { anchor, members, triples: [...members].map(unpackRgb) }
+}
+
+function minClassDistance(left: PaintColorClass, right: PaintColorClass): number {
+  let min = Number.POSITIVE_INFINITY
+  for (const u of left.triples) {
+    for (const v of right.triples) {
+      const distance = chebyshevRgb(u, v)
+      if (distance < min) min = distance
+    }
+  }
+  return min
+}
+
+function localAnchor(occupiedCounts: ReadonlyMap<number, number>, seed: RgbTriple): RgbTriple {
+  let best = seed
+  let bestCount = -1
+  for (const [packed, count] of occupiedCounts.entries()) {
+    const rgb = unpackRgb(packed)
+    if (chebyshevRgb(rgb, seed) <= CLASS_RADIUS_MAX && count > bestCount) {
+      best = rgb
+      bestCount = count
+    }
+  }
+  return best
 }
 
 interface AxisScan {
@@ -377,7 +440,7 @@ function scanlineSizes(
   axis: "columns" | "rows",
   line: number,
   count: number,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): number[] {
   const edges = [0]
   let previous: boolean | undefined
@@ -385,8 +448,8 @@ function scanlineSizes(
     const x = grid.x + (scan.horizontal ? position : line)
     const y = grid.y + (scan.horizontal ? line : position)
     const offset = (y * frame.width + x) * 4
-    const red = rgbAt(frame, offset, colors[0])
-    if (!red && !rgbAt(frame, offset, colors[1])) {
+    const red = inColorClass(frame, offset, classes[0])
+    if (!red && !inColorClass(frame, offset, classes[1])) {
       throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
     }
     if (position === 0 && !red) {
@@ -448,7 +511,7 @@ function validatePaint(
   pitch: number,
   mask: ReadonlySet<number>,
   lead: 0 | 1,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): void {
   for (let line = 0; line < scan.across; line++) {
     for (let position = 0; position < scan.length; position++) {
@@ -461,8 +524,8 @@ function validatePaint(
       // boundary is offset by its one pixel.
       const cell = Math.min(count - 1, Math.floor((position + lead) / pitch))
       const expectsCalibration = cell % 2 === 0
-      const calibration = rgbAt(frame, offset, colors[0])
-      const blank = rgbAt(frame, offset, colors[1])
+      const calibration = inColorClass(frame, offset, classes[0])
+      const blank = inColorClass(frame, offset, classes[1])
       if (calibration === expectsCalibration && (calibration || blank)) continue
       const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
       throw refusal(
@@ -485,7 +548,7 @@ function stripeSize(
   count: number,
   filletMask: ReadonlySet<number>,
   lead: 0 | 1,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): { pitch: number; clip: number } {
   validateFrame(frame)
   validateFrame(baseline)
@@ -496,7 +559,7 @@ function stripeSize(
   let reference: number[] | undefined
   for (let line = 0; line < scan.across; line++) {
     if (scanlineHasMask(grid, scan, line, filletMask, frame.width)) continue
-    const sizes = scanlineSizes(frame, grid, scan, axis, line, count, colors)
+    const sizes = scanlineSizes(frame, grid, scan, axis, line, count, classes)
     if (!reference) {
       reference = sizes
       continue
@@ -518,8 +581,161 @@ function stripeSize(
   // a line beside an already-full first stripe still refuses as a fractional pitch.
   const sizes = reference.map((size, index) => (index === 0 ? size + lead : size))
   const { pitch, clip } = acceptPitch(sizes, axis)
-  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead, colors)
+  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead, classes)
   return { pitch, clip }
+}
+
+const findSolidWitnessClass = (
+  before: CapturedFrame,
+  solid: CapturedFrame,
+): { witness: RgbTriple; witnessClass: PaintColorClass } => {
+  // The most frequent changed RGB anchors an R=1 occupied-member paint class (34480); the existing
+  // complete rectangle, outside-grid and stripe checks still prove its geometry or refuse it.
+  const colorsByCount = new Map<number, number>()
+  for (let offset = 0; offset < solid.rgba.length; offset += 4) {
+    if (
+      solid.rgba[offset] === before.rgba[offset] &&
+      solid.rgba[offset + 1] === before.rgba[offset + 1] &&
+      solid.rgba[offset + 2] === before.rgba[offset + 2]
+    ) {
+      continue
+    }
+    const r = solid.rgba[offset]
+    const g = solid.rgba[offset + 1]
+    const b = solid.rgba[offset + 2]
+    if (r === undefined || g === undefined || b === undefined) {
+      throw new Error(`Capture calibration solid frame is missing RGB bytes at ${offset}`)
+    }
+    const packed = packRgb(r, g, b)
+    colorsByCount.set(packed, (colorsByCount.get(packed) ?? 0) + 1)
+  }
+  const witnessPacked = [...colorsByCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (witnessPacked === undefined) throw refusal("Capture calibration solid grid: no changed pixels")
+  const witness = unpackRgb(witnessPacked)
+  const witnessClass = buildPaintColorClass(colorsByCount, witness)
+  for (let offset = 0; offset < before.rgba.length; offset += 4) {
+    if (inColorClass(before, offset, witnessClass)) {
+      throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
+    }
+  }
+  return { witness, witnessClass }
+}
+
+const shrinkEdgeBlendPerimeter = (
+  solidFrame: CapturedFrame,
+  before: CapturedFrame,
+  initial: { grid: CaptureRectangle; fillets: CornerFillet[] },
+  witness: RgbTriple,
+  witnessClass: PaintColorClass,
+): { grid: CaptureRectangle; fillets: CornerFillet[] } => {
+  let { grid, fillets } = initial
+  // A 1-pixel edge-blend line whose alpha rounds within 1 code of the paint (e.g. 240/241 of 241) falls inside R=1
+  // yet carries zero pixels of the exact anchor and satisfies `edgeBlend` against the adjacent interior line.
+  for (const edge of EDGES) {
+    const horizontal = edge === "top" || edge === "bottom"
+    if ((horizontal ? grid.height : grid.width) <= 1) continue
+    const fixed =
+      edge === "top"
+        ? grid.y
+        : edge === "bottom"
+          ? grid.y + grid.height - 1
+          : edge === "left"
+            ? grid.x
+            : grid.x + grid.width - 1
+    const length = horizontal ? grid.width : grid.height
+    let hasAnchor = false
+    for (let pos = 0; pos < length; pos++) {
+      const x = horizontal ? grid.x + pos : fixed
+      const y = horizontal ? fixed : grid.y + pos
+      const off = (y * solidFrame.width + x) * 4
+      if (
+        solidFrame.rgba[off] === witness[0] &&
+        solidFrame.rgba[off + 1] === witness[1] &&
+        solidFrame.rgba[off + 2] === witness[2]
+      ) {
+        hasAnchor = true
+        break
+      }
+    }
+    if (hasAnchor) continue
+    const shrunk: CaptureRectangle =
+      edge === "top"
+        ? { x: grid.x, y: grid.y + 1, width: grid.width, height: grid.height - 1 }
+        : edge === "bottom"
+          ? { x: grid.x, y: grid.y, width: grid.width, height: grid.height - 1 }
+          : edge === "left"
+            ? { x: grid.x + 1, y: grid.y, width: grid.width - 1, height: grid.height }
+            : { x: grid.x, y: grid.y, width: grid.width - 1, height: grid.height }
+    if (edgeBlend(edge, shrunk, before, solidFrame) !== null) {
+      ;({ grid, fillets } = rectangle(solidFrame, (offset) => {
+        const pixel = offset / 4
+        const x = pixel % solidFrame.width
+        const y = (pixel - x) / solidFrame.width
+        if (x < shrunk.x || x >= shrunk.x + shrunk.width || y < shrunk.y || y >= shrunk.y + shrunk.height) {
+          return false
+        }
+        return inColorClass(solidFrame, offset, witnessClass)
+      }))
+    }
+  }
+  return { grid, fillets }
+}
+
+const unmaskedOccupied = (
+  frame: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+): Map<number, number> => {
+  const occupied = new Map<number, number>()
+  for (let y = grid.y; y < grid.y + grid.height; y++) {
+    for (let x = grid.x; x < grid.x + grid.width; x++) {
+      const key = y * frame.width + x
+      if (filletMask.has(key)) continue
+      const offset = key * 4
+      const r = frame.rgba[offset]
+      const g = frame.rgba[offset + 1]
+      const b = frame.rgba[offset + 2]
+      if (r === undefined || g === undefined || b === undefined) {
+        throw new Error(`Capture calibration frame is missing RGB bytes at ${offset}`)
+      }
+      const packed = packRgb(r, g, b)
+      occupied.set(packed, (occupied.get(packed) ?? 0) + 1)
+    }
+  }
+  return occupied
+}
+
+const findColumnStripeClasses = (
+  columns: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+  columnOccupied: Map<number, number>,
+): [PaintColorClass, PaintColorClass] => {
+  for (let y = grid.y; y < grid.y + grid.height; y++) {
+    if (scanlineHasMask(grid, axisScan(grid, "columns"), y - grid.y, filletMask, columns.width)) continue
+    const first = (y * columns.width + grid.x) * 4
+    const firstSeed: RgbTriple = [columns.rgba[first] ?? 0, columns.rgba[first + 1] ?? 0, columns.rgba[first + 2] ?? 0]
+    const calClass = buildPaintColorClass(columnOccupied, localAnchor(columnOccupied, firstSeed))
+    for (let x = grid.x + 1; x < grid.x + grid.width; x++) {
+      const offset = (y * columns.width + x) * 4
+      if (!inColorClass(columns, offset, calClass)) {
+        const secondSeed: RgbTriple = [
+          columns.rgba[offset] ?? 0,
+          columns.rgba[offset + 1] ?? 0,
+          columns.rgba[offset + 2] ?? 0,
+        ]
+        const blankClass = buildPaintColorClass(columnOccupied, localAnchor(columnOccupied, secondSeed))
+        const separation = minClassDistance(calClass, blankClass)
+        if (separation < CLASS_SEPARATION_MIN) {
+          throw refusal(
+            `Capture calibration columns: stripe classes (${calClass.anchor.join(",")}) and (${blankClass.anchor.join(",")}) are separated by ${separation} < ${CLASS_SEPARATION_MIN} codes`,
+          )
+        }
+        return [calClass, blankClass]
+      }
+    }
+  }
+  throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
 }
 
 /** Same owned run, complete raster edges, exact integer geometry, witnessed identical restore. */
@@ -657,34 +873,16 @@ export async function calibrateCaptureOrigin({
       }
     }
     if (!solid) throw refusal(`Capture calibration paint not observed: ${attempts.join("; ")}`, lastTimeout)
-    // The most frequent changed RGB is a candidate only; the existing complete rectangle,
-    // outside-grid and stripe checks still prove its geometry or refuse it.
-    const colorsByCount = new Map<string, number>()
-    for (let offset = 0; offset < solid.rgba.length; offset += 4) {
-      if (
-        solid.rgba[offset] === before.rgba[offset] &&
-        solid.rgba[offset + 1] === before.rgba[offset + 1] &&
-        solid.rgba[offset + 2] === before.rgba[offset + 2]
-      ) {
-        continue
-      }
-      const key = `${solid.rgba[offset]},${solid.rgba[offset + 1]},${solid.rgba[offset + 2]}`
-      colorsByCount.set(key, (colorsByCount.get(key) ?? 0) + 1)
-    }
-    const witnessKey = [...colorsByCount].sort((a, b) => b[1] - a[1])[0]?.[0]
-    if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
-    const witness = witnessKey.split(",").map(Number)
+    const { witness, witnessClass } = findSolidWitnessClass(before, solid)
     const [red, green, blue] = witness
-    if (red === undefined || green === undefined || blue === undefined) {
-      throw new Error(`Capture calibration solid grid colour ${witnessKey} is not one RGB colour`)
-    }
-    for (let offset = 0; offset < before.rgba.length; offset += 4) {
-      if (rgbAt(before, offset, witness)) {
-        throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
-      }
-    }
     const solidFrame = solid
-    const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
+    const { grid, fillets } = shrinkEdgeBlendPerimeter(
+      solidFrame,
+      before,
+      rectangle(solidFrame, (offset) => inColorClass(solidFrame, offset, witnessClass)),
+      witness,
+      witnessClass,
+    )
     const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
     if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
@@ -737,22 +935,8 @@ export async function calibrateCaptureOrigin({
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
     const columns = await confirmedFrame("column edge paint", () => true, solid)
-    // Determine both stripe colors from an unmasked complete scanline; the existing
-    // full-frame validation below rejects any extra or misplaced colors.
-    let colors: [number[], number[]] | undefined
-    for (let y = grid.y; y < grid.y + grid.height && !colors; y++) {
-      if (scanlineHasMask(grid, axisScan(grid, "columns"), y - grid.y, filletMask, columns.width)) continue
-      const first = (y * columns.width + grid.x) * 4
-      const paint = Array.from(columns.rgba.slice(first, first + 3))
-      for (let x = grid.x + 1; x < grid.x + grid.width; x++) {
-        const offset = (y * columns.width + x) * 4
-        if (!rgbAt(columns, offset, paint)) {
-          colors = [paint, Array.from(columns.rgba.slice(offset, offset + 3))]
-          break
-        }
-      }
-    }
-    if (!colors) throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
+    const columnOccupied = unmaskedOccupied(columns, grid, filletMask)
+    const columnClasses = findColumnStripeClasses(columns, grid, filletMask, columnOccupied)
     const columnBlends = outsideUnchanged(columns, "columns")
     const columnLine = leadingLine("columns", columnBlends)
     const columnLead: 0 | 1 = columnLine === null ? 0 : 1
@@ -764,10 +948,22 @@ export async function calibrateCaptureOrigin({
       ctx.cols,
       filletMask,
       columnLead,
-      colors,
+      columnClasses,
     )
     paintGrid("rows", form)
     const rows = await confirmedFrame("row edge paint", () => true, columns)
+    // Rows inherit the columns' anchors while admitting their own observed dither phases (@cto 34480-fresh-owner-contract-go-2141).
+    const rowOccupied = unmaskedOccupied(rows, grid, filletMask)
+    const rowClasses: [PaintColorClass, PaintColorClass] = [
+      buildPaintColorClass(rowOccupied, columnClasses[0].anchor),
+      buildPaintColorClass(rowOccupied, columnClasses[1].anchor),
+    ]
+    const rowSeparation = minClassDistance(rowClasses[0], rowClasses[1])
+    if (rowSeparation < CLASS_SEPARATION_MIN) {
+      throw refusal(
+        `Capture calibration rows: stripe classes (${rowClasses[0].anchor.join(",")}) and (${rowClasses[1].anchor.join(",")}) are separated by ${rowSeparation} < ${CLASS_SEPARATION_MIN} codes`,
+      )
+    }
     const rowBlends = outsideUnchanged(rows, "rows")
     const rowLine = leadingLine("rows", rowBlends)
     const rowLead: 0 | 1 = rowLine === null ? 0 : 1
@@ -779,7 +975,7 @@ export async function calibrateCaptureOrigin({
       ctx.rows,
       filletMask,
       rowLead,
-      colors,
+      rowClasses,
     )
     // The reported text area is the pitch times the count, not the visible length: a clipped last
     // stripe is shorter than a cell on screen but still occupies a whole cell of the text area.
@@ -830,6 +1026,7 @@ export async function calibrateCaptureOrigin({
                 `${stage} ${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
             )
             .join(", ")}`
+    const classTrace = `; paint classes R<=${CLASS_RADIUS_MAX} G>=${CLASS_SEPARATION_MIN} (solid ${witnessClass.members.size}, columns ${columnClasses[0].members.size}/${columnClasses[1].members.size}, rows ${rowClasses[0].members.size}/${rowClasses[1].members.size} occupied triples)`
     const restoreTrace = chromeBand ? "restore identical outside the declared chrome band" : "identical restore"
     // Last, so the restore stage's own excused count (added after the restore is confirmed) reads in sequence.
     const bandTrace = chromeBand
@@ -844,7 +1041,7 @@ export async function calibrateCaptureOrigin({
       pixelGeometry: measured,
       sentinel: { form, rgb: [red, green, blue] },
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {

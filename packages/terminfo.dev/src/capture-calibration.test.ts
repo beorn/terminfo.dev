@@ -1342,3 +1342,335 @@ test("a declared band that reaches the grid is refused", async () => {
   const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
   await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
 })
+
+// 34480 (@cto 34480-fresh-owner-contract-go-2141): deterministic +-1-code content-coordinate ordered dither
+// (26 occupied triples in the 3x3x3 L_infinity ball around each paint mode, period 32x32) modeled from the
+// retained Terminal.app 2.15 macOS specimen (860x499 window, 840x450 grid at 10,39 for 120x30 cells, 7x15 pitch).
+const DITHER_DELTAS_26: ReadonlyArray<readonly [number, number, number]> = (() => {
+  const out: Array<readonly [number, number, number]> = []
+  for (const dr of [0, -1, 1]) {
+    for (const dg of [0, -1, 1]) {
+      for (const db of [0, -1, 1]) {
+        if (dr === -1 && dg === -1 && db === -1) continue // 26 of 27 triples in B_inf(mode, 1)
+        out.push([dr, dg, db])
+      }
+    }
+  }
+  return out
+})()
+
+function ditherDeltaAt(x: number, y: number, scale = 1): readonly [number, number, number] {
+  const tileX = x & 31
+  const tileY = y & 31
+  const index = (tileY * 32 + tileX) % 64
+  // ~40.6% modal (0,0,0), remainder distributed across the other 25 triples of DITHER_DELTAS_26
+  const delta = index < 26 ? DITHER_DELTAS_26[index]! : [0, 0, 0]
+  return [delta[0] * scale, delta[1] * scale, delta[2] * scale]
+}
+
+function clampByte(value: number): number {
+  return Math.max(0, Math.min(255, value))
+}
+
+function applyDitherRect(
+  source: CapturedFrame,
+  rect: { x: number; y: number; width: number; height: number },
+  scale = 1,
+): CapturedFrame {
+  const rgba = new Uint8Array(source.rgba)
+  for (let y = rect.y; y < rect.y + rect.height; y++) {
+    for (let x = rect.x; x < rect.x + rect.width; x++) {
+      const offset = (y * source.width + x) * 4
+      const [dr, dg, db] = ditherDeltaAt(x, y, scale)
+      rgba[offset] = clampByte(rgba[offset]! + dr)
+      rgba[offset + 1] = clampByte(rgba[offset + 1]! + dg)
+      rgba[offset + 2] = clampByte(rgba[offset + 2]! + db)
+    }
+  }
+  return { width: source.width, height: source.height, rgba }
+}
+
+function ditheredBaseFrame(
+  width = 12,
+  height = 12,
+  base: readonly [number, number, number] = [32, 35, 45],
+): CapturedFrame {
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    rgba.set([base[0], base[1], base[2], 255], offset)
+  }
+  return applyDitherRect({ width, height, rgba }, { x: 0, y: 0, width, height }, 1)
+}
+
+function ditheredStageFrame(
+  beforeFrame: CapturedFrame,
+  stage: "solid" | "columns" | "rows",
+  options: {
+    columnEdges?: readonly number[]
+    rowEdges?: readonly number[]
+    form?: "basic" | "reverse"
+    scale?: number
+    solidMode?: readonly [number, number, number]
+    calMode?: readonly [number, number, number]
+    blankMode?: readonly [number, number, number]
+  } = {},
+): CapturedFrame {
+  const columnEdges = options.columnEdges ?? [2, 4, 6, 8, 10]
+  const rowEdges = options.rowEdges ?? [2, 4, 6, 8, 10]
+  const form = options.form ?? "basic"
+  const scale = options.scale ?? 1
+  const solidMode = options.solidMode ?? [163, 117, 196]
+  const calMode = options.calMode ?? (form === "reverse" ? solidMode : [180, 55, 55])
+  const blankMode = options.blankMode ?? [25, 28, 36]
+  const rgba = new Uint8Array(beforeFrame.rgba)
+  for (let row = 0; row < rowEdges.length - 1; row++) {
+    for (let col = 0; col < columnEdges.length - 1; col++) {
+      const on = stage === "solid" || (stage === "columns" ? col : row) % 2 === 0
+      for (let y = rowEdges[row]!; y < rowEdges[row + 1]!; y++) {
+        for (let x = columnEdges[col]!; x < columnEdges[col + 1]!; x++) {
+          const offset = (y * beforeFrame.width + x) * 4
+          if (!on && form === "reverse" && options.blankMode === undefined) {
+            // In reverse mode (`\x1b[27m`), blank cells keep the exact dithered baseline pixels from `beforeFrame`.
+            continue
+          }
+          const mode = stage === "solid" ? solidMode : on ? calMode : blankMode
+          const [dr, dg, db] = ditherDeltaAt(x, y, scale)
+          rgba.set([clampByte(mode[0] + dr), clampByte(mode[1] + dg), clampByte(mode[2] + db), 255], offset)
+        }
+      }
+    }
+  }
+  return { width: beforeFrame.width, height: beforeFrame.height, rgba }
+}
+
+test.each(["basic", "reverse"] as const)(
+  "R=1 occupied-member paint classes calibrate a dithered Terminal.app 2.15 120x30 specimen in %s form and record the class basis (34480)",
+  async (form) => {
+    const width = 860
+    const height = 499
+    const cols = 120
+    const rows = 30
+    const columnEdges = Array.from({ length: cols + 1 }, (_, index) => 10 + index * 7)
+    const rowEdges = Array.from({ length: rows + 1 }, (_, index) => 39 + index * 15)
+    const before = ditheredBaseFrame(width, height, [32, 35, 45])
+    const solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges, form })
+    const columns = ditheredStageFrame(before, "columns", { columnEdges, rowEdges, form })
+    const rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges, form })
+    const run = calibration({
+      rows,
+      cols,
+      geometry: { cellWidth: 7, cellHeight: 15, textWidth: 840, textHeight: 450 },
+      frames: {
+        "before grid paint": [before, before],
+        "solid grid paint": form === "basic" ? [solid, solid] : [before, before, solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rowsFrame, rowsFrame],
+        "restore grid paint": [before, before],
+      },
+      beforeCapture: (label) => {
+        if (form === "reverse" && label === "collector raster calibration: solid grid paint basic confirmation") {
+          throw Object.assign(new Error("Capture calibration solid grid paint basic: paint witness timeout"), {
+            name: "CapturePaintTimeout",
+          })
+        }
+      },
+    })
+    const measured = await run.promise
+    expect(measured.origin).toEqual({ x: 10, y: 39 })
+    expect(measured.pixelGeometry).toEqual({ cellWidth: 7, cellHeight: 15, textWidth: 840, textHeight: 450 })
+    expect(measured.sentinel).toEqual({ form, rgb: [163, 117, 196] })
+    expect(measured.basis).toContain(`paint classes R<=1 G>=16 (solid 26, columns 26/26, rows 26/26 occupied triples)`)
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
+
+test("R=1 occupied-member classes calibrate a dithered 4x4 grid with clipped last row and inherited row anchors (34480)", async () => {
+  const before = ditheredBaseFrame(12, 12)
+  const columnEdges = [2, 4, 6, 8, 10]
+  const rowEdges = [2, 4, 6, 8, 9]
+  const solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges })
+  const columns = ditheredStageFrame(before, "columns", { columnEdges, rowEdges })
+  const rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges })
+  const run = calibration({
+    rows: 4,
+    cols: 4,
+    geometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({
+    origin: { x: 2, y: 2 },
+    pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+    visible: { width: 8, height: 7 },
+  })
+  expect(measured.basis).toMatch(/rows clipped 1 px at the far edge/)
+  expect(measured.basis).toMatch(/paint classes R<=1 G>=16/)
+})
+
+test.each([
+  "plus-or-minus-2 code spread outside R=1",
+  "1-code-step drift chain reaching +2..+6 from mode",
+  "antialiased foreign ramp across solid paint",
+  "hole reusing existing baseline dither triple",
+  "extra stripe reusing calibration paint class",
+  "missing column edge reusing blank paint class",
+  "fractional pitch reusing the two dithered stripe classes",
+  "one column scanline shifted in dithered class",
+  "wrong-class pixel on corner-fillet scanline",
+  "columns stripe classes closer than G=16",
+  "rows stripe classes closer than G=16",
+] as const)("R=1 calibration refuses %s and still confirms baseline restoration (34480)", async (fault) => {
+  const isWide = fault === "extra stripe reusing calibration paint class"
+  const size = isWide ? 20 : 12
+  const before = ditheredBaseFrame(size, size)
+  const scale = fault === "plus-or-minus-2 code spread outside R=1" ? 2 : 1
+  const columnEdges = isWide
+    ? [2, 6, 10, 14, 18]
+    : fault === "fractional pitch reusing the two dithered stripe classes"
+      ? [2, 4, 6, 9, 10]
+      : [2, 4, 6, 8, 10]
+  const rowEdges = isWide ? [2, 6, 10, 14, 18] : [2, 4, 6, 8, 10]
+  let solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges, scale })
+  let columns = ditheredStageFrame(before, "columns", {
+    columnEdges,
+    rowEdges,
+    scale,
+    ...(fault === "columns stripe classes closer than G=16" ? { blankMode: [170, 55, 55] } : {}),
+  })
+  let rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges, scale })
+
+  if (fault === "1-code-step drift chain reaching +2..+6 from mode") {
+    for (let dx = 0; dx < 6; dx++) {
+      const offset = (5 * 12 + (3 + dx)) * 4
+      solid.rgba.set([163, 117, 196 + dx + 1, 255], offset)
+    }
+  } else if (fault === "antialiased foreign ramp across solid paint") {
+    for (let dx = 0; dx < 6; dx++) {
+      const t = (dx + 1) / 6
+      const offset = (5 * 12 + (3 + dx)) * 4
+      solid.rgba.set(
+        [Math.round(163 + t * (32 - 163)), Math.round(117 + t * (35 - 117)), Math.round(196 + t * (45 - 196)), 255],
+        offset,
+      )
+    }
+  } else if (fault === "hole reusing existing baseline dither triple") {
+    const offset = (5 * 12 + 5) * 4
+    solid.rgba.set(before.rgba.slice(offset, offset + 4), offset)
+  } else if (fault === "extra stripe reusing calibration paint class") {
+    // Paint x=7..8 inside blank column 1 (x=6..9) with column 0's calibration triples so scanline sees 6 stripes
+    for (let y = 2; y < 18; y++) {
+      for (let x = 7; x <= 8; x++) {
+        const src = (y * size + (x - 4)) * 4
+        const dst = (y * size + x) * 4
+        columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+      }
+    }
+  } else if (fault === "missing column edge reusing blank paint class") {
+    for (let y = 2; y < 10; y++) {
+      for (let x = 6; x < 8; x++) {
+        const src = (y * 12 + (x - 2)) * 4
+        const dst = (y * 12 + x) * 4
+        columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+      }
+    }
+  } else if (fault === "one column scanline shifted in dithered class") {
+    const src = (9 * 12 + 6) * 4
+    const dst = (9 * 12 + 8) * 4
+    columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+  } else if (fault === "wrong-class pixel on corner-fillet scanline") {
+    const corners: ReadonlyArray<readonly [number, number]> = [
+      [2, 2],
+      [9, 2],
+      [2, 9],
+      [9, 9],
+    ]
+    const cutToBefore = (source: CapturedFrame): CapturedFrame => {
+      const out = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+      for (const [x, y] of corners) {
+        const off = (y * out.width + x) * 4
+        out.rgba.set(before.rgba.slice(off, off + 4), off)
+      }
+      return out
+    }
+    solid = cutToBefore(solid)
+    columns = cutToBefore(columns)
+    rowsFrame = cutToBefore(rowsFrame)
+    const calSrc = (4 * 12 + 2) * 4
+    const blankDst = (2 * 12 + 5) * 4
+    columns.rgba.set(columns.rgba.slice(calSrc, calSrc + 4), blankDst)
+  } else if (fault === "rows stripe classes closer than G=16") {
+    // Columns have modes (180,55,55) and (180,55,72) at distance 17 >= 16 with 0 spread, while rows have +-1 spread so distance drops to 15 < 16.
+    columns = ditheredStageFrame(before, "columns", { calMode: [180, 55, 55], blankMode: [180, 55, 72], scale: 0 })
+    rowsFrame = ditheredStageFrame(before, "rows", { calMode: [180, 55, 55], blankMode: [180, 55, 72], scale: 1 })
+  }
+
+  const run = calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  const expectedPattern =
+    fault === "plus-or-minus-2 code spread outside R=1" ||
+    fault === "1-code-step drift chain reaching +2..+6 from mode" ||
+    fault === "antialiased foreign ramp across solid paint" ||
+    fault === "hole reusing existing baseline dither triple"
+      ? /non-solid grid/
+      : fault === "extra stripe reusing calibration paint class" ||
+          fault === "missing column edge reusing blank paint class"
+        ? /missing or extra grid edge/
+        : fault === "fractional pitch reusing the two dithered stripe classes"
+          ? /fractional pitch/
+          : fault === "one column scanline shifted in dithered class"
+            ? /nonuniform columns/
+            : fault === "wrong-class pixel on corner-fillet scanline"
+              ? /at 5,2 on cell 2/
+              : /separated by \d+ < 16 codes/
+  await expect(run.promise).rejects.toThrow(expectedPattern)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test.each(["flat dithered solid frame", "1-code change at 1 pixel inside before's own dither class"] as const)(
+  "relational restore refuses %s even when calibration stages pass at R=1 (34480)",
+  async (restoreFault) => {
+    const before = ditheredBaseFrame(12, 12)
+    const solid = ditheredStageFrame(before, "solid")
+    const columns = ditheredStageFrame(before, "columns")
+    const rowsFrame = ditheredStageFrame(before, "rows")
+    const badRestore =
+      restoreFault === "flat dithered solid frame"
+        ? solid
+        : (() => {
+            const copy = { width: before.width, height: before.height, rgba: new Uint8Array(before.rgba) }
+            const offset = (5 * 12 + 5) * 4
+            copy.rgba[offset + 2] = copy.rgba[offset + 2] === 45 ? 44 : 45
+            return copy
+          })()
+    const run = calibration({
+      rows: 4,
+      cols: 4,
+      frames: {
+        "before grid paint": [before, before],
+        "solid grid paint": [solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rowsFrame, rowsFrame],
+        "restore grid paint": [badRestore, badRestore],
+      },
+    })
+    await expect(run.promise).rejects.toMatchObject({
+      name: "CaptureRestoreFailed",
+      message: expect.stringMatching(/restore grid paint.*timeout/),
+    })
+  },
+)
