@@ -497,6 +497,11 @@ jobs:
           if (consent.status !== 0) throw new Error(`iTerm2 transfer consent policy failed (${consent.status})`);
           const selection = run('transfer consent selection', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'NoSyncSuppressDownloadConfirmation_selection', '-int', '0']);
           if (selection.status !== 0) throw new Error(`iTerm2 transfer consent selection failed (${selection.status})`);
+          // 34664: unset, the first CSI 3 J raises a 61 pt in-window "clear scrollback history?" strip that moves the grid
+          // between capture calibrations. At 3.6.11 (PTYSession.m:16824-16833) unset and true both refuse the clear, so
+          // true removes only the strip and leaves every erase reading as the default install gives it.
+          const scrollback = run('scrollback clear policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'PreventEscapeSequenceFromClearingHistory', '-bool', 'true']);
+          if (scrollback.status !== 0) throw new Error(`iTerm2 scrollback clear policy failed (${scrollback.status})`);
           const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
           if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
           ITERM_STARTUP
