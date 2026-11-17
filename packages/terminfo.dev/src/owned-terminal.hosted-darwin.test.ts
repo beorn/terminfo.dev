@@ -34,7 +34,7 @@ const ids = {
 
 // The app mapping/ancestry tests cannot see which read the real owner selects for a hosted app.
 // Exercise the real owner; only OS reads are fixtures, not its adapter-selection decision.
-test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
+test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"])(
   "hosted %s selects its own native read",
   (app) => {
     const script = `
@@ -49,6 +49,7 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
       "terminal-app": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
       cursor: "/Applications/Cursor.app/Contents/MacOS/Cursor",
       "com.microsoft.VSCode": "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+      ghostty: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     }[app]
     const editor = app === "cursor" || app === "com.microsoft.VSCode"
     let appPid = 4242
@@ -111,7 +112,17 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
       appSemanticCapture: async (featureId, phase) => { captures.push({ featureId, phase }); return { retained: true } } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
-    if (editor) {
+    if (app === "ghostty") {
+      // 34601: the hosted Ghostty tab reads only cwd, through AppleScript, and only bound to its reviewed version.
+      assert.deepEqual([...owner.appSemanticStateFeatures].sort(), ["extensions.osc633-p", "extensions.osc7-cwd"])
+      assert.equal(typeof owner.readAppSemanticState, "function")
+      const other = await owner.readAppSemanticState("extensions.osc133-a", () => {})
+      assert.equal(other.reason, "No owned App semantic reader for this feature on macOS")
+      delete process.env.TERMINFO_TARGET_VERSION
+      const unbound = await owner.readAppSemanticState("extensions.osc7-cwd", () => {})
+      assert.equal(unbound.reason, "Ghostty cwd has no reviewed version bound to this App launch")
+      assert.equal(nativeReads.length, 0, "an unbound version must refuse before the shared reader runs")
+    } else if (editor) {
       assert.equal(typeof owner.readAppSemanticState, "function", "editor owner must install its native API reader")
       const result = await owner.readAppSemanticState("extensions.osc633-p", () => {})
       assert.equal(result.reason, "Native API boundary fixture")

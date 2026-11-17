@@ -2128,7 +2128,10 @@ export async function readAppSemanticState(
     readTitle?: LinuxClipboardAdapter["readTitle"]
     withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
     /** Private port supplied only by the verified owner; the checkpoint fences the same pane writes. */
-    readCwd?: (checkpoint?: { row: number; marker: string }) => Promise<{ uri: string; detail: object }>
+    readCwd?: (checkpoint?: {
+      row: number
+      marker: string
+    }) => Promise<{ uri: string; detail: object } | { path: string; detail: object }>
     onRetained?: Parameters<typeof retainCaptureArtifact>[3]
   } & ({ editor: NativeEditorSource; executable?: never } | { editor?: never; executable: LiveExecutable }),
 ): Promise<AppSemanticReading> {
@@ -2270,12 +2273,16 @@ export async function readAppSemanticState(
     }
     const ownedCwd = input.readCwd
     if (ownedCwd) {
-      if (
-        input.mux ||
-        appId !== "wezterm" ||
-        env.TERMINFO_TARGET_VERSION !== "20240203-110809-5046fc22" ||
-        input.featureId !== "extensions.osc633-p"
-      ) {
+      // Each reviewed getter names its app, the version its source was read at, and the ids it can decide.
+      const reviewed =
+        (appId === "wezterm" &&
+          env.TERMINFO_TARGET_VERSION === "20240203-110809-5046fc22" &&
+          input.featureId === "extensions.osc633-p") ||
+        // 34601: Ghostty 1.4.0's AppleScript `working directory` (macos/Ghostty.sdef:98, ScriptTerminal.swift).
+        (appId === "ghostty" &&
+          env.TERMINFO_TARGET_VERSION === "1.4.0" &&
+          (input.featureId === "extensions.osc633-p" || input.featureId === "extensions.osc7-cwd"))
+      if (input.mux || !reviewed) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
       const observe = async (): Promise<AppSemanticReading> => {
@@ -2283,9 +2290,16 @@ export async function readAppSemanticState(
           value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
         const get = async (checkpoint?: { row: number; marker: string }) => {
           const read = await ownedCwd(checkpoint)
-          const uri = new URL(read.uri)
-          if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
-          const reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
+          let reading: { cwd: string; rawUri?: string; host?: string; sourceKind: string }
+          if ("path" in read) {
+            // A path getter has no host to compare: Ghostty stores OSC 7 only after its own local-host check
+            // (src/termio/stream_handler.zig reportPwd), and "" is its "no pwd yet".
+            reading = { cwd: read.path, sourceKind: "undetermined" }
+          } else {
+            const uri = new URL(read.uri)
+            if (uri.protocol !== "file:") throw new Error(`Owned cwd getter returned a non-file URI: ${read.uri}`)
+            reading = { cwd: pathValue(read.uri), rawUri: read.uri, host: uri.hostname, sourceKind: "undetermined" }
+          }
           detail.phases.push({ ...(checkpoint && { checkpoint }), reading, receipt: read.detail })
           return reading
         }
@@ -2302,7 +2316,8 @@ export async function readAppSemanticState(
           input.write(`\x1b[${number};1H${feed}${marker}`)
           const reading = await get({ row: number, marker })
           const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
-          if (reading.host !== expectedHost) {
+          // Host is compared only between URI readings; a path getter's readings never carry one.
+          if (reading.rawUri !== undefined && reading.host !== expectedHost) {
             throw new Error(
               `Owned cwd host mismatch: expected ${expectedHost}, read ${reading.host}; ${reading.rawUri}`,
             )
