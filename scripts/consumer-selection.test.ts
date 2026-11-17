@@ -444,6 +444,10 @@ describe("consumer selection", () => {
   // Exercises the site, the generator and the projection together; a correctness check, not a latency one.
   it("resolves every v3 run reference to a digest-verified run document", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
+    // The selection log goes to console.error (aae1b4381, @cto b0de55c0); admit exactly its two shapes
+    // from docs/data/selected-results.ts and name any other line (34550, as consumer-parity).
+    const stderr: string[] = []
+    const error = vi.spyOn(console, "error").mockImplementation((message: unknown) => stderr.push(String(message)))
     try {
       // Exercise real current run references; display fixtures deliberately carry no admission grant.
       const contentDir = join(import.meta.dirname, "..", "content")
@@ -523,10 +527,18 @@ describe("consumer selection", () => {
       assertGroup(v3.history, expected.history)
       expect(v3.exclusions).toEqual(expected.exclusions)
       expect(Object.keys(v3.contexts).length).toBeGreaterThan(0)
+      const unexpectedStderr = stderr.filter(
+        (line) =>
+          !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
+          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line),
+      )
+      expect(unexpectedStderr).toEqual([])
     } finally {
+      error.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
-  }, 30_000)
+    // 30 s timed out at host load (34589); a cap that holds under load, as consumer-parity.
+  }, 600_000)
 
   // @cto f71ed475: v1 is frozen bytes committed under docs/public/api/v1, not generator output.
   it("keeps the frozen v1 data and badge bytes on disk", () => {
