@@ -2556,7 +2556,12 @@ it.each([
     )
     expect(JSON.parse(batch.rawReplies[ids[1] + ".captureBinding"]!)).toEqual(
       resets
-        ? bindingFor("collector.captureCalibration.renewal.1", 1, renewalRefusal ? "renewal refused" : undefined, renewed)
+        ? bindingFor(
+            "collector.captureCalibration.renewal.1",
+            1,
+            renewalRefusal ? "renewal refused" : undefined,
+            renewed,
+          )
         : bindingFor("collector.captureCalibration", 1, initialRefused, initial),
     )
     // The reader resolves each association to the NAMED installation's own record (#30932 S1 review):
