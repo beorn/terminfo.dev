@@ -842,6 +842,9 @@ export async function runProbeBatch(
     const titleReads: Array<{ title: string } | { error: string }> = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
+    // 34606: an owned App reader may write only through its private writer (WezTerm OSC 7), leaving no write
+    // event; its reading is still this row's recorded evidence, so the assertion must cite the row's trace.
+    let appSemanticRead = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
     // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
@@ -1071,8 +1074,12 @@ export async function runProbeBatch(
       // The verified owner knows which rows its reader observes. Other rows retain their original term
       // callbacks, including wrappers whose unavailable reading does not fall back.
       const semanticFeatures = options.ownedTerminal?.appSemanticStateFeatures
-      if (semanticFeatures === undefined || semanticFeatures.has(probe.id)) {
-        probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
+      const readAppSemanticState = options.ownedTerminal?.readAppSemanticState
+      if (readAppSemanticState && (semanticFeatures === undefined || semanticFeatures.has(probe.id))) {
+        probeSource.readAppSemanticState = (featureId, write) => {
+          appSemanticRead = true
+          return readAppSemanticState(featureId, write)
+        }
       }
       const read = options.ownedTerminal?.getScrollback
       if (read) probeSource.getScrollback = () => withTTYOperation(read, out, verify)
@@ -1741,7 +1748,8 @@ export async function runProbeBatch(
             : events.some((event) => event.kind === "write") ||
                 queries.length ||
                 captureAttempted ||
-                clipboardEvents.length
+                clipboardEvents.length ||
+                appSemanticRead
               ? probe.id
               : undefined
         const post = geometryCheck?.post

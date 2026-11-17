@@ -838,6 +838,49 @@ it.each([
   )
 })
 
+// @failure An owned App reader that writes only through its private writer (WezTerm OSC 7 uses the owned
+//   terminal's own output, never the publishable writer) yields an assertion with no rawReplyRef, so the daemon
+//   reader refuses the whole run: "extensions.osc7-cwd lacks bound positive assertion" (run 44133870892).
+// The case above always writes through the publishable writer, so it never reaches this branch.
+// @level l1
+// @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
+it("binds an App state assertion whose reader never wrote through the publishable writer", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc7-cwd"
+  const reading: AppSemanticReading = {
+    status: "measured",
+    reader: "state",
+    runId: "a".repeat(32),
+    unknown: { before: "control", after: "control" },
+    handled: { before: "control", after: "handled", expected: "handled" },
+    target: { before: "control", after: "target", expected: "target" },
+    detail: {},
+  }
+  const read = vi.fn(async () => reading)
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+  })
+  expect(read).toHaveBeenCalledOnce()
+  expect(writes).toEqual([])
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe("supported")
+  const decoded = decodeCollectorDraft(
+    "owned-app-state.json",
+    JSON.stringify(asRun(batch)),
+    manifest,
+    sourceRevision,
+  ).run
+  expect(decoded.results.find((row) => row.featureId === id)?.status).toBe("supported")
+  expect(decoded.assertions).toContainEqual(
+    expect.objectContaining({ featureId: id, kind: "positive", rawReplyRef: id }),
+  )
+})
+
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
   { label: "sentinel", response: "nonsecret-callback-response" },
