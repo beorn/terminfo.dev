@@ -1178,7 +1178,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
         onRetained,
       })
-      darwinCaptureWindowId = darwinCapture.installCensus.window.id
+      if (terminal.viewportKeys) darwinCaptureWindowId = darwinCapture.installCensus.window.id
       if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
     }
