@@ -2420,13 +2420,21 @@ it.each([
     renewalRefusal: true,
   },
   { name: "RIS renews after an initial refusal", sequence: "\x1bc", initialRefusal: true, renewalRefusal: false },
+  // #30932 S1: a renewal at equal dimensions is still a second installation, which only its id tells apart.
+  {
+    name: "RIS renews at equal dimensions",
+    sequence: "\x1bc",
+    initialRefusal: false,
+    renewalRefusal: false,
+    sameSize: true,
+  },
   {
     name: "DECSTR preserves the existing calibration",
     sequence: "\x1b[!p",
     initialRefusal: false,
     renewalRefusal: false,
   },
-])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal }) => {
+])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal, sameSize }) => {
   verifiedBatchFixture()
   const ids = ["reset.ris", "reset.decaln"]
   const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
@@ -2439,7 +2447,9 @@ it.each([
     geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
     source: "measured by complete raster calibration" as const,
   }
-  const renewed = { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
+  const renewed = sameSize
+    ? { ...initial, geometry: { ...initial.geometry } }
+    : { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
   const order: string[] = []
   const observedWrites: string[] = []
   const handedSources: TermProbeSource[] = []
@@ -2527,6 +2537,20 @@ it.each([
         captures: [{ frame: { ref: `sha256:${"2".repeat(64)}` } }],
       })
     } else expect(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]).toBeUndefined()
+    // #30932 S1: each row names the installation it was handed. The earlier row keeps the first
+    // one after a later renewal, and a refusal is carried as the refusal, never as stale geometry.
+    const header = { format: "terminfo.capture-binding", version: 1 }
+    const bindingFor = (calibrationId: string, refusal: string | undefined, geometry: typeof initial) =>
+      refusal === undefined
+        ? { ...header, calibrationId, outcome: "installed", captureGeometry: geometry }
+        : { ...header, calibrationId, outcome: "refused", refusal }
+    const first = bindingFor("collector.captureCalibration", initialRefusal ? "initial refused" : undefined, initial)
+    expect(JSON.parse(batch.rawReplies[ids[0] + ".captureBinding"]!)).toEqual(first)
+    expect(JSON.parse(batch.rawReplies[ids[1] + ".captureBinding"]!)).toEqual(
+      resets
+        ? bindingFor("collector.captureCalibration.renewal.1", renewalRefusal ? "renewal refused" : undefined, renewed)
+        : first,
+    )
     expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
       captures: [{ frame: { ref: `sha256:${"f".repeat(64)}` } }],
     })
