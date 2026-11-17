@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdirSync, readFileSync, realpathSync } from "node:fs"
+import { mkdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
@@ -8,6 +8,14 @@ export interface LiveExecutable {
   path: string
   sha256: string
 }
+
+/**
+ * Executable files already hashed to an expected digest, keyed by device, inode and change time (34549).
+ * A file a running process executes cannot be written (ETXTBSY), a replacement at the path is a new
+ * inode, and any write changes ctime, which userspace cannot set back. So a key seen before names the
+ * same bytes, and re-hashing a 12-29 MB terminal binary twice per capture only cost the sample rate.
+ */
+const verifiedExecutables = new Set<string>()
 
 /** Bind a launched process to the same actual ELF bytes recorded by the launcher. */
 export function assertLiveExecutable(pid: number, expected: LiveExecutable): void {
@@ -21,9 +29,13 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
   const path = realpathSync(`/proc/${pid}/exe`)
   if (path !== expected.path) throw new Error(`Live executable path mismatch for PID ${pid}: ${path}`)
+  const file = statSync(`/proc/${pid}/exe`, { bigint: true })
+  const key = `${String(file.dev)}:${String(file.ino)}:${String(file.ctimeNs)}:${expected.sha256}`
+  if (verifiedExecutables.has(key)) return
   if (digest(readFileSync(`/proc/${pid}/exe`)) !== expected.sha256) {
     throw new Error(`Live executable digest mismatch for PID ${pid}`)
   }
+  verifiedExecutables.add(key)
 }
 
 import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"

@@ -16,13 +16,14 @@ import {
   writeFileSync,
 } from "node:fs"
 import { createHash } from "node:crypto"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
 import {
   createLinuxCapture,
   LINUX_CAPTURE_SETTLE_MS,
+  assertLiveExecutable,
   PNG_CONVERSION_ARGS,
   screenPixels,
   windowPixels,
@@ -1448,3 +1449,42 @@ test.runIf(process.platform === "linux")(
     expect(unchanged.decoded.height).toBe(600)
   },
 )
+
+// 34549: each capture checks the terminal's live executable twice, and hashing a 12-29 MB binary each
+// time slowed sgr.blink's samples past its gap bound. A verified file is remembered by device, inode
+// and ctime, never by pid or path: a different binary at the same path, in a new process, is hashed
+// again and refused, and a cached file still refuses a digest it was never shown to have.
+test("a remembered executable never vouches for a different binary at the same path", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-live-exe-"))
+  temporary.push(directory)
+  const source = realpathSync("/proc/self/exe")
+  const path = join(directory, "sleeper")
+  const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex")
+  const children: ReturnType<typeof spawn>[] = []
+  const launch = () => {
+    const child = spawn(path, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" })
+    children.push(child)
+    return child.pid!
+  }
+  try {
+    writeFileSync(path, readFileSync(source))
+    chmodSync(path, 0o755)
+    const first = { path: realpathSync(path), sha256: sha(path) }
+    const firstPid = launch()
+    await vi.waitFor(() => expect(realpathSync(`/proc/${firstPid}/exe`)).toBe(first.path))
+    assertLiveExecutable(firstPid, first)
+    assertLiveExecutable(firstPid, first)
+    expect(() => assertLiveExecutable(firstPid, { ...first, sha256: "0".repeat(64) })).toThrow(/digest mismatch/)
+
+    // The same path, different bytes: the old file is unlinked (a running one cannot be written) and a
+    // new one with one extra trailing byte takes its name, so a new process runs a new inode.
+    rmSync(path)
+    writeFileSync(path, Buffer.concat([readFileSync(source), Buffer.from([0])]))
+    chmodSync(path, 0o755)
+    const secondPid = launch()
+    await vi.waitFor(() => expect(realpathSync(`/proc/${secondPid}/exe`)).toBe(first.path))
+    expect(() => assertLiveExecutable(secondPid, first)).toThrow(/digest mismatch/)
+  } finally {
+    for (const child of children) child.kill("SIGKILL")
+  }
+})
