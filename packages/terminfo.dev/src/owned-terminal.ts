@@ -66,6 +66,7 @@ import {
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
   type TextQualificationRecipe,
+  type ViewportStep,
 } from "@terminfo/probe-defs"
 import { readWindowsConsoleGeometry, readWindowsConsoleIdentity, writeConsoleCellsRaw } from "./windows-console-ffi.ts"
 import {
@@ -497,6 +498,13 @@ export interface OwnedTerminal {
    * falling back to a screenshot arm that cannot read retained history, and no grade follows from it.
    */
   readonly scrollbackProbeTodo?: string
+  /**
+   * The viewport keys of a subject whose screen and history are read only from pixels (34313, @cto
+   * cf1ffd6d). Present exactly when the viewport route applies to this qualified subject: hosted alacritty
+   * 0.17.0 on macOS, this run's own launch, no multiplexer. serve.ts installs keys-only input for it, and a
+   * failed install stays a named apparatus TODO on the route rather than removing the route.
+   */
+  readonly viewportKeys?: { readonly route: string; readonly keys: Readonly<Record<ViewportStep, string>> }
   /** Presence only, never the values: whether this run's pane published what an owned read needs (A0). */
   readonly wezTermPaneEnvironment?: { readonly socket: boolean; readonly paneId: boolean }
   readGeometry(): Promise<GeometryMeasurement>
@@ -638,6 +646,49 @@ export type AncestryRow = {
 
 /** @cto 20b9ffed verbatim: the reason text these apps' history rows declare, so one string names the absence. */
 const NO_PANE_READ = "no pane read on this app"
+
+/**
+ * alacritty 0.17.0's default viewport bindings outside the alternate screen (alacritty/src/config/bindings.rs
+ * at v0.17.0: ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom). Source, not a delivery proof: the
+ * route's rows observe every step's effect before they trust it (34313).
+ */
+export const ALACRITTY_0_17_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "shift+Page_Up",
+  pageDown: "shift+Page_Down",
+  top: "shift+Home",
+  bottom: "shift+End",
+})
+
+/**
+ * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
+ * macOS, this run's own launch, no multiplexer between the run and the app. Decided from the subject alone, before
+ * any input install, so an install failure can never remove the route.
+ */
+export function hostedViewportKeys(subject: {
+  readonly hostedAppId: string | undefined
+  readonly platform: string
+  readonly targetVersion: string | undefined
+  readonly runId: string | undefined
+  readonly expectedLaunchRunId: string
+  readonly multiplexed: boolean
+}): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
+  if (
+    subject.hostedAppId !== "alacritty" ||
+    subject.platform !== "darwin" ||
+    subject.targetVersion !== "0.17.0" ||
+    !subject.expectedLaunchRunId ||
+    subject.runId !== subject.expectedLaunchRunId ||
+    subject.multiplexed
+  ) {
+    return undefined
+  }
+  return {
+    viewportKeys: {
+      route: "hosted alacritty 0.17.0 default bindings (shift+Page_Up/Page_Down/Home/End), keys-only CGEvent",
+      keys: ALACRITTY_0_17_VIEWPORT_KEYS,
+    },
+  }
+}
 
 /**
  * The app this run's terminal is, resolved in ONE place (@cto 8c084f05). On the hosted Darwin arm the receipt
@@ -2214,6 +2265,16 @@ export async function createOwnedTerminal(options: {
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
+      // 34313: chosen here, from the qualified subject, BEFORE any input install, so a failed install keeps the
+      // route (and its named TODO) instead of leaving the rows on the declaration above.
+      ...hostedViewportKeys({
+        hostedAppId: hostedApp?.id,
+        platform: binding.platform,
+        targetVersion: process.env.TERMINFO_TARGET_VERSION,
+        runId: process.env.TERMINFO_RUN_ID,
+        expectedLaunchRunId,
+        multiplexed: muxAttachmentProof !== undefined,
+      }),
       ...(wezTermOwnedReadProbeTodo && { scrollbackProbeTodo: wezTermOwnedReadProbeTodo }),
       // No installed reader: name the arm instead of leaving the history rows on the screenshot todo.
       ...linuxScrollbackArm(linux, readScrollback, ownedAppId),

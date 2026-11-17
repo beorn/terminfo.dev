@@ -36,6 +36,7 @@ import {
   type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
+  type ViewportScroll,
   basisScopeAdmits,
   basisScopeRefusal,
 } from "@terminfo/probe-defs"
@@ -464,6 +465,8 @@ export async function runProbeBatch(
     input?: InputFixture & {
       resizeWindow?(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
     }
+    /** The subject owner's viewport route (34313); only the history rows read it, never the public input fixture. */
+    viewportScroll?: ViewportScroll
     ownedTerminal?: OwnedTerminal
     /**
      * Fold 3's witness window (#34148): a second window the SAME run opened in the SAME app instance and
@@ -1264,6 +1267,15 @@ export async function runProbeBatch(
           resizeWindow: (width: number, height: number) =>
             withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),
         }),
+      }
+    }
+    if (options.viewportScroll) {
+      // 34313: the owner's viewport route reaches the four history rows through THIS handoff, each press under
+      // the same TTY lease as every input action; the public input fixture stays absent on this arm.
+      const viewport = options.viewportScroll
+      probeSource.viewportScroll = {
+        route: viewport.route,
+        press: (step) => withTTYOperation(() => viewport.press(step), out, verify),
       }
     }
     const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-import type { InputFixture } from "@terminfo/probe-defs"
+import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
 import { createInjectedInput, type InputButton, type InputMechanism, type OwnedFrame } from "./input-fixture.ts"
 
@@ -205,17 +205,16 @@ export function ownedHostMechanism(mechanism: InputMechanism, delivered: () => b
  */
 export function keysOnlyMechanism(mechanism: InputMechanism, delivered: () => boolean): InputMechanism {
   const owned = ownedHostMechanism(mechanism, delivered)
-  const refused = (verb: string): never => {
-    throw new Error(`macOS ${verb} refused: this hosted install posts keys only (34313)`)
-  }
+  const refused = (verb: string): Promise<never> =>
+    Promise.reject(new Error(`macOS ${verb} refused: this hosted install posts keys only (34313)`))
   return {
     focus: () => mechanism.focus(),
     // Only pointer placement reads the frame, so the refusal lands before any window read.
-    geometry: async () => refused("pointer placement"),
-    moveTo: async () => refused("pointer movement"),
-    click: async () => refused("a click"),
-    press: async () => refused("a button press"),
-    release: async () => refused("a button release"),
+    geometry: () => refused("pointer placement"),
+    moveTo: () => refused("pointer movement"),
+    click: () => refused("a click"),
+    press: () => refused("a button press"),
+    release: () => refused("a button release"),
     key: (keys) => owned.key(keys),
   }
 }
@@ -390,4 +389,24 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
         : ""),
   )
   return input
+}
+
+/**
+ * A subject owner's viewport route over its keys-only install (34313, @cto cf1ffd6d). The owner holds the step-to-key
+ * map; a refused install keeps the route with its refusal in the label, and every press fails by name, so a row
+ * reports an apparatus TODO instead of losing the route and falling back to the app's declaration.
+ */
+export function viewportScrollRoute(
+  viewport: { readonly route: string; readonly keys: Readonly<Record<ViewportStep, string>> },
+  installed: { readonly input: Pick<InputFixture, "injectKey"> } | { readonly refusal: string },
+): ViewportScroll {
+  if ("refusal" in installed) {
+    const reason = installed.refusal
+    return {
+      route: `${viewport.route}; input not installed: ${reason}`,
+      press: () => Promise.reject(new Error(`viewport input not installed (34313): ${reason}`)),
+    }
+  }
+  const input = installed.input
+  return { route: viewport.route, press: (step) => input.injectKey(viewport.keys[step]) }
 }

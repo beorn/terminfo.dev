@@ -59,6 +59,17 @@ values (@cto 8c084f05). It is deliberately not the declaration above: that one s
 and is removed by a later app version; this one says this run could not reach the read and is removed by a
 later arm. Neither is ever inferred from a failed screenshot.
 
+A subject whose screen and history are read only from pixels can carry a viewport route instead (34313):
+`viewportScroll` on the probe source, `{ route, press(step) }` with the portable steps `pageUp`, `pageDown`, `top`
+and `bottom`. The owner decides it applies from the qualified subject alone — today hosted Alacritty 0.17.0 on
+macOS in this run's own unmultiplexed launch, keyed by its default bindings — before installing keys-only input
+into the window the capture install selected; a refused install keeps the route, names the refusal in `route`,
+and makes every `press` reject by name. The route is checked BEFORE `scrollbackUnavailable`, so Alacritty's
+declaration never stands in for a reader we lack. No capture read returns a qualified scrolled-back frame yet
+(the declared-hold reader refuses every hold), so the four rows return PROBE TODO
+`held-viewport read not available: viewport route "<route>" applies, ...`, press no key and write nothing, until a
+held-frame reader under its own reviewed contract replaces that branch with the measurement.
+
 The owned App collector supplies an optional semantic-state reader. Linux's exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;

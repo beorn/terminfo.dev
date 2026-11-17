@@ -15,6 +15,7 @@ import {
   declaredUntestableResult,
   libvtermHistoryReview,
   sameFrame,
+  heldViewportReadTodo,
 } from "./helpers.ts"
 
 /**
@@ -573,6 +574,8 @@ export function screenEd3Seed(rows: number, cols: number): { history: string; bo
 }
 
 async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const heldTodo = heldViewportReadTodo(ctx)
+  if (heldTodo) return heldTodo
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
   if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {

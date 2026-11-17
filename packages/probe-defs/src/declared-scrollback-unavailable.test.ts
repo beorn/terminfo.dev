@@ -133,3 +133,38 @@ test("an arm-side missing prerequisite is the row's own PROBE TODO reason, never
     expect(declared, `${id} must not declare the app unreadable when only this arm is blind`).toBe(false)
   }
 })
+
+/**
+ * @failure Hosted alacritty 0.17.0 has an applicable viewport route, yet its four history rows report the app's
+ *   declared Untestable ("no pane read") because that declaration is checked first, so a reader WE lack reads as a
+ *   feature the app lacks (34313, @cto cf1ffd6d amendment 4 and the 10:49 held-reader correction).
+ * @level l1
+ * @consumer The four history rows on hosted alacritty 0.17.0, whose owner sets both fields.
+ * @testonly none
+ */
+test("an applicable viewport route makes the rows a named held-read PROBE TODO before the declaration, pressing nothing", async () => {
+  const route = "hosted alacritty 0.17.0 default bindings, keys-only CGEvent"
+  for (const id of ROWS) {
+    const pressed: string[] = []
+    const written: string[] = []
+    const result = await definition(id).term?.(
+      source({
+        scrollbackUnavailable: NO_PANE_READ,
+        write: (text) => void written.push(text),
+        viewportScroll: { route, press: async (step) => void pressed.push(step) },
+      }),
+    )
+    const folded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-11-17T11:00:00.000Z" },
+      assertions: [],
+      ...(result?.notTested ? { coverage: { featureId: id, rawReplyRef: id, ...result.notTested } } : {}),
+    })
+    expect(folded.status, id).toBe("probe-todo")
+    expect(folded.reason, id).toContain("held-viewport read not available")
+    expect(folded.reason, id).toContain(route)
+    expect(result?.tests?.some((entry) => entry.id === DECLARED_UNTESTABLE_TEST) ?? false, id).toBe(false)
+    expect(pressed, `${id} pressed a viewport key with no reader for the frame`).toEqual([])
+    expect(written, `${id} wrote to the terminal on a route that cannot read its result`).toEqual([])
+  }
+})

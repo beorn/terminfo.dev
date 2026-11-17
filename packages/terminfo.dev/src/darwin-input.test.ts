@@ -18,8 +18,10 @@ import {
   DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM,
   DARWIN_INPUT_SELF_TEST_KEYSYM,
   selectDarwinInputWindow,
+  viewportScrollRoute,
   type DarwinInputOptions,
 } from "./darwin-input.ts"
+import { ALACRITTY_0_17_VIEWPORT_KEYS } from "./owned-terminal.ts"
 import { describeInputContract, fakeInputMechanism } from "./testing/input-contract.ts"
 import type { InputMechanism } from "./input-fixture.ts"
 
@@ -354,5 +356,46 @@ describe("macOS input window selection", () => {
       /has no finite width/,
     )
     expect(() => selectDarwinInputWindow("nope", 4242)).toThrow(/is not an array/)
+  })
+})
+
+describe("the viewport route over keys-only input (34313)", () => {
+  const viewport = { route: "hosted alacritty 0.17.0 default bindings", keys: ALACRITTY_0_17_VIEWPORT_KEYS }
+
+  /**
+   * @failure A portable step reaches the app as the wrong key, or as anything but a key, so a page press scrolls
+   *   nothing (or clicks) and the rows read an unmoved viewport as the feature's absence.
+   * @level l1
+   * @consumer The viewport-history rows on hosted alacritty 0.17.0.
+   * @testonly none
+   */
+  it("maps each portable step to its reviewed key and posts nothing else", async () => {
+    const posted: string[] = []
+    const input = {
+      injectKey: async (keys: string) => void posted.push(keys),
+      injectClick: async () => {
+        throw new Error("a viewport step must never click")
+      },
+    }
+    const route = viewportScrollRoute(viewport, { input })
+    expect(route.route).toBe(viewport.route)
+    for (const step of ["pageUp", "pageDown", "top", "bottom"] as const) await route.press(step)
+    expect(posted).toEqual(["shift+Page_Up", "shift+Page_Down", "shift+Home", "shift+End"])
+  })
+
+  /**
+   * @failure A refused keys-only install removes the route, so the rows fall back to the app's declared
+   *   "no pane read" Untestable: our missing input reads as the app's missing feature (@cto cf1ffd6d amendment 4).
+   * @level l1
+   * @consumer The viewport-history rows on a hosted run whose Accessibility grant or self-test failed.
+   * @testonly none
+   */
+  it("keeps the route after a refused install, names the refusal, and fails every press by name", async () => {
+    const route = viewportScrollRoute(viewport, { refusal: "self-test key did not echo" })
+    expect(route.route).toContain(viewport.route)
+    expect(route.route).toContain("input not installed: self-test key did not echo")
+    await expect(route.press("pageUp")).rejects.toThrow(
+      /viewport input not installed \(34313\): self-test key did not echo/,
+    )
   })
 })

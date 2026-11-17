@@ -16,6 +16,7 @@ import {
   createOwnedTerminal,
   formatHostedDarwinAncestry,
   hostedDarwinAppFromExecutablePath,
+  hostedViewportKeys,
   requireHostedDarwinAppAncestor,
   resolveOwnedAppId,
 } from "./owned-terminal.ts"
@@ -1507,4 +1508,40 @@ test.each([
     timeout: 20_000,
   })
   expect(result.status, result.stderr).toBe(0)
+})
+
+// @failure The viewport route is chosen from whether its input installed, or for any hosted app or version, so a
+//   failed install drops alacritty back to "no pane read", or an unreviewed build gets keys whose bindings nobody
+//   read (34313, @cto cf1ffd6d amendment 4).
+// @level l1
+// @consumer The hosted owner record that serve.ts reads before installing keys-only input.
+test("the viewport route applies only to hosted alacritty 0.17.0 on macOS in this run's own unmultiplexed launch", () => {
+  const run = "b".repeat(32)
+  const qualified = {
+    hostedAppId: "alacritty",
+    platform: "darwin",
+    targetVersion: "0.17.0",
+    runId: run,
+    expectedLaunchRunId: run,
+    multiplexed: false,
+  }
+  expect(hostedViewportKeys(qualified)?.viewportKeys.keys).toEqual({
+    pageUp: "shift+Page_Up",
+    pageDown: "shift+Page_Down",
+    top: "shift+Home",
+    bottom: "shift+End",
+  })
+  for (const [change, value] of [
+    ["hostedAppId", "terminal-app"],
+    ["hostedAppId", undefined],
+    ["platform", "linux"],
+    ["targetVersion", "0.16.1"],
+    ["targetVersion", undefined],
+    ["runId", "c".repeat(32)],
+    ["runId", undefined],
+    ["multiplexed", true],
+  ] as const) {
+    expect(hostedViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
+  }
+  expect(hostedViewportKeys({ ...qualified, runId: "", expectedLaunchRunId: "" }), "empty launch id").toBeUndefined()
 })

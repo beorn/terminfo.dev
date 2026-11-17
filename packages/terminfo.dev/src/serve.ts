@@ -47,6 +47,7 @@ import {
   type TextSnapshotDiagnostic,
   type OuterColourControl,
   type InputFixture,
+  type ViewportScroll,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
 import { readThroughSentinel } from "./sentinel-read.ts"
@@ -90,6 +91,7 @@ import {
   createDarwinInput,
   DARWIN_INPUT_HELPER_ENV,
   ownedHostHelperPath,
+  viewportScrollRoute,
 } from "./darwin-input.ts"
 import {
   createOwnedTerminal,
@@ -809,6 +811,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
      */
     let inputInstallFact: string | undefined
+    /** The window the Darwin capture install selected; keys-only viewport input targets exactly it (34313). */
+    let darwinCaptureWindowId: number | undefined
+    /** The subject owner's viewport route, never the public input fixture: only the history rows read it (34313). */
+    let viewportScroll: ViewportScroll | undefined
     const installPixelCapture = (
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
@@ -1080,40 +1086,44 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * Accessibility grant or a key that does not come back through the app's own TTY names the
      * refusal on this run and installs nothing: no probe may read a row this runner never delivered.
      */
-    const installDarwinInput = async (terminal: OwnedTerminal, owned: { windowId: number; windowTty: string }) => {
+    /**
+     * One installer, two routes: an owned host (keys and pointer into the asserted window and tab) or keys only
+     * into the window a hosted capture install selected (34313). The caller decides what the fixture becomes.
+     */
+    const installDarwinInput = async (
+      terminal: OwnedTerminal,
+      owned: { windowId?: number; windowTty?: string },
+      route: "ownedHost" | "keysOnly" = "ownedHost",
+    ): Promise<{ input: InputFixture } | { refusal: string }> => {
       const refuse = (reason: string) => {
         inputInstallFact = `refused: ${reason}`
         out.write(`input not installed: ${reason}\n`)
         // The collector's stdout is the measured terminal, so a refusal kept only there never
         // reaches the artifact. stderr lands in collector.log and rawReplies in run.json.
         process.stderr.write(`collector.inputInstall refused: ${reason}\n`)
+        return { refusal: reason }
       }
       const appPid = terminal.appPid
-      if (!appPid) {
-        refuse(`the verified ${kind} terminal has no measured app PID`)
-        return
-      }
+      if (!appPid) return refuse(`the verified ${kind} terminal has no measured app PID`)
       try {
         // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
         // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
         const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
           if (!captureDirectory) {
-            throw new Error(
-              "macOS input on an owned host builds its helper in the run directory, and this run has none",
-            )
+            throw new Error("macOS input builds its helper in the run directory, and this run has none")
           }
           return buildDarwinInputHelper(
             join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
             join(dirname(captureDirectory), "darwin-input-helper"),
           )
         })
-        input = await createDarwinInput({
+        const installed = await createDarwinInput({
           appPid,
           appName: terminal.hostedAppId ?? kind ?? "macOS app",
           helperPath,
-          // The owner assertion names the run's own window and tab.
+          // The owner assertion names the run's own window and tab; a hosted capture names only its window.
           ...owned,
-          ownedHost: true,
+          ...(route === "ownedHost" ? { ownedHost: true } : { keysOnly: true }),
           log: (line) => process.stderr.write(`collector.input ${line}\n`),
           selfTest: async (inject) => {
             // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
@@ -1134,8 +1144,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             process.stderr.write(`collector.inputInstall ${fact}\n`)
           },
         })
+        return { input: installed }
       } catch (error) {
-        refuse(error instanceof Error ? error.message : String(error))
+        return refuse(error instanceof Error ? error.message : String(error))
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
@@ -1167,6 +1178,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
         onRetained,
       })
+      darwinCaptureWindowId = darwinCapture.installCensus.window.id
       if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
       installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
     }
@@ -1205,10 +1217,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       })
       await installDarwinCapture(ownedTerminal)
       // An owned Mac: keys only, posted to Terminal's pid into the asserted window (@cto 60e39dfc).
-      await installDarwinInput(ownedTerminal, {
+      const installed = await installDarwinInput(ownedTerminal, {
         windowId: options.terminalAppOwner.windowId,
         windowTty: options.terminalAppOwner.tabTty,
       })
+      if ("input" in installed) input = installed.input
     } else if (kind === "process") {
       if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
       ownedTerminal = await createOwnedTerminal({
@@ -1253,6 +1266,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
       await installDarwinCapture(ownedTerminal)
+      // 34313: the route applies from the qualified subject (owned-terminal.ts viewportKeys), so a failed keys-only
+      // install keeps the route and makes every press a named apparatus failure, never a fall back to "no pane read".
+      const viewportKeys = ownedTerminal.viewportKeys
+      if (viewportKeys) {
+        const installed = await installDarwinInput(
+          ownedTerminal,
+          darwinCaptureWindowId === undefined ? {} : { windowId: darwinCaptureWindowId },
+          "keysOnly",
+        )
+        viewportScroll = viewportScrollRoute(viewportKeys, installed)
+      }
     } else if (kind === "windowsHosted") {
       if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
       // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
@@ -1456,6 +1480,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
+                ...(viewportScroll && { viewportScroll }),
                 ...(ownedTerminal && { ownedTerminal }),
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
