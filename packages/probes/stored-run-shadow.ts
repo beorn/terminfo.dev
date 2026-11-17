@@ -41,6 +41,9 @@ export interface ReplayedRow {
   frames: ObservationFrame[]
 }
 
+const errorName = (error: unknown) => (error instanceof Error ? error.name : "Error")
+const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
@@ -293,8 +296,8 @@ export async function shadowStoredRun(
       },
     ).capture
   } catch (error) {
-    if (!(error instanceof IncompleteReplay)) throw error
-    report.runIncomplete = error.message
+    // The bound reader refused the run: an unbound, unparsable or tampered artifact is not replayable.
+    report.runIncomplete = error instanceof IncompleteReplay ? error.message : `${errorName(error)}: ${errorMessage(error)}`
   }
   const excluded = new Map<string, string[]>()
   for (const result of stored.results ?? []) {
@@ -347,7 +350,7 @@ async function shadowRow(
     const reason =
       error instanceof IncompleteReplay
         ? error.message
-        : `replay threw ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`
+        : `replay threw ${errorName(error)}: ${errorMessage(error)}`
     return { featureId, family, outcome: "incomplete", reason }
   }
   const domain = recordReplayedRow({ featureId, ...replayed, rawReplies: {}, assertions: [] })

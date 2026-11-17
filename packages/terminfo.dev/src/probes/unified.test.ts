@@ -39,6 +39,7 @@ import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
+import { shadowStoredRun } from "../../../probes/stored-run-shadow.ts"
 import { currentTrace } from "../../../../docs/data/run-trace.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
@@ -5543,6 +5544,215 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     nativeIdentity.mockRestore()
   }
 }, 60_000)
+
+/**
+ * #30932 S2: record one SGR row through the real collector, with a scripted terminal and a real retained frame,
+ * and save it as a private run. A scripted recording proves source determinism; it is not native evidence.
+ */
+async function recordBoundSgrRun(options: { refusal?: string; ids?: string[] } = {}) {
+  verifiedBatchFixture()
+  let sgrState = "0"
+  process.stdout.write = ((value: string) => {
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const geometry = { cellWidth: 2, cellHeight: 4, textWidth: 160, textHeight: 96 }
+  const sentinel = { form: "basic" as const, rgb: [255, 0, 0] as const }
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-shadow-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
+  let captures = 0
+  const capture = async (request: CaptureRequest & { featureId: string }) => {
+    captures += 1
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+      "base64",
+    )
+    return finishCapture({
+      directory: artifacts,
+      onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+      checkpoint: request,
+      source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
+      png,
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+      trace: {},
+    })
+  }
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: options.ids ?? ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source: probeSource }) => {
+            if (options.refusal !== undefined) {
+              probeSource.captureGeometryRefusal = options.refusal
+              return
+            }
+            probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration", sentinel }
+          },
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
+  return { batch, directory, path, suite: { manifest, sourceRevision } }
+}
+
+/** Edit one saved private run in place, standing in for a stored run whose bytes differ from what was recorded. */
+function rewriteStoredRun(path: string, edit: (run: Record<string, any>) => void) {
+  const run = JSON.parse(readFileSync(path, "utf8")) as Record<string, any>
+  edit(run)
+  writeFileSync(path, JSON.stringify(run, null, 2) + "\n")
+}
+
+describe("#30932 S2 stored-run shadow (scripted recordings prove source determinism only, never native evidence)", () => {
+  it("replays a fresh recording to agree on real timers, counts every row once and leaves the run's bytes alone", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    const stored = JSON.parse(before.toString("utf8")) as { runId: string; suiteId: string; results: unknown[] }
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+    expect(report).toMatchObject({
+      format: "terminfo.shadow-report",
+      version: 1,
+      run: {
+        runId: stored.runId,
+        suiteId: stored.suiteId,
+        sourceRevision,
+        artifact: { path: basename(recorded.path), sha256: createHash("sha256").update(before).digest("hex") },
+      },
+    })
+    expect(report.runIncomplete).toBeUndefined()
+    expect(report.rows).toEqual([
+      { featureId: "sgr.reset", family: "sgr", outcome: "agree", status: "probe-todo", reasonsEqual: true },
+    ])
+    expect(report.families).toEqual([
+      { family: "sgr", rows: 1, agree: 1, disagree: 0, incomplete: 0, notComparable: 0 },
+      { family: "outer-command", rows: 0, agree: 0, disagree: 0, incomplete: 0, notComparable: 0 },
+    ])
+    // Rows outside the shadow stay visible with a reason; none is silently dropped.
+    expect(report.excluded.map(({ reason }) => reason)).toEqual(["not executed in this run"])
+    const counted = report.rows.length + report.excluded.reduce((sum, { rows }) => sum + rows, 0)
+    expect(counted).toBe(stored.results.length)
+  }, 60_000)
+
+  it("reports a disagreement with both statuses and reasons when a stored status differs with complete evidence", async () => {
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.results.find((row: { featureId: string }) => row.featureId === "sgr.reset").status = "probe-invalid"
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    const reason = "graded from a status reply only; this row is decided by what is painted"
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "disagree",
+        stored: { status: "probe-invalid", reason },
+        replayed: { status: "probe-todo", reason },
+      },
+    ])
+    expect(report.families[0]).toMatchObject({ family: "sgr", disagree: 1, agree: 0 })
+  }, 60_000)
+
+  it("names the missing clock on the preserved S1-era log instead of synthesizing its timestamps", async () => {
+    const preClock = readFileSync(
+      new URL("../../../probes/fixtures/s1-sgr-reset-pre-clock.callLog.json", import.meta.url),
+      "utf8",
+    )
+    // The S1-era bytes are kept exactly as they were captured.
+    expect(createHash("sha256").update(preClock).digest("hex").slice(0, 16)).toBe("1ad0590d46bc5998")
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.rawReplies["sgr.reset.callLog"] = preClock
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "incomplete",
+        reason: "Incomplete: call log predates the recorded source clock (sgr.reset)",
+      },
+    ])
+  }, 60_000)
+
+  it("is incomplete, never agree, when the capture binding or the row's log is missing or corrupt", async () => {
+    const tampered = await recordBoundSgrRun()
+    rewriteStoredRun(tampered.path, (run) => {
+      const binding = JSON.parse(run.rawReplies["sgr.reset.captureBinding"])
+      run.rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+        ...binding,
+        calibrationId: "collector.captureCalibration.renewal.1",
+      })
+    })
+    const bindingReport = await shadowStoredRun(tampered.path, tampered.suite)
+    expect(bindingReport.runIncomplete).toMatch(/capture binding names collector.captureCalibration.renewal.1/)
+    expect(bindingReport.rows).toEqual([
+      expect.objectContaining({ featureId: "sgr.reset", outcome: "incomplete", reason: bindingReport.runIncomplete }),
+    ])
+
+    const missing = await recordBoundSgrRun()
+    rewriteStoredRun(missing.path, (run) => {
+      delete run.rawReplies["sgr.reset.callLog"]
+    })
+    const missingReport = await shadowStoredRun(missing.path, missing.suite)
+    expect(missingReport.rows).toEqual([expect.objectContaining({ featureId: "sgr.reset", outcome: "incomplete" })])
+    expect(missingReport.excluded.map(({ reason }) => reason)).toEqual(["not executed in this run"])
+  }, 60_000)
+
+  it("calls an over-time row and a refused capture not-comparable even where the statuses are equal", async () => {
+    const overTime = await recordBoundSgrRun()
+    rewriteStoredRun(overTime.path, (run) => {
+      run.results.find((row: { featureId: string }) => row.featureId === "sgr.reset").harnessOutcome = "probe-exceeded"
+    })
+    expect((await shadowStoredRun(overTime.path, overTime.suite)).rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "not-comparable",
+        input: "harness outcome probe-exceeded",
+        storedStatus: "probe-todo",
+      },
+    ])
+    const refused = await recordBoundSgrRun({ refusal: "fixture refused calibration" })
+    const live = refused.batch.results.find(({ featureId }) => featureId === "sgr.reset")
+    // The live finalizer's refusal kept the same status a replay grades to; it still decides nothing here.
+    expect(live?.status).toBe("probe-todo")
+    const report = await shadowStoredRun(refused.path, refused.suite)
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "not-comparable",
+        input: "harness outcome capture-refused",
+        storedStatus: "probe-todo",
+      },
+    ])
+    expect(report.families[0]).toMatchObject({ notComparable: 1, agree: 0, disagree: 0 })
+  }, 60_000)
+})
 
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
 // Images belong to the callback's run before it is sealed. Existing
