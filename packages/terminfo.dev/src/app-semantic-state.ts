@@ -1497,6 +1497,17 @@ export async function untilAppSemanticRead(
   throw new Error(`App semantic reader did not observe ${name} completion`)
 }
 
+/**
+ * WezTerm `cli get-text --escapes` rows as the OSC 8 reader compares them: hyperlink escapes and their params
+ * kept, the serializer's presentation wrappers (SGR, charset) discarded.
+ */
+export function weztermHyperlinkText(rows: readonly string[]): string {
+  return rows
+    .join("\n")
+    .replace(ANSI_REGEX, (code) => (code.startsWith("\x1b]8;") || code.startsWith("\x9d8;") ? code : ""))
+    .replaceAll("\x1b(B", "")
+}
+
 /** The OSC 133 prompt rows the iTerm2 prompt-mark reader answers (34570). */
 export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
   "extensions.osc133-a",
@@ -2143,6 +2154,11 @@ export async function readAppSemanticState(
       marker: string
     }) => Promise<{ uri: string; detail: object } | { path: string; detail: object }>
     onRetained?: Parameters<typeof retainCaptureArtifact>[3]
+    /**
+     * Private port supplied only by the verified macOS WezTerm owner (34646): the owned pane's top rows from its
+     * bundle CLI `get-text`, already passed through weztermHyperlinkText when `escapes` is set.
+     */
+    readRows?: (escapes: boolean) => Promise<string>
   } & ({ editor: NativeEditorSource; executable?: never } | { editor?: never; executable: LiveExecutable }),
 ): Promise<AppSemanticReading> {
   const detail: { commands: Array<{ argv: string[]; stdout: string }>; phases: object[]; identity?: object } = {
@@ -2237,10 +2253,63 @@ export async function readAppSemanticState(
       detail.commands.push({ argv, stdout })
       return stdout
     }
-    const until = (read: () => string, complete: (value: string) => boolean, name: string) =>
+    const until = (read: () => string | Promise<string>, complete: (value: string) => boolean, name: string) =>
       untilAppSemanticRead(read, complete, name, detail.phases)
     const osc = (body: string) => `\x1b]${body}\x07`
     const nonce = randomUUID().slice(0, 8)
+    /**
+     * The OSC 8 state rows: plain, made-up OSC 888, handled control URI, target id+URI, each read back with its
+     * hyperlink escapes. `readRows` is the owner's text read of the pane's top rows (tmux capture-pane, or the
+     * WezTerm CLI get-text, on Linux or through the macOS owner's port).
+     */
+    const readOsc8 = async (readRows: (escapes: boolean) => string | Promise<string>): Promise<AppSemanticReading> => {
+      let serial = 0
+      const sample = async (number: number, feed: string) => {
+        const marker = `Q-${nonce}-${serial++}`
+        input.write(`\x1b[${number};1H\x1b[2K${feed}${marker}`)
+        await until(
+          () => readRows(false),
+          (value) => value.split("\n")[number - 1]?.includes(marker) === true,
+          "OSC8 marker",
+        )
+        const escaped = await readRows(true)
+        const line = escaped.split("\n")[number - 1]
+        const index = line?.lastIndexOf(marker) ?? -1
+        if (line === undefined || index < 0) throw new Error(`Unreadable OSC8 row${number}`)
+        const value = line.slice(0, index) + line.slice(index + marker.length)
+        detail.phases.push({ number, feed, marker, line, escaped, value })
+        return value
+      }
+      const controlUri = `https://control-${nonce}.invalid/osc8`
+      const targetId = "ex-link-1"
+      const targetUri = "https://terminfo.dev/osc8"
+      input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
+      try {
+        const initial = await sample(1, "linked after ")
+        const unknown = await sample(1, `${osc(`888;id=${targetId};${targetUri}`)}linked${osc("888;;")} after `)
+        const handled = await sample(2, `${osc(`8;;${controlUri}`)}linked${osc("8;;")} after `)
+        const target = await sample(3, `${osc(`8;id=${targetId};${targetUri}`)}linked${osc("8;;")} after `)
+        return {
+          status: "measured",
+          reader: "state",
+          runId: input.runId,
+          unknown: { before: initial, after: unknown },
+          handled: {
+            before: initial,
+            after: handled,
+            expected: `\x1b]8;;${controlUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
+          },
+          target: {
+            before: initial,
+            after: target,
+            expected: `\x1b]8;id=${targetId};${targetUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
+          },
+          detail,
+        }
+      } finally {
+        input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
+      }
+    }
     const readCwdPhases = async <T extends { cwd: string }>(
       initial: T,
       sample: (number: number, feed: string) => Promise<T>,
@@ -2280,6 +2349,21 @@ export async function readAppSemanticState(
       } finally {
         await restore()
       }
+    }
+    const ownedRows = input.readRows
+    if (ownedRows) {
+      // 34646: WezTerm 20240203-110809-5046fc22 on macOS reads OSC 8 through its owner's bundle CLI get-text,
+      // the reader its Linux row already uses (@cto 17dda1f9 named this route when the no-way row was removed).
+      if (
+        input.mux ||
+        appId !== "wezterm" ||
+        env.TERMINFO_TARGET_VERSION !== "20240203-110809-5046fc22" ||
+        input.featureId !== "extensions.osc8"
+      ) {
+        return { status: "unavailable", reason: "No reviewed owned row reader for this App/feature", detail }
+      }
+      detail.identity = { executable: input.executable, runId: input.runId }
+      return await readOsc8(ownedRows)
     }
     const ownedCwd = input.readCwd
     if (ownedCwd) {
@@ -2728,58 +2812,9 @@ export async function readAppSemanticState(
         })
         if (read.status === "refused") throw new Error(read.reason)
         detail.phases.push({ wezterm: JSON.parse(read.receipt) })
-        // Keep hyperlink escapes and their params; only discard the serializer's presentation wrappers.
-        return read.rows
-          .join("\n")
-          .replace(ANSI_REGEX, (code) => (code.startsWith("\x1b]8;") || code.startsWith("\x9d8;") ? code : ""))
-          .replaceAll("\x1b(B", "")
+        return weztermHyperlinkText(read.rows)
       }
-      let serial = 0
-      const sample = async (number: number, feed: string) => {
-        const marker = `Q-${nonce}-${serial++}`
-        input.write(`\x1b[${number};1H\x1b[2K${feed}${marker}`)
-        await until(
-          () => readRows(false),
-          (value) => value.split("\n")[number - 1]?.includes(marker) === true,
-          "OSC8 marker",
-        )
-        const escaped = readRows(true)
-        const line = escaped.split("\n")[number - 1]
-        const index = line?.lastIndexOf(marker) ?? -1
-        if (line === undefined || index < 0) throw new Error(`Unreadable OSC8 row${number}`)
-        const value = line.slice(0, index) + line.slice(index + marker.length)
-        detail.phases.push({ number, feed, marker, line, escaped, value })
-        return value
-      }
-      const controlUri = `https://control-${nonce}.invalid/osc8`
-      const targetId = "ex-link-1"
-      const targetUri = "https://terminfo.dev/osc8"
-      input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
-      try {
-        const initial = await sample(1, "linked after ")
-        const unknown = await sample(1, `${osc(`888;id=${targetId};${targetUri}`)}linked${osc("888;;")} after `)
-        const handled = await sample(2, `${osc(`8;;${controlUri}`)}linked${osc("8;;")} after `)
-        const target = await sample(3, `${osc(`8;id=${targetId};${targetUri}`)}linked${osc("8;;")} after `)
-        return {
-          status: "measured",
-          reader: "state",
-          runId: input.runId,
-          unknown: { before: initial, after: unknown },
-          handled: {
-            before: initial,
-            after: handled,
-            expected: `\x1b]8;;${controlUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
-          },
-          target: {
-            before: initial,
-            after: target,
-            expected: `\x1b]8;id=${targetId};${targetUri}\x1b\\linked\x1b]8;;\x1b\\ after `,
-          },
-          detail,
-        }
-      } finally {
-        input.write("\x1b]8;;\x07\x1b[2J\x1b[3J\x1b[H")
-      }
+      return await readOsc8(readRows)
     }
     if (!tmux || !pane) throw new Error("App state reader has no bound tmux command")
     const command = tmux

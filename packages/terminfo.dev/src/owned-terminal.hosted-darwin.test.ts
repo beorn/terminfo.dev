@@ -468,7 +468,11 @@ test.each([
       }
       const batch = await runProbeBatch({ ids: features, ownedTerminal: owner, captureRunId: "a".repeat(32),
         subject: { kind: "term", id: "wezterm", os: "macos", version: "20240203-110809-5046fc22" } })
-      for (const id of features) {
+      // 34646: OSC 8 is read through the WezTerm owner's bundle CLI port on macOS, never by the original term.
+      const ownedRow = batch.results.find(row => row.featureId === "extensions.osc8")
+      assert.ok(!called.includes("extensions.osc8"), "owned OSC 8 fell back to the original term")
+      assert.notEqual(ownedRow?.reason, "original term extensions.osc8", "owned OSC 8 kept the original term result")
+      for (const id of features.filter(id => id !== "extensions.osc8")) {
         assert.ok(called.includes(id), "original term did not run: " + id + " " + JSON.stringify(batch.results.find(row => row.featureId === id)))
         assert.equal(batch.results.find(row => row.featureId === id)?.reason, "original term " + id,
           "wrapper replaced the original term result: " + id)
