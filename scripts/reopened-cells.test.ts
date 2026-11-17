@@ -240,6 +240,17 @@ describe("loadReopenedCells", () => {
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
     expect(rows).toHaveLength(7)
+    // The set, not only the count: a wrong swap keeps 7 rows, one kind, one os and one reason, so the count
+    // alone would stay green while the file names different cells (@dev/11 carve-out on the 34674 GO).
+    expect(rows.map((row) => `${row.kind}/${row.id}/${row.os}/${row.featureId}`)).toEqual([
+      "mux/screen/linux/editing.decrqcra",
+      "mux/screen/linux/extensions.kitty-graphics",
+      "mux/screen/linux/extensions.osc702-version",
+      "mux/screen/linux/extensions.osc701-locale",
+      "mux/screen/linux/extensions.osc776-cell-size",
+      "mux/screen/linux/extensions.osc7770-font-size",
+      "term/iterm2/macos/sgr.blink",
+    ])
     const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
     expect(criterion).toHaveLength(6)
     expect(new Set(criterion.map((row) => row.kind))).toEqual(new Set(["mux"]))
