@@ -1513,7 +1513,7 @@ describe("held-viewport reader handoff (34693)", () => {
       adopted: 0,
     }
     definition.termWrites = "query"
-    definition.termNeedsGeometry = false
+    delete definition.termNeedsGeometry
     definition.term = async (source) => {
       seen.source = source
       source.viewportScroll?.adoptHold?.()
@@ -1528,7 +1528,7 @@ describe("held-viewport reader handoff (34693)", () => {
           seen.reads++
           seen.routeAtRead = row.source.viewportScroll?.route
           row.record({ frame: { role: "control", ref: frameRef, capturedAt: 1, label: "held reference" }, trace: {} })
-          return Promise.resolve({ status: "unavailable", reason: "geometry", detail: "fixture" } as const)
+          return Promise.resolve({ status: "unavailable", reason: "capture-failed", detail: "fixture" } as const)
         },
       }
     }
@@ -1557,7 +1557,9 @@ describe("held-viewport reader handoff (34693)", () => {
     expect(seen.routeAtRead).toBe("hosted alacritty 0.17.0 fixture route")
     expect(batch.screenshotRefs).toContain(frameRef)
     expect(
-      JSON.parse(batch.rawReplies[id] ?? "{}").captures?.map((c: { frame: ObservationFrame }) => c.frame.ref),
+      (JSON.parse(batch.rawReplies[id] ?? "{}") as { captures?: Array<{ frame: ObservationFrame }> }).captures?.map(
+        (capture) => capture.frame.ref,
+      ),
     ).toEqual([frameRef])
   })
 
