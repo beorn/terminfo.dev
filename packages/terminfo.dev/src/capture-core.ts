@@ -676,6 +676,7 @@ export function locateChangedColour(
   before: CapturedFrame,
   after: CapturedFrame,
   rgb: readonly [number, number, number],
+  sentinelMembers?: ReadonlySet<number>,
 ): { regions: CaptureLocated[]; ignoredPixels: number } {
   if (before.width !== after.width || before.height !== after.height) {
     throw new Error(
@@ -696,7 +697,14 @@ export function locateChangedColour(
         before.rgba[offset + 1] !== after.rgba[offset + 1] ||
         before.rgba[offset + 2] !== after.rgba[offset + 2]
       if (!changed) continue
-      if (after.rgba[offset] !== rgb[0] || after.rgba[offset + 1] !== rgb[1] || after.rgba[offset + 2] !== rgb[2]) {
+      const r = after.rgba[offset] ?? 0
+      const g = after.rgba[offset + 1] ?? 0
+      const b = after.rgba[offset + 2] ?? 0
+      const matches =
+        sentinelMembers !== undefined
+          ? sentinelMembers.has((r << 16) | (g << 8) | b)
+          : r === rgb[0] && g === rgb[1] && b === rgb[2]
+      if (!matches) {
         ignoredPixels++
         continue
       }

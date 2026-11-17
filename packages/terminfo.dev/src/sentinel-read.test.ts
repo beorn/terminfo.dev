@@ -1515,3 +1515,231 @@ test("serve's chooser regions keep a blank or inked pre-paint frame from writing
     }
   }
 })
+
+const packRgbTest = (r: number, g: number, b: number) => (r << 16) | (g << 8) | b
+
+function buildDitheredSentinelFixture() {
+  const bgAnchor: readonly [number, number, number] = [32, 35, 45]
+  const sentinelAnchor: readonly [number, number, number] = [163, 117, 196]
+  const bgTriples: ReadonlyArray<readonly [number, number, number]> = [
+    [32, 35, 45],
+    [31, 35, 45],
+    [33, 35, 45],
+    [32, 34, 45],
+    [32, 36, 45],
+    [32, 35, 44],
+    [32, 35, 46],
+    [31, 36, 45],
+  ]
+  const sentinelTriples: ReadonlyArray<readonly [number, number, number]> = [
+    [163, 117, 196],
+    [162, 117, 196],
+    [164, 117, 196],
+    [163, 116, 196],
+    [163, 118, 196],
+    [163, 117, 195],
+    [163, 117, 197],
+    [162, 118, 196],
+  ]
+  const paintClasses = {
+    background: {
+      anchor: bgAnchor,
+      members: new Set(bgTriples.map(([r, g, b]) => packRgbTest(r, g, b))),
+    },
+    sentinel: {
+      anchor: sentinelAnchor,
+      members: new Set(sentinelTriples.map(([r, g, b]) => packRgbTest(r, g, b))),
+    },
+  }
+  const makeFrame = (
+    origin: { x: number; y: number },
+    opts: {
+      painted?: boolean
+      pair?: { a: { row: number; col: number }; b: { row: number; col: number } }
+      size?: { width: number; height: number }
+      cell?: { width: number; height: number }
+    } = {},
+  ): CapturedFrame => {
+    const size = opts.size ?? { width: 16, height: 12 }
+    const cellSize = opts.cell ?? { width: 2, height: 2 }
+    const rgba = new Uint8Array(size.width * size.height * 4)
+    for (let y = 0; y < size.height; y++) {
+      for (let x = 0; x < size.width; x++) {
+        const [r, g, b] = bgTriples[(x * 3 + y * 5) % bgTriples.length]!
+        rgba.set([r, g, b, 255], (y * size.width + x) * 4)
+      }
+    }
+    const paintAt = (x: number, y: number, colour: readonly number[]) => {
+      if (x < 0 || y < 0 || x >= size.width || y >= size.height) return
+      rgba.set(colour, (y * size.width + x) * 4)
+    }
+    for (let row = cells.top; row <= cells.bottom; row++) {
+      for (let col = cells.left; col <= cells.right; col++) {
+        for (let dy = 0; dy < cellSize.height; dy++) {
+          for (let dx = 0; dx < cellSize.width; dx++) {
+            paintAt(origin.x + (col - 1) * cellSize.width + dx, origin.y + (row - 1) * cellSize.height + dy, [
+              (row * 40 + dy * 7) % 256,
+              (col * 50 + dx * 11) % 256,
+              90,
+              255,
+            ])
+          }
+        }
+      }
+    }
+    if (opts.painted ?? true) {
+      const targetPair = opts.pair ?? chosenPair
+      for (const atCell of [targetPair.a, targetPair.b]) {
+        for (let dy = 0; dy < cellSize.height; dy++) {
+          for (let dx = 0; dx < cellSize.width; dx++) {
+            const x = origin.x + (atCell.col - 1) * cellSize.width + dx
+            const y = origin.y + (atCell.row - 1) * cellSize.height + dy
+            const [r, g, b] = sentinelTriples[(x + y * 3) % sentinelTriples.length]!
+            paintAt(x, y, [r, g, b, 255])
+          }
+        }
+      }
+    }
+    return { width: size.width, height: size.height, rgba }
+  }
+  return { paintClasses, sentinelSpec: { form: "basic" as const, rgb: sentinelAnchor }, makeFrame }
+}
+
+test("readThroughSentinel anchors on dithered occupied background and sentinel paintClasses without mutating raw buffers (34480)", async () => {
+  const { paintClasses, sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
+  const origin = { x: 2, y: 2 }
+  const prePaintFrame = makeFrame(origin, { painted: false })
+  const prePaintSnapshot = new Uint8Array(prePaintFrame.rgba)
+  const paintedFrame = makeFrame(origin, { painted: true })
+  const paintedSnapshot = new Uint8Array(paintedFrame.rgba)
+  const writes = source()
+  const result = await readThroughSentinel({
+    source: writes.source,
+    prePaint: async () => prePaintFrame,
+    capture: async (resolve) => resolve({ frame: paintedFrame, pixelGeometry }),
+    label: "dithered-sentinel-ok",
+    sentinel: sentinelSpec,
+    regions: [cells],
+    reading: origin,
+    cell: { width: 2, height: 2 },
+    settled: {
+      ...settledAt(origin),
+      paintClasses,
+    },
+    deadline: Date.now() + 1_000,
+  })
+  expect(result.origin).toEqual(origin)
+  expect(result.changedOutside).toBe(0)
+  expect(prePaintFrame.rgba).toEqual(prePaintSnapshot)
+  expect(paintedFrame.rgba).toEqual(paintedSnapshot)
+  expect(writes.writes).toEqual([paintOf(chosenPair), clearOf(chosenPair)])
+})
+
+test("an unobserved RGB inside R=1 in a cell, its horizontal neighbour, or its trailing space cell is treated as ink and never overwritten (34480)", async () => {
+  const { paintClasses, sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
+  const origin = { x: 2, y: 2 }
+  // (31, 34, 44) is at Chebyshev distance 1 from (32, 35, 45) but is NOT in paintClasses.background.members.
+  const unobservedR1: readonly [number, number, number, number] = [31, 34, 44, 255]
+
+  for (const contamination of ["candidate cell", "left neighbour cell", "trailing space cell"] as const) {
+    const prePaintFrame = makeFrame(origin, { painted: false })
+    // chosenPair.b is at row 1, col 4 (so col-1=3 and col+1=5 are both in-grid).
+    const targetCol =
+      contamination === "candidate cell"
+        ? chosenPair.b.col
+        : contamination === "left neighbour cell"
+          ? chosenPair.b.col - 1
+          : chosenPair.b.col + 1
+    const px = origin.x + (targetCol - 1) * 2
+    const py = origin.y + (chosenPair.b.row - 1) * 2
+    prePaintFrame.rgba.set(unobservedR1, (py * prePaintFrame.width + px) * 4)
+    const writes = source()
+    await readThroughSentinel({
+      source: writes.source,
+      prePaint: async () => prePaintFrame,
+      capture: async (resolve) => resolve({ frame: makeFrame(origin, { painted: true }), pixelGeometry }),
+      label: `unobserved-${contamination}`,
+      sentinel: sentinelSpec,
+      regions: [cells],
+      reading: origin,
+      cell: { width: 2, height: 2 },
+      settled: { ...settledAt(origin), paintClasses },
+      deadline: Date.now() - 1,
+    }).catch(() => undefined)
+    // Because chosenPair.b (or its left neighbour or trailing space cell) held an unobserved R=1 triple, the chooser must NOT select chosenPair.b!
+    expect(writes.writes[0]).not.toContain(at(chosenPair.b))
+  }
+})
+
+test("a frame dominated by an unobserved colour (including an unobserved R=1 triple) refuses by name before writing any witness cell (34480, @cto)", async () => {
+  const { paintClasses, sentinelSpec } = buildDitheredSentinelFixture()
+  const origin = { x: 2, y: 2 }
+  // Fill the entire 16x12 frame with an unobserved R=1 triple (31, 34, 44) not in paintClasses.background.members.
+  const dominated: CapturedFrame = { width: 16, height: 12, rgba: new Uint8Array(16 * 12 * 4) }
+  for (let offset = 0; offset < dominated.rgba.length; offset += 4) {
+    dominated.rgba.set([31, 34, 44, 255], offset)
+  }
+  const writes = source()
+  await expect(
+    readThroughSentinel({
+      source: writes.source,
+      prePaint: async () => dominated,
+      capture: async (resolve) => resolve({ frame: dominated, pixelGeometry }),
+      label: "dominated-by-unobserved-r1",
+      sentinel: sentinelSpec,
+      regions: [cells],
+      reading: origin,
+      cell: { width: 2, height: 2 },
+      settled: { ...settledAt(origin), paintClasses },
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(
+    /projected frame modal background \(31,34,44\) differs from calibrated background anchor \(32,35,45\)/,
+  )
+  // Refused before paintCells() could write anything to the terminal, and finally still clears only if a pair was chosen.
+  expect(writes.writes).toEqual([])
+})
+
+test("landing-pose pairClearBeforePaint accepts calibrated dithered background and refuses an unobserved R=1 pixel at the landing pose (34480)", () => {
+  const { paintClasses, makeFrame } = buildDitheredSentinelFixture()
+  const cellSize = { width: 2, height: 6 }
+  const size = { width: 16, height: 30 }
+  const ditheredBlank = makeFrame({ x: 0, y: 0 }, { painted: false, size, cell: cellSize })
+  const pair = { a: { row: 3, col: 1 }, b: { row: 1, col: 4 } }
+  // Without backgroundClass, ditheredBlank has 0 exact-uniform cells so pairClearBeforePaint returns false.
+  expect(
+    pairClearBeforePaint({
+      before: ditheredBlank,
+      reading: { x: 0, y: 2 * cellSize.height },
+      cell: cellSize,
+      columns: grid.cols,
+      cells: [pair.a, pair.b],
+    }),
+  ).toBe(false)
+  // With calibrated backgroundClass, the landing pose at +2 rows is recognized as clear.
+  expect(
+    pairClearBeforePaint({
+      before: ditheredBlank,
+      reading: { x: 0, y: 2 * cellSize.height },
+      cell: cellSize,
+      columns: grid.cols,
+      cells: [pair.a, pair.b],
+      backgroundClass: paintClasses.background,
+    }),
+  ).toBe(true)
+  // Put a single unobserved R=1 pixel (31, 34, 44) at the landing pose of pair.a (row 3 + 2 rows shift): must return false.
+  const contaminated = { width: size.width, height: size.height, rgba: new Uint8Array(ditheredBlank.rgba) }
+  const landingY = (pair.a.row + 2 - 1) * cellSize.height
+  const landingX = (pair.a.col - 1) * cellSize.width
+  contaminated.rgba.set([31, 34, 44, 255], (landingY * size.width + landingX) * 4)
+  expect(
+    pairClearBeforePaint({
+      before: contaminated,
+      reading: { x: 0, y: 2 * cellSize.height },
+      cell: cellSize,
+      columns: grid.cols,
+      cells: [pair.a, pair.b],
+      backgroundClass: paintClasses.background,
+    }),
+  ).toBe(false)
+})

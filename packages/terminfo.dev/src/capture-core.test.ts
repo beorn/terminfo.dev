@@ -15,6 +15,7 @@ import {
   cellRectangle,
   command,
   finishCapture,
+  locateChangedColour,
   locateColour,
   retain,
   type CapturedFrame,
@@ -608,4 +609,45 @@ test("a region that leaves the frame refuses by name and never shrinks to fit (3
       changedOutside: 7,
     }),
   ).toThrow(/sentinel witness cells 2,3 at 29,184 and 1,4 at 42,155; 7 px changed outside those boxes/)
+})
+
+test("locateChangedColour admits only changed pixels in the calibrated sentinel member set, while locateColour stays exact (34480)", () => {
+  const pack = (r: number, g: number, b: number) => (r << 16) | (g << 8) | b
+  const sentinelMembers = new Set<number>([pack(163, 117, 196), pack(162, 117, 196), pack(164, 116, 197)])
+  const before: CapturedFrame = {
+    width: 4,
+    height: 2,
+    rgba: new Uint8Array([
+      32, 35, 45, 255, 32, 35, 45, 255, 162, 117, 196, 255, 32, 35, 45, 255, 32, 35, 45, 255, 32, 35, 45, 255, 32, 35,
+      45, 255, 32, 35, 45, 255,
+    ]),
+  }
+  const after: CapturedFrame = {
+    width: 4,
+    height: 2,
+    rgba: new Uint8Array([
+      // (0,0) and (1,0): changed to two occupied sentinel members -> 2x1 box at 0,0
+      163, 117, 196, 255, 162, 117, 196, 255,
+      // (2,0): UNCHANGED even though its RGB is in sentinelMembers -> must NOT be counted
+      162, 117, 196, 255,
+      // (3,0): changed to an UNOBSERVED R=1 neighbour (163,118,196) -> ignoredPixels++
+      163, 118, 196, 255, 32, 35, 45, 255, 32, 35, 45, 255, 32, 35, 45, 255, 32, 35, 45, 255,
+    ]),
+  }
+  const withMembers = locateChangedColour(before, after, [163, 117, 196], sentinelMembers)
+  expect(withMembers).toEqual({
+    regions: [{ box: { x: 0, y: 0, width: 2, height: 1 }, pixels: 2 }],
+    ignoredPixels: 1,
+  })
+  // Without sentinelMembers, only the exact anchor (0,0) matches.
+  const exactOnly = locateChangedColour(before, after, [163, 117, 196])
+  expect(exactOnly).toEqual({
+    regions: [{ box: { x: 0, y: 0, width: 1, height: 1 }, pixels: 1 }],
+    ignoredPixels: 2,
+  })
+  // Generic locateColour stays exact single-RGB and never matches the R=1 dither neighbour at (1,0) or (2,0).
+  expect(locateColour(after, [163, 117, 196])).toEqual({
+    box: { x: 0, y: 0, width: 1, height: 1 },
+    pixels: 1,
+  })
 })

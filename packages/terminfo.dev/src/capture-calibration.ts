@@ -346,6 +346,16 @@ interface PaintColorClass {
   readonly triples: readonly RgbTriple[]
 }
 
+export interface CalibratedPaintClass {
+  readonly anchor: RgbTriple
+  readonly members: ReadonlySet<number>
+}
+
+export interface CalibratedPaintClasses {
+  readonly background: CalibratedPaintClass
+  readonly sentinel: CalibratedPaintClass
+}
+
 function packRgb(red: number, green: number, blue: number): number {
   return (red << 16) | (green << 8) | blue
 }
@@ -738,6 +748,25 @@ const findColumnStripeClasses = (
   throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
 }
 
+const findBackgroundPaintClass = (
+  before: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+  witnessClass: PaintColorClass,
+): PaintColorClass => {
+  const beforeOccupied = unmaskedOccupied(before, grid, filletMask)
+  const backgroundPacked = [...beforeOccupied.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0]
+  if (backgroundPacked === undefined) throw refusal("Capture calibration before grid: no unmasked pixels")
+  const backgroundClass = buildPaintColorClass(beforeOccupied, unpackRgb(backgroundPacked))
+  const separation = minClassDistance(backgroundClass, witnessClass)
+  if (separation < CLASS_SEPARATION_MIN) {
+    throw refusal(
+      `Capture calibration solid: background class (${backgroundClass.anchor.join(",")}) and witness class (${witnessClass.anchor.join(",")}) are separated by ${separation} < ${CLASS_SEPARATION_MIN} codes`,
+    )
+  }
+  return backgroundClass
+}
+
 /** Same owned run, complete raster edges, exact integer geometry, witnessed identical restore. */
 export async function calibrateCaptureOrigin({
   ctx,
@@ -755,7 +784,13 @@ export async function calibrateCaptureOrigin({
   collectorLaunched?: boolean
   /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
-}): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }> {
+}): Promise<
+  NamedTextOrigin & {
+    pixelGeometry: CapturePixelGeometry
+    sentinel: CalibrationSentinel
+    paintClasses?: CalibratedPaintClasses
+  }
+> {
   if (
     chromeBand &&
     (!Number.isSafeInteger(chromeBand.y) ||
@@ -843,7 +878,13 @@ export async function calibrateCaptureOrigin({
     return { equalOutside: true, changed }
   }
   const excused: Array<{ stage: string; changed: number }> = []
-  let result: (NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }) | undefined
+  let result:
+    | (NamedTextOrigin & {
+        pixelGeometry: CapturePixelGeometry
+        sentinel: CalibrationSentinel
+        paintClasses?: CalibratedPaintClasses
+      })
+    | undefined
   const eraseVisibleGrid = collectorLaunched
     ? Array.from({ length: ctx.rows }, (_unused, row) => cursorTo(row, 0) + clearLine()).join("") + cursorHome()
     : "\x1b[2J\x1b[H"
@@ -884,6 +925,7 @@ export async function calibrateCaptureOrigin({
       witnessClass,
     )
     const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
+    const backgroundClass = findBackgroundPaintClass(before, grid, filletMask, witnessClass)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
     if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
       throw refusal(
@@ -1040,6 +1082,10 @@ export async function calibrateCaptureOrigin({
       basisKind: "calibration witnessed raster",
       pixelGeometry: measured,
       sentinel: { form, rgb: [red, green, blue] },
+      paintClasses: {
+        background: { anchor: backgroundClass.anchor, members: backgroundClass.members },
+        sentinel: { anchor: witnessClass.anchor, members: witnessClass.members },
+      },
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
       basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }

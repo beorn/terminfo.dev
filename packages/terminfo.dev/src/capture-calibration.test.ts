@@ -1674,3 +1674,49 @@ test.each(["flat dithered solid frame", "1-code change at 1 pixel inside before'
     })
   },
 )
+
+test("calibration returns collector-local occupied background and sentinel paintClasses and refuses when their classes are closer than G=16 (34480)", async () => {
+  const before = ditheredBaseFrame(12, 12)
+  const solid = ditheredStageFrame(before, "solid")
+  const columns = ditheredStageFrame(before, "columns")
+  const rowsFrame = ditheredStageFrame(before, "rows")
+  // Chrome outside the 8x8 grid at (2,2) carries a distinct title-bar colour (30,30,30) that must NOT enter background.members.
+  before.rgba.set([30, 30, 30, 255], 0)
+  solid.rgba.set([30, 30, 30, 255], 0)
+  columns.rgba.set([30, 30, 30, 255], 0)
+  rowsFrame.rgba.set([30, 30, 30, 255], 0)
+  const ok = await calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  }).promise
+  expect(ok.paintClasses).toBeDefined()
+  expect(ok.paintClasses?.background.anchor).toEqual([32, 35, 45])
+  expect(ok.paintClasses?.sentinel.anchor).toEqual([163, 117, 196])
+  expect(ok.paintClasses?.background.members.has((30 << 16) | (30 << 8) | 30)).toBe(false)
+  expect(ok.paintClasses?.background.members.has((32 << 16) | (35 << 8) | 45)).toBe(true)
+  expect(ok.paintClasses?.sentinel.members.has((163 << 16) | (117 << 8) | 196)).toBe(true)
+
+  // A solid witness whose occupied R=1 class is separated from the unmasked before background class by 15 < 16 codes refuses.
+  const closeSolid = ditheredStageFrame(before, "solid", { solidMode: [32, 35, 62] })
+  const closeRun = calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [closeSolid, closeSolid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  await expect(closeRun.promise).rejects.toThrow(
+    /background class .* and witness class .* are separated by 15 < 16 codes/,
+  )
+})
