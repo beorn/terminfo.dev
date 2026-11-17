@@ -353,8 +353,8 @@ function coordRange(value: unknown, label: string): ITermCoordRange {
   return { start: coord(range.start, "start"), end: coord(range.end, "end") }
 }
 
-/** Map one decoded GetPromptResponse, keeping field presence; exported for its own decode tests. */
-export function iTermPromptReadOf(response: Record<string, unknown>): ITermPromptRead {
+/** Map one decoded GetPromptResponse, keeping field presence. */
+function iTermPromptReadOf(response: Record<string, unknown>): ITermPromptRead {
   const status = response.status === undefined ? 0 : Number(response.status)
   if (status === 3) return { status: "prompt-unavailable" }
   if (status !== 0) {

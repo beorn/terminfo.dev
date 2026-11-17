@@ -128,6 +128,22 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode"])(
     } else {
       assert.equal(typeof owner.readCells, "function")
       assert.equal(owner.textRecipe, app === "iterm2" ? "iterm2-api-text-cells-v1" : "macos-text-cells-v1")
+      // 34570: only the hosted iTerm2 tab reads its own prompt marks, and only for the prompt rows;
+      // every other row keeps its own callback.
+      if (app === "iterm2") {
+        assert.equal(typeof owner.readAppSemanticState, "function")
+        assert.deepEqual([...owner.appSemanticStateFeatures].sort(), [
+          "extensions.osc133-a",
+          "extensions.osc133-b",
+          "extensions.osc133-c",
+          "extensions.osc133-d",
+          "extensions.osc133-p",
+          "extensions.semantic-prompts",
+        ])
+      } else {
+        assert.equal(owner.readAppSemanticState, undefined)
+        assert.equal(owner.appSemanticStateFeatures, undefined)
+      }
     }
     await owner.dispose()
   `
@@ -518,7 +534,10 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
         const bytes = Buffer.from("native server frame " + nativeReplies.length)
         nativeReplies.push(bytes); onReply(bytes)
         return { status: "refused", reason: "interior uninitialized cell" }
-      }
+      },
+      withITermPromptSession: async () => {
+        throw new Error("This cell-read fixture never opens a prompt session")
+      },
     }))
     mock.module("node:child_process", () => ({ ...cp,
       execFileSync: (command, args) => {

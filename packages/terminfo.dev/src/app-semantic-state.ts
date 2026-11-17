@@ -1482,21 +1482,23 @@ export async function readITermPromptMarks(input: {
         }
       }
       baselineId = baseline.read.mark.uniquePromptId
-      const unknown = await phase("unknown", osc("133;Z"))
-      const handled = await phase("handled", "", `terminfo-control-${nonce}`)
-      const before = describe(handled.read)
       const finishedMark = { mark: "same", state: "FINISHED", command: "set", output: "set", exit: 0 }
       const row = ITERM_PROMPT_ROWS[input.featureId]
       if (!row) throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
       // The row's experiment holds only from its assumed starting mark. A baseline that did not reach it
       // is reported, never graded: a target compared against the wrong start could read as unsupported.
-      if (JSON.stringify(before) !== JSON.stringify(row.from ?? finishedMark)) {
+      // The controls run from that start, so an unknown letter that moves the mark fails the controls.
+      const start = describe(baseline.read)
+      if (JSON.stringify(start) !== JSON.stringify(row.from ?? finishedMark)) {
         return {
           status: "invalid",
-          reason: `iTerm2 prompt mark did not reach this row's baseline ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(before)}`,
+          reason: `iTerm2 prompt mark did not reach this row's baseline ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(start)}`,
           detail,
         }
       }
+      const unknown = await phase("unknown", osc("133;Z"))
+      const handled = await phase("handled", "", `terminfo-control-${nonce}`)
+      const before = describe(handled.read)
       const after: object[] = []
       for (const [index, feed] of row.feeds.entries()) {
         after.push(describe((await phase(`target-${index}`, feed(nonce))).read))

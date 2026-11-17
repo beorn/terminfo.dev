@@ -1,0 +1,148 @@
+/**
+ * @failure The iTerm2 prompt-mark reader certifies a row from another row's read, grades a row that never
+ *   reached its starting mark, reads PROMPT_UNAVAILABLE as a missing integration, or opens the API for P.
+ * @level l1
+ * @consumer OwnedTerminal.readAppSemanticState on the hosted iTerm2 arm, graded by gradeAppSemanticState.
+ * @testonly none
+ */
+import { expect, test } from "vitest"
+import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
+import { readITermPromptMarks } from "./app-semantic-state.ts"
+import type { ITermPromptMark, ITermPromptRead, ITermPromptSession } from "./iterm2-protocol.ts"
+
+/**
+ * A fake iTerm2 session with 3.6.11's mark rules (PTYSession getPromptResponseForMark): A adds a mark,
+ * B sets its command range, C its output start (RUNNING), D;n its code (FINISHED). Each variant breaks
+ * exactly one rule, so each row's verdict follows from the rule it names.
+ */
+function fakeITerm(variant: { ignore?: string; noMarks?: boolean; zAddsMark?: boolean; markAtB?: boolean } = {}) {
+  const marks: { id: string; command: boolean; output: boolean; code?: number }[] = []
+  let fence: unknown = null
+  let opened = 0
+  const writes: string[] = []
+  const add = (command = false) => marks.push({ id: `mark-${marks.length}`, command, output: false })
+  const write = (text: string) => {
+    writes.push(text)
+    const sequences = /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07/g
+    for (const [, letter, code, value] of text.matchAll(sequences)) {
+      if (value !== undefined) {
+        fence = Buffer.from(value, "base64").toString()
+        continue
+      }
+      const last = marks.at(-1)
+      if (variant.noMarks || letter === variant.ignore) continue
+      if (letter === "A" && !variant.markAtB) add()
+      else if (letter === "B" && variant.markAtB) add(true)
+      else if (letter === "B" && last) last.command = true
+      else if (letter === "C" && last) last.output = true
+      else if (letter === "D" && last) last.code = Number(code ?? 0)
+      else if (letter === "Z" && variant.zAddsMark) add()
+    }
+  }
+  const range = { start: { x: 0, y: "1" }, end: { x: 1, y: "1" } }
+  const session: ITermPromptSession = {
+    readUserVariable: async () => fence,
+    readPrompt: async (): Promise<ITermPromptRead> => {
+      const last = marks.at(-1)
+      if (!last) return { status: "prompt-unavailable" }
+      const mark: ITermPromptMark = {
+        uniquePromptId: last.id,
+        promptRange: range,
+        promptState: last.code !== undefined ? "FINISHED" : last.output ? "RUNNING" : "EDITING",
+        ...(last.command && { commandRange: range }),
+        ...(last.output && { outputRange: range }),
+        ...(last.code !== undefined && { exitStatus: last.code }),
+      }
+      return { status: "mark", mark }
+    },
+  }
+  return {
+    writes,
+    opened: () => opened,
+    read: (featureId: string) =>
+      readITermPromptMarks({
+        featureId,
+        runId: "run-1",
+        write,
+        withSession: async (work) => {
+          opened++
+          return work(session)
+        },
+      }),
+  }
+}
+
+/** A decided verdict: a pass value and a test status that is not one of the pending probe-* statuses. */
+const decided = (reading: Awaited<ReturnType<typeof readITermPromptMarks>>) => {
+  const graded = gradeAppSemanticState(reading)
+  const status = graded.tests?.[0]?.status ?? "decided"
+  return status.startsWith("probe-") ? `pending ${status}: ${graded.note ?? ""}` : graded.pass
+}
+
+test.each([
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.semantic-prompts",
+])("%s is decided supported from its own fresh mark read", async (featureId) => {
+  const iterm = fakeITerm()
+  const reading = await iterm.read(featureId)
+  expect(decided(reading), JSON.stringify(reading)).toBe(true)
+  expect(reading.status === "measured" && reading.runId).toBe("run-1")
+})
+
+// Each letter decides only its own row: an app that drops one letter is unsupported on that row alone.
+// (Dropping A leaves no mark at all, so that app reads as PROMPT_UNAVAILABLE, tested below.)
+test.each([
+  ["B", "extensions.osc133-b"],
+  ["C", "extensions.osc133-c"],
+  ["D", "extensions.osc133-d"],
+])("an app ignoring %s is unsupported on %s", async (letter, featureId) => {
+  const reading = await fakeITerm({ ignore: letter }).read(featureId)
+  expect(decided(reading), JSON.stringify(reading)).toBe(false)
+})
+
+// Every other row's start passes through B, so an app without B leaves them unbased, never graded:
+// only the B row itself is decided (unsupported, above).
+test.each(["extensions.osc133-a", "extensions.osc133-c", "extensions.osc133-d", "extensions.semantic-prompts"])(
+  "without B, %s is reported unbased rather than graded",
+  async (featureId) => {
+    expect(decided(await fakeITerm({ ignore: "B" }).read(featureId))).toMatch(
+      /^pending probe-invalid: iTerm2 prompt mark did not reach this row's baseline/,
+    )
+  },
+)
+
+test("PROMPT_UNAVAILABLE stays the API's own status, not a missing shell integration", async () => {
+  const reading = await fakeITerm({ noMarks: true }).read("extensions.osc133-a")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  const reason = reading.status === "unavailable" ? reading.reason : ""
+  expect(reason).toContain("PROMPT_UNAVAILABLE")
+  expect(reason).toContain("not proof shell integration is absent")
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
+
+test("an unknown OSC 133 letter that adds a mark fails the row's controls", async () => {
+  const graded = gradeAppSemanticState(await fakeITerm({ zAddsMark: true }).read("extensions.osc133-c"))
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expect(graded.note).toBe("App semantic-state controls failed in this row")
+})
+
+// A mark that only appears at B means the B row never starts from "A seen, command unset": it is
+// reported invalid with what was read, never graded unsupported against the wrong start.
+test("a row whose baseline mark differs from its assumed start is invalid, not unsupported", async () => {
+  const reading = await fakeITerm({ markAtB: true }).read("extensions.osc133-b")
+  const graded = gradeAppSemanticState(reading)
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expect(graded.note).toContain("did not reach this row's baseline")
+})
+
+test("osc133-p stays unresolved and never opens the API", async () => {
+  const iterm = fakeITerm()
+  const reading = await iterm.read("extensions.osc133-p")
+  expect(iterm.opened()).toBe(0)
+  expect(iterm.writes).toEqual([])
+  expect(reading).toMatchObject({ status: "unavailable" })
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
