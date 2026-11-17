@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdirSync, readFileSync, realpathSync } from "node:fs"
+import { mkdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
@@ -7,6 +7,35 @@ import type { ProbeCapture } from "./probes/unified.ts"
 export interface LiveExecutable {
   path: string
   sha256: string
+}
+
+/**
+ * Successful byte measurements of live executables (34549, @cto 1c9a7980). Hashing a 12-29 MB terminal
+ * binary twice per capture pushed sgr.blink's samples past their gap bound, so a success is reused,
+ * but only for the same expected path and digest, the same process lifetime (pid AND its start time,
+ * so pid reuse is a new key), and the same image file (device, inode, size, mtime, ctime of
+ * /proc/<pid>/exe, so an exec into another image or a replaced file is a new key). A file a running
+ * process executes cannot be written (ETXTBSY) and any write moves ctime, so a key seen before names
+ * the bytes that were hashed. Insertion-ordered and bounded; the oldest entry goes first.
+ */
+const verifiedExecutables = new Set<string>()
+const VERIFIED_EXECUTABLE_LIMIT = 64
+
+/**
+ * The reuse key of one live process image. A /proc entry that cannot be read throws here, as the hash
+ * read below would; a start time that cannot be parsed is a broken /proc contract and throws too.
+ */
+function liveExecutableKey(pid: number, expected: LiveExecutable): string {
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+  const file = statSync(`/proc/${pid}/exe`, { bigint: true })
+  // Field 22 (starttime) is the 20th after the parenthesised command name, which may itself hold spaces.
+  const startTime = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
+  if (startTime === undefined || !/^\d+$/.test(startTime)) {
+    throw new Error(`Live executable start time unreadable for PID ${pid}`)
+  }
+  return [expected.path, expected.sha256, pid, startTime, file.dev, file.ino, file.size, file.mtimeNs, file.ctimeNs]
+    .map(String)
+    .join(":")
 }
 
 /** Bind a launched process to the same actual ELF bytes recorded by the launcher. */
@@ -21,8 +50,15 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
   const path = realpathSync(`/proc/${pid}/exe`)
   if (path !== expected.path) throw new Error(`Live executable path mismatch for PID ${pid}: ${path}`)
+  const key = liveExecutableKey(pid, expected)
+  if (verifiedExecutables.has(key)) return
   if (digest(readFileSync(`/proc/${pid}/exe`)) !== expected.sha256) {
     throw new Error(`Live executable digest mismatch for PID ${pid}`)
+  }
+  verifiedExecutables.add(key)
+  if (verifiedExecutables.size > VERIFIED_EXECUTABLE_LIMIT) {
+    const oldest = verifiedExecutables.values().next().value
+    if (oldest !== undefined) verifiedExecutables.delete(oldest)
   }
 }
 
