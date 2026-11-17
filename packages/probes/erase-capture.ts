@@ -5,7 +5,8 @@ import { isAbsolute, join, relative } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { RunDraft, ProbeSubject, HeadlessRuntimeIdentity, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseJsonStrict } from "@terminfo/run-parser"
-import { readCallLog, IncompleteReplay } from "viprobe"
+import { readCallLog, withCallLog, IncompleteReplay, type CallLog } from "viprobe"
+import { CAPTURE_BINDING_SUFFIX, CaptureBindingMalformed, parseCaptureBinding, type CaptureBinding } from "@terminfo/probe-defs"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 
@@ -116,13 +117,14 @@ export function readProbeCapture(
     const key = result.featureId + ".callLog"
     const raw = capture.rawReplies[key]
     if (raw === undefined) continue
-    readCallLog(parseJsonStrict(key, raw), {
+    const log = readCallLog(parseJsonStrict(key, raw), {
       onOperation(operation) {
         if (operation.path === "context.capture" && "value" in operation.outcome) {
           frameReference(operation.outcome.value)
         }
       },
     })
+    checkCaptureBinding(capture.rawReplies, result.featureId, log)
   }
   const manifestRaw = capture.rawReplies["collector.traceManifest"]
   if (manifestRaw !== undefined || references.length) {
@@ -201,3 +203,63 @@ export function readEraseCapture(
   }
   return { capture, log }
 }
+
+/**
+ * #30932 S1: one row's stored association to the capture installation it was handed, validated, or
+ * undefined when the row has none. A malformed record, or one naming an installation this run did not
+ * record, is a named incomplete replay; the stored status of the row is never touched here.
+ */
+export function readCaptureBinding(
+  rawReplies: Readonly<Record<string, string>>,
+  featureId: string,
+): CaptureBinding | undefined {
+  const raw = rawReplies[featureId + CAPTURE_BINDING_SUFFIX]
+  if (raw === undefined) return undefined
+  let binding: CaptureBinding
+  try {
+    binding = parseCaptureBinding(parseJsonStrict(featureId + CAPTURE_BINDING_SUFFIX, raw))
+  } catch (error) {
+    if (error instanceof CaptureBindingMalformed) {
+      throw new IncompleteReplay(`replay-incomplete: ${error.message} (${featureId})`)
+    }
+    throw error
+  }
+  if (rawReplies[binding.calibrationId + ".callLog"] === undefined) {
+    throw new IncompleteReplay(
+      `replay-incomplete: capture binding names ${binding.calibrationId}, which this run did not record (${featureId})`,
+    )
+  }
+  return binding
+}
+
+/** The capture geometry the recorded callback context was handed, read without consuming a call. */
+function recordedCaptureGeometry(log: CallLog): unknown {
+  const session = withCallLog<{ captureGeometry?: unknown }>(null, { mode: "replay", log })
+  try {
+    const recorded = session.context.captureGeometry
+    return recorded === undefined ? undefined : JSON.parse(JSON.stringify(recorded))
+  } finally {
+    session.abandon()
+  }
+}
+
+/**
+ * A recorded callback that was handed measured geometry must name the installation it came from, and
+ * the two must agree: the association is evidence beside the context, never a second value for it.
+ */
+function checkCaptureBinding(rawReplies: Readonly<Record<string, string>>, featureId: string, log: CallLog): void {
+  const binding = readCaptureBinding(rawReplies, featureId)
+  const recorded = recordedCaptureGeometry(log)
+  // A TTY-only log records no callback context; its row's association is validated above and the
+  // geometry comparison applies only where a context was recorded.
+  if (recorded === undefined) return
+  if (binding === undefined) {
+    throw new IncompleteReplay(`replay-incomplete: no capture binding recorded (run predates it) (${featureId})`)
+  }
+  if (binding.outcome !== "installed" || !isDeepStrictEqual(binding.captureGeometry, recorded)) {
+    throw new IncompleteReplay(
+      `replay-incomplete: capture binding differs from the geometry the recorded callback was handed (${featureId})`,
+    )
+  }
+}
+

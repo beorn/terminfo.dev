@@ -1,5 +1,14 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
+export {
+  CAPTURE_BINDING_FORMAT,
+  CAPTURE_BINDING_SUFFIX,
+  CAPTURE_BINDING_VERSION,
+  CaptureBindingMalformed,
+  captureBinding,
+  parseCaptureBinding,
+  type CaptureBinding,
+} from "./capture-binding.ts"
 export type { SourceAnswerSubject } from "./source-answers.ts"
 export type {
   HostInputName,

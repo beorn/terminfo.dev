@@ -34,7 +34,7 @@ import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
-import { readProbeCapture } from "../../../probes/erase-capture.ts"
+import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
@@ -5105,6 +5105,127 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     nativeIdentity.mockRestore()
   }
   expect(readFileSync(path)).toEqual(bytes)
+})
+
+// #30932 S1 (@cto PROCEED 1220, R4): the real positive beside the negative control above. A
+// collector-installed measured raster reaches the SGR callback, the batch persists the row's
+// association to the calibration it used, the bound reader validates that association, and the
+// callback replays offline with every live route forbidden, keeping the live status and order.
+it("binds an SGR row to its installed calibration and replays it offline with the live status", async (context) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  let sgrState = "0"
+  process.stdout.write = ((value: string) => {
+    writes.push(value)
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
+  const sentinel = { row: 24, col: 80 }
+  const captured: Array<{ label: string; pixelGeometry: unknown }> = []
+  let captures = 0
+  const capture = async ({ role, label, pixelGeometry }: { role: "control" | "target"; label: string; pixelGeometry?: unknown }) => {
+    captures += 1
+    captured.push({ label, pixelGeometry })
+    const digest = (kind: string) => `sha256:${createHash("sha256").update(`${kind}:${label}`).digest("hex")}`
+    return {
+      frame: {
+        role,
+        label,
+        capturedAt: captured.length,
+        ref: digest("encoded"),
+        pixelsDigest: digest("whole"),
+        regionDigest: digest("cells"),
+        controlRegionDigest: digest("control"),
+        regionRectangle: { x: 0, y: 0, width: 64, height: 16 },
+      },
+      trace: {},
+    }
+  }
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source: probeSource }) => {
+            probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration", sentinel }
+          },
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  const live = batch.results.find(({ featureId }) => featureId === "sgr.reset")
+  if (!live) throw new Error("Missing live SGR reset row")
+  // The measured raster, never a query-derived size, is what the row's crops used.
+  expect(captured.length).toBeGreaterThan(0)
+  for (const request of captured) expect(request.pixelGeometry).toEqual(geometry)
+  expect(JSON.parse(batch.rawReplies["sgr.reset.captureBinding"]!)).toEqual({
+    format: "terminfo.capture-binding",
+    version: 1,
+    calibrationId: "collector.captureCalibration",
+    outcome: "installed",
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-capture-binding-"))
+  receiptDirectories.push(directory)
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
+  const bytes = readFileSync(path)
+  const source = {
+    kind: "trace" as const,
+    trace: { path: basename(path), sha256: createHash("sha256").update(bytes).digest("hex") },
+    captureRunId: draft.runId,
+    captureSuiteId: draft.suiteId,
+    captureSourceRevision: draft.sourceRevision,
+  }
+  const expected = { manifest, sourceRevision, subject: draft.subject }
+  const { capture: validated } = readProbeCapture(directory, source, expected)
+  expect(readCaptureBinding(validated.rawReplies, "sgr.reset")).toMatchObject({
+    calibrationId: "collector.captureCalibration",
+    outcome: "installed",
+  })
+  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.reset.callLog"]!))
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  expect(replay.context.captureGeometry?.geometry).toEqual(geometry)
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.reset")?.term
+  if (!callback) throw new Error("Missing SGR reset callback")
+  const beforeReplay = writes.length
+  const liveCaptures = captures
+  const result = await callback(replay.context)
+  replay.finish()
+  expect(writes).toHaveLength(beforeReplay)
+  expect(captures).toBe(liveCaptures)
+  expect(result.tests?.map(({ id, status }) => ({ id, status }))).toEqual(
+    live.tests.map(({ id, status }) => ({ id, status })),
+  )
+  const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
+    throw new Error("Offline SGR assertion attempted native runtime discovery")
+  })
+  try {
+    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
+    for (const assertion of record.assertions) {
+      const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
+      expect(replayed?.status).toBe(live.status)
+    }
+  } finally {
+    nativeIdentity.mockRestore()
+  }
 })
 
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.

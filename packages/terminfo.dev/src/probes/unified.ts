@@ -76,6 +76,7 @@ import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipbo
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
+import { CAPTURE_BINDING_SUFFIX, captureBinding } from "@terminfo/probe-defs"
 import {
   ownedTerminalVerifiedFor,
   ownedTerminalProcessBasisFor,
@@ -669,6 +670,9 @@ export async function runProbeBatch(
   let capturePreparations = 0
   let captureGeometry: TermProbeSource["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
+  // #30932 S1: the preparation every later row's crops are measured against, by the id its own
+  // paint log is retained under, so a replayed row names the installation it actually used.
+  let activeCalibrationId: string | undefined
   const recordCapture = (
     featureId: string,
     captures: CapturedProbeFrame[],
@@ -1447,9 +1451,17 @@ export async function runProbeBatch(
         calibrationId,
         calibrationId === "collector.captureCalibration" ? undefined : probe.id,
       )
+      activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
+    }
+    // #30932 S1 (@cto 1220): associate this row with the installation it is handed, as evidence
+    // beside its call log. The geometry is the one the callback context carries; nothing here
+    // re-derives it, and a renewal inside the callback stays ordered in that row's own call log.
+    if (options.prepareCapture && activeCalibrationId !== undefined) {
+      const binding = captureBinding(activeCalibrationId, probeSource)
+      if (binding) batch.rawReplies[probe.id + CAPTURE_BINDING_SUFFIX] = JSON.stringify(binding)
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
@@ -2067,6 +2079,7 @@ export async function runProbeBatch(
         capturePrepared = false
         captureGeometry = undefined
         captureGeometryRefusal = undefined
+        activeCalibrationId = undefined
       }
       options.onCheckpoint?.(batch)
     }
