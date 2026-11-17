@@ -291,7 +291,7 @@ it("applies the audited Alacritty declaration to the real OSC 710 coverage resul
 it.each([
   { kind: "term", id: "kitty", version: "0.49.2" },
   { kind: "term", id: "ghostty", version: "1.4.0" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
   { kind: "term", id: "alacritty", version: "0.17.0" },
   { kind: "term", id: "xterm", version: "411" },
   { kind: "mux", id: "screen", version: "5.0.2" },
@@ -353,14 +353,14 @@ it.each([
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
   { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.semantic-prompts" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-d" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-a" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-p" },
+  // #32955: kitty's prompt state is read through owned remote control (eae044269), so its declarations
+  // drop from 10 to 6 and osc133-a / semantic-prompts are no longer declarations but reader runs.
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc133-p" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
@@ -401,7 +401,7 @@ it.each([
   { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc8" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
