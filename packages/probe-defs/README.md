@@ -234,7 +234,7 @@ pixel frame records `background`, `inkColour`, `inkCount` and `contrast` from th
 millions of compared pixels and the retained PNGs already carry them. The branch refuses at a
 coverage difference of 3 or more, on a background change, on a moved crop, and on ink below
 contrast 40 of 255 or under 16 ink pixels. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
-paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
+paint/restore and a made-up OSC command; qualified no-change declares Untestable (no observer), because
 the progress shows outside the window the run captures. If set-50 changes the App window and clear
 restores it, the same capture additionally compares stable normal-state37/73/37 pairs, clearing
 exactly to baseline after each. Both values must differ from baseline and each other, and replay37
