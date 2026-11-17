@@ -15,8 +15,8 @@
  * chain must reach the cmux process before anything is closed (C4).
  */
 import { spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
+import { basename, dirname } from "node:path"
 import { shellQuote } from "./daemon-client.ts"
 
 export interface CmuxLaunchDeps {
@@ -35,8 +35,8 @@ export interface CmuxInitialCommandLaunch {
   startedPid: number
   /** True when a stale key from an earlier run by this launcher was removed first (C2). */
   removedStaleKey: boolean
-  /** Remove our line from the config: "exact" when the file was otherwise untouched. */
-  restore: () => "exact" | "line-removed"
+  /** Remove our line from the config: "exact" when the file was otherwise untouched; "removed" when the run created it. */
+  restore: () => "exact" | "line-removed" | "removed"
 }
 
 export interface CmuxInitialCommandOptions {
@@ -91,15 +91,28 @@ function keyBashPath(command: string): string | null {
   return raw.split(/\s+/)[0] ?? null
 }
 
-/** Ours: the file the key names exists and carries this launcher's header (C2 recognition). */
-function isOurKey(command: string): boolean {
+/** The file name every run's command file has (`join(run.directory, COMMAND_FILE_NAME)` in the admin arm). */
+export const COMMAND_FILE_NAME = "cmux-command.sh"
+
+/**
+ * Ours: the file the key names carries this launcher's header (C2 recognition), or the file is gone and the
+ * key names this launcher's command file, the trace a run leaves when it crashed before restore() and its
+ * run directory was later removed (@agy/1 34302 finding 2). A file that exists but cannot be read is not
+ * guessed either way: the read error is thrown with its path (Fail Loud).
+ */
+export function isOurKey(command: string): boolean {
   const path = keyBashPath(command)
-  if (path === null || !existsSync(path)) return false
+  if (path === null) return false
+  if (!existsSync(path)) return basename(path) === COMMAND_FILE_NAME
+  let text: string
   try {
-    return readFileSync(path, "utf8").includes(KEY_HEADER)
-  } catch {
-    return false
+    text = readFileSync(path, "utf8")
+  } catch (error) {
+    throw new Error(
+      `cmux-initial-command-unreadable: the initial-command key names ${path}, which exists but could not be read (${String(error)}); refusing to judge whose key it is`,
+    )
   }
+  return text.includes(KEY_HEADER)
 }
 
 function defaultDeps(): CmuxLaunchDeps {
@@ -176,15 +189,20 @@ export async function launchCmuxInitialCommand(
 
   // The bytes a clean restore returns to: the config as it stood once stale own keys were removed.
   const baseContent = content
-  const restore = (): "exact" | "line-removed" => {
+  const restore = (): "exact" | "line-removed" | "removed" => {
     const now = existsSync(opts.configPath) ? readFileSync(opts.configPath, "utf8") : ""
-    if (now === withKey) {
-      writeFileSync(opts.configPath, baseContent, { mode: 0o600 })
-      return "exact"
+    const remaining = now === withKey ? baseContent : now.split("\n").filter((line) => line !== ourLine).join("\n")
+    // The run created the file: leave none behind when nothing but our line was ever in it.
+    if (prior === null && remaining.trim() === "") {
+      if (existsSync(opts.configPath)) unlinkSync(opts.configPath)
+      if (existsSync(opts.configPath)) {
+        throw new Error(`cmux-initial-command-restore: ${opts.configPath} is still present after its removal`)
+      }
+      return "removed"
     }
-    const lines = now.split("\n").filter((line) => line !== ourLine)
-    writeFileSync(opts.configPath, lines.join("\n"), { mode: 0o600 })
-    return "line-removed"
+    // The mode applies only if the file was deleted meanwhile; an existing file keeps its own.
+    writeFileSync(opts.configPath, remaining, { mode: 0o600 })
+    return now === withKey ? "exact" : "line-removed"
   }
 
   try {
