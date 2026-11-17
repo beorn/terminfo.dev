@@ -5787,6 +5787,114 @@ it("keeps a rows-only conflict blocking a row when the raster proof fails", asyn
   )
 })
 
+// 34672 condition 3 covers every geometry-dependent row, not only the rows that capture: a query row
+// reaches its verdict from the same conflicting grid, so it may not run before this run's complete-raster
+// proof is installed (@cto rows-only finding, cursor.position-report).
+const rowsOnlyConflictReply = () => {
+  const raw = "\x1b[8;39;123t"
+  return {
+    status: "conflict-rows-only" as const,
+    rows: 39,
+    cols: 123,
+    query: {
+      sequence: "\x1b[18t" as const,
+      outbound: "\x1b[18t\x1b[c" as const,
+      reason: "reply" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    },
+  }
+}
+
+const serveCursorReplies = (writes: string[]) => {
+  const replies = ["\x1b[1;4R", "\x1b[3;6R"]
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text.includes("\x1b[6n")) {
+      const reply = replies.shift()
+      if (reply) queueMicrotask(() => process.stdin.emit("data", Buffer.from(reply)))
+    }
+    return true
+  }) as typeof process.stdout.write
+  return replies
+}
+
+it("blocks a geometry-dependent query row when a rows-only conflict has no installed proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+  expect(row?.status).toBe("probe-invalid")
+  expect(row?.reason).toContain("complete-raster proof")
+  expect(batch.observations.find((item) => item.featureId === "cursor.position-report")).toBeUndefined()
+})
+
+it("blocks a geometry-dependent query row when the renewal refuses after RIS", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  let preparations = 0
+  const batch = await runProbeBatch({
+    ids: ["reset.ris", "cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      preparations++
+      if (preparations === 1) {
+        source.captureGeometry = {
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+          source: "measured by complete raster calibration" as const,
+        }
+      } else {
+        source.captureGeometryRefusal = "renewal fixture refused"
+      }
+    },
+  })
+  const reset = batch.results.find((result) => result.featureId === "reset.ris")
+  const cursor = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(reset?.reason, "the first row runs on the installed proof").not.toContain("complete-raster proof")
+  expect(cursor?.status).toBe("probe-invalid")
+  expect(cursor?.reason).toContain("renewal fixture refused")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+})
+
+it("runs a geometry-dependent query row when the rows-only conflict carries this run's proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  const replies = serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      source.captureGeometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+        source: "measured by complete raster calibration" as const,
+      }
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(row?.status, "an installed proof keeps the row independent").toBe("supported")
+  expect(replies, "both CPR replies are consumed by the row that ran").toHaveLength(0)
+})
+
 // Condition 1: the owned grid must still be the one the grant measured. A move since the grant keeps its
 // existing failure path - it never becomes a candidate.
 it("refuses a rows-only conflict when the owned grid moved since the grant", async () => {
