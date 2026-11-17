@@ -72,6 +72,59 @@ test("the hosted collector's poll budget is the job wall, measured from job star
   )
 })
 
+// 34613: the first step recorded JOB_START_EPOCH after its three fetches and the receipt process, so bootstrap
+// time was never counted and came out of the 180 s flush reserve (a 180 s bootstrap left none). Run the real step
+// on a fake clock where each fetch and the receipt process take 60 s: the recorded start is the clock before them.
+test("a slow bootstrap spends the poll budget: the job clock starts before the first fetch", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const bootstrap = (workflow.jobs["measure-macos"].steps as { run?: string }[])[0]!.run
+  if (!bootstrap) throw new Error("The bootstrap step has no run script")
+  const directory = mkdtempSync(join(tmpdir(), "hosted-job-clock-"))
+  const clock = join(directory, "clock")
+  const githubEnv = join(directory, "github-env")
+  const START = 1_000_000
+  const STEP_S = 60
+  writeFileSync(clock, String(START))
+  writeFileSync(githubEnv, "")
+  const advance = `now=$(cat "$CLOCK"); printf '%s' "$((now + ${STEP_S}))" > "$CLOCK"`
+  writeFileSync(
+    join(directory, "date"),
+    '#!/bin/bash\nif [ "$1" = "+%s" ]; then cat "$CLOCK"; echo; else exec /bin/date "$@"; fi\n',
+    { mode: 0o755 },
+  )
+  writeFileSync(
+    join(directory, "curl"),
+    `#!/bin/bash\nwhile [ $# -gt 0 ]; do if [ "$1" = "--output" ]; then : > "$2"; fi; shift; done\n${advance}\n`,
+    { mode: 0o755 },
+  )
+  writeFileSync(join(directory, "node"), `#!/bin/bash\nprintf '{}' > "\${@: -1}"\n${advance}\n`, { mode: 0o755 })
+  try {
+    const result = spawnSync("/bin/bash", ["-c", bootstrap], {
+      cwd: directory,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        CLOCK: clock,
+        GITHUB_ENV: githubEnv,
+        RUNNER_TEMP: directory,
+        MEASURED_SHA: "a".repeat(40),
+        REQUESTED_SHA: "",
+        GH_TOKEN: "fixture-token",
+        GITHUB_API_URL: "http://127.0.0.1:9",
+        GITHUB_REPOSITORY: "fixture/repo",
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(Number(readFileSync(clock, "utf8")) - START, "three fetches and the receipt process ran").toBe(4 * STEP_S)
+    const recorded = /^JOB_START_EPOCH=(\d+)$/mu.exec(readFileSync(githubEnv, "utf8"))
+    expect(recorded, "the bootstrap recorded the job start").not.toBeNull()
+    expect(Number(recorded![1]), "the 4 min bootstrap is inside the budget, not after its start").toBe(START)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("hosted collector build runs at background priority", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const build = workflow.jobs["measure-macos"].steps.find(
