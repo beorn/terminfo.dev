@@ -9,8 +9,9 @@
  */
 import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
-import { readCallLog, withCallLog } from "viprobe"
+import { readCallLog } from "viprobe"
 import retainedAlacritty from "./fixtures/alacritty-overline-retained.json"
+import { replayRow } from "./stored-run-shadow.ts"
 import { sgrProbes, finalizeVisualResult } from "../probe-defs/src/sgr.ts"
 import { recordExecutedProbe } from "../probe-defs/src/helpers.ts"
 import type { CaptureRequest, ObservationFrame, TermProbeSource } from "../probe-defs/src/types.ts"
@@ -203,9 +204,11 @@ test("paint witnesses bind fresh captures and replay the same invocation", async
   expect(markers(replay.writes)).toEqual(before)
 })
 
-// AC: a real native negative must survive callback replay with its same-run controls.
-// Synthetic paint cases above cannot catch a mismatch in retained native decision inputs.
-test("Alacritty overline stays Unsupported with real same-run native controls", async () => {
+// AC: a real native negative keeps its same-run controls. #30932 S2 (@cto 30932-s2-plan-ruling-1430): this log
+// was recorded before the source clock, and its paint-witness polls read the clock, so the replay now refuses it
+// by name rather than handing it this machine's time. Replaying a real native negative to Unsupported stays open
+// until a separately authorized capture records the clock; the retained frames below still decide nothing new.
+test("Alacritty overline keeps its real same-run native controls, and its pre-clock log replays as a named incomplete", async () => {
   expect(retainedAlacritty).toMatchObject({
     runId: "77346bfd698185a03cb03cc42d5e29e1",
     suiteId: "ed79b2449dac",
@@ -216,30 +219,20 @@ test("Alacritty overline stays Unsupported with real same-run native controls", 
     featureId: "sgr.overline",
   })
   const frames: ObservationFrame[] = []
-  const log = readCallLog(JSON.parse(retainedAlacritty.callLog), {
+  readCallLog(JSON.parse(retainedAlacritty.callLog), {
     onOperation(operation) {
       if (operation.path === "context.capture" && "value" in operation.outcome) {
         frames.push(operation.outcome.value as ObservationFrame)
       }
     },
   })
-  const probe = sgrProbes.find(({ id }) => id === retainedAlacritty.featureId)
-  if (!probe?.term) throw new Error("Missing retained Alacritty overline callback")
-  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
-  expect(replay.context.kind).toBe("live")
-  const callback = await probe.term(replay.context)
-  replay.finish()
-  const featureId = probe.id
-  const recorded = recordExecutedProbe({
-    featureId,
-    attempt: { scope: "probe", startedAt: "2026-11-07T10:27:39Z" },
-    observation: callback.observation && { featureId, ...callback.observation },
-    coverage: callback.notTested && { featureId, rawReplyRef: featureId, ...callback.notTested },
-    assertions: (callback.assertions ?? []).map((entry) => ({ featureId, ...entry })),
-    tests: callback.tests,
-    rawReplyRef: featureId,
-    criterionBranch: callback.criterionBranch,
-  })
+  const validated = {
+    source: { kind: "live" },
+    rawReplies: { [`${retainedAlacritty.featureId}.callLog`]: retainedAlacritty.callLog },
+  } as unknown as Parameters<typeof replayRow>[0]
+  await expect(replayRow(validated, retainedAlacritty.featureId)).rejects.toThrow(
+    "Incomplete: call log predates the recorded source clock (sgr.overline)",
+  )
   const sample = (name: string) => {
     const frame = frames.find(({ label }) => label === `sgr.overline: ${name}`)
     if (!frame?.regionDigest) throw new Error(`Missing retained ${name} sample`)
@@ -251,9 +244,4 @@ test("Alacritty overline stays Unsupported with real same-run native controls", 
   expect(sample("made-up")).toBe(sample("plain"))
   expect(sample("handled")).not.toBe(sample("plain"))
   expect(sample("inverse")).not.toBe(sample("plain"))
-  expect(finalizeVisualResult(recorded, { kind: "term" }, frames)).toMatchObject({
-    featureId,
-    status: "unsupported",
-    reason: "sgr.overline: drew nothing for this SGR",
-  })
 })

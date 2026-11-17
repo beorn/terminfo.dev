@@ -5516,19 +5516,9 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   if (!callback) throw new Error("Missing SGR reset callback")
   const beforeReplay = writes.length
   const liveCaptures = captures
-  // The paint-witness polls run to a wall-clock deadline, which no call log records, so their count
-  // follows the clock (a #30932 S2 shadow finding, not this slice). Replay on the same fake clock as
-  // the live run, so the recorded order is the one the replay asks for.
-  const onLiveClock = async <T>(operation: () => Promise<T>): Promise<T> => {
-    vi.useFakeTimers()
-    try {
-      const [value] = await Promise.all([operation(), vi.runAllTimersAsync()])
-      return value
-    } finally {
-      vi.useRealTimers()
-    }
-  }
-  const result = await onLiveClock(() => callback(replay.context))
+  // #30932 S2: the paint-witness deadlines read the recorded source clock, so the replay asks for the live
+  // row's polls on this machine's real timers; no fake clock stands in for the live one.
+  const result = await callback(replay.context)
   replay.finish()
   expect(writes).toHaveLength(beforeReplay)
   expect(captures).toBe(liveCaptures)
@@ -5544,9 +5534,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     throw new Error("Offline SGR assertion attempted native runtime discovery")
   })
   try {
-    const record = await onLiveClock(() =>
-      runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" }),
-    )
+    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
     for (const assertion of record.assertions) {
       const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
       expect(replayed?.status).toBe(live.status)

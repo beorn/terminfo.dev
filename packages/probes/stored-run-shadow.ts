@@ -14,7 +14,6 @@ import {
   ALL_PROBES,
   finalizeVisualResult,
   recordExecutedProbe,
-  SOURCE_CLOCK_MISSING,
   type CapturedRunDraft,
   type ObservationFrame,
   type ProbeAssertion,
@@ -102,18 +101,28 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
   if (session.context.kind !== validated.source.kind) {
     throw new IncompleteReplay("Source shape does not match its live capture: " + featureId)
   }
+  // A log recorded before the source clock existed (#30932 S2) has no `now` to give. When the callback asks for
+  // it, `sourceNow` refuses; a cleanup step after that refusal can then diverge from the log and throw a later,
+  // less telling error, so the request itself is what names the cause.
   const clockRecorded = recordedRootValue(parsed, "now").present
+  let clockRequested = false
+  const context = clockRecorded
+    ? session.context
+    : new Proxy(session.context, {
+        get(target, key) {
+          if (key === "now") clockRequested = true
+          return Reflect.get(target, key)
+        },
+      })
   const startedAt = new Date().toISOString()
   let result: ProbeCallbackResult
   try {
-    result = await definition.term(session.context)
+    result = await definition.term(context)
   } catch (error) {
-    // A pre-S2 source offered no clock, so the replayed context has no `now` and `sourceNow` refuses by name.
-    if (!clockRecorded && error instanceof Error && error.name === SOURCE_CLOCK_MISSING) {
-      throw new IncompleteReplay(`call log predates the recorded source clock (${featureId})`)
-    }
+    if (clockRequested) throw new IncompleteReplay(`call log predates the recorded source clock (${featureId})`)
     throw error
   }
+  if (clockRequested) throw new IncompleteReplay(`call log predates the recorded source clock (${featureId})`)
   session.finish()
   // Replay decorators must not escape into a persisted record: keep the JSON data the owner writes to disk.
   return { startedAt, result: JSON.parse(JSON.stringify(result)) as ProbeCallbackResult, frames }
