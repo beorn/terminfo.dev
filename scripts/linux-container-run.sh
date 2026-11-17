@@ -15,7 +15,11 @@ set -euo pipefail
 #   600 -> 900   73bf985cd  allow progressing full batches fifteen minutes
 #   900 -> 1200  b05c68dd6  allow shared probe batches twenty minutes
 #   1200 -> 1800 ba7e4a173  raise PROBE_BATCH_TIMEOUT_SECONDS from 1200 to 1800
-PROBE_BATCH_TIMEOUT_SECONDS=1800
+#   1800 -> 2400 2026-11-17 raise for the same-run control frames: a completed wezterm batch captures
+#     1548 frames where the 2026-11-13 batch captured 635, and its measured wall grew 1497 -> 1873-1899 s.
+#     The 2026-11-17T01:06Z run was still writing frames at 1797 s, so the 1800 s wall fired on a working
+#     batch, not a hang. New trigger for the next raise: a completed batch above 1900 s of captures.
+PROBE_BATCH_TIMEOUT_SECONDS=2400
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
 # never an engine grade. The private fontconfig pins the regular face and its style companions,

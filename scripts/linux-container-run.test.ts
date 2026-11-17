@@ -1749,14 +1749,16 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
  * @failure split 120s curl / 180s attach budgets kill slow-but-complete groups (ghostty 140.6s,
  *   xterm 157.9s curl-28; wezterm attach-killed at 177s) so Candidate 2 rows go missing.
  *   A full WezTerm batch also progressed until the shared 600s SIGTERM on 2026-11-04 and 1200s
- *   SIGTERM (1196.9s solo App batch, exit 143) on 2026-11-09 (#32889).
+ *   SIGTERM (1196.9s solo App batch, exit 143) on 2026-11-09 (#32889), and again at the 1800s wall on
+ *   2026-11-17T01:06Z (exit 143 at 1797 s of captures, still writing frames): the control-frame
+ *   captures took a completed batch from 635 to 1548 frames, so the budget moved to 2400 s.
  * @level l1 — reads the launcher's declared probe-batch timeout.
  * @consumer scripts/linux-container-run.sh PROBE_BATCH_TIMEOUT_SECONDS (@dev/3 51326e54)
  */
 describe("declared probe-batch timeout is one value for curl and host attach", () => {
-  it("uses PROBE_BATCH_TIMEOUT_SECONDS=1800 for both curl --max-time and docker start --attach", () => {
+  it("uses PROBE_BATCH_TIMEOUT_SECONDS=2400 for both curl --max-time and docker start --attach", () => {
     const source = readFileSync(launcher, "utf8")
-    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=1800$/m)
+    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=2400$/m)
     expect(source).toMatch(/curl [^\n]*--max-time "\$PROBE_BATCH_TIMEOUT_SECONDS"/)
     expect(source).toMatch(/timeout "\$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach/)
     expect(source).not.toMatch(/--max-time 120\b/)
