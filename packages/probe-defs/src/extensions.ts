@@ -1801,7 +1801,7 @@ async function osc22PointerAppCapture(ctx: TermProbeSource): Promise<ProbeCallba
  * #32604's sentence, and finalizeVisualResult (sgr.ts) appends its hop suffix there.
  */
 export const OSC9_PROGRESS_APP_NO_OBSERVER =
-  "Untestable (no observer): OSC 9;4 progress is shown outside the text area (title bar, tab bar or taskbar); this run captures only the window and saw no change after clear/set-50/clear, which a made-up subcommand also produced, so it cannot tell ignored from consumed."
+  "Untestable (no observer): OSC 9;4 progress is shown outside the text area (title bar, tab bar or taskbar); this run captures only the window and saw no change after clear/set-50/clear, which a made-up OSC command also produced, so it cannot tell ignored from consumed."
 
 /** Original whole-window recipes: qualify capture sensitivity before progress/flash no-change. */
 async function wholeWindowOscAppCapture(
@@ -1843,7 +1843,9 @@ async function wholeWindowOscAppCapture(
     const painted = await shoot("plain paint sensitivity")
     ctx.write("\x1b[2;2H \x1b[H")
     const restored = await shoot("plain paint restored")
-    ctx.write(kind === "progress" ? "\x1b]9;99999\x07" : "\x1b]99999\x07")
+    // A top-level unknown OSC for both kinds (34624, @cto 34624-cmux-ruling-1024): OSC 9;99999 is a text notification,
+    // and cmux drew a badge for it that no terminal reset clears, so every later row calibrated against that scene.
+    ctx.write("\x1b]99999\x07")
     const unknown = await shoot("made-up OSC control")
     const state = () => ({ stability: pair.stability, frames })
     if (painted.pixelsDigest === baseline || restored.pixelsDigest !== baseline || unknown.pixelsDigest !== baseline) {
@@ -1937,7 +1939,7 @@ async function wholeWindowOscAppCapture(
       kind === "progress"
         ? ctx.mux === undefined
           ? OSC9_PROGRESS_APP_NO_OBSERVER
-          : "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+          : "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up OSC command controls; no progress display was observable in this run."
         : "Untestable (no way to tell): OSC555 left all nine whole-window samples unchanged after plain paint/restore and made-up OSC controls; finite sampling can miss a flash and cannot prove Unsupported.",
       state(),
     )

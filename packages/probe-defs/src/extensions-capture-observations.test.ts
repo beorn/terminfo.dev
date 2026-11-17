@@ -93,6 +93,8 @@ function calibratedIterm2Arm(
       | "text-notification"
       | "made-up"
     blind?: boolean
+    /** 34624: cmux draws a notification badge for an OSC 9 text payload; no terminal reset clears it. */
+    notification?: "badge"
     /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
     resetRegionShift?: { x: number; y: number }
     /**
@@ -112,6 +114,7 @@ function calibratedIterm2Arm(
   let cursorShown = true
   let progress = "none"
   let progress37Writes = 0
+  let badge = false
   const context = {
     kind: "live" as const,
     rows: 24,
@@ -147,8 +150,9 @@ function calibratedIterm2Arm(
         if (options.progress === "text-notification" && bytes.includes("\x1b]9;terminfo-progress-control-37\x07")) {
           progress = "notification 37"
         }
-        if (options.progress === "made-up" && bytes.includes("\x1b]9;99999\x07")) progress = "made-up"
+        if (options.progress === "made-up" && bytes.includes("\x1b]99999\x07")) progress = "made-up"
       }
+      if (options.notification === "badge" && /\x1b\]9;(?!4;)[^\x07]*\x07/.test(bytes)) badge = true
       if (options.colour) {
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
         if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
@@ -172,7 +176,7 @@ function calibratedIterm2Arm(
       const resetShift =
         options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
       const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
-      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}`
+      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}${badge ? ":badge" : ""}`
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -646,7 +650,7 @@ test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence wit
   const mux = { ...calibratedIterm2Arm({ colour: {}, effect: "progress" }).context, mux: "screen" as const }
   const muxResult = await find("extensions.osc9-progress").term!(mux)
   const sentence =
-    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up OSC command controls; no progress display was observable in this run."
   expect(muxResult.note).toBe(sentence)
   const featureId = "extensions.osc9-progress"
   const recorded = recordExecutedProbe({
@@ -683,7 +687,7 @@ test.each([
   { name: "replay 37 mismatch", progress: "replay-mismatch" as const },
   { name: "final clear fails", progress: "clear-fails" as const },
   { name: "numbered text notification changes the window", progress: "text-notification" as const },
-  { name: "made-up subcommand changes the window", progress: "made-up" as const },
+  { name: "made-up OSC command changes the window", progress: "made-up" as const },
   { name: "blind plain paint", progress: "values" as const, blind: true },
 ])("OSC 9;4 positive App criterion stays unresolved: $name", async ({ progress, blind }) => {
   const { context, frames } = calibratedIterm2Arm({ effect: "progress", progress, blind })
@@ -711,6 +715,21 @@ test.each([
   if (progress !== "ignored") {
     expect(JSON.parse(result.response ?? "null")).toEqual(expect.objectContaining({ frames }))
   }
+})
+
+// 34624 (@cto /hh/var/@cto/do-20261114T1623/34624-cmux-ruling-1024.md): the progress row's "made-up" control was
+// ESC ] 9;99999 BEL, an OSC 9 text notification, not an unknown command. cmux drew a badge for it that no reset clears,
+// so the row refused its own control and every later row's calibration renewal took the dirty scene as its baseline.
+// The cases above stop at the row's own verdict; this one reads the scene the next row's capture sees.
+test("a progress row's made-up control leaves no notification for the next row's capture", async () => {
+  const { context, writes } = calibratedIterm2Arm({ effect: "progress", progress: "ignored", notification: "badge" })
+  const before = await context.capture!({ role: "control", label: "scene before the progress row" })
+  const result = await find("extensions.osc9-progress").term!(context)
+  expect(result.note).toBe(OSC9_PROGRESS_APP_NO_OBSERVER)
+  expect(writes.filter((bytes) => /\x1b\]9;(?!4;)/.test(bytes))).toEqual([])
+  expect(writes).toContain("\x1b]99999\x07")
+  const after = await context.capture!({ role: "control", label: "next row's calibration baseline" })
+  expect(after.pixelsDigest).toBe(before.pixelsDigest)
 })
 
 test.each([
