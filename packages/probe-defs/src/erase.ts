@@ -605,6 +605,7 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
   const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
   if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
 
+  let handedOff = false
   try {
     // The visible cursor is a cell like any other: without DECTCEM off the wheel-down restore
     // differs from the seeded bottom frame by one cell and the arm grades its own cursor.
@@ -619,11 +620,20 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
     if (!mux && sameFrame(history, bottom)) {
-      return declaredUntestableResult("wheel-up did not change captured pixels; cannot observe history", {
-        control,
-        bottom,
-        history,
-      })
+      // A collapsed frame is only unobservable when nothing else can read it (@cto 34448): when the
+      // same context also carries an owned history reader, that reader decides the row. The capture
+      // lifecycle closes first so its cleanup writes cannot race the history seed.
+      if (historyRead === undefined) {
+        return declaredUntestableResult("wheel-up did not change captured pixels; cannot observe history", {
+          control,
+          bottom,
+          history,
+        })
+      }
+      await input.injectClick(5)
+      endCaptureLifecycle(ctx)
+      handedOff = true
+      return scrollbackEraseHistory(ctx, () => historyRead())
     }
     await input.injectClick(5)
     const restored = await capture({ role: "control", label: "After wheel-down before ED3" })
@@ -717,8 +727,10 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
       },
     }
   } finally {
-    await input.injectClick(5)
-    endCaptureLifecycle(ctx)
+    if (!handedOff) {
+      await input.injectClick(5)
+      endCaptureLifecycle(ctx)
+    }
   }
 }
 
