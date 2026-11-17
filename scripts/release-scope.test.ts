@@ -721,10 +721,11 @@ describe("probe method classification", () => {
     }))
 
   // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133).
+  // The projection form holds one run at a time: loading the whole corpus as an array peaked at 3.3 GB RSS,
+  // past the 3 GiB vitest worker cap (34678).
   it("maps the growing live corpus without promoting a source answer", { timeout: 30_000 }, () => {
-    const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
     let sourceMethods = 0
-    for (const run of runs) {
+    const walked = loadStoredRuns(contentDir, Object.keys(catalog).sort(), (run) => {
       for (const result of run.results ?? []) {
         if (!scoredFeatureIds([result.featureId]).length) continue
         const classified = classifyResultMethod(result, run.subject, run.assertions)
@@ -741,7 +742,10 @@ describe("probe method classification", () => {
         expect(classified.kind).not.toBe("unmapped")
         if (classified.kind === "method" && classified.method === "source") sourceMethods++
       }
-    }
+      return run.runId
+    })
+    // The live corpus holds more than the 17 historical runs, so an empty walk cannot pass here.
+    expect(walked.length).toBeGreaterThan(17)
     expect(sourceMethods).toBe(0)
   })
 
