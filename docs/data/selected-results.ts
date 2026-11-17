@@ -23,7 +23,7 @@ import {
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
-import type { CurrentTraceDocument } from "./run-trace.ts"
+import type { CurrentTraceDocument, TraceIdentityRuleCheck } from "./run-trace.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -45,6 +45,8 @@ import {
 } from "@terminfo/probe-defs"
 import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import {
+  currentIdentityRuleCheck,
+  identityRuleRevision,
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
@@ -88,6 +90,8 @@ export type ProjectionRun = Pick<
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
   readRaw: () => RunTraceFacts
   traceMemo?: RunTraceMemo
+  /** Stored runs only: this build's identity-rule match (#34617). Working runs never carry it. */
+  identityRuleCheck?: TraceIdentityRuleCheck
 }
 
 function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
@@ -219,6 +223,7 @@ export interface CurrentSelectedVersion {
   screenRecord: string | undefined
   readRaw: () => RunTraceFacts
   traceMemo?: RunTraceMemo
+  identityRuleCheck?: TraceIdentityRuleCheck
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -541,6 +546,7 @@ export function projectResults(
       screenRecord: run.screenRecord,
       readRaw: run.readRaw,
       ...(run.traceMemo && { traceMemo: run.traceMemo }),
+      ...(run.identityRuleCheck && { identityRuleCheck: run.identityRuleCheck }),
       suiteFreshness,
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
@@ -1225,10 +1231,21 @@ export function loadSelectedResults(
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const features = loadFeatures(contentDir)
   const catalog = Object.keys(features)
-  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => ({
-    ...compactRun(run, readRaw),
-    traceMemo: {},
-  }))
+  // #34617: one rule fingerprint per build; each stored run is checked once against this build's identity rule.
+  const ruleRevision = identityRuleRevision()
+  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => {
+    const check = currentIdentityRuleCheck(run)
+    if ("refused" in check) {
+      console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
+    }
+    return {
+      ...compactRun(run, readRaw),
+      traceMemo: {},
+      ...("matched" in check && {
+        identityRuleCheck: { checkedAt: "build" as const, ...check.matched, ruleRevision },
+      }),
+    }
+  })
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
   for (const run of runs) {

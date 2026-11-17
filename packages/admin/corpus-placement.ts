@@ -126,7 +126,7 @@ export function loadStoredRuns<T>(
   return runs
 }
 
-interface MeasuredIdentity {
+export interface MeasuredIdentity {
   rule: string
   da1?: string
   xtversion?: string
@@ -145,7 +145,7 @@ type ReceiptRefusalCode =
   | "ownership-receipt-app-launch-mismatch"
   | "ownership-receipt-run-required"
 
-type PlacementRefusalCode =
+export type PlacementRefusalCode =
   | ReceiptRefusalCode
   | "identity-disputed"
   | "runtime-identity-unverified"
@@ -351,6 +351,52 @@ function identityDecision(run: LoadedRun, identity: MeasuredIdentity | null): Pl
   return identity ? null : "identity-replies-mismatch"
 }
 
+/**
+ * The identity subcheck of placement, exposed alone (#34617, @cto 34617-current-rule-contract-go-1347): this
+ * build's identity rule run against a run's retained evidence. A match is not historical admission:
+ * provenance, custody, completion and artifacts keep their own owners. Pure; no file is read here.
+ */
+export function currentIdentityRuleCheck(
+  run: LoadedRun,
+): { matched: MeasuredIdentity } | { refused: PlacementRefusalCode } {
+  const identity = identityMatch(run)
+  const refused = identityDecision(run, identity)
+  if (refused !== null) return { refused }
+  if (identity === null) throw new Error(`run ${run.runId}: identity rule passed without a measured identity`)
+  return { matched: identity }
+}
+
+/** The source files whose bytes decide `currentIdentityRuleCheck`, in a fixed order (#34617 amendment 1). */
+export const IDENTITY_RULE_SOURCES = [
+  "admin/corpus-placement.ts",
+  "terminfo.dev/src/identity-guard.ts",
+  "run-parser/src/index.ts",
+  "terminfo.dev/src/windows-process-ancestry.ts",
+] as const
+
+let identityRuleRevisionMemo: string | undefined
+
+/**
+ * A stable 12-hex fingerprint of the identity rule's source closure under `packagesDir`. It names which rule
+ * bytes a build ran, not the build's source commit, and it is no security receipt. Each file is framed by its
+ * package-relative path and byte length so a move or a split changes it.
+ */
+export function identityRuleSourceRevision(packagesDir: string): string {
+  const hash = createHash("sha256")
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    const bytes = readFileSync(join(packagesDir, relative))
+    hash.update(`${relative}\0${bytes.length}\0`)
+    hash.update(bytes)
+  }
+  return hash.digest("hex").slice(0, 12)
+}
+
+/** This build's identity-rule revision, computed once per process from the packages this module ships in. */
+export function identityRuleRevision(): string {
+  identityRuleRevisionMemo ??= identityRuleSourceRevision(join(dirname(fileURLToPath(import.meta.url)), ".."))
+  return identityRuleRevisionMemo
+}
+
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
   // Darwin joins against its own owner launch record (§D4.6); Linux against the clipboard fixture.
@@ -551,7 +597,8 @@ export function placeCollectedRun(
   for (const [label, value] of Object.entries({ id, version, os, runId: loaded.runId })) {
     if (!SAFE_COMPONENT.test(value)) throw new Error(`${source}: unsafe collected ${label}: ${value}`)
   }
-  const refusal = identityDecision(loaded, identityMatch(loaded)) ?? provenanceDecision(loaded)
+  const identityCheck = currentIdentityRuleCheck(loaded)
+  const refusal = ("refused" in identityCheck ? identityCheck.refused : null) ?? provenanceDecision(loaded)
   if (refusal !== null) throw new Error(`${source}: ${refusal}`)
   preflightOwnershipReceipt(
     source,

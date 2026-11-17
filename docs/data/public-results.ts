@@ -155,7 +155,7 @@ export interface PublicProbeResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo"
+  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo" | "identityRuleCheck"
 > {
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
@@ -391,6 +391,8 @@ export function publicResults(
       screenRecord: _screen,
       readRaw: _read,
       traceMemo: _trace,
+      // #34617: the identity-rule claim is published only inside the run's trace document.
+      identityRuleCheck: _identityRuleCheck,
       results,
       ...metadata
     } = version
