@@ -136,6 +136,7 @@ function ownedWindow(options: {
   const requests: Fake["requests"] = []
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: options.rows ?? 24,
     cols: options.cols ?? 80,
     write(sequence) {
@@ -1481,6 +1482,7 @@ function familyTerminal(applied: string): TermProbeSource {
   }
   return {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },

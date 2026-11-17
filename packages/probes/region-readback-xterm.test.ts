@@ -163,6 +163,7 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
     if (!probe?.term) throw new Error(`Missing ${id} app callback`)
     const context: probeDefs.TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 24,
       cols: 80,
       captureKind: "text-cells",

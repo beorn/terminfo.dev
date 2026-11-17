@@ -588,6 +588,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
   }
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: geometry.rows,
     cols: geometry.cols,
     captureKind: "pixels",

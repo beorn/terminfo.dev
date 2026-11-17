@@ -117,6 +117,7 @@ function terminal(frames: Record<"seed" | "target" | "expected", FrameDigests>) 
         : { match: null, reason: "sentinel", raw: "\u001b[?6c", rawBase64: "G1s/NmM=" }
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     cols: 80,
     rows: 24,
     write(text) {

@@ -50,6 +50,7 @@ function calibratedSource(
   let reads = 0
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     write: (sequence) => writes.push(sequence),
