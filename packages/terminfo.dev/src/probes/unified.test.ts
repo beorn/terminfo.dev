@@ -37,6 +37,7 @@ import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
+import { currentTrace } from "../../../../docs/data/run-trace.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
 import { finishCapture } from "../capture-core.ts"
@@ -5232,6 +5233,20 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     calibrationId: "collector.captureCalibration",
     outcome: "installed",
   })
+  // R2: the association stays private. The public trace reads a raw reply only through a result's
+  // rawReplyRef, and the stored run with the new record publishes none of it.
+  const publicTrace = currentTrace({
+    ...draft,
+    schemaVersion: 4,
+    sha256: source.trace.sha256,
+    probeHash: draft.suiteId,
+    catalogIds: manifest.catalogIds ?? [],
+    results: draft.results ?? [],
+    readRaw: () => ({ rawReplies: draft.rawReplies, assertions: draft.assertions ?? [], identity: draft.identity }),
+  } as unknown as Parameters<typeof currentTrace>[0])
+  expect(publicTrace?.bytes).toBeDefined()
+  expect(publicTrace?.bytes).not.toContain("terminfo.capture-binding")
+  expect(publicTrace?.bytes).not.toContain("captureBinding")
   // The association is evidence checked inside the bound read, never an override: each fault is a
   // named incomplete replay, and none of them touches the stored row.
   const tampered = (label: string, edit: (rawReplies: Record<string, string>) => void) => {
