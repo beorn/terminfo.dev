@@ -444,6 +444,13 @@ export function viewportScrollRoute(
       const refused = abandonedRow(step)
       return refused ? Promise.reject(refused) : dispatch(step)
     },
+    adoptHold() {
+      const refused = abandonedRow("adopt an already-held view")
+      if (refused) throw refused
+      // Ordered like a dispatched hold: a bottom still settling from before it does not clear it.
+      held = true
+      lastHold = ++order
+    },
     async returnToBottom() {
       const refused = abandonedRow("return to the bottom")
       if (refused) throw refused

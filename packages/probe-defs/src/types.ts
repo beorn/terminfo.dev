@@ -622,6 +622,12 @@ export interface ViewportScroll {
    * (the wall owns it then), or when the bottom step itself fails. Absent on a route that installed no input.
    */
   returnToBottom?(): Promise<"not-held" | "bottom-pressed">
+  /**
+   * Record that the view is held by something other than this route's keys (an OSC 720 trigger the caller wrote),
+   * so `returnToBottom` and the row wall return it once like a hold the route dispatched (34680, @cto 1359).
+   * Throws by name when asked from a row abandoned at its wall. Present wherever `returnToBottom` is.
+   */
+  adoptHold?(): void
 }
 
 /** Why a held-viewport read returned no candidate (34645). Each names the first check that failed. */

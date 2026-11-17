@@ -236,14 +236,22 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): {
     if (opening.mode === "replay") return unavailable("replay", "a replayed row has no live viewport to read")
     if (opening.abandoned) return unavailable("trace-abandoned", "the row was abandoned at its wall before the read")
     if (!route) return unavailable("route-missing", "this source has no viewport route")
-    const geometry = options.geometry()
-    if (!geometry) return unavailable("capture-failed", "no calibrated origin is settled for this row")
+    // The caller's trigger already held the view, outside this route's keys: restoration is owed from here, on
+    // every exit below, and the route learns of the hold so its own return and the row wall see it too (@cto
+    // e1cfff79 item 3; 34680, @cto 1359). Nothing awaits between the opening mark and this adoption.
+    const adopted = hold === "already-held" && route.adoptHold !== undefined
+    if (hold === "already-held") {
+      route.adoptHold?.()
+      owesBottom = true
+    }
     try {
+      const geometry = options.geometry()
+      if (!geometry) throw new Stop("capture-failed", "no calibrated origin is settled for this row")
       let b0: Cropped
       if (hold === "already-held") {
         const known = bottom ? references.get(bottom.ref) : undefined
         if (!known || known.frame.regionDigest !== bottom?.regionDigest) {
-          return unavailable(
+          throw new Stop(
             "no-bound-reference",
             bottom
               ? `bottom reference ${bottom.ref} was not recorded by this row's reader`
@@ -251,12 +259,10 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): {
           )
         }
         if (known.geometry !== JSON.stringify(geometry)) {
-          return unavailable("geometry-changed", "the settled grid changed since the bottom reference was taken")
+          throw new Stop("geometry-changed", "the settled grid changed since the bottom reference was taken")
         }
         b0 = known
         frames.push(b0.frame)
-        // The caller's trigger already held the view: restoration is owed from here (@cto e1cfff79 item 3).
-        owesBottom = true
       } else {
         b0 = await crop("bottom reference before the hold", geometry)
         references.set(b0.frame.ref, b0)
@@ -335,7 +341,12 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): {
         if (options.mark()?.abandoned) restored = "left-to-wall"
         else {
           try {
-            restored = route.returnToBottom ? await route.returnToBottom() : await pressBottom(route)
+            // The route's return knows every key hold and an adopted one; a route that could not adopt this
+            // already-held view would answer not-held, so the bottom is pressed directly instead.
+            restored =
+              route.returnToBottom && (hold !== "already-held" || adopted)
+                ? await route.returnToBottom()
+                : await pressBottom(route)
           } catch (cause) {
             restored = "restore-failed"
             restoreError = cause

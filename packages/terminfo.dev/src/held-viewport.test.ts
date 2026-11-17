@@ -7,9 +7,10 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import type { ObservationFrame, ViewportStep } from "@terminfo/probe-defs"
+import type { HeldViewportFrame, ObservationFrame, ViewportStep } from "@terminfo/probe-defs"
+import { viewportScrollRoute } from "./darwin-input.ts"
 import { createHeldViewportReader, cropRows, uniqueRowShift, type HeldViewportGeometry } from "./held-viewport.ts"
-import type { TTYTraceMark } from "./tty.ts"
+import { currentTTYTraceMark, type TTYTraceMark, withTTYOperation, withTTYQueryTrace } from "./tty.ts"
 
 const geometry: HeldViewportGeometry = {
   origin: { x: 2, y: 2 },
@@ -145,11 +146,12 @@ describe("held viewport reader", () => {
     expect(model.state.offset).toBe(0)
   })
 
-  it("refuses an already-held read before any step without a reference it recorded for this row", async () => {
+  it("refuses an already-held read without a reference it recorded for this row, taking no frame", async () => {
     const model = terminalModel()
     const read = reader(model)
     const none = await read("already-held", "after trigger")
-    expect(none).toMatchObject({ status: "unavailable", reason: "no-bound-reference", restored: "not-held" })
+    // The trigger held the view whatever the reference: the refusal still returns it (34680, @cto 1359).
+    expect(none).toMatchObject({ status: "unavailable", reason: "no-bound-reference", restored: "bottom-pressed" })
     const forged = await read("already-held", "after trigger", {
       ref: "sha256:made-up",
       capturedAt: 1,
@@ -157,8 +159,8 @@ describe("held viewport reader", () => {
       regionRectangle: { x: 2, y: 2, width: 6, height: 8 },
       recorded: { ref: "sha256:made-up" } as unknown as ObservationFrame,
     })
-    expect(forged).toMatchObject({ status: "unavailable", reason: "no-bound-reference" })
-    expect(model.log).toEqual([])
+    expect(forged).toMatchObject({ status: "unavailable", reason: "no-bound-reference", restored: "bottom-pressed" })
+    expect(model.log).toEqual(["press:bottom", "press:bottom"])
   })
 
   it("returns a post that landed and then rejected to the bottom, once", async () => {
@@ -368,5 +370,101 @@ describe("movement falsifiers on a complete synthetic window, before cropping", 
     expect(uniqueRowShift(["a", "b", "a", "c"], ["x", "a", "b", "a"])).toBe(
       "the bottom reference rows are not all distinct",
     )
+  })
+})
+
+describe("an already-held view through the real route (34680, @cto 1359)", () => {
+  const keys = { pageUp: "pageUp", pageDown: "pageDown", top: "top", bottom: "bottom" } as const
+  /** The real viewportScrollRoute over the model's keys, the real reader, and the live TTY trace. */
+  function composed(fail: { capture?: boolean; abandon?: boolean } = {}) {
+    const model = terminalModel()
+    const posted: string[] = []
+    const route = viewportScrollRoute(
+      { route: "model keys", keys },
+      {
+        input: {
+          injectKey: async (key: string) => {
+            posted.push(key)
+            await model.route.press(key as ViewportStep)
+          },
+        },
+      },
+    )
+    let failing = false
+    let scope: { abandon(): void } | undefined
+    const reader = createHeldViewportReader({
+      featureId: "extensions.osc720-scroll-up",
+      route: () => route,
+      geometry: () => geometry,
+      captureRaw: async (label, deadline, role) => {
+        if (failing && fail.abandon) scope?.abandon()
+        if (failing && (fail.capture || fail.abandon)) throw new Error("capture failed after the external hold")
+        return model.captureRaw(label, deadline, role)
+      },
+      mark: currentTTYTraceMark,
+      timeoutMs: 10_000,
+    })
+    /** Inside one live row: a bottom reference, an external trigger to offset 2, then the already-held read. */
+    const row = (bottom: (frame: HeldViewportFrame) => HeldViewportFrame | undefined = (frame) => frame) =>
+      withTTYOperation(
+        () =>
+          withTTYQueryTrace(
+            [],
+            [],
+            async () => {
+              const before = await reader.reference("before the trigger")
+              if (before.status !== "reference") throw new Error(JSON.stringify(before))
+              model.state.offset = 2
+              failing = true
+              return reader.read("already-held", "after the trigger", bottom(before.frame))
+            },
+            { onScope: (value) => (scope = value) },
+          ),
+        { write: () => true } as unknown as NodeJS.WriteStream,
+      )
+    return { model, posted, route, row }
+  }
+
+  it("returns the view to the bottom once when a capture fails after the trigger", async () => {
+    const { model, posted, route, row } = composed({ capture: true })
+    const reading = await row()
+    expect(reading).toMatchObject({ status: "unavailable", reason: "capture-failed", restored: "bottom-pressed" })
+    expect(model.state.offset).toBe(0)
+    expect(posted).toEqual(["bottom"])
+    // Discharged: the row wall after it posts nothing more.
+    await expect(route.returnToBottom?.()).resolves.toBe("not-held")
+    expect(posted).toEqual(["bottom"])
+  })
+
+  it("returns it on the exits before any capture: an unbound reference", async () => {
+    const { model, posted, row } = composed()
+    const reading = await row(() => undefined)
+    expect(reading).toMatchObject({ status: "unavailable", reason: "no-bound-reference", restored: "bottom-pressed" })
+    expect(model.state.offset).toBe(0)
+    expect(posted).toEqual(["bottom"])
+  })
+
+  it("leaves it to the wall once the row is abandoned, and the wall returns it exactly once", async () => {
+    const { model, posted, route, row } = composed({ abandon: true })
+    const reading = await row()
+    expect(reading).toMatchObject({ status: "unavailable", restored: "left-to-wall" })
+    expect(posted).toEqual([])
+    expect(model.state.offset).toBe(2)
+    // The wall, outside the abandoned scope, knows of the adopted hold.
+    await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
+    expect(model.state.offset).toBe(0)
+    await expect(route.returnToBottom?.()).resolves.toBe("not-held")
+    expect(posted).toEqual(["bottom"])
+  })
+
+  it("reads a successful already-held view as a candidate and restores it once", async () => {
+    const { model, posted, route, row } = composed()
+    const reading = await row()
+    expect(reading.status).toBe("candidate")
+    if (reading.status === "candidate") expect(reading.candidate.shift).toBe(2)
+    expect(model.state.offset).toBe(0)
+    expect(posted).toEqual(["bottom"])
+    await expect(route.returnToBottom?.()).resolves.toBe("not-held")
+    expect(posted).toEqual(["bottom"])
   })
 })
