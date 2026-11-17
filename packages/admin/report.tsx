@@ -14,6 +14,8 @@ import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
 type CurrentColumn = { label: string; contextKey: string; view: SelectedContextSummary }
 type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "CONFLICT" | "N/M" | "—"
 
+const ENVIRONMENT_GROUP_NOTE = "N/M manual by design (catalogue): no automatable probe exists for this feature"
+
 function score(run: SelectedContextSummary): string {
   return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
 }
@@ -173,7 +175,13 @@ export function CensusReport({
             cell?.featureResult?.status === "probe-conflict"
               ? `PROBE CONFLICT: disagreeing probes ${cell.featureResult.conflictingProbes.join(", ")}`
               : undefined
-          const note = [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
+          // D132 B (#30917): the nine environment positions are manual by design and no collection
+          // selects them, so the collector's "not selected" reason must not print as uncollected work.
+          const note = isEnvironmentGroup(id)
+            ? cell === undefined
+              ? undefined
+              : ENVIRONMENT_GROUP_NOTE
+            : [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
           if (!note) {
             return []
           }

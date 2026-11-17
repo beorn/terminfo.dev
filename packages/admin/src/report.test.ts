@@ -45,7 +45,7 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, recordCollectorSelection } from "@terminfo/probe-defs"
 import { projectResults } from "../../../docs/data/selected-results.ts"
 import { aggregateCurrentResults, computeFeatureResults } from "../../../docs/data/release-scope.ts"
 import { CensusReport, renderReport } from "../report.tsx"
@@ -172,6 +172,64 @@ test("report renders computed conflicts with unscored environment rows and origi
   expect(narrowMatrix).toMatch(/CONFLICT\s+PROBE\s+CONFLICT/)
   expect(cell.result.status).toBe("supported")
   expect(JSON.stringify(run)).toBe(original)
+})
+
+/**
+ * @failure The report's reason notes print the collector's scope reason for the nine environment
+ *   positions, so "manual by design" reads as an uncollected gap (xterm 2026-11-16T13-37-32-911Z).
+ * @level l2
+ * @consumer Admin CLI report readers comparing selected terminal observations.
+ * @testonly none
+ */
+test("report notes the nine environment positions as manual by design, never as unselected", async () => {
+  const catalogIds = [...ENVIRONMENT_GROUP_IDS]
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "report-environment",
+    sourceRevision: "3".repeat(40),
+    adapterVersion: "4",
+    catalogIds,
+    probes: { term: catalogIds, lib: [], mux: [] },
+  }
+  const draft = initializeRunDraft({
+    runId: "environment-unselected",
+    sourceRevision: manifest.sourceRevision,
+    manifest,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "xterm" },
+  })
+  // The measured shape: a collection selects graded ids only, so every environment row keeps the
+  // collector's "not selected" scope reason.
+  recordCollectorSelection(draft, [])
+  const measuredAt = "2026-11-16T13:37:32.911Z"
+  const run = parseRun(
+    "environment.json",
+    JSON.stringify({
+      ...draft,
+      subject: {
+        kind: "term",
+        id: "xterm",
+        version: "390",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt,
+      origin: { kind: "collector" },
+    }),
+    catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const projection = projectResults([run], catalogIds, { currentProbeHash: manifest.probeHash }, [])
+  const plain = (await renderReport(projection, catalogIds)).replace(/\x1b\[[0-9;]*m/g, "")
+  for (const id of ENVIRONMENT_GROUP_IDS) {
+    expect(plain, id).toContain(`${id}: N/M manual by design (catalogue): no automatable probe exists for this feature`)
+  }
+  expect(plain).not.toContain("Not selected for this collection")
 })
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
