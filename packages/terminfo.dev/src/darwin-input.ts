@@ -423,11 +423,14 @@ export function viewportScrollRoute(
   const dispatch = (step: ViewportStep): Promise<void> => {
     const position = ++order
     if (step === "bottom") {
-      const run = last.then(() => input.injectKey(viewport.keys[step]))
-      last = run.catch(() => {})
-      return run.then(() => {
+      const previous = last
+      const run = (async () => {
+        await previous
+        await input.injectKey(viewport.keys[step])
         if (lastHold < position) held = false
-      })
+      })()
+      last = run.catch(() => {})
+      return run
     }
     held = true
     lastHold = position
