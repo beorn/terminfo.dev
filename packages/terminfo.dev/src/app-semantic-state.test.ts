@@ -27,6 +27,7 @@ import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
 import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
 import {
   appSemanticDeclarations,
+  declarationDrift,
   beginMuxSgrCommandRead,
   openAppCommandLog,
   readAppSemanticState,
@@ -718,6 +719,14 @@ test.each([
 )
 
 // 34534: the Linux runner measured XTerm(412); rows still bound to 411 left the prompt-mark and OSC 8 cells probe-todo.
+// 34555: a measured version with no reviewed rows read as "No semantic reader for this App" on every cell (34534).
+test("a measured version with no reviewed declarations names the versions that have them", () => {
+  const xterm = { kind: "term" as const, id: "xterm", os: "linux" }
+  expect(declarationDrift({ ...xterm, version: "413" })).toEqual({ measured: "413", reviewed: ["412"] })
+  expect(declarationDrift({ ...xterm, version: "412" })).toBeUndefined()
+  expect(declarationDrift({ ...xterm, id: "no-such-app", version: "1" })).toBeUndefined()
+})
+
 test("xterm 412, the runner's measured version, selects the reviewed prompt-mark and OSC 8 declarations", () => {
   const xterm = { kind: "term" as const, id: "xterm", version: "412", os: "linux" }
   const declared = appSemanticDeclarations(xterm)
