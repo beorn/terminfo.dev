@@ -235,13 +235,13 @@ describe("loadReopenedCells", () => {
   // Of the three remeasured sgr.blink rows, alacritty and ghostty exited on 2026-11-11: each cell was measured again
   // under suite 91038808c439 and its row was deleted in the placement commit that carried the deciding run (#33117).
   // iTerm2's row stays: its same-night run is open/capture-too-slow and decides nothing.
-  it("the committed file holds the 12 re-keyed multiplexer rows and the 1 remeasured row, all current", async () => {
+  it("the committed file holds the 6 remaining multiplexer rows and the 1 remeasured row, all current (#34674 retired six tmux rows whose exit was met)", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(13)
+    expect(rows).toHaveLength(7)
     const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
-    expect(criterion).toHaveLength(12)
+    expect(criterion).toHaveLength(6)
     expect(new Set(criterion.map((row) => row.kind))).toEqual(new Set(["mux"]))
     expect(new Set(criterion.map((row) => row.reason))).toEqual(
       new Set(["multiplexer: silence may have stopped at the hop"]),
