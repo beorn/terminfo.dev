@@ -715,15 +715,6 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): WezTerm 20240203-110809-5046fc22 has no OSC 633 parser, so the sequence is dropped without a target-state reading, a report or a non-debug log. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:409 is the OSC command table and carries SetHyperlink = "8" and FinalTermSemanticPrompt = "133" (:439) with no 633 entry — the file has zero occurrences of 633 — dispatched at :312,326-327 and parsed at :627-696. The macOS build runs this same termwiz parser (window/src/os/macos, all eight .rs files, carries no OSC handling of its own and names no semantic state), the mux protocol (mux/src/lib.rs, 1441 lines) has zero "semantic" and no unhandled-OSC verb, and the CLI at this tag reads no prompt state (wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes only). macOS additionally offers no default-launch log surface for dropped OSCs.',
   })),
-  {
-    kind: "term" as const,
-    id: "wezterm",
-    version: "20240203-110809-5046fc22",
-    os: "macos",
-    featureId: "extensions.osc8",
-    reason:
-      'Untestable (no way): WezTerm 20240203-110809-5046fc22 parses OSC 8 hyperlinks into in-process state with no default-launch readback on macOS. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:409 lists SetHyperlink = "8" and :312 parses it into OperatingSystemCommand::SetHyperlink (:36), kept in the terminal model. Nothing returns it: wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes (no OSC 8), the CLI has no hyperlink verb at this tag, and mux/src/lib.rs has no hyperlink or semantic verb. The remaining reader is user Lua through docs/config/lua/pane/get_semantic_zones.md, which is a config script, not a default-launch reader.',
-  },
   // 34586: cmux's six macOS prompt rows. They say only that D's exit code is parsed and never read back: the fork's
   // stream handler (src/termio/stream_handler.zig at cb1ef709) was not read, so no claim that the status is discarded.
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
