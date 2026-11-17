@@ -368,6 +368,16 @@ jobs:
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "$bundle_version")"
+          elif [ "$APP_ID" = wezterm ]; then
+            # 34606: WezTerm.app's CFBundleShortVersionString is 0.1.0, so the version is the bundled CLI's own.
+            # The Darwin cwd reader binds to it and to the id (owned-terminal.ts reviewedVersion); it compares, so no
+            # equality refusal here: another WezTerm build still runs and only that reader stays unbound.
+            binary_status=0
+            binary_version="$("$APP_BUNDLE/Contents/MacOS/wezterm" --version)" || binary_status=$?
+            printf 'WezTerm binary --version (raw): %s\n' "$binary_version"
+            test "$binary_status" = 0 || { echo "WezTerm binary --version failed ($binary_status)" >&2; exit 1; }
+            [[ "$binary_version" =~ ^wezterm[[:blank:]]+([^[:space:]]+)$ ]] || { echo "WezTerm binary --version has an unexpected shape" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "${BASH_REMATCH[1]}")"
           fi
           PROBE_IDS_ARGS=""
           if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_ARGS="$(printf ' --probe-ids %q' "$PROBE_IDS")"; fi

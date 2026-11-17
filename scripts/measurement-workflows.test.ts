@@ -1603,30 +1603,79 @@ test.each(["granted", "unreadable", "other-app"] as const)(
 // 34562 (@chief 4e807612): the hosted macOS Ghostty run recorded intendedSubject {kind:"term"} with no id or
 // version, so no reviewed Ghostty 1.4.0 declaration could ever bind to it. The collect step's own export block
 // must name the app and its bundle version, and refuse an empty version loudly.
+// 34606: WezTerm.app's plist says 0.1.0, so its version is the bundled CLI's own `wezterm --version`; without
+// TERMINFO_TARGET_ID and that version the Darwin cwd reader refuses and osc633-p is never decided.
 test.each([
-  { app: "ghostty", plist: "1.4.0", exit: 0, id: "ghostty", version: "1.4.0" },
-  { app: "ghostty", plist: "", exit: 1, id: undefined, version: undefined },
-])("hosted macOS $app export names the subject from bundle version '$plist'", ({ app, plist, exit, id, version }) => {
-  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
-  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
-  const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
-  if (!block) throw new Error("The collect step's target export block is absent")
-  const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
-  try {
-    const plistBuddy = join(directory, "PlistBuddy")
-    writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
-    const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
-    const result = spawnSync("/bin/bash", ["-c", script], {
-      encoding: "utf8",
-      env: { PATH: process.env.PATH, APP_ID: app, APP_BUNDLE: `/Applications/${app}.app` },
-    })
-    expect(result.status, result.stderr).toBe(exit)
-    if (exit === 0) {
-      expect(result.stdout.split("\n").slice(0, 2)).toEqual([id, version])
-    } else {
-      expect(result.stderr).toContain(`${app} bundle version is empty`)
+  { app: "ghostty", plist: "1.4.0", cli: undefined, exit: 0, id: "ghostty", version: "1.4.0", error: "" },
+  {
+    app: "ghostty",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "ghostty bundle version is empty",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "wezterm 20240203-110809-5046fc22", status: 0 },
+    exit: 0,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    error: "",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "wezterm", status: 0 },
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "WezTerm binary --version has an unexpected shape",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "", status: 3 },
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "WezTerm binary --version failed (3)",
+  },
+])(
+  "hosted macOS $app export names the subject from bundle version '$plist' and CLI $cli.out",
+  ({ app, plist, cli, exit, id, version, error }) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+    const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
+    const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
+    if (!block) throw new Error("The collect step's target export block is absent")
+    const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
+    try {
+      const plistBuddy = join(directory, "PlistBuddy")
+      writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
+      const bundle = join(directory, `${app}.app`)
+      if (cli) {
+        mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true })
+        writeFileSync(
+          join(bundle, "Contents/MacOS", app),
+          `#!/bin/bash\ntest "$1" = --version || exit 9\nprintf '%s\\n' ${JSON.stringify(cli.out)}\nexit ${cli.status}\n`,
+          { mode: 0o755 },
+        )
+      }
+      const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
+      const result = spawnSync("/bin/bash", ["-c", script], {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, APP_ID: app, APP_BUNDLE: bundle },
+      })
+      expect(result.status, result.stderr).toBe(exit)
+      if (exit === 0) {
+        expect(result.stdout.split("\n").slice(-3, -1)).toEqual([id, version])
+      } else {
+        expect(result.stderr).toContain(error)
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
     }
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-})
+  },
+)
