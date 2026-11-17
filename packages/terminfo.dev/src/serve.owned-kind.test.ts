@@ -193,3 +193,30 @@ test("ordinary-open START refusals hold through collectProbeRun, each named", as
     vi.doUnmock("./tty.ts")
   }
 })
+
+/**
+ * 31743: every owned Mac launch now hands its collector a capture directory, so the collector is where an
+ * unproved window is stopped. A Darwin run with the directory and no owner claim (no receipt, no process,
+ * app or Terminal.app owner) refuses by name before any row, and never installs a capture.
+ */
+test("a Darwin capture directory with no owner claim refuses before any row (31743)", async () => {
+  vi.resetModules()
+  vi.doMock("./detect.ts", () => ({
+    detectTerminal: () => ({ name: "unknown", version: "", os: "darwin", osVersion: "fixture" }),
+  }))
+  const { collectProbeRun: collect } = await import("./serve.ts")
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!
+  delete process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
+  delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+  process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "artifacts")
+  Object.defineProperty(process, "platform", { ...platform, value: "darwin" })
+  try {
+    await expect(collect({ ids: ["device.xtversion"] })).rejects.toThrow(
+      "Darwin capture directory requires a verified hosted-runner receipt, owned process, owned app or Terminal.app owner",
+    )
+  } finally {
+    Object.defineProperty(process, "platform", platform)
+    delete process.env.TERMINFO_CAPTURE_DIRECTORY
+    vi.doUnmock("./detect.ts")
+  }
+})

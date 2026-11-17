@@ -793,7 +793,7 @@ describe("Ghostty cli-process arm", () => {
       "command = /private/run/serve-private-run.sh\nconfirm-close-surface = false\nquit-after-last-window-closed = true\nwindow-save-state = never\n",
       { flag: "wx", mode: 0o600 },
     )
-    // D5: Ghostty's recipe is the one ruled capture route, so its collector gets the artifact directory.
+    // Every owned launch's collector gets the artifact directory (31743; Ghostty's D5 route keeps it).
     expect(writeFileSync).toHaveBeenCalledWith(
       "/private/run/serve-private-run.sh",
       expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
@@ -969,6 +969,27 @@ describe("Ghostty cli-process arm", () => {
   })
 })
 
+// 31743: the directory reaches the run script before ownership is known, so ownership is what gates
+// capture. An editor launch whose owner resolution refuses (no live marked process, or more than one)
+// never sends the probe request, so its collector gets no owner claim and no row is captured or written.
+test.each([
+  { input: "cursor", refusal: "no live process runs Cursor carrying the run-scoped marker" },
+  { input: "cursor", refusal: "2 live processes run Cursor carrying the run-scoped marker; the owner is ambiguous" },
+  { input: "com.microsoft.VSCode", refusal: "no live process runs Code carrying the run-scoped marker" },
+  {
+    input: "com.microsoft.VSCode",
+    refusal: "2 live processes run Code carrying the run-scoped marker; the owner is ambiguous",
+  },
+])("$input refusing its owner ($refusal) sends no probe and writes no run", async ({ input, refusal }) => {
+  vi.mocked(resolveOwnedProcessByMarker).mockImplementation(() => {
+    throw new Error(`cli-process owner resolution: ${refusal}`)
+  })
+  await expect(handleApp(input, {})).rejects.toThrow(refusal)
+  expect(requestDaemonProbe).not.toHaveBeenCalled()
+  expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+  expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+})
+
 // Editor recipes deliver a terminal through the extension API without workspace
 // tasks or input synthesis. The canonical mixed-case VS Code id also exercises selection.
 test.each([
@@ -1124,6 +1145,13 @@ test.each([
       expect(sqlite.close).toHaveBeenCalledTimes(1)
       expect(sqlite.close.mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(spawn).mock.invocationCallOrder[0]!)
     }
+    // 31743: an owned editor launch gets the same capture directory as every other owned Mac launch, so
+    // its collector can retain evidence; before, only the per-app list and declared recipes received it.
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/serve.sh",
+      expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
+      { flag: "wx", mode: 0o700 },
+    )
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
     // The emitted extension's actual activation and native reads are exercised below.

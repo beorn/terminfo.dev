@@ -13,10 +13,10 @@ const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
  * (app.ts and mux.ts); one builder means the run identity, the suite identity and the capture
  * directory can never drift between the owned route and the mux route.
  *
- * `captureDirectory` is set only by a recipe that declares a ruled capture route, and it is the
- * artifact directory the launch receipt hands the collector (`serve.ts` reads it as
- * TERMINFO_CAPTURE_DIRECTORY). Passing nothing keeps today's behaviour exactly: the arm names the
- * absent adapter rather than retaining a frame it cannot keep.
+ * `captureDirectory` is set by every owned Mac launch (31743), and it is the artifact directory the
+ * launch receipt hands the collector (`serve.ts` reads it as TERMINFO_CAPTURE_DIRECTORY). Passing
+ * nothing, as the mux route does, keeps that route's behaviour exactly: the arm names the absent
+ * adapter rather than retaining a frame it cannot keep.
  */
 export function serveCommand(run: Run, captureDirectory?: string): string {
   const suite = sourceSuiteEnvironment()
