@@ -372,7 +372,8 @@ jobs:
             # 34562: a Ghostty run with no id or version in its subject can bind no reviewed declaration.
             # 34570: the iTerm2 prompt reader binds to TERMINFO_TARGET_VERSION 3.6.11 (run 44133870892 refused).
             # Not a default for every app: capture-writer refuses an intended version that differs from the measured
-            # one, and WezTerm (plist 0.1.0) and Warp (records a v-prefixed tag; plist unread) are not proven equal.
+            # one: WezTerm plist 0.1.0 vs recorded 20240203-110809-5046fc22, Warp plist 0.2026.10.14.08.27.01 vs
+            # recorded v0.2026.10.14.08.27.stable_01.
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "$bundle_version")"
