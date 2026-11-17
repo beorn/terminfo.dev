@@ -252,7 +252,7 @@ const declarations: readonly AppSemanticCapability[] = [
     { kind: "term", id: "ghostty", version: "1.4.0" },
     { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
     { kind: "term", id: "alacritty", version: "0.17.0" },
-    { kind: "term", id: "xterm", version: "411" },
+    { kind: "term", id: "xterm", version: "412" },
     { kind: "mux", id: "screen", version: "5.0.2" },
     { kind: "mux", id: "tmux", version: "3.8" },
   ].flatMap((subject) =>
@@ -267,11 +267,11 @@ const declarations: readonly AppSemanticCapability[] = [
   ...promptFeatures.map((featureId) => ({
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId,
     reason:
-      "Untestable (no way): xterm 411 has no prompt-mark store or public prompt action for OSC 133/633. Read ctlseqs.txt:2008 onward, misc.c:4353-4354 (TRACE-only unknown-OSC arm), and xterm.man in xterm-411.tgz (SHA256 969be283).",
+      "Untestable (no way): xterm 412 has no prompt-mark store or public prompt action for OSC 133/633. Read ctlseqs.txt:2008 onward, misc.c:4353-4354 (TRACE-only unknown-OSC arm), and xterm.man in xterm-412.tgz (SHA256 b48bc780).",
   })),
   ...promptFeatures.map((featureId) => ({
     kind: "mux",
@@ -342,11 +342,11 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc666-termprop",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 666 terminal-property handler or public property readback. Read misc.c:3480-3502,4353-4355 in xterm-411.tgz (SHA256 969be283); the unknown-OSC arm only traces an unnamed rejection and stores no property.",
+      "Untestable (no way): xterm 412 has no OSC 666 terminal-property handler or public property readback. Read misc.c:3480-3502,4353-4355 in xterm-412.tgz (SHA256 b48bc780); the unknown-OSC arm only traces an unnamed rejection and stores no property.",
   },
   {
     kind: "term",
@@ -396,29 +396,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc176-app-id",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 176 application-id handler or target-state readback. Read misc.c do_osc and its default at 4353-4358 in xterm-411.tgz (SHA256 969be283); the target stores no application-id and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
+      "Untestable (no way): xterm 412 has no OSC 176 application-id handler or target-state readback. Read misc.c do_osc and its default at 4353-4358 in xterm-412.tgz (SHA256 b48bc780); the target stores no application-id and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
   },
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc440-audio",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 440 audio handler or playback readback. Read misc.c do_osc and its default at 4353-4358 in xterm-411.tgz (SHA256 969be283); the target starts no audio action and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
+      "Untestable (no way): xterm 412 has no OSC 440 audio handler or playback readback. Read misc.c do_osc and its default at 4353-4358 in xterm-412.tgz (SHA256 b48bc780); the target starts no audio action and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
   },
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc3008-context",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 3008 context handler or public context readback. Read misc.c do_osc and its default at 4353-4358 in xterm-411.tgz (SHA256 969be283); the target stores no context tag and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
+      "Untestable (no way): xterm 412 has no OSC 3008 context handler or public context readback. Read misc.c do_osc and its default at 4353-4358 in xterm-412.tgz (SHA256 b48bc780); the target stores no context tag and returns no response. The conditional rejection trace names no command, so it supplies no target report.",
   },
   {
     kind: "term",
@@ -432,29 +432,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc7-cwd",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 7 working-directory state or public readback. Read the complete do_osc dispatch in misc.c:3988-4360 and numeric OSC aliases at 3480-3502 in xterm-411.tgz (SHA256 969be283); OSC 7 reaches the unnamed default trace at 4353-4358. That generic trace is not a command-specific rejection or directory reading.",
+      "Untestable (no way): xterm 412 has no OSC 7 working-directory state or public readback. Read the complete do_osc dispatch in misc.c:3988-4360 and numeric OSC aliases at 3480-3502 in xterm-412.tgz (SHA256 b48bc780); OSC 7 reaches the unnamed default trace at 4353-4358. That generic trace is not a command-specific rejection or directory reading.",
   },
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc555-flash",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 555 flash handler or public flash readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-411.tgz (SHA256 969be283); OSC 555 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or flash reading.",
+      "Untestable (no way): xterm 412 has no OSC 555 flash handler or public flash readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-412.tgz (SHA256 b48bc780); OSC 555 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or flash reading.",
   },
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc710-font-normal",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 710 font-selection handler or public font readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-411.tgz (SHA256 969be283); OSC 710 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or font reading.",
+      "Untestable (no way): xterm 412 has no OSC 710 font-selection handler or public font readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1018-1034 in xterm-412.tgz (SHA256 b48bc780); OSC 710 reaches the unnamed default trace at 4353-4355. That generic trace is not a command-specific rejection or font reading.",
   },
   {
     kind: "term",
@@ -699,11 +699,11 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "term",
     id: "xterm",
-    version: "411",
+    version: "412",
     os: "linux",
     featureId: "extensions.osc8",
     reason:
-      "Untestable (no way): xterm 411 has no OSC 8 hyperlink handler, cell storage or public readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1017-1037 in xterm-411.tgz (SHA256 969be283); OSC 8 reaches the unnamed default TRACE at misc.c:4353-4355.",
+      "Untestable (no way): xterm 412 has no OSC 8 hyperlink handler, cell storage or public readback. Read the complete do_osc dispatch in misc.c:3988-4360, numeric OSC aliases at 3480-3502 and colour codes at ptyx.h:1017-1037 in xterm-412.tgz (SHA256 b48bc780); OSC 8 reaches the unnamed default TRACE at misc.c:4353-4355.",
   },
   {
     kind: "term",
