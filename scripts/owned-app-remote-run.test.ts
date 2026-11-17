@@ -33,6 +33,8 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
+import { parseRsyncStats } from "./owned-app-remote-run.ts"
+
 const driver = fileURLToPath(new URL("./owned-app-remote-run.ts", import.meta.url))
 const identityScript = fileURLToPath(new URL("./owned-host-identity.ts", import.meta.url))
 
@@ -248,6 +250,7 @@ function run(
   argv: string[] = ["bun", "packages/admin/src/index.ts", "probe", "app", "kitty"],
   context = "kitty",
   stageArgument: string | null = stage,
+  runId = RUN_ID,
 ) {
   const env = {
     ...process.env,
@@ -276,7 +279,7 @@ function run(
       "--context",
       context,
       "--run-id",
-      RUN_ID,
+      runId,
       "--known-hosts",
       knownHosts,
       ...extraArgs,
@@ -549,7 +552,7 @@ describe("owned-app ssh transport", () => {
     "refreshes a persistent stage at the same sha (%s), preserving earlier output",
     (change) => {
       expect(run().status).toBe(0)
-      const firstOutput = join(stage, "runs", `${revision.slice(0, 12)}-kitty`, "kitty-1.0-macos-run1.json")
+      const firstOutput = join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "kitty-1.0-macos-run1.json")
       const firstBytes = readFileSync(firstOutput)
       const staged = join(stage, "source", "vendor", "silvery")
       if (change === "contents") {
@@ -806,7 +809,7 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("refuses to overwrite a remote output directory from an earlier run", () => {
-    mkdirSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty`), { recursive: true })
+    mkdirSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`), { recursive: true })
     writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
     const result = run()
     expect(result.status).toBe(1)
@@ -853,7 +856,7 @@ describe("owned-app ssh transport", () => {
     )
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("output collision")
-    expect(existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty`))).toBe(true)
+    expect(existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`))).toBe(true)
   }, 60_000)
 
   it("refuses a copy-back that did not arrive", () => {
@@ -1259,5 +1262,135 @@ describe("default stage", () => {
     expect(second.stderr).toContain("not a JSON object")
     expect(second.stderr).toContain("restaging fully")
     expect(proof(second).check).toBe("full")
+  }, 60_000)
+})
+
+/**
+ * @failure #33797 (@cto 16:10Z): two counted runs at one revision and context shared one remote output
+ *          directory, so the second refused (window 22 moved run 1's output aside by hand) and neither
+ *          receipt could say whose bytes survived; the stage rsync discarded its counters, so "zero
+ *          bytes transferred" was unmeasured; and no interval inside the transport existed.
+ * @level    l1 — the real driver with real rsync behind the PATH shims, plus the stats parser alone.
+ */
+describe("run identity on the output path, per-call rsync counters, phase intervals (#33797)", () => {
+  const OTHER_RUN = "fedcba9876543210fedcba9876543210"
+
+  it("distinct runs at one revision and context keep distinct directories, and both survive", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const second = run({}, [], undefined, "kitty", stage, OTHER_RUN)
+    expect(second.status, second.stderr).toBe(0)
+    const prefix = `${revision.slice(0, 12)}-kitty`
+    expect(proof(first).remoteOutput).toBe(join(stage, "runs", `${prefix}-${RUN_ID}`))
+    expect(proof(second).remoteOutput).toBe(join(stage, "runs", `${prefix}-${OTHER_RUN}`))
+    for (const id of [RUN_ID, OTHER_RUN]) {
+      expect(existsSync(join(stage, "runs", `${prefix}-${id}`, "transport-receipt.json")), id).toBe(true)
+    }
+  }, 120_000)
+
+  it("a replay of the same run still refuses, and the first run's output is left as it was", () => {
+    expect(run().status).toBe(0)
+    const kept = join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "transport-receipt.json")
+    const before = readFileSync(kept)
+    const replay = run()
+    expect(replay.status).toBe(1)
+    expect(replay.stderr).toContain("output collision")
+    expect(readFileSync(kept)).toEqual(before)
+  }, 120_000)
+
+  it("seals each stage rsync's own counters into the receipt and keeps copy-back's at the driver's output", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      transfers: Array<Record<string, unknown>>
+    }
+    const labels = receipt.transfers.map((transfer) => transfer.label)
+    expect(labels).toContain("bundle transfer")
+    expect(labels).toContain("resource transfer node_modules")
+    expect(labels).not.toContain("copy-back")
+    for (const transfer of receipt.transfers) {
+      expect(transfer.direction).toBe("stage")
+      // The fixture's rsync prints a full --stats block, so every counter is a measured count.
+      for (const field of [
+        "files",
+        "logicalTransferredFileSizeBytes",
+        "literalDataBytes",
+        "matchedDataBytes",
+        "sentBytes",
+        "receivedBytes",
+      ]) {
+        expect(typeof transfer[field], `${String(transfer.label)} ${field}`).toBe("number")
+      }
+      expect(existsSync(String(transfer.statsLog))).toBe(true)
+    }
+    const afterSeal = proof(result).afterSeal as { transfers: Array<Record<string, unknown>> }
+    expect(afterSeal.transfers.map((transfer) => [transfer.label, transfer.direction])).toEqual([
+      ["copy-back", "copy-back"],
+    ])
+  }, 60_000)
+
+  it("reads missing or scaled stats as unmeasured, never as zero", () => {
+    const full = [
+      "Number of files: 1,204 (reg: 1,000, dir: 204)",
+      "Number of regular files transferred: 0",
+      "Total file size: 4,700,000 bytes",
+      "Total transferred file size: 0 bytes",
+      "Literal data: 0 bytes",
+      "Matched data: 0 bytes",
+      "Total bytes sent: 9,876",
+      "Total bytes received: 54",
+    ].join("\n")
+    const measured = parseRsyncStats(full, "resource transfer node_modules", "stage", "/x/stats.log")
+    expect(measured).toMatchObject({
+      files: 1204,
+      regularFilesTransferred: 0,
+      totalFileSizeBytes: 4_700_000,
+      logicalTransferredFileSizeBytes: 0,
+      sentBytes: 9876,
+      receivedBytes: 54,
+    })
+    expect(measured.unmeasured).toBeUndefined()
+    const none = parseRsyncStats("", "copy-back", "copy-back", "/x/stats.log")
+    expect(none.logicalTransferredFileSizeBytes).toBe("unmeasured")
+    expect(none.sentBytes).toBe("unmeasured")
+    expect(none.unmeasured).toBe("rsync printed no readable --stats block")
+    const scaled = parseRsyncStats(
+      "Total transferred file size: 1.20K bytes\nTotal bytes sent: 3,000",
+      "x",
+      "stage",
+      "/x",
+    )
+    expect(scaled.logicalTransferredFileSizeBytes).toBe("unmeasured")
+    expect(scaled.literalDataBytes).toBe("unmeasured")
+    expect(scaled.sentBytes).toBe(3000)
+  })
+
+  it("names each interval at the phase that produced it: transport phases sealed, copy-back after the seal", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      clock: string
+      phases: Array<{ name: string; within: string | null; startMs: number; durationMs: number }>
+    }
+    expect(receipt.clock).toContain("monotonic")
+    const within = Object.fromEntries(receipt.phases.map((phase) => [phase.name, phase.within]))
+    expect(within).toEqual({
+      "local manifest": "transport",
+      "bundle transfer": "stage",
+      "stage checkout": "stage",
+      "resource transfer": "stage",
+      stage: "transport",
+      "remote witness": "transport",
+      probe: "transport",
+      "output measure": "transport",
+      "host identity": "transport",
+      transport: null,
+    })
+    for (const phase of receipt.phases) {
+      expect(Number.isInteger(phase.startMs) && Number.isInteger(phase.durationMs), phase.name).toBe(true)
+      expect(phase.durationMs).toBeGreaterThanOrEqual(0)
+    }
+    const afterSeal = proof(result).afterSeal as { phases: Array<{ name: string; within: string | null }> }
+    expect(afterSeal.phases.map((phase) => [phase.name, phase.within])).toEqual([["copy-back", null]])
   }, 60_000)
 })
