@@ -7,6 +7,7 @@
  */
 import { afterEach, expect, test, vi } from "vitest"
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   appendFileSync,
   existsSync,
@@ -67,182 +68,226 @@ test.each([
   "pid-absent",
   "unchanged-target",
   "capture-failed",
-])("editor CWD collector qualifies native replies and captures before restoration (%s)", async (mode) => {
-  const { randomUUID } = await import("node:crypto")
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-reader-"))
-  // Hosted output is outside the private editor launch directory.
-  const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-output-"))
-  const capture = join(captureRoot, "artifacts")
-  const replyDirectory = join(directory, "editor-replies-activation")
-  mkdirSync(capture)
-  mkdirSync(replyDirectory)
-  const runId = "c".repeat(32)
-  const activationNonce = randomUUID()
-  const requestPath = join(directory, "editor-request.json")
-  const extensionPid = process.pid + 123
-  const app = { name: "Visual Studio Code", version: "native-api-version" }
-  const original = "file:///original-native"
-  let nativeCwd = original
-  let sequence = 0
-  const answered = new Set<string>()
-  const captures: Array<{ featureId: string; phase: string; cwd: string }> = []
-  const writes: string[] = []
-  writeFileSync(
-    join(directory, "editor-activation.json"),
-    JSON.stringify({
-      runId,
-      activationNonce,
-      extensionPid,
-      app,
-      activatedAt: Date.now(),
-      requestPath,
-      replyDirectory,
-      evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
-    }),
-  )
-  vi.stubEnv("TERMINFO_RUN_ID", runId)
-  vi.stubEnv("TERMINFO_TARGET_ID", "com.microsoft.VSCode")
-  // The Darwin receipt is the authority; the launcher variable is not a second selector.
-  if (mode === "owned-target-no-env") vi.stubEnv("TERMINFO_TARGET_ID", undefined)
-  if (mode === "owned-target-conflicting-env") vi.stubEnv("TERMINFO_TARGET_ID", "cursor")
-  vi.stubEnv("TERMINFO_MUX_KIND", "")
-  vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
-  vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
-  // CTO condition: an existing reply cannot satisfy even a correctly correlated request.
-  const plantedNonce = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-  const plantedPath = join(replyDirectory, plantedNonce + ".json")
-  if (mode === "pre-planted") {
-    writeFileSync(plantedPath, "pre-existing reply sentinel", { flag: "wx" })
-    editorNonce.mockReturnValueOnce(plantedNonce)
-  }
-  if (mode === "activation-missing") rmSync(join(directory, "editor-activation.json"))
-  // Only the external-API fixture writes replies; production must write only requests.
-  const producer = setInterval(() => {
-    if (!existsSync(requestPath)) return
-    const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
-      nonce: string
-      expectedCwd?: string
-      [key: string]: unknown
-    }
-    if (
-      answered.has(request.nonce) ||
-      (mode !== "unchanged-target" && request.expectedCwd !== undefined && request.expectedCwd !== nativeCwd)
-    ) {
-      return
-    }
-    answered.add(request.nonce)
+  "reply-timeout",
+])(
+  "editor CWD collector qualifies native replies and captures before restoration (%s)",
+  async (mode) => {
+    const { randomUUID } = await import("node:crypto")
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-reader-"))
+    // Hosted output is outside the private editor launch directory.
+    const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-output-"))
+    const capture = join(captureRoot, "artifacts")
+    const replyDirectory = join(directory, "editor-replies-activation")
+    mkdirSync(capture)
+    mkdirSync(replyDirectory)
+    const runId = "c".repeat(32)
+    const activationNonce = randomUUID()
+    const requestPath = join(directory, "editor-request.json")
+    const extensionPid = process.pid + 123
+    const app = { name: "Visual Studio Code", version: "native-api-version" }
+    const original = "file:///original-native"
+    let nativeCwd = original
+    let sequence = 0
+    const answered = new Set<string>()
+    const captures: Array<{ featureId: string; phase: string; cwd: string }> = []
+    const writes: string[] = []
     writeFileSync(
-      join(replyDirectory, `${request.nonce}.json`),
+      join(directory, "editor-activation.json"),
       JSON.stringify({
-        ...request,
-        activationNonce: mode === "wrong-activation" ? "another-activation" : activationNonce,
+        runId,
+        activationNonce,
         extensionPid,
         app,
-        evaluatedAt: Date.now(),
-        sequence: mode === "stale-sequence" ? 1 : ++sequence,
-        delivery: "interval",
-        status: "observed",
-        terminal: {
-          name: `terminfo-${runId}`,
-          processId:
-            mode === "pid-absent"
-              ? { present: false, reason: "Native terminal.processId is undefined" }
-              : { present: true, value: mode === "shell-ancestor" ? process.ppid : process.pid },
-          shellIntegrationCwd:
-            mode === "api-absent"
-              ? { present: false, reason: "Native terminal.shellIntegration is undefined" }
-              : { present: true, value: nativeCwd },
-        },
+        activatedAt: Date.now(),
+        requestPath,
+        replyDirectory,
+        evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
       }),
-      { flag: "wx" },
     )
-  }, 5)
-  try {
-    const reading = await readAppSemanticState({
-      featureId: "extensions.osc633-p",
-      runId,
-      editor: {
-        appId: "com.microsoft.VSCode",
-        assertProcess: async (pid: number, collectorAncestor?: boolean) => {
-          if (pid === process.ppid && mode === "shell-ancestor") {
-            expect(collectorAncestor).toBe(true)
-            return
-          }
-          if (pid !== extensionPid && pid !== process.pid) {
-            throw new Error("Native reply process is outside the owned App")
-          }
-        },
-        capture: async (featureId: string, phase: string) => {
-          captures.push({ featureId, phase, cwd: nativeCwd })
-          if (mode === "capture-failed") throw new Error("Fixture capture failed")
-          return { retained: `fixture-${phase}` }
-        },
-      },
-      write(bytes: string) {
-        writes.push(bytes)
-        const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(bytes)?.[1]
-        if (cwd !== undefined && !(mode === "unchanged-target" && cwd.includes("/terminfo-target-"))) {
-          nativeCwd = cwd.startsWith("file:") ? cwd : `file://${cwd}`
-        }
-      },
-    })
-    if (mode === "activation-missing") {
-      expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("editor-activation.json") })
-      expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
-      expect(writes).toEqual([])
-      return
-    }
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_TARGET_ID", "com.microsoft.VSCode")
+    // The Darwin receipt is the authority; the launcher variable is not a second selector.
+    if (mode === "owned-target-no-env") vi.stubEnv("TERMINFO_TARGET_ID", undefined)
+    if (mode === "owned-target-conflicting-env") vi.stubEnv("TERMINFO_TARGET_ID", "cursor")
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    // CTO condition: an existing reply cannot satisfy even a correctly correlated request.
+    const plantedNonce = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+    const plantedPath = join(replyDirectory, plantedNonce + ".json")
     if (mode === "pre-planted") {
-      expect(reading).toMatchObject({ status: "invalid", reason: "Native editor reply was present before its request" })
-      expect(existsSync(requestPath)).toBe(false)
-      expect(readFileSync(plantedPath, "utf8")).toBe("pre-existing reply sentinel")
-      expect(writes).toEqual([])
-      expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
-      return
+      writeFileSync(plantedPath, "pre-existing reply sentinel", { flag: "wx" })
+      editorNonce.mockReturnValueOnce(plantedNonce)
     }
-    if (mode !== "native" && mode !== "shell-ancestor" && !mode.startsWith("owned-target-")) {
-      expect(reading.status).toBe(
-        mode === "api-absent" || mode === "pid-absent" || mode === "unchanged-target" ? "unavailable" : "invalid",
-      )
-      const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
-      const result = gradeAppSemanticState(reading)
-      expect(result.observation).toBeUndefined()
-      const detail = reading.detail as { nativeObservations: Array<{ artifact: string; raw: string }> }
-      expect(detail.nativeObservations.length).toBeGreaterThan(0)
-      for (const observation of detail.nativeObservations) {
-        expect(readFileSync(observation.artifact, "utf8")).toBe(observation.raw)
+    if (mode === "activation-missing") rmSync(join(directory, "editor-activation.json"))
+    // The extension's own error record names private paths; it must stay out of the public reading.
+    const privateErrorSentinel = `{"reason":"private error sentinel ${directory}/x"}\n`
+    if (mode === "reply-timeout") writeFileSync(join(directory, "editor-reader-errors.jsonl"), privateErrorSentinel)
+    // Only the external-API fixture writes replies; production must write only requests.
+    const producer = setInterval(() => {
+      if (!existsSync(requestPath)) return
+      const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
+        nonce: string
+        expectedCwd?: string
+        [key: string]: unknown
       }
-      expect(JSON.parse(result.response ?? "{}")).toMatchObject({ status: reading.status })
-      if (mode !== "api-absent") expect(nativeCwd).toBe(original)
-      return
+      if (
+        mode === "reply-timeout" ||
+        answered.has(request.nonce) ||
+        (mode !== "unchanged-target" && request.expectedCwd !== undefined && request.expectedCwd !== nativeCwd)
+      ) {
+        return
+      }
+      answered.add(request.nonce)
+      writeFileSync(
+        join(replyDirectory, `${request.nonce}.json`),
+        JSON.stringify({
+          ...request,
+          activationNonce: mode === "wrong-activation" ? "another-activation" : activationNonce,
+          extensionPid,
+          app,
+          evaluatedAt: Date.now(),
+          sequence: mode === "stale-sequence" ? 1 : ++sequence,
+          delivery: "interval",
+          status: "observed",
+          terminal: {
+            name: `terminfo-${runId}`,
+            processId:
+              mode === "pid-absent"
+                ? { present: false, reason: "Native terminal.processId is undefined" }
+                : { present: true, value: mode === "shell-ancestor" ? process.ppid : process.pid },
+            shellIntegrationCwd:
+              mode === "api-absent"
+                ? { present: false, reason: "Native terminal.shellIntegration is undefined" }
+                : { present: true, value: nativeCwd },
+          },
+        }),
+        { flag: "wx" },
+      )
+    }, 5)
+    try {
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc633-p",
+        runId,
+        editor: {
+          appId: "com.microsoft.VSCode",
+          assertProcess: async (pid: number, collectorAncestor?: boolean) => {
+            if (pid === process.ppid && mode === "shell-ancestor") {
+              expect(collectorAncestor).toBe(true)
+              return
+            }
+            if (pid !== extensionPid && pid !== process.pid) {
+              throw new Error("Native reply process is outside the owned App")
+            }
+          },
+          capture: async (featureId: string, phase: string) => {
+            captures.push({ featureId, phase, cwd: nativeCwd })
+            if (mode === "capture-failed") throw new Error("Fixture capture failed")
+            return { retained: `fixture-${phase}` }
+          },
+        },
+        write(bytes: string) {
+          writes.push(bytes)
+          const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(bytes)?.[1]
+          if (cwd !== undefined && !(mode === "unchanged-target" && cwd.includes("/terminfo-target-"))) {
+            nativeCwd = cwd.startsWith("file:") ? cwd : `file://${cwd}`
+          }
+        },
+      })
+      // The serialized reading is what reaches the committed probes-apps record (34666, @cto 190b1552): no private
+      // directory, terminal name, process id or raw reply, on success and on every failure path.
+      const serialized = JSON.stringify(reading)
+      for (const secret of [directory, captureRoot, `terminfo-${runId}`, "private error sentinel"]) {
+        expect(serialized).not.toContain(secret)
+      }
+      for (const key of ["extensionPid", "processId", "requestPath", "replyDirectory", "shellIntegrationCwd", "raw"]) {
+        expect(serialized).not.toContain(`"${key}"`)
+      }
+      if (mode === "reply-timeout") {
+        expect(reading).toMatchObject({ status: "unavailable" })
+        const failure = (reading.detail as { nativeFailure: { privateEvidence: string; sha256: string } }).nativeFailure
+        const retained = readFileSync(join(capture, failure.privateEvidence))
+        expect(retained.toString("utf8")).toBe(privateErrorSentinel)
+        expect(createHash("sha256").update(retained).digest("hex")).toBe(failure.sha256)
+        return
+      }
+      if (mode === "activation-missing") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("editor-activation.json") })
+        expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+        expect(writes).toEqual([])
+        return
+      }
+      if (mode === "pre-planted") {
+        expect(reading).toMatchObject({
+          status: "invalid",
+          reason: "Native editor reply was present before its request",
+        })
+        expect(existsSync(requestPath)).toBe(false)
+        expect(readFileSync(plantedPath, "utf8")).toBe("pre-existing reply sentinel")
+        expect(writes).toEqual([])
+        expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+        return
+      }
+      if (mode !== "native" && mode !== "shell-ancestor" && !mode.startsWith("owned-target-")) {
+        expect(reading.status).toBe(
+          mode === "api-absent" || mode === "pid-absent" || mode === "unchanged-target" ? "unavailable" : "invalid",
+        )
+        const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
+        const result = gradeAppSemanticState(reading)
+        expect(result.observation).toBeUndefined()
+        const detail = reading.detail as {
+          nativeObservations: Array<{ artifact: string; sha256: string; bytes: number }>
+        }
+        expect(detail.nativeObservations.length).toBeGreaterThan(0)
+        // The public record carries a digest of each native reply; the bytes stay in the private artifact (34666).
+        for (const observation of detail.nativeObservations) {
+          expect(observation).not.toHaveProperty("raw")
+          const bytes = readFileSync(join(capture, observation.artifact))
+          expect(createHash("sha256").update(bytes).digest("hex")).toBe(observation.sha256)
+          expect(bytes.length).toBe(observation.bytes)
+        }
+        expect(JSON.parse(result.response ?? "{}")).toMatchObject({ status: reading.status })
+        if (mode !== "api-absent") expect(nativeCwd).toBe(original)
+        return
+      }
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state")
+        throw new Error("Native CWD row was not measured")
+      expect(reading.unknown.after).toBe(reading.unknown.before)
+      expect(reading.handled.after).toBe(reading.handled.expected)
+      expect(reading.handled.before).not.toBe(reading.handled.expected)
+      expect(reading.target.after).toBe(reading.target.expected)
+      const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
+      expect(gradeAppSemanticState(reading).observation?.outcome).toBe("supported")
+      expect(captures).toContainEqual({
+        featureId: "extensions.osc633-p",
+        phase: "target",
+        cwd: reading.target.expected,
+      })
+      expect(nativeCwd).toBe(original)
+      expect(writes.some((bytes) => bytes.includes("633;P;Cwd="))).toBe(true)
+      const detail = reading.detail as {
+        nativeObservations: Array<{ phase: string; artifact: string; sha256: string; bytes: number }>
+      }
+      expect(detail.nativeObservations.length).toBeGreaterThanOrEqual(7)
+      const nonces = detail.nativeObservations.map((observation) => {
+        expect(observation).not.toHaveProperty("raw")
+        const raw = readFileSync(join(capture, observation.artifact), "utf8")
+        expect(createHash("sha256").update(raw).digest("hex")).toBe(observation.sha256)
+        const reply = JSON.parse(raw) as { nonce: string; activationNonce: string; runId: string }
+        expect(reply.activationNonce).toBe(activationNonce)
+        expect(reply.runId).toBe(runId)
+        return reply.nonce
+      })
+      expect(new Set(nonces).size).toBe(nonces.length)
+    } finally {
+      clearInterval(producer)
+      rmSync(directory, { recursive: true })
+      rmSync(captureRoot, { recursive: true })
     }
-    expect(reading.status).toBe("measured")
-    if (reading.status !== "measured" || reading.reader !== "state") throw new Error("Native CWD row was not measured")
-    expect(reading.unknown.after).toBe(reading.unknown.before)
-    expect(reading.handled.after).toBe(reading.handled.expected)
-    expect(reading.handled.before).not.toBe(reading.handled.expected)
-    expect(reading.target.after).toBe(reading.target.expected)
-    const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
-    expect(gradeAppSemanticState(reading).observation?.outcome).toBe("supported")
-    expect(captures).toContainEqual({ featureId: "extensions.osc633-p", phase: "target", cwd: reading.target.expected })
-    expect(nativeCwd).toBe(original)
-    expect(writes.some((bytes) => bytes.includes("633;P;Cwd="))).toBe(true)
-    const detail = reading.detail as { nativeObservations: Array<{ phase: string; artifact: string; raw: string }> }
-    expect(detail.nativeObservations.length).toBeGreaterThanOrEqual(7)
-    const nonces = detail.nativeObservations.map((observation) => {
-      expect(readFileSync(observation.artifact, "utf8")).toBe(observation.raw)
-      const reply = JSON.parse(observation.raw) as { nonce: string; activationNonce: string; runId: string }
-      expect(reply.activationNonce).toBe(activationNonce)
-      expect(reply.runId).toBe(runId)
-      return reply.nonce
-    })
-    expect(new Set(nonces).size).toBe(nonces.length)
-  } finally {
-    clearInterval(producer)
-    rmSync(directory, { recursive: true })
-    rmSync(captureRoot, { recursive: true })
-  }
-})
+  },
+  15_000,
+)
 
 // Native callback binding tests cannot see the collector's independent controls.
 // Model only the three OSC effects and native reads; production builds the result.

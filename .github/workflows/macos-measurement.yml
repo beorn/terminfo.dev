@@ -375,11 +375,13 @@ jobs:
             [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
             test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          elif [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ] || [ "$APP_ID" = cmux ]; then
+          elif [ "$APP_ID" = cmux ]; then
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          elif [ "$APP_ID" = ghostty ] || [ "$APP_ID" = iterm2 ]; then
+          elif [ "$APP_ID" = ghostty ] || [ "$APP_ID" = iterm2 ] || [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ]; then
+            # 34666: Cursor and VS Code recorded a version and no id, so no editor declaration could bind; the hosted
+            # Darwin receipt still selects their native reader (owned-terminal.ts resolveOwnedAppId).
             # 34562: a Ghostty run with no id or version in its subject can bind no reviewed declaration.
             # 34570: the iTerm2 prompt reader binds to TERMINFO_TARGET_VERSION 3.6.11 (run 44133870892 refused).
             # Not a default for every app: capture-writer refuses an intended version that differs from the measured
