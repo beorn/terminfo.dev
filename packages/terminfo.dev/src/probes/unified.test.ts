@@ -34,7 +34,7 @@ import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/ru
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
-import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
+import { captureAdapterEligible, runProbeBatch, type HeldViewportReaderFor } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
@@ -1487,6 +1487,89 @@ it("carries the owner's viewport route into every history row ahead of the decla
     expect(row.tests?.some((item) => item.id === "declared-untestable") ?? false, row.featureId).toBe(false)
   }
   expect(pressed).toEqual([])
+})
+
+// @failure serve installs the held-viewport reader on the preparation's own source, which the row never sees:
+//   the reader is never called, and a reader closed over that source reads no viewport route and records into
+//   the calibration. adoptHold is dropped by the row's route wrapper too (@cto 3dd05e18, 34693).
+// @level l1
+// @consumer App batch preparation -> per-row held-viewport reader -> history row callback.
+describe("held-viewport reader handoff (34693)", () => {
+  const id = "scrollback.accumulate"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsGeometry: definition.termNeedsGeometry,
+  }
+  afterEach(() => Object.assign(definition, original))
+  const frameRef = `sha256:${"ab".repeat(32)}`
+
+  async function run(refuse: boolean) {
+    verifiedBatchFixture()
+    const built: Array<{ featureId: string; source: TermProbeSource }> = []
+    const seen: { source?: TermProbeSource; routeAtRead?: string; reads: number; adopted: number } = {
+      reads: 0,
+      adopted: 0,
+    }
+    definition.termWrites = "query"
+    delete definition.termNeedsGeometry
+    definition.term = async (source) => {
+      seen.source = source
+      source.viewportScroll?.adoptHold?.()
+      await source.readViewportReference?.("before the trigger")
+      return { pass: false, tests: [{ id: "handoff", status: "probe-todo", reason: "fixture reads the handoff only" }] }
+    }
+    const heldViewportReaderFor: HeldViewportReaderFor = (row) => {
+      built.push({ featureId: row.featureId, source: row.source })
+      return {
+        read: () => Promise.reject(new Error("fixture holds nothing")),
+        reference: () => {
+          seen.reads++
+          seen.routeAtRead = row.source.viewportScroll?.route
+          row.record({ frame: { role: "control", ref: frameRef, capturedAt: 1, label: "held reference" }, trace: {} })
+          return Promise.resolve({ status: "unavailable", reason: "capture-failed", detail: "fixture" } as const)
+        },
+      }
+    }
+    const batch = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "term", id: "alacritty", os: "darwin", version: "0.17.0" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      viewportScroll: {
+        route: "hosted alacritty 0.17.0 fixture route",
+        press: async () => {},
+        adoptHold: () => void seen.adopted++,
+      },
+      prepareCapture: ({ source }) => {
+        if (refuse) source.captureGeometryRefusal = "fixture refused the grid"
+        return Promise.resolve({ heldViewportReaderFor })
+      },
+    })
+    return { batch, built, seen }
+  }
+
+  it("builds the reader for the row's own source, route and captures", async () => {
+    const { batch, built, seen } = await run(false)
+    expect(built.map((row) => row.featureId)).toEqual([id])
+    expect(built[0]?.source).toBe(seen.source)
+    expect([seen.reads, seen.adopted]).toEqual([1, 1])
+    expect(seen.routeAtRead).toBe("hosted alacritty 0.17.0 fixture route")
+    expect(batch.screenshotRefs).toContain(frameRef)
+    expect(
+      (JSON.parse(batch.rawReplies[id] ?? "{}") as { captures?: Array<{ frame: ObservationFrame }> }).captures?.map(
+        (capture) => capture.frame.ref,
+      ),
+    ).toEqual([frameRef])
+  })
+
+  it("installs no reader when the preparation refused the grid", async () => {
+    const { built, seen } = await run(true)
+    expect(built).toEqual([])
+    expect(seen.source?.readViewportReference).toBeUndefined()
+    expect(seen.source?.readHeldViewport).toBeUndefined()
+    expect(seen.reads).toBe(0)
+  })
 })
 
 // @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding

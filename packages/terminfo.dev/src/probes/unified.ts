@@ -23,6 +23,8 @@ import {
   type RunDraft,
   type CaptureCells,
   type CaptureRequest,
+  type ReadHeldViewport,
+  type ReadViewportReference,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
   type InputFixture,
@@ -223,6 +225,19 @@ export type ProbeCapture = (checkpoint: {
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
+
+/**
+ * 34693 (@cto 3dd05e18): one row's held-viewport reader, built FOR that row by the preparation that calibrated
+ * its grid. The preparation runs on its own source; a reader closed over it would read that object's viewport
+ * route and record into the calibration, so the row's own source, feature id and frame recorder are passed in.
+ */
+export type HeldViewportReaderFor = (row: {
+  readonly featureId: string
+  /** The row's own source: its viewport route is read from here at each call. */
+  readonly source: TermProbeSource
+  /** The row's frame recorder: each raw frame joins its observation frames and the run's screenshot refs. */
+  readonly record: (result: CapturedProbeFrame) => void
+}) => { readonly read: ReadHeldViewport; readonly reference: ReadViewportReference }
 
 export interface GeometryCorroboration {
   /**
@@ -457,7 +472,8 @@ export async function runProbeBatch(
        * on the pre-flight, which no row asked for (#34306 AC1). */
       row?: string
       recordCapture: (result: CapturedProbeFrame) => void
-    }) => Promise<void>
+      /** A preparation that can read held viewports returns the per-row reader factory (34693). */
+    }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
      * The one after-probes call point: runs once after every probe callback and the final ownership
      * check, through the same query trace and frame recorder. The caller decides what belongs before
@@ -467,7 +483,8 @@ export async function runProbeBatch(
       source: TermProbeSource
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
-    }) => Promise<void>
+      /** Same shape as prepareCapture's; a factory returned after the last row reaches no row. */
+    }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
@@ -683,6 +700,8 @@ export async function runProbeBatch(
   let capturePrepared = false
   let capturePreparations = 0
   let captureGeometry: TermProbeSource["captureGeometry"]
+  // 34693: the last successful preparation's per-row held-viewport reader factory; a refusal clears it.
+  let heldViewportReaderFor: HeldViewportReaderFor | undefined
   let captureGeometryRefusal = options.captureGeometryRefusal
   // #30932 S1: the preparation every later row's crops are measured against, by the id its own
   // paint log is retained under, so a replayed row names the installation it actually used.
@@ -793,7 +812,7 @@ export async function runProbeBatch(
           utf8Decoding: readUtf8Decoding,
         })
         // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
-        await withTTYOperation(
+        const prepared = await withTTYOperation(
           () =>
             withTTYQueryTrace(
               calibrationQueries,
@@ -816,9 +835,12 @@ export async function runProbeBatch(
         )
         captureGeometry = preparationSource.captureGeometry
         captureGeometryRefusal = preparationSource.captureGeometryRefusal
+        // The factory, never readers: each row builds its own, bound to its own source (34693).
+        heldViewportReaderFor = captureGeometryRefusal ? undefined : (prepared || undefined)?.heldViewportReaderFor
       } catch (error) {
         if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
         captureGeometryRefusal = error.message
+        heldViewportReaderFor = undefined
       } finally {
         // 34261 pre-paint retention: the recorder this preparation handed out keeps appending after it
         // returns - every sentinel read takes one raw frame before it paints - so the trace is read when
@@ -1336,10 +1358,13 @@ export async function runProbeBatch(
       // the same TTY lease as every input action; the public input fixture stays absent on this arm.
       const viewport = options.viewportScroll
       const returnToBottom = viewport.returnToBottom?.bind(viewport)
+      // adoptHold writes nothing and only marks the route's own state, so it takes no TTY lease (34680).
+      const adoptHold = viewport.adoptHold?.bind(viewport)
       probeSource.viewportScroll = {
         route: viewport.route,
         press: (step) => withTTYOperation(() => viewport.press(step), out, verify),
         ...(returnToBottom && { returnToBottom: () => withTTYOperation(returnToBottom, out, verify) }),
+        ...(adoptHold && { adoptHold }),
       }
     }
     const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT
@@ -1569,6 +1594,21 @@ export async function runProbeBatch(
             proof: muxProof?.platform === "linux" ? muxProof : undefined,
           })
         : undefined
+    // 34693: this row's own held-viewport reader, after any renewal above and only on a settled grid; it reads
+    // THIS source's viewport route and records into THIS row's captures.
+    if (heldViewportReaderFor && !captureGeometryRefusal && probeSource.viewportScroll) {
+      const held = heldViewportReaderFor({
+        featureId: probe.id,
+        source: probeSource,
+        record: (result) => {
+          // A held read takes real frames: they are this row's captures and its raw reference.
+          captureAttempted = true
+          recordCapture(probe.id, captures, result)
+        },
+      })
+      probeSource.readHeldViewport = held.read
+      probeSource.readViewportReference = held.reference
+    }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
