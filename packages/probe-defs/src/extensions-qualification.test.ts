@@ -1124,7 +1124,8 @@ test.each(appResetProbes)(
     expect(restored.result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(restored.result.assertions, id).toMatchObject([{ kind: "positive" }])
     expect(restored.writes, id).toEqual([`\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`, reset])
-    const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56")])
+    // 34532: the failed reset is followed by a proved put-back of the starting colour.
+    const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56"), rgb("0000/0000/0000")])
     expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
     // 27932 specimen: Terminal.app answers OSC 13/14 queries and ignores SET (run 1225b26b).
@@ -1135,9 +1136,11 @@ test.each(appResetProbes)(
       note: "OSC set did not change the queried color",
     })
     expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
-    const noControl = await run([rgb("0000/0000/0000"), ""])
+    const noControl = await run([rgb("0000/0000/0000"), "", "", rgb("0000/0000/0000")])
     expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
     expect(noControl.result.assertions, id).toBeUndefined()
+    // 34532: a seed whose put-back cannot be read back fails the cell by name (collector failure path).
+    await expect(run([rgb("0000/0000/0000"), ""]), id).rejects.toThrow(`${id}: cleanup could not restore`)
     const noReply = await run([])
     expect(noReply.writes, id).toEqual([])
     expect(noReply.result.observation, id).toBeUndefined()
@@ -1157,6 +1160,72 @@ test.each(appResetProbes)(
     }
     expect(isDeclaredUntestable((await run(["malformed\x1b[?1;2c"])).result), id).toBe(false)
     expect(isDeclaredUntestable((await run(["\x1b[?1;2c"], false)).result), id).toBe(false)
+  },
+)
+
+// 34532: Screen Linux run 2026-11-17T11:36Z. OSC 111 left the seeded aa/bb/cc background in
+// place, so every later frame was painted on it and refused the calibrated anchor. The probe owns
+// its seed: when the reset does not restore, it writes the colour it read back and proves it.
+test.each(appResetProbes)(
+  "app %s puts back the colour it read when its reset does not, and refuses by name if it cannot",
+  async (id, setCode, resetCode, index) => {
+    const definition = callback(id)
+    const indexPart = index === undefined ? "" : `${index};`
+    const rgb = (hex: string) => `\x1b]${setCode};${indexPart}rgb:${hex}\x07`
+    const seed = `\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`
+    const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+    const putBack = `\x1b]${setCode};${indexPart}rgb:0000/0000/0000\x07`
+    const run = async (replies: Array<string | Error>) => {
+      const writes: string[] = []
+      const queue = [...replies]
+      const exchange = async (_sequence: string, pattern: RegExp) => {
+        const next = queue.shift() ?? ""
+        if (next instanceof Error) throw next
+        return {
+          match: pattern.exec(next),
+          reason: pattern.test(next) ? ("reply" as const) : ("sentinel" as const),
+          raw: next,
+          rawBase64: Buffer.from(next).toString("base64"),
+          sentinel: { atMs: 9, graceMs: 250 },
+        }
+      }
+      const source = {
+        write: (bytes: string) => {
+          writes.push(bytes)
+        },
+        queryWithSentinelOutcome: exchange,
+      } as unknown as TermProbeSource
+      try {
+        return { result: await definition.term!(source), writes, error: undefined }
+      } catch (error) {
+        return { result: undefined, writes, error }
+      }
+    }
+    const black = rgb("0000/0000/0000")
+
+    // Reset failed, put-back proved: the grade is the reset's own (unsupported), and the next row starts on black.
+    const leaked = await run([black, rgb("aa/bb/cc"), rgb("aa/bb/cc"), black])
+    expect(leaked.error, id).toBeUndefined()
+    expect(leaked.result?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(leaked.writes, id).toEqual([seed, reset, putBack])
+
+    // A put-back the terminal does not confirm is a cleanup failure naming the cell, never a grade.
+    const stuck = await run([black, rgb("aa/bb/cc"), rgb("aa/bb/cc"), rgb("aa/bb/cc")])
+    expect(stuck.result, id).toBeUndefined()
+    expect(String(stuck.error), id).toContain(id)
+    expect(String(stuck.error), id).toContain("rgb:0000/0000/0000")
+    // The collector's existing run-stop channel (unified.ts) keys on this name.
+    expect((stuck.error as Error).name, id).toBe("MutationRestoreRefused")
+    expect(stuck.writes, id).toEqual([seed, reset, putBack])
+
+    // A read that throws after the seed still puts the colour back before the error leaves.
+    const thrown = await run([black, new Error("capture lost"), black])
+    expect(String(thrown.error), id).toContain("capture lost")
+    expect(thrown.writes, id).toEqual([seed, putBack])
+
+    // A reset that restores needs no put-back.
+    const restored = await run([black, rgb("aa/bb/cc"), black])
+    expect(restored.writes, id).toEqual([seed, reset])
   },
 )
 
