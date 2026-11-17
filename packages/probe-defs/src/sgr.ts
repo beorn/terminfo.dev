@@ -1033,6 +1033,8 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
+    // 34554: 32-33 s on xterm/linux under fleet load, still capturing at the 30 s default. 45 s holds that cadence.
+    wallMs: 45_000,
   }
 }
 

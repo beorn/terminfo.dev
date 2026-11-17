@@ -2768,6 +2768,8 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 34554: ~33 s on wezterm/linux under fleet load, still capturing at the 30 s default. 45 s holds that cadence.
+    wallMs: 45_000,
   },
 
   // ?1047 — alt screen; DECRST 1047 clears the alternate buffer on EXIT (headless: graded by a second entry)
@@ -2804,6 +2806,8 @@ const modeDefinitions: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsGeometry: true,
+    // 34554: ~33 s on wezterm/linux and 28.7 s on xterm/linux (41 captures), the longest case list of the family.
+    wallMs: 45_000,
     cellReadback: true,
     textClaim: "characters",
   },
