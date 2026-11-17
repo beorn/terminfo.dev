@@ -337,11 +337,11 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
   vi.stubEnv("TERMINFO_RUN_ID", runId)
   vi.stubEnv("TERMINFO_MUX_KIND", undefined)
   vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "0-unstable-2026-10-10")
+  vi.stubEnv("TERMINFO_TARGET_VERSION", "0-unstable-2026-11-08")
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", "/owned/artifacts")
   vi.stubEnv("WEZTERM_PANE", "17")
   vi.stubEnv("WEZTERM_UNIX_SOCKET", "/owned/wezterm.sock")
-  vi.mocked(execFileSync).mockReturnValue("wezterm 0-unstable-2026-10-10\n")
+  vi.mocked(execFileSync).mockReturnValue("wezterm 0-unstable-2026-11-08\n")
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc8")!
   for (const mode of [
     "works",
@@ -419,7 +419,7 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
     }
   }
   expect(
-    appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux" }),
+    appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "linux" }),
   ).not.toHaveProperty("extensions.osc8")
 })
 
@@ -927,19 +927,19 @@ test.each(
     [
       ["kitty", "0.49.2", "extensions.osc176-app-id", "176", "176;terminfo-test"],
       ["kitty", "0.49.2", "extensions.osc710-font-normal", "710", "710;monospace"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc176-app-id", "176", "176;terminfo-test"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc3008-context", "3008", "3008;type=test"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc440-audio", "440", "440;bell.wav"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc666-termprop", "666", "666;test-prop=value"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-a", "633", "633;A"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-b", "633", "633;B"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-c", "633", "633;C"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-d", "633", "633;D;0"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc-633-vscode", "633", "633;A"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc555-flash", "555", "555"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc710-font-normal", "710", "710;fixed"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc3008-context", "3008", "3008;type=test"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc440-audio", "440", "440;bell.wav"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc666-termprop", "666", "666;test-prop=value"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-a", "633", "633;A"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-b", "633", "633;B"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-c", "633", "633;C"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-d", "633", "633;D;0"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc-633-vscode", "633", "633;A"],
     ] as const
   ).flatMap(([app, version, featureId, code, targetBody]) =>
     (code === "633"
@@ -1475,7 +1475,7 @@ test("remaining Linux App semantic-prompt declarations retain exact-version cita
   const wezterm = appSemanticDeclarations({
     kind: "term",
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
   })
   for (const id of [
@@ -1484,7 +1484,7 @@ test("remaining Linux App semantic-prompt declarations retain exact-version cita
     "extensions.osc133-c",
     "extensions.osc133-p",
   ] as const) {
-    expect(wezterm[id]).toMatch(/^Untestable \(no way\): WezTerm 0-unstable-2026-10-10 parses OSC 133/)
+    expect(wezterm[id]).toMatch(/^Untestable \(no way\): WezTerm 0-unstable-2026-11-08 parses OSC 133/)
     expect(wezterm[id]).toContain("get_semantic_zones")
     expect(wezterm[id]).toContain("user-var-changed")
   }

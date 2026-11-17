@@ -235,7 +235,7 @@ const declarations: readonly AppSemanticCapability[] = [
   ).map(([featureId, code, body]) => ({
     kind: "term",
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
     featureId,
     reader: "report" as const,
@@ -250,7 +250,7 @@ const declarations: readonly AppSemanticCapability[] = [
   ...[
     { kind: "term", id: "kitty", version: "0.49.2" },
     { kind: "term", id: "ghostty", version: "1.4.0" },
-    { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+    { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
     { kind: "term", id: "alacritty", version: "0.17.0" },
     { kind: "term", id: "xterm", version: "411" },
     { kind: "mux", id: "screen", version: "5.0.2" },
@@ -294,11 +294,11 @@ const declarations: readonly AppSemanticCapability[] = [
   ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
     kind: "term",
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
     featureId,
     reason:
-      "Untestable (no way): WezTerm 0-unstable-2026-10-10 exposes semantic zones but no command-exit status, so it cannot observe OSC 133 D or the complete A/C/D cycle. Read e2a98e1b8af1 term/src/terminalstate/performer.rs:904-906 (empty CommandStatus arm), term/src/lib.rs:117-123 and public pane semantic-zone documentation.",
+      "Untestable (no way): WezTerm 0-unstable-2026-11-08 exposes semantic zones but no command-exit status, so it cannot observe OSC 133 D or the complete A/C/D cycle. Read e2a98e1b8af1 term/src/terminalstate/performer.rs:904-906 (empty CommandStatus arm), term/src/lib.rs:117-123 and public pane semantic-zone documentation.",
   })),
   ...["extensions.osc633-e", "extensions.osc633-p"].map((featureId) => ({
     kind: "term",
@@ -671,11 +671,11 @@ const declarations: readonly AppSemanticCapability[] = [
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
     kind: "term" as const,
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
     featureId,
     reason:
-      "Untestable (no way): WezTerm 0-unstable-2026-10-10 parses OSC 133 A/B/C/P into Rust SemanticZone state with no wezterm cli semantic-zone readback and no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:500,750-830, term/src/terminalstate/performer.rs:867-908, term/src/terminalstate/mod.rs:2831 (get_semantic_zones) and wezterm/src/cli/ (get-text outputs text/escapes without zones). Injecting a custom Lua user-var-changed script into target launch configuration to dump pane:get_semantic_zones() is not a default-launch reader.",
+      "Untestable (no way): WezTerm 0-unstable-2026-11-08 parses OSC 133 A/B/C/P into Rust SemanticZone state with no wezterm cli semantic-zone readback and no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:500,750-830, term/src/terminalstate/performer.rs:867-908, term/src/terminalstate/mod.rs:2831 (get_semantic_zones) and wezterm/src/cli/ (get-text outputs text/escapes without zones). Injecting a custom Lua user-var-changed script into target launch configuration to dump pane:get_semantic_zones() is not a default-launch reader.",
   })),
   {
     kind: "mux",
@@ -735,7 +735,7 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "term",
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
     featureId: "extensions.osc8",
     reader: "osc8",
