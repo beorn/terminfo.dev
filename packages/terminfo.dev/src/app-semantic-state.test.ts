@@ -251,8 +251,9 @@ test.each([
         return
       }
       expect(reading.status).toBe("measured")
-      if (reading.status !== "measured" || reading.reader !== "state")
+      if (reading.status !== "measured" || reading.reader !== "state") {
         throw new Error("Native CWD row was not measured")
+      }
       expect(reading.unknown.after).toBe(reading.unknown.before)
       expect(reading.handled.after).toBe(reading.handled.expected)
       expect(reading.handled.before).not.toBe(reading.handled.expected)
