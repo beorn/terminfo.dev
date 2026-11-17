@@ -677,7 +677,8 @@ const declarations: readonly AppSemanticCapability[] = [
   })),
   // 34591: WezTerm's six macOS prompt rows. The version names its own commit, so nothing rebinds from the Linux
   // nightly; this tag's empty CommandStatus arm is performer.rs:882-884 (the Linux rows cite :904-906 at e2a98e1b8af1).
-  // The 633 ids and osc8 are probe-decidable, so they carry no row here (spec /hh/var/@dev11, 2026-11-17).
+  // No macOS reader exists for these ids (owned-terminal's darwin reader set), so a run cannot decide them; only
+  // osc633-p stays undeclared, for the darwin WezTerm reader (@dev/11 spec REVISION 2, @chief 608886bd).
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
     kind: "term" as const,
     id: "wezterm",
@@ -696,6 +697,32 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): WezTerm 20240203-110809-5046fc22 on macOS records each OSC 133 mark but exposes neither it nor a command-exit status, so it cannot observe 133 D or the complete A/C/D cycle. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): term/src/terminalstate/performer.rs:882-884 is FinalTermSemanticPrompt::CommandStatus { .. } => {} (an empty arm, no status stored), the other mark arms at :845-880 store only a pen semantic type, and term/src/terminalstate/mod.rs:2704 get_semantic_zones returns SemanticZone spans with no status field. No surface reads them back on default launch: mux/src/lib.rs has zero "semantic", the CLI\'s 17 verbs read no zones, wezterm/src/cli/get_text.rs:34,86-87 prints text or escapes only, and the macOS frontend (window/src/os/macos, eight .rs files) names no semantic state. The upstream Linux row records the same empty arm at performer.rs:904-906 (e2a98e1b8af1); this arm is shared core term code, not a frontend path.',
   })),
+  // 34591: the 633 family has no parser at this tag, so the sequence is dropped rather than unreadable.
+  ...[
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc-633-vscode",
+  ].map((featureId) => ({
+    kind: "term" as const,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): WezTerm 20240203-110809-5046fc22 has no OSC 633 parser, so the sequence is dropped without a target-state reading, a report or a non-debug log. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:409 is the OSC command table and carries SetHyperlink = "8" and FinalTermSemanticPrompt = "133" (:439) with no 633 entry — the file has zero occurrences of 633 — dispatched at :312,326-327 and parsed at :627-696. The macOS build runs this same termwiz parser (window/src/os/macos, all eight .rs files, carries no OSC handling of its own and names no semantic state), the mux protocol (mux/src/lib.rs, 1441 lines) has zero "semantic" and no unhandled-OSC verb, and the CLI at this tag reads no prompt state (wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes only). macOS additionally offers no default-launch log surface for dropped OSCs.',
+  })),
+  {
+    kind: "term" as const,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    os: "macos",
+    featureId: "extensions.osc8",
+    reason:
+      'Untestable (no way): WezTerm 20240203-110809-5046fc22 parses OSC 8 hyperlinks into in-process state with no default-launch readback on macOS. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:409 lists SetHyperlink = "8" and :312 parses it into OperatingSystemCommand::SetHyperlink (:36), kept in the terminal model. Nothing returns it: wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes (no OSC 8), the CLI has no hyperlink verb at this tag, and mux/src/lib.rs has no hyperlink or semantic verb. The remaining reader is user Lua through docs/config/lua/pane/get_semantic_zones.md, which is a config script, not a default-launch reader.',
+  },
   // 34586: cmux's six macOS prompt rows. They say only that D's exit code is parsed and never read back: the fork's
   // stream handler (src/termio/stream_handler.zig at cb1ef709) was not read, so no claim that the status is discarded.
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
@@ -716,6 +743,33 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 D with its exit-code option and reports it nowhere, so neither the mark nor a command-exit status is observable. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc/parsers/semantic_prompt.zig:30 defines end_command for D, :105,118 carries exit_code as a typed option and :359 parses it, so the sequence is understood rather than dropped. No surface reads it back: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) exposes only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 11, 101 commands, 46 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no verb returning a prompt mark or an exit status (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
   })),
+  // 34586: no OSC 633 parser in the fork, and no Darwin carve-out means nothing on the Mac can read one anyway.
+  ...[
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.osc-633-vscode",
+  ].map((featureId) => ({
+    kind: "term" as const,
+    id: "cmux",
+    version: "0.65.2",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): cmux 0.65.2 has no OSC 633 parser — the fork OSC command table lists 133 and no 633 — so the sequence is dropped without a target-state reading or a report. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists @"133" in the command table (with @"8" at :335) and the file has zero occurrences of 633. No read surface carries a mark: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) enumerates only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 11, 101 commands, 46 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no mark verb (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
+  })),
+  {
+    kind: "term" as const,
+    id: "cmux",
+    version: "0.65.2",
+    os: "macos",
+    featureId: "extensions.osc8",
+    reason:
+      'Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns them. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @"8" in the command table, :429 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. Nothing reads it back: ReadScreenResult carries only {text} (ReadScreenResult.java:13-23), VtStateResult carries only cols, rows, data bytes and the kitty graphics/image-alias fields (VtStateResult.java:13-18) with no hyperlink field, cmux-tui/spec/sdk-schema.json has no hyperlink verb, and docs/cli-contract.md documents read-screen, vt-state and jump-to-last-prompt only.',
+  },
   {
     kind: "term",
     id: "kitty",

@@ -1571,39 +1571,57 @@ test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac fron
   for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
 })
 
-// 34591/34586: WezTerm 20240203 and cmux 0.65.2 on macOS declare exactly the six OSC 133 prompt ids from source reads
-// at their own tags. The 633 ids and osc8 stay probe-decidable (no row), and no other version or OS binds these rows.
+// 34591/34586: on macOS no reader exists for these prompt ids (only WezTerm's osc633-p is read on darwin), so
+// WezTerm 20240203 declares the other 13 and cmux 0.65.2 all 14, from source reads at each app's own tag.
+// Existing tests pin other subjects only; a typo in either subject would leave every Mac cell probe-todo silently.
+const PROMPT_FAMILY = [
+  "extensions.osc-633-vscode",
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc633-e",
+  "extensions.osc633-p",
+  "extensions.osc8",
+  "extensions.semantic-prompts",
+]
 test.each([
   {
     id: "wezterm",
     version: "20240203-110809-5046fc22",
     otherVersion: "0-unstable-2026-11-08",
-    cite: "performer.rs:882-884",
+    reader: "extensions.osc633-p",
   },
-  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", cite: "semantic_prompt.zig:22-31" },
-])("$id $version on macOS declares the six OSC 133 prompt ids and nothing else in the family", (app) => {
+  { id: "cmux", version: "0.65.2", otherVersion: "0.65.1", reader: undefined },
+])("$id $version on macOS declares every prompt-family id the darwin reader cannot read", (app) => {
   const subject = { kind: "term" as const, id: app.id, version: app.version, os: "macos" }
   const mac = appSemanticDeclarations(subject)
-  const prompt = Object.keys(mac).filter((id) => /osc133|semantic-prompts|osc633|osc-633|^extensions\.osc8$/.test(id))
-  expect(prompt.sort()).toEqual([
-    "extensions.osc133-a",
-    "extensions.osc133-b",
-    "extensions.osc133-c",
-    "extensions.osc133-d",
-    "extensions.osc133-p",
-    "extensions.semantic-prompts",
-  ])
-  for (const id of prompt) expect(mac[id]).toMatch(/^Untestable \(no way\): (WezTerm|cmux) \S+ on macOS /)
-  const allText = prompt.map((id) => mac[id]).join("\n")
-  expect(allText).toContain(app.cite)
-  // Trap 1 (WezTerm): this tag's empty CommandStatus arm is :882-884; the Linux line numbers are cited only as Linux's.
-  if (app.id === "wezterm") expect(mac["extensions.osc133-d"]).not.toMatch(/performer\.rs:904-906 is/)
-  // Trap 2 (cmux): D's exit code is parsed and unread; the unread stream handler is never claimed to discard it.
-  if (app.id === "cmux") expect(allText).not.toMatch(/discard/i)
+  const expected = PROMPT_FAMILY.filter((id) => id !== app.reader)
+  expect(
+    Object.keys(mac)
+      .filter((id) => PROMPT_FAMILY.includes(id))
+      .sort(),
+  ).toEqual(expected)
+  for (const id of expected) expect(mac[id], id).toMatch(/^Untestable \(no way\): (WezTerm|cmux) /)
+  const allText = expected.map((id) => mac[id]).join("\n")
+  if (app.id === "wezterm") {
+    // Trap 1: this tag's empty CommandStatus arm is :882-884; Linux's :904-906 is cited only as Linux's own.
+    expect(mac["extensions.osc133-d"]).toContain("performer.rs:882-884")
+    expect(allText).not.toMatch(/performer\.rs:904-906 is/)
+  } else {
+    // Trap 2: D's exit code is parsed and unread; the unread stream handler is never claimed to discard it.
+    expect(mac["extensions.osc133-d"]).toContain("semantic_prompt.zig:30")
+    expect(allText).not.toMatch(/discard/i)
+  }
   const otherVersion = appSemanticDeclarations({ ...subject, version: app.otherVersion })
   const linux = appSemanticDeclarations({ ...subject, os: "linux" })
-  for (const id of prompt) {
-    expect(otherVersion[id]).toBeUndefined()
-    expect(linux[id] ?? "").not.toContain("on macOS")
+  for (const id of expected) {
+    expect(otherVersion[id], id).not.toBe(mac[id])
+    expect(linux[id], id).not.toBe(mac[id])
   }
 })
