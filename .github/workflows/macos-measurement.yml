@@ -65,6 +65,10 @@ jobs:
       # producer bootstrap and the checkout both read it, so the fetched parser and the measured
       # tree cannot come from different commits.
       MEASURED_SHA: ${{ inputs.sha || github.sha }}
+      # 34672: one source for Warp's release, read by the DMG download and by the collect step's subject
+      # export. Warp.app's plist says 0.2026.10.14.08.27.01 while the measured release is this channel
+      # string, and capture-writer refuses an intended version that differs from the measured one.
+      WARP_STABLE_VERSION: v0.2026.10.14.08.27.stable_01
     steps:
       - name: Bootstrap the pinned producer and sample at job start
         env:
@@ -233,8 +237,10 @@ jobs:
           const { writeFileSync, copyFileSync } = require("node:fs");
           const app = process.env.APP_ID;
           const name = app === "warp" ? "Warp" : app === "cmux" ? "cmux" : "Alacritty";
+          const warpVersion = process.env.WARP_STABLE_VERSION ?? "";
+          if (app === "warp" && warpVersion === "") throw new Error("Warp channel version is empty (WARP_STABLE_VERSION)");
           const url = app === "warp"
-            ? "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg"
+            ? "https://releases.warp.dev/stable/" + warpVersion + "/Warp.dmg"
             : app === "cmux"
               ? "https://github.com/manaflow-ai/cmux/releases/download/v0.65.2/cmux-macos.dmg"
               : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
@@ -390,6 +396,12 @@ jobs:
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "$bundle_version")"
+          elif [ "$APP_ID" = warp ]; then
+            # 34672: Warp's plist says 0.2026.10.14.08.27.01 while the measured release is the channel string the
+            # installer step downloads, and capture-writer refuses an intended version that differs from the
+            # measured one. Exporting nothing left intendedSubject {kind:"term"}, so no declaration could bind.
+            test -n "${WARP_STABLE_VERSION:-}" || { echo "Warp channel version is empty" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_ID=%q; export TERMINFO_TARGET_VERSION=%q' "$APP_ID" "$WARP_STABLE_VERSION")"
           elif [ "$APP_ID" = wezterm ]; then
             # 34606: WezTerm.app's CFBundleShortVersionString is 0.1.0, so the version is the bundled CLI's own.
             # The Darwin cwd reader binds to it and to the id (owned-terminal.ts reviewedVersion); it compares, so no
