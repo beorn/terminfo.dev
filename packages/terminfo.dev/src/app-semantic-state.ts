@@ -649,6 +649,32 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 parses OSC 133 A/B/C/P into internal row state and an embedder callback with no public CLI, IPC, escape-query or non-debug log readback. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b) src/terminal/osc.zig:1180, src/terminal/osc/parsers/semantic_prompt.zig:23-32 and src/terminal/stream_terminal.zig:397,918-961 (page_row.semantic_prompt at src/terminal/Terminal.zig:1849,2259,3743). Scraping UI state via synthetic jump_to_prompt keys or triple-click X11 primary selection is not a non-intrusive prompt-mark reader.",
   })),
+  // 34574 (@cto 386684bc option A): the same nine ids on macOS, as their own exact os rows. Each cites the Mac app's
+  // own path and surfaces in the v1.4.0 tag the hosted macOS run's bundle version (34562) names.
+  ...[
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc-633-vscode",
+  ].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId,
+    reason:
+      'Untestable (no way): Ghostty 1.4.0 on macOS has no OSC 633 parser and drops the sequence silently without a target-state reading or log. The Mac app parses OSC in the shared core, not in its own frontend. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b), the source of the bundle version 1.4.0 the hosted run records: src/termio/Termio.zig:14,66 drives terminal.Stream with the one StreamHandler every app runtime uses, and src/terminal/osc.zig and stream.zig carry no OS branch. src/terminal/osc.zig:455-505 lists 133 and no 633; state .@"6" at :972-975 sends 3 to unknownOrInvalid at :748-753 (unknown_max_bytes=0 at :496), so end() at :1092-1103 returns null and logs nothing. The embedded runtime behind the Swift app (src/apprt/embedded.zig) has no OSC 633 path, and macos/Sources names OSC only for the OSC 8 and OSC 52 actions the core raises (Ghostty.App.swift:813-888, BaseTerminalController.swift:1622).',
+  })),
+  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 on macOS parses OSC 133 A/B/C/P into core row state that no public macOS surface reads back. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b), the source of the bundle version 1.4.0 the hosted run records. src/terminal/osc.zig:1180 and src/terminal/osc/parsers/semantic_prompt.zig:23-32 parse it. The app's src/termio/stream_handler.zig:350,1475-1508 stores it through Terminal.semanticPrompt (src/terminal/Terminal.zig:2156), and it then drives only click handling and the jump_to_prompt viewport move (src/Surface.zig:4306,4370,5429). The Mac surfaces carry no mark. The C API text read ghostty_surface_read_text (src/apprt/embedded.zig:1929-1960) returns plain characters from Screen.selectionString (src/Surface.zig:2042-2051) in ghostty_text_s (include/ghostty.h:449-456). The Shortcuts intent Get Terminal Details returns only the title, the working directory or that plain text (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47). The AppleScript dictionary exposes id, name, working directory, pid and tty, and its perform action returns only a boolean (macos/Ghostty.sdef:89-100,162-166). Only the debug inspector (src/inspector/widgets/page.zig:291, opened by the inspector binding at src/input/Binding.zig:688-691) and the session snapshot serializer (src/terminal/snapshot/grid.zig:259) see row.semantic_prompt, and neither is a default-launch reader. Running jump_to_prompt through perform action and reading the visible text back is scraping UI state, not a non-intrusive prompt-mark reader.",
+  })),
   {
     kind: "term",
     id: "kitty",

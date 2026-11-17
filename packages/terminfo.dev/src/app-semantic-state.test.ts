@@ -1529,3 +1529,44 @@ test("remaining Linux App semantic-prompt declarations retain exact-version cita
   expect(tmux["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): tmux 3\.8 has no OSC 633 handler/)
   expect(tmux["extensions.osc633-e"]).toContain("input.c:2699-2777")
 })
+
+// 34574 (@cto 386684bc option A): the nine Ghostty 1.4.0 prompt-mark rows on macOS are their own exact os rows,
+// citing the macOS app's own surfaces; the Linux rows' X11 negative evidence never reaches a Mac row.
+test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac frontend, and only at that exact subject", () => {
+  const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  const osc633 = [
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc-633-vscode",
+  ] as const
+  const osc133 = ["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"] as const
+  for (const id of osc633) {
+    expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
+    // The shared-parser proof: the app's termio drives the core parser, which has no OS branch.
+    expect(mac[id]).toContain("src/termio/Termio.zig:14,66")
+    expect(mac[id]).toContain("osc.zig:455-505")
+  }
+  for (const id of osc133) {
+    expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS parses OSC 133/)
+    for (const surface of [
+      "ghostty_surface_read_text",
+      "GetTerminalDetailsIntent.swift:35-47",
+      "macos/Ghostty.sdef:89-100,162-166",
+      "src/inspector/widgets/page.zig:291",
+      "src/terminal/snapshot/grid.zig:259",
+    ]) {
+      expect(mac[id]).toContain(surface)
+    }
+  }
+  for (const id of [...osc633, ...osc133]) {
+    expect(mac[id]).toContain("SHA256 d692bb9b")
+    expect(mac[id]).not.toMatch(/X11/u)
+  }
+  // Exact subject only: the matcher binds no other version or OS from these rows.
+  const other = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.3.1", os: "macos" })
+  for (const id of [...osc633, ...osc133]) expect(other[id]).toBeUndefined()
+  const linux = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
+  for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
+})
