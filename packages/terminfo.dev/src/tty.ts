@@ -1,7 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import { createCallLog, withCallLog, readCallLog, snapshotCallLog, IncompleteReplay, type CallLog } from "viprobe"
+import {
+  callLogProgress,
+  createCallLog,
+  withCallLog,
+  readCallLog,
+  snapshotCallLog,
+  IncompleteReplay,
+  type CallLog,
+} from "viprobe"
 import type { TerminalQueryOutcome, Utf8DecodingReading, RenderedWidthResult } from "@terminfo/probe-defs"
 import {
   decrpmReplyPattern,
@@ -71,7 +79,7 @@ const nativeTTYHost = {
   },
   matchResponse: matchResponseNative,
 }
-const queryTraceContext = new AsyncLocalStorage<{ host: typeof nativeTTYHost }>()
+const queryTraceContext = new AsyncLocalStorage<{ host: typeof nativeTTYHost; mark: () => TTYTraceMark }>()
 
 /** Standalone helpers intentionally use native I/O outside a recording/replay scope. */
 function ttyHost(): typeof nativeTTYHost {
@@ -172,6 +180,26 @@ function projectTTYLog(artifact: unknown): { queries: TTYQueryTrace[]; events: T
 export interface TTYTraceScope {
   /** Refuse this scope's later terminal I/O, and project the evidence settled before the wall. */
   abandon(): void
+  /** This scope's live position, for a bracket that must prove no terminal I/O began inside it (34645). */
+  mark(): TTYTraceMark
+}
+
+/**
+ * One row's live trace position (34645). `started` counts every recorded call and callback from the moment
+ * it began; `unsettled` the ones not finished. Two marks of the SAME scope with equal `started` and nothing
+ * unsettled at either end prove no TTY write or query began or was in flight between them. Replay appends
+ * nothing, so a replay mark proves nothing and says so by its mode.
+ */
+export interface TTYTraceMark {
+  readonly mode: "record" | "replay"
+  readonly started: number
+  readonly unsettled: number
+  readonly abandoned: boolean
+}
+
+/** The mark of the trace scope this code runs in, or undefined outside every scope (34645). */
+export function currentTTYTraceMark(): TTYTraceMark | undefined {
+  return queryTraceContext.getStore()?.mark()
 }
 
 /** Scope all direct and helper queries to the probe that initiated them. */
@@ -206,7 +234,9 @@ export async function withTTYQueryTrace<T>(
     events.push(...rows.events)
     projected = true
   }
+  const mark = (): TTYTraceMark => ({ mode, ...callLogProgress(log), abandoned })
   options?.onScope?.({
+    mark,
     abandon() {
       if (abandoned) return
       abandoned = true
@@ -215,7 +245,7 @@ export async function withTTYQueryTrace<T>(
     },
   })
   try {
-    return await queryTraceContext.run({ host: session.context }, fn)
+    return await queryTraceContext.run({ host: session.context, mark }, fn)
   } catch (error) {
     scopeFailed = true
     scopeFailure = error

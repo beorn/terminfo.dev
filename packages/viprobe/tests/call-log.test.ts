@@ -5,7 +5,14 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { createCallLog, IncompleteReplay, readCallLog, snapshotCallLog, withCallLog } from "../src/index.ts"
+import {
+  callLogProgress,
+  createCallLog,
+  IncompleteReplay,
+  readCallLog,
+  snapshotCallLog,
+  withCallLog,
+} from "../src/index.ts"
 
 // Source queries return the inner TTY recorder's matched array directly. Single-recorder
 // fixtures miss a foreign array proxy retained after both recording lifetimes finish.
@@ -637,4 +644,39 @@ test("completed capture and strict replay preserve writes, nested paths and retu
   replay.context.input.send("key")
   replay.finish()
   expect(writes).toEqual(["seed", "key"])
+})
+
+// 34645 (@cto e1cfff79): a held-viewport bracket must see a write or query that STARTS inside it while the
+// callback is still live. The projected trace arrays only fill at abandon or after the callback, so the
+// recording itself is the one live reader: every call and callback is recorded at its start.
+test("live progress counts every started call and callback and the ones still unsettled", async () => {
+  const log = createCallLog()
+  let release: (value: string) => void = () => {}
+  const subject = {
+    write(_sequence: string): void {},
+    matchResponse(write: () => void): Promise<string> {
+      write()
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+  }
+  const capture = withCallLog(subject, { mode: "record", log })
+  expect(callLogProgress(log)).toEqual({ started: 0, unsettled: 0 })
+  capture.context.write("\x1b[c")
+  expect(callLogProgress(log)).toEqual({ started: 1, unsettled: 0 })
+  // A query's own write runs as its callback: the call and the callback both count as started.
+  const reply = capture.context.matchResponse(() => capture.context.write("\x1b[5n"))
+  const pending = callLogProgress(log)
+  expect(pending.started).toBe(4)
+  expect(pending.unsettled).toBe(1)
+  release("ok")
+  await reply
+  expect(callLogProgress(log)).toEqual({ started: 4, unsettled: 0 })
+  capture.finish()
+  expect(callLogProgress(log)).toEqual({ started: 4, unsettled: 0 })
+})
+
+test("live progress refuses a value that is not a recording handle", () => {
+  expect(() => callLogProgress({} as never)).toThrow(IncompleteReplay)
 })
