@@ -784,6 +784,7 @@ jobs:
           const failures = [];
           let launchStart = additional ? process.env.COLLECT_STARTED_AT : process.env.ITERM_LAUNCH_START;
           let launchEnd = additional ? new Date().toISOString() : process.env.ITERM_LAUNCH_END;
+          let intervalSource = "collect-step-start-through-failure-evidence";
           let childPid = null;
           let editorLaunch = null, receiptRunId = null, appLaunch = null;
           if (editor) {
@@ -795,6 +796,15 @@ jobs:
                   typeof owner.executablePath !== "string" || !owner.executablePath ||
                   typeof owner.marker?.flag !== "string" || !owner.marker.flag || typeof owner.marker.value !== "string" || !owner.marker.value)
                 throw new Error("Editor launch record lacks its app, run marker or measured GUI owner");
+              // 34597: the launch is documented by the measured owner birth through its observation (about 12 s), not
+              // the whole collect step (about 40 min), whose log show cannot finish inside its 20 s wall.
+              const birth = owner.ownerBirth;
+              if (birth?.pid === owner.ownerPid && Number.isSafeInteger(birth.startedAtEpochSeconds) &&
+                  Number.isFinite(Date.parse(birth.observedAt ?? "")) && Date.parse(birth.observedAt) >= birth.startedAtEpochSeconds * 1000) {
+                launchStart = new Date(birth.startedAtEpochSeconds * 1000).toISOString();
+                launchEnd = birth.observedAt;
+                intervalSource = "editor-owner-birth-through-observation";
+              }
             } catch (error) {
               failures.push({ label: "launch-record", error: String(error) });
               console.error(`${prefix} launch identity unmeasured; see failure evidence`, error);
@@ -866,7 +876,7 @@ jobs:
               }
             } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
           }
-          await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
+          await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource, editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
           // Capture failures remain in artifacts and stderr after a successful editor collection (Cursor or VS Code):
           // the evidence is diagnostic, and a log window spanning a 40-minute collect step can outrun its wall (34597).
           const successfulEditor = editor && process.env.COLLECT_OUTCOME === "success";
