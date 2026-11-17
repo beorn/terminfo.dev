@@ -244,6 +244,11 @@ export async function readThroughSentinel<T>(input: {
 }): Promise<T> {
   const restoreAfterPaint = input.restoreAfterPaint
   if (restoreAfterPaint === "") throw new Error(`${input.label}: restoreAfterPaint must be nonempty`)
+  if (input.settled !== undefined && input.settled.paintClasses === undefined) {
+    throw new Error(
+      `${input.label}: settled origin at ${input.settled.origin.x},${input.settled.origin.y} carries no calibrated paintClasses; refusing to select blank sentinel cells without calibrated background and sentinel classes (34480)`,
+    )
+  }
   const grid = { rows: input.source.rows, cols: input.source.cols }
   const paintClasses = input.settled?.paintClasses
   /**
@@ -251,17 +256,32 @@ export async function readThroughSentinel<T>(input: {
    * that were already background, so the blank this read writes back restores them and the probe's
    * own drawing is never covered (@dev/15's 19-row diagnosis, 33981).
    */
-  const choose = (frame: CapturedFrame) =>
-    sentinelCellsInFrame({
-      rgba: frame.rgba,
-      width: frame.width,
-      height: frame.height,
-      reading: input.reading,
-      cell: input.cell,
-      grid,
-      regions: input.regions,
-      ...(input.avoid ? { avoid: [input.avoid] } : {}),
-    })
+  const choose = (frame: CapturedFrame) => {
+    try {
+      return sentinelCellsInFrame({
+        rgba: frame.rgba,
+        width: frame.width,
+        height: frame.height,
+        reading: input.reading,
+        cell: input.cell,
+        grid,
+        regions: input.regions,
+        ...(input.avoid ? { avoid: [input.avoid] } : {}),
+      })
+    } catch (error) {
+      if (
+        paintClasses === undefined &&
+        error instanceof Error &&
+        error.message.includes("because every cell carries ink")
+      ) {
+        throw new Error(
+          `${input.label}: ${error.message}; no calibrated paintClasses were supplied to readThroughSentinel, so a dithered background is indistinguishable from ink (34480)`,
+          { cause: error },
+        )
+      }
+      throw error
+    }
+  }
   let chosen: ReturnType<typeof choose> | undefined
   const pair = () => {
     if (chosen === undefined) {

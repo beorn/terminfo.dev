@@ -1032,7 +1032,7 @@ function heldWindow(input: {
   return frame
 }
 
-/** A settled origin the route measured before this read, as `serve.ts` forwards it (34163). */
+/** A settled origin the route measured before this read, as `serve.ts` forwards it (34163, 34480). */
 function settledAt(
   origin: { x: number; y: number },
   geometry = pixelGeometry,
@@ -1041,12 +1041,21 @@ function settledAt(
   basis: string
   basisKind: string
   pixelGeometry: typeof pixelGeometry
+  paintClasses: {
+    background: { anchor: readonly [number, number, number]; members: ReadonlySet<number> }
+    sentinel: { anchor: readonly [number, number, number]; members: ReadonlySet<number> }
+  }
 } {
+  const [sr, sg, sb] = sentinel.rgb
   return {
     origin,
     basis: "measured by complete raster calibration",
     basisKind: "complete raster calibration",
     pixelGeometry: geometry,
+    paintClasses: {
+      background: { anchor: [0, 0, 0], members: new Set([0]) },
+      sentinel: { anchor: [sr, sg, sb], members: new Set([(sr << 16) | (sg << 8) | sb]) },
+    },
   }
 }
 
@@ -1742,4 +1751,50 @@ test("landing-pose pairClearBeforePaint accepts calibrated dithered background a
       backgroundClass: paintClasses.background,
     }),
   ).toBe(false)
+})
+
+test("readThroughSentinel refuses by name before choose when settled origin omits calibrated paintClasses (34505, @dev/8 peer finding)", async () => {
+  const { sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
+  const origin = { x: 2, y: 2 }
+  const prePaintFrame = makeFrame(origin, { painted: false })
+  const writes = source()
+  const { paintClasses: _omitted, ...settledWithoutPaintClasses } = settledAt(origin)
+  await expect(
+    readThroughSentinel({
+      source: writes.source,
+      prePaint: async () => prePaintFrame,
+      capture: async (resolve) => resolve({ frame: prePaintFrame, pixelGeometry }),
+      label: "settled-without-paint-classes",
+      sentinel: sentinelSpec,
+      regions: [cells],
+      reading: origin,
+      cell: { width: 2, height: 2 },
+      settled: settledWithoutPaintClasses,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(/settled-without-paint-classes: settled origin at 2,2 carries no calibrated paintClasses/)
+  expect(writes.writes).toEqual([])
+})
+
+test("readThroughSentinel without settled origin qualifies dithered blank-cell failure with missing paintClasses diagnostic (34505)", async () => {
+  const { sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
+  const origin = { x: 2, y: 2 }
+  const prePaintFrame = makeFrame(origin, { painted: false })
+  const writes = source()
+  await expect(
+    readThroughSentinel({
+      source: writes.source,
+      prePaint: async () => prePaintFrame,
+      capture: async (resolve) => resolve({ frame: prePaintFrame, pixelGeometry }),
+      label: "uncalibrated-dithered-frame",
+      sentinel: sentinelSpec,
+      regions: [cells],
+      reading: origin,
+      cell: { width: 2, height: 2 },
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(
+    /no calibrated paintClasses were supplied to readThroughSentinel, so a dithered background is indistinguishable from ink/,
+  )
+  expect(writes.writes).toEqual([])
 })
