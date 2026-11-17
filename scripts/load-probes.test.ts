@@ -45,6 +45,9 @@ vi.mock("../docs/data/current-results.ts", () => ({
   // #33600: probes.data reads the same-suite join for every chosen subject; this fixture has no contexts,
   // so the joined map is empty and every cell falls back to its stored status.
   joinedAppCells: () => new Map(),
+  // fae35d2c7 gave the site a setup classifier; this fixture has no contexts, so every context is
+  // unclassified rather than settled, and nothing is undecidable.
+  classifyProjectionSetups: () => ({ standings: new Map(), undecidable: [] }),
 }))
 
 test.each(["missing", "malformed", "non-object"] as const)(
