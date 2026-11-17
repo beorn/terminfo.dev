@@ -117,7 +117,6 @@ function calibratedIterm2Arm(
   let progress37Writes = 0
   let badge = false
   const context = {
-    now: () => Date.now(),
     kind: "live" as const,
     now: () => Date.now(),
     rows: 24,

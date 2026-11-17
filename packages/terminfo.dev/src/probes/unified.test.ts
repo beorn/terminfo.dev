@@ -5703,7 +5703,7 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
   it("is incomplete, never agree, when the capture binding or the row's log is missing or corrupt", async () => {
     const tampered = await recordBoundSgrRun()
     rewriteStoredRun(tampered.path, (run) => {
-      const binding = JSON.parse(run.rawReplies["sgr.reset.captureBinding"])
+      const binding = JSON.parse(run.rawReplies["sgr.reset.captureBinding"]) as Record<string, unknown>
       run.rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
         ...binding,
         calibrationId: "collector.captureCalibration.renewal.1",
