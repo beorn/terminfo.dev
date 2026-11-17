@@ -105,8 +105,9 @@ export default {
         if (selected && !selected.subject) {
           throw new Error(`Selected context ${selected.contextKey} lacks a physical subject`)
         }
-        // A parser and its app may share a slug; match original contributors, never a representative hash.
-        const sourceIds = selected?.contributingRunIds.slice().sort()
+        // A parser and its app may share a slug; match the joined summary's source runs, never a representative
+        // hash. The analysis cites exactly those runs: the primary's and each joined context's stand-in (34533).
+        const sourceIds = selected ? Object.keys(selected.sources).sort() : undefined
         const a = selected
           ? Object.entries(allAnalysis).find(
               ([key, entry]) =>

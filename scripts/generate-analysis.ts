@@ -24,7 +24,7 @@ import {
   joinedAppCells,
   loadCurrentResults,
 } from "../docs/data/current-results.ts"
-import { DIFFERS_BY_CONTEXT, type JoinedApp } from "../docs/data/app-cells.ts"
+import { DIFFERS_BY_CONTEXT, standInGrade, type JoinedApp } from "../docs/data/app-cells.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -232,8 +232,18 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
       return { featureId, status: joinedStatus(app, featureId, key) }
     })
     const statuses = Object.fromEntries(recordedResults.map(({ featureId, status }) => [featureId, status]))
-    const sources = version.contributingRunIds.map((runId): AnalysisSource => {
-      const original = originalRunFor(projection, contextKey, runId)
+    // The analysis cites exactly the runs its page's joined summary cites (composeJoinedSummary, 34533): the
+    // primary's contributing runs, then each joined context's run that stands in on a row the primary left open.
+    const sourceRuns = new Map(version.contributingRunIds.map((runId) => [runId, contextKey]))
+    for (const [featureId, cell] of Object.entries(app.cells)) {
+      if (!version.cells[featureId]) continue
+      const standIn = standInGrade(cell, contextKey)
+      const other = standIn && projection.contexts[standIn.context]?.cells[featureId]
+      if (standIn && !other) throw new Error(`Joined context ${standIn.context} lacks ${featureId} for ${key}`)
+      if (other && !sourceRuns.has(other.origin.runId)) sourceRuns.set(other.origin.runId, standIn.context)
+    }
+    const sources = [...sourceRuns].map(([runId, context]): AnalysisSource => {
+      const original = originalRunFor(projection, context, runId)
       return {
         runId,
         sha256: original.sha256,

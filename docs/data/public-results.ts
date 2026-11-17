@@ -12,7 +12,7 @@ import type {
 import { classifyProjectionSetups, type CurrentResult } from "./current-results.ts"
 import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
 import type { SetupStanding } from "./run-selection.ts"
-import type { AppCellStatus, JoinedApp } from "./app-cells.ts"
+import { standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
@@ -246,7 +246,7 @@ export function composeJoinedSummary(
   const featureResults = { ...primary.featureResults }
   // A cell that carries another context's evidence names that context's run, so the summary carries its
   // receipt too: a reader resolves every cell as `sources[cell.origin.runId]` (docs/api.md, 33979).
-  // `contributingRunIds` stays the primary's: a page matches its analysis entry on exactly that list.
+  // `contributingRunIds` stays the primary's; a page matches its analysis entry on these `sources` (34533).
   const sources = { ...primary.sources }
   for (const [featureId, cell] of Object.entries(app.cells)) {
     const own = primary.featureResults[featureId]
@@ -254,8 +254,7 @@ export function composeJoinedSummary(
     // The primary's own result carries the origin, measuredAt and reason a page shows whenever the
     // primary decided; another context's result stands in only when the primary did not decide
     // (@cto c5ddabf3).
-    const primaryDecided = cell.from.some((grade) => grade.context === primary.contextKey)
-    const source = primaryDecided ? undefined : cell.from.find((grade) => grade.context !== primary.contextKey)
+    const source = standInGrade(cell, primary.contextKey)
     const other = source ? contexts[source.context]?.featureResults[featureId] : undefined
     if (source && other && !(other.origin.runId in sources)) {
       const receipt = contexts[source.context]?.sources[other.origin.runId]
