@@ -70,6 +70,7 @@ test("only the block's interior cell is compared, with the sentinel and cursor o
 test("a pixel arm that reports no geometry refuses by name before painting anything", async () => {
   const writes: string[] = []
   const context = {
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     write: (bytes: string) => writes.push(bytes),
@@ -98,6 +99,7 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
   const writes: string[] = []
   let reads = 0
   const context = {
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureKind,

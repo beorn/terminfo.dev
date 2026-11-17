@@ -1834,6 +1834,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     }
   }
   const ctx = {
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },

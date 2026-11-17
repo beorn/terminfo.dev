@@ -55,6 +55,7 @@ async function measure(id: string, fault: Fault = "none", reply = true, mux?: "t
   }
   const ctx = {
     kind: "live",
+    now: () => Date.now(),
     ...(mux === undefined ? {} : { mux }),
     rows: 24,
     cols: 80,
