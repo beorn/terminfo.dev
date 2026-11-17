@@ -263,6 +263,8 @@ test("seven fresh Mac jobs bootstrap the shared producer before checkout and col
         PATH: `${dir}:${process.env.PATH}`,
         FIXTURE_ROOT: root,
         RUNNER_TEMP: dir,
+        // The step's first line records the job clock into the runner's env file (34567, 34613).
+        GITHUB_ENV: join(dir, "github-env"),
         // The job pins the measured tree in MEASURED_SHA (inputs.sha || github.sha); a different GITHUB_SHA
         // proves the bootstrap fetches by the pin, never by the dispatched ref (33124).
         MEASURED_SHA: sha,
@@ -295,6 +297,7 @@ test("seven fresh Mac jobs bootstrap the shared producer before checkout and col
       // the launch receipt with exactly the same code (28216).
       { path: "packages/run-parser/src/app-launch.ts", sha },
     ])
+    expect(await readFile(join(dir, "github-env"), "utf8")).toMatch(/^JOB_START_EPOCH=\d+$/mu)
     const sampled = JSON.parse(await readFile(join(dir, "measurement-artifacts", "job-start.json"), "utf8")) as {
       job: { jobId: string }
       phase: string
