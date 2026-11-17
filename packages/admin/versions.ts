@@ -81,6 +81,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/logical-rows.ts",
   "packages/terminfo.dev/src/iterm2-protocol.ts",
   "packages/terminfo.dev/src/iterm2-api.proto",
+  "packages/terminfo.dev/src/ghostty-applescript.ts",
   "bun.lock",
   "packages/terminfo.dev/src/capture-calibration.ts",
   "packages/terminfo.dev/src/text-qualification.ts",

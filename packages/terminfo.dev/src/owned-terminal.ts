@@ -90,6 +90,7 @@ import {
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import { readITermCells, withITermPromptSession } from "./iterm2-protocol.ts"
+import { ghosttyOwnedCwd } from "./ghostty-applescript.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -2379,13 +2380,61 @@ export async function createOwnedTerminal(options: {
           },
         }),
       ...(binding.platform === "darwin" &&
-        ownedAppId === "wezterm" && {
+        (ownedAppId === "wezterm" || ownedAppId === "ghostty") && {
           appSemanticStateFeatures: new Set(["extensions.osc7-cwd", "extensions.osc633-p"]),
         }),
-      ...((linux || (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin"))) && {
+      ...((linux ||
+        (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin")) ||
+        (ownedAppId === "ghostty" && binding.platform === "darwin")) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
+          }
+          // 34601: Ghostty 1.4.0 on macOS reads cwd through its AppleScript terminal of the owned tab's TTY.
+          if (binding.platform === "darwin" && ownedAppId === "ghostty") {
+            if (featureId !== "extensions.osc7-cwd" && featureId !== "extensions.osc633-p") {
+              return {
+                status: "unavailable" as const,
+                reason: "No owned App semantic reader for this feature on macOS",
+              }
+            }
+            if (
+              process.env.TERMINFO_TARGET_VERSION !== "1.4.0" ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              muxAttachmentProof !== undefined ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "Ghostty cwd has no reviewed version bound to this App launch",
+              }
+            }
+            const onRetained = options.onRetained
+            if (hostedAppExecutablePath === undefined || onRetained === undefined) {
+              return {
+                status: "invalid" as const,
+                reason: "Ghostty cwd needs the hosted App executable and its artifact observer",
+              }
+            }
+            try {
+              const sha256 = createHash("sha256").update(readFileSync(hostedAppExecutablePath)).digest("hex")
+              return await readAppSemanticState({
+                featureId,
+                onRetained,
+                runId: expectedLaunchRunId,
+                executable: { path: hostedAppExecutablePath, sha256 },
+                write,
+                readCwd: ghosttyOwnedCwd({
+                  tty: binding.tabTty,
+                  write,
+                  check() {
+                    if (!verifiedTerminalOwners.has(owner)) throw new Error("Ghostty cwd ownership is no longer live")
+                  },
+                }),
+              })
+            } catch (error) {
+              return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+            }
           }
           const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
           if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd)) {

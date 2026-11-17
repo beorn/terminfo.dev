@@ -175,6 +175,69 @@ test.each(["supported", "inert target", "host mismatch"])(
   },
 )
 
+// 34601: Ghostty 1.4.0 on macOS stores OSC 7 as its decoded local path (stream_handler.zig reportPwd) and the
+// AppleScript `working directory` returns that path with no host, so the owned port carries a path, never a
+// made-up URI; an empty path is Ghostty's "no pwd yet".
+// @failure The Ghostty reader is refused by the WezTerm-only gate, forges a host, or binds to an unreviewed version.
+test.each([
+  { featureId: "extensions.osc7-cwd", version: "1.4.0", initial: "", outcome: "supported" },
+  { featureId: "extensions.osc633-p", version: "1.4.0", initial: "", outcome: "unsupported" },
+  {
+    featureId: "extensions.osc633-p",
+    version: "1.4.0",
+    initial: "/Users/private-person/secret project",
+    outcome: "unsupported",
+  },
+  { featureId: "extensions.osc7-cwd", version: "1.3.1", initial: "", outcome: "unavailable" },
+] as const)(
+  "owned Ghostty $version $featureId reads a host-less path from $initial: $outcome",
+  async ({ featureId, version, initial, outcome }) => {
+    const runId = "e".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_TARGET_ID", "ghostty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", version)
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-ghostty-cwd-"))
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", directory)
+    const checkpoints: Array<{ row: number; marker: string } | undefined> = []
+    let path: string = initial
+    try {
+      const reading = await readAppSemanticState({
+        featureId,
+        onRetained: () => {},
+        runId,
+        executable: { path: "/Applications/Ghostty.app/Contents/MacOS/ghostty", sha256: "f".repeat(64) },
+        write(text: string) {
+          // Ghostty keeps OSC 7's decoded local path and has no OSC 633 parser.
+          const uri = /\x1b\]7;([^\x07]*)\x07/.exec(text)?.[1]
+          if (uri !== undefined) path = decodeURIComponent(new URL(uri).pathname)
+        },
+        async readCwd(checkpoint?: { row: number; marker: string }) {
+          checkpoints.push(checkpoint)
+          return { path, detail: { property: "working directory" } }
+        },
+      })
+      if (outcome === "unavailable") {
+        expect(reading).toMatchObject({
+          status: "unavailable",
+          reason: "No reviewed owned cwd getter for this App/feature",
+        })
+        expect(checkpoints).toEqual([])
+        return
+      }
+      const source = replayTermProbeSource(new Map())
+      source.readAppSemanticState = async () => reading
+      const result = await extensionsProbes.find((probe) => probe.id === featureId)!.term!(source)
+      expect(result.observation?.outcome, JSON.stringify(result)).toBe(outcome)
+      expect(checkpoints.slice(1).map((checkpoint) => checkpoint?.row)).toEqual([1, 2, 3])
+      const published = JSON.stringify(result)
+      if (initial) expect(published).not.toContain("private-person")
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
 test.runIf(process.platform === "linux").each(["", "file://localhost/original"])(
   "preserves the exact public CWD field and restores %j",
   async (initial) => {
