@@ -38,7 +38,9 @@ test.each([
 // 34567: the hosted macOS image moved 20261102.0473.1 to 20261112.0504.1 and raised measured per-capture cost from
 // 0.912 s to 1.158 s on cmux (Cursor 0.851 to 1.067) with frame counts unchanged, so 13 Cursor rows and 11 cmux
 // rows crossed the 30 s default while still capturing (/hh/var/@dev-brain/collector-slow-1117.md). Each wall below is
-// capture count x 1.158 s x 1.20 headroom, rounded up to the next 15 s: 22 to 32 captures need 45 s, 66 need 105 s,
+// that row's need x 1.20 headroom, rounded up to the next 15 s, where the need is the greater of its capture count
+// x 1.158 s and its old elapsed time scaled by its app per-frame rise: 22 to 32 captures need 45 s, except
+// sgr.underline.double at 60 s (old cmux 30.0 s scales to 38.0 s, above its 37.1 s of captures); 66 need 105 s;
 // 132 need 195 s. Rows the measurement did not cut keep their walls and the 30 s default stays.
 test.each([
   ["sgr.bold", 45_000],
@@ -49,7 +51,7 @@ test.each([
   ["sgr.overline", 45_000],
   ["sgr.hidden", 45_000],
   ["sgr.underline.single", 45_000],
-  ["sgr.underline.double", 45_000],
+  ["sgr.underline.double", 60_000],
   ["sgr.underline.curly", 45_000],
   ["sgr.underline.dashed", 45_000],
   ["sgr.underline.dotted", 45_000],
