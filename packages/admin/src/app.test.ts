@@ -1613,3 +1613,212 @@ test.each(["vscode", "cursor"] as const)(
     }
   },
 )
+
+// Requirement (34666, @cto 34666-editor-observer-scope-1245 amendments 1, 2, 4): the emitted extension subscribes
+// to the native execution events before its terminal exists, keeps only its own terminal's events, gives start and
+// end of one execution object one identity, records command line and exit code with explicit absence, and delivers
+// each event in exactly one reply (the window since the previous published reply), so a cached event is never
+// relabelled onto a later phase. A missing event API is a named absence, never a crash of the osc633-p route.
+// The existing fixture test above has no execution events at all, so it cannot see any of this.
+test.each([
+  { prefix: "vscode", api: true },
+  { prefix: "cursor", api: true },
+  { prefix: "vscode", api: false },
+] as const)(
+  "$prefix fixture binds native execution events to one reply each (event API $api)",
+  async ({ prefix, api }) => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { randomUUID } = await import("node:crypto")
+    const directory = fs.mkdtempSync(join(tmpdir(), "terminfo-editor-execution-"))
+    const subscriptions: Array<{ dispose: () => void }> = []
+    const intervals: Array<() => unknown> = []
+    const handlers: { start?: (event: object) => void; end?: (event: object) => void } = {}
+    const order: string[] = []
+    const nativeTerminal = {
+      name: "native terminal name",
+      processId: Promise.resolve(4321),
+      shellIntegration: undefined,
+      show: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const otherTerminal = { name: "another terminal" }
+    const subscribe = (kind: "start" | "end") =>
+      vi.fn((handler: (event: object) => void) => {
+        order.push(`subscribe-${kind}`)
+        handlers[kind] = handler
+        return { dispose: vi.fn() }
+      })
+    try {
+      prepareCliLaunch(prefix === "vscode" ? "com.microsoft.VSCode" : prefix, {
+        id: "private-run",
+        directory,
+        scriptPath: join(directory, "serve.sh"),
+      })
+      const emitted = vi
+        .mocked(writeFileSync)
+        .mock.calls.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+      const exported: { activate?: (context: { subscriptions: typeof subscriptions }) => unknown } = {}
+      runInNewContext(String(emitted?.[1]), {
+        exports: exported,
+        process: { pid: process.pid },
+        setInterval: (callback: () => unknown) => {
+          intervals.push(callback)
+          return 1
+        },
+        clearInterval: vi.fn(),
+        setTimeout,
+        clearTimeout,
+        require: (id: string) => {
+          if (id === "node:fs") return fs
+          if (id === "node:path") return { join }
+          if (id === "node:crypto") return { randomUUID }
+          if (id !== "vscode") throw new Error(`Unexpected emitted fixture import: ${id}`)
+          return {
+            version: "native-version",
+            env: { appName: `Native ${prefix}` },
+            RelativePattern: class {},
+            workspace: {
+              createFileSystemWatcher: () => ({
+                onDidCreate: () => ({ dispose() {} }),
+                onDidChange: () => ({ dispose() {} }),
+                dispose() {},
+              }),
+            },
+            commands: { executeCommand: async () => {} },
+            window: {
+              createTerminal: () => {
+                order.push("createTerminal")
+                return nativeTerminal
+              },
+              onDidCloseTerminal: () => ({ dispose() {} }),
+              onDidChangeTerminalShellIntegration: () => ({ dispose() {} }),
+              ...(api && {
+                onDidStartTerminalShellExecution: subscribe("start"),
+                onDidEndTerminalShellExecution: subscribe("end"),
+              }),
+            },
+          }
+        },
+      })
+      await exported.activate!({ subscriptions })
+      const activation = JSON.parse(fs.readFileSync(join(directory, "editor-activation.json"), "utf8")) as {
+        activationNonce: string
+        requestPath: string
+        replyDirectory: string
+        executionApi: Record<"start" | "end", { present: boolean; reason?: string }>
+      }
+      type Fact = {
+        eventSequence: number
+        kind: "start" | "end"
+        at: number
+        execution: string
+        startSeen?: boolean
+        commandLine: { present: boolean; value?: string; confidence?: number; isTrusted?: boolean; reason?: string }
+        exitCode?: { present: boolean; value?: number; reason?: string }
+      }
+      const sample = async (phase: string) => {
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-d",
+          phase,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + 5000,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        await intervals[0]!()
+        const replyPath = join(activation.replyDirectory, `${request.nonce}.json`)
+        await vi.waitFor(() => expect(fs.existsSync(replyPath)).toBe(true))
+        return JSON.parse(fs.readFileSync(replyPath, "utf8")) as {
+          evaluatedAt: number
+          executionApi: typeof activation.executionApi
+          executions: Fact[]
+          executionWindow: { since: number; until: number }
+        }
+      }
+      if (!api) {
+        // Fail named: the absence, the app and version, and the manifest's ^1.74.0 claim are all on record.
+        for (const kind of ["start", "end"] as const) {
+          expect(activation.executionApi[kind].present).toBe(false)
+          expect(activation.executionApi[kind].reason).toContain(`Native ${prefix} native-version`)
+          expect(activation.executionApi[kind].reason).toContain("^1.74.0")
+        }
+        const reply = await sample("initial")
+        expect(reply.executionApi).toEqual(activation.executionApi)
+        expect(reply.executions).toEqual([])
+        return
+      }
+      expect(activation.executionApi).toEqual({ start: { present: true }, end: { present: true } })
+      // Subscribed before the terminal (and so before any stimulus) exists.
+      expect(order).toEqual(["subscribe-start", "subscribe-end", "createTerminal"])
+      const first = await sample("initial")
+      expect(first.executions).toEqual([])
+      const ok = { commandLine: { value: "printf ok", confidence: 2, isTrusted: true } }
+      const failing = { commandLine: { value: "false", confidence: 1, isTrusted: false } }
+      const bare = {}
+      handlers.start!({ terminal: otherTerminal, execution: { commandLine: { value: "not ours", confidence: 2 } } })
+      handlers.start!({ terminal: nativeTerminal, execution: ok })
+      handlers.end!({ terminal: nativeTerminal, execution: ok, exitCode: 0 })
+      handlers.start!({ terminal: nativeTerminal, execution: failing })
+      handlers.end!({ terminal: nativeTerminal, execution: failing, exitCode: 17 })
+      handlers.end!({ terminal: nativeTerminal, execution: bare, exitCode: undefined })
+      handlers.end!({ terminal: otherTerminal, execution: bare, exitCode: 1 })
+      const target = await sample("target")
+      expect(target.executionWindow).toEqual({ since: first.evaluatedAt, until: target.evaluatedAt })
+      expect(target.executions.map((fact) => [fact.kind, fact.execution, fact.commandLine.value])).toEqual([
+        ["start", "execution-1", "printf ok"],
+        ["end", "execution-1", "printf ok"],
+        ["start", "execution-2", "false"],
+        ["end", "execution-2", "false"],
+        ["end", "execution-3", undefined],
+      ])
+      expect(target.executions.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5])
+      for (const fact of target.executions) {
+        expect(fact.at).toBeGreaterThanOrEqual(first.evaluatedAt)
+        expect(fact.at).toBeLessThanOrEqual(target.evaluatedAt)
+      }
+      expect(target.executions[0]!.commandLine).toEqual({
+        present: true,
+        value: "printf ok",
+        confidence: 2,
+        isTrusted: true,
+      })
+      expect(target.executions[2]!.commandLine).toEqual({
+        present: true,
+        value: "false",
+        confidence: 1,
+        isTrusted: false,
+      })
+      expect(target.executions[1]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 0 } })
+      expect(target.executions[3]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 17 } })
+      expect(target.executions[4]).toMatchObject({
+        startSeen: false,
+        commandLine: { present: false, reason: expect.any(String) },
+        exitCode: { present: false, reason: expect.any(String) },
+      })
+      expect(target.executions[4]!.exitCode).not.toHaveProperty("value")
+      // Delivered once: the next phase starts empty, then carries only what arrived after the target reply.
+      const later = { commandLine: { value: "printf later", confidence: 2, isTrusted: true } }
+      const restore = await sample("restore")
+      expect(restore.executions).toEqual([])
+      handlers.start!({ terminal: nativeTerminal, execution: later })
+      const after = await sample("after")
+      expect(after.executions.map((fact) => [fact.eventSequence, fact.execution])).toEqual([[6, "execution-4"]])
+      // Private evidence keeps every owned event in arrival order; the other terminal's never appear.
+      const logged = fs
+        .readFileSync(join(directory, "editor-executions.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Fact & { activationNonce: string })
+      expect(logged.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5, 6])
+      expect(logged.every((fact) => fact.activationNonce === activation.activationNonce)).toBe(true)
+      expect(JSON.stringify(logged)).not.toContain("not ours")
+    } finally {
+      for (const disposable of subscriptions.reverse()) disposable.dispose()
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)

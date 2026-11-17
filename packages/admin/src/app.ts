@@ -177,6 +177,51 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
   let lastRequest;
   let lastEvaluation;
   const errors = join(directory, "editor-reader-errors.jsonl");
+  // Native execution events (34666): own terminal only, one identity per execution object, explicit absence, and
+  // each event delivered in exactly one reply: the window since the previous published reply. Never relabelled.
+  const executionIds = new WeakMap();
+  let executionCount = 0;
+  let eventSequence = 0;
+  let pendingExecutions = [];
+  let executionWindowSince = activation.activatedAt;
+  const executionApi = {};
+  const recordExecution = (kind, event) => {
+    if (closed || !terminal || !event || event.terminal !== terminal) return;
+    try {
+      const execution = event.execution;
+      let id = execution ? executionIds.get(execution) : undefined;
+      const firstSeen = id === undefined;
+      if (firstSeen) {
+        id = "execution-" + ++executionCount;
+        if (execution) executionIds.set(execution, id);
+      }
+      const line = execution ? execution.commandLine : undefined;
+      const fact = { eventSequence: ++eventSequence, kind, at: Date.now(), execution: id,
+        ...(kind === "end" ? { startSeen: !firstSeen } : {}),
+        commandLine: line === undefined || line === null
+          ? { present: false, reason: execution ? "Native execution.commandLine is undefined" : "Native event has no execution object" }
+          : { present: true, value: line.value, confidence: line.confidence, isTrusted: line.isTrusted },
+        ...(kind === "end" ? { exitCode: event.exitCode === undefined
+          ? { present: false, reason: "Native end event exitCode is undefined" }
+          : { present: true, value: event.exitCode } } : {}) };
+      pendingExecutions.push(fact);
+      fs.appendFileSync(join(directory, "editor-executions.jsonl"),
+        JSON.stringify({ runId, activationNonce, ...fact }) + "\\n", { mode: 0o600 });
+    } catch (error) {
+      fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid, at: Date.now(),
+        delivery: "execution-" + kind, status: "failed", reason: error.message || String(error) }) + "\\n", { mode: 0o600 });
+    }
+  };
+  for (const [kind, name] of [["start", "onDidStartTerminalShellExecution"], ["end", "onDidEndTerminalShellExecution"]]) {
+    if (typeof vscode.window[name] !== "function") {
+      executionApi[kind] = { present: false, reason: "Native vscode.window." + name + " is absent in " + app.name + " " +
+        app.version + "; the fixture manifest declares engines ^1.74.0" };
+    } else {
+      executionApi[kind] = { present: true };
+      context.subscriptions.push(vscode.window[name]((event) => recordExecution(kind, event)));
+    }
+  }
+  activation.executionApi = executionApi;
   const observe = async (delivery) => {
     if (closed || busy || !terminal) return;
     let request;
@@ -208,11 +253,14 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
       if (closed || Date.now() > request.deadline) throw new Error("Editor terminal closed or request deadline expired");
       const integration = terminal.shellIntegration;
       const cwd = integration && integration.cwd;
+      const evaluatedAt = Date.now();
       const reply = {
         runId, featureId: request.featureId, phase: request.phase, nonce: request.nonce,
         requestedAt: request.requestedAt, deadline: request.deadline,
-        activationNonce, extensionPid: process.pid, app, evaluatedAt: Date.now(),
+        activationNonce, extensionPid: process.pid, app, evaluatedAt,
         sequence: ++sequence, delivery, status: "observed",
+        executionApi, executions: pendingExecutions.slice(),
+        executionWindow: { since: executionWindowSince, until: evaluatedAt },
         terminal: {
           name: terminal.name,
           processId: pid === undefined ? { present: false, reason: "Native terminal.processId is undefined" }
@@ -234,6 +282,9 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
         return;
       }
       publish(join(replyDirectory, request.nonce + ".json"), reply);
+      // Delivered: these events can never join a later reply.
+      pendingExecutions = pendingExecutions.slice(reply.executions.length);
+      executionWindowSince = evaluatedAt;
     } catch (error) {
       fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid,
         at: Date.now(), delivery, request, status: "failed", reason: error.message || String(error),
