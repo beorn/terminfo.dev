@@ -29,6 +29,7 @@ import {
   readAppSemanticState,
   readITermPromptMarks,
   readWezTermCwd,
+  weztermHyperlinkText,
   untilAppSemanticRead,
 } from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
@@ -2381,7 +2382,12 @@ export async function createOwnedTerminal(options: {
         }),
       ...(binding.platform === "darwin" &&
         (ownedAppId === "wezterm" || ownedAppId === "ghostty") && {
-          appSemanticStateFeatures: new Set(["extensions.osc7-cwd", "extensions.osc633-p"]),
+          appSemanticStateFeatures: new Set([
+            "extensions.osc7-cwd",
+            "extensions.osc633-p",
+            // 34646: WezTerm's bundle CLI get-text --escapes reads OSC 8 state, as on Linux.
+            ...(ownedAppId === "wezterm" ? ["extensions.osc8"] : []),
+          ]),
         }),
       ...((linux ||
         (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin")) ||
@@ -2437,7 +2443,8 @@ export async function createOwnedTerminal(options: {
             }
           }
           const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
-          if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd)) {
+          const ownedOsc8 = binding.platform === "darwin" && featureId === "extensions.osc8"
+          if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd || ownedOsc8)) {
             const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
             if (
@@ -2534,18 +2541,50 @@ export async function createOwnedTerminal(options: {
               retainNative(read.receipt)
               return read.rows.join("\n")
             }
+            const bundleCli = () => {
+              const appExecutablePath =
+                ownedAppId === "wezterm" && processOwner?.provider === "cli-process"
+                  ? processOwner.executablePath
+                  : hostedAppExecutablePath
+              if (
+                appExecutablePath === undefined ||
+                realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(appExecutablePath)), "wezterm")
+              ) {
+                throw new Error("WezTerm cwd CLI is outside the verified App bundle")
+              }
+            }
+            if (ownedOsc8) {
+              try {
+                bundleCli()
+                return await readAppSemanticState({
+                  featureId,
+                  onRetained,
+                  runId: expectedLaunchRunId,
+                  executable: ownedWezTermIdentity.historyExecutable,
+                  write,
+                  async readRows(escapes) {
+                    await check()
+                    const read = readWindowsWezTermRows({
+                      executable: ownedWezTermCli,
+                      socket,
+                      pane,
+                      rows: 3,
+                      startLine: 0,
+                      escapes,
+                    })
+                    await check()
+                    if (read.status === "refused") throw new Error(read.reason)
+                    retainNative(read.receipt)
+                    return weztermHyperlinkText(read.rows)
+                  },
+                })
+              } catch (error) {
+                return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+              }
+            }
             if (ownedPromptCwd) {
               try {
-                const appExecutablePath =
-                  ownedAppId === "wezterm" && processOwner?.provider === "cli-process"
-                    ? processOwner.executablePath
-                    : hostedAppExecutablePath
-                if (
-                  appExecutablePath === undefined ||
-                  realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(appExecutablePath)), "wezterm")
-                ) {
-                  throw new Error("WezTerm cwd CLI is outside the verified App bundle")
-                }
+                bundleCli()
                 return await readAppSemanticState({
                   featureId,
                   onRetained,
