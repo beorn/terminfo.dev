@@ -676,6 +676,36 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 on macOS parses OSC 133 A/B/C/P into core row state that no public macOS surface reads back. Read tag v1.4.0 (ghostty-xpli4r8n1mqrzhbgxmkj4jfbpsjsqm3m-derived-source-tar, SHA256 d692bb9b), the source of the bundle version 1.4.0 the hosted run records. src/terminal/osc.zig:1180 and src/terminal/osc/parsers/semantic_prompt.zig:23-32 parse it. The app's src/termio/stream_handler.zig:350,1475-1508 stores it through Terminal.semanticPrompt (src/terminal/Terminal.zig:2156), and it then drives only click handling and the jump_to_prompt viewport move (src/Surface.zig:4306,4370,5429). The Mac surfaces carry no mark. The C API text read ghostty_surface_read_text (src/apprt/embedded.zig:1929-1960) returns plain characters from Screen.selectionString (src/Surface.zig:2042-2051) in ghostty_text_s (include/ghostty.h:449-456). The Shortcuts intent Get Terminal Details returns only the title, the working directory or that plain text (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47). The AppleScript dictionary exposes id, name, working directory, pid and tty, and its perform action returns only a boolean (macos/Ghostty.sdef:89-100,162-166). Only the debug inspector (src/inspector/widgets/page.zig:291, opened by the inspector binding at src/input/Binding.zig:688-691) and the session snapshot serializer (src/terminal/snapshot/grid.zig:259) see row.semantic_prompt, and neither is a default-launch reader. Running jump_to_prompt through perform action and reading the visible text back is scraping UI state, not a non-intrusive prompt-mark reader.",
   })),
+  // 34596 (REVISION 3): 633;E has no parser and no Mac surface carries a command line.
+  {
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId: "extensions.osc633-e",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 on macOS has no OSC 633 parser and no Mac surface that carries a command line. Read tag v1.4.0 (SHA256 d692bb9b, the source of the bundle version 1.4.0 the hosted run records): the accepted-number table at src/terminal/osc.zig:447-490 lists 133 and no 633, and src/termio/Termio.zig:14,66 drives the same terminal.Stream with the one StreamHandler every app runtime uses, with no OS branch in src/terminal/osc.zig or stream.zig; src/apprt/embedded.zig and macos/Sources contain zero 633. Nothing on the Mac reads a command line back either: the AppleScript dictionary exposes id, name, name override, working directory, pid and tty only (macos/Ghostty.sdef:89-100), Get Terminal Details returns the title, the working directory and plain screen text (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47), and the C API text read returns plain characters (src/apprt/embedded.zig:1929-1960 into src/Surface.zig:2042-2051 selectionString).",
+  },
+  // 34596 (REVISION 3.1, @dev/fixer 08:20): osc8 is a readback cell with no click arm, so the row is honest.
+  {
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): Ghostty 1.4.0 on macOS stores OSC 8 hyperlinks in core page state and no Mac surface reads a URI back. Read tag v1.4.0 (SHA256 d692bb9b, the source of the bundle version the hosted run records): src/terminal/osc.zig:447,1160 and src/terminal/osc/parsers/hyperlink.zig parse and store the link in page.hyperlink_set (src/terminal/Screen.zig:2199,2222), read internally only by Surface.osc8URI (src/Surface.zig:4603-4613) for the hover and open-url paths. The one Mac consumer is the click action, macos/Sources/Ghostty/Ghostty.App.swift:808 openURL routing the osc8 kind to openUntrustedURL (:860-883), and hover only sets dirty.hyperlink_hover (src/Surface.zig:1717). There is no readback: src/apprt/embedded.zig and macos/Sources contain zero occurrences of hyperlink, so no C API, Swift API, AppleScript property (macos/Ghostty.sdef:89-100) or Shortcuts intent (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47) returns a URI, and hyperlink-emitting serialization is reached only from the snapshot serializers (src/terminal/snapshot/grid.zig:405,412, src/terminal/snapshot/screen.zig:2526, src/terminal/snapshot/page.zig:1140,1145,1242) which have no CLI state-dump verb. The instrument's link-metadata read has no macOS provider, and its plain term fallback cannot stand in: it writes the link, reads the cursor, and always returns probe-todo because cursor movement cannot verify OSC 8 link metadata or click behaviour (packages/probe-defs/src/extensions.ts:7395-7402).",
+  },
+  // 34596 (REVISION 3): a no-setup reason, not a no-way one.
+  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+    kind: "term" as const,
+    id: "ghostty",
+    version: "1.4.0",
+    os: "macos",
+    featureId,
+    reason:
+      "Untestable (no setup): at shipped defaults Ghostty 1.4.0 on macOS raises nothing a run can read when OSC 133;D arrives, so the cell is undecidable without a user config change. Traced in tag v1.4.0 (SHA256 d692bb9b): src/terminal/osc.zig:1180 parses 133, the exit code is an option of that parser (src/terminal/osc/parsers/semantic_prompt.zig:77-111), src/terminal/stream_terminal.zig:918-965 passes it to the effect callback, src/termio/stream_handler.zig:1475-1508 turns end_command into stop_command at :1493, and src/Surface.zig:1198-1225 emits command_finished with the exit code and the measured duration. The Mac app returns immediately on the shipped default: macos/Sources/Ghostty/Ghostty.App.swift:1642-1712 reads notifyOnCommandFinish and returns when it is never (src/config/Config.zig:1214), the action defaults to bell without notify (:1228) behind a five-second floor (:1265), and only a user setting that gate reaches the bell or a UNUserNotificationCenter banner (:1599,:1620) outside the text cells and window screenshot the run measures. The D mark and the A/B/C cycle are stored as row content, visible only to the debug inspector (src/inspector/widgets/page.zig:291 via src/input/Binding.zig:688-691) and the snapshot serializer (src/terminal/snapshot/grid.zig:259), neither of which is a default-launch reader.",
+  })),
   {
     kind: "term",
     id: "kitty",
