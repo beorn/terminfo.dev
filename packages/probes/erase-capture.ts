@@ -6,7 +6,12 @@ import { isDeepStrictEqual } from "node:util"
 import type { RunDraft, ProbeSubject, HeadlessRuntimeIdentity, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import { readCallLog, withCallLog, IncompleteReplay, type CallLog } from "viprobe"
-import { CAPTURE_BINDING_SUFFIX, CaptureBindingMalformed, parseCaptureBinding, type CaptureBinding } from "@terminfo/probe-defs"
+import {
+  CAPTURE_BINDING_SUFFIX,
+  CaptureBindingMalformed,
+  parseCaptureBinding,
+  type CaptureBinding,
+} from "@terminfo/probe-defs"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 
@@ -262,4 +267,3 @@ function checkCaptureBinding(rawReplies: Readonly<Record<string, string>>, featu
     )
   }
 }
-

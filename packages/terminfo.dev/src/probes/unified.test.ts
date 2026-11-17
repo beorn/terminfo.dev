@@ -5258,7 +5258,10 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     return () =>
       readProbeCapture(
         directory,
-        { ...source, trace: { path: candidatePath, sha256: createHash("sha256").update(candidateBytes).digest("hex") } },
+        {
+          ...source,
+          trace: { path: candidatePath, sha256: createHash("sha256").update(candidateBytes).digest("hex") },
+        },
         expected,
       )
   }

@@ -44,7 +44,9 @@ export function captureBinding(
 ): CaptureBinding | undefined {
   const base = { format: CAPTURE_BINDING_FORMAT, version: CAPTURE_BINDING_VERSION, calibrationId } as const
   if (source.captureGeometry) {
-    return { ...base, outcome: "installed", captureGeometry: structuredClone(source.captureGeometry) }
+    // Plain recorded data: a JSON copy keeps the binding independent of the live context object.
+    const captureGeometry = JSON.parse(JSON.stringify(source.captureGeometry)) as InstalledGeometry
+    return { ...base, outcome: "installed", captureGeometry }
   }
   if (source.captureGeometryRefusal !== undefined) {
     return { ...base, outcome: "refused", refusal: source.captureGeometryRefusal }
