@@ -229,7 +229,12 @@ export function readCaptureBinding(
     }
     throw error
   }
-  if (rawReplies[binding.calibrationId + ".callLog"] === undefined) {
+  // Every preparation retains its `.trace`; its paint `.callLog` exists only when the traced scope
+  // finished, so a preparation that refused by throwing has the trace alone.
+  if (
+    rawReplies[binding.calibrationId + ".trace"] === undefined &&
+    rawReplies[binding.calibrationId + ".callLog"] === undefined
+  ) {
     throw new IncompleteReplay(
       `replay-incomplete: capture binding names ${binding.calibrationId}, which this run did not record (${featureId})`,
     )

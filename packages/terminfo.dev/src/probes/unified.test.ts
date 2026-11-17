@@ -5292,7 +5292,10 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     ],
     [
       "unrecorded-calibration",
-      (rawReplies) => delete rawReplies["collector.captureCalibration.callLog"],
+      (rawReplies) => {
+        delete rawReplies["collector.captureCalibration.callLog"]
+        delete rawReplies["collector.captureCalibration.trace"]
+      },
       "capture binding names collector.captureCalibration, which this run did not record (sgr.reset)",
     ],
     [
@@ -5301,6 +5304,16 @@ it("binds an SGR row to its installed calibration and replays it offline with th
       "capture binding differs from the geometry the recorded callback was handed (sgr.reset)",
     ],
   ]
+  // A preparation that refused by throwing keeps its trace but no finished paint log; its refused
+  // association is still evidence of a recorded installation.
+  const refused = { ...binding, outcome: "refused", refusal: "fixture refused" }
+  delete (refused as Record<string, unknown>).captureGeometry
+  expect(
+    readCaptureBinding(
+      { "row.captureBinding": JSON.stringify(refused), "collector.captureCalibration.trace": "{}" },
+      "row",
+    ),
+  ).toEqual(refused)
   for (const [label, edit, message] of faults) {
     expect(tampered(label, edit), label).toThrow("replay-incomplete: " + message)
   }
