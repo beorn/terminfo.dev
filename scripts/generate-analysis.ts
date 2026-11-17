@@ -18,7 +18,13 @@ import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { isEnvironmentGroup, type FeatureResultStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
-import { collectGarbage, compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import {
+  collectGarbage,
+  compatibilitySubjects,
+  joinedAppCells,
+  loadCurrentResults,
+} from "../docs/data/current-results.ts"
+import { DIFFERS_BY_CONTEXT, type JoinedApp } from "../docs/data/app-cells.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -196,13 +202,25 @@ interface SelectedAnalysisInput {
   sources: AnalysisSource[]
 }
 
+/** The joined grade of one graded row; the join no longer produces the retired disagreement bucket. */
+function joinedStatus(app: JoinedApp, featureId: string, key: string): FeatureResultStatus {
+  const cell = app.cells[featureId]
+  if (!cell) throw new Error(`Analysis context ${key}/${featureId} is absent from its joined cells`)
+  if (cell.status === DIFFERS_BY_CONTEXT) throw new Error(`Analysis context ${key}/${featureId} reads ${cell.status}`)
+  return cell.status
+}
+
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilitySubjects(projection, contentDir)
+  // The page header counts the app's joined cells (33587), so the prose under it reads the same cells (33994).
+  const joined = joinedAppCells(projection, selected, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
   for (const [key, { contextKey, selected: version, routeKey, os }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
+    const app = joined.get(key)
+    if (!app) throw new Error(`Analysis context ${key} has no joined cells`)
     const recordedResults = Object.values(version.cells).map((cell) => {
       const { featureId, status } = cell.result
       if (isEnvironmentGroup(featureId)) {
@@ -211,7 +229,7 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
       if (!cell.featureResult) {
         throw new Error(`Analysis context ${contextKey}/${featureId} lacks its computed feature result`)
       }
-      return { featureId, status: cell.featureResult.status }
+      return { featureId, status: joinedStatus(app, featureId, key) }
     })
     const statuses = Object.fromEntries(recordedResults.map(({ featureId, status }) => [featureId, status]))
     const sources = version.contributingRunIds.map((runId): AnalysisSource => {

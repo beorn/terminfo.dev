@@ -515,6 +515,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(matrix.stats[key].score,app.score);
         assert.deepEqual(v3.contexts[contextKey].score,selected.score);
         if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
+        // 33994: the app's analysis prose sits under that page header, so it quotes the joined count too.
+        const analysis=Object.entries(analyses).find(([name,entry])=>name.startsWith("terminals/") && entry.sources?.some(source=>selected.contributingRunIds.includes(source.runId)));
+        if (analysis) assert.deepEqual(analysis[1].score,app.score,analysis[0]+" analysis score");
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
