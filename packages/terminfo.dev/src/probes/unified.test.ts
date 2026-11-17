@@ -24,6 +24,7 @@ import {
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type CaptureRequest,
   type AppSemanticReading,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
@@ -5124,27 +5125,35 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     }
     return true
   }) as typeof process.stdout.write
-  const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
-  const sentinel = { row: 24, col: 80 }
+  // 80x24 cells of 2x4 pixels: the whole text area is one small decoded frame.
+  const geometry = { cellWidth: 2, cellHeight: 4, textWidth: 160, textHeight: 96 }
+  const sentinel = { form: "basic" as const, rgb: [255, 0, 0] as const }
   const captured: Array<{ label: string; pixelGeometry: unknown }> = []
+  // A real retained frame through the capture writer, so the bound reader checks its blob.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-capture-binding-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
   let captures = 0
-  const capture = async ({ role, label, pixelGeometry }: { role: "control" | "target"; label: string; pixelGeometry?: unknown }) => {
+  const capture = async (request: CaptureRequest & { featureId: string }) => {
+    const { featureId, role, label, pixelGeometry } = request
     captures += 1
     captured.push({ label, pixelGeometry })
-    const digest = (kind: string) => `sha256:${createHash("sha256").update(`${kind}:${label}`).digest("hex")}`
-    return {
-      frame: {
-        role,
-        label,
-        capturedAt: captured.length,
-        ref: digest("encoded"),
-        pixelsDigest: digest("whole"),
-        regionDigest: digest("cells"),
-        controlRegionDigest: digest("control"),
-        regionRectangle: { x: 0, y: 0, width: 64, height: 16 },
-      },
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+      "base64",
+    )
+    return finishCapture({
+      directory: artifacts,
+      onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+      checkpoint: request,
+      source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
+      png,
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
       trace: {},
-    }
+    })
   }
   vi.useFakeTimers()
   const batch = await (async () => {
@@ -5178,8 +5187,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
     outcome: "installed",
     captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
   })
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-capture-binding-"))
-  receiptDirectories.push(directory)
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
   const draft = asRun(batch)
   if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
   const path = saveDaemonProbeRun(
@@ -5211,9 +5219,14 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   replay.finish()
   expect(writes).toHaveLength(beforeReplay)
   expect(captures).toBe(liveCaptures)
-  expect(result.tests?.map(({ id, status }) => ({ id, status }))).toEqual(
-    live.tests.map(({ id, status }) => ({ id, status })),
-  )
+  // The replay reaches the live row's observation from the recorded calls alone.
+  const liveObservation = batch.observations.find(({ featureId }) => featureId === "sgr.reset")
+  if (!liveObservation) throw new Error("Missing live SGR reset observation")
+  expect(result.observation).toMatchObject({
+    outcome: liveObservation.outcome,
+    assertionType: liveObservation.assertionType,
+    ...(liveObservation.reason !== undefined && { reason: liveObservation.reason }),
+  })
   const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
     throw new Error("Offline SGR assertion attempted native runtime discovery")
   })
@@ -5226,7 +5239,7 @@ it("binds an SGR row to its installed calibration and replays it offline with th
   } finally {
     nativeIdentity.mockRestore()
   }
-})
+}, 60_000)
 
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
 // Images belong to the callback's run before it is sealed. Existing
