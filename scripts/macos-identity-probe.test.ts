@@ -401,6 +401,7 @@ test("iTerm startup records window and transfer consent policies before launch a
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
     ]
     const spawnSync = vi.fn((_file, _args, _options) => ({
       stderr: "",
@@ -430,10 +431,15 @@ test("iTerm startup records window and transfer consent policies before launch a
       "/usr/bin/defaults",
       ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
     ],
+    // 34664: removes the "clear scrollback history?" strip without changing whether CSI 3 J clears.
+    [
+      "/usr/bin/defaults",
+      ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
+    ],
     ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
   // The retained launch log must disclose the configured permission state.
-  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 8)
+  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 9)
   expect(policies).toMatchObject([
     {
       name: "transfer consent policy",
@@ -445,9 +451,14 @@ test("iTerm startup records window and transfer consent policies before launch a
       args: ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
       status: 0,
     },
+    {
+      name: "scrollback clear policy",
+      args: ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
+      status: 0,
+    },
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 8 }, () =>
+    ...Array.from({ length: 9 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -470,8 +481,10 @@ test("iTerm startup records window and transfer consent policies before launch a
     [6, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent policy"],
     [7, { status: 1 }, "transfer consent selection"],
     [7, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
-    [8, { status: 1 }, "open"],
-    [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [8, { status: 1 }, "scrollback clear policy"],
+    [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "scrollback clear policy"],
+    [9, { status: 1 }, "open"],
+    [9, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)

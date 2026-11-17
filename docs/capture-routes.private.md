@@ -208,6 +208,9 @@ These describe workflow and launcher code, not measured results.
   `NoSyncSuppressDownloadConfirmation_selection=0` (Yes). The existing `launcher.log`
   records both exact settings commands and their outcomes. This describes the configured
   hosted target's consent policy, not iTerm2's default user configuration or accepted results.
+  It also sets `PreventEscapeSequenceFromClearingHistory=true`, so the first CSI 3 J raises no in-window
+  "clear scrollback history?" strip that would move the grid between capture calibrations. At 3.6.11 the unset
+  default and `true` both refuse that clear (PTYSession.m `clearScrollbackAllowed`), so erase readings are unchanged.
 - For Alacritty, Cursor, VS Code and cmux, the workflow exports the bundle's
   `CFBundleShortVersionString` as `TERMINFO_TARGET_VERSION`; it also checks that Alacritty's
   binary version agrees. The app launcher reads WezTerm's version from `wezterm --version`

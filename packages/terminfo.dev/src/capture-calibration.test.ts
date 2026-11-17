@@ -1364,14 +1364,13 @@ function iterm2SolidRun(solid = retainedFrame("solid", ITERM2_FRAMES)) {
 }
 
 test("the retained iTerm2 transparent corner rim joins the fillet instead of splitting the grid", async () => {
-  const run = iterm2SolidRun()
-  const message = await run.promise.then(
-    () => "",
-    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  // These frames were taken under iTerm2's 61 pt "clear scrollback history?" strip, raised by the run's own CSI 3 J,
+  // whose shadow darkens rows 94..97 just above the grid in both frames. With the rim no longer splitting the corner,
+  // calibration gets past the solid-grid check and refuses on that shadow instead, which is the next stage's
+  // refusal. The hosted launch now sets PreventEscapeSequenceFromClearingHistory, so the strip is never raised.
+  await expect(iterm2SolidRun().promise).rejects.toThrow(
+    /^(?!.*non-solid grid).*paint changed pixels outside the witnessed grid/s,
   )
-  expect(message).not.toMatch(/non-solid grid/)
-  // Proven stage: column stripes are read only after the solid grid validated.
-  expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
 })
 
 test("a translucent pixel inside the retained iTerm2 grid is still an interior hole", async () => {
