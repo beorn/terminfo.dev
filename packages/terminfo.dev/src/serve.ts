@@ -1381,7 +1381,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                         ? "uncorroborated"
                         : rows === grant.rows && cols === grant.cols
                           ? "agree"
-                          : "conflict"
+                          : // 34672 (@cto warp-geometry-ruling-1252, Q1 option 1): a reply that agrees on columns
+                            // and differs only in rows is its own status, because the existing complete-raster
+                            // calibration may TEST the stable owned PTY grid against it. It is never rewritten
+                            // to "agree": the conflict stays an observation, and the quoted counts stay the
+                            // terminal's own.
+                            cols === grant.cols
+                            ? "conflict-rows-only"
+                            : "conflict"
                   geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
                 } else {
                   geometryCorroboration = {

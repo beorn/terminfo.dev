@@ -224,7 +224,13 @@ export type ProbeCapture = (checkpoint: {
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
 
 export interface GeometryCorroboration {
-  status: "agree" | "conflict" | "uncorroborated" | "silent" | "malformed"
+  /**
+   * `conflict-rows-only` is the one disagreement the complete-raster calibration may TEST (34672,
+   * @cto warp-geometry-ruling-1252): the terminal's reply agrees on columns and differs only in rows,
+   * so the owned PTY grid is a candidate the calibration can paint and verify. It is never reported as
+   * `agree`; the conflict stays in the record exactly as the terminal answered it.
+   */
+  status: "agree" | "conflict" | "conflict-rows-only" | "uncorroborated" | "silent" | "malformed"
   query: {
     sequence: "\x1b[18t"
     outbound: "\x1b[18t\x1b[c"
@@ -753,6 +759,18 @@ export async function runProbeBatch(
               { name: "CaptureCalibrationRefused" },
             )
           }
+          // 34672 (@cto warp-geometry-ruling-1252 condition 2): a rows-only conflict may not widen the
+          // candidate set. The only counts painted are the stable owned PTY counts just checked against the
+          // grant - never the terminal's reply, and never a second trial. A reply that also disagrees on
+          // columns is not this status and never reaches here.
+          if (reported?.status === "conflict-rows-only" && reported.cols !== current.cols) {
+            throw Object.assign(
+              new Error(
+                `Capture calibration rejects a rows-only conflict whose columns differ: reply ${reported.rows}x${reported.cols}, owned ${current.rows}x${current.cols}`,
+              ),
+              { name: "CaptureCalibrationRefused" },
+            )
+          }
           preparationGrid = { rows: current.rows, cols: current.cols }
         }
         const preparationSource = createTermProbeSource({
@@ -953,12 +971,23 @@ export async function runProbeBatch(
           ? `Grant geometry unavailable: ${grant?.status === "unavailable" ? grant.diagnostic : "no owned measurement"}`
           : preGeometry?.status !== "measured"
             ? `Pre-callback geometry unavailable: ${preGeometry?.status === "unavailable" ? preGeometry.diagnostic : "no measurement"}`
-            : corroboration?.status === "conflict"
-              ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}`
-              : corroboration?.status === "agree" &&
-                  (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
-                ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
+            : // 34672 (@cto warp-geometry-ruling-1252 condition 1): a rows-only conflict stops blocking a row
+              // only while the preconditions that make it testable still hold - the same columns and the same
+              // owned grid the grant measured. Whether the row may then capture is decided by the one
+              // complete-raster calibration authority, not here: a refused or failed proof leaves
+              // `captureGeometryRefusal` set and the row takes its named no-capture branch.
+              corroboration?.status === "conflict-rows-only"
+              ? corroboration.cols !== preGeometry.cols ||
+                preGeometry.rows !== grant.rows ||
+                preGeometry.cols !== grant.cols
+                ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}, and the owned grid moved from the grant ${grant.rows}x${grant.cols}, so no candidate grid may be tested`
                 : undefined
+              : corroboration?.status === "conflict"
+                ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}`
+                : corroboration?.status === "agree" &&
+                    (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
+                  ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
+                  : undefined
       if (diagnostic) {
         geometryCheck.diagnostic = diagnostic
 

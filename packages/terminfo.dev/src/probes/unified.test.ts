@@ -5703,6 +5703,114 @@ it.each(["conflict", "malformed", "live mismatch"] as const)(
   },
 )
 
+// 34672 (@cto warp-geometry-ruling-1252, Q1 option 1): a reply that agrees on columns and differs only in
+// rows no longer refuses before painting. The complete-raster calibration tests ONE candidate - the stable
+// owned PTY grid - and the conflict stays in the trace exactly as the terminal answered it.
+it("lets the complete-raster calibration test the owned grid on a rows-only conflict", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  const handed: Array<[number, number]> = []
+  const batch = await runProbeBatch({
+    ids: ["device.decrpm"],
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: {
+      status: "conflict-rows-only",
+      rows: 39,
+      cols: 123,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      },
+    },
+    prepareCapture: async ({ source }) => {
+      handed.push([source.rows, source.cols])
+      source.captureGeometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+        source: "measured by complete raster calibration" as const,
+      }
+    },
+  })
+  expect(handed, "the only candidate painted is the owned PTY grid").toEqual([[45, 123]])
+  const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+  expect(trace.grid, "the reply's 39 rows never becomes the candidate").toEqual({ rows: 45, cols: 123 })
+  expect(trace.refusal, "a verified candidate is not a refusal").toBeUndefined()
+  expect(trace.geometryCorroboration, "the conflict is preserved as observed").toMatchObject({
+    status: "conflict-rows-only",
+    rows: 39,
+    cols: 123,
+  })
+  expect(batch.rawReplies["collector.geometry"]).toContain('"conflict-rows-only"')
+  expect(batch.rawReplies["collector.geometry"]).toContain('"rows":39')
+})
+
+// Condition 3: a conflict stops blocking a row only with that same run's complete-raster proof. A failed
+// proof for the owned candidate leaves the refusal set, and the row says so by name.
+it("keeps a rows-only conflict blocking a row when the raster proof fails", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  const refusal = "complete raster calibration measured 39 rows for the owned 45-row candidate"
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc8"],
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: {
+      status: "conflict-rows-only",
+      rows: 39,
+      cols: 123,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      },
+    },
+    prepareCapture: async ({ source }) => {
+      source.captureGeometryRefusal = refusal
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc8")
+  expect(row?.reason, "the row names the failed proof, not a silent pass").toContain(refusal)
+  expect(row?.status).not.toBe("supported")
+  expect(batch.observations.find((item) => item.featureId === "extensions.osc8")?.assertionType).not.toBe("pixels")
+  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!).refusal).toBe(refusal)
+})
+
+// Condition 1: the owned grid must still be the one the grant measured. A move since the grant keeps its
+// existing failure path - it never becomes a candidate.
+it("refuses a rows-only conflict when the owned grid moved since the grant", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  let painted = false
+  await expect(
+    runProbeBatch({
+      ids: ["device.decrpm"],
+      ownedTerminal: geometryOwner(measured(45, 123), async () => measured(46, 123)),
+      geometryCorroboration: {
+        status: "conflict-rows-only",
+        rows: 39,
+        cols: 123,
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "reply",
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        },
+      },
+      prepareCapture: async () => {
+        painted = true
+      },
+    }),
+  ).rejects.toThrow(/grid.*changed|grid.*disagree/)
+  expect(painted).toBe(false)
+})
+
 it("an 18t timeout aborts capture preparation instead of recording a terminal refusal", async () => {
   verifiedBatchFixture()
   vi.spyOn(process.stdout, "write").mockReturnValue(true)
