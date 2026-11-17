@@ -7,9 +7,10 @@
  * @testonly decalnReadback: exported so its seed, edit and expected frames reach the real chooser.
  */
 import { expect, test } from "vitest"
-import { type CaptureCells, sentinelCellsInFrame } from "./region-readback.ts"
+import { sentinelCellsInFrame } from "./region-readback.ts"
 import { decalnReadback } from "./reset.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import type { CaptureCells } from "./types.ts"
 
 const cell = { width: 7, height: 15 }
 
