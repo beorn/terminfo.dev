@@ -177,13 +177,16 @@ const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
 
 /**
  * 34507: the documented bound is ONE signal — the 30 min AbortSignal at the fetch below — and only Bun's fetch
- * lets us clear its own abort with `timeout:false`. Node's fetch takes no per-request option for its 300 s
- * headers timeout, so a silent /probe there aborts at 300 s and this client would report it as the 30 min
- * signal. Until a Node transport exists that honours the bound, refuse that runtime by name.
+ * lets us clear its own abort with `timeout:false`. Node's fetch takes no per-request option for its 300 s headers
+ * timeout, so a silent /probe there aborts at 300 s. That is a known open cure, NOT a reason to refuse the runtime:
+ * the shipped CLI starts this client under Node when Bun is absent (bin/terminfo.mjs, engines node >=24), so a
+ * blanket rejection removed a public capability. Both runtimes run the probe; a Node abort is named for what it is.
  */
-export function probeRuntimeRefusal(bunVersion: string | undefined): string | null {
-  if (bunVersion !== undefined && bunVersion !== "") return null
-  return "Daemon /probe needs the Bun runtime (34507): Node's fetch aborts a silent response at 300 s, not the documented 30 min signal, and no transport here clears it. Run the collector with bun."
+/** Node's own fetch headers timeout, which aborts a silent response at 300 s with no per-request control. */
+function isHeadersTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const cause = (error as { cause?: { code?: unknown } }).cause
+  return typeof cause?.code === "string" && cause.code === "UND_ERR_HEADERS_TIMEOUT"
 }
 
 export async function requestDaemonProbe(
@@ -191,8 +194,6 @@ export async function requestDaemonProbe(
   request?: DaemonOwnerRequest,
   ids?: string[],
 ): Promise<Response> {
-  const refusal = probeRuntimeRefusal(process.versions.bun)
-  if (refusal !== null) throw new Error(refusal)
   if (!Number.isInteger(daemon.port) || daemon.port < 1 || daemon.port > 65535) {
     throw new Error(`Invalid daemon port: ${daemon.port}`)
   }
@@ -243,6 +244,21 @@ export async function requestDaemonProbe(
         : `${elapsed} ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal`
       throw Object.assign(
         new Error(`Daemon on port ${daemon.port} did not answer /probe within ${bound}`, { cause: error }),
+        { name: "TimeoutError" },
+      )
+    }
+    // 34507 open cure: Node's fetch aborts a silent response on its own 300 s headers timeout, which no
+    // per-request option raises. Name that bound for what it is instead of reporting it as the 30 min signal,
+    // and say which runtime produced it — the public Node path stays usable, it just states its real limit.
+    if (isHeadersTimeout(error)) {
+      const elapsed = Date.now() - started
+      throw Object.assign(
+        new Error(
+          `Daemon on port ${daemon.port} did not answer /probe: Node's fetch aborted at ${elapsed} ms on its ` +
+            `300 s headers timeout, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal (34507 open: run the ` +
+            `collector with bun to hold the documented bound; the daemon itself may still hold the answer)`,
+          { cause: error },
+        ),
         { name: "TimeoutError" },
       )
     }
