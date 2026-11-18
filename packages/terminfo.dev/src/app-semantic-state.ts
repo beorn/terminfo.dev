@@ -3400,8 +3400,24 @@ export async function readAppSemanticState(
       // Terminal.app runs the accepted two-control, two-target experiment with restoration (r1 item 1); the other
       // reviewed getters keep their existing single-pair recipe unchanged.
       const pairs = appId === "terminal-app"
-      const sentControls = [`/terminfo-control-A-${nonce}`, `/terminfo-control-B-${nonce}`]
-      const sentTargets = [`/terminfo-target-A-${nonce}`, `/terminfo-target-B-${nonce}`]
+      // Run 44392648569: Terminal.app 2.15 clears AXDocument (kAXErrorNoValue) for an OSC 7 path that does not
+      // exist, so nonce paths cannot move it. Its controls and targets are four fresh, empty directories this run
+      // creates beside its capture area and removes after restoration (@cto r1 Q1 fallback; Kitty's precedent).
+      const made: string[] = []
+      let sentControls: string[] = []
+      let sentTargets: string[] = []
+      const freshDirectory = (name: string) => {
+        const path = join(dirname(capture), `osc7-${name}-${nonce}`)
+        mkdirSync(path)
+        made.push(path)
+        const real = realpathSync(path)
+        if (!/^\/[A-Za-z0-9._/-]*$/.test(real)) {
+          throw new Error(
+            `Terminal.app cwd directory cannot be written literally in a file URI: ${JSON.stringify(real)}`,
+          )
+        }
+        return real
+      }
       const restoration: { attempted: boolean; equal: boolean | null } = { attempted: false, equal: null }
       const observe = async (): Promise<AppSemanticReading> => {
         // Terminal.app 2.15 serialises AXDocument with one trailing slash (34841 ax-0..6.json, file:///private/var/);
@@ -3426,6 +3442,10 @@ export async function readAppSemanticState(
           return reading
         }
         const initial = await get()
+        if (pairs) {
+          sentControls = [freshDirectory("control-A"), freshDirectory("control-B")]
+          sentTargets = [freshDirectory("target-A"), freshDirectory("target-B")]
+        }
         const processCwd = process.cwd()
         const freshPaths = pairs
           ? [...sentControls, ...sentTargets]
@@ -3481,7 +3501,7 @@ export async function readAppSemanticState(
           if (controls.every((value) => value === initial.cwd)) {
             reading = {
               status: "unavailable",
-              reason: "Terminal.app AXDocument did not move for two distinct fresh non-existent OSC 7 control paths",
+              reason: "Terminal.app AXDocument did not move for two distinct fresh run-owned OSC 7 control directories",
               detail,
             }
           } else {
@@ -3550,6 +3570,15 @@ export async function readAppSemanticState(
           reason: pairs ? ownedCwdFailure(error) : "Owned cwd observation failed; see private evidence",
         }
       }
+      // The run's directories go only after restoration has been read; a failed removal is named, never dropped.
+      for (const path of made.reverse()) {
+        try {
+          rmdirSync(path)
+        } catch (error) {
+          detail.phases.push({ cleanupError: error instanceof Error ? error.message : String(error) })
+          reading = { status: "invalid", reason: "Terminal.app cwd could not remove a run-owned control directory" }
+        }
+      }
       const bytes = Buffer.from(JSON.stringify({ reading, detail, processCwd: process.cwd() }))
       // The shared phase reader is private. Clear its diagnostic carrier before any
       // retention failure reaches the outer, publishable error result.
@@ -3581,8 +3610,14 @@ export async function readAppSemanticState(
       const fresh = pairs
         ? [...sentControls, ...sentTargets]
         : [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
+      // A run-owned directory publishes as its own name under a fixed label, never the runner's absolute path; the
+      // same mapping applies to sent and read values, so the grade is unchanged.
       const publicValue = (value: string) =>
-        fresh.includes(value) ? value : createHash("sha256").update(value).digest("hex")
+        fresh.includes(value)
+          ? pairs
+            ? `/run-owned/${basename(value)}`
+            : value
+          : createHash("sha256").update(value).digest("hex")
       // The pair experiment's handled/target fields are JSON arrays: hash each element, keep the array.
       const publicField = (value: string) =>
         pairs ? JSON.stringify((JSON.parse(value) as string[]).map(publicValue)) : publicValue(value)
