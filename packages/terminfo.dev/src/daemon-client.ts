@@ -306,10 +306,10 @@ export async function requestDaemonProbe(
       },
     )
   }
+  probeDaemonPorts.set(response, daemon.port)
   return response
 }
 
-/** Preserve and validate the exact HTTP bytes before any public save. */
 /**
  * 34753: the daemon streams leading JSON whitespace (space, tab, LF, CR) as its keepalive, so an
  * admitted /probe answer reaches a client with stock socket timers instead of none at all. Those
@@ -328,16 +328,57 @@ export function stripProbeKeepalivePrefix(bytes: Buffer): Buffer {
   return at === 0 ? bytes : bytes.subarray(at)
 }
 
-export async function readRawDaemonProbeResponse(
-  response: Response,
-  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
-): Promise<ReturnType<typeof decodeCollectorDraft>> {
-  const raw = decodeExactUtf8(stripProbeKeepalivePrefix(Buffer.from(await response.arrayBuffer())), "daemon /probe")
+/**
+ * Which daemon each live /probe response came from, so a body that ends after admission can name its
+ * daemon instead of surfacing whatever the runtime calls a reset. Set once in requestDaemonProbe.
+ */
+const probeDaemonPorts = new WeakMap<Response, number>()
+
+/**
+ * 34753 -> 34799: after admission the daemon streams, so a collection that fails afterwards ends the
+ * body instead of answering HTTP 500 (@cto 34753-probe-streaming-go.md condition 2). The bare runtime
+ * error ("terminated", "fetch failed") names nothing, so this one helper says which daemon ended the
+ * body, that it was admitted rather than refused, and where the daemon-side record lives.
+ */
+export function daemonStreamEndedError(port: number, cause?: unknown): Error {
+  const directory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
+  const message =
+    `Daemon on port ${port} ended the /probe body after admitting the run: the collection failed or was ` +
+    `cancelled before it could answer, so this response carries no run record. The reason is in that ` +
+    `daemon log, and any draft it reserved is under ${directory}`
+  return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), {
+    name: "DaemonStreamEnded" as const,
+  })
+}
+
+/** Read one whole /probe body, naming the daemon when it ends early instead of passing a bare reset up. */
+async function readProbeBody(response: Response): Promise<Buffer> {
+  try {
+    return Buffer.from(await response.arrayBuffer())
+  } catch (error) {
+    const port = probeDaemonPorts.get(response)
+    throw port === undefined ? error : daemonStreamEndedError(port, error)
+  }
+}
+
+function decodeProbeBytes(
+  bytes: Buffer,
+  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string },
+): ReturnType<typeof decodeCollectorDraft> {
+  const raw = decodeExactUtf8(stripProbeKeepalivePrefix(bytes), "daemon /probe")
   const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
   if (decoded.kind === "captured" && decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
     throw new Error(`Daemon /probe subject kind ${decoded.run.subject.kind} is not term or mux`)
   }
   return decoded
+}
+
+/** Preserve and validate the exact HTTP bytes before any public save. */
+export async function readRawDaemonProbeResponse(
+  response: Response,
+  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
+): Promise<ReturnType<typeof decodeCollectorDraft>> {
+  return decodeProbeBytes(await readProbeBody(response), receipt)
 }
 
 /**
@@ -405,11 +446,13 @@ export async function readRetainedDaemonProbeResponse(
   | { kind: "captured"; run: CapturedRunDraft; path: string; sha256: string }
   | { kind: "empty-selection"; run: RunDraft; path: string; sha256: string }
 > {
-  const bytes = stripProbeKeepalivePrefix(Buffer.from(await response.arrayBuffer()))
+  const bytes = stripProbeKeepalivePrefix(await readProbeBody(response))
   const retained = retainDaemonResponseBytes(bytes, options.directory)
   let decoded: Awaited<ReturnType<typeof readRawDaemonProbeResponse>>
   try {
-    decoded = await readRawDaemonProbeResponse(new Response(new Uint8Array(bytes)), options.receipt)
+    // The bytes are already the retained payload, so decode them directly instead of round-tripping
+    // through a second Response and a second strip.
+    decoded = decodeProbeBytes(bytes, options.receipt ?? getTrustedSuiteReceipt())
   } catch (cause) {
     throw Object.assign(
       new Error(

@@ -559,6 +559,54 @@ it("34753 the Node path keeps stock timers because the daemon streams", async ()
   expect(probe.leadingWhitespace).toBeGreaterThan(0)
 }, 60_000)
 
+// 34799 (@dev/11 peer verdict 00e7cafa): once the run is admitted the daemon streams, so a collection that
+// fails afterwards ends the body instead of answering 500. The reader must name which daemon ended it and
+// where the daemon-side record lives, never pass up a bare "terminated".
+it("34799 names the daemon, port and draft directory when an admitted body ends early", async () => {
+  const runId = "9".repeat(32)
+  const drafts = mkdtempSync(join(tmpdir(), "terminfo-probe-drafts-"))
+  const previous = process.env.TERMINFO_CAPTURE_DIRECTORY
+  process.env.TERMINFO_CAPTURE_DIRECTORY = drafts
+  server = createServer((req, res) => {
+    if (req.url === "/info") {
+      res.end(JSON.stringify({ runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
+      return
+    }
+    res.setHeader("Content-Type", "application/json")
+    const stream = openProbeResponse(res, runId, 120)
+    stream.admitted()
+    setTimeout(() => res.destroy(new Error("census failed")), 120)
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (address === null || typeof address === "string") throw new Error("failing probe server has no port")
+  try {
+    const response = await requestDaemonProbe({
+      runId,
+      pid: 222,
+      port: address.port,
+      token: "fixture-token",
+      terminal: "kitty",
+      terminalVersion: "0.49.1",
+    })
+    const failure = await readRetainedDaemonProbeResponse(response, {
+      directory: join(drafts, "responses"),
+      receipt: trustedReceipt,
+    }).catch((error: unknown) => error)
+    expect(failure).toMatchObject({
+      name: "DaemonStreamEnded",
+      message: expect.stringContaining(`Daemon on port ${address.port} ended the /probe body after admitting the run`),
+    })
+    expect((failure as Error).message).toContain(drafts)
+    expect((failure as Error).message).toContain("daemon log")
+  } finally {
+    if (previous === undefined) delete process.env.TERMINFO_CAPTURE_DIRECTORY
+    else process.env.TERMINFO_CAPTURE_DIRECTORY = previous
+    server.closeAllConnections()
+  }
+}, 30_000)
+
 // 34753: the daemon flushes headers and a keepalive byte once the run is admitted, so undici's stock 300 s header
 // window never sees a silent socket. A daemon that answers nothing at all is therefore a fault to name, not a run
 // to wait out: the mapping and the message are proven here, and the real 300 s window is covered by the stock-Node

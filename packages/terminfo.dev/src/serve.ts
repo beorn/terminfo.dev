@@ -2083,8 +2083,7 @@ export function startDaemon(port = 0): void {
             onAdmitted: stream.admitted,
             signal: stream.signal,
           }),
-        )
-        stream.release()
+        ).finally(() => stream.release())
         if (collected === undefined) return
         const run = collected
         if (!run.rawReplies["collector.windowDisposal"]) {
@@ -2130,8 +2129,7 @@ export function startDaemon(port = 0): void {
             onAdmitted: stream.admitted,
             signal: stream.signal,
           }),
-        )
-        stream.release()
+        ).finally(() => stream.release())
         if (collected === undefined) return
         res.end(JSON.stringify(collected))
         return

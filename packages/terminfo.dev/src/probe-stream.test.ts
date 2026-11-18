@@ -177,10 +177,11 @@ it("34753 refuses a duplicate run before anything streams", async () => {
   expect(admitted).toBe(0)
 })
 
-// Requirement (34753 condition 3): a client that leaves stops the batch itself. The signal is checked
-// between rows, so a cancelled run never starts another probe after the response is gone, and the
-// AbortError reaches the caller loudly instead of becoming a success-shaped draft.
-it("34753 an aborted signal stops the batch before another probe runs", async () => {
+// Requirement (34753 condition 3): a client that leaves stops the batch itself. runProbeBatch checks the
+// signal at the top of the per-probe loop, so an already-aborted run starts no probe at all and the
+// AbortError reaches the caller loudly instead of becoming a success-shaped draft. The same call site is
+// what stops a run whose client leaves mid-collection, which the abort-on-close row above proves.
+it("34753 an already-aborted signal starts no probe", async () => {
   const { ALL_PROBES, runProbeBatch } = await import("./probes/unified.ts")
   const controller = new AbortController()
   controller.abort()
