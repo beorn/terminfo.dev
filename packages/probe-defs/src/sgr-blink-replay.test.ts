@@ -215,12 +215,17 @@ test("the coverage check reads epoch capture times like their offsets", () => {
   for (const { capturedAt } of PHASE_LOCKED) {
     const shifted = capturedAt.map((t) => t + epoch)
     const [atOffset, atEpoch] = [capturedAt, shifted].map(
-      (times) => blinkSeriesDecision({ styled: times.map(() => "a"), plain: STEADY, capturedAt: times, focusQualified: true }).witness.uncoveredPeriodMs,
+      (times) =>
+        blinkSeriesDecision({ styled: times.map(() => "a"), plain: STEADY, capturedAt: times, focusQualified: true })
+          .witness.uncoveredPeriodMs,
     )
     expect(atEpoch).toBe(atOffset)
   }
   const covered = timesOf(RETAINED_GAPS[0].gaps).map((t) => t + epoch)
-  expect(blinkSeriesDecision({ styled: covered.map(() => "a"), plain: STEADY, capturedAt: covered, focusQualified: true }).kind).toBe("negative-decidable")
+  expect(
+    blinkSeriesDecision({ styled: covered.map(() => "a"), plain: STEADY, capturedAt: covered, focusQualified: true })
+      .kind,
+  ).toBe("negative-decidable")
 })
 
 test("a return still decides Supported at phase-locked capture times", () => {
