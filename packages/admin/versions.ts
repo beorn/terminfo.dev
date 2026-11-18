@@ -93,6 +93,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/notification-defaults.ts",
   "packages/terminfo.dev/src/run-identity.ts",
   "packages/terminfo.dev/src/serve.ts",
+  "packages/terminfo.dev/src/probe-stream.ts",
   "packages/terminfo.dev/src/sentinel-read.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
