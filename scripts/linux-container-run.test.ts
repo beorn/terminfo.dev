@@ -56,6 +56,9 @@ function launchArgs(app: string): string[] {
       "-c",
       [
         "set -euo pipefail",
+        // The arm is evaluated in the launcher's own environment: #34632's viewport override lives in one declared
+        // variable so the launch and the paste guard cannot drift, and a bare body could not see it.
+        `source ${JSON.stringify(launcher)}`,
         `target_id=${app}`,
         "target_version=1.4.0",
         body,
@@ -1411,6 +1414,17 @@ describe("xterm paste route launch arguments", () => {
     expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
     expect(pasteRebinding(launch)).toBeNull()
     expect(pasteRebinding([...launch, ...allow])).toBeNull()
+    // #34632: the launcher's own viewport override passes, and only byte for byte. A near miss - the same text
+    // with one more binding appended, or the same binding as a plain (non-#override) resource - is refused like
+    // any other translation, so the paste route cannot be rebound under the exception's name.
+    const override = launch.find((argument) => /VT100\.Translations/.test(argument))
+    if (override === undefined) throw new Error("the xterm launch no longer declares the viewport override")
+    expect(pasteRebinding([override])).toBeNull()
+    const extended = override + " \n Shift<Key>Insert: string(x)"
+    expect(pasteRebinding([extended])).toBe(extended)
+    expect(
+      pasteRebinding([override.replace("#override ", "").replace("VT100.Translations", "VT100*translations")]),
+    ).not.toBeNull()
     expect(
       pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"]),
     ).toBe("*VT100.translations: #override Shift<Key>Insert: string(x)")
@@ -1760,6 +1774,18 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
     // The pin must be RECORDED, not only applied: the run's context states it so an old run (which
     // carries no render key) is told apart from a new one. CTO O1: pin AND record.
     expect(xtermCase).toContain("target_render_pin=xft-antialias-off")
+    // #34632: the two viewport steps xterm 411 does not bind are declared by THIS launch, because the collector
+    // qualifies the viewport route on the container launch alone (owned-terminal.ts linuxViewportKeys). The pin
+    // records the declaration, so a run without it is told apart from one that measured the steps.
+    expect(xtermCase).toContain('-xrm "$xterm_viewport_override"')
+    expect(xtermCase).toContain("target_render_pin=xft-antialias-off,viewport-keys-shift-home-end")
+    // The declaration itself: two scroll steps, merged with #override, and no other binding - so the paste route
+    // the guard protects keeps the default Shift<Key>Insert.
+    expect(source).toContain(
+      `xterm_viewport_override='XTerm*VT100.Translations: #override \\n Shift<Key>Home: scroll-back(9999,line) ` +
+        `\\n Shift<Key>End: scroll-forw(9999,line)'`,
+    )
+    expect(source).not.toMatch(/xterm_viewport_override='[^']*Insert/)
     expect(source).toContain("--arg render ")
     expect(source).toMatch(/context:"linux-x86_64-xvfb-llvmpipe"[^\n]*render:\$render/)
   })

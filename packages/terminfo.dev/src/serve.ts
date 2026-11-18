@@ -1310,6 +1310,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
         linux: { receiptPath: clipboardReceipt, executable },
       })
+      // 34632: xterm's viewport steps reach the held-view rows through the same handoff the Darwin arm uses (34313).
+      // The route applies from the qualified subject, so nothing here can invent keys for an unqualified run; the
+      // XTEST adapter installed above is what it presses. A run whose adapter was not installed keeps the route and
+      // names the missing apparatus on every press instead of dropping back to no pane read.
+      const viewportKeys = ownedTerminal.viewportKeys
+      if (viewportKeys) {
+        viewportScroll = viewportScrollRoute(
+          viewportKeys,
+          input === undefined ? { refusal: "the Linux input adapter was not installed for this run" } : { input },
+        )
+      }
     } else if (kind === "terminalApp") {
       if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
       ownedTerminal = await createOwnedTerminal({

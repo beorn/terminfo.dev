@@ -462,12 +462,27 @@ tmux_config_content() {
   if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
+# #34632: the two viewport steps xterm 411 does not bind, declared in argv rather than a config file, and MERGED
+# with its default table by `#override` (a plain `translations` resource would replace the table and change every
+# other row, paste included). MEASURED 2026-11-18 in terminfo-xterm-probe:default under a private Xvfb over 200
+# rows: with this line shift+Home stops at the top (a Prior after it moves nothing) and shift+End returns
+# byte-exact to the bottom frame from both a page-up and the top; without it, shift+Home and shift+End change
+# pixels but are not scroll-to-top/bottom. `scroll-forw` is this build's action name (the binary carries
+# `scroll-back`, `scroll-forw`, `scroll-to`, never `scroll-forward`, which it rejects silently), and 9999 lines is
+# a bounded jump: both actions clamp at the ends.
+# One variable, so the launch and the paste guard below compare the same bytes.
+xterm_viewport_override='XTerm*VT100.Translations: #override \n Shift<Key>Home: scroll-back(9999,line) \n Shift<Key>End: scroll-forw(9999,line)'
+
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
 # selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
-# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+# launcher refuses one. The ONE exception is xterm_viewport_override above, matched byte for byte: it merges with
+# `#override` and so keeps the default Shift<Key>Insert: insert-selection binding, and an edited or differently
+# sourced string does not match, so nothing can smuggle an Insert rebinding in under that name. Prints the first
+# refused argument and succeeds; fails when there is none.
 xterm_paste_rebinding_arg() {
   local arg
   for arg in "$@"; do
+    if [[ "$arg" == "$xterm_viewport_override" ]]; then continue; fi
     if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
       printf '%s\n' "$arg"
       return 0
@@ -620,9 +635,10 @@ if [[ "${1:-}" == "--inside" ]]; then
       # locally on xterm 411 + DejaVu Sans Mono 16 at window 1304x814: AA on 1 px differing at
       # (28,76), AA off 0 px. Exact equality only: no tolerance, no similarity (CTO ruling #28752).
       target_launch_args=(-name "terminfo-$target_id-container-daemon" -u8 -fa 'DejaVu Sans Mono'
-        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false')
+        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false'
+        -xrm "$xterm_viewport_override")
       target_command_lead=(-e)
-      target_render_pin=xft-antialias-off
+      target_render_pin=xft-antialias-off,viewport-keys-shift-home-end
       parse_version() {
         local line
         IFS= read -r line
