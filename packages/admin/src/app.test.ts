@@ -1846,6 +1846,45 @@ test.each([
         "printf later",
       ])
       expect(JSON.stringify(logged)).not.toContain("not ours")
+      // A phase awaiting a native event holds its reply until that event arrives or the deadline nears, and says
+      // which (34685, @cto 1435 amendment 1): an immediate empty read cannot decide that the callback never comes.
+      const awaitPhase = (phase: string, awaitEvent: "start" | "end", deadlineIn: number) => {
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-c",
+          phase,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + deadlineIn,
+          awaitEvent,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        return join(activation.replyDirectory, `${request.nonce}.json`)
+      }
+      type Held = { executions: Fact[]; awaitedEvent: { kind: string; met: boolean } }
+      const heldPath = awaitPhase("await-start", "start", 5000)
+      await intervals[0]!()
+      expect(fs.existsSync(heldPath), "no start event yet: the reply is held").toBe(false)
+      handlers.start!({ terminal: nativeTerminal, execution: { commandLine: { value: "awaited" } } })
+      await intervals[0]!()
+      await vi.waitFor(() => expect(fs.existsSync(heldPath)).toBe(true))
+      const held = JSON.parse(fs.readFileSync(heldPath, "utf8")) as Held
+      expect(held.awaitedEvent).toEqual({ kind: "start", met: true })
+      expect(held.executions.map((fact) => [fact.kind, fact.execution])).toEqual([["start", "execution-5"]])
+      const quietPath = awaitPhase("await-quiet", "end", 600)
+      await intervals[0]!()
+      expect(fs.existsSync(quietPath), "the deadline is not near yet: still held").toBe(false)
+      await vi.waitFor(
+        async () => {
+          await intervals[0]!()
+          expect(fs.existsSync(quietPath)).toBe(true)
+        },
+        { timeout: 2000, interval: 50 },
+      )
+      const quiet = JSON.parse(fs.readFileSync(quietPath, "utf8")) as Held
+      expect(quiet.awaitedEvent).toEqual({ kind: "end", met: false })
+      expect(quiet.executions).toEqual([])
     } finally {
       for (const disposable of subscriptions.reverse()) disposable.dispose()
       fs.rmSync(directory, { recursive: true, force: true })

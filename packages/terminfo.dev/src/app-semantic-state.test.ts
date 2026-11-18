@@ -251,8 +251,9 @@ test.each([
         return
       }
       expect(reading.status).toBe("measured")
-      if (reading.status !== "measured" || reading.reader !== "state")
+      if (reading.status !== "measured" || reading.reader !== "state") {
         throw new Error("Native CWD row was not measured")
+      }
       expect(reading.unknown.after).toBe(reading.unknown.before)
       expect(reading.handled.after).toBe(reading.handled.expected)
       expect(reading.handled.before).not.toBe(reading.handled.expected)
@@ -287,6 +288,215 @@ test.each([
     }
   },
   15_000,
+)
+
+// Requirement (34685, @cto 34685-execution-scope-ruling-1435): the native editor reader qualifies OSC 133/633 C, D
+// and 633 E from execution events that the collector's own written bytes cause. Each selector trial is read after
+// A/B, after C before D, and after D, joined by execution identity; controls are the opposite selector (C/D) or a
+// known E payload (E), with an OSC 9999 / unknown-E negative. The osc633-p test above has no execution events, so
+// it cannot see causation, joins, controls or extra facts. This fake native source behaves on its own: it parses
+// the bytes the reader writes and only then emits events, so a reader that grades without writing gets nothing.
+test.each([
+  ...(
+    [
+      "extensions.osc633-c",
+      "extensions.osc133-c",
+      "extensions.osc633-d",
+      "extensions.osc133-d",
+      "extensions.osc633-e",
+    ] as const
+  ).map((featureId) => ({ featureId, source: "faithful", outcome: "supported" })),
+  { featureId: "extensions.osc633-c", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc633-d", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc133-c", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-e", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-d", source: "leaky-unknown", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-e", source: "leaky-unknown", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-c", source: "stray-execution", outcome: "invalid" },
+  { featureId: "extensions.osc633-d", source: "unpaired-end", outcome: "invalid" },
+] as const)(
+  "editor execution row $featureId from a $source native source grades $outcome",
+  async ({ featureId, source, outcome }) => {
+    const { randomUUID } = await import("node:crypto")
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-exec-"))
+    const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-exec-output-"))
+    const capture = join(captureRoot, "artifacts")
+    const replyDirectory = join(directory, "editor-replies-activation")
+    mkdirSync(capture)
+    mkdirSync(replyDirectory)
+    const runId = "d".repeat(32)
+    const activationNonce = randomUUID()
+    const requestPath = join(directory, "editor-request.json")
+    const extensionPid = process.pid + 321
+    const app = { name: "Visual Studio Code", version: "native-api-version" }
+    writeFileSync(
+      join(directory, "editor-activation.json"),
+      JSON.stringify({
+        runId,
+        activationNonce,
+        extensionPid,
+        app,
+        activatedAt: Date.now(),
+        requestPath,
+        replyDirectory,
+        evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
+      }),
+    )
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    // The native source: execution facts exist only because these bytes were written.
+    type Fact = Record<string, unknown> & { eventSequence: number; kind: "start" | "end"; execution: string }
+    const pending: Fact[] = []
+    let eventSequence = 0
+    let executions = 0
+    let current: string | undefined
+    let commandLine: string | undefined
+    const commands: string[] = []
+    const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+    const emit = (kind: "start" | "end", fields: Record<string, unknown>) => {
+      if (kind === "start") current = `execution-${++executions}`
+      const id = current ?? `execution-${++executions}`
+      pending.push({ eventSequence: ++eventSequence, kind, at: Date.now(), execution: id, ...fields })
+      if (kind === "end") current = undefined
+    }
+    const parse = (bytes: string) => {
+      for (const match of bytes.matchAll(/\x1b\](\d+);([A-E])(?:;([^\x07]*))?\x07/gu)) {
+        const [, selector, letter, argument] = match
+        const honoured = selector === "133" || selector === "633" || (source === "leaky-unknown" && selector === "9999")
+        if (!honoured || (source === "ignores-633" && selector === "633")) continue
+        if (letter === "E" && selector !== "133") commandLine = argument?.split(";")[0]
+        if (letter === "C") {
+          const line =
+            commandLine === undefined
+              ? { present: false, reason: "Native execution.commandLine is undefined" }
+              : {
+                  present: true,
+                  valueSha256: digest(commandLine),
+                  valueLength: commandLine.length,
+                  confidence: { present: true, value: 2 },
+                  isTrusted: { present: true, value: false },
+                }
+          if (source === "unpaired-end") {
+            commandLine = undefined
+            continue
+          }
+          emit("start", { commandLine: line })
+          commandLine = undefined
+          if (source === "stray-execution" && selector === "633") emit("start", { commandLine: line })
+        }
+        if (letter === "D") {
+          emit("end", {
+            startSeen: current !== undefined,
+            commandLine: { present: false, reason: "Native execution.commandLine is undefined" },
+            exitCode: { present: true, value: Number(argument) },
+          })
+        }
+      }
+    }
+    let sequence = 0
+    const answered = new Set<string>()
+    const producer = setInterval(() => {
+      if (!existsSync(requestPath)) return
+      const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
+        nonce: string
+        deadline: number
+        awaitEvent?: "start" | "end"
+        [key: string]: unknown
+      }
+      if (answered.has(request.nonce)) return
+      const met = request.awaitEvent === undefined || pending.some((fact) => fact.kind === request.awaitEvent)
+      if (!met && Date.now() < request.deadline - 300) return
+      answered.add(request.nonce)
+      const delivered = pending.splice(0)
+      writeFileSync(
+        join(replyDirectory, `${request.nonce}.json`),
+        JSON.stringify({
+          ...request,
+          activationNonce,
+          extensionPid,
+          app,
+          evaluatedAt: Date.now(),
+          sequence: ++sequence,
+          delivery: "interval",
+          status: "observed",
+          executionApi: { start: { present: true }, end: { present: true } },
+          executions: delivered,
+          ...(request.awaitEvent === undefined ? {} : { awaitedEvent: { kind: request.awaitEvent, met } }),
+          terminal: {
+            name: `terminfo-${runId}`,
+            processId: { present: true, value: process.pid },
+            shellIntegrationCwd: { present: true, value: "file:///native-cwd" },
+          },
+        }),
+        { flag: "wx" },
+      )
+    }, 5)
+    try {
+      const reading = await readAppSemanticState({
+        featureId,
+        runId,
+        editor: {
+          appId: "com.microsoft.VSCode",
+          assertProcess: async (pid: number) => {
+            if (pid !== extensionPid && pid !== process.pid) throw new Error("Native reply process is outside the App")
+          },
+          capture: async (_featureId: string, phase: string) => ({ retained: `fixture-${phase}` }),
+        },
+        write(bytes: string) {
+          commands.push(bytes)
+          parse(bytes)
+        },
+      })
+      const result = gradeAppSemanticState(reading)
+      const serialized = JSON.stringify(reading)
+      for (const secret of [directory, captureRoot, `terminfo-${runId}`, "terminfo-target-", "terminfo-control-"]) {
+        expect(serialized).not.toContain(secret)
+      }
+      if (outcome === "supported" || outcome === "unsupported") {
+        expect(reading).toMatchObject({ status: "measured", reader: "state" })
+        expect(result.observation?.outcome).toBe(outcome)
+      } else if (outcome === "controls-failed") {
+        expect(reading.status).toBe("measured")
+        expect(result.tests?.[0]?.status).toBe("probe-invalid")
+      } else if (outcome === "invalid") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("execution") })
+      } else {
+        expect(result.observation).toBeUndefined()
+        expect(result.tests?.[0]?.status).toBe("probe-todo")
+      }
+      // Stages are written apart: A/B, then C (with E), then D; never the whole sequence in one write.
+      const selector = featureId.includes("133") ? "133" : "633"
+      const target = commands.filter((bytes) => bytes.includes(`]${selector};`))
+      if (reading.status === "measured") {
+        expect(target.some((bytes) => bytes.includes(`]${selector};A`) && !bytes.includes(`]${selector};C`))).toBe(true)
+        expect(target.some((bytes) => bytes.includes(`]${selector};C`) && !bytes.includes(`]${selector};D`))).toBe(true)
+      }
+      expect(commands.join("")).not.toContain("executeCommand")
+      if (featureId === "extensions.osc633-d" && outcome === "supported") {
+        expect(commands.join("")).toContain("\x1b]633;D;17\x07")
+        expect(commands.join("")).toContain("\x1b]133;D;17\x07")
+      }
+      if (featureId === "extensions.osc633-e" && outcome === "supported") {
+        const trials = (reading.detail as { executionTrials: Array<{ phase: string; commandLine?: unknown }> })
+          .executionTrials
+        // Command-line confidence and trust stay separate from the digest match: a match proves no nonce check.
+        expect(trials.find((trial) => trial.phase === "target")).toMatchObject({
+          commandLine: {
+            present: true,
+            confidence: { present: true, value: 2 },
+            isTrusted: { present: true, value: false },
+          },
+        })
+      }
+    } finally {
+      clearInterval(producer)
+      rmSync(directory, { recursive: true })
+      rmSync(captureRoot, { recursive: true })
+    }
+  },
+  60_000,
 )
 
 // Native callback binding tests cannot see the collector's independent controls.

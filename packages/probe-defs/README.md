@@ -109,6 +109,15 @@ Those ordinary files establish activation correlation, not process-writer attest
 Controlled CWD changes can qualify a positive reading; API absence never supplies an Unsupported grade.
 Owned-window screenshots and generated private config/read evidence are retained before restoration
 and cleanup on both success and failure, without copying the inherited environment or user profile.
+The same fixture subscribes to the editor's shell-execution start and end events before its terminal exists
+and publishes each event in exactly one reply. OSC 133/633 C, D and 633 E rows use them (34685): the collector
+writes A and B, then C (with E), then D into its own terminal as separate stages, and each stage's reply waits
+for the awaited event until shortly before the request deadline. Start and end are joined by execution identity;
+extra, stale, unpaired or other-execution events make the row invalid rather than graded. The opposite selector
+(C, D) or a known E text (E) is the handled control and an unknown OSC number the unknown control, so the generic
+three-control grader decides. Command lines reach the public reading only as SHA-256 digests; confidence and the
+nonce trust flag are recorded apart from the digest match. Execution facts only show what the editor's API
+reported in a window, so a native run must still show that these marks produce events on the measured version.
 cmux retains raw read-screen responses through the same private content-addressed capture writer,
 including refused responses. Its history reading pairs `read-screen --scrollback` with plain `read-screen`
 on the acquired surface. Both responses drop trailing empty lines; the plain response must equal the

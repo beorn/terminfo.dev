@@ -252,6 +252,7 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
           typeof request.nonce !== "string" || !/^[a-f0-9-]{36}$/.test(request.nonce) ||
           typeof request.featureId !== "string" || typeof request.phase !== "string" ||
           (request.expectedCwd !== undefined && typeof request.expectedCwd !== "string") ||
+          (request.awaitEvent !== undefined && request.awaitEvent !== "start" && request.awaitEvent !== "end") ||
           !Number.isFinite(request.requestedAt) || !Number.isFinite(request.deadline) ||
           request.deadline <= request.requestedAt) {
         throw new Error("Editor request has invalid activation/run/phase/nonce/deadline binding");
@@ -275,6 +276,8 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
         activationNonce, extensionPid: process.pid, app, evaluatedAt,
         sequence: ++sequence, delivery, status: "observed",
         executionApi, executions: pendingExecutions.slice(),
+        ...(request.awaitEvent === undefined ? {} : { awaitedEvent: { kind: request.awaitEvent,
+          met: pendingExecutions.some((fact) => fact.kind === request.awaitEvent) } }),
         executionWindow: { since: executionWindowSince, until: evaluatedAt,
           attribution: "window-only: events that arrived since the previous published reply; not attributed to this request's stimulus" },
         terminal: {
@@ -294,6 +297,12 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
           (!reply.terminal.shellIntegrationCwd.present || reply.terminal.shellIntegrationCwd.value !== request.expectedCwd)) {
         // The existing deadline-bounded interval or API event will evaluate the native object again.
         // An unchanged cached value must not complete a known-state phase.
+        lastRequest = undefined;
+        return;
+      }
+      if (reply.awaitedEvent && !reply.awaitedEvent.met && Date.now() < request.deadline - 300) {
+        // 34685: a phase awaiting a native execution event holds until it arrives or the deadline nears, then
+        // publishes what it has, so an empty answer is bounded by the deadline rather than read immediately.
         lastRequest = undefined;
         return;
       }
