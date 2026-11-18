@@ -69,17 +69,24 @@ function fakeITerm(
   const writes: string[] = []
   const privateWrites: string[] = []
   // 3.6.11 prompt marks are line marks (VT100ScreenMutableState setPromptStartLine): an A at a column past
-  // 0 first writes CRLF (place prompt at first column), and an A on a line whose mark has no command reuses it.
+  // 0 first writes CRLF (place prompt at first column), an A at the current prompt's own start is a redraw
+  // that adds nothing (promptDidStartAt short circuit; hosted run 44354139927), and an A on a line whose mark
+  // has no command reuses it.
   let top = 0
   let row = 0
   let column = 0
   let serial = 0
   let afterCursorMove = false
+  let promptStart: number | undefined
   const add = (command = false) => {
+    let moved = false
     if (column > 0) {
       row++
       column = 0
+      moved = true
     }
+    if (!command && !moved && promptStart === row) return
+    promptStart = row
     const existing = marks.at(-1)
     if (existing?.line === row && !existing.command) return
     marks.push({
@@ -106,6 +113,7 @@ function fakeITerm(
           top = row + 50
           row = top
           column = 0
+          promptStart = undefined
         } else if (final === "H") {
           const [r = 1, c = 1] = (csi ?? "").split(";").map((n) => Number(n || 1))
           row = top + r - 1
@@ -308,6 +316,8 @@ test("osc133-p marks where each A control's mark landed stay a TODO, never Suppo
   const reason = reading.status === "unavailable" ? reading.reason : ""
   // The A at row 1 col 2 lands on line 2 after iTerm2's first-column CRLF; the reading keeps actual lines.
   expect(reason).toContain('[{"mark":"new","line":0},{"mark":"new","line":2}]')
+  // The baseline mark sits on row 3, so neither control lands on the current prompt's own start.
+  expect(reason).not.toContain('"line":3')
   expect(reason).toContain("history unchanged")
   expect(reason).toContain("cannot show the target column")
   expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
