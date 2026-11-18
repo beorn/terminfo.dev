@@ -13,14 +13,21 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { afterAll, expect, it, vi } from "vitest"
-import { ALL_PROBES, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { createXtermBackend } from "@termless/xtermjs"
+import { ALL_PROBES, type CapturedRunDraft, type LibProbeSource } from "@terminfo/probe-defs"
+import { readCallLog, withCallLog } from "viprobe"
+import { replyFailure } from "../probe-defs/src/helpers.ts"
 import { runTermlessProbes } from "../admin/src/termless.ts"
 import { shadowReportPath } from "../admin/src/collected-run.ts"
 import { headlessCollectorSuite } from "./collect-headless.ts"
+import { collectBatch, declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
 import { headlessFamily, shadowStoredRun, type ShadowReport } from "./stored-run-shadow.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 
-/** Comparable rows from several families, a declaration-predicate row, and a census row that reads randomness. */
+/**
+ * Comparable rows from several families; declaration-predicate rows (kitty keyboard, unsupported; the icon title,
+ * supported with a buffer_state assertion only its `then` branch declares); and a census row that reads randomness.
+ */
 const IDS = [
   "erase.character",
   "erase.line.right",
@@ -32,6 +39,7 @@ const IDS = [
   "device.status-report",
   "modes.bracketed-paste",
   "extensions.kitty-keyboard",
+  "extensions.osc0-icon-title",
   "extensions.osc52-read",
 ]
 
@@ -107,8 +115,8 @@ it.runIf(OWNED_LAYOUT)(
         stored.results!.length,
       )
       for (const featureId of IDS) expect(row(report, featureId)?.family).toBe(headlessFamily(featureId))
-      // Exact, so a vacuous pass is visible: ten comparable rows agree; the census row is the one not comparable.
-      expect(counts(report)).toEqual({ agree: 10, disagree: 0, incomplete: 0, notComparable: 1 })
+      // Exact, so a vacuous pass is visible: eleven comparable rows agree; the census row is the one not comparable.
+      expect(counts(report)).toEqual({ agree: 11, disagree: 0, incomplete: 0, notComparable: 1 })
       expect(report.rows.filter((entry) => entry.outcome === "disagree")).toEqual([])
       expect(report.rows.filter((entry) => entry.outcome === "incomplete")).toEqual([])
       // The clipboard read is silent on xterm.js, so fresh-instance repeats regrade it; that input is named first.
@@ -204,6 +212,19 @@ it.runIf(OWNED_LAYOUT)(
       input: expect.stringContaining("randomUUID"),
     })
 
+    // The icon-title declaration predicate reads the logged source (getTitle and getIconLabel are functions). Without
+    // getIconLabel in the log's root, the replay takes the other declaration branch, which does not declare the
+    // row's buffer_state assertion: never agreement.
+    const branch = "extensions.osc0-icon-title"
+    const flipped = await shadowTampered(run, "declaration", (draft) => {
+      const log = JSON.parse(draft.rawReplies[branch + ".callLog"]!) as { root: { entries: [string, unknown][] } }
+      const at = log.root.entries.findIndex(([key]) => key === "getIconLabel")
+      expect(at).toBeGreaterThanOrEqual(0)
+      log.root.entries.splice(at, 1)
+      draft.rawReplies[branch + ".callLog"] = JSON.stringify(log)
+    })
+    expect(row(flipped, branch)?.outcome, JSON.stringify(row(flipped, branch))).not.toBe("agree")
+
     // A log whose recorded call no longer matches what the callback asks diverges loudly: never agreement.
     const diverged = await shadowTampered(run, "diverged", (draft) => {
       const log = JSON.parse(draft.rawReplies[agreed + ".callLog"]!) as { calls: Array<{ path: string }> }
@@ -213,6 +234,38 @@ it.runIf(OWNED_LAYOUT)(
     expect(row(diverged, agreed)?.outcome).toBe("incomplete")
   },
 )
+
+// No registered row on xterm.js or vterm marks a reply failure (measured over every lib probe, 2026-11-17), so the
+// real-run witness above never reaches withReplyFailureEvidence. A marked callback, run live and replayed from its
+// own call log in the shadow's order (declaration, then callback), grades to the live row only when the retained
+// captures reach the grader (@cto 30932-s3-plan-ruling-1626: "never silently omit it").
+it("replays a marked reply failure to the live row through the retained captures", async () => {
+  const definition = ALL_PROBES.find((entry) => entry.id === "cursor.position-report")!
+  const probe = {
+    ...definition,
+    lib(ctx: LibProbeSource) {
+      expect(ctx.feedCapture("\x1b[9999n")).toBe("")
+      return replyFailure("No probe reply")
+    },
+  }
+  const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [probe])
+  const live = batch.results[0]!
+  expect(live.reason).toContain("synchronous feed and getCursor boundary")
+  const session = withCallLog<LibProbeSource>(null, {
+    mode: "replay",
+    log: readCallLog(JSON.parse(batch.rawReplies[probe.id + ".callLog"]!)),
+  })
+  const declared = declaredLibAssertionTypes(probe, session.context)
+  const result = JSON.parse(JSON.stringify(probe.lib(session.context))) as ReturnType<typeof probe.lib>
+  session.finish()
+  const captures = (JSON.parse(batch.rawReplies["collector.queryCaptures." + probe.id]!) as {
+    captures: { query: string; response: string }[]
+  }).captures
+  const attempt = live.attempt as { scope: "probe"; startedAt: string }
+  expect(gradeLibRow({ probe, result, declared, attempt, captures })).toEqual(live)
+  // Without the retained captures the grade loses the evidence: the input is load-bearing, not decorative.
+  expect(gradeLibRow({ probe, result, declared, attempt, captures: [] }).reason).not.toBe(live.reason)
+})
 
 it("names a headless family for every lib probe from its id alone", () => {
   for (const probe of ALL_PROBES.filter((entry) => entry.lib)) {
