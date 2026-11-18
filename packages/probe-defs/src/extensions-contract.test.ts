@@ -6,7 +6,7 @@
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/extensions-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/probe-automation.test.ts vendor/terminfo.dev/packages/probe-defs/src/not-tested-coverage.test.ts vendor/terminfo.dev/packages/probe-defs/src/clipboard-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/extensions-capture-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/extensions-geometry.test.ts vendor/terminfo.dev/packages/probe-defs/src/extensions-qualification.test.ts
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { join } from "node:path"
 import { extensionsProbes, OSC22_NO_CONTROL_REPLY } from "./extensions.ts"
 import { NO_SAME_PATH_CONTROL, withReplyFailureEvidence } from "./helpers.ts"
@@ -141,6 +141,49 @@ test("App OSC 2 keeps its decided reading when the owned title cleanup does not 
   expect(result.note).toMatch(/Owned title restoration mismatch/)
   expect(result.tests?.some((one) => one.status === "probe-invalid")).toBeFalsy()
   expect(library.getTitle()).toBe(before)
+})
+
+// #34836: xdotool reads the window name while the terminal is still applying the OSC 2 it was just sent (Ghostty
+// 10-36-01, WezTerm 01-06). A surface that shows each new title only after 1-3 reads, varying like load, must read
+// supported on every repetition; the old single read called its own controls failed.
+test("App OSC 2 controls pass on every repetition when the title applies a few reads late (34836)", async () => {
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc2-title")!
+  vi.useFakeTimers()
+  try {
+    for (let repetition = 0; repetition < 20; repetition++) {
+      let shown = "incoming App title"
+      let pending: { title: string; readsLeft: number } | undefined
+      const source = {
+        write: (bytes: string) => {
+          const match = /^\x1b\]2;([^\x07]*)\x07$/.exec(bytes)
+          if (match) pending = { title: match[1]!, readsLeft: 1 + (repetition % 3) }
+        },
+        readTitle: async () => {
+          if (pending && pending.readsLeft-- === 0) {
+            shown = pending.title
+            pending = undefined
+          }
+          return shown
+        },
+      } as unknown as TermProbeSource
+      let settled = false
+      const running = definition.term!(source).finally(() => {
+        settled = true
+      })
+      while (!settled) await vi.advanceTimersByTimeAsync(50)
+      const result = await running
+      expect(
+        result.tests?.some((one) => one.status === "probe-invalid"),
+        `repetition ${repetition}`,
+      ).toBeFalsy()
+      expect(result.observation, `repetition ${repetition}`).toMatchObject({ outcome: "supported" })
+      expect(result.note ?? "", `repetition ${repetition}: the late restore settles too`).not.toMatch(
+        /restoration mismatch/,
+      )
+    }
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 test("App OSC 2 does not call an unexpected changed title Unsupported", async () => {

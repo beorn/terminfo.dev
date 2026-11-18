@@ -4641,6 +4641,35 @@ function decodedOsc52Reply(outcome: TerminalQueryOutcome): string | undefined {
   return btoa(decoded) === encoded ? decoded : undefined
 }
 
+/** How long an owned title read may still show the title from before its OSC 2 write: 40 re-reads, 50 ms apart. */
+const TITLE_SETTLE_REREADS = 40
+const TITLE_SETTLE_POLL_MS = 50
+
+/**
+ * #34836: on Linux the owned title is read with `xdotool getwindowname` straight after the OSC 2 write, and the
+ * terminal applies the title asynchronously, so a read can still return the title from before the write (Ghostty
+ * 10-36-01, WezTerm 01-06: "Owned title positive or negative control failed"). Re-read only while the reading equals
+ * that previous title and differs from the one written, a bounded number of times; any other reading decides at once.
+ * The number of reads depends only on the values read, so a recorded run replays the same reads with no clock.
+ */
+async function settledTitle(
+  read: () => Promise<string>,
+  written: string,
+  previous: string,
+  budget: number = TITLE_SETTLE_REREADS,
+): Promise<{ value: string; rereads: number }> {
+  let value = await read()
+  let rereads = 0
+  while (value === previous && value !== written && rereads < budget) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, TITLE_SETTLE_POLL_MS)
+    })
+    value = await read()
+    rereads += 1
+  }
+  return { value, rereads }
+}
+
 interface SettledClipboardReply {
   readonly outcome: TerminalQueryOutcome
   readonly ownEarlierNonce?: string
@@ -7854,13 +7883,19 @@ const extensionDefinitions: ProbeDefinition[] = [
           "terminfo-title-target-B",
         ]
         const readings: string[] = []
-        const state = { before, values, readings, negative: "", restored: "" }
+        const rereads: number[] = []
+        const state = { before, values, readings, rereads, negative: "", restored: "" }
         let result: ProbeCallbackResult | undefined
         let failure: unknown
         try {
           for (const value of values) {
             ctx.write(`\x1b]2;${value}\x07`)
-            readings.push(await read())
+            // A title that stayed put through a whole budget is not late, it is inert: later reads check once, so a
+            // terminal without OSC 2 costs one budget, not one per value.
+            const inert = rereads.includes(TITLE_SETTLE_REREADS)
+            const settled = await settledTitle(read, value, readings.at(-1) ?? before, inert ? 0 : undefined)
+            readings.push(settled.value)
+            rereads.push(settled.rereads)
           }
           ctx.write("\x1b]7654;terminfo-title-negative\x07")
           state.negative = await read()
@@ -7891,7 +7926,14 @@ const extensionDefinitions: ProbeDefinition[] = [
           throw error
         } finally {
           ctx.write(`\x1b]2;${before}\x07`)
-          state.restored = await read()
+          state.restored = (
+            await settledTitle(
+              read,
+              before,
+              readings.at(-1) ?? before,
+              rereads.includes(TITLE_SETTLE_REREADS) ? 0 : undefined,
+            )
+          ).value
           if (state.restored !== before) {
             // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
             // either. `result` is undefined here only because the try threw; a plain return added inside that try
