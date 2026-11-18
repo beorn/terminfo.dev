@@ -137,20 +137,18 @@ export function candidateFromSelected(
 }
 
 /**
- * Did this run measure a selection rather than the suite (#34868)? Presence of a selection cannot decide
- * it: every app run records one — a suite-complete wezterm macOS run selects all 264 rows its suite
- * schedules and leaves only the 9 rows outside that suite unselected, while the 04:31 draft selected 9
- * and left 264 rows marked Not selected. The writer's own rows carry the distinction, so a run that
- * leaves at least as many rows unselected as it measured is a selection, not a reading of the suite.
+ * Did this run measure a selection rather than the suite (#34868)? Presence of a selection cannot decide it,
+ * because every app run records one: a suite-complete wezterm macOS run selects all 264 ids its suite declares
+ * and leaves only the 9 ids outside that suite unselected, while the 04:31 draft selected 9. Completeness is
+ * set membership against the run own declared suite cohort (selectionCoversCohort in selected-results.ts), so
+ * 263 of 264 and a same-length wrong-id selection are both a selection, not a reading of the suite (@cto
+ * 34868-scope-membership ruling).
  */
 export function measuresSelectionOnly(run: {
-  results?: readonly { attempt: { scope: string } }[]
   selection?: { ids: readonly string[] }
+  selectionCoversSuite?: boolean
 }): boolean {
-  if (run.selection === undefined) return false
-  const rows = run.results ?? []
-  const unselected = rows.filter((row) => row.attempt.scope === "none").length
-  return unselected >= rows.length - unselected
+  return run.selection !== undefined && run.selectionCoversSuite === false
 }
 
 /** How the summary context was chosen, printed beside the row. */

@@ -29,6 +29,7 @@ import {
   pickContextRun,
   type HistoricalContextCandidate,
 } from "../docs/data/run-selection.ts"
+import { selectionCoversCohort } from "../docs/data/selected-results.ts"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -301,19 +302,33 @@ it("ranks a complete run above a partial run of the same app version at a newer 
   })
 })
 
-// #34868: every app run records a selection, so presence cannot mark a run as partial. The writer rows
-// decide it: a suite-complete run leaves only the rows outside its suite unselected (264 measured, 9
-// unselected on wezterm macOS), while the 04:31 draft measured 9 of 273 and left 264 marked Not selected.
-// @failure Presence of collector.selection marks every app run partial, or a 9-row run reads as the suite.
+// #34868: every app run records a selection, so presence cannot mark a run as partial, and counts cannot
+// decide coverage either (@cto 34868-scope-membership): a 263-of-264 selection and a same-length wrong-id
+// selection are both a selection, not a reading of the suite. The run own declared suite cohort decides it.
+// @failure A partial run reads as the suite because it selected most ids, or a wrong-id selection of the
+// same length passes, or the guard leans on decision counts instead of suite membership.
 // @level l2 @consumer run-selection carriesPartial behind the page pick.
-it("reads a run by how many of its rows it actually measured, not by whether a selection exists", () => {
-  const run = (measured: number, total: number, selection: boolean) => ({
-    results: Array.from({ length: total }, (_, index) => ({ attempt: { scope: index < measured ? "own" : "none" } })),
-    ...(selection && { selection: { ids: Array.from({ length: measured }, (_, index) => `probe-${index}`) } }),
-  })
-  expect(measuresSelectionOnly(run(264, 273, true))).toBe(false)
-  expect(measuresSelectionOnly(run(9, 273, true))).toBe(true)
-  expect(measuresSelectionOnly(run(264, 273, false))).toBe(false)
+it("decides suite coverage by set membership against the declared cohort, never by counts", () => {
+  const cohort = Array.from({ length: 264 }, (_, index) => `probe-${index}`)
+  const outside = Array.from({ length: 9 }, (_, index) => `outside-${index}`)
+  const covers = (ids: undefined | string[], declared: undefined | string[]) =>
+    selectionCoversCohort(ids === undefined ? undefined : { ids }, declared)
+
+  // Control: the full 264 plus 9 ids outside the suite is still a reading of the suite.
+  expect(covers([...cohort, ...outside], cohort)).toBe(true)
+  // 263 of 264 is a selection: the missing id cannot be hidden by extra ones.
+  expect(covers([...cohort.slice(1), ...outside], cohort)).toBe(false)
+  // Same length, one wrong id: counts match but membership does not.
+  expect(covers([...cohort.slice(1), "probe-wrong"], cohort)).toBe(false)
+  // The 04:31 draft: 9 ids of 264.
+  expect(covers(cohort.slice(0, 9), cohort)).toBe(false)
+  // No recorded selection or no declared cohort: no claim either way, and no fallback to another suite.
+  expect(covers(undefined, cohort)).toBeUndefined()
+  expect(covers(cohort, undefined)).toBeUndefined()
+
+  expect(measuresSelectionOnly({ selection: { ids: cohort }, selectionCoversSuite: true })).toBe(false)
+  expect(measuresSelectionOnly({ selection: { ids: cohort.slice(1) }, selectionCoversSuite: false })).toBe(true)
+  expect(measuresSelectionOnly({ selection: undefined, selectionCoversSuite: undefined })).toBe(false)
 })
 
 // Current selection reads the stored five statuses and frozen denominator
