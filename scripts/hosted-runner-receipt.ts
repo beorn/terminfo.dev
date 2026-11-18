@@ -10,6 +10,7 @@ import {
   ALACRITTY_VERSION_PATTERN,
   MAC_ALACRITTY_LAUNCH_DEVIATION,
   MAC_WARP_LAUNCH_DEVIATION,
+  MAC_WARP_STOCK_HEADER_DEVIATION,
   WINDOWS_MESA_RENDERER_DLLS,
   parseAppLaunchReceipt,
   transformInvocation,
@@ -178,7 +179,11 @@ function measureAppLaunch(): Record<string, unknown> {
  * unconfirmed record refuses the receipt by name instead of publishing a run without its deviation.
  */
 function warpLaunchDeviation(setupPath: string): string {
-  let setup: { prepared?: unknown; commands?: Array<{ label?: unknown; status?: unknown; stdout?: unknown }> }
+  let setup: {
+    prepared?: unknown
+    commands?: Array<{ label?: unknown; status?: unknown; stdout?: unknown }>
+    snackbar?: { mode?: unknown; written?: unknown }
+  }
   try {
     setup = JSON.parse(readFileSync(setupPath, "utf8")) as typeof setup
   } catch (cause) {
@@ -186,6 +191,23 @@ function warpLaunchDeviation(setupPath: string): string {
   }
   if (setup.prepared !== true) {
     throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} is not prepared`)
+  }
+  // #34899: the block-chrome run leaves SnackbarEnabled at stock and writes nothing, so its record states that mode
+  // and the receipt names the different deviation. A stock record that claims a write, or carries no read of the
+  // prior setting, refuses by name rather than publishing a run whose chrome custody is unknown.
+  if (setup.snackbar !== undefined) {
+    if (setup.snackbar.mode !== "stock" || setup.snackbar.written !== false) {
+      throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} names an unknown snackbar mode`)
+    }
+    const prior = Array.isArray(setup.commands)
+      ? setup.commands.find((command) => command.label === "snackbar-before")
+      : undefined
+    if (!prior || (prior.status !== 0 && prior.status !== 1)) {
+      throw new Error(
+        `Hosted receipt appLaunch: Warp's preference record ${setupPath} does not read SnackbarEnabled before the launch`,
+      )
+    }
+    return MAC_WARP_STOCK_HEADER_DEVIATION
   }
   const readback = Array.isArray(setup.commands)
     ? setup.commands.find((command) => command.label === "snackbar-readback")

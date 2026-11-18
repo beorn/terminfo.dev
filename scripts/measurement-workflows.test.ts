@@ -1233,6 +1233,8 @@ test.each([
   "snackbar-write-error",
   "snackbar-wrong-value",
   "snackbar-wrong-type",
+  // #34899: the block-chrome criterion run leaves SnackbarEnabled at stock and writes nothing.
+  "stock-chrome",
   "existing-settings",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
@@ -1301,6 +1303,7 @@ childBoundary.spawn = (file, args, options) => {
         APP_BUNDLE: "/Applications/Warp.app",
         RUNNER_TEMP: directory,
         WARP_SETUP_SCENARIO: scenario,
+        WARP_BLOCK_CHROME: scenario === "stock-chrome" ? "true" : "",
         WARP_SETUP_HOME: home,
         WARP_SETUP_JOURNAL: journal,
         WARP_SETUP_BUN: BUN,
@@ -1317,6 +1320,7 @@ childBoundary.spawn = (file, args, options) => {
       prepared: boolean
       commands: Array<{ label: string; stdout: string }>
       settingsFile: { path: string; exists: boolean }
+      snackbar?: { mode: string; written: boolean; absent: boolean | null }
     }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
@@ -1328,7 +1332,7 @@ childBoundary.spawn = (file, args, options) => {
           ),
       ),
     ).toBe(true)
-    if (scenario !== "success" && scenario !== "existing-settings") {
+    if (scenario !== "success" && scenario !== "existing-settings" && scenario !== "stock-chrome") {
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain("Warp unattended setup failed")
       expect(launches).toHaveLength(0)
@@ -1358,21 +1362,31 @@ childBoundary.spawn = (file, args, options) => {
       expect(readFileSync(settingsPath, "utf8")).toBe("retained existing settings")
       expect(setup.commands.find((row) => row.label === "migration-marker")?.stdout.trim()).toBe("true")
     }
-    expect(preferenceCalls.map((row) => row.args)).toEqual([
-      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],
-      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
-      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
-      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-      ["write", "dev.warp.Warp-Stable", "SnackbarEnabled", "-string", "false"],
-      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-      ["read-type", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-    ])
+    if (scenario === "stock-chrome") {
+      expect(setup.snackbar).toMatchObject({ mode: "stock", written: false })
+      expect(
+        preferenceCalls.filter((row) => row.args[0] === "write" && row.args[2] === "SnackbarEnabled"),
+      ).toHaveLength(0)
+      expect(preferenceCalls.filter((row) => row.args[0] === "read" && row.args[2] === "SnackbarEnabled")).toHaveLength(
+        1,
+      )
+    } else {
+      expect(preferenceCalls.map((row) => row.args)).toEqual([
+        ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],
+        ["read", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
+        ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
+        ["read", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+        ["read-type", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+        ["write", "dev.warp.Warp-Stable", "SnackbarEnabled", "-string", "false"],
+        ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+      ])
+    }
     expect(JSON.stringify(setup)).toContain("does not exist")
     expect(readFileSync(join(out, "collect.command"), "utf8")).toBe("the actual generated command bytes")
     const yaml = readFileSync(join(out, "warp-launch.yaml"), "utf8")
