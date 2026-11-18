@@ -210,8 +210,10 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 34641: Linux WezTerm took up to 118.7 s over 132 captures (run 2026-11-17T13-06Z), 99 percent of the old 120 s wall; 150 s puts it at 79 percent.
-    wallMs: 150_000,
+    // 34641: Linux WezTerm took up to 118.7 s over 132 captures (run 2026-11-17T13-06Z) against the old 120 s wall.
+    // 34694 fix-forward: hosted run 44200861479 measured 148.1 s (cursor), 145.1 s (cmux) and 120.5 s (VS Code) at the
+    // current image, so 150 s sat 1.9 s above the worst arm. Need 148.1 x 1.20 = 177.7 s, rounded up to 180 s.
+    wallMs: 180_000,
   },
 
   {
