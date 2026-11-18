@@ -662,6 +662,37 @@ export const ALACRITTY_0_17_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>
 })
 
 /**
+ * xterm 411's viewport steps on this Linux arm (#34632). xterm binds shift+Prior and shift+Next outside the
+ * alternate screen but binds nothing to scroll-to-top/bottom, so the container script declares both through its
+ * own launch (`XTerm*VT100.Translations: #override Shift<Key>Home: scroll-back(9999,line); Shift<Key>End:
+ * scroll-forw(9999,line)`). Measured 2026-11-18 in terminfo-xterm-probe:default under a private Xvfb over 200
+ * rows: shift+Home reaches the top (a Prior after it moves nothing) and shift+End returns byte-exact to the bottom
+ * from both a page-up and the top. `scroll-forw` is this build's action name; `scroll-forward` is rejected
+ * silently. Source and measurement, not a delivery proof: the held reader presses bottom and refuses when the
+ * frame does not come back, so a launch without the translation names a mismatch instead of reading shifted rows.
+ */
+export const XTERM_411_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "shift+Prior",
+  pageDown: "shift+Next",
+  top: "shift+Home",
+  bottom: "shift+End",
+})
+
+/**
+ * The xterm versions this route's keys were MEASURED on. 411 in terminfo-xterm-probe:default and 412 in the image
+ * the flake builds today, both under a private Xvfb over 200 rows and with the same launch: shift+Home stops at the
+ * top (a Prior after it moves nothing), shift+End returns byte-exact to the bottom from a page-up and from the top,
+ * and Shift+Insert still pastes PRIMARY, so the #override merge left the default table in place. A new version
+ * does not qualify until its own measurement, so a bump surfaces as the row's probe-todo, never as keys nobody
+ * pressed.
+ */
+export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["411", "412"])
+
+/** The route string a held-view candidate carries, naming the launch that declares the two unbound steps. */
+const XTERM_411_VIEWPORT_ROUTE =
+  "xterm container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
+
+/**
  * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
  * macOS, this run's own launch, no multiplexer between the run and the app. Decided from the subject alone, before
  * any input install, so an install failure can never remove the route.
@@ -690,6 +721,33 @@ export function hostedViewportKeys(subject: {
       keys: ALACRITTY_0_17_VIEWPORT_KEYS,
     },
   }
+}
+
+/**
+ * Whether the viewport route applies to this qualified Linux subject (#34632): this run's own container launch of
+ * xterm at the reviewed 411, no multiplexer between the run and the app. Decided from the subject alone, before any
+ * input install, so an install failure can never remove the route - the same shape as hostedViewportKeys below,
+ * for the arm whose keys the container script declares at launch.
+ */
+export function linuxViewportKeys(subject: {
+  readonly appId: string | undefined
+  readonly platform: string
+  readonly targetVersion: string | undefined
+  readonly runId: string | undefined
+  readonly expectedLaunchRunId: string
+  readonly multiplexed: boolean
+}): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
+  if (
+    subject.appId !== "xterm" ||
+    subject.platform !== "linux" ||
+    !XTERM_VIEWPORT_KEY_VERSIONS.includes(subject.targetVersion ?? "") ||
+    !subject.expectedLaunchRunId ||
+    subject.runId !== subject.expectedLaunchRunId ||
+    subject.multiplexed
+  ) {
+    return undefined
+  }
+  return { viewportKeys: { route: XTERM_411_VIEWPORT_ROUTE, keys: XTERM_411_VIEWPORT_KEYS } }
 }
 
 /**
@@ -2271,6 +2329,15 @@ export async function createOwnedTerminal(options: {
       // route (and its named TODO) instead of leaving the rows on the declaration above.
       ...hostedViewportKeys({
         hostedAppId: hostedApp?.id,
+        platform: binding.platform,
+        targetVersion: process.env.TERMINFO_TARGET_VERSION,
+        runId: process.env.TERMINFO_RUN_ID,
+        expectedLaunchRunId,
+        multiplexed: muxAttachmentProof !== undefined,
+      }),
+      // 34632: the same question for the Linux arm's own xterm launch, answered from the same subject shape.
+      ...linuxViewportKeys({
+        appId: ownedAppId,
         platform: binding.platform,
         targetVersion: process.env.TERMINFO_TARGET_VERSION,
         runId: process.env.TERMINFO_RUN_ID,

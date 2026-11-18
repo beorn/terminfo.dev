@@ -513,5 +513,7 @@ export async function createLinuxCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, declareWindowSize, settleMs: LINUX_CAPTURE_SETTLE_MS }
+  // #34632: the owned X window, so the held-view reader crops the same window the pixel route captures. A
+  // private field: the capture's callers on this arm already resolve the same id through linux-input.
+  return { capture, captureRaw, declareWindowSize, windowId: ownedWindowId, settleMs: LINUX_CAPTURE_SETTLE_MS }
 }

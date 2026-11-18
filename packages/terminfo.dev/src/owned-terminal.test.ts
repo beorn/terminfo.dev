@@ -5,7 +5,12 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { createOwnedTerminal, parseOwnedAppOwnerAssertion, parseTerminalAppOwner } from "./owned-terminal.ts"
+import {
+  createOwnedTerminal,
+  linuxViewportKeys,
+  parseOwnedAppOwnerAssertion,
+  parseTerminalAppOwner,
+} from "./owned-terminal.ts"
 
 const valid = {
   asserter: "terminfo-admin",
@@ -103,4 +108,46 @@ test("the owned-terminal grant refuses two owner claims, including ownedApp", as
       },
     }),
   ).rejects.toThrow(/exactly one platform receipt/)
+})
+
+// @failure The Linux viewport route is claimed for any xterm run, or for an unreviewed build, or while a multiplexer
+//   sits between the run and the app: the held rows would then press keys whose bindings nobody measured - xterm
+//   binds shift+Home/End to nothing but a short jump unless the container launch declares the two scroll steps
+//   (#34632).
+// @level l1
+// @consumer The owned Linux owner record that serve.ts reads before handing the viewport route to the held rows.
+test("the Linux viewport route applies only to this run's own container launch of xterm 411 with no multiplexer", () => {
+  const run = "b".repeat(32)
+  const qualified = {
+    appId: "xterm",
+    platform: "linux",
+    targetVersion: "411",
+    runId: run,
+    expectedLaunchRunId: run,
+    multiplexed: false,
+  }
+  for (const measured of ["411", "412"]) {
+    expect(linuxViewportKeys({ ...qualified, targetVersion: measured })?.viewportKeys.keys, measured).toEqual({
+      pageUp: "shift+Prior",
+      pageDown: "shift+Next",
+      top: "shift+Home",
+      bottom: "shift+End",
+    })
+  }
+  expect(linuxViewportKeys(qualified)?.viewportKeys.route).toContain("container launch viewport keys")
+  for (const [change, value] of [
+    ["appId", "ghostty"],
+    ["appId", "kitty"],
+    ["appId", undefined],
+    ["platform", "darwin"],
+    ["targetVersion", "413"],
+    ["targetVersion", "410"],
+    ["targetVersion", undefined],
+    ["runId", "c".repeat(32)],
+    ["runId", undefined],
+    ["multiplexed", true],
+  ] as const) {
+    expect(linuxViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
+  }
+  expect(linuxViewportKeys({ ...qualified, runId: "", expectedLaunchRunId: "" }), "empty launch id").toBeUndefined()
 })

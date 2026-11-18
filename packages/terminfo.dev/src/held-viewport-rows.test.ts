@@ -228,6 +228,21 @@ describe("scrollback.accumulate", () => {
     citesItsFrames(result)
   })
 
+  // @failure A decided held row cited only its own state, so run-parser refused the artifact with "must cite the
+  //   frame digest it decided on" and took the whole run with it; no live read had ever reached that branch.
+  // @level l1
+  // @consumer packages/run-parser requireCitedFrameDigests for a decided screenshot observation (#34632).
+  it("cites the frame digests it decided on in the assertion's own evidence", async () => {
+    const result = await grade("scrollback.accumulate")
+    expect(status(result)).toBe("supported")
+    const observed = String(result.assertions?.[0]?.observed ?? "")
+    const refs = (result.observation?.frames ?? []).map((frame) => frame.ref)
+    expect(refs.length).toBeGreaterThan(0)
+    // The fixture's refs are synthetic (sha256:frame-N); the live adapter's are the digest the parser matches, and
+    // the live run is what proves that form. Here the invariant is that the evidence cites the retained frames at all.
+    expect(refs.some((ref) => observed.includes(ref))).toBe(true)
+  })
+
   it("stays TODO when nothing moved: an unchanged view is never a negative", async () => {
     expect(status(await grade("scrollback.accumulate", { keep: 0 }))).toBe("probe-todo")
   })
