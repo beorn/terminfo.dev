@@ -848,6 +848,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
       installCensus?: DarwinInstallCensus,
       chromeBand?: CaptureChromeBand,
+      /**
+       * The window this install captured, for the held-view reader's geometry (#34632). Darwin passes the
+       * id its census measured, Linux the owned X window; a string because the two id spaces differ and the
+       * geometry labels the grid, never compares ids across arms.
+       */
+      captureWindow?: string,
     ) => {
       // Preflight installs pixels later; preserve the hosted observer's retained text preparation.
       const prepareTextCapture = prepareCapture
@@ -1006,7 +1012,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // 34645: the held-viewport reader, only beside the owner's viewport route on the Darwin window
             // this install selected. It crops the grid this calibration settled, read at each call so a
             // renewal moves it too, and takes its frames through the same recorded raw route.
-            const heldWindow = darwinCaptureWindowId
+            const heldWindow = captureWindow
             if (viewportScroll && heldWindow !== undefined) {
               heldViewportReaderFor = ({ featureId: rowId, source: rowSource, record }) =>
                 createHeldViewportReader({
@@ -1273,12 +1279,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       })
       if (terminal.viewportKeys) darwinCaptureWindowId = darwinCapture.installCensus.window.id
       if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
-      installPixelCapture(darwinCapture, darwinCapture.installCensus, terminal.captureChromeBand)
+      installPixelCapture(
+        darwinCapture,
+        darwinCapture.installCensus,
+        terminal.captureChromeBand,
+        terminal.viewportKeys ? String(darwinCapture.installCensus.window.id) : undefined,
+      )
     }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
       const linuxCapture = await createLinuxCapture(captureDirectory, executable, onRetained)
-      installPixelCapture(linuxCapture)
+      installPixelCapture(linuxCapture, undefined, undefined, linuxCapture.windowId)
       captureSettleMs = linuxCapture.settleMs
       input = await createLinuxInput(executable, { onResizeWindow: linuxCapture.declareWindowSize })
     } else if (provenancePath) {
