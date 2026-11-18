@@ -2840,9 +2840,13 @@ const modeDefinitions: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     // 34694 second fold: 43 captures at 44.3 s on cmux and 36 at 43.7 s on VS Code in run 44200861479, so 45 s cut it.
-    // The capture count is app dependent (22 on Warp/Alacritty, 50 on Ghostty/WezTerm); at cmux's own 1.03 s per
-    // capture the 50-capture path needs 51.5 x 1.20 = 61.8, which rounds up to 75 s. 60 would be a floor, not a wall.
-    wallMs: 75_000,
+    // 34694 fix-forward (chief 5a820263, sized by @dev/luna6 at /hh/var/@dev-luna6/altscreen-sizing-1117/sizing.md): the
+    // capture count is a path property, not an app speed - 50 on every record that completes (xterm, wezterm, iTerm2,
+    // ghostty, kitty, cmux) and 22 only on the rows that exit early unsupported. At cmux's own 0.95-1.00 s per capture
+    // today, 50 captures is 50 s and 60 is the 20 percent value; at the 1.25 s per capture measured for the cmux arm in
+    // 44200861479 it is 62.5 s, so 75 is the rule and 80 is the round wall that survives one more load band. cmux's own
+    // completed 0.41 s per capture record is the unloaded floor and is not the sizing input.
+    wallMs: 80_000,
     cellReadback: true,
     textClaim: "characters",
   },
