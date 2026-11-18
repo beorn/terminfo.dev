@@ -385,7 +385,10 @@ test.runIf(OWNED_LAYOUT)("real WezTerm R2 semantic-cell controls distinguish tar
 
 /** Feature payloads only; collector records use the reserved collector.* namespace. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
-  return Object.fromEntries(Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.")))
+  // Collector-owned keys: `collector.*` and each row's #30932 S3 first-pass call log.
+  return Object.fromEntries(
+    Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.") && !key.endsWith(".callLog")),
+  )
 }
 
 async function backend() {

@@ -110,10 +110,13 @@ function trustedSuite() {
   return suite
 }
 
-/** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
-async function collectOne(name: string, directory: string): Promise<string> {
-  const entry = manifest().backends[name]
-  if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
+/**
+ * The suite and source revisions a headless run is collected under: `sourceRevision` is HEAD, `runRevision` the
+ * revision the saved run carries (HEAD plus `+dirty` when collector or suite sources differ from it). The worker
+ * binds its run to them, and the #30932 S3 shadow replays the saved run against them, so the bound reader checks
+ * the run against this checkout.
+ */
+export function headlessCollectorSuite() {
   const suite = trustedSuite()
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const sourcePaths = new Set([
@@ -131,11 +134,20 @@ async function collectOne(name: string, directory: string): Promise<string> {
     execFileSync("git", ["status", "--porcelain", "--", ...sourcePaths], { cwd: ROOT, encoding: "utf8" })
       .toString()
       .trim().length > 0
+  const runRevision = sourceDirty ? `${sourceRevision}+dirty` : sourceRevision
+  return { suite, manifest: derivedSuiteManifest(suite), sourceRevision, runRevision }
+}
+
+/** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
+async function collectOne(name: string, directory: string): Promise<string> {
+  const entry = manifest().backends[name]
+  if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
+  const { suite, manifest: suiteManifest, sourceRevision, runRevision } = headlessCollectorSuite()
   const draft = initializeRunDraft({
     source: { kind: "live" },
     runId: process.env.TERMINFO_CAPTURE_RUN_ID ?? randomUUID(),
     sourceRevision,
-    manifest: derivedSuiteManifest(suite),
+    manifest: suiteManifest,
     intendedSubject: { kind: "lib", id: name, os: process.platform },
   })
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
@@ -265,7 +277,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
       runtimeIdentity,
       suiteId: suite.probeHash,
       probeHash: suite.probeHash,
-      sourceRevision: sourceDirty ? `${sourceRevision}+dirty` : sourceRevision,
+      sourceRevision: runRevision,
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector" },
       rawReplies: { ...draft.rawReplies, ...batch.rawReplies },

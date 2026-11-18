@@ -3,7 +3,9 @@
  * artifact alone and report, family by family, whether the replay reaches the stored status.
  *
  * The replay is the one per-row replay `runEraseReplay` also uses, and the grade is the one grader:
- * `recordExecutedProbe` and `finalizeVisualResult`. The report is private evidence. It changes no stored byte,
+ * `recordExecutedProbe` and `finalizeVisualResult`. S3 (@cto ruling 30932-s3-plan-ruling-1626) adds headless lib
+ * rows: the same replay, dispatched by subject kind, graded by the headless collector's own `gradeLibRow`.
+ * The report is private evidence. It changes no stored byte,
  * no status and no published output, and it is not a gate: deletion of live grading still waits on the parent's
  * full same-context run.
  */
@@ -12,9 +14,12 @@ import { readFileSync } from "node:fs"
 import { basename, dirname } from "node:path"
 import {
   ALL_PROBES,
+  HARNESS_INCOMPLETE_TEST,
   finalizeVisualResult,
   recordExecutedProbe,
+  type AssertionType,
   type CapturedRunDraft,
+  type LibProbeSource,
   type ObservationFrame,
   type ProbeAssertion,
   type ProbeCallbackResult,
@@ -27,6 +32,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import { IncompleteReplay, readCallLog, withCallLog } from "viprobe"
 import { hasOuterCommandMatcher } from "../terminfo.dev/src/app-semantic-state.ts"
 import { readProbeCapture } from "./erase-capture.ts"
+import { declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
 
 export const SHADOW_REPORT_FORMAT = "terminfo.shadow-report"
 export const SHADOW_REPORT_VERSION = 1
@@ -39,6 +45,8 @@ export interface ReplayedRow {
   result: ProbeCallbackResult
   /** The frames the recorded `context.capture` calls returned, in order: the finalizer's evidence. */
   frames: ObservationFrame[]
+  /** A lib row's declared assertion types, as its replayed declaration predicate chose them. */
+  declared?: readonly AssertionType[] | null
 }
 
 const errorName = (error: unknown) => (error instanceof Error ? error.name : "Error")
@@ -83,10 +91,12 @@ export function rowGeometryChange(rawReplies: Record<string, string>, featureId:
 }
 
 /**
- * Replay one row's term callback from its own full-source call log. Every divergence is an `IncompleteReplay`;
- * a log recorded before the source clock existed is refused by name, never handed this machine's time.
+ * Replay one row from its own full-source call log, with the callback its run's subject ran: a lib subject's
+ * declaration predicate and lib callback, otherwise the term callback. Every divergence is an `IncompleteReplay`;
+ * a term log recorded before the source clock existed is refused by name, never handed this machine's time.
  */
 export async function replayRow(validated: ValidatedRun, featureId: string): Promise<ReplayedRow> {
+  if (validated.subject?.kind === "lib") return replayLibRow(validated, featureId)
   const definition = ALL_PROBES.find(({ id }) => id === featureId)
   if (!definition?.term) throw new IncompleteReplay("Missing term callback: " + featureId)
   const raw = validated.rawReplies[featureId + ".callLog"]
@@ -132,6 +142,33 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
 }
 
 /**
+ * #30932 S3: a headless lib row, replayed in the order the collector ran it on the recorded source: the declaration
+ * predicate, then the callback. Both read the replay context, so a different read sequence diverges loudly. The
+ * recorded returns already carry the collector's query wrapper; nothing is rebuilt. Lib sources have no clock.
+ */
+function replayLibRow(validated: ValidatedRun, featureId: string): ReplayedRow {
+  const definition = ALL_PROBES.find(({ id }) => id === featureId)
+  if (!definition?.lib) throw new IncompleteReplay("Missing lib callback: " + featureId)
+  const raw = validated.rawReplies[featureId + ".callLog"]
+  if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + featureId)
+  const log = readCallLog(parseJsonStrict(featureId + " call log", raw))
+  const session = withCallLog<LibProbeSource>(null, { mode: "replay", log })
+  if (session.context.kind !== validated.source.kind) {
+    throw new IncompleteReplay("Source shape does not match its live capture: " + featureId)
+  }
+  const startedAt = new Date().toISOString()
+  const declared = declaredLibAssertionTypes(definition, session.context)
+  const result = definition.lib(session.context)
+  session.finish()
+  return {
+    startedAt,
+    result: JSON.parse(JSON.stringify(result)) as ProbeCallbackResult,
+    frames: [],
+    ...(declared !== undefined && { declared }),
+  }
+}
+
+/**
  * Grade one replayed callback result through the one grader. Raw replies and assertions go into the caller's
  * draft lists, exactly as the retained replay has always written them.
  */
@@ -164,7 +201,7 @@ export function recordReplayedRow(input: {
   })
 }
 
-export type ShadowFamily = "sgr" | "outer-command"
+export type ShadowFamily = "sgr" | "outer-command" | `headless:${string}`
 
 export type ShadowRow = { featureId: string; family: ShadowFamily } & (
   | { outcome: "agree"; status: ProbeResult["status"]; reasonsEqual: boolean }
@@ -207,10 +244,27 @@ export interface ShadowReport {
 const SCOPE =
   "Every row of the stored run is counted once. sgr.* rows, and outer-command rows on a mux subject, carry a " +
   "full-source call log and are replayed offline through the bound reader, the row's own term callback and the " +
-  "one grader, then compared with the stored status. Every other row is excluded with its reason; the headless " +
-  "erase family is shadowed by its own collector (#30932 S3)."
+  "one grader, then compared with the stored status. On a headless (lib) subject every executed row with a lib " +
+  "callback is in its headless:<feature prefix> family: replayed from its own call log through the bound reader, " +
+  "its declaration predicate and lib callback and the headless collector's grader; a row without a log is " +
+  "incomplete there, never excluded. Every other row is excluded with its reason."
+
+/** A headless row's family: its feature id's prefix. One rule for every lib probe, so no row falls outside it. */
+export function headlessFamily(featureId: string): `headless:${string}` {
+  const dot = featureId.indexOf(".")
+  return `headless:${dot > 0 ? featureId.slice(0, dot) : featureId}`
+}
+
+function shadowFamily(family: string): family is ShadowFamily {
+  return family === "sgr" || family === "outer-command" || family.startsWith("headless:")
+}
 
 function familyOf(featureId: string, subject: Pick<ProbeSubject, "kind">): ShadowFamily | string {
+  // A headless run's family comes from its definition, never from whether a log exists: a missing log is then
+  // counted incomplete in that family instead of vanishing from it.
+  if (subject.kind === "lib") {
+    return ALL_PROBES.find(({ id }) => id === featureId)?.lib ? headlessFamily(featureId) : "no lib callback"
+  }
   if (featureId.startsWith("sgr.")) return "sgr"
   // The live collector records a full-source log for an outer-command row only on a mux subject (unified.ts).
   if (hasOuterCommandMatcher(featureId)) {
@@ -230,7 +284,10 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
   if (diagnostic) {
     return "live diagnostic " + (diagnostic.kind === "collector-error" ? diagnostic.name : diagnostic.kind)
   }
-  if (validated.observations.some((entry) => entry.featureId === id && entry.outcome === "error")) {
+  if (
+    validated.subject?.kind !== "lib" &&
+    validated.observations.some((entry) => entry.featureId === id && entry.outcome === "error")
+  ) {
     return "live callback-error arm"
   }
   if (validated.rawReplies[id + ".outerCommands"] !== undefined) return "outer command read"
@@ -248,6 +305,72 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
     }
   }
   return undefined
+}
+
+/**
+ * #30932 S3: the headless collector's own live inputs for one lib row, read from that row's records only. Each one
+ * can decide or replace the stored status after the callback returned, so a replay of the callback cannot speak
+ * for it. A record that is present but unreadable throws, and the row is then incomplete.
+ */
+function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string | undefined {
+  const id = stored.featureId
+  const raw = validated.rawReplies
+  if (raw[id + ".late"] !== undefined) return "late reply after the sentinel"
+  if (raw["collector.repeats." + id] !== undefined) return "fresh-instance repeat passes regraded this row"
+  if (raw["collector.hostRecipes." + id] !== undefined) return "native host-recipe record"
+  const replyPath = raw["collector.replyPath"]
+  if (replyPath !== undefined) {
+    const parsed = parseJsonStrict("collector.replyPath", replyPath)
+    const decisions = object(parsed) && object(parsed.decisions) ? parsed.decisions : undefined
+    if (!decisions) throw new Error("collector.replyPath has no decisions")
+    const decision = decisions[id]
+    if (object(decision) && decision.reason === "probe uses its declared host recipe") return "declared host recipe"
+  }
+  if (stored.tests.some((test) => test.id === HARNESS_INCOMPLETE_TEST)) return "harness incomplete (unreproduced)"
+  if (stored.tests.some((test) => test.id === "cleanup")) return "backend cleanup failure replaced the graded result"
+  // A saved schema-4 run keeps no diagnostics list: the collector's caught error is the row's reason, which it
+  // always opens with `headless <backend> probe <id>: ` (headless-batch collectPass). The grader's own refusals
+  // ("Callback for ...") are decided from the callback result, which the replay reproduces, so they stay comparable.
+  if (
+    stored.status === "probe-invalid" &&
+    /^headless \S+ probe /.test(stored.reason ?? "") &&
+    stored.reason?.includes(` probe ${id}: `)
+  ) {
+    return "live collector error: " + stored.reason
+  }
+  const external = LIB_EXTERNAL_READS[id]
+  if (external) return "callback reads outside its source: " + external
+  return undefined
+}
+
+/**
+ * Lib callbacks that read something their source does not hand them (census for #30932 S3). A replay cannot give
+ * them that read, so their rows are not comparable by name.
+ */
+const LIB_EXTERNAL_READS: Readonly<Record<string, string>> = {
+  // probe-defs extensions.ts: each fresh random value goes into what the callback feeds and expects.
+  "extensions.osc52-clipboard": "randomUUID clipboard nonce (headlessClipboardRoundtrip)",
+  "extensions.osc52-write": "randomUUID control and target payloads (headlessOsc52Write)",
+  "extensions.osc52-read": "randomUUID clipboard nonce (headlessClipboardRead)",
+  "extensions.clipboard-paste": "randomUUID paste text (headlessClipboardPaste)",
+  "extensions.kitty-graphics.transmit": "crypto.randomUUID image number (newNumber)",
+  "extensions.kitty-graphics.display": "crypto.randomUUID image number (newNumber)",
+  "extensions.osc99-kitty-notify": "crypto.randomUUID notification id",
+}
+
+/** The query captures the live collector handed `withReplyFailureEvidence` for this row. */
+function retainedCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string }[] {
+  const raw = validated.rawReplies["collector.queryCaptures." + featureId]
+  if (typeof raw !== "string") throw new IncompleteReplay("Missing retained query captures: " + featureId)
+  const parsed = parseJsonStrict(featureId + " query captures", raw)
+  const captures = object(parsed) ? parsed.captures : undefined
+  if (
+    !Array.isArray(captures) ||
+    !captures.every((entry) => object(entry) && typeof entry.query === "string" && typeof entry.response === "string")
+  ) {
+    throw new IncompleteReplay("Retained query captures are malformed: " + featureId)
+  }
+  return captures as { query: string; response: string }[]
 }
 
 /**
@@ -309,14 +432,16 @@ export async function shadowStoredRun(
       continue
     }
     const family = familyOf(featureId, stored.subject)
-    if (family !== "sgr" && family !== "outer-command") {
+    if (!shadowFamily(family)) {
       excluded.set(family, [...(excluded.get(family) ?? []), featureId])
       continue
     }
     report.rows.push(await shadowRow(validated, report.runIncomplete, result, family))
   }
   for (const [reason, featureIds] of excluded) report.excluded.push({ reason, rows: featureIds.length, featureIds })
-  for (const family of ["sgr", "outer-command"] as const) {
+  const families: ShadowFamily[] =
+    stored.subject.kind === "lib" ? [...new Set(report.rows.map((row) => row.family))].sort() : ["sgr", "outer-command"]
+  for (const family of families) {
     const rows = report.rows.filter((row) => row.family === family)
     report.families.push({
       family,
@@ -346,7 +471,9 @@ async function shadowRow(
   // geometry check, say) leaves this one row incomplete, never the whole run.
   let input: string | undefined
   try {
-    input = liveOnlyInput(validated, stored)
+    input =
+      liveOnlyInput(validated, stored) ??
+      (validated.subject?.kind === "lib" ? headlessLiveInput(validated, stored) : undefined)
   } catch (error) {
     return {
       featureId,
@@ -364,12 +491,31 @@ async function shadowRow(
       error instanceof IncompleteReplay ? error.message : `replay threw ${errorName(error)}: ${errorMessage(error)}`
     return { featureId, family, outcome: "incomplete", reason }
   }
-  const domain = recordReplayedRow({ featureId, ...replayed, rawReplies: {}, assertions: [] })
   const subject = validated.subject
-  const graded =
-    subject && (subject.kind === "term" || subject.kind === "mux")
-      ? finalizeVisualResult(domain, subject, replayed.frames)
-      : domain
+  let graded: ProbeResult
+  if (subject?.kind === "lib") {
+    const probe = ALL_PROBES.find(({ id }) => id === featureId)
+    let captures: { query: string; response: string }[]
+    try {
+      captures = retainedCaptures(validated, featureId)
+    } catch (error) {
+      return { featureId, family, outcome: "incomplete", reason: errorMessage(error) }
+    }
+    if (!probe) return { featureId, family, outcome: "incomplete", reason: "Missing lib callback: " + featureId }
+    graded = gradeLibRow({
+      probe,
+      result: replayed.result,
+      declared: replayed.declared,
+      attempt: { scope: "probe", startedAt: replayed.startedAt },
+      captures,
+    })
+  } else {
+    const domain = recordReplayedRow({ featureId, ...replayed, rawReplies: {}, assertions: [] })
+    graded =
+      subject && (subject.kind === "term" || subject.kind === "mux")
+        ? finalizeVisualResult(domain, subject, replayed.frames)
+        : domain
+  }
   if (graded.status === stored.status) {
     return { featureId, family, outcome: "agree", status: graded.status, reasonsEqual: graded.reason === stored.reason }
   }
