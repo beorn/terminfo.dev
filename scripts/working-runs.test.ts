@@ -340,11 +340,17 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   )
 
   // Walking the live content tree passed the 5s default on CI (run 42830234597).
-  // A local run was 3.5s; 30s leaves room when the host is busy.
+  // Hang protection only, never a speed budget (@cto 2436c804): 33.5 s on dev main at load 17
+  // (/hh/var/@dev/fixer/reds-1118/working-runs-3.log) and 44.0 s at load 31; 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
+  // The cold-read cost itself stays open on #34925.
   it(
     "retains app pass contexts and named store gaps without changing the newest-only view",
-    { timeout: 30_000 },
+    { timeout: 120_000 },
     () => {
+      // The live store's selection names each cell placed because its probe changed, on console.error, and the root
+      // runner fails any test that prints (34925: 13 such cmux lines at main 139e60d8). Those lines are the reader's
+      // own record, so they are captured and each must be that record; any other error line still fails.
+      const placed = vi.spyOn(console, "error").mockImplementation(() => {})
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
       mkdirSync(libraries)
@@ -394,6 +400,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
           "supplement run of this pass. Its answers reach a cell only once it is placed beside the default run.",
       )
       expect(history.filter((view) => view !== withSupplement).every((view) => view.unapplied === undefined)).toBe(true)
+      const lines = placed.mock.calls.map((call) => call.map(String).join(" "))
+      expect(
+        lines.filter((line) => !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line)),
+        lines.join("\n"),
+      ).toEqual([])
     },
   )
 
@@ -635,45 +646,51 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Selected-original history is required on feature pages and for Mac contexts without raw stores.
   // Raw collection tests cannot catch dropping these originals or leaking their full evidence payload.
-  it("keeps compact original measurements in private page data with their canonical contexts", () => {
-    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
-    const publicPage = clientProbes.load()
-    expect(publicPage).not.toHaveProperty("workingOriginals")
-    const expected = loadFullProbes().selected.history
-    expect(
-      Object.values(expected)
-        .flat()
-        .some((run) => run.subject.os === "macos"),
-    ).toBe(true)
+  // Hang protection only, never a speed budget (@cto 2436c804): 9.3 s at load 17 and 10.3 s at load 31 against the
+  // 5 s default, loading the live probe pages cold; 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
+  it(
+    "keeps compact original measurements in private page data with their canonical contexts",
+    { timeout: 30_000 },
+    () => {
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
+      const publicPage = clientProbes.load()
+      expect(publicPage).not.toHaveProperty("workingOriginals")
+      const expected = loadFullProbes().selected.history
+      expect(
+        Object.values(expected)
+          .flat()
+          .some((run) => run.subject.os === "macos"),
+      ).toBe(true)
 
-    const retained = collection()
-    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", retained.parent)
-    const page = clientProbes.load()
-    expect(Object.keys(page.workingOriginals ?? {})).toEqual(Object.keys(expected))
-    for (const [key, originals] of Object.entries(expected)) {
-      const actual = page.workingOriginals?.[key]
-      expect(actual).toHaveLength(originals.length)
-      for (const original of originals) {
-        const record = actual?.find((run) => run.sha256 === original.sha256)
-        expect(record).toMatchObject({
-          runId: original.runId,
-          subject: original.subject,
-          measuredAt: original.measuredAt,
-          suiteId: original.suiteId,
-          sourceRevision: original.sourceRevision,
-          sha256: original.sha256,
-          counts: original.counts,
-          score: original.score,
-          states: Object.fromEntries(original.results.map((result) => [result.featureId, result.status])),
-        })
-        for (const field of ["rawReplies", "assertions", "results", "startedAt", "label", "runtimeIdentity"]) {
-          expect(record).not.toHaveProperty(field)
+      const retained = collection()
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", retained.parent)
+      const page = clientProbes.load()
+      expect(Object.keys(page.workingOriginals ?? {})).toEqual(Object.keys(expected))
+      for (const [key, originals] of Object.entries(expected)) {
+        const actual = page.workingOriginals?.[key]
+        expect(actual).toHaveLength(originals.length)
+        for (const original of originals) {
+          const record = actual?.find((run) => run.sha256 === original.sha256)
+          expect(record).toMatchObject({
+            runId: original.runId,
+            subject: original.subject,
+            measuredAt: original.measuredAt,
+            suiteId: original.suiteId,
+            sourceRevision: original.sourceRevision,
+            sha256: original.sha256,
+            counts: original.counts,
+            score: original.score,
+            states: Object.fromEntries(original.results.map((result) => [result.featureId, result.status])),
+          })
+          for (const field of ["rawReplies", "assertions", "results", "startedAt", "label", "runtimeIdentity"]) {
+            expect(record).not.toHaveProperty(field)
+          }
         }
       }
-    }
-    vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
-    expect(clientProbes.load()).toEqual(publicPage)
-  })
+      vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
+      expect(clientProbes.load()).toEqual(publicPage)
+    },
+  )
 
   it("keeps the recorded comparison baseline separate from missing comparison evidence", () => {
     const older = collection()
@@ -805,8 +822,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Actual retained history includes complete envelopes whose collection file is absent.
   // Newest-only tests never encounter that older input; history must name the gap, never erase it or score zero.
+  // Hang protection only, never a speed budget (@cto 2436c804): 5.3 s and 5.2 s at load 17 against the 5 s default
+  // (/hh/var/@dev/fixer/reds-1118/working-runs-3.log); 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
   it.each(["missing collection", "missing rollups"])(
     "keeps %s in older history visible without preventing the current reading",
+    { timeout: 30_000 },
     (failure) => {
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
       const parent = runsDir()
