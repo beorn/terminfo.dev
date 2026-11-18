@@ -23,7 +23,12 @@ import {
 import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
 import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { priorDecisionSentence, refusalSummarySentence } from "../docs/data/prior-decision.ts"
-import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
+import {
+  candidateFromSelected,
+  measuresSelectionOnly,
+  pickContextRun,
+  type HistoricalContextCandidate,
+} from "../docs/data/run-selection.ts"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -253,6 +258,62 @@ it("ranks a full run above a selected run, and names the partial summary when no
     run: { key: "kitty/partial" },
     selection: "latest partial selection",
   })
+})
+
+// #34868: the same rule must hold where the site picks its per-(app, OS) primary by lineage. A 9-row run
+// placed at the newest source revision took the whole wezterm macOS bar (266 rows read probe-todo) while a
+// complete run of the same app version stood one revision behind, because ancestry alone decided the pick.
+// @failure A partial run at a newer revision becomes the app primary and the complete run is demoted.
+// @level l2 @consumer run-selection pickByLineage behind compatibilitySubjects and the app page bar.
+it("ranks a complete run above a partial run of the same app version at a newer source revision", () => {
+  const candidate = (key: string, partial: boolean): HistoricalContextCandidate => ({
+    key,
+    kind: "term",
+    terminalId: "wezterm",
+    os: "macos",
+    permissions: null,
+    states: {},
+    cells: {},
+    sources: [
+      { runId: key, measuredAt: "2026-11-18T00:00:00Z", suiteId: suite.probeHash, suiteRelation: "tree", partial },
+    ],
+  })
+  const full = candidate("wezterm/full", false)
+  const partial = candidate("wezterm/partial", true)
+  const runs = (picked: HistoricalContextCandidate): { runId: string; version: string; sourceRevision: string }[] => [
+    {
+      runId: picked.key,
+      version: "20240203-110809-5046fc22",
+      sourceRevision: picked.key === "wezterm/full" ? "a".repeat(40) : "b".repeat(40),
+    },
+  ]
+  const lineage = {
+    runs,
+    history: {
+      isAncestor: (ancestor: string, descendant: string) => ancestor === descendant || ancestor === "a".repeat(40),
+    },
+  }
+  expect(pickContextRun([partial, full], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
+  expect(pickContextRun([full, partial], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
+  expect(pickContextRun([partial], lineage)).toMatchObject({
+    run: { key: "wezterm/partial" },
+    selection: "latest partial selection",
+  })
+})
+
+// #34868: every app run records a selection, so presence cannot mark a run as partial. The writer rows
+// decide it: a suite-complete run leaves only the rows outside its suite unselected (264 measured, 9
+// unselected on wezterm macOS), while the 04:31 draft measured 9 of 273 and left 264 marked Not selected.
+// @failure Presence of collector.selection marks every app run partial, or a 9-row run reads as the suite.
+// @level l2 @consumer run-selection carriesPartial behind the page pick.
+it("reads a run by how many of its rows it actually measured, not by whether a selection exists", () => {
+  const run = (measured: number, total: number, selection: boolean) => ({
+    results: Array.from({ length: total }, (_, index) => ({ attempt: { scope: index < measured ? "own" : "none" } })),
+    ...(selection && { selection: { ids: Array.from({ length: measured }, (_, index) => `probe-${index}`) } }),
+  })
+  expect(measuresSelectionOnly(run(264, 273, true))).toBe(false)
+  expect(measuresSelectionOnly(run(9, 273, true))).toBe(true)
+  expect(measuresSelectionOnly(run(264, 273, false))).toBe(false)
 })
 
 // Current selection reads the stored five statuses and frozen denominator
