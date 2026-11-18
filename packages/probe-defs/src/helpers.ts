@@ -2109,7 +2109,10 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
     return open(`synchronized-output rendered hold unresolved: ${measured}`, response)
   }
   if (afterRestore !== 2) {
-    return open(`synchronized-output restoration unproven: DECRPM 2026 read ${String(afterRestore)} after the reset`, response)
+    return open(
+      `synchronized-output restoration unproven: DECRPM 2026 read ${String(afterRestore)} after the reset`,
+      response,
+    )
   }
   if (typeof restored === "string") return open(`synchronized-output restoration unproven: ${restored}`, response)
   const { held, control, controlAt, heldAt } = measured

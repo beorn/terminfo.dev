@@ -1255,7 +1255,10 @@ test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-f
       expect(result.pass).toBe(true)
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
       expect(result.note).toContain("tearing and scroll cadence unmeasured")
-      const response = JSON.parse(result.response!) as { reads: { phase: string; located: unknown }[]; afterRestore: number }
+      const response = JSON.parse(result.response!) as {
+        reads: { phase: string; located: unknown }[]
+        afterRestore: number
+      }
       expect(response.afterRestore).toBe(2)
       const phases = response.reads.map((r) => `${r.phase}:${r.located === null ? "absent" : "present"}`)
       expect(phases[0]).toBe("baseline:absent")
@@ -1280,7 +1283,6 @@ test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-f
     expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(reason) }])
   },
 )
-
 
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
 // The protocol matrix never exercised either effect or its controls.
