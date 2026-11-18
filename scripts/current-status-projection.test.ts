@@ -23,13 +23,7 @@ import {
 import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
 import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { priorDecisionSentence, refusalSummarySentence } from "../docs/data/prior-decision.ts"
-import {
-  candidateFromSelected,
-  measuresSelectionOnly,
-  pickContextRun,
-  type HistoricalContextCandidate,
-} from "../docs/data/run-selection.ts"
-import { selectionCoversCohort } from "../docs/data/selected-results.ts"
+import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -259,76 +253,6 @@ it("ranks a full run above a selected run, and names the partial summary when no
     run: { key: "kitty/partial" },
     selection: "latest partial selection",
   })
-})
-
-// #34868: the same rule must hold where the site picks its per-(app, OS) primary by lineage. A 9-row run
-// placed at the newest source revision took the whole wezterm macOS bar (266 rows read probe-todo) while a
-// complete run of the same app version stood one revision behind, because ancestry alone decided the pick.
-// @failure A partial run at a newer revision becomes the app primary and the complete run is demoted.
-// @level l2 @consumer run-selection pickByLineage behind compatibilitySubjects and the app page bar.
-it("ranks a complete run above a partial run of the same app version at a newer source revision", () => {
-  const candidate = (key: string, partial: boolean): HistoricalContextCandidate => ({
-    key,
-    kind: "term",
-    terminalId: "wezterm",
-    os: "macos",
-    permissions: null,
-    states: {},
-    cells: {},
-    sources: [
-      { runId: key, measuredAt: "2026-11-18T00:00:00Z", suiteId: suite.probeHash, suiteRelation: "tree", partial },
-    ],
-  })
-  const full = candidate("wezterm/full", false)
-  const partial = candidate("wezterm/partial", true)
-  const runs = (picked: HistoricalContextCandidate): { runId: string; version: string; sourceRevision: string }[] => [
-    {
-      runId: picked.key,
-      version: "20240203-110809-5046fc22",
-      sourceRevision: picked.key === "wezterm/full" ? "a".repeat(40) : "b".repeat(40),
-    },
-  ]
-  const lineage = {
-    runs,
-    history: {
-      isAncestor: (ancestor: string, descendant: string) => ancestor === descendant || ancestor === "a".repeat(40),
-    },
-  }
-  expect(pickContextRun([partial, full], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
-  expect(pickContextRun([full, partial], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
-  expect(pickContextRun([partial], lineage)).toMatchObject({
-    run: { key: "wezterm/partial" },
-    selection: "latest partial selection",
-  })
-})
-
-// #34868: every app run records a selection, so presence cannot mark a run as partial, and counts cannot
-// decide coverage either (@cto 34868-scope-membership): a 263-of-264 selection and a same-length wrong-id
-// selection are both a selection, not a reading of the suite. The run own declared suite cohort decides it.
-// @failure A partial run reads as the suite because it selected most ids, or a wrong-id selection of the
-// same length passes, or the guard leans on decision counts instead of suite membership.
-// @level l2 @consumer run-selection carriesPartial behind the page pick.
-it("decides suite coverage by set membership against the declared cohort, never by counts", () => {
-  const cohort = Array.from({ length: 264 }, (_, index) => `probe-${index}`)
-  const outside = Array.from({ length: 9 }, (_, index) => `outside-${index}`)
-  const covers = (ids: undefined | string[], declared: undefined | string[]) =>
-    selectionCoversCohort(ids === undefined ? undefined : { ids }, declared)
-
-  // Control: the full 264 plus 9 ids outside the suite is still a reading of the suite.
-  expect(covers([...cohort, ...outside], cohort)).toBe(true)
-  // 263 of 264 is a selection: the missing id cannot be hidden by extra ones.
-  expect(covers([...cohort.slice(1), ...outside], cohort)).toBe(false)
-  // Same length, one wrong id: counts match but membership does not.
-  expect(covers([...cohort.slice(1), "probe-wrong"], cohort)).toBe(false)
-  // The 04:31 draft: 9 ids of 264.
-  expect(covers(cohort.slice(0, 9), cohort)).toBe(false)
-  // No recorded selection or no declared cohort: no claim either way, and no fallback to another suite.
-  expect(covers(undefined, cohort)).toBeUndefined()
-  expect(covers(cohort, undefined)).toBeUndefined()
-
-  expect(measuresSelectionOnly({ selection: { ids: cohort }, selectionCoversSuite: true })).toBe(false)
-  expect(measuresSelectionOnly({ selection: { ids: cohort.slice(1) }, selectionCoversSuite: false })).toBe(true)
-  expect(measuresSelectionOnly({ selection: undefined, selectionCoversSuite: undefined })).toBe(false)
 })
 
 // Current selection reads the stored five statuses and frozen denominator

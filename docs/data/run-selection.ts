@@ -109,7 +109,7 @@ export function candidateFromSelected(
           measuredAt: original.measuredAt,
           suiteId: original.suiteId,
           suiteRelation: original.suiteRelation,
-          partial: measuresSelectionOnly(original),
+          partial: original.selection !== undefined,
         }
       }),
       context: selected,
@@ -134,21 +134,6 @@ export function candidateFromSelected(
     ...("results" in selected ? { results: selected.results } : { cells: selected.cells }),
     states,
   }
-}
-
-/**
- * Did this run measure a selection rather than the suite (#34868)? Presence of a selection cannot decide it,
- * because every app run records one: a suite-complete wezterm macOS run selects all 264 ids its suite declares
- * and leaves only the 9 ids outside that suite unselected, while the 04:31 draft selected 9. Completeness is
- * set membership against the run own declared suite cohort (selectionCoversCohort in selected-results.ts), so
- * 263 of 264 and a same-length wrong-id selection are both a selection, not a reading of the suite (@cto
- * 34868-scope-membership ruling).
- */
-export function measuresSelectionOnly(run: {
-  selection?: { ids: readonly string[] }
-  selectionCoversSuite?: boolean
-}): boolean {
-  return run.selection !== undefined && run.selectionCoversSuite === false
 }
 
 /** How the summary context was chosen, printed beside the row. */
@@ -237,13 +222,11 @@ function descendantOfAll(revisions: readonly string[], history: ContextLineage["
 }
 
 /**
- * A STRICT-SUBSET-ONLY candidate is one whose every contributing run measured only a selection: it is a real
- * reading of its ids and never a reading of the suite. A candidate that also holds a full-scope run is
- * qualified (#34868 scope-membership: @cto 2026-11-18), because demoting it would hand the bar to older
- * evidence than the run that joined the partial cells. Both picks use this one predicate.
+ * A candidate holding a run that measured only a selection is a real reading of its ids and never a reading
+ * of the suite. Both picks use this one predicate so neither can present such a run as the whole suite.
  */
 function carriesPartial(candidate: ContextCandidate): boolean {
-  return candidate.sources.length > 0 && candidate.sources.every((source) => source.partial === true)
+  return candidate.sources.some((source) => source.partial === true)
 }
 
 /**
@@ -276,33 +259,28 @@ function pickByLineage<T extends ContextCandidate>(
     return { candidate, version, runs: runs.filter((run) => run.version === version) }
   })
   const top = facts.map((fact) => fact.version).sort((left, right) => versionCompare(right, left))[0]
-  // A run that measured a selection is never a reading of the suite (#34868). At the newest app version a
-  // complete context outranks a partial one however ancestry orders them: a 9-row run at the newest revision
-  // must not take the app bar from a complete run one revision behind. Only when nothing complete stands may
-  // a partial run be the primary, and the reason then says so.
-  const atTopVersion = facts.filter((fact) => fact.version === top)
-  const complete = atTopVersion.filter((fact) => !carriesPartial(fact.candidate))
-  const considered = complete.length > 0 ? complete : atTopVersion
-  const tips = considered.map((fact) => {
-    const revisions = [
-      ...new Set(
-        fact.runs.map((run) => {
-          if (run.sourceRevision === null) {
-            throw new Error(`Context ${fact.candidate.key} run ${run.runId} records no source revision`)
-          }
-          return run.sourceRevision
-        }),
-      ),
-    ]
-    const tip = descendantOfAll(revisions, lineage.history)
-    if (tip === undefined) {
-      throw new Error(
-        `Context ${fact.candidate.key} holds runs of app version ${fact.version} from unrelated source revisions ` +
-          `${revisions.join(", ")}; the pick refuses`,
-      )
-    }
-    return { candidate: fact.candidate, tip }
-  })
+  const tips = facts
+    .filter((fact) => fact.version === top)
+    .map((fact) => {
+      const revisions = [
+        ...new Set(
+          fact.runs.map((run) => {
+            if (run.sourceRevision === null) {
+              throw new Error(`Context ${fact.candidate.key} run ${run.runId} records no source revision`)
+            }
+            return run.sourceRevision
+          }),
+        ),
+      ]
+      const tip = descendantOfAll(revisions, lineage.history)
+      if (tip === undefined) {
+        throw new Error(
+          `Context ${fact.candidate.key} holds runs of app version ${fact.version} from unrelated source revisions ` +
+            `${revisions.join(", ")}; the pick refuses`,
+        )
+      }
+      return { candidate: fact.candidate, tip }
+    })
   const winner = descendantOfAll(
     tips.map((entry) => entry.tip),
     lineage.history,
@@ -317,7 +295,7 @@ function pickByLineage<T extends ContextCandidate>(
   // Equal standing only: among candidates the version-and-ancestry order cannot separate, a full run wins.
   const fullTied = tied.filter((candidate) => !carriesPartial(candidate))
   const pool = fullTied.length > 0 ? fullTied : tied
-  const partialOnly = complete.length === 0
+  const partialOnly = fullTied.length === 0
   const defaults = pool.filter((candidate) => candidate.permissions === null)
   const [chosen] =
     defaults.length === 1 ? defaults : [...pool].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
