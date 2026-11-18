@@ -9,7 +9,16 @@
  */
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
@@ -23,6 +32,7 @@ import {
   identityRuleSourceRevision,
   loadStoredRuns,
   placeCollectedRun,
+  refusedCaptureRows,
 } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -1241,4 +1251,59 @@ test("the rule revision covers every identity-rule source and is deterministic f
     writeFileSync(join(copy, relative), original)
   }
   expect(identityRuleSourceRevision(copy)).toBe(revision)
+})
+
+// #34885 (@cpo/term 07:02 rebuild): the wezterm/macos context of run 44267909484 carried 71 rows with
+// harnessOutcome capture-refused ("this run refused capture geometry ... osascript") and 162 screenshots
+// against 1,481-2,319 for every other context in the same run, yet its selection covered the suite. It was
+// placed as a complete reading, took the primary from a complete run, and reopened 83 decided cells.
+test("refuses a record carrying rows that refused capture geometry", () => {
+  const f = fixture()
+  const results = f.run.results ?? []
+  for (const result of results.slice(0, 71)) {
+    result.harnessOutcome = "capture-refused"
+    result.reason =
+      "Cursor pixel fixture needs capture; this run refused capture geometry: Capture calibration restore failed"
+  }
+  f.save()
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(
+    /71 of \d+ rows refused capture geometry \(first /,
+  )
+  expect(readdirSync(join(f.content, "probes-libs"))).toEqual([])
+})
+
+// #34885, the real shape: the wezterm/macos run of 44267909484 declared a selection of 264 ids while 71
+// rows refused capture geometry, and a selection is what the site counts, so coverage cannot carry the
+// refusal. Placement must refuse the record whatever it declares.
+test("refuses capture-refused rows even when the record declares a selection", () => {
+  const f = fixture()
+  const results = f.run.results ?? []
+  results[0]!.harnessOutcome = "capture-refused"
+  results[0]!.reason = "this run refused capture geometry: Capture calibration restore failed"
+  const raw = f.run.rawReplies
+  raw["collector.selection"] = JSON.stringify({ ids: [results[0]!.featureId] })
+  f.save()
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/refused capture geometry/)
+})
+
+// The exact record @cpo/term withdrew (terminfo 4f2c8f216ac): the wezterm/macos context of hosted run
+// 44267909484, 71 of 273 rows refused capture geometry and a declared selection of 264 ids. This is the
+// bytes that were placed as a complete reading before the guard existed.
+test("refuses the wezterm/macos context of run 44267909484", () => {
+  // The exact bytes @cpo/term withdrew (terminfo 4f2c8f216ac). Placement runs this check before any
+  // suite verification, and the collecting revision is not the unit-test tree, so the refusal is read
+  // here through the rule placement calls, with the suite manifest that run was collected under.
+  const source = join(import.meta.dirname, "../test-fixtures/probes-apps/wezterm-44267909484-capture-refused.json")
+  const manifestPath = join(
+    import.meta.dirname,
+    "../test-fixtures/probes-apps/wezterm-44267909484-capture-refused-suite.json",
+  )
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const loaded = parseRun(
+    source,
+    readFileSync(source, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(refusedCaptureRows(loaded)).toMatch(/^71 of 273 rows refused capture geometry \(first cursor\.hide: /)
 })
