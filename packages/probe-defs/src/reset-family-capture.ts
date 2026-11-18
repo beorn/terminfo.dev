@@ -68,7 +68,10 @@ function expectedFrame(setup: string, residual: string): string {
   return (
     `\x1b[2J\x1b[3;3H${setup}XX\x1b[3;5H${setup}YY` +
     // The INDEPENDENT neutral reference. It is not the sequence under test on any of these rows.
-    "\x1bc\x1b[?25l" +
+    // SGR 0 comes first because a terminal may erase on RIS with the pen still set and only then
+    // reset it: iTerm2 3.6.11 left the whole sgr.bg.default reference green that way (34712, @cto
+    // 8d123098). SGR 0 is independent of every reset these six rows test (39, 49, 59, 24, 23, 27).
+    "\x1b[0m\x1bc\x1b[?25l" +
     `\x1b[3;5H${residual}YY\x1b[3;3H${setup}XX\x1b[${CURSOR_ROW};1H`
   )
 }
