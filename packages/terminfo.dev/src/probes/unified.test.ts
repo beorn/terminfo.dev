@@ -43,7 +43,7 @@ import {
 } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
-import { readCaptureBinding, readProbeCapture, readReference } from "../../../probes/erase-capture.ts"
+import { readCaptureBinding, readProbeCapture, resolveReference } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import { shadowStoredRun } from "../../../probes/stored-run-shadow.ts"
 import { shadowCollectedRun, shadowReportPath } from "../../../admin/src/collected-run.ts"
@@ -6026,7 +6026,9 @@ async function retainsSameCallbackFrames(sourceFormat: "png" | "xwd", context: T
     expect(sourceBlobs.length).toBeGreaterThan(0)
     for (const blob of sourceBlobs) {
       expect(blob.path).toBe(`artifacts/${blob.sha256}.xwd.zst`)
-      expect(zstdDecompressSync(readReference(directory, blob)).toString()).toMatch(/^XWD fixture for checkpoint \d+$/)
+      expect(zstdDecompressSync(resolveReference(directory, blob).bytes).toString()).toMatch(
+        /^XWD fixture for checkpoint \d+$/,
+      )
     }
     for (const frame of frames) {
       expect(sourceBlobs.some(({ sha256 }) => frame.sourceRef === `sha256:${sha256}`)).toBe(true)
@@ -6038,7 +6040,7 @@ async function retainsSameCallbackFrames(sourceFormat: "png" | "xwd", context: T
     altered.writeUInt8(altered.readUInt8(altered.length - 1) ^ 1, altered.length - 1)
     mkdirSync(join(corrupt, "artifacts"))
     writeFileSync(join(corrupt, first.path), altered)
-    expect(() => readReference(corrupt, first)).toThrow(/SHA256 differs/)
+    expect(() => resolveReference(corrupt, first)).toThrow(/SHA256 differs/)
   } else {
     expect(sourceBlobs).toEqual([])
   }
