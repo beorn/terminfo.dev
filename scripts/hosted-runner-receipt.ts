@@ -182,7 +182,7 @@ function warpLaunchDeviation(setupPath: string): string {
   let setup: {
     prepared?: unknown
     commands?: Array<{ label?: unknown; status?: unknown; stdout?: unknown }>
-    snackbar?: { mode?: unknown; written?: unknown }
+    snackbar?: { mode?: unknown; written?: unknown; absent?: unknown }
   }
   try {
     setup = JSON.parse(readFileSync(setupPath, "utf8")) as typeof setup
@@ -218,6 +218,12 @@ function warpLaunchDeviation(setupPath: string): string {
       if (setup.snackbar.written !== true) {
         throw new Error(
           `Hosted receipt appLaunch: Warp's preference record ${setupPath} says the sticky header was hidden but confirms no write`,
+        )
+      }
+      // The stock branch already refuses a record that cannot say what it overwrote; so does this one.
+      if (typeof setup.snackbar.absent !== "boolean") {
+        throw new Error(
+          `Hosted receipt appLaunch: Warp's preference record ${setupPath} says the sticky header was hidden but does not record whether SnackbarEnabled existed before`,
         )
       }
     } else {

@@ -329,7 +329,7 @@ console.log(value);
           JSON.stringify({
             prepared: true,
             commands: [{ label: "snackbar-readback", status: 0, stdout: "false\n" }],
-            snackbar: { mode: "hidden", written: true },
+            snackbar: { mode: "hidden", written: true, absent: true },
           }),
         )
         const hiddenReceipt = join(dir, "warp-hidden-chrome.json")
@@ -344,6 +344,30 @@ console.log(value);
         )
         await expect(run("emit", start, join(dir, "warp-hidden-unwritten.json"))).rejects.toThrow(
           /says the sticky header was hidden but confirms no write/,
+        )
+        // The guard hidden mode must still fall through to: a record that read back "true" is a header that was on.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "true\n" }],
+            snackbar: { mode: "hidden", written: true, absent: true },
+          }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-readback-true.json"))).rejects.toThrow(
+          /does not show SnackbarEnabled read back as false/,
+        )
+        // A hidden record that cannot say whether it overwrote a key is not a record of what the run changed.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "false\n" }],
+            snackbar: { mode: "hidden", written: true },
+          }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-unknown-prior.json"))).rejects.toThrow(
+          /does not record whether SnackbarEnabled existed before/,
         )
         await writeFile(setupPath, record("false\n"))
       }
