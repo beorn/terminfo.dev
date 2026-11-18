@@ -636,8 +636,16 @@ if [[ "${1:-}" == "--inside" ]]; then
     ghostty)
       # A forced --title ignores application title sequences, including OSC 7's title fallback.
       # The existing PID/window ownership receipt identifies the window without overriding its title.
-      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none)
+      # Rendering is PINNED and recorded like xterm's (#28829, #31331): FreeType monochrome turns
+      # antialiasing off, so a plainly painted frame cannot carry edge pixels an edited one lacks; the
+      # padding is set to ghostty's shipped 2x2, unbalanced, so the grid origin no longer rides on a
+      # default. `ghostty +validate-config` accepts these four values and refuses a bad one
+      # (2026-11-17). The pin alone proves no grid registration; #31328 owns that.
+      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none
+        --freetype-load-flags=monochrome
+        --window-padding-x=2 --window-padding-y=2 --window-padding-balance=false)
       target_command_lead=(-e)
+      target_render_pin=freetype-monochrome,padding-2x2-unbalanced
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
       target_xtversion_mode=require
       target_xtversion_expect="ghostty $target_version"
