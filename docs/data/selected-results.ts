@@ -1,5 +1,5 @@
 /** Stored selection and projection for terminal observations. */
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import {
   aggregateCurrentResults,
@@ -43,7 +43,7 @@ import {
   isHarnessOutcome,
   type HarnessOutcome,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
+import { type LoadedRun, type RunTraceFacts, parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import {
   currentIdentityRuleCheck,
   identityRuleRevision,
@@ -85,6 +85,11 @@ export type ProjectionRun = Pick<
 > & {
   assertions: Array<Pick<ReadAssertion, "featureId" | "kind" | "assertionType">>
   selection: CollectorSelection | undefined
+  /**
+   * Whether the recorded selection covers the cohort its own declared suite names for this subject kind
+   * (#34868). Undefined when the run records no selection or its suite is not on this build.
+   */
+  selectionCoversSuite?: boolean
   attempt: CollectorAttempt | undefined
   screenRecord: string | undefined
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
@@ -92,6 +97,35 @@ export type ProjectionRun = Pick<
   traceMemo?: RunTraceMemo
   /** Stored runs only: this build's identity-rule match (#34617). Working runs never carry it. */
   identityRuleCheck?: TraceIdentityRuleCheck
+}
+
+/**
+ * Does a recorded selection cover the cohort its declared suite names (#34868)? Set membership, not counts:
+ * extra ids cannot hide a missing one, so 263 of 264 and a same-length wrong-id selection both refuse. The
+ * cohort is the run own suite manifest entry for its subject kind; there is no fallback to another suite.
+ */
+export function selectionCoversCohort(
+  selection: CollectorSelection | undefined,
+  cohort: readonly string[] | undefined,
+): boolean | undefined {
+  if (selection === undefined || cohort === undefined) return undefined
+  const selected = new Set(selection.ids)
+  return cohort.every((id) => selected.has(id))
+}
+
+/** The cohort each declared suite names per subject kind, keyed by probe hash. */
+function loadSuiteCohorts(contentDir: string): Map<string, Readonly<Record<string, readonly string[]>>> {
+  const cohorts = new Map<string, Readonly<Record<string, readonly string[]>>>()
+  const suitesDir = join(contentDir, "suites")
+  if (!existsSync(suitesDir)) return cohorts
+  for (const name of readdirSync(suitesDir)
+    .filter((entry) => entry.endsWith(".json"))
+    .sort()) {
+    const path = join(suitesDir, name)
+    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+    cohorts.set(manifest.probeHash, manifest.probes as unknown as Readonly<Record<string, readonly string[]>>)
+  }
+  return cohorts
 }
 
 function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
@@ -220,6 +254,8 @@ export interface CurrentSelectedVersion {
   catalogIds: string[]
   results: ProbeResult[]
   selection: CollectorSelection | undefined
+  /** Whether the recorded selection covers the declared suite cohort (#34868); see ProjectionRun. */
+  selectionCoversSuite?: boolean
   screenRecord: string | undefined
   readRaw: () => RunTraceFacts
   traceMemo?: RunTraceMemo
@@ -569,6 +605,7 @@ export function projectResults(
       results,
       suiteRelation,
       selection: run.selection,
+      ...(run.selectionCoversSuite !== undefined && { selectionCoversSuite: run.selectionCoversSuite }),
       screenRecord: run.screenRecord,
       readRaw: run.readRaw,
       ...(run.traceMemo && { traceMemo: run.traceMemo }),
@@ -1303,14 +1340,19 @@ export function loadSelectedResults(
   const catalog = Object.keys(features)
   // #34617: one rule fingerprint per build; each stored run is checked once against this build's identity rule.
   const ruleRevision = identityRuleRevision()
+  const suiteCohorts = loadSuiteCohorts(contentDir)
   const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => {
     const check = currentIdentityRuleCheck(run)
     // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
     if ("refused" in check && run.identity !== "unverified") {
       console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
     }
+    const selection = readCollectorSelection(run.rawReplies)
+    const cohort = run.probeHash === null ? undefined : suiteCohorts.get(run.probeHash)?.[run.subject.kind]
+    const selectionCoversSuite = selectionCoversCohort(selection, cohort)
     return {
       ...compactRun(run, readRaw),
+      ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
       traceMemo: {},
       ...("matched" in check && {
         identityRuleCheck: { checkedAt: "build" as const, ...check.matched, ruleRevision },
