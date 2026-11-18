@@ -48,6 +48,15 @@ const RIGHT = 40
 const band = (row: number): CaptureCells => ({ top: row - 1, left: 1, bottom: row + 1, right: RIGHT })
 const retainedHistory = (): CaptureCells => ({ top: 1, left: 1, bottom: MARK_ROW - 2, right: RIGHT })
 
+/**
+ * The rectangle as the reason names it (#34899 AC4, @dev/11's read of run 44398257551): the run records
+ * both rectangles it compared, so a reader can tell whether to chase the terminal or the arm without
+ * reading this file. Naming a region can only change reason text and the recorded response, never a
+ * status: the four comparisons below are unchanged.
+ */
+const describeRect = (cells: CaptureCells): string =>
+  "rows " + String(cells.top) + "-" + String(cells.bottom) + ", cols " + String(cells.left) + "-" + String(cells.right)
+
 function geometryOf(ctx: TermProbeSource): CapturePixelGeometry | undefined {
   return ctx.captureGeometry?.geometry
 }
@@ -121,7 +130,12 @@ export async function warpPromptMarkAppResult(
   writeVariant(ctx, SHIFTED_MARK_ROW, spec.mark)
   const shifted = await read(spec.id + ": mark at another position", SHIFTED_MARK_ROW)
 
-  const response = JSON.stringify({ target, targetAgain, omission, shifted })
+  const rectangles = {
+    boundary: describeRect(band(MARK_ROW)),
+    history: describeRect(retainedHistory()),
+    shiftedBoundary: describeRect(band(SHIFTED_MARK_ROW)),
+  }
+  const response = JSON.stringify({ rectangles, target, targetAgain, omission, shifted })
   const targetStable = target.boundary === targetAgain.boundary && target.history === targetAgain.history
   const boundaryAppeared = target.boundary !== undefined && target.boundary !== omission.boundary
   const historyRetained = target.history !== undefined && target.history === omission.history
@@ -151,17 +165,42 @@ export async function warpPromptMarkAppResult(
     )
   }
   if (!targetStable) {
-    return open(spec.id + ": two reads of the same frame disagreed, so no comparison this run makes is stable")
+    const disagreed = [
+      target.boundary !== targetAgain.boundary
+        ? "the boundary band (" + describeRect(band(MARK_ROW)) + ")"
+        : undefined,
+      target.history !== targetAgain.history
+        ? "the retained history (" + describeRect(retainedHistory()) + ")"
+        : undefined,
+    ]
+      .filter((named) => named !== undefined)
+      .join(" and ")
+    return open(
+      spec.id + ": two reads of the same frame disagreed in " + disagreed + ", so no comparison this run makes is stable",
+    )
   }
   if (!boundaryAppeared) {
-    return open(spec.id + ": the mark left the boundary band unchanged, so this route exposes no registration to grade")
+    return open(
+      spec.id +
+        ": the mark left the boundary band unchanged (" +
+        describeRect(band(MARK_ROW)) +
+        "), so this route exposes no registration to grade",
+    )
   }
   if (!historyRetained) {
-    return open(spec.id + ": the block above the mark changed with it, so the effect is not attributable to the mark")
+    return open(
+      spec.id +
+        ": the block above the mark changed with it (" +
+        describeRect(retainedHistory()) +
+        "), so the effect is not attributable to the mark",
+    )
   }
   if (!followedPosition) {
     return open(
-      spec.id + ": the boundary did not follow the mark to another position, so it is not that marker's boundary",
+      spec.id +
+        ": the boundary did not follow the mark to another position (" +
+        describeRect(band(SHIFTED_MARK_ROW)) +
+        "), so it is not that marker's boundary",
     )
   }
   return {

@@ -125,6 +125,14 @@ test("a reader the mark leaves unchanged stays open naming that failure", async 
   expect(result.pass).not.toBe(true)
   expect(result.tests?.[0]?.status).toBe("probe-todo")
   expect(result.tests?.[0]?.reason).toContain("left the boundary band unchanged")
+  // #34899 AC4: the run records the rectangles it compared, so a verdict can be re-read without the source.
+  expect(result.tests?.[0]?.reason).toContain("rows 3-5, cols 1-40")
+  const recorded = JSON.parse(String(result.response)) as { rectangles: unknown }
+  expect(recorded.rectangles).toEqual({
+    boundary: "rows 3-5, cols 1-40",
+    history: "rows 1-2, cols 1-40",
+    shiftedBoundary: "rows 5-7, cols 1-40",
+  })
 })
 
 test("command-finished stays open because a frame does not carry the numeric status", async () => {
@@ -146,6 +154,8 @@ test("a frame that is not stable across two reads grades nothing", async () => {
   expect(result.pass).not.toBe(true)
   expect(result.tests?.[0]?.status).toBe("probe-todo")
   expect(result.tests?.[0]?.reason).toContain("two reads of the same frame disagreed")
+  // @dev/11's read of run 44398257551: the reason must say WHICH region disagreed, not just that one did.
+  expect(result.tests?.[0]?.reason).toContain("the retained history (rows 1-2, cols 1-40)")
 })
 
 test("text and properties rows name the reader each one needs", async () => {
