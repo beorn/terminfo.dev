@@ -3137,6 +3137,7 @@ async function readNativeEditorState(input: {
 /** Owned App/mux read, with native editor observation selected outside the generic grader. */
 export async function readAppSemanticState(
   input: {
+    appId?: string
     featureId: string
     write: (text: string) => void
     runId: string
@@ -3147,10 +3148,12 @@ export async function readAppSemanticState(
     readCwd?: (checkpoint?: {
       row: number
       marker: string
+      phase?: "unknown" | "handled" | "target" | "restore"
+      expectedPath?: string
     }) => Promise<{ uri: string; detail: object } | { path: string; detail: object }>
     /**
-     * The verified owner's private TTY writer (34870): Terminal.app's restoration feed carries the session's own
-     * directory, which must stay out of the probe source's publishable write trace (CTO6a2de139).
+     * The verified owner's private TTY writer (34870, 34905): Terminal.app's and cmux's restoration feeds carry the
+     * session's own directory, which must stay out of the probe source's publishable write trace (CTO6a2de139).
      */
     privateWrite?: (text: string) => void | Promise<void>
     onRetained?: Parameters<typeof retainCaptureArtifact>[3]
@@ -3241,13 +3244,14 @@ export async function readAppSemanticState(
         }
       })
     }
-    const appId = env.TERMINFO_TARGET_ID
+    const appId = input.appId ?? env.TERMINFO_TARGET_ID
     if (
       input.mux === "screen" ||
       (!input.mux &&
         appId !== "kitty" &&
         appId !== "ghostty" &&
         appId !== "wezterm" &&
+        appId !== "cmux" &&
         // 34870: Terminal.app has only its owned cwd getter; without one it has no reader here.
         !(appId === "terminal-app" && input.readCwd !== undefined))
     ) {
@@ -3393,7 +3397,9 @@ export async function readAppSemanticState(
         // 34870 (@cto 34870-terminalapp-cwd-r1): Terminal.app 2.15's window AXDocument, read through JXA AX.
         (appId === "terminal-app" &&
           env.TERMINFO_TARGET_VERSION === "2.15" &&
-          input.featureId === "extensions.osc633-p")
+          input.featureId === "extensions.osc633-p") ||
+        // 34905: cmux 0.65.2's control-socket `workspace.current` current_directory.
+        (appId === "cmux" && env.TERMINFO_TARGET_VERSION === "0.65.2" && input.featureId === "extensions.osc633-p")
       if (input.mux || !reviewed) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
@@ -3403,6 +3409,17 @@ export async function readAppSemanticState(
       const sentControls = [`/terminfo-control-A-${nonce}`, `/terminfo-control-B-${nonce}`]
       const sentTargets = [`/terminfo-target-A-${nonce}`, `/terminfo-target-B-${nonce}`]
       const restoration: { attempted: boolean; equal: boolean | null } = { attempted: false, equal: null }
+      const privateWrite = input.privateWrite
+      const cmuxPrivateWrite = appId === "cmux" ? privateWrite : undefined
+      if (appId === "cmux" && cmuxPrivateWrite === undefined) {
+        return {
+          status: "invalid",
+          reason: "cmux owned cwd reader requires the owner's private restoration writer",
+          detail,
+        }
+      }
+      let restoredEqual = false
+      let restoreFailed = false
       const observe = async (): Promise<AppSemanticReading> => {
         // Terminal.app 2.15 serialises AXDocument with one trailing slash (34841 ax-0..6.json, file:///private/var/);
         // its adapter alone removes exactly one, never from "/" (r1 item 3). No case, symlink or host folding.
@@ -3410,7 +3427,12 @@ export async function readAppSemanticState(
           const path = value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
           return pairs && path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
         }
-        const get = async (checkpoint?: { row: number; marker: string }) => {
+        const get = async (checkpoint?: {
+          row: number
+          marker: string
+          phase?: "unknown" | "handled" | "target" | "restore"
+          expectedPath?: string
+        }) => {
           const read = await ownedCwd(checkpoint)
           let reading: { cwd: string; rawUri?: string; host?: string; sourceKind: string }
           if ("path" in read) {
@@ -3435,10 +3457,15 @@ export async function readAppSemanticState(
         }
         detail.identity = { executable: input.executable, runId: input.runId, processCwd }
         let serial = 0
+        let mutated = false
         const sample = async (number: number, feed: string) => {
+          mutated = true
           const marker = `Q-${nonce}-${serial++}`
+          const phase: "unknown" | "handled" | "target" = number === 1 ? "unknown" : number === 2 ? "handled" : "target"
+          const expectedPath =
+            number === 1 ? initial.cwd : number === 2 ? `/terminfo-control-${nonce}` : `/terminfo-target-${nonce}`
           input.write(`\x1b[${number};1H${feed}${marker}`)
-          const reading = await get({ row: number, marker })
+          const reading = await get({ row: number, marker, phase, expectedPath })
           const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
           // Host is compared only between URI readings; a path getter's readings never carry one.
           if (reading.rawUri !== undefined && reading.host !== expectedHost) {
@@ -3452,16 +3479,44 @@ export async function readAppSemanticState(
           return readCwdPhases(
             initial,
             sample,
-            () => {
-              detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
-              return Promise.resolve()
+            async () => {
+              if (cmuxPrivateWrite === undefined) {
+                detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+                return
+              }
+              if (!mutated) return
+              try {
+                // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
+                if (!initial.cwd.startsWith("/") || /[\x00-\x1f\x7f]/u.test(initial.cwd)) {
+                  throw new Error("Owned cwd initial path cannot be safely encoded for restoration")
+                }
+                const restoreUri = pathToFileURL(initial.cwd).href
+                const marker = `Q-${nonce}-${serial++}`
+                await cmuxPrivateWrite(`\x1b[4;1H${osc(`7;${restoreUri}`)}${marker}`)
+                const restored = await get({
+                  row: 4,
+                  marker,
+                  phase: "restore",
+                  expectedPath: initial.cwd,
+                })
+                if (restored.cwd !== initial.cwd) {
+                  throw new Error("Owned cwd restoration read back a different directory")
+                }
+                restoredEqual = true
+              } catch (error) {
+                restoredEqual = false
+                restoreFailed = true
+                detail.phases.push({
+                  phase: "restore",
+                  error: error instanceof Error ? error.message : String(error),
+                })
+              }
             },
             pathValue,
           )
         }
         // The probe's own experiment (probe-defs extensions.ts promptCwdPropertyResult) in the reading fields the
         // iTerm2 arm already uses: both OSC 7 controls must read back exactly before either 633 P target counts.
-        const privateWrite = input.privateWrite
         const initialUri = initial.rawUri
         if (privateWrite === undefined || initialUri === undefined || /[\x00-\x1f\x7f]/.test(initialUri)) {
           return {
@@ -3544,11 +3599,14 @@ export async function readAppSemanticState(
       try {
         reading = await observe()
       } catch (error) {
-        detail.phases.push({ error: error instanceof Error ? error.message : String(error) })
+        detail.phases.push({ phase: "primary", error: error instanceof Error ? error.message : String(error) })
         reading = {
           status: "invalid",
           reason: pairs ? ownedCwdFailure(error) : "Owned cwd observation failed; see private evidence",
         }
+      }
+      if (cmuxPrivateWrite !== undefined && (restoreFailed || !restoredEqual) && reading.status === "measured") {
+        reading = { status: "invalid", reason: "Owned cwd restoration failed; see private evidence" }
       }
       const bytes = Buffer.from(JSON.stringify({ reading, detail, processCwd: process.cwd() }))
       // The shared phase reader is private. Clear its diagnostic carrier before any
@@ -3569,14 +3627,20 @@ export async function readAppSemanticState(
       }
       const publicDetail = pairs
         ? { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: !restoration.equal, restoration }
-        : { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
+        : cmuxPrivateWrite === undefined
+          ? { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
+          : { privateEvidence, initialSourceKind: "undetermined", restoredEqual }
       if (reading.status !== "measured" || reading.reader !== "state") {
         // Terminal.app's reasons are built from phases and error numbers only (r1 item 4), so they publish as read;
         // an inert pair of controls stays unavailable (TODO), never invalid.
         if (pairs && reading.status !== "measured") {
           return { status: reading.status, reason: reading.reason, detail: publicDetail }
         }
-        return { status: "invalid", reason: "Owned cwd observation failed; see private evidence", detail: publicDetail }
+        return {
+          status: "invalid",
+          reason: reading.status !== "measured" ? reading.reason : "Owned cwd observation failed; see private evidence",
+          detail: publicDetail,
+        }
       }
       const fresh = pairs
         ? [...sentControls, ...sentTargets]
