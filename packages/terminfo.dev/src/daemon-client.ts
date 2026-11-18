@@ -176,60 +176,32 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
 const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
 
 /**
- * 34742: above the 30 min signal, so undici's own socket timers can never win on the Node path. Node's fetch pins
- * undici's 300 s headers and body timeouts on every request and ignores both init keys and a dispatcher raise
- * (measured 2026-11-18: an Agent with headersTimeout 50 still waited 600 ms), so `undici.request` through this
- * agent is the only way to let the signal be the single bound there. Bun keeps its own fetch, where timeout:false
- * already does that.
+ * 34507 -> 34742 -> 34753: the documented bound is ONE signal, the 30 min AbortSignal on the request below, and a
+ * client needs no timer configuration to be correct. 34742 answered 34507 by raising undici's 300 s headers and
+ * body timers to 35 min on the Node path; 34753 removes that workaround because the daemon now streams real headers
+ * and a keepalive byte, so stock timers never see a silent socket. Bun keeps `timeout:false` (measured 34477: its
+ * own timer aborted a silent body at ~362 s and wins over AbortSignal.timeout).
+ *
+ * A response's socket timeout, whether Node surfaced it as a cause or undici raised it directly. Exported because
+ * 34753 proves the fault mapping without waiting out undici's real 300 s window in a unit run; the real window is
+ * covered by the stock-Node field run recorded on the issue.
  */
-export const NODE_PROBE_SOCKET_TIMEOUT_MS = DAEMON_PROBE_TIMEOUT_MS + 5 * 60_000
-
-/**
- * 34507/34742: the documented bound is ONE signal, the 30 min AbortSignal on the request below. Bun's fetch clears
- * its own abort with timeout:false; Node's fetch cannot, so the Node path issues the same request through undici
- * and raises undici's headers and body timers past the signal. Refusing the runtime stays wrong: the shipped CLI
- * starts this client under Node when Bun is absent (bin/terminfo.mjs, engines node >=24).
- */
-/** A silent response's socket timeout, whether Node surfaced it as a cause or undici raised it directly. */
-function isHeadersTimeout(error: unknown): boolean {
+export function isHeadersTimeout(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const cause = (error as { cause?: { code?: unknown } }).cause
   const code = cause?.code ?? (error as { code?: unknown }).code
   return code === "UND_ERR_HEADERS_TIMEOUT"
 }
 
-/**
- * The Node transport: undici.request with its timers above the signal, wrapped as a Response so every caller sees
- * the one contract regardless of runtime. Timers are a parameter so a test can prove them without waiting 300 s.
- */
-export async function nodeProbeFetch(
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal },
-  timeouts: { headersTimeout: number; bodyTimeout: number } = {
-    headersTimeout: NODE_PROBE_SOCKET_TIMEOUT_MS,
-    bodyTimeout: NODE_PROBE_SOCKET_TIMEOUT_MS,
-  },
-): Promise<Response> {
-  const { Agent, request } = await import("undici")
-  const agent = new Agent({ headersTimeout: timeouts.headersTimeout, bodyTimeout: timeouts.bodyTimeout })
-  try {
-    const { statusCode, headers, body } = await request(url, {
-      method: init.method,
-      headers: init.headers,
-      ...(init.body === undefined ? {} : { body: init.body }),
-      signal: init.signal,
-      dispatcher: agent,
-    })
-    const bytes = Buffer.from(await body.arrayBuffer())
-    const flat: Record<string, string> = {}
-    for (const [name, value] of Object.entries(headers)) {
-      if (value !== undefined) flat[name] = Array.isArray(value) ? value.join(", ") : String(value)
-    }
-    return new Response(bytes, { status: statusCode, headers: flat })
-  } finally {
-    // Some builds export an Agent without close (a shim); the socket then dies with the request.
-    if (typeof agent.close === "function") await agent.close()
-  }
+/** 34753: the named fault for a daemon that answered no byte at all before undici's header window closed. */
+export function daemonNotStreamingError(port: number, elapsedMs: number, cause?: unknown): Error {
+  const message =
+    `Daemon on port ${port} sent no response byte within ${elapsedMs} ms, before the ` +
+    `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal: an admitted /probe flushes headers at once, so this ` +
+    `daemon is not streaming (a pre-34753 daemon, or one wedged before admission)`
+  return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), {
+    name: "DaemonNotStreaming" as const,
+  })
 }
 
 export async function requestDaemonProbe(
@@ -286,7 +258,9 @@ export async function requestDaemonProbe(
             signal,
             timeout: false,
           })
-        : await nodeProbeFetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}), signal })
+        : // 34753: stock Node/undici timers and no dispatcher. The daemon streams headers and a keepalive
+          // byte while collecting, so a long run never leaves the socket silent for 300 s.
+          await fetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}), signal })
   } catch (error) {
     // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
     if (error instanceof Error && error.name === "TimeoutError") {
@@ -300,19 +274,10 @@ export async function requestDaemonProbe(
         { name: "TimeoutError" },
       )
     }
-    // 34742: the Node transport sets undici's headers and body timers above the signal, so this shape should not
-    // occur any more. If it does, name the bound and the runtime instead of reporting it as the 30 min signal.
+    // 34753: an admitted probe streams real headers, so this timer can only fire when the daemon answered
+    // nothing at all for undici's 300 s header window. That is a daemon fault to name, not a run to wait out.
     if (isHeadersTimeout(error)) {
-      const elapsed = Date.now() - started
-      throw Object.assign(
-        new Error(
-          `Daemon on port ${daemon.port} did not answer /probe: undici aborted at ${elapsed} ms on its headers ` +
-            `timer, below the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal (34742 sets that timer above the ` +
-            `signal, so the daemon itself may still hold the answer)`,
-          { cause: error },
-        ),
-        { name: "TimeoutError" },
-      )
+      throw daemonNotStreamingError(daemon.port, Date.now() - started, error)
     }
     throw error
   }
@@ -345,11 +310,29 @@ export async function requestDaemonProbe(
 }
 
 /** Preserve and validate the exact HTTP bytes before any public save. */
+/**
+ * 34753: the daemon streams leading JSON whitespace (space, tab, LF, CR) as its keepalive, so an
+ * admitted /probe answer reaches a client with stock socket timers instead of none at all. Those
+ * bytes are transport, not payload: strip ONLY that leading run, at this one boundary, and never a
+ * BOM, interior whitespace, trailing bytes or anything after the first non-whitespace byte. The
+ * strict reader and the retained receipt hash therefore both see the payload the daemon meant to
+ * send (@cto 34753-probe-streaming-go.md condition 5).
+ */
+export function stripProbeKeepalivePrefix(bytes: Buffer): Buffer {
+  let at = 0
+  while (at < bytes.length) {
+    const byte = bytes[at]
+    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) break
+    at += 1
+  }
+  return at === 0 ? bytes : bytes.subarray(at)
+}
+
 export async function readRawDaemonProbeResponse(
   response: Response,
   receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
 ): Promise<ReturnType<typeof decodeCollectorDraft>> {
-  const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
+  const raw = decodeExactUtf8(stripProbeKeepalivePrefix(Buffer.from(await response.arrayBuffer())), "daemon /probe")
   const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
   if (decoded.kind === "captured" && decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
     throw new Error(`Daemon /probe subject kind ${decoded.run.subject.kind} is not term or mux`)
@@ -422,7 +405,7 @@ export async function readRetainedDaemonProbeResponse(
   | { kind: "captured"; run: CapturedRunDraft; path: string; sha256: string }
   | { kind: "empty-selection"; run: RunDraft; path: string; sha256: string }
 > {
-  const bytes = Buffer.from(await response.arrayBuffer())
+  const bytes = stripProbeKeepalivePrefix(Buffer.from(await response.arrayBuffer()))
   const retained = retainDaemonResponseBytes(bytes, options.directory)
   let decoded: Awaited<ReturnType<typeof readRawDaemonProbeResponse>>
   try {

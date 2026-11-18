@@ -1146,7 +1146,9 @@ async function startTestDaemon(
   } catch (error) {
     throw new Error(`${(error as Error).message}\nDaemon stderr:\n${stderr}`)
   }
-  return { filename, registration }
+  // 34753: a post-admission failure answers by ending the body, so its only record is the daemon's own
+  // log; expose it so a row can prove the log names the run and the draft it left behind.
+  return { filename, registration, stderr: () => stderr }
 }
 
 afterEach(async () => {
@@ -1279,8 +1281,8 @@ describe("daemon HTTP boundary", () => {
   // A generic helper test misses both serialization and the client's early non-OK rejection.
   // Only the OS command is substituted: the Darwin census, command callback, HTTP handler and
   // client are real. This fixture establishes byte custody, never a native macOS failure cause.
-  it("retains a failed census command's stderr through HTTP and client original custody (30412)", async () => {
-    const { registration } = await startTestDaemon(
+  it("ends a streamed body and keeps the failed draft when the census command fails (30412)", async () => {
+    const { registration, stderr } = await startTestDaemon(
       String.raw`
         import {mock} from "bun:test"
         import assert from "node:assert/strict"
@@ -1308,9 +1310,12 @@ describe("daemon HTTP boundary", () => {
         const processOwner={asserter:"terminfo-admin",launchRunId:registration.runId,workerPid:registration.pid,
           provider:"kitty",ownerPid:900,executablePath:"/Applications/kitty.app/Contents/MacOS/kitty",
           basis:{kind:"marker",marker:{flag:"--instance-group",value:"terminfo-"+registration.runId}},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
-        try {await requestDaemonProbe(registration,{process:processOwner})}
-        catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
-          message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
+        try {
+          const response = await requestDaemonProbe(registration,{process:processOwner})
+          const body = await response.arrayBuffer()
+          writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({streamedStatus:response.status,bodyBytes:body.byteLength}))
+        } catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
+          name:error.name,message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
       `,
       {
         TERMINFO_PROBE_HASH: "",
@@ -1323,44 +1328,46 @@ describe("daemon HTTP boundary", () => {
     )
     if (!home || !registration.token) throw new Error("Diagnostic fixture lacks its private home or daemon token")
     const privateHome = home
-    {
-      let failure: unknown
-      await vi.waitFor(
-        () => {
-          failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8"))
-        },
-        { timeout: 5000 },
-      )
-      expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
-        file: "/usr/bin/osascript",
-        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
-      })
-      expect(failure).toMatchObject({ status: 500 })
-      const directory = join(privateHome, ".terminfo-dev", "http-responses")
-      const files = readdirSync(directory).filter((name) => /^[a-f0-9]{64}$/.test(name))
-      expect(files).toHaveLength(1)
-      expect(readdirSync(directory).some((name) => name.endsWith(".json"))).toBe(true)
-      const path = join(directory, files[0]!)
-      const bytes = readFileSync(path)
-      const sha256 = createHash("sha256").update(bytes).digest("hex")
-      expect(failure).toMatchObject({ path, sha256 })
-      expect(failure).toHaveProperty("message", expect.stringContaining("HTTP 500"))
-      expect(failure).toHaveProperty("message", expect.stringContaining(path))
-      expect(failure).toHaveProperty("message", expect.stringContaining(sha256))
-      expect(files[0]).toBe(sha256)
-      const body = JSON.parse(bytes.toString())
-      expect(body).toHaveProperty("captureCommand", {
-        file: "/usr/bin/osascript",
-        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
-        stdoutBase64: "",
-        stderrBase64: Buffer.from([100, 0, 255, 10]).toString("base64"),
-        code: 17,
-        signal: null,
-        killed: false,
-      })
-      expect(bytes.toString()).not.toContain(registration.token)
+    let failure: Record<string, unknown> = {}
+    await vi.waitFor(
+      () => {
+        failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8")) as Record<string, unknown>
+      },
+      { timeout: 15_000 },
+    )
+    // The census command really ran, with the same argv the daemon used before 34753.
+    expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
+      file: "/usr/bin/osascript",
+      args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
+    })
+    // 34753: the run is admitted before the census runs, so this failure is post-header. The daemon ends the
+    // streamed body instead of answering HTTP 500, and the client fails while reading it: a 200 status alone
+    // never means a captured run (@cto 34753-probe-streaming-go.md, condition 2).
+    expect(failure).not.toHaveProperty("streamedStatus")
+    expect(failure).toMatchObject({
+      name: expect.any(String),
+      message: expect.stringMatching(/ECONNRESET|closed unexpectedly|terminated/i),
+    })
+    // No client-side receipt: a terminated body has no bytes to hash or retain.
+    expect(failure).not.toHaveProperty("sha256")
+    // Custody survives where the writer left it: one partial draft under the run's own id, and the request
+    // log names that run with its draft path (probeDraftPath) rather than dropping the failed collection.
+    const drafts = readdirSync(join(privateHome, ".terminfo-dev", "http-responses")).filter((name) =>
+      name.endsWith(".draft.json"),
+    )
+    expect(drafts).toHaveLength(1)
+    const draftPath = join(privateHome, ".terminfo-dev", "http-responses", drafts[0]!)
+    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as {
+      runId: string
+      schemaVersion: number
+      results: unknown
     }
-  })
+    expect(drafts[0]).toBe(`${draft.runId}.draft.json`)
+    expect(draft).toMatchObject({ schemaVersion: 4 })
+    expect(Array.isArray(draft.results)).toBe(true)
+    // The log names the run and its draft, so the failed collection is traceable from the daemon alone.
+    expect(stderr()).toContain(`for run ${draft.runId}, draft ${draftPath}`)
+  }, 30_000)
 
   // Carrier validation precedes source-suite loading. The old endpoint ignored
   // these bodies and tried to probe; authentication coverage did not detect that.
