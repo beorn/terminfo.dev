@@ -248,7 +248,11 @@ it("replays a marked reply failure to the live row through the retained captures
       return replyFailure("No probe reply")
     },
   }
-  const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [probe])
+  // The collector names each probe on stderr; the project's output guard refuses unasserted output.
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [probe]).finally(() =>
+    progress.mockRestore(),
+  )
   const live = batch.results[0]!
   expect(live.reason).toContain("synchronous feed and getCursor boundary")
   const session = withCallLog<LibProbeSource>(null, {
@@ -258,9 +262,11 @@ it("replays a marked reply failure to the live row through the retained captures
   const declared = declaredLibAssertionTypes(probe, session.context)
   const result = JSON.parse(JSON.stringify(probe.lib(session.context))) as ReturnType<typeof probe.lib>
   session.finish()
-  const captures = (JSON.parse(batch.rawReplies["collector.queryCaptures." + probe.id]!) as {
-    captures: { query: string; response: string }[]
-  }).captures
+  const captures = (
+    JSON.parse(batch.rawReplies["collector.queryCaptures." + probe.id]!) as {
+      captures: { query: string; response: string }[]
+    }
+  ).captures
   const attempt = live.attempt as { scope: "probe"; startedAt: string }
   expect(gradeLibRow({ probe, result, declared, attempt, captures })).toEqual(live)
   // Without the retained captures the grade loses the evidence: the input is load-bearing, not decorative.
