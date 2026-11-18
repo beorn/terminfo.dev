@@ -11,6 +11,14 @@ import {
 } from "./capture-core.ts"
 import type { ProbeCapture } from "./probes/unified.ts"
 
+/**
+ * The window census and the restore confirmation are one osascript query each and normally answer in
+ * milliseconds. They own this budget (#34892): a cold WebGPU first paint can consume the calibration
+ * paint deadline, and sharing that one budget let our own timeout kill the census, which then read back
+ * as the app's bare SIGKILL in 71 rows of run 44267909484.
+ */
+const DARWIN_CENSUS_TIMEOUT_MS = 10_000
+
 export interface DarwinWindow {
   id: number
   ownerPid: number
@@ -264,9 +272,22 @@ export async function createDarwinCapture(
    * that re-ran the size rule could follow a rival window that grew after install and record ITS name
    * beside this window's install census.
    */
-  const census = async (deadline?: number, windowId: number | undefined = targetWindowId) => {
+  const census = async (
+    step: "window census" | "restore confirmation",
+    windowId: number | undefined = targetWindowId,
+  ) => {
     const rows: unknown = JSON.parse(
-      (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
+      (
+        await command(
+          "/usr/bin/osascript",
+          ["-l", "JavaScript", "-e", CENSUS],
+          undefined,
+          Date.now() + DARWIN_CENSUS_TIMEOUT_MS,
+          undefined,
+          undefined,
+          { step, budgetMs: DARWIN_CENSUS_TIMEOUT_MS },
+        )
+      ).toString(),
     )
     const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, windowId, windowSelection)
     const { window, alpha, onscreen, sharingState, memoryUsage, name } = selected
@@ -279,7 +300,7 @@ export async function createDarwinCapture(
       ownedWindows,
     }
   }
-  const installed = await census()
+  const installed = await census("window census")
   const { name: _installedName, ...installedCensus } = installed
   const installCensus: DarwinInstallCensus = {
     ...installedCensus,
@@ -288,8 +309,8 @@ export async function createDarwinCapture(
   const { window } = installed
   await converterIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
-  const assertOwned = async (deadline?: number) => {
-    const current = await census(deadline)
+  const assertOwned = async (step: "window census" | "restore confirmation") => {
+    const current = await census(step)
     if (JSON.stringify(current.window) !== JSON.stringify(window)) {
       throw new Error(`Darwin owned window ${window.id} identity or bounds changed during capture`)
     }
@@ -312,7 +333,7 @@ export async function createDarwinCapture(
     }
   }
   const acquire = async (featureId: string, deadline?: number) => {
-    const preCapture = await assertOwned(deadline)
+    const preCapture = await assertOwned("window census")
     const run = async (args: string[]): Promise<ScreencaptureAttempt> => {
       const outputPath = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
       const attempt: ScreencaptureAttempt = {
@@ -323,9 +344,17 @@ export async function createDarwinCapture(
         stderr: Buffer.alloc(0),
       }
       try {
-        attempt.stdout = await command(attempt.file, attempt.args, undefined, deadline, (output) => {
-          attempt.stderr = output
-        })
+        attempt.stdout = await command(
+          attempt.file,
+          attempt.args,
+          undefined,
+          deadline,
+          (output) => {
+            attempt.stderr = output
+          },
+          undefined,
+          { step: "window image" },
+        )
         attempt.bytes = readFileSync(outputPath)
       } catch (cause) {
         attempt.cause = cause
@@ -381,7 +410,7 @@ export async function createDarwinCapture(
         refused,
       )
     const capturedAt = Date.now()
-    await assertOwned(deadline)
+    await assertOwned("restore confirmation")
     // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
     // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
     const convertStart = performance.now()
