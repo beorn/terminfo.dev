@@ -11,6 +11,7 @@ import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
 import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
+import { refusalSummarySentence } from '../data/prior-decision.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -21,6 +22,7 @@ const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
     selected,
     bar: aggregateCurrentResults(Object.values(selected.featureResults), selected.catalogIds),
     sources: Object.values(selected.sources),
+    refusalLines: (selected.refusals ?? []).map(refusalSummarySentence),
   }
 })
 const multipleSystems = osColumns.length > 1
@@ -38,6 +40,11 @@ const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
   return aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)
+})
+// 34691: the suite, the refused open cells and their reasons; rows with an older decision say so as history.
+const refusalLines = computed(() => {
+  const selection = selectedRun.value
+  return selection && 'refusals' in selection ? (selection.refusals ?? []).map(refusalSummarySentence) : []
 })
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 // @cto c3c2f885 condition 3: the bar names the cells whose same-suite contexts disagreed, and each row
@@ -188,6 +195,7 @@ const breadcrumbParent = (() => {
     <tbody>
       <tr><th>Supported share</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }}</td></tr>
       <tr><th>Coverage</th><td v-for="column in osColumns" :key="column.name">{{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
+      <tr v-if="osColumns.some(column => column.refusalLines.length)"><th>Refused</th><td v-for="column in osColumns" :key="column.name"><p v-for="line in column.refusalLines" :key="line">{{ line }}</p></td></tr>
       <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ [...new Set(column.sources.map(run => run.subject.version))].join(', ') }}</td></tr>
       <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in column.sources" :key="run.runId">{{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
     </tbody>
@@ -200,6 +208,7 @@ const breadcrumbParent = (() => {
   <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
   <p class="result-share-label" :title="currentCoverageSentence(measuredBar, selectedRun.catalogIds)">{{ measuredShare }}</p>
   <p>{{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
+  <p v-for="line in refusalLines" :key="line" class="refusal-summary">{{ line }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
