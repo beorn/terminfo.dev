@@ -1510,8 +1510,16 @@ const DECSSCLS_LINES_PER_SECOND = 9
 /**
  * Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry, and
  * enough of the throttled window survives the capture latency for the timing bound to be decisive.
+ *
+ * 29, not 16 (34722). 16 gave 17 scrolled lines = 1889 ms, and the target band is first read after
+ * two captures, which on the 2026-11-17 image took 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms
+ * (Cursor) on run 44200861479: every arm landed outside its own window and the row went
+ * probe-invalid, which replaces a decided `unsupported` with nothing. The window has to outlast the
+ * band read plus DECSSCLS_TIMING_MARGIN_MS, and hold the editors measured p90 per-frame cost
+ * (1.50 s) for two captures with a frame of slack. 29 rows over the screen is 30 scrolled lines,
+ * so ceil(30 / 9 * 1000) = 3334 ms and the timing bound is 3184 ms.
  */
-const DECSSCLS_OVERFLOW_ROWS = 16
+const DECSSCLS_OVERFLOW_ROWS = 29
 /**
  * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
  * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
