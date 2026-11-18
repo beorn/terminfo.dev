@@ -379,7 +379,10 @@ function loopingPlayback(phaseMs: number, captureMs: (index: number) => number) 
 }
 
 /** The run's controls, all alive, around one playback read; only playback and retry come from the fake. */
-function withControls(read: { playback: readonly [string | undefined, string | undefined]; retry: readonly [string | undefined, string | undefined] | null }) {
+function withControls(read: {
+  playback: readonly [string | undefined, string | undefined]
+  retry: readonly [string | undefined, string | undefined] | null
+}) {
   return evidence({
     playback: read.playback,
     retry: read.retry,
@@ -411,7 +414,10 @@ test("the 06:21Z capture spacings (958 ms, then 2,067 ms from the first capture)
   // The probe's own sampling, at the same capture latencies and every phase, sees the animation move.
   for (let phase = 0; phase < 2 * KITTY_GAP_MS; phase++) {
     const read = await sampleKittyPlayback(loopingPlayback(phase, latency))
-    expect({ phase, outcome: decideKittyAnimation(withControls(read)).outcome }).toEqual({ phase, outcome: "supported" })
+    expect({ phase, outcome: decideKittyAnimation(withControls(read)).outcome }).toEqual({
+      phase,
+      outcome: "supported",
+    })
   }
 })
 
@@ -442,7 +448,9 @@ test("a still image is sampled the full count and reads as an equal pair and an 
       return { regionDigest: "red" }
     },
   })
-  expect(read.samples.map((sample) => sample.digest)).toEqual(Array.from({ length: KITTY_PLAYBACK_SAMPLES }, () => "red"))
+  expect(read.samples.map((sample) => sample.digest)).toEqual(
+    Array.from({ length: KITTY_PLAYBACK_SAMPLES }, () => "red"),
+  )
   expect(read.playback).toEqual(["red", "red"])
   expect(read.retry).toEqual(["red", "red"])
   // Each sample records when its capture completed and how long it took, measured, never assumed.
