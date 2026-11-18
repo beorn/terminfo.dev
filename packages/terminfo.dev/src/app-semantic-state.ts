@@ -1747,6 +1747,8 @@ export async function readITermPromptMarks(input: {
       nonceVerification?: string
       column?: string
       history?: string | object
+      controls?: object[]
+      targets?: object[]
     } = {
       reader: "iterm2-prompt",
       nonce,
@@ -1997,33 +1999,55 @@ export async function readITermPromptMarks(input: {
     async function measureSecondaryPrompt(): Promise<AppSemanticReading> {
       // features.json osc133-p: two A controls, then bare P at row 0 col 0 and row 1 col 2. iTerm2 3.6.11
       // prompt marks are line marks (VT100ScreenMutableState setPromptStartLine writes prompt_range x 0), so a
-      // mark is read as new-or-same plus its line relative to the baseline mark's line; no column is readable.
+      // mark is read as registered-or-not plus its screen row; no column is readable.
       const cells: [number, number][] = [
         [0, 0],
         [1, 2],
       ]
       const at = ([row, column]: [number, number]) => `\x1b[${row + 1};${column + 1}H`
-      // Hosted run 44354139927: an A at the current prompt's own start is a redraw in iTerm2 3.6.11
-      // (promptDidStartAt short circuit, issue 10963) and adds no mark, so a baseline mark at row 0 col 0 hid
-      // the first control. The baseline mark sits on row 3; lines are reported as screen rows.
+      // An A at the current prompt's own start is a redraw (promptDidStartAt short circuit, issue 10963), so the
+      // baseline mark sits on row 3, away from both cells.
       const baselineRow = 3
       const plainRow: ITermPromptRow = { head: "\r\n".repeat(baselineRow), tail: () => "", feeds: [], expected: [] }
       let originLine = 0n
-      let lastId: string | undefined
-      /** Bind line numbers and mark identity to the baseline mark just read. */
+      /** Bind screen rows to the baseline mark just read. */
       const anchorAt = (read: ITermPromptRead, name: string) => {
         const range = read.status === "mark" ? read.mark.promptRange : undefined
         if (range === undefined) throw new BaselineMiss(`iTerm2 ${name} mark has no prompt range to anchor lines`)
         originLine = BigInt(range.start.y) - BigInt(baselineRow)
-        lastId = baselineId
       }
-      const position = (read: ITermPromptRead) => {
-        if (read.status !== "mark") return { mark: "prompt-unavailable" }
-        const { uniquePromptId: id, promptRange: range } = read.mark
-        const mark = id === undefined ? "absent" : id === lastId ? "same" : "new"
-        lastId = id
-        return { mark, line: range === undefined ? "absent" : Number(BigInt(range.start.y) - originLine) }
+      // GetPrompt without an id answers lastPromptMark, the prompt mark LOWEST on screen, not the newest
+      // (VT100ScreenState lastMarkMustBePrompt walks the interval tree in reverse position order; hosted runs
+      // 44354139927 and 44357053950 read marks above the baseline as "same"). Registration is therefore read as
+      // the ids ListPrompts gains across a phase, each new mark read by its id for its row.
+      type Registration = { mark: string; line?: number | string }
+      let known: string[] = []
+      const listed = async (): Promise<string[] | string> => {
+        try {
+          return await session.listPrompts()
+        } catch (error) {
+          return `ListPrompts failed: ${message(error)}`
+        }
       }
+      const registered = async (): Promise<{ projection: Registration; ids: string[] } | string> => {
+        const ids = await listed()
+        if (typeof ids === "string") return ids
+        const added = ids.filter((id) => !known.includes(id))
+        const removed = known.filter((id) => !ids.includes(id)).length
+        known = ids
+        if (removed > 0) return { projection: { mark: `removed-${removed}` }, ids: added }
+        if (added.length === 0) return { projection: { mark: "same" }, ids: [] }
+        if (added.length > 1) return { projection: { mark: `new-${added.length}` }, ids: added }
+        const read = await session.readPrompt(added[0])
+        const range = read.status === "mark" ? read.mark.promptRange : undefined
+        const line = range === undefined ? "absent" : Number(BigInt(range.start.y) - originLine)
+        return { projection: { mark: "new", line }, ids: added }
+      }
+      const blind = (why: string): AppSemanticReading => ({
+        status: "unavailable",
+        reason: `iTerm2 prompt registration cannot be read without ListPrompts (${why}); OSC 133 P cannot be graded here`,
+        detail,
+      })
       /** The fields a later write cannot move. GetPrompt fills output end from the cursor, and command and
        * directory from the session when the mark has none (PTYSession getPromptResponseForMark), so those are
        * not history. */
@@ -2039,31 +2063,48 @@ export async function readITermPromptMarks(input: {
               read.mark.outputRange?.start,
             ])
       const history = async (): Promise<Map<string, string> | string> => {
+        const ids = await listed()
+        if (typeof ids === "string") return ids
         try {
           const marks = new Map<string, string>()
-          for (const id of await session.listPrompts()) marks.set(id, stable(await session.readPrompt(id)))
+          for (const id of ids) marks.set(id, stable(await session.readPrompt(id)))
           return marks
         } catch (error) {
           return message(error)
         }
       }
-      if ((await baseline("baseline", plainRow)) === undefined) return unavailableBaseline
-      anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "baseline")
-      const start = { mark: "same", line: baselineRow }
-      const unknown = position((await phase("unknown", osc("133;Z"))).read)
+      const rebind = async (name: string) => {
+        if ((await baseline(name, plainRow)) === undefined) return false
+        anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, name)
+        const ids = await listed()
+        if (typeof ids === "string") return ids
+        known = ids
+        return true
+      }
+      const first = await rebind("baseline")
+      if (first === false) return unavailableBaseline
+      if (typeof first === "string") return blind(first)
+      const start: Registration = { mark: "same" }
+      await phase("unknown", osc("133;Z"))
+      const unknown = await registered()
+      if (typeof unknown === "string") return blind(unknown)
       // A corrupt control is invalid whatever P later does; the grader only sees it on the measured path.
-      if (JSON.stringify(unknown) !== JSON.stringify(start)) {
+      if (JSON.stringify(unknown.projection) !== JSON.stringify(start)) {
         return {
           status: "invalid",
-          reason: `iTerm2 unknown OSC 133 Z moved the prompt mark (${JSON.stringify(unknown)}); controls failed in this row`,
+          reason: `iTerm2 unknown OSC 133 Z changed the prompt marks (${JSON.stringify(unknown.projection)}); controls failed in this row`,
           detail,
         }
       }
-      const controls: { mark: string; line?: number | string }[] = []
+      const controls: Registration[] = []
       for (const [index, cell] of cells.entries()) {
-        controls.push(position((await phase(`control-133-a-${index}`, at(cell) + osc("133;A"))).read))
+        await phase(`control-133-a-${index}`, at(cell) + osc("133;A"))
+        const control = await registered()
+        if (typeof control === "string") return blind(control)
+        controls.push(control.projection)
       }
       detail.column = "not observable: iTerm2 3.6.11 prompt marks are line marks (prompt_range x is always 0)"
+      detail.controls = controls
       // An A control that registers no mark leaves the reader blind here: unavailable, never unsupported.
       if (!controls.every((control) => control.mark === "new")) {
         return {
@@ -2072,22 +2113,20 @@ export async function readITermPromptMarks(input: {
           detail,
         }
       }
-      if ((await baseline("rebaseline", plainRow)) === undefined) return unavailableBaseline
-      anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "rebaseline")
+      const again = await rebind("rebaseline")
+      if (again === false) return unavailableBaseline
+      if (typeof again === "string") return blind(again)
       const before = await history()
-      const priors: object[] = []
-      const targets: { mark: string; line?: number | string }[] = []
-      const targetIds: (string | undefined)[] = []
+      const targets: Registration[] = []
+      const targetIds: string[] = []
       for (const [index, cell] of cells.entries()) {
-        priors.push({
-          mark: "same",
-          line: targets.findLast((target) => target.mark === "new")?.line ?? baselineRow,
-        })
-        const read = (await phase(`target-133-p-${index}`, at(cell) + osc("133;P"))).read
-        const target = position(read)
-        targets.push(target)
-        if (target.mark === "new" && read.status === "mark") targetIds.push(read.mark.uniquePromptId)
+        await phase(`target-133-p-${index}`, at(cell) + osc("133;P"))
+        const target = await registered()
+        if (typeof target === "string") return blind(target)
+        targets.push(target.projection)
+        targetIds.push(...target.ids)
       }
+      detail.targets = targets
       const after = await history()
       let preserved: string
       if (typeof before === "string" || typeof after === "string") {
@@ -2101,7 +2140,7 @@ export async function readITermPromptMarks(input: {
       }
       // Supported needs a new mark at each exact target cell. A line mark matching its A control's line cannot
       // show the column, so any P movement stays a TODO (@cto osc133p-r2 clarification); only a P that added
-      // nothing is graded, without claiming history was read when it was not.
+      // nothing is graded.
       if (targets.some((target) => target.mark !== "same")) {
         return {
           status: "unavailable",
@@ -2109,18 +2148,19 @@ export async function readITermPromptMarks(input: {
           detail,
         }
       }
+      const unmoved = { marks: cells.map(() => start), history: "unchanged" }
       return {
         status: "measured",
         reader: "state",
         runId: input.runId,
-        unknown: { before: JSON.stringify(start), after: JSON.stringify(unknown) },
+        unknown: { before: JSON.stringify(start), after: JSON.stringify(unknown.projection) },
         handled: {
-          before: JSON.stringify(cells.map(() => ({ mark: "same" }))),
+          before: JSON.stringify(cells.map(() => start)),
           after: JSON.stringify(controls.map(({ mark }) => ({ mark }))),
           expected: JSON.stringify(cells.map(() => ({ mark: "new" }))),
         },
         target: {
-          before: JSON.stringify({ marks: priors, history: preserved === "not observed" ? preserved : "unchanged" }),
+          before: JSON.stringify(unmoved),
           after: JSON.stringify({ marks: targets, history: preserved }),
           expected: JSON.stringify({
             marks: controls.map(({ line }) => ({ mark: "new", line })),

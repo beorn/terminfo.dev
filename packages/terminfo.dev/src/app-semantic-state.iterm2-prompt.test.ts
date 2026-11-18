@@ -195,7 +195,13 @@ function fakeITerm(
       return marks.map((mark) => mark.id)
     },
     readPrompt: async (id?: string): Promise<ITermPromptRead> => {
-      const last = id === undefined ? marks.at(-1) : marks.find((mark) => mark.id === id)
+      // 3.6.11 lastPromptMark is the prompt mark lowest on screen, not the newest (VT100ScreenState
+      // lastMarkMustBePrompt walks the interval tree in reverse position order); a tie goes to the newer mark.
+      const lowest = marks.reduce<(typeof marks)[number] | undefined>(
+        (low, mark) => (low === undefined || mark.line >= low.line ? mark : low),
+        undefined,
+      )
+      const last = id === undefined ? lowest : marks.find((mark) => mark.id === id)
       if (!last) return { status: "prompt-unavailable" }
       const mark: ITermPromptMark = {
         uniquePromptId: last.id,
@@ -326,6 +332,8 @@ test("osc133-p marks where each A control's mark landed stay a TODO, never Suppo
   expect(detail?.column).toContain("line marks")
 })
 
+// Both controls land above the baseline mark (rows 0 and 2 against row 3), where GetPrompt's last mark never
+// shows them (hosted run 44357053950); the ListPrompts diff still sees each one.
 test("osc133-p is unsupported when both A controls register and P adds no mark", async () => {
   const iterm = fakeITerm()
   const reading = await iterm.read("extensions.osc133-p")
@@ -348,34 +356,38 @@ test.each([false, true])(
   async (secondaryP) => {
     const reading = await fakeITerm({ zAddsMark: true, secondaryP }).read("extensions.osc133-p")
     expect(reading).toMatchObject({ status: "invalid" })
-    expect(reading.status === "invalid" && reading.reason).toContain("unknown OSC 133 Z moved the prompt mark")
+    expect(reading.status === "invalid" && reading.reason).toContain("unknown OSC 133 Z changed the prompt marks")
     expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-invalid")
   },
 )
 
 // A P that adds no mark but deletes or rewrites an earlier mark moved something: unresolved, never Unsupported.
-test.each(["delete", "change"] as const)(
-  "osc133-p that adds no mark but %ss an earlier prompt mark stays unresolved",
-  async (pHistory) => {
-    const reading = await fakeITerm({ pHistory }).read("extensions.osc133-p")
-    expect(decided(reading), JSON.stringify(reading)).toBe(
-      "pending probe-todo: App semantic target changed to an unexpected state",
-    )
-    expect(stateOf(reading).detail).toMatchObject({ history: { added: 0, preserved: "changed" } })
+// A deleted id is seen at the target itself; a rewritten mark only in the history comparison.
+test("osc133-p that adds no mark but deletes an earlier prompt mark stays a TODO", async () => {
+  const reading = await fakeITerm({ pHistory: "delete" }).read("extensions.osc133-p")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  expect(reading.status === "unavailable" && reading.reason).toContain('"mark":"removed-1"')
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
+
+test("osc133-p that adds no mark but rewrites an earlier prompt mark stays unresolved", async () => {
+  const reading = await fakeITerm({ pHistory: "change" }).read("extensions.osc133-p")
+  expect(decided(reading), JSON.stringify(reading)).toBe(
+    "pending probe-todo: App semantic target changed to an unexpected state",
+  )
+  expect(stateOf(reading).detail).toMatchObject({ history: { added: 0, preserved: "changed" } })
+})
+
+// Registration is read from ListPrompts, so without it neither a positive nor a negative is graded.
+test.each([false, true])(
+  "osc133-p without ListPrompts grades nothing (P registers: %s)",
+  async (secondaryP) => {
+    const reading = await fakeITerm({ secondaryP, noHistory: true }).read("extensions.osc133-p")
+    expect(reading).toMatchObject({ status: "unavailable" })
+    expect(reading.status === "unavailable" && reading.reason).toContain("cannot be read without ListPrompts")
+    expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
   },
 )
-
-test("osc133-p with unreadable history never grades a positive and names the history it lacked", async () => {
-  const positive = await fakeITerm({ secondaryP: true, noHistory: true }).read("extensions.osc133-p")
-  expect(positive).toMatchObject({ status: "unavailable" })
-  expect(positive.status === "unavailable" && positive.reason).toContain("history not observed")
-  expect(gradeAppSemanticState(positive).tests?.[0]?.status).toBe("probe-todo")
-  // A P that added nothing is still Unsupported, and the reading says history was not observed.
-  const negative = await fakeITerm({ noHistory: true }).read("extensions.osc133-p")
-  expect(decided(negative), JSON.stringify(negative)).toBe(false)
-  expect(stateOf(negative).detail).toMatchObject({ history: expect.stringContaining("not observed") })
-  expect(JSON.parse(stateOf(negative).target.after)).toMatchObject({ history: "not observed" })
-})
 
 // @dev/review2 7551f8f9: a session that never reports its fence (SetUserVar not seen on a real 3.6.11)
 // is reported by the phase that failed, with the phase log kept; the restore still runs and its own
