@@ -650,6 +650,8 @@ export interface HeldViewportFrame {
   readonly capturedAt: number
   readonly regionDigest: string
   readonly regionRectangle: CaptureRectangle
+  /** The frame the capture record stored: held crops are `target`, bottom references `control`. */
+  readonly recorded: ObservationFrame
 }
 
 /** The trace bracket around the hold and its observation: one per read. */

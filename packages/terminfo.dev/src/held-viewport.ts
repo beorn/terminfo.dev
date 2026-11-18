@@ -6,6 +6,7 @@ import type {
   HeldViewportFrame,
   HeldViewportReading,
   HeldViewportUnavailable,
+  ObservationFrame,
   ReadHeldViewport,
   ViewportScroll,
 } from "@terminfo/probe-defs"
@@ -23,7 +24,7 @@ export interface HeldViewportGeometry {
 
 /** One raw capture through the existing record route: the recorded result's identity and its decoded bytes. */
 export interface RecordedRawFrame {
-  readonly recorded: { readonly ref: string; readonly capturedAt: number }
+  readonly recorded: ObservationFrame
   readonly decoded: CapturedFrame
 }
 
@@ -34,7 +35,7 @@ export interface HeldViewportReaderOptions {
   /** Undefined until calibration settles an origin for this row. */
   readonly geometry: () => HeldViewportGeometry | undefined
   /** Takes and records one raw frame; the adapter asserts window ownership before and after it. */
-  readonly captureRaw: (label: string, deadline: number) => Promise<RecordedRawFrame>
+  readonly captureRaw: (label: string, deadline: number, role: ObservationFrame["role"]) => Promise<RecordedRawFrame>
   /** The live TTY trace mark of the row this read runs in (tty.ts currentTTYTraceMark). */
   readonly mark: () => TTYTraceMark | undefined
   readonly timeoutMs: number
@@ -159,11 +160,15 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
     const inTime = (step: string) => {
       if (now() > deadline) throw new Stop("deadline", `the ${options.timeoutMs}ms read deadline passed before ${step}`)
     }
-    const crop = async (step: string, geometry: HeldViewportGeometry): Promise<Cropped> => {
+    const crop = async (
+      step: string,
+      geometry: HeldViewportGeometry,
+      role: ObservationFrame["role"] = "control",
+    ): Promise<Cropped> => {
       inTime(step)
       let raw: RecordedRawFrame
       try {
-        raw = await options.captureRaw(`${label}: ${step}`, deadline)
+        raw = await options.captureRaw(`${label}: ${step}`, deadline, role)
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause)
         throw new Stop(/identity or bounds changed/.test(message) ? "geometry-changed" : "capture-failed", message)
@@ -174,6 +179,7 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
         capturedAt: raw.recorded.capturedAt,
         regionDigest: cut.digest,
         regionRectangle: cut.rectangle,
+        recorded: raw.recorded,
       }
       frames.push(frame)
       return { frame, rows: cut.rows, geometry: JSON.stringify(geometry) }
@@ -224,8 +230,8 @@ export function createHeldViewportReader(options: HeldViewportReaderOptions): Re
           throw new Stop("route-rejected", cause instanceof Error ? cause.message : String(cause))
         }
       }
-      const first = await crop("held crop 1", geometry)
-      const second = await crop("held crop 2", geometry)
+      const first = await crop("held crop 1", geometry, "target")
+      const second = await crop("held crop 2", geometry, "target")
       const m1 = options.mark()
       if (!m1 || m1.abandoned) throw new Stop("trace-abandoned", "the row was abandoned at its wall")
       if (m1.unsettled > 0) {

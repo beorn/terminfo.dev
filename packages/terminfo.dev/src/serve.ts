@@ -836,8 +836,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
        * timeout, and recorded so the artifact can account for it. Calibration uses it to confirm
        * geometry; each sentinel read uses it for the frame taken BEFORE its paint (33981).
        */
-      const captureRawRecorded = async (featureId: string, label: string, deadline: number) => {
-        const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
+      const captureRawRecorded = async (
+        featureId: string,
+        label: string,
+        deadline: number,
+        role: ObservationFrame["role"] = "control",
+      ) => {
+        const result = await adapter.captureRaw({ featureId, role, label }, deadline)
         frameRecord?.(result.result)
         return result
       }
@@ -988,9 +993,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                     window: `darwin window ${heldWindow}`,
                   }
                 },
-                captureRaw: async (label, deadline) => {
-                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline)
-                  return { recorded: { ref: result.frame.ref, capturedAt: result.frame.capturedAt }, decoded }
+                captureRaw: async (label, deadline, role) => {
+                  const { result, decoded } = await captureRawRecorded(featureId, label, deadline, role)
+                  return { recorded: result.frame, decoded }
                 },
                 mark: currentTTYTraceMark,
                 timeoutMs: DEFAULT_TIMEOUT_MS,
