@@ -1511,17 +1511,19 @@ const DECSSCLS_LINES_PER_SECOND = 9
  * Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry, and
  * enough of the throttled window survives the capture latency for the timing bound to be decisive.
  *
- * 29, not 16 (34722). 16 gave 17 scrolled lines = 1889 ms, and the target band is first read after
- * two captures, which on the 2026-11-17 image took 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms
- * (Cursor) on run 44200861479: every arm landed outside its own window and the row went
- * probe-invalid, which replaces a decided `unsupported` with nothing. The window has to outlast the
- * band read plus DECSSCLS_TIMING_MARGIN_MS, and hold the editors measured p90 per-frame cost
- * (1.50 s) for two captures with a frame of slack. 29 rows over the screen is 30 scrolled lines,
- * so ceil(30 / 9 * 1000) = 3334 ms and the timing bound is 3184 ms.
+ * 34 (34641; sizing record 34722, which set 29). 16 gave 17 scrolled lines = 1889 ms, and the target band is
+ * first read after two captures: 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms (Cursor) on run 44200861479,
+ * and 3044 ms (VS Code) on run 44197283015, the slowest in any hosted run (@dev/11,
+ * /hh/var/@dev11/IMAGE-LATENCY-WINDOWS-2026-11-17.md). A read outside the window replaces a decided
+ * `unsupported` with nothing. Sized like this family's walls, with 20 percent over the slowest read:
+ * 3044 x 1.2 + DECSSCLS_TIMING_MARGIN_MS = 3803 ms, so 35 scrolled lines: ceil(35 / 9 * 1000) = 3889 ms, bound
+ * 3739 ms. At 29 (bound 3184 ms) the slowest read cleared by 140 ms, less than the margin itself. The probe has no
+ * declared wall; its slowest measured span, 14.9 s, grows by the 2.0 s of extra settle to about 16.9 s of the
+ * 30 s default.
  */
-const DECSSCLS_OVERFLOW_ROWS = 29
+const DECSSCLS_OVERFLOW_ROWS = 34
 /**
- * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
+ * The marker band is authored this many lines before the burst's last line. The burst runs DECSSCLS_OVERFLOW_ROWS lines
  * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
  * before the last settles the band at screen row `rows - 8`: above the cursor, inside the witness.
  */

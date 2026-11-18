@@ -3349,8 +3349,8 @@ test("modes.decsscls does not grade unsupported when an honoring first frame lan
       }),
     )
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
-    // 24 rows leave 30 scrolled lines: ceil(30 / 9 * 1000) = 3334 ms, bound 3184 ms, so 1.5 s is inside it.
-    expect(result.response).toContain('"timingBoundMs":3184')
+    // 24 rows leave 35 scrolled lines: ceil(35 / 9 * 1000) = 3889 ms, bound 3739 ms, so 1.5 s is inside it.
+    expect(result.response).toContain('"timingBoundMs":3739')
   })
 })
 
@@ -3378,6 +3378,30 @@ test("modes.decsscls decides when the target band arrives at the slowest measure
   )
 })
 
+test("modes.decsscls decides with 20 percent headroom over the slowest band read in any hosted run (34641)", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  // The slowest first-band read across every hosted run is 3044 ms (VS Code, run 44197283015; @dev/11's record
+  // /hh/var/@dev11/IMAGE-LATENCY-WINDOWS-2026-11-17.md). Under the 20 percent rule this family sizes walls by, the
+  // window must still decide at 3044 x 1.2 = 3653 ms; at 29 overflow rows (bound 3184 ms) it graded inconclusive.
+  await withDecssclsClock(
+    40,
+    1500,
+    async () => {
+      const result = await decsscls().term!(
+        decssclsSource(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+          cells: ["jump", "jump", "slow-t0", "slow-t1"],
+          band: ["present", "present", "absent", "present"],
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+      expect(result.response).toContain('"targetFirstBandElapsedMs":3653')
+      expect(result.response).not.toContain("outside the")
+    },
+    3653,
+  )
+})
+
 test("modes.decsscls stays inconclusive when only the target band capture lands outside the throttled window", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
@@ -3396,16 +3420,16 @@ test("modes.decsscls stays inconclusive when only the target band capture lands 
         reason: "insufficient-evidence",
         assertionType: "screenshot",
       })
-      expect(result.observation?.note).toContain("outside the 3334 ms throttled window")
+      expect(result.observation?.note).toContain("outside the 3889 ms throttled window")
       // The witness frame landed early; only the band capture is late, so a band present there
       // cannot be placed inside the window and must not grade unsupported on the earlier time.
       expect(result.response).toContain('"targetFirstElapsedMs":40')
-      expect(result.response).toContain('"targetFirstBandElapsedMs":3300')
+      expect(result.response).toContain('"targetFirstBandElapsedMs":3800')
       expect(result.assertions).toBeUndefined()
     },
-    // 3300 sits between the 3184 ms bound and the 3334 ms window: late enough that the band cannot be
+    // 3800 sits between the 3739 ms bound and the 3889 ms window: late enough that the band cannot be
     // placed inside the window, early enough that the phase still ends before the throttle does (34722).
-    3300,
+    3800,
   )
 })
 
