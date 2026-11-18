@@ -246,7 +246,7 @@ test.each(modes)("physical read requires an exact stable TTY: %s", async (mode) 
 // 34570 (@cto REVISE-1 R4): a prompt read keeps proto2 presence and names each status. An absent
 // prompt_state is absent, never the EDITING default; PROMPT_UNAVAILABLE (3) is a result, while
 // SESSION_NOT_FOUND (1) and REQUEST_MALFORMED (2) are distinct named failures, never one generic refusal.
-test("a prompt read keeps field presence and names each status", async () => {
+test("a prompt read keeps field presence, including command and directory, and names each status", async () => {
   fixture.home = mkdtempSync("/var/tmp/i-")
   directories.push(fixture.home)
   const socket = join(fixture.home, "Library/Application Support/iTerm2/private/socket")
@@ -265,8 +265,10 @@ test("a prompt read keeps field presence and names each status", async () => {
       prompt_range: range(7),
       command_range: range(7),
       output_range: range(8),
+      working_directory: "/terminfo-directory",
+      command: "terminfo-command",
     },
-    { status: 0, unique_prompt_id: "mark-2" },
+    { status: 0, unique_prompt_id: "mark-2", command: "" },
     { status: 3 },
     { status: 1 },
     { status: 2 },
@@ -332,10 +334,13 @@ test("a prompt read keeps field presence and names each status", async () => {
           promptRange: { start: { x: 0, y: "7" }, end: { x: 4, y: "7" } },
           commandRange: { start: { x: 0, y: "7" }, end: { x: 4, y: "7" } },
           outputRange: { start: { x: 0, y: "8" }, end: { x: 4, y: "8" } },
+          workingDirectory: "/terminfo-directory",
+          command: "terminfo-command",
         },
       },
-      // Absent prompt_state, ranges and exit status stay absent: no EDITING default, no invented range.
-      { status: "mark", mark: { uniquePromptId: "mark-2" } },
+      // Absent prompt_state, ranges, exit status and directory stay absent: no EDITING default, no invented
+      // range. An empty command is present text, never absent (34866).
+      { status: "mark", mark: { uniquePromptId: "mark-2", command: "" } },
       { status: "prompt-unavailable" },
     ])
     expect(promptRequests).toEqual([{ session: "owned" }, { session: "owned" }, { session: "owned" }])

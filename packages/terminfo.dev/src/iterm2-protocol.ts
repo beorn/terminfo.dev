@@ -321,6 +321,10 @@ export interface ITermPromptMark {
   commandRange?: ITermCoordRange
   outputRange?: ITermCoordRange
   exitStatus?: number
+  /** The mark's command, or the current command line (v3.6.11 PTYSession GetPrompt). Empty text is kept, never absent. */
+  command?: string
+  /** The directory recorded at the prompt line, or the session's last directory. A path, passed through unchanged. */
+  workingDirectory?: string
 }
 
 /**
@@ -379,6 +383,16 @@ function iTermPromptReadOf(response: Record<string, unknown>): ITermPromptRead {
       throw new Error("get_prompt_response exit_status is not an integer")
     }
     mark.exitStatus = response.exit_status as number
+  }
+  // 34866 (@cto 34866-osc633-controls-r1 item 2): command and working_directory keep presence too.
+  for (const [wire, field] of [
+    ["command", "command"],
+    ["working_directory", "workingDirectory"],
+  ] as const) {
+    const value = response[wire]
+    if (value === undefined) continue
+    if (typeof value !== "string") throw new Error(`get_prompt_response ${wire} is not text`)
+    mark[field] = value
   }
   return { status: "mark", mark }
 }

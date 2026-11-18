@@ -1545,7 +1545,7 @@ export function weztermHyperlinkText(rows: readonly string[]): string {
     .replaceAll("\x1b(B", "")
 }
 
-/** The OSC 133 prompt rows the iTerm2 prompt-mark reader answers (34570). */
+/** The prompt rows the iTerm2 prompt-mark reader answers (34570; the OSC 633 rows 34866). */
 export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
   "extensions.osc133-a",
   "extensions.osc133-b",
@@ -1553,6 +1553,13 @@ export const ITERM_PROMPT_FEATURES: ReadonlySet<string> = new Set([
   "extensions.osc133-d",
   "extensions.osc133-p",
   "extensions.semantic-prompts",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc633-e",
+  "extensions.osc633-p",
+  "extensions.osc-633-vscode",
 ])
 
 const promptOsc = (value: string) => `\x1b]${value}\x07`
@@ -1572,10 +1579,13 @@ const EDITING_NEW = { mark: "new", state: "EDITING", command: "unset", output: "
  * each. B is the command-entry boundary (command range set, still EDITING), C begins execution (output
  * start set, RUNNING), D;17 finishes with that code (iTerm2 3.6.11 PTYSession getPromptResponseForMark).
  */
-const ITERM_PROMPT_ROWS: Record<
-  string,
-  { tail: (nonce: string) => string; from?: object; feeds: ((nonce: string) => string)[]; expected: object[] }
-> = {
+type ITermPromptRow = {
+  tail: (nonce: string) => string
+  from?: object
+  feeds: ((nonce: string) => string)[]
+  expected: object[]
+}
+const ITERM_PROMPT_ROWS: Record<string, ITermPromptRow> = {
   "extensions.osc133-a": { tail: () => "", feeds: [() => promptOsc("133;A")], expected: [EDITING_NEW] },
   "extensions.osc133-b": {
     tail: () => promptOsc("133;A") + ITERM_PROMPT_TEXT,
@@ -1619,18 +1629,46 @@ const ITERM_PROMPT_ROWS: Record<
 }
 
 /**
+ * 34866 (@cto 34866-osc633-controls-r1 item 1): each OSC 633 mark row runs its OSC 133 counterpart from the
+ * same start as the positive control, so the control moves the very projection the target is graded on; the
+ * start is then rebuilt and checked before the 633 feed. The target is the counterpart's feed with 133
+ * replaced by 633, letter for letter; the start is built with 133 as the counterpart's own row builds it.
+ */
+const ITERM_633_COUNTERPARTS: Record<string, string> = {
+  "extensions.osc633-a": "extensions.osc133-a",
+  "extensions.osc633-b": "extensions.osc133-b",
+  "extensions.osc633-c": "extensions.osc133-c",
+  "extensions.osc633-d": "extensions.osc133-d",
+  "extensions.osc-633-vscode": "extensions.semantic-prompts",
+}
+const as633 = (feed: string) => feed.replaceAll("\x1b]133;", "\x1b]633;")
+
+/** Directory and command values the reader wrote itself are kept; any other value is logged by digest only. */
+const ITERM_FIXTURE_TEXT = /^\/?terminfo-[A-Za-z0-9-]+$/
+
+/**
  * One controlled iTerm2 prompt-mark observation per row (34570, @cto REVISE-1 R2-R5). Each phase writes its
  * feed plus an OSC 1337 SetUserVar fence, waits until the session reports that fence, then takes a FRESH
  * GetPrompt read of the session's last prompt mark; no row borrows another row's read. A read is projected
  * to the fields a row can change, with the mark named relative to the baseline mark: `same`, `new` or
- * `absent` (never an absolute id or row). The handled control is the fence variable itself, as Kitty's is
- * its title. OSC 133;P has no handler in iTerm2 3.6.11 (PromptStateMachine handles A/B/C/D only) and no
- * prompt field, so its row stays unresolved rather than certified by another letter (R3).
+ * `absent` (never an absolute id or row). The OSC 133 rows' handled control is the fence variable itself, as
+ * Kitty's is its title. OSC 133;P has no handler in iTerm2 3.6.11 (PromptStateMachine handles A/B/C/D only)
+ * and no prompt field, so its row stays unresolved rather than certified by another letter (R3).
+ *
+ * The OSC 633 rows (34866) need a control that moves the graded projection, so a fence alone never
+ * qualifies them: A-D and the composite take their 133 counterpart; E takes typed command text against
+ * GetPrompt's command field; P keeps the Cwd criterion, two OSC 7 controls and two distinct Cwd targets on
+ * GetPrompt's working directory, compared exactly. An inert control is unavailable, never unsupported.
  */
 export async function readITermPromptMarks(input: {
   featureId: string
   runId: string
   write: (text: string) => void | Promise<void>
+  /**
+   * The owner's private TTY writer. Only P's restoration uses it: that feed carries the session's own
+   * directory, which must stay out of the probe source's publishable write trace (CTO6a2de139).
+   */
+  privateWrite?: (text: string) => void | Promise<void>
   /** Opens the owned session's prompt API for one row; only rows that read anything open it. */
   withSession: (work: (session: ITermPromptSession) => Promise<AppSemanticReading>) => Promise<AppSemanticReading>
 }): Promise<AppSemanticReading> {
@@ -1641,13 +1679,44 @@ export async function readITermPromptMarks(input: {
         "iTerm2 3.6.11 has no OSC 133 P handler (PromptStateMachine handles A, B, C and D only) and its prompt API has no field that could observe P; unresolved",
     }
   }
+  if (input.featureId === "extensions.osc633-p" && input.privateWrite === undefined) {
+    return {
+      status: "invalid",
+      reason: "iTerm2 OSC 633 P needs the owner's private writer to restore the session's directory",
+    }
+  }
+  const counterpart = ITERM_633_COUNTERPARTS[input.featureId]
+  const markRow = ITERM_PROMPT_ROWS[counterpart ?? input.featureId]
+  if (markRow === undefined && input.featureId !== "extensions.osc633-e" && input.featureId !== "extensions.osc633-p") {
+    throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
+  }
   return input.withSession(async (session) => {
-    const osc = (value: string) => `\x1b]${value}\x07`
+    const osc = promptOsc
     const nonce = randomUUID().slice(0, 8)
     const phases: object[] = []
-    const detail = { reader: "iterm2-prompt", nonce, phases }
+    const detail: { reader: string; nonce: string; phases: object[]; nonceVerification?: string } = {
+      reader: "iterm2-prompt",
+      nonce,
+      phases,
+    }
     let baselineId: string | undefined
     let serial = 0
+    const digest = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 16)
+    /** A command or directory the reader did not write is shown by digest, never as text. */
+    const shown = (value: string | undefined) =>
+      value === undefined ? undefined : ITERM_FIXTURE_TEXT.test(value) ? value : `private-sha256:${digest(value)}`
+    const logged = (read: ITermPromptRead): ITermPromptRead => {
+      if (read.status !== "mark") return read
+      const { command, workingDirectory, ...mark } = read.mark
+      return {
+        status: "mark",
+        mark: {
+          ...mark,
+          ...(command !== undefined && { command: shown(command) }),
+          ...(workingDirectory !== undefined && { workingDirectory: shown(workingDirectory) }),
+        },
+      }
+    }
     const describe = (read: ITermPromptRead) => {
       if (read.status === "prompt-unavailable") return { mark: "prompt-unavailable" }
       const { mark } = read
@@ -1660,9 +1729,14 @@ export async function readITermPromptMarks(input: {
       }
     }
     let current = "first"
-    const phase = async (name: string, feed: string, fence = `terminfo-${nonce}-${serial++}`) => {
+    const phase = async (
+      name: string,
+      feed: string,
+      fence = `terminfo-${nonce}-${serial++}`,
+      route: { write: (text: string) => void | Promise<void>; shownFeed?: string } = { write: input.write },
+    ) => {
       current = name
-      await input.write(feed + osc(`1337;SetUserVar=terminfo_fence=${Buffer.from(fence).toString("base64")}`))
+      await route.write(feed + osc(`1337;SetUserVar=terminfo_fence=${Buffer.from(fence).toString("base64")}`))
       const observed = await untilAppSemanticRead(
         async () => String(await session.readUserVariable("terminfo_fence")),
         (value) => value === fence,
@@ -1670,28 +1744,86 @@ export async function readITermPromptMarks(input: {
         phases,
       )
       const read = await session.readPrompt()
-      phases.push({ name, feed, fence: observed, read })
+      phases.push({ name, feed: route.shownFeed ?? feed, fence: observed, read: logged(read) })
       return { read, fence: observed }
     }
     const finished =
       osc("133;A") + ITERM_PROMPT_TEXT + osc("133;B") + itermCommand(nonce) + osc("133;C") + "\r\n" + osc("133;D;0")
+    const clear = "\x1b[2J\x1b[3J\x1b[H"
+    const finishedMark = { mark: "same", state: "FINISHED", command: "set", output: "set", exit: 0 }
     const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
-    // A failed phase is reported by its own name with the phase log kept, and the restore still runs.
-    // A restore failure is appended to that report, never put in its place (@dev/review2 7551f8f9).
+    const unavailableBaseline: AppSemanticReading = {
+      status: "unavailable",
+      reason:
+        "iTerm2 answered PROMPT_UNAVAILABLE after the baseline OSC 133 sequence: the session has no prompt mark (the API's own status, not proof shell integration is absent)",
+      detail,
+    }
+    /** Clear, finish one mark, append the row's tail; the fresh baseline mark names every later read. */
+    const baseline = async (name: string, row: ITermPromptRow) => {
+      const read = await phase(name, clear + finished + row.tail(nonce))
+      if (read.read.status === "prompt-unavailable") return undefined
+      baselineId = read.read.mark.uniquePromptId
+      const start = describe(read.read)
+      // The row's experiment holds only from its assumed starting mark. A baseline that did not reach it
+      // is reported, never graded: a target compared against the wrong start could read as unsupported.
+      if (JSON.stringify(start) !== JSON.stringify(row.from ?? finishedMark)) {
+        throw new BaselineMiss(
+          `iTerm2 prompt mark did not reach this row's ${name} ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(start)}`,
+        )
+      }
+      return start
+    }
+    /** P's initial directory, kept only to restore it; never logged or returned as text. */
+    let initialDirectory: string | undefined
+    let directoryMoved = false
     let reading: AppSemanticReading
     try {
-      reading = await measureRow()
+      reading =
+        input.featureId === "extensions.osc633-e"
+          ? await measureCommandText()
+          : input.featureId === "extensions.osc633-p"
+            ? await measureDirectory()
+            : counterpart !== undefined && markRow !== undefined
+              ? await measureCounterpart(markRow)
+              : await measureRow(markRow as ITermPromptRow)
     } catch (error) {
       reading = {
         status: "invalid",
-        reason: `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`,
+        reason:
+          error instanceof BaselineMiss
+            ? error.message
+            : `iTerm2 prompt read failed in the ${current} phase: ${message(error)}`,
         detail,
       }
     }
+    const restoreFailures: string[] = []
+    if (directoryMoved && initialDirectory !== undefined) {
+      // 34866 (@cto r1 item 3): 133;D;0 and a clear do not restore a directory; OSC 7 to the initial value
+      // does, through the private writer, and the fresh prompt line must read that value back exactly.
+      const initial = initialDirectory
+      try {
+        const restored = await phase(
+          "directory-restored",
+          osc(`7;file://localhost${pathToFileURL(initial).pathname}`) + "\r\n" + osc("133;A") + ITERM_PROMPT_TEXT,
+          `terminfo-${nonce}-directory-restored`,
+          {
+            write: input.privateWrite as (text: string) => void | Promise<void>,
+            shownFeed: "OSC 7 to the initial directory (private)",
+          },
+        )
+        const value = restored.read.status === "mark" ? restored.read.mark.workingDirectory : undefined
+        if (value !== initial) restoreFailures.push(`the directory read back as ${String(shown(value))}`)
+      } catch (error) {
+        restoreFailures.push(`restoring the directory failed: ${message(error)}`)
+      }
+    }
     try {
-      await phase("restored", osc("133;D;0") + "\x1b[2J\x1b[3J\x1b[H", `terminfo-${nonce}-restored`)
+      await phase("restored", osc("133;D;0") + clear, `terminfo-${nonce}-restored`)
     } catch (error) {
-      const restore = `restoring the session failed: ${message(error)}`
+      restoreFailures.push(`restoring the session failed: ${message(error)}`)
+    }
+    if (restoreFailures.length > 0) {
+      const restore = restoreFailures.join("; ")
       // Any unsuccessful reading, thrown or returned, keeps its own reason first (@cto 5a892117).
       const primary = reading.status === "measured" ? undefined : reading.reason
       reading = {
@@ -1702,34 +1834,10 @@ export async function readITermPromptMarks(input: {
     }
     return reading
 
-    async function measureRow(): Promise<AppSemanticReading> {
-      const baseline = await phase(
-        "baseline",
-        "\x1b[2J\x1b[3J\x1b[H" + finished + (ITERM_PROMPT_ROWS[input.featureId]?.tail(nonce) ?? ""),
-      )
-      if (baseline.read.status === "prompt-unavailable") {
-        return {
-          status: "unavailable",
-          reason:
-            "iTerm2 answered PROMPT_UNAVAILABLE after the baseline OSC 133 sequence: the session has no prompt mark (the API's own status, not proof shell integration is absent)",
-          detail,
-        }
-      }
-      baselineId = baseline.read.mark.uniquePromptId
-      const finishedMark = { mark: "same", state: "FINISHED", command: "set", output: "set", exit: 0 }
-      const row = ITERM_PROMPT_ROWS[input.featureId]
-      if (!row) throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
-      // The row's experiment holds only from its assumed starting mark. A baseline that did not reach it
-      // is reported, never graded: a target compared against the wrong start could read as unsupported.
+    async function measureRow(row: ITermPromptRow): Promise<AppSemanticReading> {
+      const start = await baseline("baseline", row)
+      if (start === undefined) return unavailableBaseline
       // The controls run from that start, so an unknown letter that moves the mark fails the controls.
-      const start = describe(baseline.read)
-      if (JSON.stringify(start) !== JSON.stringify(row.from ?? finishedMark)) {
-        return {
-          status: "invalid",
-          reason: `iTerm2 prompt mark did not reach this row's baseline ${JSON.stringify(row.from ?? finishedMark)}; read ${JSON.stringify(start)}`,
-          detail,
-        }
-      }
       const unknown = await phase("unknown", osc("133;Z"))
       const handled = await phase("handled", "", `terminfo-control-${nonce}`)
       const before = describe(handled.read)
@@ -1742,7 +1850,7 @@ export async function readITermPromptMarks(input: {
         status: "measured",
         reader: "state",
         runId: input.runId,
-        unknown: { before: JSON.stringify(describe(baseline.read)), after: JSON.stringify(describe(unknown.read)) },
+        unknown: { before: JSON.stringify(start), after: JSON.stringify(describe(unknown.read)) },
         handled: { before: unknown.fence, after: handled.fence, expected: `terminfo-control-${nonce}` },
         target: {
           before: JSON.stringify(single ? before : row.feeds.map(() => before)),
@@ -1752,8 +1860,152 @@ export async function readITermPromptMarks(input: {
         detail,
       }
     }
+
+    async function measureCounterpart(row: ITermPromptRow): Promise<AppSemanticReading> {
+      const start = await baseline("baseline", row)
+      if (start === undefined) return unavailableBaseline
+      // The inert unknown is in the target's own namespace.
+      const unknown = describe((await phase("unknown", osc("633;Z"))).read)
+      const control: object[] = []
+      for (const [index, feed] of row.feeds.entries()) {
+        control.push(describe((await phase(`control-133-${index}`, feed(nonce))).read))
+      }
+      // Rebuild the start and bind mark identity to the fresh baseline before the 633 feed.
+      const rebuilt = await baseline("rebaseline", row)
+      if (rebuilt === undefined) return unavailableBaseline
+      const target: object[] = []
+      for (const [index, feed] of row.feeds.entries()) {
+        target.push(describe((await phase(`target-633-${index}`, as633(feed(nonce)))).read))
+      }
+      const single = row.feeds.length === 1
+      const each = (value: object) => JSON.stringify(single ? value : row.feeds.map(() => value))
+      const list = (values: object[]) => JSON.stringify(single ? values[0] : values)
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: JSON.stringify(start), after: JSON.stringify(unknown) },
+        handled: { before: each(start), after: list(control), expected: list(row.expected) },
+        target: { before: each(rebuilt), after: list(target), expected: list(row.expected) },
+        detail,
+      }
+    }
+
+    async function measureCommandText(): Promise<AppSemanticReading> {
+      // GetPrompt's command field, with presence: absent is not empty.
+      const text = (read: ITermPromptRead) =>
+        JSON.stringify(
+          read.status !== "mark"
+            ? { command: "prompt-unavailable" }
+            : read.mark.command === undefined
+              ? { command: "absent" }
+              : { command: "text", text: shown(read.mark.command) },
+        )
+      const prompt = { tail: () => osc("133;A") + ITERM_PROMPT_TEXT + osc("133;B") }
+      const first = await phase("baseline", clear + finished + prompt.tail())
+      if (first.read.status === "prompt-unavailable") return unavailableBaseline
+      const start = text(first.read)
+      const unknown = text((await phase("unknown", osc("633;Z"))).read)
+      const typed = `terminfo-typed-${nonce}`
+      const control = text((await phase("control-typed", typed)).read)
+      const controlExpected = JSON.stringify({ command: "text", text: typed })
+      // An inert or missing control is unavailable, never unsupported (@cto r1 item 2).
+      if (control === start) {
+        return {
+          status: "unavailable",
+          reason: "iTerm2 GetPrompt command text did not move with typed command text; the field cannot grade E here",
+          detail,
+        }
+      }
+      // Reset: a fresh prompt must return the field to the start before E is sent.
+      const reset = text((await phase("reset", "\r\n" + prompt.tail())).read)
+      if (reset !== start) {
+        throw new BaselineMiss(
+          `iTerm2 command text did not return to its start ${start} after a fresh prompt; read ${reset}`,
+        )
+      }
+      // The E payload differs from the typed control and is never printed as ordinary text.
+      const payload = `terminfo-e-${nonce}`
+      const target = text((await phase("target-633-e", osc(`633;E;${payload}`))).read)
+      detail.nonceVerification = "not tested: OSC 633 E was sent without a nonce"
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: start, after: unknown },
+        handled: { before: start, after: control, expected: controlExpected },
+        target: { before: reset, after: target, expected: JSON.stringify({ command: "text", text: payload }) },
+        detail,
+      }
+    }
+
+    async function measureDirectory(): Promise<AppSemanticReading> {
+      // features.json osc633-p: an exact path comparison, no trailing-slash or symlink normalisation.
+      // iTerm2 3.6.11 reports the directory recorded at the prompt line, so every control, target and the
+      // unknown is followed by a fresh prompt line, identically.
+      const directory = (read: ITermPromptRead) =>
+        read.status === "mark" && read.mark.workingDirectory !== undefined ? read.mark.workingDirectory : null
+      const atPrompt = (sequence: string) => sequence + "\r\n" + osc("133;A") + ITERM_PROMPT_TEXT
+      const first = await phase("baseline", clear + finished)
+      if (first.read.status === "prompt-unavailable") return unavailableBaseline
+      const initial = directory(first.read)
+      if (initial === null) {
+        return {
+          status: "unavailable",
+          reason: "iTerm2 GetPrompt reported no working directory before the controls, so there is none to restore",
+          detail,
+        }
+      }
+      initialDirectory = initial
+      directoryMoved = true
+      const unknown = directory((await phase("unknown", atPrompt(osc("633;Z")))).read)
+      const sentControls = [`/terminfo-osc7-control-A-${nonce}`, `/terminfo-osc7-control-B-${nonce}`]
+      const controls: (string | null)[] = []
+      for (const [index, path] of sentControls.entries()) {
+        controls.push(
+          directory((await phase(`control-osc7-${index}`, atPrompt(osc(`7;file://localhost${path}`)))).read),
+        )
+      }
+      const publicPath = (value: string | null) => (value === null ? null : (shown(value) as string))
+      if (controls.every((value) => value === initial)) {
+        return {
+          status: "unavailable",
+          reason: "iTerm2 GetPrompt working directory is inert to two distinct OSC 7 controls",
+          detail,
+        }
+      }
+      const sentTargets = [`/terminfo-633-cwd-A-${nonce}`, `/terminfo-633-cwd-B-${nonce}`]
+      const priors: (string | null)[] = []
+      const targets: (string | null)[] = []
+      let prior = controls.at(-1) ?? null
+      for (const [index, path] of sentTargets.entries()) {
+        priors.push(prior)
+        prior = directory((await phase(`target-633-p-${index}`, atPrompt(osc(`633;P;Cwd=${path}`)))).read)
+        targets.push(prior)
+      }
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: String(publicPath(initial)), after: String(publicPath(unknown)) },
+        handled: {
+          before: JSON.stringify([publicPath(initial), publicPath(controls[0] ?? null)]),
+          after: JSON.stringify(controls.map(publicPath)),
+          expected: JSON.stringify(sentControls),
+        },
+        target: {
+          before: JSON.stringify(priors.map(publicPath)),
+          after: JSON.stringify(targets.map(publicPath)),
+          expected: JSON.stringify(sentTargets),
+        },
+        detail,
+      }
+    }
   })
 }
+
+/** A row's experiment never started from its assumed state: reported as invalid, never graded. */
+class BaselineMiss extends Error {}
 
 /**
  * One controlled WezTerm CWD observation for the existing platform owners. The capabilities must bracket each

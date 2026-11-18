@@ -1,6 +1,8 @@
 /**
  * @failure The iTerm2 prompt-mark reader certifies a row from another row's read, grades a row that never
- *   reached its starting mark, reads PROMPT_UNAVAILABLE as a missing integration, or opens the API for P.
+ *   reached its starting mark, reads PROMPT_UNAVAILABLE as a missing integration, or opens the API for P;
+ *   or grades an OSC 633 row unsupported on a control that never moved its projection, or leaks the
+ *   session's own directory into a reading or the public write trace (34866).
  * @level l1
  * @consumer OwnedTerminal.readAppSemanticState on the hosted iTerm2 arm, graded by gradeAppSemanticState.
  * @testonly none
@@ -28,23 +30,53 @@ function fakeITerm(
     markAtB?: boolean
     noFence?: boolean
     failRestore?: boolean
+    /** 34866: treat OSC 633 A-D like 133, store E's command line and P's Cwd. */
+    with633?: boolean
+    /** OSC 7 leaves the directory unchanged. */
+    inertOsc7?: boolean
+    /** Typed text after B never reaches the command field. */
+    noTypedCommand?: boolean
+    /** OSC 7 back to the initial directory is ignored. */
+    failDirectoryRestore?: boolean
   } = {},
 ) {
-  const marks: { id: string; command: boolean; output: boolean; ran?: boolean; code?: number }[] = []
+  const initialDirectory = "/Users/fixture-person/private-home"
+  let directory = initialDirectory
+  const marks: {
+    id: string
+    command: boolean
+    output: boolean
+    ran?: boolean
+    code?: number
+    text?: string
+    dir: string
+  }[] = []
   let sinceA = ""
   let sinceB: string | undefined
   let fence: unknown = null
   let opened = 0
   const writes: string[] = []
-  const add = (command = false) => marks.push({ id: `mark-${marks.length}`, command, output: false })
+  const privateWrites: string[] = []
+  const add = (command = false) =>
+    marks.push({ id: `mark-${marks.length}`, command, output: false, dir: directory, ...(command && { text: "" }) })
   const write = (text: string) => {
     writes.push(text)
+    feed(text)
+  }
+  const feed = (text: string) => {
     const tokens =
-      /\x1b\](?:133;([A-Z])(?:;(\d+))?|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07|\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07)|([^\x1b]+)/g
-    for (const [, letter, code, value, printed] of text.matchAll(tokens)) {
+      /\x1b\](?:(133|633);([A-Z])(?:;([^\x07]*))?|7;file:\/\/localhost([^\x07]*)|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07|\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07)|([^\x1b]+)/g
+    for (const [, namespace, letter, argument, path, value, printed] of text.matchAll(tokens)) {
       if (printed !== undefined) {
         sinceA += printed
         if (sinceB !== undefined) sinceB += printed
+        const last = marks.at(-1)
+        if (sinceB !== undefined && last?.text !== undefined && !variant.noTypedCommand) last.text = sinceB.trim()
+        continue
+      }
+      if (path !== undefined) {
+        const decoded = decodeURIComponent(path)
+        if (!variant.inertOsc7 && !(variant.failDirectoryRestore && decoded === initialDirectory)) directory = decoded
         continue
       }
       if (value !== undefined) {
@@ -55,6 +87,18 @@ function fakeITerm(
       }
       const last = marks.at(-1)
       if (letter === undefined || variant.noMarks || letter === variant.ignore) continue
+      if (namespace === "633") {
+        if (!variant.with633) continue
+        if (letter === "E" && last) {
+          last.text = argument ?? ""
+          continue
+        }
+        if (letter === "P") {
+          if (argument?.startsWith("Cwd=")) directory = argument.slice(4)
+          continue
+        }
+      }
+      const code = argument
       if (letter === "A" && !variant.markAtB) {
         add()
         sinceA = ""
@@ -64,6 +108,7 @@ function fakeITerm(
         sinceB = ""
       } else if (letter === "B" && last && sinceA !== "") {
         last.command = true
+        last.text = ""
         sinceB = ""
       } else if (letter === "C" && last && sinceB?.trim()) {
         last.output = true
@@ -87,24 +132,41 @@ function fakeITerm(
         ...(last.command && { commandRange: range }),
         ...(last.output && { outputRange: range }),
         ...(last.code !== undefined && { exitStatus: last.code }),
+        ...(last.text !== undefined && { command: last.text }),
+        workingDirectory: last.dir,
       }
       return { status: "mark", mark }
     },
   }
   return {
     writes,
+    privateWrites,
+    initialDirectory,
+    directory: () => directory,
     opened: () => opened,
-    read: (featureId: string) =>
+    read: (featureId: string, options: { noPrivateWriter?: boolean } = {}) =>
       readITermPromptMarks({
         featureId,
         runId: "run-1",
         write,
+        ...(!options.noPrivateWriter && {
+          privateWrite: (text: string) => {
+            privateWrites.push(text)
+            feed(text)
+          },
+        }),
         withSession: async (work) => {
           opened++
           return work(session)
         },
       }),
   }
+}
+
+/** The state reading's three pairs; any other reading fails the test here. */
+const stateOf = (reading: Awaited<ReturnType<typeof readITermPromptMarks>>) => {
+  if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+  return reading
 }
 
 /** A decided verdict: a pass value and a test status that is not one of the pending probe-* statuses. */
@@ -212,4 +274,95 @@ test.each([
   expect(reason.startsWith(control.status === "measured" ? "?" : control.reason)).toBe(true)
   expect(reason).toMatch(/; then restoring the session failed: fixture session write refused$/)
   expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-invalid")
+})
+
+// 34866 (@cto 34866-osc633-controls-r1): each OSC 633 mark row is controlled by its 133 counterpart, which
+// moves the same projection; the start is rebuilt before the 633 feed. An app that handles 133 but drops 633
+// is unsupported on these rows, and one that handles 633 like 133 is supported.
+test.each([
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc-633-vscode",
+])("%s is graded against its own 133 counterpart control", async (featureId) => {
+  const handles = await fakeITerm({ with633: true }).read(featureId)
+  expect(decided(handles), JSON.stringify(handles)).toBe(true)
+  const drops = await fakeITerm().read(featureId)
+  expect(decided(drops), JSON.stringify(drops)).toBe(false)
+  // The control is the 133 feed itself, never the fence, and every composite stage is its own phase.
+  const phases = drops.status === "measured" ? (drops.detail as { phases: { name: string }[] }).phases : []
+  const names = phases.map(({ name }) => name)
+  expect(names.filter((name) => name.startsWith("control-133-")).length).toBe(featureId.endsWith("vscode") ? 4 : 1)
+  expect(names.filter((name) => name.startsWith("target-633-")).length).toBe(featureId.endsWith("vscode") ? 4 : 1)
+  expect(names.indexOf("rebaseline")).toBeGreaterThan(names.lastIndexOf("control-133-0"))
+})
+
+// A failed control is never Unsupported: an app dropping C in both namespaces fails the 133 C control.
+test("an OSC 633 row whose 133 control fails is invalid, never unsupported", async () => {
+  const graded = gradeAppSemanticState(await fakeITerm({ ignore: "C", with633: true }).read("extensions.osc633-c"))
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+})
+
+test("osc633-e is graded on GetPrompt's command text against a typed-text control", async () => {
+  const handles = fakeITerm({ with633: true })
+  const reading = await handles.read("extensions.osc633-e")
+  expect(decided(reading), JSON.stringify(reading)).toBe(true)
+  expect(reading.status === "measured" && (reading.detail as { nonceVerification?: string }).nonceVerification).toBe(
+    "not tested: OSC 633 E was sent without a nonce",
+  )
+  // The E payload is only ever inside its own OSC; the typed control is the only printed command text.
+  const payload = (JSON.parse(stateOf(reading).target.expected) as { text: string }).text
+  for (const write of handles.writes) {
+    expect(write.replace(`\x1b]633;E;${payload}\x07`, "")).not.toContain(payload)
+  }
+  expect(decided(await fakeITerm().read("extensions.osc633-e"))).toBe(false)
+})
+
+test("osc633-e is unavailable when typed text never moves the command field", async () => {
+  const reading = await fakeITerm({ with633: true, noTypedCommand: true }).read("extensions.osc633-e")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
+
+// features.json osc633-p: two OSC 7 controls, two distinct Cwd targets, exact paths, initial value restored.
+test("osc633-p keeps the Cwd criterion and never shows the session's own directory", async () => {
+  for (const [variant, verdict] of [
+    [{ with633: true }, true],
+    [{}, false],
+  ] as const) {
+    const iterm = fakeITerm(variant)
+    const reading = await iterm.read("extensions.osc633-p")
+    expect(decided(reading), JSON.stringify(reading)).toBe(verdict)
+    expect(JSON.parse(stateOf(reading).handled.expected)).toHaveLength(2)
+    expect(JSON.parse(stateOf(reading).target.expected)).toHaveLength(2)
+    // Restored through the private writer, and only there.
+    expect(iterm.directory()).toBe(iterm.initialDirectory)
+    expect(JSON.stringify(reading)).not.toContain(iterm.initialDirectory)
+    expect(iterm.writes.join("")).not.toContain(iterm.initialDirectory)
+    expect(iterm.privateWrites.join("")).toContain(iterm.initialDirectory)
+  }
+})
+
+test("osc633-p is unavailable when OSC 7 never moves the directory", async () => {
+  const reading = await fakeITerm({ with633: true, inertOsc7: true }).read("extensions.osc633-p")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
+
+test("osc633-p is invalid when the initial directory is not restored", async () => {
+  const iterm = fakeITerm({ with633: true, failDirectoryRestore: true })
+  const reading = await iterm.read("extensions.osc633-p")
+  expect(reading.status).toBe("invalid")
+  const reason = reading.status === "invalid" ? reading.reason : ""
+  expect(reason).toMatch(/^iTerm2 prompt row was read, but the directory read back as /)
+  expect(reason).not.toContain(iterm.initialDirectory)
+})
+
+test("osc633-p without the owner's private writer is invalid and never opens the API", async () => {
+  const iterm = fakeITerm({ with633: true })
+  const reading = await iterm.read("extensions.osc633-p", { noPrivateWriter: true })
+  expect(reading).toMatchObject({ status: "invalid" })
+  expect(iterm.opened()).toBe(0)
+  expect(iterm.writes).toEqual([])
 })

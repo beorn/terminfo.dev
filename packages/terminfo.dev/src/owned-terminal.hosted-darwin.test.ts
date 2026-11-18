@@ -144,12 +144,20 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
       // every other row keeps its own callback.
       if (app === "iterm2") {
         assert.equal(typeof owner.readAppSemanticState, "function")
+        // 34866: the OSC 633 rows read through the same prompt reader.
         assert.deepEqual([...owner.appSemanticStateFeatures].sort(), [
+          "extensions.osc-633-vscode",
           "extensions.osc133-a",
           "extensions.osc133-b",
           "extensions.osc133-c",
           "extensions.osc133-d",
           "extensions.osc133-p",
+          "extensions.osc633-a",
+          "extensions.osc633-b",
+          "extensions.osc633-c",
+          "extensions.osc633-d",
+          "extensions.osc633-e",
+          "extensions.osc633-p",
           "extensions.semantic-prompts",
         ])
       } else {
