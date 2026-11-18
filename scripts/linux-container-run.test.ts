@@ -1746,6 +1746,28 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
 })
 
 /**
+ * @failure ghostty launched with its shipped antialias and padding: the rendering pin #28829 needs for a
+ *   byte-exact repaint is left open, and the run's observed.json says "terminal-default" so a capture
+ *   cannot tell which rendering it was taken under.
+ * @level l1 — reads the launcher's ghostty launch args, the production rendering context.
+ * @consumer scripts/linux-container-run.sh ghostty rendering pin (#31331)
+ */
+describe("ghostty rendering is pinned AND RECORDED: antialias off, padding explicit (#31331)", () => {
+  it("launches ghostty with monochrome FreeType rendering and 2x2 unbalanced padding, and records the pin", () => {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("\n    ghostty)")
+    if (start < 0) throw new Error("ghostty case not found in scripts/linux-container-run.sh")
+    const ghosttyCase = source.slice(start, source.indexOf(";;", start))
+    expect(ghosttyCase).toContain("--font-family='JetBrains Mono' --font-size=16 --window-decoration=none")
+    expect(ghosttyCase).toContain("--freetype-load-flags=monochrome")
+    expect(ghosttyCase).toContain("--window-padding-x=2 --window-padding-y=2 --window-padding-balance=false")
+    expect(ghosttyCase).toContain("target_render_pin=freetype-monochrome,padding-2x2-unbalanced")
+    // xterm's pin is unchanged by this one.
+    expect(source).toContain("target_render_pin=xft-antialias-off")
+  })
+})
+
+/**
  * @failure split 120s curl / 180s attach budgets kill slow-but-complete groups (ghostty 140.6s,
  *   xterm 157.9s curl-28; wezterm attach-killed at 177s) so Candidate 2 rows go missing.
  *   A full WezTerm batch also progressed until the shared 600s SIGTERM on 2026-11-04 and 1200s
