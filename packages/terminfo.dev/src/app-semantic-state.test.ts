@@ -4,6 +4,7 @@
  * @level l2
  * @consumer The owned collector's shared exact-App table and semantic reader.
  * @testonly none
+ * @reach fs-walk <fixture-only: lists only a mkdtemp scratch dir it created, for leftover osc7- files>
  */
 import { afterEach, expect, test, vi } from "vitest"
 import { execFileSync } from "node:child_process"
