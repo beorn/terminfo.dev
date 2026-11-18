@@ -208,6 +208,21 @@ test.each(PHASE_LOCKED)("a flat series phase-locked to a class period stays open
   expect(verdict.witness.uncoveredPeriodMs).toBeLessThan(blind[1])
 })
 
+test("the coverage check reads epoch capture times like their offsets", () => {
+  // Live capturedAt is Date.now(); the check must not lose precision on it (scaled by a rational
+  // period's denominator, raw epoch values pass 2^53).
+  const epoch = 1_795_030_000_000
+  for (const { capturedAt } of PHASE_LOCKED) {
+    const shifted = capturedAt.map((t) => t + epoch)
+    const [atOffset, atEpoch] = [capturedAt, shifted].map(
+      (times) => blinkSeriesDecision({ styled: times.map(() => "a"), plain: STEADY, capturedAt: times, focusQualified: true }).witness.uncoveredPeriodMs,
+    )
+    expect(atEpoch).toBe(atOffset)
+  }
+  const covered = timesOf(RETAINED_GAPS[0].gaps).map((t) => t + epoch)
+  expect(blinkSeriesDecision({ styled: covered.map(() => "a"), plain: STEADY, capturedAt: covered, focusQualified: true }).kind).toBe("negative-decidable")
+})
+
 test("a return still decides Supported at phase-locked capture times", () => {
   const capturedAt = PHASE_LOCKED[0].capturedAt
   const verdict = blinkSeriesDecision({

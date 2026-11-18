@@ -68,8 +68,11 @@ function blindAt(times: readonly number[], a: number, b: number): boolean {
  * The period is a representative of the first uncovered interval, not its bound.
  */
 export function uncoveredBlinkPeriod(capturedAt: readonly number[]): number | undefined {
-  const times = capturedAt.filter((t) => Number.isInteger(t))
-  if (times.length !== capturedAt.length || times.length < 3) return BLINK_CLASS_MIN_PERIOD_MS
+  if (capturedAt.length < 3 || !capturedAt.every((t) => Number.isSafeInteger(t))) return BLINK_CLASS_MIN_PERIOD_MS
+  // Only differences matter. capturedAt is epoch milliseconds, and scaled by a midpoint's denominator it would pass
+  // 2^53, so the check runs on offsets from the first capture.
+  const origin = capturedAt[0] ?? 0
+  const times = capturedAt.map((t) => t - origin)
   const lo = BLINK_CLASS_MIN_PERIOD_MS / 2
   const hi = BLINK_CLASS_MAX_PERIOD_MS / 2
   const critical = new Map<string, Half>()
