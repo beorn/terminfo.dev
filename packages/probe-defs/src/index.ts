@@ -318,7 +318,7 @@ export {
   type MuxOuterRow,
 } from "./mux-outer-rows.ts"
 
-export { OSC22_CURRENT_QUERY, OSC22_SHAPE_REPLY } from "./extensions.ts"
+export { OSC22_CURRENT_QUERY, OSC22_SHAPE_REPLY, settledTitle } from "./extensions.ts"
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"

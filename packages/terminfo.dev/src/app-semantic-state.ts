@@ -18,6 +18,7 @@ import { readCallLog } from "viprobe"
 import { ANSI_REGEX } from "@silvery/ansi"
 import {
   MUX_TITLE_CONTROL_WRITE,
+  settledTitle,
   sgrProbes,
   type AppSemanticReading,
   type LinuxMuxAttachmentProof,
@@ -3222,14 +3223,23 @@ export async function readAppSemanticState(
         const nonce = randomUUID().slice(0, 8)
         const titleA = `icon-title-a-${nonce}`
         const payloadB = `icon-name-b-${nonce}`
-        const observe = async () => ({ title: await readTitle(), icon: await readIcon() })
+        // #34932: each read after a write settles past what the surface showed before it, through the one title settle
+        // (#34836); WezTerm 13:06Z read the previous title right after OSC 2 and graded the control as failed.
+        const prior = { title: await readTitle(), icon: await readIcon() }
         input.write(`\x1b]2;${titleA}\x07`)
-        const set = await observe()
+        const set = {
+          title: (await settledTitle(readTitle, titleA, prior.title)).value,
+          icon: await readIcon(),
+        }
         if (set.title !== titleA) {
-          return { status: "invalid", reason: "OSC 2 did not set title A", detail: { titleA, set } }
+          return { status: "invalid", reason: "OSC 2 did not set title A", detail: { titleA, prior, set } }
         }
         input.write(`\x1b]${osc1 ? "1" : "0"};${payloadB}\x07`)
-        const after = await observe()
+        const after = {
+          // OSC 0 also sets the title; OSC 1 leaves it at title A, which the first read already shows.
+          title: (await settledTitle(readTitle, osc1 ? titleA : payloadB, titleA)).value,
+          icon: (await settledTitle(readIcon, payloadB, set.icon)).value,
+        }
         const before = JSON.stringify([set.title, set.icon])
         const seen = JSON.stringify([after.title, after.icon])
         const expected = JSON.stringify([titleA, payloadB])

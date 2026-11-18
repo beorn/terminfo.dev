@@ -5,7 +5,7 @@ import type {
   ProbeCallbackResult,
   TerminalQueryOutcome,
 } from "./types.ts"
-import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
+import { hasAuditedOscInterfaceAbsence, settledTitle, TITLE_SETTLE_REREADS } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
@@ -352,18 +352,31 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   const state: Record<string, unknown> = { before }
   let result: ProbeCallbackResult | undefined
   let failure: unknown
+  // #34932: the terminal applies each title asynchronously, so every read after a write settles past what the
+  // surface showed before it (WezTerm 13:06Z read the previous "test-title" as the first control). A restore that
+  // never comes (no title stack) costs one bounded budget; later restores then read once.
+  let shown = before
+  let restoreBudget: number | undefined
+  const settleRestore = async (written: string) => {
+    const settled = await settledTitle(read, written, [shown], restoreBudget)
+    if (settled.rereads === TITLE_SETTLE_REREADS) restoreBudget = 0
+    return settled.value
+  }
   try {
     const fixture = async (originalTitle: string, changedTitle: string) => {
       set(saved)
       set(originalTitle)
-      const original = await read()
+      const original = (await settledTitle(read, originalTitle, [shown, saved])).value
       pushed = true
       ctx.write("\x1b[22;0t")
       set(changedTitle)
-      const changed = await read()
+      const changed = (await settledTitle(read, changedTitle, [original])).value
+      shown = changed
       ctx.write("\x1b[23;0t")
       pushed = false
-      return { original, changed, restored: await read() }
+      const restored = await settleRestore(original)
+      shown = restored
+      return { original, changed, restored }
     }
     const popFixture = await fixture(saved, "new-title")
     state.popFixture = popFixture
@@ -390,7 +403,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
       if (pushed) ctx.write("\x1b[23;0t")
     } finally {
       set(before)
-      state.restored = await read()
+      state.restored = await settleRestore(before)
       if (state.restored !== before) {
         // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
         // either. `result` is undefined here only because the try threw; a plain return added inside that try
