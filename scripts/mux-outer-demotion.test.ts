@@ -25,7 +25,14 @@ const FIVE = [
   "modes.application-keypad",
 ]
 
-const placed = loadStoredRuns(CONTENT_DIR, Object.keys(loadFeatures(CONTENT_DIR)))
+// 34760: keep only the runs this file asserts on. Retaining the whole parsed corpus peaked at 3.7 GiB in one
+// worker, above the 3 GiB worker RSS cap, so the watchdog SIGKILLed the file; the projecting form drops every
+// other run as soon as it is parsed.
+const placed = loadStoredRuns(CONTENT_DIR, Object.keys(loadFeatures(CONTENT_DIR)), (run) =>
+  run.runId === TMUX_RUN || (run.subject.kind === "term" && run.subject.id === "kitty" && run.subject.os === "linux")
+    ? run
+    : null,
+).filter((run): run is LoadedRun => run !== null)
 const tmux = placed.find((run) => run.runId === TMUX_RUN)
 const kitty = placed.filter(
   (run) => run.subject.kind === "term" && run.subject.id === "kitty" && run.subject.os === "linux",

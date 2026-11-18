@@ -28,7 +28,14 @@ it("lists no suite whose manifest records its own entry hashes", () => {
 })
 
 it("lists no suite that no placed run uses, and each listed suite's placed runs share its sourceRevision", () => {
-  const runs = loadStoredRuns(content, Object.keys(loadFeatures(content)))
+  // 34760: project each run to the three fields this join reads. Retaining every parsed run peaked at 3.7 GiB in
+  // one worker, above the 3 GiB worker RSS cap, so the watchdog SIGKILLed the file; the projecting form drops a
+  // run as soon as it is summarised.
+  const runs = loadStoredRuns(content, Object.keys(loadFeatures(content)), (run) => ({
+    runId: run.runId,
+    probeHash: run.probeHash,
+    sourceRevision: run.sourceRevision,
+  }))
   const placed = new Set(runs.map((run) => run.probeHash))
   expect(Object.keys(legacy).filter((suiteId) => !placed.has(suiteId))).toEqual([])
   const foreign = runs
