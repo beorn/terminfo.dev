@@ -68,6 +68,7 @@ import {
   readInjectedOutcome,
   releaseTTYQueue,
   withTTYOperation,
+  withRunSignal,
   withTTYQueryTrace,
   writeTTY,
   type TTYQueryTrace,
@@ -503,8 +504,19 @@ class ViewportReturnRefused extends Error {
   }
 }
 
-/** Collect the real callback result, without treating its legacy boolean as an observation. */
-export async function runProbeBatch(
+/**
+ * Collect the real callback result, without treating its legacy boolean as an observation.
+ *
+ * The run's cancellation is bound here, so every TTY wait and write it starts reads the same signal
+ * (#34941): a client that leaves stops an active callback, not just the next row.
+ */
+export function runProbeBatch(
+  options: Parameters<typeof runProbeBatchInRun>[0],
+): ReturnType<typeof runProbeBatchInRun> {
+  return withRunSignal(options?.signal, () => runProbeBatchInRun(options))
+}
+
+async function runProbeBatchInRun(
   options: {
     ids?: string[]
     capture?: ProbeCapture

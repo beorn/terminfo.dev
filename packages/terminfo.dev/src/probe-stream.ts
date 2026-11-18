@@ -54,6 +54,12 @@ export function openProbeResponse(
   }
   res.on("close", gone)
   res.on("error", gone)
+  // 34941: a response that is already gone can admit nothing. This is not `gone()`: that one keeps a
+  // normally-ended response quiet, while this one must abort so the caller starts no collection at all.
+  if (res.destroyed || res.writableEnded) {
+    stop()
+    controller.abort(clientGone(runId))
+  }
 
   return {
     signal: controller.signal,

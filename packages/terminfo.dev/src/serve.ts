@@ -596,6 +596,9 @@ export function collectProbeRun(
 ): Promise<CapturedRunDraft>
 export function collectProbeRun(options: ProbeCollectionOptions): Promise<RunDraft | CapturedRunDraft>
 export async function collectProbeRun(options: ProbeCollectionOptions = {}): Promise<RunDraft | CapturedRunDraft> {
+  // 34941: a client that left before admission must not start a run; without this, a destroyed response
+  // still reached the draft reservation and the first terminal write.
+  options.signal?.throwIfAborted()
   const out = options.out ?? process.stdout
   const captureRunId = resolveCaptureRunId(options)
   if (!/^[a-zA-Z0-9._-]+$/.test(captureRunId)) throw new Error("Unsafe capture runId")

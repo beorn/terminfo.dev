@@ -34,10 +34,13 @@ const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
 type TTYOperationLease = {
   active: boolean
   out: NodeJS.WriteStream
+  /** The run this operation belongs to; a client that leaves aborts every wait and write below (#34941). */
+  signal?: AbortSignal
   verify?: () => Promise<void>
   startResponseTimer?: () => void
 }
 const operationContext = new AsyncLocalStorage<TTYOperationLease>()
+const runAbort = new AsyncLocalStorage<AbortSignal | undefined>()
 const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
 
 /** Open the controlling terminal for CLI runs whose stdout carries JSON. */
@@ -268,6 +271,49 @@ export async function withTTYQueryTrace<T>(
   }
 }
 
+/**
+ * Bind one run's cancellation to every TTY operation it starts (#34941).
+ *
+ * The batch is one async tree, so the signal travels in context rather than through every call site.
+ * A caller that never binds one keeps the old behaviour: nothing is raced and no write is refused.
+ */
+export function withRunSignal<T>(signal: AbortSignal | undefined, fn: () => T): T {
+  return runAbort.run(signal, fn)
+}
+
+/** The cancellation error a wait or write raises once its run's client has left. */
+function abortedByClient(signal: AbortSignal): Error {
+  // `AbortSignal.reason` is `any` in the shared lib, so narrow it here rather than at each raiser.
+  const reason: unknown = signal.reason
+  const error =
+    reason instanceof Error
+      ? reason
+      : new Error("TTY operation abandoned: the probe client left before the run finished")
+  if (error.name !== "AbortError") {
+    error.name = "AbortError"
+    error.message = `TTY operation abandoned: the probe client left before the run finished (${error.message})`
+  }
+  return error
+}
+
+/** Settle with `work`, or promptly with the abort error once the run's client is gone. */
+async function withAbort<T>(signal: AbortSignal | undefined, work: Promise<T>): Promise<T> {
+  if (signal === undefined) return work
+  signal.throwIfAborted()
+  let onAbort: (() => void) | undefined
+  const abandoned = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(abortedByClient(signal))
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+  try {
+    return await Promise.race([work, abandoned])
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener("abort", onAbort)
+    // The loser keeps running so its own cleanup still happens; its outcome is the abort's, not a finding.
+    work.catch(() => {})
+  }
+}
+
 /** Drop a queued operation that will not finish, so the next probe is not stuck behind it. */
 export function releaseTTYQueue(): void {
   ttyOperations.set(process.stdin, Promise.resolve())
@@ -282,9 +328,9 @@ export function withTTYOperation<T>(
   const execute = (lease: TTYOperationLease) =>
     operationContext.run(lease, async () => {
       try {
-        await lease.verify?.()
+        await withAbort(lease.signal, lease.verify?.() ?? Promise.resolve())
         lease.startResponseTimer?.()
-        return await fn()
+        return await withAbort(lease.signal, fn())
       } finally {
         lease.active = false
       }
@@ -294,14 +340,26 @@ export function withTTYOperation<T>(
     if (out && out !== active.out) throw new Error("Nested TTY operation changed output stream")
     const check = verify ?? active.verify
     return check || active.startResponseTimer
-      ? execute({ active: true, out: active.out, verify: check, startResponseTimer: active.startResponseTimer })
+      ? execute({
+          active: true,
+          out: active.out,
+          ...(active.signal !== undefined && { signal: active.signal }),
+          verify: check,
+          startResponseTimer: active.startResponseTimer,
+        })
       : fn()
   }
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
   const current = previous
     .catch(() => {})
     .then(() => {
-      return execute({ active: true, out: out ?? process.stdout, ...(verify && { verify }) })
+      const signal = runAbort.getStore()
+      return execute({
+        active: true,
+        out: out ?? process.stdout,
+        ...(signal !== undefined && { signal }),
+        ...(verify && { verify }),
+      })
     })
   ttyOperations.set(
     process.stdin,
@@ -315,6 +373,9 @@ export function withTTYOperation<T>(
 
 function currentTTYOutput(): NodeJS.WriteStream {
   const lease = operationContext.getStore()
+  // 34941: a client that left stops the run's writes here, so no abandoned wait can paint a pane nobody reads.
+  const signal = lease?.signal ?? runAbort.getStore()
+  if (signal?.aborted) throw abortedByClient(signal)
   return lease?.active ? lease.out : process.stdout
 }
 

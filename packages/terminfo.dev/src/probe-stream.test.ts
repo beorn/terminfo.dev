@@ -6,9 +6,9 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-probe-stream-*>
  */
 import { execFileSync } from "node:child_process"
-import { createServer, type Server } from "node:http"
+import { createServer, type Server, type ServerResponse } from "node:http"
 import { mkdtempSync, rmSync } from "node:fs"
-import { once } from "node:events"
+import { EventEmitter, once } from "node:events"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it } from "vitest"
@@ -203,4 +203,30 @@ it("34753 strips only the leading JSON whitespace transport prefix", () => {
   const interior = Buffer.from('{"schemaVersion": 4}')
   expect(stripProbeKeepalivePrefix(interior)).toEqual(interior)
   expect(stripProbeKeepalivePrefix(Buffer.from("\n\n"))).toEqual(Buffer.alloc(0))
+})
+
+// Requirement (34753 condition 3, 34941): a response that is already gone admits nothing, so the caller's
+// entry check refuses the run instead of opening a terminal and waiting for a first write to fail.
+it("34941 aborts at once when the response is already destroyed", () => {
+  const res = Object.assign(new EventEmitter(), {
+    destroyed: true,
+    writableEnded: true,
+    headersFlushed: 0,
+    written: [] as string[],
+    flushHeaders() {
+      this.headersFlushed += 1
+    },
+    write(chunk: string) {
+      this.written.push(chunk)
+      return true
+    },
+  })
+  const stream = openProbeResponse(res as unknown as ServerResponse, "run-already-gone", 5)
+
+  expect(stream.signal.aborted).toBe(true)
+  expect((stream.signal.reason as Error).message).toMatch(/closed its connection before run run-already-gone finished/)
+  stream.admitted()
+  expect(res.headersFlushed).toBe(0)
+  expect(res.written).toEqual([])
+  stream.release()
 })
