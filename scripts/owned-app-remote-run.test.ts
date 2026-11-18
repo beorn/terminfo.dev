@@ -180,6 +180,9 @@ function fixture(): void {
       "fi",
       '[ "$verbose" = 1 ] && [ "${SHIM_SSH_TWO_KEYS:-}" = 1 ] && echo \'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost\' >&2',
       "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureNegotiated' >&2",
+      // #34834: a real ssh death leaves the remote command running. Here the shim dies with its ssh
+      // but the command it started does not, so a re-attach is proven against a probe still running.
+      'if [ "${SHIM_SSH_LEAVE_REMOTE:-}" = 1 ]; then case "$command" in *probe*) /bin/sh -c "$command" & wait $!; exit $? ;; esac; fi',
       'HOME="${SHIM_SSH_HOME:-$HOME}" exec /bin/sh -c "$command"',
     ].join("\n"),
   )
@@ -224,6 +227,7 @@ function fixture(): void {
       'case "$*" in',
       '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
+      '     [ -n "${SHIM_PROBE_SLEEP:-}" ] && sleep "$SHIM_PROBE_SLEEP"',
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
       '     [ "${SHIM_PROBE_CLOBBER_MARKER:-}" = 1 ] && printf \'not ours\\n\' > "$out/../../.owned-app-transport-stage"',
@@ -1023,6 +1027,42 @@ describe("owned-app ssh transport", () => {
     expect(result.stderr).toContain("timeout: stage checkout exceeded 0.05 min")
     expect(result.stderr).toContain("may still be running on fixture@fixture.invalid, so the stage is kept")
     expect(readFileSync(join(stage, ".owned-app-transport-stage"), "utf8")).toBe("owned-app-transport stage v1\n")
+  }, 30_000)
+
+  // #34834: killing the local ssh does not stop the remote probe, so its record is still collectable.
+  // Before this change the driver made the same noise and gave up, and the probe's record was lost.
+  it("re-attaches a probe that outlives the ssh wall and lands its record instead of abandoning it (34834)", () => {
+    const result = run(
+      { SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "6" },
+      ["--ssh-timeout-ms", "3000", "--reattach-timeout-ms", "60000"],
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain("re-attaching rather than abandoning it")
+    expect(result.stderr).toContain("re-attach complete")
+    const proof = JSON.parse(result.stdout) as { remoteOutput: string; receiptSha256: string }
+    expect(proof.remoteOutput).toMatch(/\/runs\/[a-f0-9]{12}-kitty-[a-f0-9]{32}$/)
+    expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
+  }, 120_000)
+
+  it("refuses by name with the remote pid, the stage and the fetch command when the re-attach wall also expires (34834)", () => {
+    const result = run(
+      { SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "20" },
+      ["--ssh-timeout-ms", "3000", "--reattach-timeout-ms", "3000"],
+    )
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stderr).toContain("probe abandoned")
+    expect(result.stderr).toMatch(/remote probe pid \d+ was still running after 0\.05 min of re-attach/)
+    expect(result.stderr).toContain(`the stage ${stage} is kept`)
+    expect(result.stderr).toContain("Fetch its record by hand: rsync -az fixture@fixture.invalid:")
+    // The pid file the re-attach read is the probe's own, written before it started.
+    expect(readFileSync(join(stage, ".owned-app-probe.pid"), "utf8").trim()).toMatch(/^\d+$/)
+  }, 60_000)
+
+  it("refuses an ssh wall below the cohort's own per-probe bound rather than abandoning the probe (34834)", () => {
+    const result = run({}, ["--ssh-timeout-ms", "3000", "--probe-budget-ms", "60000"])
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stderr).toContain("ssh wall under the cohort bound")
+    expect(result.stderr).toContain("--ssh-timeout-ms 3000 is below the cohort's own per-probe bound --probe-budget-ms 60000")
   }, 30_000)
 
   it("removes an owned stage after a failed run when asked, renaming it aside before deleting", () => {

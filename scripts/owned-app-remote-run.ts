@@ -152,6 +152,13 @@ export interface OwnedAppRemoteOptions {
   readonly check: CheckDepth
   readonly sshTimeoutMs: number
   readonly rsyncTimeoutMs: number
+  /**
+   * The cohort's own per-probe bound, when the caller knows it. A wall below it is refused rather
+   * than silently abandoning a probe the cohort itself says can take longer (#34834).
+   */
+  readonly probeBudgetMs?: number
+  /** The wall a re-attach gets after the first wall fires; the remote probe is never abandoned (#34834). */
+  readonly reattachTimeoutMs: number
   readonly argv: readonly string[]
 }
 
@@ -350,6 +357,8 @@ function parseArgs(argv: readonly string[]): Parsed {
         "--check",
         "--ssh-timeout-ms",
         "--rsync-timeout-ms",
+        "--probe-budget-ms",
+        "--reattach-timeout-ms",
       ].includes(arg)
     ) {
       usage()
@@ -379,6 +388,17 @@ function parseArgs(argv: readonly string[]): Parsed {
   const knownHosts = values["known-hosts"] ?? usage()
   const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
   const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
+  const probeBudgetMs =
+    values["probe-budget-ms"] === undefined ? undefined : limitOf(values["probe-budget-ms"], DEFAULT_SSH_TIMEOUT_MS)
+  const reattachTimeoutMs = limitOf(values["reattach-timeout-ms"], sshTimeoutMs)
+  if (probeBudgetMs !== undefined && sshTimeoutMs < probeBudgetMs) {
+    fail(
+      "ssh wall under the cohort bound",
+      `--ssh-timeout-ms ${String(sshTimeoutMs)} is below the cohort's own per-probe bound --probe-budget-ms ${String(
+        probeBudgetMs,
+      )}; pass a wall at least that long, so the probe is not abandoned at a limit the cohort already knows it can pass`,
+    )
+  }
   const rawCheck = values.check
   if (rawCheck !== undefined && rawCheck !== "full" && rawCheck !== "light") {
     fail(
@@ -417,6 +437,8 @@ function parseArgs(argv: readonly string[]): Parsed {
     check,
     sshTimeoutMs,
     rsyncTimeoutMs,
+    ...(probeBudgetMs === undefined ? {} : { probeBudgetMs }),
+    reattachTimeoutMs,
     argv: rest,
   }
 }
@@ -428,7 +450,7 @@ function limitOf(raw: string | undefined, fallback: number): number {
   if (!Number.isSafeInteger(value) || value < 1) {
     fail(
       "invalid timeout",
-      `--ssh-timeout-ms/--rsync-timeout-ms take positive whole milliseconds, got ${JSON.stringify(raw)}`,
+      `--ssh-timeout-ms/--rsync-timeout-ms/--probe-budget-ms/--reattach-timeout-ms take positive whole milliseconds, got ${JSON.stringify(raw)}`,
     )
   }
   return value
@@ -455,7 +477,8 @@ function usage(): never {
     "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> [--stage <remote-dir>]\n" +
       "         --output <local-output-dir> --source-revision <sha> --context <id> --run-id <32 hex>\n" +
       "         --known-hosts <path> [--remove-stage] [--check full|light] [--ssh-timeout-ms <ms>]\n" +
-      "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>\n" +
+      "         [--rsync-timeout-ms <ms>] [--probe-budget-ms <cohort bound>] [--reattach-timeout-ms <ms>]\n" +
+      "         -- <owned-app argv starting with bun>\n" +
       "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.",
   )
   process.exit(2)
@@ -507,25 +530,64 @@ function isTimeout(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith("timeout: ")
 }
 
+/**
+ * A probe that outlived its wall is re-attached rather than abandoned (#34834). Killing the local ssh
+ * does not stop a remote command started without a tty, so its record is still collectable: wait for
+ * the pid the probe recorded, then let the ordinary output measure and copy-back run. When even the
+ * re-attach wall expires, refuse by name with the pid, the stage and the exact manual fetch, never an
+ * informational note beside a success.
+ */
+function awaitOutlivedProbe(
+  options: Parsed,
+  where: { pidFile: string; stage: string; remoteOutput: string },
+): string {
+  const userAndHost = options.transport.slice(4)
+  const fetch = `rsync -az ${userAndHost}:${where.remoteOutput}/ <local-output>/transport/ ; ssh ${userAndHost} -- cat ${where.remoteOutput}/transport-receipt.json`
+  const pid = sshRun(options, "probe pid", "probe pid unreadable", `cat ${shq(where.pidFile)} 2>/dev/null || true`).stdout.trim()
+  if (!/^\d+$/u.test(pid)) {
+    fail(
+      "probe abandoned",
+      `the ssh wall fired and ${where.pidFile} names no remote pid, so the probe cannot be re-attached; the stage ${where.stage} is kept. Fetch its record by hand: ${fetch}`,
+    )
+  }
+  try {
+    sshRun(
+      options,
+      "probe re-attach",
+      "probe re-attach",
+      `sh -c 'while kill -0 ${pid} 2>/dev/null; do sleep 2; done'`,
+      { timeoutMs: options.reattachTimeoutMs },
+    )
+  } catch (error) {
+    if (!isTimeout(error)) throw error
+    fail(
+      "probe abandoned",
+      `remote probe pid ${pid} was still running after ${minutesOf(options.reattachTimeoutMs)} min of re-attach; the stage ${where.stage} is kept. Fetch its record by hand: ${fetch}`,
+    )
+  }
+  return pid
+}
+
 function sshRun(
   options: Parsed,
   label: string,
   failure: string,
   command: string,
-  extra: { input?: string; verbose?: boolean } = {},
+  extra: { input?: string; verbose?: boolean; timeoutMs?: number } = {},
 ): { stdout: string; stderr: string } {
+  const timeoutMs = extra.timeoutMs ?? options.sshTimeoutMs
   const result = spawnSync(
     "ssh",
     [...sshOptions(options), ...(extra.verbose ? ["-v"] : []), "--", options.transport.slice(4), command],
     // A wedged connection must fail the run by name rather than hang a collector forever. Killing
     // the local ssh does not stop a remote command started without a tty, so the refusal says so.
-    { encoding: "utf8", input: extra.input, maxBuffer: 64 * 1024 * 1024, timeout: options.sshTimeoutMs },
+    { encoding: "utf8", input: extra.input, maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs },
   )
   if (result.error) {
     if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
       fail(
         "timeout",
-        `${label} exceeded ${minutesOf(options.sshTimeoutMs)} min; the remote command may still be running on ${options.transport.slice(4)}, so the stage is kept`,
+        `${label} exceeded ${minutesOf(timeoutMs)} min; the remote command may still be running on ${options.transport.slice(4)}, so the stage is kept`,
       )
     }
     fail("host unreachable", `${label}: ${result.error.message}`)
@@ -1212,12 +1274,27 @@ function main(options: Parsed): OwnedAppTransportProof {
       fail("invalid argv", `the owned-app argv must start with the bun runtime token, got ${JSON.stringify(runtime)}`)
     }
     clock.begin("probe")
-    const probe = sshRun(
-      options,
-      "owned-app probe",
-      "owned-app probe failed",
-      `cd ${shq(checkout)} && ${process.env.TERMINFO_CAPTURE_RUN_ID ? `TERMINFO_CAPTURE_RUN_ID=${shq(process.env.TERMINFO_CAPTURE_RUN_ID)} ` : ""}${shq(bun)} ${probeArgs.map(shq).join(" ")} --run-id ${shq(options.runId)} --output ${shq(remoteOutput)}`,
-    )
+    // The probe records its own pid before it starts, so a wall that fires while it is still running
+    // can be re-attached instead of abandoned (#34834). The shell waits on bun, so the recorded pid
+    // outlives the ssh connection that launched it.
+    const probePidFile = `${stage}/.owned-app-probe.pid`
+    let probe: { stdout: string; stderr: string }
+    try {
+      probe = sshRun(
+        options,
+        "owned-app probe",
+        "owned-app probe failed",
+        `cd ${shq(checkout)} && echo $$ > ${shq(probePidFile)} && ${process.env.TERMINFO_CAPTURE_RUN_ID ? `TERMINFO_CAPTURE_RUN_ID=${shq(process.env.TERMINFO_CAPTURE_RUN_ID)} ` : ""}${shq(bun)} ${probeArgs.map(shq).join(" ")} --run-id ${shq(options.runId)} --output ${shq(remoteOutput)}`,
+      )
+    } catch (error) {
+      if (!isTimeout(error)) throw error
+      console.error(
+        `owned-app probe outlived its ${minutesOf(options.sshTimeoutMs)} min ssh wall on ${userAndHost}; re-attaching rather than abandoning it (#34834)`,
+      )
+      const pid = awaitOutlivedProbe(options, { pidFile: probePidFile, stage, remoteOutput })
+      console.error(`owned-app probe re-attach complete: remote pid ${pid} exited; collecting its record`)
+      probe = { stdout: "", stderr: "" }
+    }
     if (/ENOENT|not found/i.test(probe.stdout) && /kitty/i.test(probe.stdout)) {
       fail("kitty absent", `the owned-app probe on ${hostname} could not launch kitty: ${probe.stdout.trim()}`)
     }
@@ -1302,6 +1379,13 @@ function main(options: Parsed): OwnedAppTransportProof {
       ...(stageRebuild === null ? {} : { stageRebuild }),
       stage: { directory: stage, marker: STAGE_MARKER_VALUE },
       output: { directory: remoteOutput, files: outputs },
+      // #34834: the walls this run used and the cohort bound it was given, so a reader sees when the
+      // wall was below the work instead of inferring it from a record that never arrived.
+      limits: {
+        sshTimeoutMs: options.sshTimeoutMs,
+        reattachTimeoutMs: options.reattachTimeoutMs,
+        probeBudgetMs: options.probeBudgetMs ?? null,
+      },
       // #33797: work completed before this seal; copy-back and collection are measured at their own boundaries.
       clock: PHASE_CLOCK,
       phases: clock.intervals(),
