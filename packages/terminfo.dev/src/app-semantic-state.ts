@@ -3514,7 +3514,10 @@ export async function readAppSemanticState(
                 if (!initial.cwd.startsWith("/") || /[\x00-\x1f\x7f]/u.test(initial.cwd)) {
                   throw new Error("Owned cwd initial path cannot be safely encoded for restoration")
                 }
-                const restoreUri = pathToFileURL(initial.cwd).href
+                // Ghostty reportPwd (src/termio/stream_handler.zig:1357-1391) parses OSC 7 via RFC 3986 std.Uri and
+                // requires a non-empty local hostname (src/os/hostname.zig:96-119 isLocal returns true for "localhost"
+                // and false for ""). WHATWG pathToFileURL().href emits "file:///path" (empty host), so use .pathname.
+                const restoreUri = `file://localhost${pathToFileURL(initial.cwd).pathname}`
                 const marker = `Q-${nonce}-${serial++}`
                 await cmuxPrivateWrite(`\x1b[4;1H${osc(`7;${restoreUri}`)}${marker}`)
                 const restored = await get({

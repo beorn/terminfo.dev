@@ -1747,16 +1747,20 @@ test.each([
       }
       const osc7 = /\\x1b\\]7;([^\\x07]*)\\x07/u.exec(text)?.[1]
       if (osc7 !== undefined) {
-        const nextPath = osc7.startsWith("file:") ? fileURLToPath(osc7) : osc7
-        if (fromPrivateWriter) {
-          if (mode !== "restore-failed" && mode !== "primary-and-restore-failed") {
-            currentDirectory = nextPath
+        // Ghostty stream_handler.zig:1380-1391 + src/os/hostname.zig:96-119 (isLocal) parses via RFC 3986 std.Uri and
+        // rejects empty hostname "" in file:///path while accepting file://localhost/path (hosted run 44411105146).
+        if (osc7.startsWith("file://localhost/")) {
+          const nextPath = fileURLToPath(osc7)
+          if (fromPrivateWriter) {
+            if (mode !== "restore-failed" && mode !== "primary-and-restore-failed") {
+              currentDirectory = nextPath
+            }
+          } else if (mode !== "inert-control") {
+            // Simulate async >50 ms GhosttyCurrentDirectoryActionDispatcher delivery on the positive control.
+            setTimeout(() => {
+              currentDirectory = nextPath
+            }, 70)
           }
-        } else if (mode !== "inert-control") {
-          // Simulate async >50 ms GhosttyCurrentDirectoryActionDispatcher delivery on the positive control.
-          setTimeout(() => {
-            currentDirectory = nextPath
-          }, 70)
         }
       }
       const osc633 = /\\x1b\\]633;P;Cwd=([^\\x07]*)\\x07/u.exec(text)?.[1]
