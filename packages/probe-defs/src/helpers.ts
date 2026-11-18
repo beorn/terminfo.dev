@@ -1,4 +1,4 @@
-import { PROBE_STATUSES, SILENCE_RULES } from "./types.ts"
+import { PROBE_STATUSES, SILENCE_RULES, frameDigests } from "./types.ts"
 import { createHash } from "node:crypto"
 import type { NotTestedCoverageResult, ProbeTestInput, SilenceDeclaration } from "./types.ts"
 import type {
@@ -15,6 +15,7 @@ import type {
 } from "./types.ts"
 import type {
   AssertionType,
+  CaptureLocated,
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -28,6 +29,8 @@ import type {
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { sgrAttributeCaptureResult } from "./region-readback.ts"
 import { raiseRefusedCapture } from "./refused-capture.ts"
+import { CALIBRATION_SOLID_PAINT } from "./calibrated-capture-geometry.ts"
+import { sourceNow } from "./source-clock.ts"
 
 /** Translate a screen row into the absolute buffer retained by the library source. */
 export function activeScreenRow(ctx: LibProbeSource, row: number): number {
@@ -1972,6 +1975,171 @@ export function syncOutputCaptureTooSlow(settleMs: number, beforeSet: number, af
 }
 
 /**
+ * How long the no-set control, the release and the restored clear may each take to show on screen (33628). It bounds
+ * those three reads only. The held phase has no wait of its own: it lasts as long as the control took to appear.
+ */
+export const SYNC_OUTPUT_PAINT_WAIT_MS = 2000
+
+/**
+ * 33628 (@cto ruling 1957): WezTerm Linux's synchronized-output App row, graded by the rendered hold.
+ *
+ * Why not DECRPM: the pinned mux (mux/src/lib.rs) keeps parsing while mode 2026 is held and buffers the parsed actions
+ * until reset. Every in-band reply is withheld together with the paint, so a DECRPM read after DECSET cannot decide
+ * the row.
+ *
+ * What it reads: one cell is painted with calibration's own solid sentinel, and every frame is read by that exact
+ * colour alone (`locate`, no cells). Such a read paints nothing in-band, so nothing is written, queried or reset while
+ * the mode is held.
+ *
+ * Supported needs all of this, in one bounded sequence:
+ * - the colour is absent at baseline;
+ * - a no-set control paint appears, and its clear leaves the colour absent;
+ * - the held paint is absent from every frame up to one requested later than the control took to appear, and each of
+ *   those frames equals the cleared baseline;
+ * - the reset paint appears with the control's footprint;
+ * - after the final reset, DECRPM reads Ps 2 and the colour is gone.
+ *
+ * Anything else stays open with its reason; this arm states no negative. The claim is the observed hold and release in
+ * this sequence, not tear-free rendering or scroll cadence in general. The callback runs only on a disposable terminal,
+ * and the painted cell is left blank.
+ */
+async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const open = (reason: string, evidence?: object): ProbeCallbackResult => ({
+    pass: false,
+    ...(evidence === undefined ? {} : { response: JSON.stringify(evidence) }),
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+  })
+  const capture = ctx.capture
+  const sentinel = ctx.captureGeometry?.sentinel
+  const missing = !capture
+    ? "no capture adapter"
+    : ctx.captureKind === "text-cells"
+      ? "only a text-cells capture"
+      : !sentinel
+        ? "no calibration sentinel"
+        : !Number.isSafeInteger(ctx.cols) || ctx.cols < 1
+          ? `no measured width (${String(ctx.cols)} columns)`
+          : undefined
+  if (missing !== undefined || !capture || !sentinel) {
+    return open(`synchronized-output rendered hold unmeasured: this run offers ${missing}, so the hold cannot be read`)
+  }
+  const cell = { row: 1, col: ctx.cols }
+  const at = `\x1b[${cell.row};${cell.col}H`
+  const paint = `\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`
+  const blank = `\x1b7${at}\x1b[0m \x1b8`
+  const start = sourceNow(ctx)
+  const elapsed = () => sourceNow(ctx) - start
+  const frames: ObservationFrame[] = []
+  const writes: { phase: string; atMs: number; bytes: string }[] = []
+  const reads: { phase: string; requestedMs: number; returnedMs: number; located: CaptureLocated | null }[] = []
+  const evidence = { snapshot: 2, cell, rgb: sentinel.rgb, form: sentinel.form, writes, reads }
+  type Read = { frame: ObservationFrame; requestedMs: number; returnedMs: number; located: CaptureLocated | null }
+  const write = (phase: string, bytes: string) => {
+    const atMs = elapsed()
+    writes.push({ phase, atMs, bytes })
+    ctx.write(bytes)
+    return atMs
+  }
+  const read = async (phase: string): Promise<Read | string> => {
+    const requestedMs = elapsed()
+    const frame = await capture({
+      role: phase === "held" ? "target" : "control",
+      label: `synchronized-output ${phase}`,
+      locate: { rgb: sentinel.rgb },
+    })
+    const returnedMs = elapsed()
+    if (frame.located === undefined) return `the capture arm returned no located field for the ${phase} frame`
+    frames.push(frame)
+    reads.push({ phase, requestedMs, returnedMs, located: frame.located })
+    return { frame, requestedMs, returnedMs, located: frame.located }
+  }
+  // Read until the colour is present (or absent), within SYNC_OUTPUT_PAINT_WAIT_MS of `since`.
+  const until = async (phase: string, present: boolean, since: number): Promise<Read | string> => {
+    for (;;) {
+      const r = await read(phase)
+      if (typeof r === "string" || (r.located !== null) === present) return r
+      if (elapsed() - since >= SYNC_OUTPUT_PAINT_WAIT_MS) {
+        return `the ${phase} frame did not ${present ? "show" : "clear"} the sentinel within ${SYNC_OUTPUT_PAINT_WAIT_MS} ms`
+      }
+    }
+  }
+  const whole = (r: Read) => frameDigests(r.frame).whole
+  let measured: { held: Read; control: Read; controlAt: number; heldAt: number } | string
+  try {
+    measured = await (async () => {
+      const baseline = await read("baseline")
+      if (typeof baseline === "string") return baseline
+      if (baseline.located !== null) return "the sentinel colour was already on screen before any paint"
+      const controlAt = write("control", paint)
+      const control = await until("control", true, controlAt)
+      if (typeof control === "string") return control
+      const clearedAt = write("control clear", blank)
+      const cleared = await until("control cleared", false, clearedAt)
+      if (typeof cleared === "string") return cleared
+      if (whole(cleared) === undefined) return "the cleared baseline frame carries no whole-frame digest"
+      // The held phase lasts until a frame is requested later after its write than the control took to appear.
+      const latency = control.returnedMs - controlAt
+      const heldAt = write("held", `\x1b[?2026h${paint}`)
+      let held: Read
+      let count = 0
+      do {
+        const r = await read("held")
+        if (typeof r === "string") return r
+        held = r
+        count++
+        if (held.located !== null) return `the held paint appeared ${held.requestedMs - heldAt} ms after DECSET 2026`
+        if (whole(held) !== whole(cleared)) return "a held frame differs from the cleared baseline"
+      } while (count < 2 || held.requestedMs - heldAt < latency)
+      const releasedAt = write("release", "\x1b[?2026l")
+      const released = await until("released", true, releasedAt)
+      if (typeof released === "string") return released
+      if (JSON.stringify(released.located) !== JSON.stringify(control.located)) {
+        return "the released paint does not have the control's footprint"
+      }
+      return { held, control, controlAt, heldAt }
+    })()
+  } finally {
+    write("restore", `${blank}\x1b[?2026l`)
+  }
+  const restoredAt = elapsed()
+  const afterRestore = await queryDecrpm(ctx, 2026)
+  const restored = await until("restored", false, restoredAt)
+  const response = { ...evidence, afterRestore }
+  if (typeof measured === "string") {
+    return open(`synchronized-output rendered hold unresolved: ${measured}`, response)
+  }
+  if (afterRestore !== 2) {
+    return open(
+      `synchronized-output restoration unproven: DECRPM 2026 read ${String(afterRestore)} after the reset`,
+      response,
+    )
+  }
+  if (typeof restored === "string") return open(`synchronized-output restoration unproven: ${restored}`, response)
+  const { held, control, controlAt, heldAt } = measured
+  const note =
+    `synchronized-output rendered hold observed: the no-set control painted ${control.returnedMs - controlAt} ms after its write, ` +
+    `the held paint stayed off screen for ${held.requestedMs - heldAt} ms, and DECRST 2026 released it with the control's footprint; ` +
+    "tearing and scroll cadence unmeasured"
+  const observed = JSON.stringify(response)
+  return {
+    pass: true,
+    response: observed,
+    note,
+    observation: { outcome: "supported", assertionType: "screenshot", note, frames, screenshotRef: held.frame.ref },
+    assertions: [
+      {
+        assertionType: "screenshot",
+        kind: "positive",
+        expected:
+          "a no-set paint shows, the same paint after DECSET 2026 stays off every frame for longer than the control took, and DECRST 2026 shows it with the control's footprint",
+        observed,
+      },
+    ],
+  }
+}
+
+/**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
  */
@@ -1991,6 +2159,8 @@ export function decrpmModeProbe(
       const snapshot = await queryDecrpm(ctx, modeNum)
       let ps = snapshot
       let afterRestore: DecrpmPs | null | undefined
+      // 33628: the one subject whose replies are withheld while held is graded by its rendered hold instead.
+      if (snapshot === 2 && modeNum === 2026 && ctx.syncOutputRenderedHold) return syncOutputRenderedHold(ctx)
       if (snapshot === 2) {
         try {
           ctx.write(`\x1b[?${modeNum}h`)

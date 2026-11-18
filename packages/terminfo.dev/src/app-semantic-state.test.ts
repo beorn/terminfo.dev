@@ -4,6 +4,7 @@
  * @level l2
  * @consumer The owned collector's shared exact-App table and semantic reader.
  * @testonly none
+ * @reach fs-walk <fixture-only: lists only a mkdtemp scratch dir it created, for leftover osc7- files>
  */
 import { afterEach, expect, test, vi } from "vitest"
 import { execFileSync } from "node:child_process"
@@ -13,6 +14,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -26,6 +28,7 @@ import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harnes
 import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
 import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
 import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
+import { kittyAncestor } from "./linux-capture.ts"
 import {
   appSemanticDeclarations,
   declarationDrift,
@@ -978,6 +981,113 @@ test.each([
       expect(writes.join("")).toContain("\x1b]133;Z\x07")
       expect(title).toBe("owned Kitty title")
     } finally {
+      listener.stop(true)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+// 33628 (@cto 1957): the Kitty prompt rows cannot catch the OSC 7 folder reader, which reads through a background
+// launch with --cwd=last_reported. Drive the existing collector entry with a fake Kitty that starts that child in its
+// last reported path, or its window's process cwd when it has none, and writes what the child would.
+test.each(["valid", "ignored", "target-ignored", "inert-changes", "restore-fails", "torn-read"] as const)(
+  "Kitty OSC 7 reads two fresh folders through launch --cwd=last_reported and restores the public path: %s",
+  async (mode) => {
+    const root = mkdtempSync(join(tmpdir(), "kitty-cwd-33628-"))
+    const capture = join(root, "artifacts")
+    mkdirSync(capture)
+    const runId = "c".repeat(32)
+    const socket = join(root, `kitty-${runId}.sock`)
+    const listener = Bun.listen({ unix: socket, socket: { data() {} } })
+    vi.mocked(kittyAncestor).mockReturnValue(process.pid)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", String(process.pid))
+    vi.stubEnv("KITTY_WINDOW_ID", "7")
+    vi.stubEnv("KITTY_LISTEN_ON", `unix:${socket}`)
+    editorNonce.mockReturnValue("33628fff-0000-4000-8000-000000000001")
+    let title = "owned Kitty title"
+    let reported: string | undefined
+    let osc7Count = 0
+    const launches: string[][] = []
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
+      expect(file).toBe("/owned/kitten")
+      expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
+      if (args?.includes("ls")) {
+        expect(args).toContain("id:7")
+        return JSON.stringify([
+          { tabs: [{ windows: [{ id: 7, pid: process.pid, at_prompt: false, last_cmd_exit_status: 0, title }] }] },
+        ])
+      }
+      if (args?.[3] === "launch") {
+        const argv = [...(args as string[])]
+        launches.push(argv)
+        expect(argv.slice(4, 9)).toEqual(["--type=background", "--source-window", "id:7", "--cwd=last_reported", "--"])
+        const out = argv.at(-1)!
+        const cwd = reported ?? process.cwd()
+        writeFileSync(out, mode === "torn-read" ? `${cwd}\nextra\n` : `${cwd}\n`)
+        return ""
+      }
+      throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
+    })
+    try {
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc7-cwd",
+        runId,
+        executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+        write(bytes) {
+          for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
+            const body = part[1]!
+            if (body.startsWith("2;")) title = body.slice(2)
+            else if (body.startsWith("77;") && mode === "inert-changes") reported = body.slice(3 + "file://".length)
+            else if (body.startsWith("7;")) {
+              osc7Count++
+              const ignored =
+                mode === "ignored" ||
+                (mode === "target-ignored" && osc7Count === 2) ||
+                (mode === "restore-fails" && osc7Count === 3)
+              if (!ignored) reported = body.slice(2 + "file://".length)
+            }
+          }
+        },
+      })
+      // Every phase's background child ran in this run's private directory, and the reader cleaned up after it.
+      expect(readdirSync(root).filter((name) => name.startsWith("osc7-"))).toEqual([])
+      expect(title).toBe("owned Kitty title")
+      if (mode === "torn-read") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/not one line/) })
+        return
+      }
+      if (mode === "restore-fails") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/restoration/) })
+        return
+      }
+      if (mode === "target-ignored" || mode === "ignored") {
+        // Both phases at the fallback, or only the target unchanged: never Unsupported (@cto 1957 c).
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/Kitty OSC7 target/) })
+        return
+      }
+      if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+      const graded = gradeAppSemanticState(reading)
+      if (mode === "inert-changes") {
+        // A changed inert control never decides support either way.
+        expect(graded).toMatchObject({ tests: [{ id: "criterion", status: "probe-invalid" }] })
+        return
+      }
+      const control = join(root, "osc7-control-33628fff")
+      const target = join(root, "osc7-target-33628fff")
+      expect(reading.unknown).toEqual({ before: process.cwd(), after: process.cwd() })
+      expect(reading.handled).toEqual({ before: process.cwd(), after: control, expected: control })
+      expect(reading.target).toEqual({ before: control, after: target, expected: target })
+      expect(graded.pass).toBe(true)
+      expect(reported).toBe(process.cwd())
+      expect(launches.length).toBe(5)
+    } finally {
+      vi.mocked(kittyAncestor).mockReturnValue(123)
       listener.stop(true)
       rmSync(root, { recursive: true, force: true })
     }

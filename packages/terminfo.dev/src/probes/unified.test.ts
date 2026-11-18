@@ -35,7 +35,12 @@ import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/ru
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
-import { captureAdapterEligible, runProbeBatch, type HeldViewportReaderFor } from "./unified.ts"
+import {
+  captureAdapterEligible,
+  runProbeBatch,
+  syncOutputRenderedSubject,
+  type HeldViewportReaderFor,
+} from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
 import { readCaptureBinding, readProbeCapture, readReference } from "../../../probes/erase-capture.ts"
@@ -8315,4 +8320,20 @@ describe("the row wall returns a held viewport to the bottom before the next row
       restore()
     }
   })
+})
+
+// 33628 (@cto 1957): only the one WezTerm Linux build is handed the rendered hold; every other context keeps the
+// reply criterion, so a change here cannot alter an unapproved row.
+it("only WezTerm Linux 0-unstable-2026-10-10 is graded by the rendered hold", () => {
+  const wezterm = { kind: "term", id: "wezterm", os: "linux", version: "0-unstable-2026-10-10" } as const
+  expect(syncOutputRenderedSubject(wezterm)).toBe(true)
+  for (const other of [
+    { ...wezterm, version: "20240203" },
+    { ...wezterm, os: "macos" },
+    { ...wezterm, id: "alacritty" },
+    { ...wezterm, kind: "lib" },
+    undefined,
+  ] as const) {
+    expect(syncOutputRenderedSubject(other)).toBe(false)
+  }
 })
