@@ -58,6 +58,7 @@ import {
   createOwnedCmuxWorkspaceCwdReader,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
+  parseCmuxCliShortVersion,
   type CmuxConfigObservation,
   type CmuxHistoryIdentity,
   type CmuxLastRead,
@@ -1581,7 +1582,7 @@ async function readHostedCmuxSemanticCwd(input: {
     }
   }
   const reviewedVersion = "0.65.2"
-  const cliVersion = /^cmux (\S+)$/u.exec(input.ownedCmuxIdentity?.historyExecutable?.version ?? "")?.[1]
+  const cliVersion = parseCmuxCliShortVersion(input.ownedCmuxIdentity?.historyExecutable?.version)
   const launchValid =
     cliVersion === reviewedVersion &&
     process.env.TERMINFO_TARGET_VERSION === reviewedVersion &&

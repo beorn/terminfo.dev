@@ -71,6 +71,18 @@ export type CmuxExecutableProof = Readonly<{
   version: string
 }>
 
+const CMUX_CLI_VERSION_SUMMARY = /^cmux (\d+\.\d+\.\d+)(?: \([0-9A-Za-z._+-]+\))?(?: \[[0-9a-f]{7,40}\])?$/u
+
+/**
+ * Extract the short version from cmux's `versionSummary()` line (`CLI/cmux.swift:45701-45716`):
+ * `cmux <version>`, `cmux <version> (<build>)`, or `cmux <version> (<build>) [<commit>]`.
+ * Refuses `cmux build <build>`, `cmux version unknown`, or any malformed/extra tokens without fallback.
+ */
+export function parseCmuxCliShortVersion(reported: string | undefined): string | undefined {
+  if (typeof reported !== "string") return undefined
+  return CMUX_CLI_VERSION_SUMMARY.exec(reported)?.[1]
+}
+
 /**
  * Pin the CLI the run reads through: its path, its bytes and the version the app reports about itself. The
  * WezTerm contract (@cto af8608c3): a reader with no version behind it is an unmeasured identity that names
@@ -83,7 +95,10 @@ export function cmuxExecutableProof(
   | { readonly status: "unmeasured"; readonly reason: string } {
   try {
     const sha256 = createHash("sha256").update(readFileSync(executable)).digest("hex")
-    const result = spawnSync(executable, ["--version"], { encoding: "utf8", timeout: 5000 })
+    // MacOS/cmux's CLIForwardingDecision.shouldForwardToBundledCLI (CLIForwardingDecision.swift:38-47) leaves
+    // leading-dash flags like `--version` on the `.launchGUI` path (exiting 0 with empty stdout when an
+    // instance is already running) and forwards subcommands like `version` via execv to Contents/Resources/bin/cmux.
+    const result = spawnSync(executable, ["version"], { encoding: "utf8", timeout: 5000 })
     const reported =
       result.status === 0 && typeof result.stdout === "string" ? (result.stdout.split("\n")[0] ?? "").trim() : ""
     if (result.error !== undefined || result.signal != null || result.status !== 0 || reported === "") {

@@ -24,6 +24,7 @@ import {
   createOwnedCmuxWorkspaceCwdReader,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
+  parseCmuxCliShortVersion,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
 
@@ -105,15 +106,41 @@ test("only an owned cmux surface on macOS has a history CLI", () => {
   ).toBe("/opt/cmux/bin/cmux")
 })
 
-test("the executable proof hashes this run's CLI and records an unreported version as unreported", () => {
+test("the executable proof invokes the `version` subcommand (never `--version`) and parses real versionSummary shapes", () => {
   files.readFileSync.mockReturnValue(Buffer.from("cmux-binary"))
   files.statSync.mockReturnValue({ isFile: () => true, size: 11 })
-  child.spawnSync.mockReturnValue({ status: 0, stdout: "cmux 0.65.2\n", stderr: "" })
+  // MacOS/cmux treats `--version` as a GUI launch flag (CLIForwardingDecision.swift:38-47) and exits 0 with empty stdout
+  // when an instance is already running (hosted run 44396537489); only subcommand `version` forwards to Resources/bin/cmux.
+  child.spawnSync.mockImplementation((_file, args: readonly string[]) =>
+    args[0] === "version"
+      ? { status: 0, stdout: "cmux 0.65.2 (111)\n", stderr: "" }
+      : { status: 0, stdout: "", stderr: "" },
+  )
   const measured = cmuxHistoryIdentity(executable)
+  expect(child.spawnSync).toHaveBeenCalledWith(executable, ["version"], { encoding: "utf8", timeout: 5000 })
   expect(measured?.historyReadsThroughCli).toBe(true)
   expect(measured?.historyExecutable?.path).toBe(executable)
   // The CLI's own first line, verbatim: an identity field is never a rewritten version.
-  expect(measured?.historyExecutable?.version).toBe("cmux 0.65.2")
+  expect(measured?.historyExecutable?.version).toBe("cmux 0.65.2 (111)")
+
+  expect(parseCmuxCliShortVersion("cmux 0.65.2")).toBe("0.65.2")
+  expect(parseCmuxCliShortVersion("cmux 0.65.2 (111)")).toBe("0.65.2")
+  expect(parseCmuxCliShortVersion("cmux 0.65.2 (111) [9d01f956c51c]")).toBe("0.65.2")
+  expect(parseCmuxCliShortVersion("cmux 0.65.2 (111) [9d01f956c51cd895e10e7d56b6dd7b5f6fcce625]")).toBe("0.65.2")
+  expect(parseCmuxCliShortVersion("cmux 0.65.2 [9d01f956c51c]")).toBe("0.65.2")
+  expect(parseCmuxCliShortVersion("cmux 0.65.1 (110)")).toBe("0.65.1")
+  for (const malformed of [
+    undefined,
+    "",
+    "cmux build 111",
+    "cmux version unknown",
+    "cmux 0.65.2 ()",
+    "cmux 0.65.2 []",
+    "cmux 0.65.2 (111) trailing",
+    "0.65.2",
+  ]) {
+    expect(parseCmuxCliShortVersion(malformed), String(malformed)).toBeUndefined()
+  }
 
   // A CLI that answers no version leaves the identity unmeasured with its own reason: the WezTerm contract,
   // never a version borrowed from a release note and never a null passed off as one.

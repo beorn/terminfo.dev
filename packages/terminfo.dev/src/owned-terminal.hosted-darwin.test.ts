@@ -1576,6 +1576,8 @@ test("the viewport route applies only to hosted alacritty 0.17.0 on macOS in thi
 test.each([
   "supported",
   "unsupported",
+  "mismatched-cli-version",
+  "malformed-cli-version",
   "inert-control",
   "moved-workspace",
   "lost-focus",
@@ -1667,7 +1669,20 @@ test.each([
       },
       spawnSync: (file, args) => {
         if (args[0] === "--version") {
-          return { status: 0, stdout: "cmux 0.65.2\\n", stderr: "" }
+          // Reproduce MacOS/cmux CLIForwardingDecision.swift:38-47 (run 44396537489): leading-dash flags take .launchGUI
+          // and exit 0 with empty stdout when an instance is already running.
+          return { status: 0, stdout: "", stderr: "" }
+        }
+        if (args[0] === "version") {
+          const line =
+            mode === "mismatched-cli-version"
+              ? "cmux 0.65.1 (110)\\n"
+              : mode === "malformed-cli-version"
+                ? "cmux build 111\\n"
+                : mode === "supported"
+                  ? "cmux 0.65.2 (111) [9d01f956c51c]\\n"
+                  : "cmux 0.65.2 (111)\\n"
+          return { status: 0, stdout: line, stderr: "" }
         }
         assert.equal(String(file), executable)
         if (args[0] === "read-screen") {
@@ -1791,7 +1806,9 @@ test.each([
         assert.equal(graded.observation?.outcome, mode)
       } else {
         assert.equal(reading.status, "invalid", JSON.stringify(reading))
-        if (mode !== "wrong-bundle") {
+        if (mode === "mismatched-cli-version" || mode === "malformed-cli-version") {
+          assert.equal(reading.reason, "cmux cwd has no reviewed CLI version bound to this App launch")
+        } else if (mode !== "wrong-bundle") {
           assert.equal("paneLeftPinned" in (reading.detail ?? {}), false)
           if (mode === "restore-failed" || mode === "primary-and-restore-failed") {
             assert.equal(reading.detail?.restoredEqual, false)
