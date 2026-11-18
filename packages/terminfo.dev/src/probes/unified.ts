@@ -302,12 +302,6 @@ export function scheduleAppProbes<T extends { readonly id: string }>(requested: 
 }
 
 /**
- * The console host a text capture recorded, in the shape the observation publishes: image, the
- * executable this run opened, and that executable's digest. `pid` and `ppid` stay in the trace,
- * because they name one process instance rather than a host a reader can check (30055 AC4; @cto
- * ruling 6255e75d). A malformed owner is loud here rather than dropped.
- */
-/**
  * A row stopped by its wall says how far its captures got (34641 d): their count, the last one's offset from the
  * row's first capture, and the median gap between them, from each frame's own `capturedAt`. A row with no captures
  * keeps the bare text. Preparation and renewal captures are not this row's, so the span is the fixture's, not the
@@ -333,6 +327,12 @@ export function wallExceededReason(wallMs: number, capturedAt: readonly number[]
   return `${bare} after ${count}, ${last} (median gap ${Math.round(median)}ms)`
 }
 
+/**
+ * The console host a text capture recorded, in the shape the observation publishes: image, the
+ * executable this run opened, and that executable's digest. `pid` and `ppid` stay in the trace,
+ * because they name one process instance rather than a host a reader can check (30055 AC4; @cto
+ * ruling 6255e75d). A malformed owner is loud here rather than dropped.
+ */
 function capturedConsoleHost(trace: Record<string, unknown>): ConsoleBufferOwner | undefined {
   const owner = trace.bufferOwner
   if (owner === undefined) return undefined
