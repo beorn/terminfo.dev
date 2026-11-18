@@ -247,6 +247,61 @@ test("Darwin capture falls back to a region capture of the window bounds when th
   }
 })
 
+// #34892: the census and the restore confirmation own their budget. A paint deadline the cold first
+// paint nearly exhausted used to be the budget the census got, so our own timer killed osascript and
+// the record read as the app's SIGKILL in 71 rows of run 44267909484.
+test("the window census and restore confirmation own their budget while the window image keeps the caller's deadline (34892)", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-census-budget-"))
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width: 80, height: 63 },
+    alpha: 1,
+    onscreen: true,
+  }
+  const calls: Array<{
+    file: string
+    deadline: number | undefined
+    step: { step: string; budgetMs?: number } | undefined
+  }> = []
+  const decoder = convertsTo(80, 63)
+  const runner = vi
+    .spyOn(captureCore, "command")
+    .mockImplementation(async (file, args, _input, deadline, _onStderr, _environment, step) => {
+      calls.push({ file, deadline, step })
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      writeFileSync(args.at(-1)!, PNG_STUB)
+      return Buffer.alloc(0)
+    })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
+    // The paint budget a cold first paint would leave behind: barely any time at all.
+    const paintDeadline = Date.now() + 40
+    const { result } = await adapter.captureRaw(
+      { featureId: "extensions.truecolor", role: "control", label: "diagnostic" },
+      paintDeadline,
+    )
+    expect(result.frame.pixelsDigest).toMatch(/^sha256:/)
+    const censuses = calls.filter((call) => call.file === "/usr/bin/osascript")
+    expect(censuses.map((call) => call.step?.step)).toEqual(["window census", "window census", "restore confirmation"])
+    for (const call of censuses) {
+      expect(call.step?.budgetMs).toBe(10_000)
+      expect(call.deadline).toBeGreaterThanOrEqual(paintDeadline + 5_000)
+    }
+    // The image itself still honours the caller's paint deadline: this is a budget split, not a removal.
+    const shots = calls.filter((call) => call.file === "/usr/sbin/screencapture")
+    expect(shots).toHaveLength(1)
+    expect(shots[0]?.deadline).toBe(paintDeadline)
+    expect(shots[0]?.step).toEqual({ step: "window image" })
+  } finally {
+    decoder.mockRestore()
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // 33587, @cto 730017b6: an owned Mac's console shows other people's apps, so a refused window image
 // refuses by name there and no region of the screen is ever captured.
 test("Darwin capture on an owned host refuses a refused window image instead of capturing a screen region", async () => {
