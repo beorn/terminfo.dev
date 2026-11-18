@@ -117,7 +117,15 @@ function decided(
   }
   const frames = [...byRef.values()].sort((a, b) => a.capturedAt - b.capturedAt)
   const target = evidence.at(-1)?.candidate.held[0]
-  const response = JSON.stringify(state)
+  // #34632: a decided screenshot has to cite the frame digests it decided on (run-parser's
+  // requireCitedFrameDigests). The held crop and the observed reference it was compared against are exactly the two
+  // frames this grade rests on, so they travel in the assertion's own evidence; the plain state alone left a
+  // decided held row unreadable, and the whole run with it.
+  const response = JSON.stringify({
+    ...state,
+    held: target?.ref,
+    reference: evidence.at(-1)?.reference.ref,
+  })
   return {
     pass: outcome === "supported",
     note,
