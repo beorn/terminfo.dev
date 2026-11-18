@@ -18,11 +18,12 @@ import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
-/** Bundle substrings measured in the reviewed Cursor 3.25.9 darwin-arm64 build (commit 5d4df965,
- * zip SHA-256 03c6fb01…bf763, pinned in .github/workflows/macos-measurement.yml), then re-measured on
- * Cursor 3.30.14 on 2026-11-18: six of the nine pins are unchanged, the main-process storage reader
- * renamed its join helper from L to fe, and the two workbench storage pins now name the application key
- * as one literal (the bis/zfe pair is gone) with a four-argument loadPersistentStorage call. Paths are
+/** Bundle substrings measured in the reviewed Cursor 3.30.14 darwin-arm64 build (commit 5f54c817,
+ * zip SHA-256 09080904…45af, pinned in .github/workflows/macos-measurement.yml), and re-measured on
+ * the installed app on 2026-11-18: six of the nine pins are unchanged from the 3.25.9 review, the
+ * main-process storage reader renamed its join helper from L to fe, and the two workbench storage pins
+ * now name the application key
+ * as one literal (the bis/zfe pair is gone) and pass it by its new binding at the four-argument loadPersistentStorage call, so the pair still chains the key to the application-scope load. Paths are
  * relative to the app bundle; `because` names what the launch relies on. */
 export const CURSOR_BUNDLE_PINS = [
   // The main process argv schema accepts the flag, so it reaches the window's environment.
@@ -61,14 +62,14 @@ export const CURSOR_BUNDLE_PINS = [
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
     substring:
-      '"src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"',
+      'Che="src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"',
     because: "the seeded application storage may not reach the command-line toast",
   },
   // ...in application scope (-1)...
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
     substring:
-      "[this.applicationUserPersistentStorage,this._setApplicationUserPersistentStorage]=this.loadPersistentStorage(-1,0,",
+      "[this.applicationUserPersistentStorage,this._setApplicationUserPersistentStorage]=this.loadPersistentStorage(-1,0,Che,",
     because: "the seeded application storage may not reach the command-line toast",
   },
   // ...and the command-line prompt reads cmdLineHookState from it and is skipped when it is ignored.

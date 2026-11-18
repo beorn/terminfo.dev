@@ -1431,7 +1431,7 @@ test("hosted editor installer reports both digests before installing altered arc
         throw new Error(`Unexpected installer dependency: ${id}`)
       },
     }),
-  ).rejects.toThrow(`expected 03c6fb01e2200b17d2bf4259c7b66c08c9d505760d2a331e26ebfb3193bbf763, actual ${actual}`)
+  ).rejects.toThrow(`expected 090809041649da27b1235a7f3a9bdacdb35f20ae38fd0b6d6cf69f1918a145af, actual ${actual}`)
   expect(launched.map((argv) => argv[0])).toEqual(["curl"])
   expect(JSON.parse(retained.get("/runner/measurement-artifacts/editor-installer.json")!)).toMatchObject({
     actualSha256: actual,
