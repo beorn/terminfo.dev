@@ -10,11 +10,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
 
-// Copying the live content tree plus TWO validator runs is past the 5s default, and both budgets have to
-// clear that cost: 2 x ~11 s measured 2026-11-17 on an idle host, more when a grouped run shares the
-// host (measured 84 s of load-81 time on 32 cores). The inner spawn budget is 30 s, so the outer
-// timeout must sit above two of them plus the copy: 60 s guards a hang without pushing the body past it.
-test("validates retained runs through the canonical decoder and names rejected input", { timeout: 60_000 }, () => {
+// Copying the live content tree plus THREE validator runs is past the 5s default, and both budgets have
+// to clear that cost: ~11 s per full run measured 2026-11-17 on an idle host, ~20 s at load 17 on
+// 32 cores. The 60 s outer budget this test used to carry was already under the work: the whole body
+// measured 72 s at load 17 (#34896), so it could only pass when the host was idle. Each spawn gets
+// 60 s and the outer timeout 240 s, twice the slowest measured body: the budget guards a hang, and the
+// assertions below are what actually judge the run.
+test("validates retained runs through the canonical decoder and names rejected input", { timeout: 240_000 }, () => {
   const source = join(import.meta.dirname, "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-validate-"))
   try {
@@ -30,7 +32,7 @@ test("validates retained runs through the canonical decoder and names rejected i
     // commits, i.e. straight through the old 10 s budget, so this assert failed on host load rather than
     // on a hang. Keep the budget equal to the test timeout above: it guards a hang, and the assertions
     // below are what actually judge the run.
-    const run = () => spawnSync("bun", [script], { encoding: "utf8", timeout: 30_000 })
+    const run = () => spawnSync("bun", [script], { encoding: "utf8", timeout: 60_000 })
     const baseline = run()
     expect(baseline.error).toBeUndefined()
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0)
