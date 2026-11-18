@@ -67,7 +67,12 @@ async function termless(): Promise<{ run: string; before: string; report: Shadow
 function counts(report: ShadowReport) {
   const sum = (key: "agree" | "disagree" | "incomplete" | "notComparable") =>
     report.families.reduce((total, family) => total + family[key], 0)
-  return { agree: sum("agree"), disagree: sum("disagree"), incomplete: sum("incomplete"), notComparable: sum("notComparable") }
+  return {
+    agree: sum("agree"),
+    disagree: sum("disagree"),
+    incomplete: sum("incomplete"),
+    notComparable: sum("notComparable"),
+  }
 }
 
 /** A tampered copy of a saved run, beside it, shadowed against the same suite. */
@@ -132,7 +137,10 @@ it.runIf(OWNED_LAYOUT)(
     const other = "probe-invalid"
 
     const tampered = await shadowTampered(run, "status", (draft) => {
-      Object.assign(draft.results!.find((result) => result.featureId === agreed)!, { status: other, reason: "tampered" })
+      Object.assign(
+        draft.results!.find((result) => result.featureId === agreed)!,
+        { status: other, reason: "tampered" },
+      )
     })
     expect(row(tampered, agreed), JSON.stringify(row(tampered, agreed))).toMatchObject({
       outcome: "disagree",
@@ -169,11 +177,14 @@ it.runIf(OWNED_LAYOUT)(
         "collector-error",
         (draft) => {
           // The collector's caught error as a saved row carries it (a schema-4 run keeps no diagnostics list).
-          Object.assign(draft.results!.find((entry) => entry.featureId === agreed)!, {
-            status: "probe-invalid",
-            reason: `headless xtermjs probe ${agreed}: callback threw`,
-            tests: [],
-          })
+          Object.assign(
+            draft.results!.find((entry) => entry.featureId === agreed)!,
+            {
+              status: "probe-invalid",
+              reason: `headless xtermjs probe ${agreed}: callback threw`,
+              tests: [],
+            },
+          )
         },
         "live collector error",
       ],

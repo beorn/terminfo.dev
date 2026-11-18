@@ -331,7 +331,11 @@ function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string
   // A saved schema-4 run keeps no diagnostics list: the collector's caught error is the row's reason, which it
   // always opens with `headless <backend> probe <id>: ` (headless-batch collectPass). The grader's own refusals
   // ("Callback for ...") are decided from the callback result, which the replay reproduces, so they stay comparable.
-  if (stored.status === "probe-invalid" && /^headless \S+ probe /.test(stored.reason ?? "") && stored.reason?.includes(` probe ${id}: `)) {
+  if (
+    stored.status === "probe-invalid" &&
+    /^headless \S+ probe /.test(stored.reason ?? "") &&
+    stored.reason?.includes(` probe ${id}: `)
+  ) {
     return "live collector error: " + stored.reason
   }
   const external = LIB_EXTERNAL_READS[id]
@@ -436,9 +440,7 @@ export async function shadowStoredRun(
   }
   for (const [reason, featureIds] of excluded) report.excluded.push({ reason, rows: featureIds.length, featureIds })
   const families: ShadowFamily[] =
-    stored.subject.kind === "lib"
-      ? [...new Set(report.rows.map((row) => row.family))].sort()
-      : ["sgr", "outer-command"]
+    stored.subject.kind === "lib" ? [...new Set(report.rows.map((row) => row.family))].sort() : ["sgr", "outer-command"]
   for (const family of families) {
     const rows = report.rows.filter((row) => row.family === family)
     report.families.push({

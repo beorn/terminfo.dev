@@ -97,7 +97,10 @@ test("deferred callback functions remain ordered operations after persistence", 
 // changed what the callback observed (TextDecoder refuses a proxy), so recording itself turned supported rows invalid.
 test("recorded and replayed calls hand back real bytes that built-ins accept", () => {
   const log = createCallLog()
-  const recorded = withCallLog({ encodeKey: (key: string) => new TextEncoder().encode(key + "\r") }, { mode: "record", log })
+  const recorded = withCallLog(
+    { encodeKey: (key: string) => new TextEncoder().encode(key + "\r") },
+    { mode: "record", log },
+  )
   const live = recorded.context.encodeKey("x")
   expect(live).toBeInstanceOf(Uint8Array)
   expect(new TextDecoder().decode(live)).toBe("x\r")
@@ -118,7 +121,10 @@ test("recorded and replayed plain-data results are accepted by structuredClone",
   const recorded = withCallLog(subject, { mode: "record", log })
   expect(structuredClone(recorded.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
   recorded.finish()
-  const replay = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(JSON.stringify(log))) })
+  const replay = withCallLog<typeof subject>(null, {
+    mode: "replay",
+    log: readCallLog(JSON.parse(JSON.stringify(log))),
+  })
   expect(structuredClone(replay.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
   replay.finish()
 })
