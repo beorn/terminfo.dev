@@ -23,10 +23,14 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047", "sgr.underline.color", 
 // 34641: on Linux WezTerm these ran at 79-99 percent of their walls (capture spans from frame.capturedAt, runs
 // 2026-11-17T12-44Z and 13-06Z; worst median capture gap 921 ms), so they flipped between graded and cut run to run.
 // Each wall is sized from that measured span with at least 20 percent headroom: 132 captures need 150 s, 66 need 90 s.
+// 34694 fix-forward (hosted run 44200861479, current image): reset.sgr measured 148.1 s at cursor, 145.1 at cmux and
+// 120.5 at VS Code, leaving 150 s only 1.9 s above the worst arm, so 148.1 x 1.20 = 177.7 rounds to 180 s. modes.xtsave
+// measured 74.1 s in all three arms, which 90 s holds at 21.5 percent - but VS Code cut it at 90 s on run 44197283015,
+// so its need is above 90 s and a cut is only a lower bound: 90 x 1.20 = 108 rounds to 120 s.
 test.each([
-  ["reset.sgr", 150_000],
+  ["reset.sgr", 180_000],
   ["sgr.reset", 150_000],
-  ["modes.xtsave", 90_000],
+  ["modes.xtsave", 120_000],
   ["modes.xtpushsgr", 90_000],
   ["modes.xtpopsgr", 90_000],
 ] as const)("%s declares a %d ms wall", (id, wallMs) => {

@@ -3163,8 +3163,11 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 34641: Linux WezTerm took up to 54.7 s over 66 captures (run 2026-11-17T13-06Z), 91 percent of the old 60 s wall; 90 s puts it at 61 percent.
-    wallMs: 90_000,
+    // 34641: Linux WezTerm took up to 54.7 s over 66 captures (run 2026-11-17T13-06Z), 91 percent of the old 60 s wall.
+    // 34694 fix-forward: hosted run 44200861479 measured 74.1 s in all three arms of the current image, which 90 s holds
+    // at 21.5 percent headroom - but VS Code cut this row at 90 s on run 44197283015, so the need is above 90 s, not at
+    // it. A cut is a lower bound: 90 x 1.20 = 108 s, rounded up to 120 s.
+    wallMs: 120_000,
   },
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
