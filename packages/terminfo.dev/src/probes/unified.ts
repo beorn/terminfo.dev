@@ -448,6 +448,18 @@ function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string
   return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
 }
 
+/** 33628 (@cto 1957): the one subject whose synchronized-output App row is graded by its rendered hold. */
+export function syncOutputRenderedSubject(
+  subject: { kind: "term" | "lib" | "mux"; id: string; os: string; version?: string } | undefined,
+): boolean {
+  return (
+    subject?.kind === "term" &&
+    subject.id === "wezterm" &&
+    subject.os === "linux" &&
+    subject.version === "0-unstable-2026-10-10"
+  )
+}
+
 /** Run-fatal: a row's wall could not prove its held viewport back at the bottom (34645, @cto e1cfff79 item 2). */
 class ViewportReturnRefused extends Error {
   constructor(message: string) {
@@ -1222,6 +1234,9 @@ export async function runProbeBatch(
       }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
+    if (probe.id === "modes.synchronized-output" && ownsTerminal && syncOutputRenderedSubject(options.subject)) {
+      probeSource.syncOutputRenderedHold = true
+    }
     const isDirectLinuxApp =
       options.subject?.kind === "term" &&
       options.subject.os === "linux" &&

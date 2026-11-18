@@ -1184,6 +1184,104 @@ test("a reset reply after DECSET 2026 names the capture wait when the run declar
   }
 })
 
+/**
+ * @failure WezTerm Linux withholds every in-band reply while mode 2026 is held (its mux buffers parsed actions until
+ *   reset), so the reply criterion reads "no DECRPM reply" and the row stays open with no rendered evidence, or a
+ *   capture that paints, queries or resets in-band while held reads its own released bytes as the hold (33628,
+ *   @cto ruling 1957).
+ * @level l1
+ * @consumer modes.synchronized-output App callback with the collector's syncOutputRenderedHold flag.
+ * @testonly none
+ */
+test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-fails"] as const)(
+  "WezTerm's rendered hold is graded from colour-only frames, with nothing in-band while held: %s",
+  async (mode) => {
+    const definition = modesProbes.find((entry) => entry.id === "modes.synchronized-output")!
+    const context = captureSource(24, 80, [], [])
+    context.syncOutputRenderedHold = true
+    context.captureGeometry = { ...context.captureGeometry!, sentinel: { form: "basic", rgb: [181, 0, 181] } }
+    const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+    let held = false
+    let shown = false
+    let pending: boolean | undefined
+    const duringHold: string[] = []
+    let decrpm = 0
+    context.write = (bytes) => {
+      if (held && !bytes.includes("\x1b[?2026l")) duringHold.push(`write ${JSON.stringify(bytes)}`)
+      if (bytes.includes("\x1b[?2026h") && mode !== "ignores-hold") held = true
+      const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+      if (painted !== undefined && mode !== "control-dead") {
+        if (held) pending = painted
+        else shown = painted
+      }
+      if (bytes.includes("\x1b[?2026l")) {
+        held = false
+        if (pending !== undefined && mode !== "never-releases") shown = pending
+        pending = undefined
+        if (bytes.includes("\x1b[0m \x1b8") && mode !== "control-dead") shown = false
+      }
+    }
+    context.queryWithSentinel = async (sequence, pattern) => {
+      if (held) {
+        duringHold.push(`query ${JSON.stringify(sequence)}`)
+        return null
+      }
+      decrpm++
+      const ps = decrpm === 1 ? 2 : mode === "restore-fails" ? 1 : 2
+      return pattern.exec(`\x1b[?2026;${ps}$y`)
+    }
+    let shot = 0
+    context.capture = async (request: CaptureRequest) => {
+      expect(request.cells).toBeUndefined()
+      expect(request.locate).toEqual({ rgb: [181, 0, 181] })
+      shot++
+      return {
+        role: request.role,
+        label: request.label,
+        capturedAt: shot,
+        ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+        kind: "pixels",
+        pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+        located: shown ? box : null,
+      } satisfies ObservationFrame
+    }
+    let clock = 0
+    context.now = () => (clock += 5)
+    const result = await definition.term!(context)
+    expect(duringHold).toEqual([])
+    expect(held).toBe(false)
+    expect(shown).toBe(false)
+    if (mode === "holds") {
+      expect(result.pass).toBe(true)
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+      expect(result.note).toContain("tearing and scroll cadence unmeasured")
+      const response = JSON.parse(result.response!) as { reads: { phase: string; located: unknown }[]; afterRestore: number }
+      expect(response.afterRestore).toBe(2)
+      const phases = response.reads.map((r) => `${r.phase}:${r.located === null ? "absent" : "present"}`)
+      expect(phases[0]).toBe("baseline:absent")
+      expect(phases).toContain("control:present")
+      expect(phases.filter((p) => p.startsWith("held:"))).toEqual(
+        expect.arrayContaining(["held:absent", "held:absent"]),
+      )
+      expect(phases.filter((p) => p.startsWith("held:")).every((p) => p === "held:absent")).toBe(true)
+      expect(phases).toContain("released:present")
+      expect(phases.at(-1)).toBe("restored:absent")
+      return
+    }
+    // Every failure keeps the row open with its reason; this arm states no negative (@cto 1957).
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    const reason = {
+      "ignores-hold": /held paint appeared/,
+      "never-releases": /released frame did not show/,
+      "control-dead": /control frame did not show/,
+      "restore-fails": /DECRPM 2026 read 1 after the reset/,
+    }[mode]
+    expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(reason) }])
+  },
+)
+
+
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
 // The protocol matrix never exercised either effect or its controls.
 test.each([null, 0] as const)("App DECCOLM reads controlled size replies after DECRPM %s", async (ps) => {

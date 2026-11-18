@@ -1792,6 +1792,13 @@ export interface TermProbeSource {
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
   /**
+   * 33628 (@cto ruling 1957): set only on modes.synchronized-output for an owned WezTerm Linux run. Its mux keeps
+   * parsing while mode 2026 is held and withholds replies together with the paint, so the App callback grades the
+   * rendered hold from colour-only frames instead of a DECRPM reply after DECSET. Every other subject keeps the reply
+   * criterion.
+   */
+  syncOutputRenderedHold?: true
+  /**
    * The run's pixel capture waits this many ms before it reads the screen (the collector's own number,
    * #33032). Set for every row of a run whose adapter declares a fixed wait, whether or not the row
    * itself is handed the adapter; absent where the adapter declares none.
