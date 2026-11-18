@@ -176,17 +176,60 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
 const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
 
 /**
- * 34507: the documented bound is ONE signal — the 30 min AbortSignal at the fetch below — and only Bun's fetch
- * lets us clear its own abort with `timeout:false`. Node's fetch takes no per-request option for its 300 s headers
- * timeout, so a silent /probe there aborts at 300 s. That is a known open cure, NOT a reason to refuse the runtime:
- * the shipped CLI starts this client under Node when Bun is absent (bin/terminfo.mjs, engines node >=24), so a
- * blanket rejection removed a public capability. Both runtimes run the probe; a Node abort is named for what it is.
+ * 34742: above the 30 min signal, so undici's own socket timers can never win on the Node path. Node's fetch pins
+ * undici's 300 s headers and body timeouts on every request and ignores both init keys and a dispatcher raise
+ * (measured 2026-11-18: an Agent with headersTimeout 50 still waited 600 ms), so `undici.request` through this
+ * agent is the only way to let the signal be the single bound there. Bun keeps its own fetch, where timeout:false
+ * already does that.
  */
-/** Node's own fetch headers timeout, which aborts a silent response at 300 s with no per-request control. */
+export const NODE_PROBE_SOCKET_TIMEOUT_MS = DAEMON_PROBE_TIMEOUT_MS + 5 * 60_000
+
+/**
+ * 34507/34742: the documented bound is ONE signal, the 30 min AbortSignal on the request below. Bun's fetch clears
+ * its own abort with timeout:false; Node's fetch cannot, so the Node path issues the same request through undici
+ * and raises undici's headers and body timers past the signal. Refusing the runtime stays wrong: the shipped CLI
+ * starts this client under Node when Bun is absent (bin/terminfo.mjs, engines node >=24).
+ */
+/** A silent response's socket timeout, whether Node surfaced it as a cause or undici raised it directly. */
 function isHeadersTimeout(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const cause = (error as { cause?: { code?: unknown } }).cause
-  return typeof cause?.code === "string" && cause.code === "UND_ERR_HEADERS_TIMEOUT"
+  const code = cause?.code ?? (error as { code?: unknown }).code
+  return code === "UND_ERR_HEADERS_TIMEOUT"
+}
+
+/**
+ * The Node transport: undici.request with its timers above the signal, wrapped as a Response so every caller sees
+ * the one contract regardless of runtime. Timers are a parameter so a test can prove them without waiting 300 s.
+ */
+export async function nodeProbeFetch(
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal },
+  timeouts: { headersTimeout: number; bodyTimeout: number } = {
+    headersTimeout: NODE_PROBE_SOCKET_TIMEOUT_MS,
+    bodyTimeout: NODE_PROBE_SOCKET_TIMEOUT_MS,
+  },
+): Promise<Response> {
+  const { Agent, request } = await import("undici")
+  const agent = new Agent({ headersTimeout: timeouts.headersTimeout, bodyTimeout: timeouts.bodyTimeout })
+  try {
+    const { statusCode, headers, body } = await request(url, {
+      method: init.method,
+      headers: init.headers,
+      ...(init.body === undefined ? {} : { body: init.body }),
+      signal: init.signal,
+      dispatcher: agent,
+    })
+    const bytes = Buffer.from(await body.arrayBuffer())
+    const flat: Record<string, string> = {}
+    for (const [name, value] of Object.entries(headers)) {
+      if (value !== undefined) flat[name] = Array.isArray(value) ? value.join(", ") : String(value)
+    }
+    return new Response(bytes, { status: statusCode, headers: flat })
+  } finally {
+    // Some builds export an Agent without close (a shim); the socket then dies with the request.
+    if (typeof agent.close === "function") await agent.close()
+  }
 }
 
 export async function requestDaemonProbe(
@@ -225,15 +268,25 @@ export async function requestDaemonProbe(
   let response: Response
   const started = Date.now()
   try {
-    // Bun's own fetch timeout aborts a silent body at ~362s and wins over AbortSignal.timeout
-    // (34477 run 2328c7a7). timeout:false leaves the signal as the only bound.
-    response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
-      method: body ? "POST" : "GET",
-      headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
-      ...(body && { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS),
-      timeout: false,
-    })
+    const url = `http://127.0.0.1:${daemon.port}/probe`
+    const method = body ? "POST" : "GET"
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${daemon.token}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    }
+    const signal = AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS)
+    response =
+      typeof process.versions.bun === "string"
+        ? // Bun's own fetch timeout aborts a silent body at ~362s and wins over AbortSignal.timeout
+          // (34477 run 2328c7a7). timeout:false leaves the signal as the only bound.
+          await fetch(url, {
+            method,
+            headers,
+            ...(body && { body: JSON.stringify(body) }),
+            signal,
+            timeout: false,
+          })
+        : await nodeProbeFetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}), signal })
   } catch (error) {
     // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
     if (error instanceof Error && error.name === "TimeoutError") {
@@ -247,16 +300,15 @@ export async function requestDaemonProbe(
         { name: "TimeoutError" },
       )
     }
-    // 34507 open cure: Node's fetch aborts a silent response on its own 300 s headers timeout, which no
-    // per-request option raises. Name that bound for what it is instead of reporting it as the 30 min signal,
-    // and say which runtime produced it — the public Node path stays usable, it just states its real limit.
+    // 34742: the Node transport sets undici's headers and body timers above the signal, so this shape should not
+    // occur any more. If it does, name the bound and the runtime instead of reporting it as the 30 min signal.
     if (isHeadersTimeout(error)) {
       const elapsed = Date.now() - started
       throw Object.assign(
         new Error(
-          `Daemon on port ${daemon.port} did not answer /probe: Node's fetch aborted at ${elapsed} ms on its ` +
-            `300 s headers timeout, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal (34507 open: run the ` +
-            `collector with bun to hold the documented bound; the daemon itself may still hold the answer)`,
+          `Daemon on port ${daemon.port} did not answer /probe: undici aborted at ${elapsed} ms on its headers ` +
+            `timer, below the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal (34742 sets that timer above the ` +
+            `signal, so the daemon itself may still hold the answer)`,
           { cause: error },
         ),
         { name: "TimeoutError" },

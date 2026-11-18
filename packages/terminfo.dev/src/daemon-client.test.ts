@@ -17,6 +17,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -508,66 +509,38 @@ it("names the daemon port and the bound when a collection outlasts it", async ()
 })
 
 // 34507 post-merge REVISE1 (@cto 1601): the shipped CLI starts this client under Node when Bun is absent
-// (bin/terminfo.mjs shebang plus explicit Node start, engines node >=24, and index.tsx routes a named-daemon test
-// through requestDaemonProbe). A blanket runtime rejection removed that public path before any /info or /probe
-// request - a capability removal dressed as a clearer diagnostic. Both runtimes must reach the daemon.
-it("runs the probe with no Bun version member, so the public Node path is not refused", async () => {
-  const registration = {
-    runId: "d".repeat(32),
-    pid: 222,
-    port: 12345,
-    token: "fixture-token",
-    terminal: "kitty",
-    terminalVersion: "0.49.1",
-  }
-  const bunDescriptor = Object.getOwnPropertyDescriptor(process.versions, "bun")
-  expect(bunDescriptor).toBeDefined()
-  const fetchSpy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValueOnce(Response.json(registration))
-    .mockResolvedValueOnce(Response.json({ ok: true }))
-  try {
-    // Exactly what a supported Node 24 process looks like to this module: no bun member at all.
-    Object.defineProperty(process.versions, "bun", { value: undefined, configurable: true, writable: true })
-    const response = await requestDaemonProbe(registration)
-    expect(response.ok).toBe(true)
-    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
-      "http://127.0.0.1:12345/info",
-      "http://127.0.0.1:12345/probe",
-    ])
-  } finally {
-    if (bunDescriptor !== undefined) Object.defineProperty(process.versions, "bun", bunDescriptor)
-    fetchSpy.mockRestore()
-  }
-})
-
-// 34507: the same Node path, silent daemon. Node's fetch aborts at its own 300 s headers timeout, which no
-// per-request option raises. That is a named open cure, so the error must state the real bound and runtime
-// rather than borrow the 30 min signal's name.
-it("names Node's 300 s headers timeout as itself, not as the 30 min signal", async () => {
-  const registration = {
-    runId: "e".repeat(32),
-    pid: 222,
-    port: 12345,
-    token: "fixture-token",
-    terminal: "kitty",
-    terminalVersion: "0.49.1",
-  }
-  const abort = Object.assign(new TypeError("fetch failed"), {
-    cause: Object.assign(new Error("Headers timeout"), { code: "UND_ERR_HEADERS_TIMEOUT" }),
+// (bin/terminfo.mjs shebang plus explicit Node start, engines node >=24). A blanket runtime rejection removed that
+// public path before any /info or /probe request. 34742 replaced the runtime's fixed 300 s socket timers there, so
+// the proof has to run under real Node: this child starts a daemon-style server that answers /probe after the
+// socket tick, asserts the raised timers both ways, and drives the public entry point to a 200 end to end.
+it("34742 the Node path waits past the fixed socket tick and raises undici's timers above the signal", async () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const fixture = join(import.meta.dirname, "fixtures", "node-probe-transport.mjs")
+  // Under this runner a bare `node` resolves to Bun, whose undici shim has none of the timers under test, so the
+  // child is a real Node binary from PATH by its resolved name rather than by argv[0] spelling.
+  const nodeBin = (process.env.PATH ?? "")
+    .split(":")
+    .map((dir) => join(dir, "node"))
+    .find((candidate) => existsSync(candidate) && /\/node(js-[^/]*)?$|nodejs-/.test(realpathSync(candidate)))
+  if (nodeBin === undefined) throw new Error("34742: no Node binary on PATH; the Node probe path cannot be proven")
+  const client = spawn(nodeBin, ["--experimental-transform-types", "--no-warnings", fixture], {
+    cwd: join(import.meta.dirname, "../../.."),
+    env: { ...process.env, HOME: root, USERPROFILE: root },
+    stdio: ["ignore", "ignore", "pipe"],
   })
-  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json(registration)).mockRejectedValueOnce(abort)
-  const failure = await requestDaemonProbe(registration).catch((error: unknown) => error)
-  expect(failure).toMatchObject({
-    name: "TimeoutError",
-    message: expect.stringMatching(
-      /^Daemon on port 12345 did not answer \/probe: Node's fetch aborted at \d+ ms .*not the 30 min signal/u,
-    ),
-    cause: abort,
+  const stderr: Buffer[] = []
+  client.stderr.on("data", (chunk) => stderr.push(chunk))
+  const [code] = await once(client, "exit")
+  expect(code, Buffer.concat(stderr).toString()).toBe(0)
+  expect(JSON.parse(readFileSync(join(root, "node-probe.json"), "utf8"))).toEqual({
+    bunMemberPresent: false,
+    generousStatus: 200,
+    smallTimer: "UND_ERR_HEADERS_TIMEOUT",
+    timersAboveSignal: true,
+    endToEndStatus: 200,
+    endToEndBody: { ok: true },
   })
-  if (!(failure instanceof Error)) throw new Error("the probe did not fail")
-  expect(failure.message).not.toContain("needs the Bun runtime")
-})
+}, 60_000)
 
 it("a silent /probe is not aborted by Bun before the 30 min signal", async () => {
   const runId = "b".repeat(32)
