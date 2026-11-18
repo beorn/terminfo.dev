@@ -817,6 +817,45 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId,
     reason: `Untestable (no way): Terminal.app 2.15 on macOS exposes no observable in this version and setup that could carry ${effect}. ${TERMINAL_APP_215_INVENTORY} No reachable read shows this sequence's effect; this records the observation surface, not whether Terminal.app parses the sequence.`,
   })),
+  // 34882 (@chief 48acc556; inventory /hh/var/@dev11/34867-OSC8-READER-INVENTORY-2026-11-18.md, sha256 a62cf79d):
+  // OSC 8 has no query form, so only a per-cell link read could decide it, and none exists on these exact versions.
+  // A reader that returns a cell's link replaces its row (WezTerm 20240203 reads one, 34646).
+  ...(
+    [
+      [
+        "iterm2",
+        "3.6.11",
+        "iTerm2 3.6.11 on macOS declares a per-cell link in its API but never sends it. GetBufferRequest.include_styles returns CellStyle, whose optional URL url = 21 is declared (iterm2-api.proto:1383-1425, identical to upstream proto/api.proto at tag v3.6.11), and the owned cell read already asks for styles (iterm2-protocol.ts readITermCells, include_styles true). At tag v3.6.11, sources/PTYSession.m protoStyleForCharacter:externalAttributes: (:18681-18776) builds an ITMURL from the cell's external attribute (:18771-18775) and returns the style without assigning style.url, so every cell arrives with no link. The Python API and it2api wrap the same message and inherit the omission; a copy-with-control-sequences action needs a pointer the owned-host no-input rule forbids.",
+      ],
+      [
+        "com.microsoft.VSCode",
+        "1.142.0",
+        "VS Code 1.142.0 on macOS offers no read of a terminal cell or its link. The extension API's Terminal interface (src/vscode-dts/vscode.d.ts:7672-7683 at tag 1.142.0) carries name, processId, creationOptions, exitStatus, state, shellIntegration and send/show/hide/dispose; TerminalShellExecution.read() (:7770-7780) is command output as plain text. The proposed terminalSelection API returns plain text and terminalDataWriteEvent echoes the data written to the terminal, which is the probe's own input and cannot show what the app stored. The renderer's link layer needs a --remote-debugging-port launch, which is not a default-launch reader, and its hover tooltip needs a pointer the owned-host no-input rule forbids.",
+      ],
+      [
+        "cursor",
+        "3.25.9",
+        "Cursor 3.25.9 on macOS runs the same generated extension and reports the VS Code 1.128.0 extension API (the run's editor-activation record), whose Terminal interface (src/vscode-dts/vscode.d.ts:7661-7673 at tag 1.128.0) has no buffer, cell or link read; command output is plain text. Cursor is closed source, so its internals are unprobed; through the API it ships, no cell's link can be read. Its renderer link layer needs a non-default debug launch and its hover tooltip a pointer the owned-host no-input rule forbids.",
+      ],
+      [
+        "terminal-app",
+        "2.15",
+        `Terminal.app 2.15 on macOS has no read that returns a cell's link. ${TERMINAL_APP_215_INVENTORY} Across the walked accessibility tree the attribute census is 49 names, none link- or URL-shaped (AXDocument is the window's working directory, not a cell's link), and the scripting dictionary has no attribute store.`,
+      ],
+      [
+        "warp",
+        "v0.2026.10.14.08.27.stable_01",
+        "Warp v0.2026.10.14.08.27.stable_01 on macOS has no programmatic read surface: its only input is the write-only launch configuration YAML, and the owned run decides Warp rows by screenshot and query reply alone. Warp is closed source, so its internals are unprobed; its hover tooltip needs a pointer the owned-host no-input rule forbids, and its logs and telemetry are not a default-launch reader.",
+      ],
+    ] as const
+  ).map(([id, version, surface]) => ({
+    kind: "term" as const,
+    id,
+    version,
+    os: "macos",
+    featureId: "extensions.osc8",
+    reason: `Untestable (no way): ${surface} OSC 8 has no query form, and the plain probe only reads the cursor, which cannot verify link metadata. This records the observation surface, not whether the app stores the link.`,
+  })),
   // 34596 (REVISION 3): a no-setup reason, not a no-way one.
   ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
     kind: "term" as const,
