@@ -68,6 +68,7 @@ test.each([
   "pid-absent",
   "unchanged-target",
   "capture-failed",
+  "restoration-failed",
   "reply-timeout",
 ])(
   "editor CWD collector qualifies native replies and captures before restoration (%s)",
@@ -182,11 +183,15 @@ test.each([
           },
           capture: async (featureId: string, phase: string) => {
             captures.push({ featureId, phase, cwd: nativeCwd })
-            if (mode === "capture-failed") throw new Error("Fixture capture failed")
+            // The error names both private directories, as a real capture or write failure can (34699, @cto 1546).
+            if (mode === "capture-failed") throw new Error(`Fixture capture failed at ${capture} for ${directory}`)
             return { retained: `fixture-${phase}` }
           },
         },
         write(bytes: string) {
+          if (mode === "restoration-failed" && bytes.includes(`Cwd=${new URL(original).pathname}`)) {
+            throw new Error(`Fixture restoration write failed in ${directory} with evidence at ${capture}`)
+          }
           writes.push(bytes)
           const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(bytes)?.[1]
           if (cwd !== undefined && !(mode === "unchanged-target" && cwd.includes("/terminfo-target-"))) {
@@ -247,7 +252,13 @@ test.each([
           expect(bytes.length).toBe(observation.bytes)
         }
         expect(JSON.parse(result.response ?? "{}")).toMatchObject({ status: reading.status })
-        if (mode !== "api-absent") expect(nativeCwd).toBe(original)
+        if (mode === "capture-failed") {
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor evidence capture failed") })
+        }
+        if (mode === "restoration-failed") {
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor fixture restoration failed") })
+          expect(nativeCwd).not.toBe(original)
+        } else if (mode !== "api-absent") expect(nativeCwd).toBe(original)
         return
       }
       expect(reading.status).toBe("measured")
