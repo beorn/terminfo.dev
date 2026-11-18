@@ -121,14 +121,16 @@ let warnings = 0
 
 heading("Errors (block deploy)")
 
-// The canonical run reader owns schemas, evidence and stored grades.
-const probeFiles = loadStoredRuns(contentDir, [...featureIds]).map((data) => {
+// The canonical run reader owns schemas, evidence and stored grades. Its projection form is what this
+// script uses: the checks below read only the subject, and holding every parsed run anyway measured
+// 4.0 GiB peak, so the full-suite RSS cap killed the run mid-file (#34896, #34760).
+const probeFiles = loadStoredRuns(contentDir, [...featureIds], (data) => {
   const dir = basename(dirname(data.path))
   const expectedKind = dir === "probes-libs" ? "lib" : dir === "probes-apps" ? "term" : "mux"
   if (data.subject.kind !== expectedKind) {
     throw new Error(`${relative(contentDir, data.path)}: subject.kind must be ${expectedKind} in ${dir}`)
   }
-  return { file: basename(data.path), dir, backendName: data.subject.id, data }
+  return { file: basename(data.path), dir, backendName: data.subject.id, subject: data.subject }
 })
 const probeBackends = new Set(probeFiles.map(({ backendName }) => backendName))
 
@@ -442,8 +444,8 @@ heading("Warnings (fix soon)")
   }
 
   let count = 0
-  for (const { file, dir, data } of probeFiles) {
-    const { kind, id } = data.subject
+  for (const { file, dir, subject } of probeFiles) {
+    const { kind, id } = subject
     if (!declaredKinds.get(id)?.has(kind)) {
       error(`Probe file "${dir}/${file}" targets undeclared ${kind}:${id} - terminals.json declares no such target`)
       errors++
