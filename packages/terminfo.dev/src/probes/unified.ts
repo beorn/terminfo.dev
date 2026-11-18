@@ -503,6 +503,12 @@ export async function runProbeBatch(
     viewportScroll?: ViewportScroll
     ownedTerminal?: OwnedTerminal
     /**
+     * 34753: the response that asked for this run is gone. Checked between rows and never allowed to
+     * become a row's own collector-error, so a cancelled collection stops instead of finishing a batch
+     * nobody is reading; the caller's lease and trace owners still run their real cleanup paths.
+     */
+    signal?: AbortSignal
+    /**
      * Fold 3's witness window (#34148): a second window the SAME run opened in the SAME app instance and
      * never writes to. Present only when the grant covers two windows; `read` asks that window the same
      * query the cell's own attribute uses. Absent means every window cell refuses by name — there is no
@@ -887,6 +893,9 @@ export async function runProbeBatch(
   // that changes between two cells is the spill, and the cell that just ran is the one that caused it.
   const witnessBefore = new Map<string, string>()
   for (const probe of selected) {
+    // 34753: a closed client stops the batch here, before another row touches the terminal. The
+    // AbortError travels to collectProbeRun's cancelled path, which records the draft loudly.
+    options.signal?.throwIfAborted()
     if (sizeLeftBehind) {
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native size stop ${probe.id} is outside initialized catalogue`)
@@ -2050,6 +2059,9 @@ export async function runProbeBatch(
       }
     } catch (error) {
       if (custody.failure) throw custody.failure.error
+      // 34753: cancellation is not this row's finding; it stops the run rather than being graded as
+      // one more collector-error while the remaining rows keep writing to a terminal nobody reads.
+      if (options.signal?.aborted) throw error
       const name = error instanceof Error ? error.name : "Error"
       // #34148 fold 2 and fold 3: a restore that cannot be proved, and a cell that changed the app
       // instance, both leave state behind. Grading the next cell against it would launder that state
