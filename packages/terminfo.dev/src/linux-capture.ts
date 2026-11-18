@@ -86,6 +86,14 @@ export const PNG_CONVERSION_ARGS = [
   "png:-",
 ] as const
 
+/**
+ * One thread for the acquisition conversion (#34549, @cto fd4e3b66). The run container has 2 CPUs and
+ * several conversions overlap during sgr.blink sampling; ImageMagick's extra worker costs 7-9 ms CPU per
+ * conversion and buys no wall time on these 800x600 frames. Output is byte-identical (retained PNG and
+ * RGBA), measured on retained alacritty and ghostty frames: /hh/var/@dev/1/34549/convert/report.md.
+ */
+export const CONVERSION_THREAD_ARGS = ["-limit", "thread", "1"] as const
+
 /** The window's own pixel size, parsed from xdotool getwindowgeometry --shell. */
 export function windowPixels(geometry: string): { width: number; height: number } {
   const width = /^WIDTH=(\d+)$/m.exec(geometry)?.[1]
@@ -424,6 +432,7 @@ export async function createLinuxCapture(
       rgba = await command(
         "magick",
         [
+          ...CONVERSION_THREAD_ARGS,
           pointerImage ? "png:-" : PNG_CONVERSION_ARGS[0],
           ...PNG_CONVERSION_ARGS.slice(1, -1),
           "-write",

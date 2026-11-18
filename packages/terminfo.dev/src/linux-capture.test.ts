@@ -26,6 +26,7 @@ import {
   createLinuxCapture,
   LINUX_CAPTURE_SETTLE_MS,
   assertLiveExecutable,
+  CONVERSION_THREAD_ARGS,
   PNG_CONVERSION_ARGS,
   screenPixels,
   windowPixels,
@@ -716,8 +717,12 @@ test.runIf(process.platform === "linux")(
     const args = readFileSync(argsPath, "utf8").trim().split("\n")
     // Both outputs are required: avoid decoding the same source in a second process (#34277).
     expect(args.filter((arg) => arg === "xwd:-")).toHaveLength(2)
-    // Literal metadata flags still pin #30764 even where real ImageMagick is absent.
-    expect(args.slice(0, PNG_CONVERSION_ARGS.length - 1)).toEqual([
+    // Literal metadata flags still pin #30764 even where real ImageMagick is absent; the one-thread limit
+    // comes first so it covers the decode as well as both encodes (#34549).
+    expect(args.slice(0, CONVERSION_THREAD_ARGS.length + PNG_CONVERSION_ARGS.length - 1)).toEqual([
+      "-limit",
+      "thread",
+      "1",
       "xwd:-",
       "-define",
       "png:exclude-chunks=date,time",
@@ -809,11 +814,13 @@ test.skipIf(realMagick === undefined)(
     // The whole point: identical pixels under a different window name are the same evidence.
     expect(createHash("sha256").update(renamed).digest("hex")).toBe(createHash("sha256").update(fixed).digest("hex"))
 
-    // The adapter's single decode must preserve those PNG bytes and the independent depth-8 pixels.
+    // The adapter's single decode must preserve those PNG bytes and the independent depth-8 pixels, with its
+    // one-thread limit too: the references below run with the default thread count (#34549).
     const converted = mkdtempSync(join(tmpdir(), "terminfo-converted-"))
     temporary.push(converted)
     const output = join(converted, "frame.png")
     const rgba = convert(renamedXwd(screen, "first-window"), [
+      ...CONVERSION_THREAD_ARGS,
       ...PNG_CONVERSION_ARGS.slice(0, -1),
       "-write",
       `png:${output}`,
