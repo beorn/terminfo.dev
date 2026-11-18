@@ -237,11 +237,13 @@ function descendantOfAll(revisions: readonly string[], history: ContextLineage["
 }
 
 /**
- * A candidate holding a run that measured only a selection is a real reading of its ids and never a reading
- * of the suite. Both picks use this one predicate so neither can present such a run as the whole suite.
+ * A STRICT-SUBSET-ONLY candidate is one whose every contributing run measured only a selection: it is a real
+ * reading of its ids and never a reading of the suite. A candidate that also holds a full-scope run is
+ * qualified (#34868 scope-membership: @cto 2026-11-18), because demoting it would hand the bar to older
+ * evidence than the run that joined the partial cells. Both picks use this one predicate.
  */
 function carriesPartial(candidate: ContextCandidate): boolean {
-  return candidate.sources.some((source) => source.partial === true)
+  return candidate.sources.length > 0 && candidate.sources.every((source) => source.partial === true)
 }
 
 /**
