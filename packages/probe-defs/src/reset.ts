@@ -190,7 +190,12 @@ export const resetProbes: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
-        raiseRefusedCapture(ctx, "Cursor advance does not measure SGR styling after reset")
+        // 34698 (@cto 8df7c6d0): only a control that finished where the fixture puts it (CUP 1;1 then X: row 1,
+        // column 2) lost nothing but its pixel reading. A reply anywhere else is an independent failed control and
+        // keeps the ordinary note, never the capture-refused attribution.
+        if (pos.row === 1 && pos.col === 2) {
+          raiseRefusedCapture(ctx, "Cursor advance does not measure SGR styling after reset")
+        }
         return {
           pass: false,
           response: JSON.stringify(pos),

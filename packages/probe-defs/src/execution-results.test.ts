@@ -998,6 +998,33 @@ it("preserves producer-specific native geometry refusal reasons without appendin
       }
     }
   }
+  // 34698 (@cto 8df7c6d0): reset.sgr's control must finish at row 1, column 2. A reply at the wrong row or column
+  // is an independent failed control: it keeps the ordinary note and never takes the capture-refused attribution,
+  // whether or not this run refused capture geometry.
+  const resetTerm = rows.find((row) => row.id === "reset.sgr")!.term!
+  for (const wrongAt of [
+    { row: 1, col: 9 },
+    { row: 9, col: 2 },
+  ]) {
+    for (const runCaptureKind of [undefined, "pixels", "text-cells"] as const) {
+      for (const refusal of [undefined, "calibration G"]) {
+        const label = `reset.sgr at ${wrongAt.row};${wrongAt.col}: ${String(refusal)} ${String(runCaptureKind)}`
+        const callback = await resetTerm({
+          rows: 24,
+          cols: 80,
+          write() {},
+          captureGeometryRefusal: refusal,
+          runCaptureKind,
+          queryCursorPosition: async () => wrongAt,
+          queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+        } as unknown as TermProbeSource)
+        expect(record(callback), label).toMatchObject({
+          status: "probe-todo",
+          reason: `Cursor advance does not measure SGR styling after reset${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
+        })
+      }
+    }
+  }
   const term = sgrProbes.find((row) => row.id === "sgr.underline-color-indexed")!.term!
   const wrong = await term({
     rows: 24,
