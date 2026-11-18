@@ -176,8 +176,39 @@ describe("TTY transaction replies", () => {
     },
   )
 
-  // Recorder identity and distinct injection causes miss their same-error TTY join.
+  // Recorder identity and distinct injection causes miss their same-error TTY join. Recording is transparent
+  // (#30932 S3): a recorded reply array destructures natively and the log completes, so the sticky failure here is
+  // the one a body can still meet, a replay that asks something the log never recorded.
   it("keeps a sticky recorder failure fatal without making it its own cause", async () => {
+    const pattern = /\x1b\]17;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)\x07/
+    let captured: CallLog | undefined
+    const red = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            const result = await queryOutcome("\x1b]17;?\x07", pattern, 50)
+            if (!result.match) throw new Error("Fixture did not return a matched colour")
+            const [, value] = result.match
+            return value
+          },
+          {
+            onLog(log) {
+              captured = log
+            },
+          },
+        ),
+      {
+        write() {
+          reply("\x1b]17;rgb:1111/2222/3333\x07")
+          return true
+        },
+      } as unknown as NodeJS.WriteStream,
+    )
+    expect(red).toBe("1111")
+    expect(captured).toBeDefined()
+
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const listeners = process.stdin.listenerCount("data")
@@ -191,15 +222,8 @@ describe("TTY transaction replies", () => {
             queries,
             events,
             async () => {
-              const result = await queryOutcome(
-                "\x1b]17;?\x07",
-                /\x1b\]17;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)\x07/,
-                50,
-              )
               try {
-                if (!result.match) throw new Error("Fixture did not return a matched colour")
-                const [, red] = result.match
-                return red
+                return await queryOutcome("\x1b]10;?\x07", pattern, 50)
               } catch (error) {
                 if (!(error instanceof Error)) throw error
                 bodyError = error
@@ -207,6 +231,8 @@ describe("TTY transaction replies", () => {
               }
             },
             {
+              mode: "replay",
+              log: readCallLog(JSON.parse(JSON.stringify(captured))),
               onLog() {
                 published = true
               },
@@ -214,8 +240,7 @@ describe("TTY transaction replies", () => {
           ),
         {
           write() {
-            reply("\x1b]17;rgb:1111/2222/3333\x07")
-            return true
+            throw new Error("Offline replay attempted native I/O")
           },
         } as unknown as NodeJS.WriteStream,
       )
@@ -227,7 +252,7 @@ describe("TTY transaction replies", () => {
     expect(finalError instanceof IncompleteReplay).toBe(true)
     expect(finalError === bodyError).toBe(true)
     expect(finalError?.cause === undefined).toBe(true)
-    expect(finalError?.message).toBe("Incomplete: call log cannot encode prototype [object Array Iterator]")
+    expect(finalError?.message).toMatch(/^Incomplete: arguments at call 0: /)
     expect(published).toBe(false)
     expect(queries).toEqual([])
     expect(events).toEqual([])
