@@ -1,4 +1,15 @@
-import { statSync, readFileSync, readlinkSync, writeFileSync, renameSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { basename, dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { execFileSync } from "node:child_process"
@@ -46,7 +57,7 @@ type AppSemanticCapability = {
   reason?: string
   requiresMissingSessionBus?: true
   outerCommands?: true
-  reader?: "grid" | "cycle" | "cwd" | "report" | "osc8" | "kitty-prompt"
+  reader?: "grid" | "cycle" | "cwd" | "report" | "osc8" | "kitty-prompt" | "kitty-cwd"
   command?: { code: string; body: string }
   reportControls?: {
     sentinel: { code: string; body: string; line: string }
@@ -812,6 +823,8 @@ const declarations: readonly AppSemanticCapability[] = [
       reader: "kitty-prompt" as const,
     }),
   ),
+  // 33628 (@cto 1957): Kitty's OSC 7 report, read through a background launch with --cwd=last_reported.
+  { kind: "term", id: "kitty", version: "0.49.2", os: "linux", featureId: "extensions.osc7-cwd", reader: "kitty-cwd" },
   ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
     kind: "term" as const,
     id: "wezterm",
@@ -2589,10 +2602,13 @@ export async function readAppSemanticState(
       sample: (number: number, feed: string) => Promise<T>,
       restore: () => Promise<void>,
       expectedValue: (value: string) => string = (value) => value,
+      // A reader whose fresh values must exist (Kitty's launch enters them) passes its own; `unchanged` names it.
+      fresh?: { control: string; target: string; unchanged: string },
     ): Promise<AppSemanticReading> => {
-      const controlPath = `file://localhost/terminfo-control-${nonce}`
+      const controlPath = fresh?.control ?? `file://localhost/terminfo-control-${nonce}`
       const isOsc7 = input.featureId === "extensions.osc7-cwd"
-      const targetPath = isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`
+      const targetPath =
+        fresh?.target ?? (isOsc7 ? `file://localhost/terminfo-target-${nonce}` : `/terminfo-target-${nonce}`)
       try {
         if (isOsc7 && (initial.cwd === controlPath || initial.cwd === targetPath)) {
           throw new Error("tmux OSC7 control and target paths must be fresh")
@@ -2607,7 +2623,7 @@ export async function readAppSemanticState(
         if (isOsc7 && target.cwd === handled.cwd) {
           return {
             status: "invalid",
-            reason: "tmux OSC7 target left pane_path unchanged after its same-command control",
+            reason: fresh?.unchanged ?? "tmux OSC7 target left pane_path unchanged after its same-command control",
             detail,
           }
         }
@@ -2828,7 +2844,8 @@ export async function readAppSemanticState(
         detail,
       }
     }
-    if (row.reader === "kitty-prompt") {
+    if (row.reader === "kitty-prompt" || row.reader === "kitty-cwd") {
+      const kittyLabel = row.reader === "kitty-cwd" ? "Kitty cwd" : "Kitty prompt"
       const socket = env.KITTY_LISTEN_ON
       const windowId = env.KITTY_WINDOW_ID
       const socketPath = join(dirname(capture), `kitty-${input.runId}.sock`)
@@ -2838,24 +2855,24 @@ export async function readAppSemanticState(
         !/^[1-9]\d*$/.test(windowId) ||
         !statSync(socketPath).isSocket()
       ) {
-        throw new Error("Kitty prompt read requires this run's private socket and window ID")
+        throw new Error(`${kittyLabel} read requires this run's private socket and window ID`)
       }
       const kitten = join(dirname(input.executable.path), "kitten")
       const remote = (...args: string[]) => run([kitten, "@", "--to", socket, ...args, "--match", `id:${windowId}`])
       const readWindow = () => {
         const tree: unknown = JSON.parse(remote("ls"))
-        if (!Array.isArray(tree)) throw new Error("Kitty prompt ls returned no window tree")
+        if (!Array.isArray(tree)) throw new Error(`${kittyLabel} ls returned no window tree`)
         const osWindows: readonly unknown[] = tree
         const windows: unknown[] = []
         for (const osWindow of osWindows) {
           const tabs =
             osWindow !== null && typeof osWindow === "object" ? (osWindow as Record<string, unknown>).tabs : undefined
-          if (!Array.isArray(tabs)) throw new Error("Kitty prompt ls returned no tabs")
+          if (!Array.isArray(tabs)) throw new Error(`${kittyLabel} ls returned no tabs`)
           const tabRecords: readonly unknown[] = tabs
           for (const tab of tabRecords) {
             const entries =
               tab !== null && typeof tab === "object" ? (tab as Record<string, unknown>).windows : undefined
-            if (!Array.isArray(entries)) throw new Error("Kitty prompt ls returned no windows")
+            if (!Array.isArray(entries)) throw new Error(`${kittyLabel} ls returned no windows`)
             windows.push(...entries)
           }
         }
@@ -2869,13 +2886,13 @@ export async function readAppSemanticState(
           !Number.isSafeInteger(window.last_cmd_exit_status) ||
           typeof window.title !== "string"
         ) {
-          throw new Error("Kitty prompt ls did not identify this collector's window and semantic fields")
+          throw new Error(`${kittyLabel} ls did not identify this collector's window and semantic fields`)
         }
         return { prompt: window.at_prompt, exit: window.last_cmd_exit_status as number, title: window.title }
       }
       const output = () => remote("get-text", "--extent", "last_cmd_output").replace(/\r\n/g, "\n").trimEnd()
       const original = readWindow()
-      if (/[\x00-\x1f\x7f]/.test(original.title)) throw new Error("Kitty prompt fixture cannot restore its title")
+      if (/[\x00-\x1f\x7f]/.test(original.title)) throw new Error(`${kittyLabel} fixture cannot restore its title`)
       let serial = 0
       const phase = async (name: string, feed: string, title = `terminfo-${nonce}-${serial++}`) => {
         input.write(feed + osc(`2;${title}`))
@@ -2890,6 +2907,98 @@ export async function readAppSemanticState(
         )
         detail.phases.push({ name, feed, reading })
         return reading
+      }
+      if (row.reader === "kitty-cwd") {
+        // 33628 (@cto 1957): Kitty 0.49.2 exposes its OSC 7 report only to a launch with --cwd=last_reported, which
+        // starts a background child in path_from_osc7_url(screen.last_reported_cwd) when the source window has one
+        // (window.py CwdRequest.cwd_of_child, then boss.py's Popen(cwd=)), else in the window's process cwd. The child
+        // must enter that path, so control and target are two fresh, empty directories this run creates in its private
+        // directory and removes. Each phase's title fence proves Kitty parsed its bytes before the launch reads.
+        const literal = (path: string) => {
+          if (!/^\/[A-Za-z0-9._/-]*$/.test(path)) {
+            throw new Error(`Kitty cwd path cannot be written literally in a file URI: ${JSON.stringify(path)}`)
+          }
+          return path
+        }
+        const privateDir = dirname(capture)
+        const kittyCwd = readlinkSync(`/proc/${appPid}/cwd`)
+        let reads = 0
+        const read = async () => {
+          const out = join(privateDir, `osc7-read-${nonce}-${reads++}`)
+          run([
+            kitten,
+            "@",
+            "--to",
+            socket,
+            "launch",
+            "--type=background",
+            "--source-window",
+            `id:${windowId}`,
+            "--cwd=last_reported",
+            "--",
+            "/bin/sh",
+            "-c",
+            'pwd -P > "$1.part" && mv "$1.part" "$1"',
+            "sh",
+            out,
+          ])
+          // The child renames its one line into place, so the file existing means the read completed.
+          const bytes = await until(
+            () => (existsSync(out) ? readFileSync(out, "utf8") : ""),
+            (value) => value !== "",
+            `Kitty cwd read ${basename(out)}`,
+          )
+          rmSync(out)
+          if (!/^[^\n]+\n$/.test(bytes)) throw new Error(`Kitty cwd read was not one line: ${JSON.stringify(bytes)}`)
+          const reading = { cwd: bytes.slice(0, -1) }
+          detail.phases.push({ name: "cwd read", file: basename(out), reading })
+          return reading
+        }
+        const initial = await read()
+        literal(initial.cwd)
+        const made: string[] = []
+        try {
+          const fresh = (name: string) => {
+            const path = join(privateDir, `osc7-${name}-${nonce}`)
+            mkdirSync(path)
+            made.push(path)
+            return literal(realpathSync(path))
+          }
+          const control = fresh("control")
+          const target = fresh("target")
+          const others = [process.cwd(), kittyCwd, initial.cwd]
+          if (control === target || others.includes(control) || others.includes(target)) {
+            throw new Error("Kitty cwd control and target must differ from each other and every baseline cwd")
+          }
+          detail.identity = { ...detail.identity, kittyCwd, processCwd: process.cwd(), control, target }
+          let serial = 0
+          const sample = async (_number: number, feed: string) => {
+            await phase(`cwd ${serial++}`, feed)
+            return await read()
+          }
+          return await readCwdPhases(
+            initial,
+            sample,
+            async () => {
+              // Kitty cannot clear last_reported_cwd: restore the observed public path, and say initial OSC 7
+              // presence is neither restored nor reported (@cto a35de3e1, 1957).
+              await phase("restored", osc(`7;file://${initial.cwd}`), original.title)
+              const restored = await read()
+              detail.phases.push({ restoration: "observed public path; initial OSC 7 presence not reported" })
+              if (restored.cwd !== initial.cwd) {
+                throw new Error(`Kitty cwd restoration read ${restored.cwd}, not ${initial.cwd}`)
+              }
+            },
+            (uri) => uri.slice("file://".length),
+            {
+              control: `file://${control}`,
+              target: `file://${target}`,
+              unchanged: "Kitty OSC7 target left the launch cwd unchanged after its same-command control",
+            },
+          )
+        } finally {
+          for (const path of made.reverse()) rmdirSync(path)
+        }
       }
       const commandOutput = `terminfo-output-${nonce}`
       try {
