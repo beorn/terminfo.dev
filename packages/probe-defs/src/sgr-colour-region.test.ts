@@ -27,7 +27,7 @@ import {
   colourCaptureCallbackResult,
   underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
-import { captureRegionCallbackResult } from "./region-readback.ts"
+import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type {
   CaptureCells,
@@ -1219,6 +1219,49 @@ test("the colour owner preserves non-mux reset negatives and broken mux captures
     noObservable: expect.stringContaining("58:2::255:0:128 (colon form)"),
   })
   expect(coverage.observation).toBeUndefined()
+})
+
+/**
+ * @failure A colour row whose compared frames were cropped from different screen positions must
+ *   refuse BY NAME. 33982: Warp cropped sgr.fg.truecolor's ignored-attribute frame 16 px left of
+ *   the other three, and the shared colour result boundary turned the refusal into probe-todo,
+ *   leaving the row ungraded while six sibling rows refused by name.
+ * @level l1
+ * @consumer The colour capture callback's shared result boundary on owned pixel-capture runs.
+ * @testonly none
+ */
+test("the colour owner keeps a crop-position refusal as a named refusal", () => {
+  const rectangle = (x: number) => ({ x, y: 78, width: 32, height: 16 })
+  const frames: ObservationFrame[] = [
+    { role: "control", label: "seed", ref: "sha256:" + "a".repeat(64), capturedAt: 1, regionRectangle: rectangle(33) },
+    {
+      role: "target",
+      label: "expected",
+      ref: "sha256:" + "b".repeat(64),
+      capturedAt: 2,
+      regionRectangle: rectangle(33),
+    },
+    {
+      role: "target",
+      label: "ignored attribute",
+      ref: "sha256:" + "c".repeat(64),
+      capturedAt: 3,
+      regionRectangle: rectangle(17),
+    },
+  ]
+  const refusal = cropPositionRefusal({
+    id: "sgr.fg.truecolor",
+    compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+    response: "crop positions differ",
+    frames,
+    screenshotRef: frames[2]!.ref,
+  })
+  expect(refusal?.criterionBranch).toBe("same-crop-comparison")
+  const result = colourCaptureCallbackResult("sgr.fg.truecolor", refusal!)
+  expect(result.criterionBranch).toBe("same-crop-comparison")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "probe-invalid" }))
+  expect(result.tests?.every((check) => check.status !== "probe-todo")).toBe(true)
+  expect(result.observation?.note).toContain("cropped from different screen positions")
 })
 
 /**

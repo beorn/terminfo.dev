@@ -582,6 +582,11 @@ export function colourCaptureCallbackResult(
       }
     }
   }
+  // 33982: a crop-position refusal is a named refusal about the capture, not an undecided colour.
+  // The review wrapper below turns every inconclusive observation into probe-todo, which is how
+  // Warp's sgr.fg.truecolor stayed ungraded: its ignored-attribute frame was cropped 16 px left of
+  // the other three while six sibling rows refused by name. Keep the refusal's own carrier.
+  if (verdict.criterionBranch === "same-crop-comparison") return verdict
   const observation = verdict.observation
   const note =
     colourCaptureNote(id) ??
