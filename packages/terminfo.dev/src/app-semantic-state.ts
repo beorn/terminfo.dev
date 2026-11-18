@@ -1619,6 +1619,8 @@ const EDITING_NEW = { mark: "new", state: "EDITING", command: "unset", output: "
  * start set, RUNNING), D;17 finishes with that code (iTerm2 3.6.11 PTYSession getPromptResponseForMark).
  */
 type ITermPromptRow = {
+  /** Printed after the clear and before the finished baseline mark; moves that mark down the screen. */
+  head?: string
   tail: (nonce: string) => string
   from?: object
   feeds: ((nonce: string) => string)[]
@@ -1811,7 +1813,7 @@ export async function readITermPromptMarks(input: {
     }
     /** Clear, finish one mark, append the row's tail; the fresh baseline mark names every later read. */
     const baseline = async (name: string, row: ITermPromptRow) => {
-      const read = await phase(name, clear + finished + row.tail(nonce))
+      const read = await phase(name, clear + (row.head ?? "") + finished + row.tail(nonce))
       if (read.read.status === "prompt-unavailable") return undefined
       baselineId = read.read.mark.uniquePromptId
       const start = describe(read.read)
@@ -2001,14 +2003,18 @@ export async function readITermPromptMarks(input: {
         [1, 2],
       ]
       const at = ([row, column]: [number, number]) => `\x1b[${row + 1};${column + 1}H`
-      const plainRow: ITermPromptRow = { tail: () => "", feeds: [], expected: [] }
+      // Hosted run 44354139927: an A at the current prompt's own start is a redraw in iTerm2 3.6.11
+      // (promptDidStartAt short circuit, issue 10963) and adds no mark, so a baseline mark at row 0 col 0 hid
+      // the first control. The baseline mark sits on row 3; lines are reported as screen rows.
+      const baselineRow = 3
+      const plainRow: ITermPromptRow = { head: "\r\n".repeat(baselineRow), tail: () => "", feeds: [], expected: [] }
       let originLine = 0n
       let lastId: string | undefined
       /** Bind line numbers and mark identity to the baseline mark just read. */
       const anchorAt = (read: ITermPromptRead, name: string) => {
         const range = read.status === "mark" ? read.mark.promptRange : undefined
         if (range === undefined) throw new BaselineMiss(`iTerm2 ${name} mark has no prompt range to anchor lines`)
-        originLine = BigInt(range.start.y)
+        originLine = BigInt(range.start.y) - BigInt(baselineRow)
         lastId = baselineId
       }
       const position = (read: ITermPromptRead) => {
@@ -2043,7 +2049,7 @@ export async function readITermPromptMarks(input: {
       }
       if ((await baseline("baseline", plainRow)) === undefined) return unavailableBaseline
       anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "baseline")
-      const start = { mark: "same", line: 0 }
+      const start = { mark: "same", line: baselineRow }
       const unknown = position((await phase("unknown", osc("133;Z"))).read)
       // A corrupt control is invalid whatever P later does; the grader only sees it on the measured path.
       if (JSON.stringify(unknown) !== JSON.stringify(start)) {
@@ -2073,7 +2079,10 @@ export async function readITermPromptMarks(input: {
       const targets: { mark: string; line?: number | string }[] = []
       const targetIds: (string | undefined)[] = []
       for (const [index, cell] of cells.entries()) {
-        priors.push({ mark: "same", line: targets.findLast((target) => target.mark === "new")?.line ?? 0 })
+        priors.push({
+          mark: "same",
+          line: targets.findLast((target) => target.mark === "new")?.line ?? baselineRow,
+        })
         const read = (await phase(`target-133-p-${index}`, at(cell) + osc("133;P"))).read
         const target = position(read)
         targets.push(target)
