@@ -65,6 +65,7 @@ function surface(options: Surface) {
   }
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: GEOMETRY,

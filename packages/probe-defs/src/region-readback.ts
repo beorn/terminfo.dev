@@ -29,6 +29,7 @@
  * measurement in this run. The collector must prove registration: an offset crop can compare only
  * part of a glyph and still pass a witness, so symmetry alone does not establish the right pixels.
  */
+import { sourceNow } from "./source-clock.ts"
 import type {
   CaptureCells,
   AssertionType,
@@ -421,6 +422,8 @@ function regionRefusal(
  */
 export async function awaitPaintWitness(options: {
   read: RegionRead
+  /** The source's own clock (`TermProbeSource.now`), so a replay polls exactly as often as the live row (#30932 S2). */
+  now: () => number
   id: string
   label: string
   witnessCell: CellRegion
@@ -445,7 +448,7 @@ export async function awaitPaintWitness(options: {
   const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs, requireSameCrop } =
     options
   const assertionType = options.assertionType ?? "screenshot"
-  const deadline = Date.now() + timeoutMs
+  const deadline = options.now() + timeoutMs
   for (;;) {
     const painted = await read({
       role: "control",
@@ -480,7 +483,7 @@ export async function awaitPaintWitness(options: {
       return { witness: painted }
     }
     const frameMoved = painted.pixelsDigest !== baseline.pixelsDigest
-    if (Date.now() >= deadline) {
+    if (options.now() >= deadline) {
       const layoutClause =
         options.expectedDigest === undefined && frameMoved && assertionType === "screenshot"
           ? await options.layout?.()
@@ -1062,7 +1065,7 @@ export function sentinelCellsInFrame(input: {
  * the probe still has ahead, manufacturing exactly the ink this check exists to explain (/11).
  */
 export async function layoutSinceCalibration(check: {
-  ctx: Pick<TermProbeSource, "write" | "capture" | "captureKind" | "captureGeometry">
+  ctx: Pick<TermProbeSource, "now" | "write" | "capture" | "captureKind" | "captureGeometry">
   label: string
   cell: { row: number; col: number }
   /** The pixels the calibrated geometry gives `cell` on this run. */
@@ -1099,7 +1102,7 @@ export async function layoutSinceCalibration(check: {
   let located: ObservationFrame["located"]
   ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`)
   try {
-    const deadline = Date.now() + timeoutMs
+    const deadline = sourceNow(ctx) + timeoutMs
     for (;;) {
       const frame = await capture({
         role: "control",
@@ -1107,7 +1110,7 @@ export async function layoutSinceCalibration(check: {
         locate: { rgb: sentinel.rgb },
       })
       located = frame.located
-      if (located !== null || Date.now() >= deadline) break
+      if (located !== null || sourceNow(ctx) >= deadline) break
       await new Promise<void>((resolve) => {
         setTimeout(resolve, pollMs)
       })
@@ -2063,6 +2066,7 @@ export async function captureSameRunPhases(
       const baseline = await read({ role: "control", label: `${label} — baseline`, region: witnessCell, pixelGeometry })
       const options = {
         read,
+        now: () => sourceNow(ctx),
         id,
         label,
         witnessCell,
@@ -2542,6 +2546,7 @@ export async function captureRegionReadbackDecision(
       ctx.write(`${sentinelWrite}${witnessGlyph(index)}`)
       const witnessOptions = {
         read,
+        now: () => sourceNow(ctx),
         id,
         label: step.label,
         witnessCell,

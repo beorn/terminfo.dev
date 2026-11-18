@@ -109,6 +109,7 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermProbeS
   }
   return {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write(bytes): void {
@@ -532,6 +533,7 @@ function eraseCellsHeadless(
 function app(position: { row: number; col: number } | null): TermProbeSource {
   return {
     kind: "live",
+    now: () => Date.now(),
     write() {},
     queryCursorPosition: async () => position,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
@@ -1580,6 +1582,7 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
   }
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => {

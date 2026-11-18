@@ -32,6 +32,7 @@ function captureApp(rows: number, cols: number) {
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -117,6 +118,7 @@ function calibratedIterm2Arm(
   let badge = false
   const context = {
     kind: "live" as const,
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureKind: options.captureKind ?? ("pixels" as const),
@@ -1047,6 +1049,7 @@ test.each([
     const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 24,
       cols: 80,
       captureKind: "pixels",
@@ -1517,6 +1520,7 @@ test.each([
       }
       const context: TermProbeSource = {
         kind: "live",
+        now: () => Date.now(),
         rows,
         cols: wideCols,
         captureKind: "pixels",
@@ -1860,6 +1864,7 @@ test("extensions.reflow sizes narrow window from original 800px window width so 
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows,
       cols: wideCols,
       captureKind: "pixels",
@@ -2131,6 +2136,7 @@ test("extensions.reflow clears scrollback with 2J then 3J so prior ALINKZ scroll
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows,
       cols: wideCols,
       captureKind: "pixels",

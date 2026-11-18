@@ -138,6 +138,7 @@ function harness(mode: Mode): Harness {
 
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     cols: 80,
     rows: 24,
     write(text) {

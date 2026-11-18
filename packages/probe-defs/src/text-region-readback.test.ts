@@ -59,6 +59,7 @@ function textFrame(
 
 const textSource = (): TermProbeSource => ({
   kind: "live",
+  now: () => Date.now(),
   rows: 24,
   cols: 80,
   captureKind: "text-cells",

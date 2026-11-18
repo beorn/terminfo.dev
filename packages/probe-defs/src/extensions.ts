@@ -1,3 +1,4 @@
+import { sourceNow } from "./source-clock.ts"
 import { heldOsc720, heldViewportReader } from "./held-viewport-rows.ts"
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
@@ -6524,6 +6525,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx.write(paint)
             const options = {
               read,
+              now: () => sourceNow(ctx),
               id,
               label,
               witnessCell,
@@ -6803,13 +6805,13 @@ const extensionDefinitions: ProbeDefinition[] = [
           )
           // The interval is measured from this capture's completion, and the elapsed value travels in
           // the response, so a reader never has to infer the wait from the gap it asked for.
-          const intervalStart = Date.now()
+          const intervalStart = sourceNow(ctx)
           await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
           const playbackSecond = await shoot(
             "target",
             "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
           )
-          const playbackElapsedMs = Date.now() - intervalStart
+          const playbackElapsedMs = sourceNow(ctx) - intervalStart
           let retry: KittyDigestPair | null = null
           if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
             await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)

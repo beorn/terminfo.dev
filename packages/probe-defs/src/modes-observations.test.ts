@@ -792,6 +792,7 @@ function captureSource(
   const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
   const source: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes: string) => {
@@ -1762,6 +1763,7 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       cols: 80,
       rows: 24,
       write() {},
@@ -1800,6 +1802,7 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       cols: 80,
       rows: 24,
       write: () => unexpected("write"),

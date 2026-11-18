@@ -1,5 +1,5 @@
 /** Retain collection evidence privately and place normalized runs in the corpus. */
-import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync } from "node:fs"
+import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -8,6 +8,12 @@ import { getTrustedSuiteReceipt } from "../../terminfo.dev/src/serve.ts"
 import { placeCollectedRun } from "../corpus-placement.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { readReference } from "../../probes/erase-capture.ts"
+import {
+  SHADOW_REPORT_FORMAT,
+  SHADOW_REPORT_VERSION,
+  shadowStoredRun,
+  type ShadowReport,
+} from "../../probes/stored-run-shadow.ts"
 
 /** A default corpus write must belong to an authoring branch. */
 function assertAuthoringCheckout(cwd: string): void {
@@ -143,10 +149,74 @@ export function writeCollectedRun(
   retainedResponsePath: string,
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
   sourceRoot?: string,
-): string {
+): { retained: string; placed: string } {
   assertAuthoringCheckout(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."))
   const source = retainCollectedRun(run, retainedResponsePath, intended, undefined, sourceRoot)
   const destination = placeCollectedRun(source, getTrustedSuiteReceipt().manifest)
   console.log(`  Written collected run ${destination}`)
-  return destination
+  // #30932 S2: the shadow reads the private retained run, never the placed corpus copy.
+  return { retained: source, placed: destination }
+}
+
+/**
+ * Where a retained run's private shadow report lives: a `shadow/` directory beside the run. A reader that lists
+ * the run directory's own `*.json` files (release1-collection's owned-app read expects exactly one) never sees
+ * it, and nothing places, publishes or uploads that directory.
+ */
+export function shadowReportPath(retainedRun: string): string {
+  return join(dirname(retainedRun), "shadow", `${basename(retainedRun, ".json")}.shadow.json`)
+}
+
+function shadowSummary(report: ShadowReport): string {
+  const families = report.families
+    .map(
+      ({ family, rows, agree, disagree, incomplete, notComparable }) =>
+        `${family} ${rows} rows: ${agree} agree, ${disagree} disagree, ${incomplete} incomplete, ${notComparable} not comparable`,
+    )
+    .join("; ")
+  return report.runIncomplete === undefined ? families : `run incomplete; ${families}`
+}
+
+/**
+ * #30932 S2 (@cto 30932-s2-plan-ruling-1430): after collection has saved a run, replay its in-scope rows from the
+ * saved artifact and keep the comparison as a private report. The run's bytes are never touched. A replay failure
+ * is written to the report as an error and named on stderr, never recorded as agreement; a report that cannot be
+ * written is named on stderr. Neither changes the collection's own result, so neither can hide its failure.
+ */
+export async function shadowCollectedRun(retainedRun: string): Promise<void> {
+  const path = shadowReportPath(retainedRun)
+  let body: ShadowReport | Record<string, unknown>
+  let line: string
+  try {
+    const { manifest, collectorRevision } = getTrustedSuiteReceipt()
+    const report = await shadowStoredRun(retainedRun, { manifest, sourceRevision: collectorRevision })
+    body = report
+    line = shadowSummary(report)
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "Error"
+    // The raw error stays in the private report; the terminal names only what failed and where to read it.
+    body = {
+      format: SHADOW_REPORT_FORMAT,
+      version: SHADOW_REPORT_VERSION,
+      outcome: "shadow-error",
+      run: basename(retainedRun),
+      error: {
+        name,
+        message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error && error.stack !== undefined && { stack: error.stack }),
+      },
+    }
+    line = `FAILED (${name})`
+    console.error(`  Shadow replay of ${retainedRun} FAILED (${name}); error kept in ${path}`)
+  }
+  try {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    writeFileSync(path, JSON.stringify(body, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "Error"
+    const code = (error as NodeJS.ErrnoException).code
+    console.error(`  Shadow report for ${retainedRun} NOT WRITTEN to ${path} (${code ?? name}); shadow ${line}`)
+    return
+  }
+  console.log(`  Shadow ${line}; private report ${path}`)
 }

@@ -12,10 +12,8 @@ import {
   type CapturedRunDraft,
   type ObservationFrame,
   type ProbeResult,
-  type TermProbeSource,
 } from "@terminfo/probe-defs"
-import { parseJsonStrict } from "@terminfo/run-parser"
-import { readCallLog, withCallLog, IncompleteReplay } from "viprobe"
+import { IncompleteReplay } from "viprobe"
 import {
   derivedSuiteManifest,
   probeSuiteSnapshot,
@@ -29,6 +27,7 @@ import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
 import { readEraseCapture, readProbeCapture } from "./erase-capture.ts"
 import { ERASE_REPLAY_ROOT } from "./erase-store.ts"
+import { recordReplayedRow, replayRow, rowGeometryChange } from "./stored-run-shadow.ts"
 
 type EraseRecords = ReturnType<typeof replayEraseCalls>
 export interface EraseRunRecord {
@@ -108,49 +107,14 @@ export async function runEraseReplay(
       const bound = readProbeCapture(directory, retained.source, retained.expected)
       capture = bound.capture
       source = retained.source
-      const callback = definition.term
       replay = async () => {
         const { capture: validated } = readProbeCapture(directory, retained.source, retained.expected)
-        const geometryRaw = validated.rawReplies["collector.geometry"]
-        if (typeof geometryRaw === "string") {
-          const geometry = parseJsonStrict("SGR replay geometry", geometryRaw) as {
-            checks?: Array<{
-              featureId: string
-              pre?: { status: string; rows?: number; cols?: number }
-              post?: { status: string; rows?: number; cols?: number }
-            }>
-          }
-          const measured = geometry.checks?.find(({ featureId }) => featureId === definition.id)
-          if (
-            measured?.pre?.status === "measured" &&
-            (measured.post?.status !== "measured" ||
-              measured.pre.rows !== measured.post.rows ||
-              measured.pre.cols !== measured.post.cols)
-          ) {
-            throw new IncompleteReplay("SGR replay geometry changed or became unavailable: " + definition.id)
-          }
-        }
-        const raw = validated.rawReplies[definition.id + ".callLog"]
-        if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + definition.id)
-        replayFrames = []
-        const log = readCallLog(parseJsonStrict(definition.id + " call log", raw), {
-          onOperation(operation) {
-            if (operation.path === "context.capture" && "value" in operation.outcome) {
-              replayFrames.push(operation.outcome.value as ObservationFrame)
-            }
-          },
-        })
-        const session = withCallLog<TermProbeSource>(null, { mode: "replay", log })
-        const startedAt = new Date().toISOString()
-        if (session.context.kind !== validated.source.kind) {
-          throw new IncompleteReplay("SGR source shape does not match its live capture")
-        }
-        const result = await callback(session.context)
-        session.finish()
-        // Replay decorators must not escape into the persisted domain record or
-        // Vitest metadata. Keep the same JSON data this owner writes to disk.
-        const retainedResult = JSON.parse(JSON.stringify(result)) as typeof result
-        return [{ featureId: definition.id, startedAt, result: retainedResult, checks: [] }]
+        const changed = rowGeometryChange(validated.rawReplies, definition.id)
+        if (changed) throw new IncompleteReplay("SGR replay " + changed)
+        // #30932 S2: the one per-row replay, shared with the stored-run shadow.
+        const row = await replayRow(validated, definition.id)
+        replayFrames = row.frames
+        return [{ featureId: definition.id, startedAt: row.startedAt, result: row.result, checks: [] }]
       }
       finalRecord.files.push(...bound.files)
     } else {
@@ -223,30 +187,14 @@ export async function runEraseReplay(
         if (!ALL_PROBES.some(({ id }) => id === featureId)) {
           throw new Error("Erase result outside catalogue: " + featureId)
         }
-        if (result.response !== undefined) assertion.rawReplies[featureId] = result.response
-        const rawReplyRef = Object.hasOwn(assertion.rawReplies, featureId) ? featureId : undefined
-        for (const item of result.assertions ?? []) {
-          assertion.assertions.push({ ...item, featureId, rawReplyRef })
-        }
         const precondition = checks.find((check) => check.kind === "precondition" && !check.ok)
-        const domain = recordExecutedProbe({
+        const domain = recordReplayedRow({
           featureId,
-          attempt: { scope: "probe", startedAt },
+          startedAt,
+          result,
+          rawReplies: assertion.rawReplies,
           assertions: assertion.assertions,
-          tests: result.tests,
-          criterionBranch: result.criterionBranch,
-          observation: result.observation && { ...result.observation, featureId, rawReplyRef },
-          // Coverage requires retained raw state; its absent trace must still fail the parser.
-          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
-          diagnostic:
-            precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "probe-invalid")
-              ? {
-                  kind: "collector-error",
-                  name: "PreconditionFailed",
-                  message: "Erase precondition failed: " + precondition.matcher,
-                }
-              : undefined,
-          rawReplyRef,
+          ...(precondition && { precondition: "Erase precondition failed: " + precondition.matcher }),
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)
         if (index < 0) throw new Error("Erase result missing from declared catalogue: " + featureId)

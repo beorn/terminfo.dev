@@ -386,6 +386,7 @@ export function replayTermProbeSource(
   }
   return {
     kind: "live",
+    now: () => Date.now(),
     write: () => {},
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,

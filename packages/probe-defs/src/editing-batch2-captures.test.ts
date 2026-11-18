@@ -42,6 +42,7 @@ function captureSource(rows: number, cols: number, withCapture = true) {
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -110,6 +111,7 @@ function readbackCaptureSource(rows: number, cols: number, witness = { row: 3, c
     `${region.top},${region.left},${region.bottom},${region.right}`
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -332,6 +334,7 @@ function decsaceCaptureSource(mutations: readonly string[] = []) {
 
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: DECSACE_GEOMETRY,

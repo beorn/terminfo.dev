@@ -50,6 +50,7 @@ function calibratedSource(
   let reads = 0
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     write: (sequence) => writes.push(sequence),
@@ -311,6 +312,8 @@ test("a witness timeout while the frame moved takes the layout clause in place o
   const { baseline, read } = stillWitness(true)
   const options = {
     read,
+    // The helper is handed the live clock, as a live source's `now` is.
+    now: () => Date.now(),
     id: "charsets.dec-line-drawing",
     label: "charsets.dec-line-drawing: pre-edit seed",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },
@@ -341,6 +344,7 @@ test("the layout check never runs when the frame stood still or on a roundtrip r
   const still = stillWitness(false)
   await awaitPaintWitness({
     read: still.read,
+    now: () => Date.now(),
     id: "fixture",
     label: "fixture",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },
@@ -352,6 +356,7 @@ test("the layout check never runs when the frame stood still or on a roundtrip r
   const moving = stillWitness(true)
   await awaitPaintWitness({
     read: moving.read,
+    now: () => Date.now(),
     id: "fixture",
     label: "fixture",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },

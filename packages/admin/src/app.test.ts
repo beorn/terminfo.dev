@@ -202,6 +202,8 @@ beforeEach(() => {
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
   vi.mocked(placeCollectedRun).mockReturnValue("/corpus/terminal-app.json")
+  // #30932 S2: the shadow's own behaviour is pinned in unified.test.ts; here only that it reads the retained run.
+  vi.spyOn(collectedRun, "shadowCollectedRun").mockResolvedValue(undefined)
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(closeOwnedTerminalWindow).mockReturnValue(
     JSON.stringify({ windowId: 14, tty: "/dev/ttys003", status: 0, stdout: "0\n", stderr: "", remaining: 0 }),
@@ -1201,6 +1203,8 @@ describe("Terminal.app app collection", () => {
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
     expect(placeCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json", {})
+    expect(collectedRun.shadowCollectedRun).toHaveBeenCalledOnce()
+    expect(collectedRun.shadowCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json")
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
       origin: { kind: "collector", appLaunch: receipt },
       rawReplies: {

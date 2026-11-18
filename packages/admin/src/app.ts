@@ -33,7 +33,12 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { readWindowsWezTermRows } from "../../terminfo.dev/src/windows-wezterm-text.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { assertPrivateCollectionOutput, writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
+import {
+  assertPrivateCollectionOutput,
+  retainCollectedRun,
+  shadowCollectedRun,
+  writeCollectedRun,
+} from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
@@ -891,18 +896,26 @@ async function probeDaemon(
   }
   await options.beforeSave?.(run)
   const mode = outputDirectory === undefined ? "written" : "retained"
+  let retainedRun: string
   if (outputDirectory !== undefined) {
-    const source = retainCollectedRun(
+    retainedRun = retainCollectedRun(
       run,
       retained.path,
       { kind: "term", id: appId, version },
       outputDirectory,
       options.captureBundleRoot,
     )
-    console.log(`  Retained private development run ${source}`)
+    console.log(`  Retained private development run ${retainedRun}`)
   } else {
-    writeCollectedRun(run, retained.path, { kind: "term", id: appId, version }, options.captureBundleRoot)
+    retainedRun = writeCollectedRun(
+      run,
+      retained.path,
+      { kind: "term", id: appId, version },
+      options.captureBundleRoot,
+    ).retained
   }
+  // #30932 S2: once, for either path, from the saved private run.
+  await shadowCollectedRun(retainedRun)
   const catalogIds = run.results.map((result) => result.featureId)
   const aggregate = aggregateCurrentResults(run.results, catalogIds)
   return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)}`, mode }

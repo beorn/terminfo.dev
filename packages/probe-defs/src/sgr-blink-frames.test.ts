@@ -50,6 +50,7 @@ function app(opts: {
   let plain = 0
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     write: (bytes) => writes.push(bytes),
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,

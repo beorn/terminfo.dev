@@ -679,6 +679,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   const queries: string[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 37,
     cols: 61,
     write: (s) => writes.push(s),
@@ -702,6 +703,7 @@ function silentAppSource(rows: number, cols: number): { context: TermProbeSource
   const writes: string[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -828,6 +830,7 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     const writes: string[] = []
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 1,
       cols: 1,
       capture: async () => {
@@ -1186,6 +1189,7 @@ function captureApp(rows: number, cols: number) {
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -1418,6 +1422,7 @@ function regionReadbackApp(
   }
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => {
@@ -2389,6 +2394,7 @@ test("both owned-history scrollback rows carry the reader's pane receipt into th
     const totals = [24, 24, 44]
     const source: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 24,
       cols: 80,
       write() {},

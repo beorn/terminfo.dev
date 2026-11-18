@@ -154,6 +154,8 @@ export function createTermProbeSource({
   }
   return {
     kind: "live",
+    // #30932 S2: the live clock, unchanged; the source recorder keeps every value it returns.
+    now: () => Date.now(),
     write(text: string) {
       onWrite?.(text)
       writeTTY(text)

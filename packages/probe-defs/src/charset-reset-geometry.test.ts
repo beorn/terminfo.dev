@@ -30,6 +30,7 @@ function app(
   }
   return {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write(bytes): void {
