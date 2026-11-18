@@ -117,8 +117,7 @@ it.runIf(OWNED_LAYOUT)(
       // Repeat passes record no call log: only the first pass is replayable evidence.
       const repeats = JSON.parse(stored.rawReplies["collector.repeatPasses"]!) as Record<string, Record<string, string>>
       for (const pass of [repeats.second!, repeats.third!]) {
-        expect(Object.keys(pass).filter((key) => key.endsWith(".callLog") && !Object.hasOwn(stored.rawReplies, key))).toEqual([])
-        expect(pass["extensions.osc52-read.callLog"]).toBe(stored.rawReplies["extensions.osc52-read.callLog"])
+        expect(Object.keys(pass).filter((key) => key.endsWith(".callLog"))).toEqual([])
       }
       expect(row(report, "extensions.kitty-keyboard")?.outcome).not.toBe("incomplete")
     }

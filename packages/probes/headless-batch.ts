@@ -1181,7 +1181,9 @@ export async function collectBatch(
     draft
       ? {
           runId: draft.runId,
-          rawReplies: { ...draft.rawReplies },
+          // First-pass call logs are first-pass evidence only (#30932 S3): copying them into each repeat pass
+          // stored every log three times, twice double-escaped inside collector.repeatPasses.
+          rawReplies: Object.fromEntries(Object.entries(draft.rawReplies).filter(([key]) => !key.endsWith(".callLog"))),
           results: selected.map((probe) => ({
             featureId: probe.id,
             status: "probe-todo" as const,
