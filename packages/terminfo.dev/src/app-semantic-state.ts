@@ -2696,14 +2696,15 @@ async function readNativeEditorState(input: {
     const trial = async (
       phase: string,
       selector: string,
-      options: { code?: number; command?: string; commandSelector?: string; full: boolean },
+      options: { code?: number; command?: string; commandSelector?: string; nonce?: string; full: boolean },
     ) => {
       input.write(osc(`${selector};A`) + osc(`${selector};B`))
       if ((await read(`${phase}-ab`, "start", false)).length !== 0) {
         throw new Error(`Native editor execution event arrived before C in ${phase}; the trial cannot be attributed`)
       }
+      const suffix = options.nonce === undefined || options.nonce === "" ? "" : `;${options.nonce}`
       const command =
-        options.command === undefined ? "" : osc(`${options.commandSelector ?? selector};E;${options.command}`)
+        options.command === undefined ? "" : osc(`${options.commandSelector ?? selector};E;${options.command}${suffix}`)
       input.write(command + osc(`${selector};C`))
       const afterC = await read(`${phase}-c`, "start", options.full)
       if (afterC.length > 1 || afterC.some((fact) => fact.kind !== "start")) {
@@ -2784,18 +2785,28 @@ async function readNativeEditorState(input: {
         target = { before: "none|none", after: await pair("target", row.selector), expected: "end:0|end:17" }
       } else {
         // An E under an unknown selector must not set the command line; known and target payloads differ.
+        // VS Code 1.142.0 and Cursor 3.25.9 CommandDetectionCapability.setCommandLine updates PromptInputModel only
+        // when the E sequence's nonce matches VSCODE_NONCE, and UnixPtyHeuristics.handleCommandExecuted overwrites
+        // currentCommand.command from PromptInputModel at 633;C (34894, run 44267909484).
+        const rawNonce = process.env.VSCODE_NONCE
+        const nonce = typeof rawNonce === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(rawNonce) ? rawNonce : undefined
         const unknownCommand = `terminfo-unknown-${randomUUID()}`
-        const control = await trial("unknown", "633", { command: unknownCommand, commandSelector: "9999", full: true })
+        const control = await trial("unknown", "633", {
+          command: unknownCommand,
+          commandSelector: "9999",
+          nonce,
+          full: true,
+        })
         unknown = { before: "cmd:absent", after: record("unknown", "633", commanded(control, unknownCommand), control) }
         const knownCommand = `terminfo-control-${randomUUID()}`
-        const known = await trial("handled", "633", { command: knownCommand, full: true })
+        const known = await trial("handled", "633", { command: knownCommand, nonce, full: true })
         handled = {
           before: "cmd:absent",
           after: record("handled", "633", commanded(known, knownCommand), known),
           expected: "cmd:match",
         }
         const targetCommand = `terminfo-target-${randomUUID()}`
-        const result = await trial("target", "633", { command: targetCommand, full: true })
+        const result = await trial("target", "633", { command: targetCommand, nonce, full: true })
         target = {
           before: "cmd:absent",
           after: record("target", "633", commanded(result, targetCommand), result),
