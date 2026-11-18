@@ -14,7 +14,8 @@ import { appSemanticDeclarations, readSessionBus, readWezTermCwd } from "../app-
 import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { zstdDecompressSync } from "node:zlib"
+import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from "vitest"
 import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
@@ -37,7 +38,7 @@ import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch, type HeldViewportReaderFor } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
-import { readCaptureBinding, readProbeCapture } from "../../../probes/erase-capture.ts"
+import { readCaptureBinding, readProbeCapture, readReference } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
 import { shadowStoredRun } from "../../../probes/stored-run-shadow.ts"
 import { shadowCollectedRun, shadowReportPath } from "../../../admin/src/collected-run.ts"
@@ -5922,7 +5923,10 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
 // Images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
-it("retains same-callback control and target frames without declaring visual support", async (context) => {
+// 34127: an X window dump source is retained zstd-compressed, so this producer-to-replay chain runs for
+// both source kinds; the .xwd.zst blob has to satisfy the manifest, the generic stored-byte read, the
+// private-copy check and the offline replay exactly as a PNG source does.
+async function retainsSameCallbackFrames(sourceFormat: "png" | "xwd", context: TestContext) {
   verifiedBatchFixture()
   // sgr.blink samples on a real 7500 ms schedule in the live callback and both replays below;
   // fake timers drive those waits so this retention contract costs no wall time per pass.
@@ -5962,7 +5966,13 @@ it("retains same-callback control and target frames without declaring visual sup
           directory: artifacts,
           onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
           checkpoint: { featureId, role, label },
-          source: { format: "png", bytes: png, width: 1, height: 1, capturedAt: checkpoints.length },
+          source: {
+            format: sourceFormat,
+            bytes: sourceFormat === "png" ? png : Buffer.from(`XWD fixture for checkpoint ${checkpoints.length}`),
+            width: 1,
+            height: 1,
+            capturedAt: checkpoints.length,
+          },
           png,
           decoded: { width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) },
           origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
@@ -6003,6 +6013,30 @@ it("retains same-callback control and target frames without declaring visual sup
   })
   expect(batch.suiteComplete).toBe(false)
   batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  // 34127: what each source kind leaves in the manifest. An XWD source is one .xwd.zst blob per frame,
+  // named by its stored bytes, read back through the generic reader and decompressed to the exact dump;
+  // the same blob with one byte changed is refused by that reader.
+  const sourceBlobs = [...blobs.values()].filter(({ path }) => !path.endsWith(".png"))
+  if (sourceFormat === "xwd") {
+    expect(sourceBlobs.length).toBeGreaterThan(0)
+    for (const blob of sourceBlobs) {
+      expect(blob.path).toBe(`artifacts/${blob.sha256}.xwd.zst`)
+      expect(zstdDecompressSync(readReference(directory, blob)).toString()).toMatch(/^XWD fixture for checkpoint \d+$/)
+    }
+    for (const frame of frames) {
+      expect(sourceBlobs.some(({ sha256 }) => frame.sourceRef === `sha256:${sha256}`)).toBe(true)
+    }
+    const corrupt = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+    receiptDirectories.push(corrupt)
+    const first = sourceBlobs[0]!
+    const altered = readFileSync(join(directory, first.path))
+    altered.writeUInt8(altered.readUInt8(altered.length - 1) ^ 1, altered.length - 1)
+    mkdirSync(join(corrupt, "artifacts"))
+    writeFileSync(join(corrupt, first.path), altered)
+    expect(() => readReference(corrupt, first)).toThrow(/SHA256 differs/)
+  } else {
+    expect(sourceBlobs).toEqual([])
+  }
   const draft = asRun(batch)
   const open = (candidate: typeof draft, label: string) => {
     const bytes = Buffer.from(JSON.stringify(candidate)),
@@ -6113,7 +6147,14 @@ it("retains same-callback control and target frames without declaring visual sup
     expect(typeof assertion.rawReplies[live.featureId]).toBe("string")
   }
   expect(writes).toHaveLength(beforeOffline)
-}, 30_000)
+}
+for (const sourceFormat of ["png", "xwd"] as const) {
+  it(
+    `retains same-callback control and target frames without declaring visual support (${sourceFormat} source)`,
+    (context) => retainsSameCallbackFrames(sourceFormat, context),
+    30_000,
+  )
+}
 
 // 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
 // one must say so by name, in its own result, and must not claim pixels that do not exist.

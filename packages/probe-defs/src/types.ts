@@ -309,7 +309,11 @@ export interface ObservationFrameBase {
   ref: string
   capturedAt: number
   label: string
-  /** Original capture bytes, such as XWD; retained with the raw run receipt. */
+  /**
+   * Original capture source, retained with the raw run receipt: the digest of the stored artifact,
+   * which for an X window dump is its zstd-compressed copy (`.xwd.zst`, 34127) and decompresses to
+   * the exact dump.
+   */
   sourceRef?: string
 }
 

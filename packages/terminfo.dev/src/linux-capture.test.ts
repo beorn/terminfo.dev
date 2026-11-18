@@ -20,6 +20,7 @@ import { createHash } from "node:crypto"
 import { spawn, spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { zstdDecompressSync } from "node:zlib"
 import { afterEach, expect, test, vi } from "vitest"
 import {
   createLinuxCapture,
@@ -434,7 +435,8 @@ test.runIf(process.platform === "linux")("OSC22 captures pointer PNG through the
   expect(readdirSync(join(directory, "frames")).some((name) => name.startsWith(".osc22-"))).toBe(false)
   expect(readFileSync(stdin)).toEqual(readFileSync(png))
   expect(result.frame.sourceRef).toBe(`sha256:${createHash("sha256").update(readFileSync(png)).digest("hex")}`)
-  expect(readdirSync(join(directory, "frames")).some((name) => name.endsWith(".xwd"))).toBe(false)
+  // Neither a raw nor a compressed (34127) X window dump: this capture route keeps a PNG source only.
+  expect(readdirSync(join(directory, "frames")).some((name) => /\.xwd(\.zst)?$/.test(name))).toBe(false)
 })
 
 // A failed producer can leave partial PNG bytes; they must never survive as capture evidence.
@@ -1122,7 +1124,10 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   expect(result.trace.textArea).toEqual({ origin: { x: 2, y: 34 }, basis: "solid-cell calibration" })
   expect(result.trace.rectangle).toEqual({ x: 18, y: 50, width: 16, height: 16 })
   const retained = result.trace.retained as Record<string, string>
-  expect(readFileSync(join(directory, retained[format]!))).toEqual(source.bytes)
+  // 34127: an XWD source is retained as its zstd copy (.xwd.zst) and decompresses to the exact dump.
+  const stored = readFileSync(join(directory, retained[format]!))
+  expect(retained[format]).toMatch(format === "xwd" ? /\.xwd\.zst$/ : /\.png$/)
+  expect(format === "xwd" ? zstdDecompressSync(stored) : stored).toEqual(source.bytes)
   await expect(
     finishCapture({
       onRetained: () => {},
