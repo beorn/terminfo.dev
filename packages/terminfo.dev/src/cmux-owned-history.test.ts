@@ -16,10 +16,12 @@ vi.mock("node:fs", async (importOriginal) => ({
   statSync: files.statSync,
 }))
 import {
+  CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER,
   cmuxConfigGuard,
   cmuxHistoryIdentity,
   cmuxMarkerProof,
   cmuxNonceProof,
+  createOwnedCmuxWorkspaceCwdReader,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
   readOwnedCmuxHistory,
@@ -384,4 +386,276 @@ test("a surface read obtains its screen count without a measured grid", () => {
     observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
   })
   expect(read).toMatchObject({ status: "read", reading: { totalLines: 5, screenLines: 5 } })
+})
+
+test("bound cmux workspace cwd reader pins workspace lifetime, enforces nullable selection schema, and qualifies exact-pin no-event completion", async () => {
+  let workspaceId = "ws-owned-1"
+  let currentDirectory = "/Users/runner/project"
+  let focused = true
+  let selectedInPane: boolean | null = true
+  let resumeBinding: object | null = null
+  let tmuxStartCommand: string | null = null
+  let dockScope: string | undefined
+  let initialCommand: string | null = null
+  let remoteEnabled = false
+  let configHash = configSha256
+  const screenRows = ["", "", "", ""]
+  const retained: string[] = []
+  let ownerChecks = 0
+
+  const makeReader = (overrides?: Partial<Parameters<typeof createOwnedCmuxWorkspaceCwdReader>[0]>) =>
+    createOwnedCmuxWorkspaceCwdReader({
+      executable,
+      surface: "surface-owned-1",
+      configAtLaunch: { read: "present", sha256: configSha256 },
+      observeConfig: () => ({ read: "present", sha256: configHash }),
+      retainTranscript: (stdout) => {
+        retained.push(stdout)
+        return `sha256:${configSha256}`
+      },
+      checkOwner: () => {
+        ownerChecks += 1
+      },
+      noEventCompletionQualified: true,
+      pollIntervalMs: 5,
+      deadlineMs: 250,
+      spawn: (args) => {
+        if (args[0] === "read-screen") {
+          return { status: 0, stdout: `${screenRows.join("\n")}\n`, stderr: "" }
+        }
+        if (args[0] === "rpc" && args[1] === "surface.list") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              workspace_id: workspaceId,
+              surfaces: [
+                {
+                  id: "surface-owned-1",
+                  type: "terminal",
+                  focused,
+                  selected_in_pane: selectedInPane,
+                  resume_binding: resumeBinding,
+                  tmux_start_command: tmuxStartCommand,
+                  initial_command: initialCommand,
+                  ...(dockScope === undefined ? {} : { dock_scope: dockScope }),
+                },
+              ],
+            }),
+            stderr: "",
+          }
+        }
+        if (args[0] === "rpc" && args[1] === "workspace.current") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              workspace_id: workspaceId,
+              workspace: {
+                id: workspaceId,
+                selected: true,
+                current_directory: currentDirectory,
+                remote: { enabled: remoteEnabled, connected: remoteEnabled },
+              },
+            }),
+            stderr: "",
+          }
+        }
+        return { status: 1, stdout: "", stderr: "unexpected command" }
+      },
+      ...overrides,
+    })
+
+  const readCwd = makeReader()
+  const initial = await readCwd()
+  expect(initial.path).toBe("/Users/runner/project")
+  expect(initial.detail).toMatchObject({
+    workspaceId: "ws-owned-1",
+    surfaceId: "surface-owned-1",
+    focused: true,
+    selectedInPane: true,
+  })
+  expect(ownerChecks).toBeGreaterThanOrEqual(4)
+
+  // Sample 1 (unknown OSC 133;Z): requires the row-1 screen marker and attaches the exact-pin no-event qualifier.
+  screenRows[0] = "Q-nonce-0"
+  const unknown = await readCwd({
+    row: 1,
+    marker: "Q-nonce-0",
+    phase: "unknown",
+    expectedPath: "/Users/runner/project",
+  })
+  expect(unknown.path).toBe("/Users/runner/project")
+  expect(unknown.detail).toMatchObject({
+    completionQualifier: CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER,
+  })
+
+  // Sample 2 (handled OSC 7): waits for delayed async delivery beyond 50 ms after the row-2 screen marker.
+  screenRows[1] = "Q-nonce-1"
+  setTimeout(() => {
+    currentDirectory = "/terminfo-control-nonce"
+  }, 80)
+  const handled = await readCwd({
+    row: 2,
+    marker: "Q-nonce-1",
+    phase: "handled",
+    expectedPath: "/terminfo-control-nonce",
+  })
+  expect(handled.path).toBe("/terminfo-control-nonce")
+
+  // Sample 3 (target OSC 633;P;Cwd=...): at the exact qualified pin, unchanged after the row-3 marker is completion-qualified.
+  screenRows[2] = "Q-nonce-2"
+  const target = await readCwd({
+    row: 3,
+    marker: "Q-nonce-2",
+    phase: "target",
+    expectedPath: "/terminfo-target-nonce",
+  })
+  expect(target.path).toBe("/terminfo-control-nonce")
+  expect(target.detail).toMatchObject({
+    completionQualifier: CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER,
+  })
+
+  // A moved workspace id mid-run must fail closed even when CMUX_WORKSPACE_ID was not supplied.
+  workspaceId = "ws-other-2"
+  await expect(readCwd()).rejects.toThrow(/workspace_id changed/)
+  workspaceId = "ws-owned-1"
+
+  // Nullable selected_in_pane: null must fail closed rather than silently claim selection.
+  selectedInPane = null
+  await expect(readCwd()).rejects.toThrow(/selected in its pane/)
+  selectedInPane = true
+
+  // Lost focus between phase reads must fail closed.
+  focused = false
+  await expect(readCwd()).rejects.toThrow(/no longer focused/)
+  focused = true
+
+  // Non-fresh or remote provenance must fail closed.
+  resumeBinding = { name: "agent" }
+  await expect(readCwd()).rejects.toThrow(/resume_binding/)
+  resumeBinding = null
+
+  tmuxStartCommand = "tmux attach"
+  await expect(readCwd()).rejects.toThrow(/tmux_start_command/)
+  tmuxStartCommand = null
+
+  dockScope = "workspace"
+  await expect(readCwd()).rejects.toThrow(/dock panel/)
+  dockScope = undefined
+
+  remoteEnabled = true
+  await expect(readCwd()).rejects.toThrow(/remote provenance/)
+  remoteEnabled = false
+
+  initialCommand = "cd /tmp && zsh"
+  await expect(makeReader()()).rejects.toThrow(/concurrent directory writer/)
+  initialCommand = null
+
+  configHash = "f".repeat(64)
+  await expect(readCwd()).rejects.toThrow(/cmux-config-hash-changed/)
+})
+
+// @cto R2 item 5 decisive regression: control delivery 60 ms followed by delayed target 900 ms.
+// Without the exact no-event completion qualifier, the reader must never yield Unsupported at 250 ms;
+// it must observe the 900 ms target as Supported, and an unchanged target without the qualifier must fail closed.
+test("without the exact no-event completion qualifier, a 60 ms control followed by a 900 ms delayed target never yields false Unsupported at 250 ms", async () => {
+  let currentDirectory = "/Users/runner/project"
+  const screenRows = ["Q-r2-0", "Q-r2-1", "Q-r2-2", "Q-r2-3"]
+  const spawn = (args: readonly string[]) => {
+    if (args[0] === "read-screen") {
+      return { status: 0, stdout: `${screenRows.join("\n")}\n`, stderr: "" }
+    }
+    if (args[0] === "rpc" && args[1] === "surface.list") {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          workspace_id: "ws-r2",
+          surfaces: [
+            {
+              id: "surface-r2",
+              type: "terminal",
+              focused: true,
+              selected_in_pane: true,
+              resume_binding: null,
+              tmux_start_command: null,
+              initial_command: null,
+            },
+          ],
+        }),
+        stderr: "",
+      }
+    }
+    return {
+      status: 0,
+      stdout: JSON.stringify({
+        workspace_id: "ws-r2",
+        workspace: {
+          id: "ws-r2",
+          selected: true,
+          current_directory: currentDirectory,
+          remote: { enabled: false, connected: false },
+        },
+      }),
+      stderr: "",
+    }
+  }
+
+  const unqualifiedReader = createOwnedCmuxWorkspaceCwdReader({
+    executable,
+    surface: "surface-r2",
+    configAtLaunch: { read: "present", sha256: configSha256 },
+    observeConfig: () => ({ read: "present", sha256: configSha256 }),
+    noEventCompletionQualified: false,
+    pollIntervalMs: 20,
+    deadlineMs: 1500,
+    spawn,
+  })
+
+  expect((await unqualifiedReader()).path).toBe("/Users/runner/project")
+
+  // Control delivers in 60 ms.
+  setTimeout(() => {
+    currentDirectory = "/terminfo-control-r2"
+  }, 60)
+  const control = await unqualifiedReader({
+    row: 2,
+    marker: "Q-r2-1",
+    phase: "handled",
+    expectedPath: "/terminfo-control-r2",
+  })
+  expect(control.path).toBe("/terminfo-control-r2")
+
+  // Target delivers in 900 ms (well past 4 * 60 ms = 240 ms / 250 ms clamp).
+  const startedAt = Date.now()
+  setTimeout(() => {
+    currentDirectory = "/terminfo-target-r2"
+  }, 900)
+  const delayedTarget = await unqualifiedReader({
+    row: 3,
+    marker: "Q-r2-2",
+    phase: "target",
+    expectedPath: "/terminfo-target-r2",
+  })
+  expect(delayedTarget.path).toBe("/terminfo-target-r2")
+  expect(Date.now() - startedAt).toBeGreaterThanOrEqual(850)
+
+  // And if a target remains unchanged when noEventCompletionQualified is false, it is unresolved (throws), never Unsupported.
+  currentDirectory = "/terminfo-control-r2"
+  const fastUnqualified = createOwnedCmuxWorkspaceCwdReader({
+    executable,
+    surface: "surface-r2",
+    configAtLaunch: { read: "present", sha256: configSha256 },
+    observeConfig: () => ({ read: "present", sha256: configSha256 }),
+    noEventCompletionQualified: false,
+    pollIntervalMs: 10,
+    deadlineMs: 120,
+    spawn,
+  })
+  await expect(
+    fastUnqualified({
+      row: 3,
+      marker: "Q-r2-2",
+      phase: "target",
+      expectedPath: "/terminfo-target-r2",
+    }),
+  ).rejects.toThrow(/without exact-pin no-event completion qualification/)
 })

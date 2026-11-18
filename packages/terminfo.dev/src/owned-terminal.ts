@@ -55,8 +55,11 @@ import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
   cmuxConfigPath,
   cmuxHistoryIdentity,
+  createOwnedCmuxWorkspaceCwdReader,
   observeCmuxConfig,
   ownedCmuxHistoryExecutable,
+  type CmuxConfigObservation,
+  type CmuxHistoryIdentity,
   type CmuxLastRead,
   type CmuxReadFacts,
   readOwnedCmuxHistory,
@@ -1553,6 +1556,163 @@ const publishedRefusal = (failure: string): string => {
   return pathSeparator.test(reason) ? code + " (reason withheld: names a host path)" : failure
 }
 
+async function readHostedCmuxSemanticCwd(input: {
+  readonly featureId: string
+  readonly write: (text: string) => void
+  readonly out: NodeJS.WriteStream
+  readonly expectedLaunchRunId: string
+  readonly muxAttachmentProof: MuxAttachmentProof | undefined
+  readonly hostedCmuxOwnerCheck: (() => Promise<void>) | undefined
+  readonly ownedCmuxCli: string | undefined
+  readonly ownedCmuxIdentity: CmuxHistoryIdentity | undefined
+  readonly hostedAppExecutablePath: string | undefined
+  readonly cmuxGrantFailure: string | undefined
+  readonly cmuxGrantReceipt: string | undefined
+  readonly cmuxSurface: string | undefined
+  readonly cmuxConfigAtLaunch: CmuxConfigObservation | undefined
+  readonly retainCmuxTranscript: (stdout: string) => string
+  readonly onRetained: Parameters<typeof retain>[3] | undefined
+  readonly isOwnerLive: () => boolean
+}) {
+  if (input.featureId !== "extensions.osc633-p") {
+    return {
+      status: "unavailable" as const,
+      reason: "No owned App semantic reader for this feature on macOS",
+    }
+  }
+  const reviewedVersion = "0.65.2"
+  const cliVersion = /^cmux (\S+)$/u.exec(input.ownedCmuxIdentity?.historyExecutable?.version ?? "")?.[1]
+  const launchValid =
+    cliVersion === reviewedVersion &&
+    process.env.TERMINFO_TARGET_VERSION === reviewedVersion &&
+    process.env.TERMINFO_RUN_ID === input.expectedLaunchRunId &&
+    input.muxAttachmentProof === undefined &&
+    !process.env.TERMINFO_MUX_KIND
+  if (!launchValid) {
+    return {
+      status: "invalid" as const,
+      reason: "cmux cwd has no reviewed CLI version bound to this App launch",
+    }
+  }
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+  const executableProof = input.ownedCmuxIdentity?.historyExecutable
+  if (
+    input.hostedCmuxOwnerCheck === undefined ||
+    input.ownedCmuxCli === undefined ||
+    executableProof === undefined ||
+    input.hostedAppExecutablePath === undefined ||
+    input.cmuxGrantFailure !== undefined ||
+    input.cmuxGrantReceipt === undefined ||
+    input.cmuxSurface === undefined ||
+    !captureDirectory ||
+    !isAbsolute(captureDirectory) ||
+    input.onRetained === undefined
+  ) {
+    return {
+      status: "invalid" as const,
+      reason: "cmux cwd needs an owned surface grant, measured CLI and private capture with its artifact observer",
+    }
+  }
+  try {
+    const guiRealpath = realpathSync(input.hostedAppExecutablePath)
+    const contentsDir = dirname(dirname(guiRealpath))
+    const cliRealpath = realpathSync(input.ownedCmuxCli)
+    const validBundleCli =
+      guiRealpath === join(contentsDir, "MacOS", "cmux") &&
+      (cliRealpath === join(contentsDir, "MacOS", "cmux") ||
+        cliRealpath === join(contentsDir, "Resources", "bin", "cmux"))
+    if (!validBundleCli) {
+      throw new Error("cmux CLI is outside the verified App bundle")
+    }
+    const ownerCheck = input.hostedCmuxOwnerCheck
+    const check = async () => {
+      if (!input.isOwnerLive()) throw new Error("cmux cwd ownership is no longer live")
+      await ownerCheck()
+    }
+    const readCwd = createOwnedCmuxWorkspaceCwdReader({
+      executable: input.ownedCmuxCli,
+      surface: input.cmuxSurface,
+      declaredWorkspaceId: process.env.CMUX_WORKSPACE_ID,
+      configAtLaunch: input.cmuxConfigAtLaunch,
+      observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+      retainTranscript: input.retainCmuxTranscript,
+      checkOwner: check,
+      noEventCompletionQualified: /^[a-f0-9]{64}$/u.test(executableProof.sha256),
+    })
+    return await readAppSemanticState({
+      appId: "cmux",
+      featureId: input.featureId,
+      onRetained: input.onRetained,
+      runId: input.expectedLaunchRunId,
+      executable: executableProof,
+      write: input.write,
+      privateWrite: async (text) => {
+        await check()
+        input.out.write(text)
+        await check()
+      },
+      readCwd,
+    })
+  } catch (error) {
+    return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function readHostedGhosttySemanticCwd(input: {
+  readonly featureId: string
+  readonly write: (text: string) => void
+  readonly tabTty: string
+  readonly expectedLaunchRunId: string
+  readonly muxAttachmentProof: MuxAttachmentProof | undefined
+  readonly hostedAppExecutablePath: string | undefined
+  readonly onRetained: Parameters<typeof retain>[3] | undefined
+  readonly isOwnerLive: () => boolean
+}) {
+  if (input.featureId !== "extensions.osc7-cwd" && input.featureId !== "extensions.osc633-p") {
+    return {
+      status: "unavailable" as const,
+      reason: "No owned App semantic reader for this feature on macOS",
+    }
+  }
+  const launchValid =
+    process.env.TERMINFO_TARGET_VERSION === "1.4.0" &&
+    process.env.TERMINFO_RUN_ID === input.expectedLaunchRunId &&
+    input.muxAttachmentProof === undefined &&
+    !process.env.TERMINFO_MUX_KIND
+  if (!launchValid) {
+    return {
+      status: "invalid" as const,
+      reason: "Ghostty cwd has no reviewed version bound to this App launch",
+    }
+  }
+  if (input.hostedAppExecutablePath === undefined || input.onRetained === undefined) {
+    return {
+      status: "invalid" as const,
+      reason: "Ghostty cwd needs the hosted App executable and its artifact observer",
+    }
+  }
+  try {
+    const sha256 = createHash("sha256").update(readFileSync(input.hostedAppExecutablePath)).digest("hex")
+    return await readAppSemanticState({
+      appId: "ghostty",
+      featureId: input.featureId,
+      onRetained: input.onRetained,
+      runId: input.expectedLaunchRunId,
+      executable: { path: input.hostedAppExecutablePath, sha256 },
+      write: input.write,
+      readCwd: ghosttyOwnedCwd({
+        tty: input.tabTty,
+        write: input.write,
+        check() {
+          if (!input.isOwnerLive()) throw new Error("Ghostty cwd ownership is no longer live")
+        },
+      }),
+    })
+  } catch (error) {
+    return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
 export async function createOwnedTerminal(options: {
   captureRunId: string
@@ -2583,66 +2743,58 @@ export async function createOwnedTerminal(options: {
           },
         }),
       ...(binding.platform === "darwin" &&
-        (ownedAppId === "wezterm" || ownedAppId === "ghostty") && {
-          appSemanticStateFeatures: new Set([
-            "extensions.osc7-cwd",
-            "extensions.osc633-p",
-            // 34646: WezTerm's bundle CLI get-text --escapes reads OSC 8 state, as on Linux.
-            ...(ownedAppId === "wezterm" ? ["extensions.osc8"] : []),
-          ]),
+        (ownedAppId === "wezterm" || ownedAppId === "ghostty" || ownedAppId === "cmux") && {
+          appSemanticStateFeatures: new Set(
+            ownedAppId === "cmux"
+              ? ["extensions.osc633-p"]
+              : [
+                  "extensions.osc7-cwd",
+                  "extensions.osc633-p",
+                  // 34646: WezTerm's bundle CLI get-text --escapes reads OSC 8 state, as on Linux.
+                  ...(ownedAppId === "wezterm" ? ["extensions.osc8"] : []),
+                ],
+          ),
         }),
       ...((linux ||
         (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin")) ||
-        (ownedAppId === "ghostty" && binding.platform === "darwin")) && {
+        ((ownedAppId === "ghostty" || ownedAppId === "cmux") && binding.platform === "darwin")) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
           }
+          // 34905: cmux 0.65.2 on macOS reads cwd through its owned control-socket workspace.current current_directory.
+          if (binding.platform === "darwin" && ownedAppId === "cmux") {
+            return readHostedCmuxSemanticCwd({
+              featureId,
+              write,
+              out,
+              expectedLaunchRunId,
+              muxAttachmentProof,
+              hostedCmuxOwnerCheck,
+              ownedCmuxCli,
+              ownedCmuxIdentity,
+              hostedAppExecutablePath,
+              cmuxGrantFailure,
+              cmuxGrantReceipt,
+              cmuxSurface,
+              cmuxConfigAtLaunch,
+              retainCmuxTranscript,
+              onRetained: options.onRetained,
+              isOwnerLive: () => verifiedTerminalOwners.has(owner),
+            })
+          }
           // 34601: Ghostty 1.4.0 on macOS reads cwd through its AppleScript terminal of the owned tab's TTY.
           if (binding.platform === "darwin" && ownedAppId === "ghostty") {
-            if (featureId !== "extensions.osc7-cwd" && featureId !== "extensions.osc633-p") {
-              return {
-                status: "unavailable" as const,
-                reason: "No owned App semantic reader for this feature on macOS",
-              }
-            }
-            if (
-              process.env.TERMINFO_TARGET_VERSION !== "1.4.0" ||
-              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
-              muxAttachmentProof !== undefined ||
-              Boolean(process.env.TERMINFO_MUX_KIND)
-            ) {
-              return {
-                status: "invalid" as const,
-                reason: "Ghostty cwd has no reviewed version bound to this App launch",
-              }
-            }
-            const onRetained = options.onRetained
-            if (hostedAppExecutablePath === undefined || onRetained === undefined) {
-              return {
-                status: "invalid" as const,
-                reason: "Ghostty cwd needs the hosted App executable and its artifact observer",
-              }
-            }
-            try {
-              const sha256 = createHash("sha256").update(readFileSync(hostedAppExecutablePath)).digest("hex")
-              return await readAppSemanticState({
-                featureId,
-                onRetained,
-                runId: expectedLaunchRunId,
-                executable: { path: hostedAppExecutablePath, sha256 },
-                write,
-                readCwd: ghosttyOwnedCwd({
-                  tty: binding.tabTty,
-                  write,
-                  check() {
-                    if (!verifiedTerminalOwners.has(owner)) throw new Error("Ghostty cwd ownership is no longer live")
-                  },
-                }),
-              })
-            } catch (error) {
-              return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
-            }
+            return readHostedGhosttySemanticCwd({
+              featureId,
+              write,
+              tabTty: binding.tabTty,
+              expectedLaunchRunId,
+              muxAttachmentProof,
+              hostedAppExecutablePath,
+              onRetained: options.onRetained,
+              isOwnerLive: () => verifiedTerminalOwners.has(owner),
+            })
           }
           const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
           const ownedOsc8 = binding.platform === "darwin" && featureId === "extensions.osc8"
@@ -2759,6 +2911,7 @@ export async function createOwnedTerminal(options: {
               try {
                 bundleCli()
                 return await readAppSemanticState({
+                  appId: "wezterm",
                   featureId,
                   onRetained,
                   runId: expectedLaunchRunId,
@@ -2788,6 +2941,7 @@ export async function createOwnedTerminal(options: {
               try {
                 bundleCli()
                 return await readAppSemanticState({
+                  appId: "wezterm",
                   featureId,
                   onRetained,
                   runId: expectedLaunchRunId,

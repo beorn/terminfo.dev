@@ -497,3 +497,318 @@ export function readOwnedCmuxHistory(options: {
   }
   return { status: "read", reading: { totalLines, screenLines: screenLines.length, receipt }, receipt, facts }
 }
+
+/**
+ * Reviewed no-event completion qualifier for cmux 0.65.2 (tag v0.65.2, commit
+ * 9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and its vendored Ghostty fork
+ * (cb1ef7091cdef0b581ee2cbd83742b653253523e) (#34905, @cto R2 09ccf969):
+ * - src/terminal/osc.zig:695-698: state .@"6" accepts only '6' (.@"66"); '3' of 633 sets state = .invalid,
+ *   and Parser.end() at :797 returns null.
+ * - src/terminal/osc.zig:862 -> src/terminal/osc/parsers/semantic_prompt.zig:330-393: on 'Z' of OSC 133;Z,
+ *   :385 breaks to :392 (parser.state = .invalid) and :393 returns null.
+ * - src/terminal/Parser.zig:249-252 emits .osc_dispatch only when osc_parser.end() returns a non-null command.
+ * - src/terminal/stream.zig:1025 consumes .osc_dispatch (handler declared at :2284); when end() is null,
+ *   StreamHandler.reportPwd (src/termio/stream_handler.zig:1350-1411), Surface.handleMessage(.pwd_change)
+ *   (src/Surface.zig:1393-1413) and GhosttyCurrentDirectoryActionDispatcher.enqueue
+ *   (Sources/GhosttyCurrentDirectoryActionDispatcher.swift:61-83) are never entered.
+ * Once read-screen observes the trailing row marker written after OSC 133;Z or OSC 633;P;Cwd=... on the same
+ * serialized PTY stream, the VT parser has already rejected the sequence with zero directory event queued.
+ */
+export const CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER = Object.freeze({
+  cmuxVersion: "0.65.2",
+  cmuxCommit: "9d01f956c51cd895e10e7d56b6dd7b5f6fcce625",
+  ghosttyCommit: "cb1ef7091cdef0b581ee2cbd83742b653253523e",
+  oscParserRejection: "src/terminal/osc.zig:695-698,797",
+  osc133ParserRejection: "src/terminal/osc/parsers/semantic_prompt.zig:385,392-393",
+  vtParserDispatch: "src/terminal/Parser.zig:249-252",
+  streamConsume: "src/terminal/stream.zig:1025,2284",
+})
+
+export interface OwnedCmuxCwdCheckpoint {
+  readonly row: number
+  readonly marker: string
+  readonly phase?: "unknown" | "handled" | "target" | "restore"
+  readonly expectedPath?: string
+}
+
+export interface OwnedCmuxWorkspaceCwdOptions {
+  readonly executable: string
+  readonly surface: string
+  readonly declaredWorkspaceId?: string | undefined
+  readonly configAtLaunch: CmuxConfigObservation | undefined
+  readonly observeConfig: () => CmuxConfigObservation
+  readonly retainTranscript?: ((stdout: string) => string) | undefined
+  readonly checkOwner?: (() => void | Promise<void>) | undefined
+  readonly spawn?: ((args: readonly string[]) => CommandOutcome) | undefined
+  readonly noEventCompletionQualified?: boolean | undefined
+  readonly pollIntervalMs?: number | undefined
+  readonly deadlineMs?: number | undefined
+}
+
+const CONCURRENT_DIRECTORY_WRITER = /\b(?:cd|pushd|popd|PROMPT_COMMAND|precmd|chpwd)\b|\x1b\]7;/u
+
+const sleepMs = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function parseOwnedCmuxSurfaceList(
+  stdout: string,
+  ownedSurface: string,
+): { listedWorkspaceId: string; initialCommand: string | null } {
+  let surfaceList: unknown
+  try {
+    surfaceList = JSON.parse(stdout)
+  } catch {
+    throw new Error("cmux surface.list returned malformed JSON")
+  }
+  if (!isPlainRecord(surfaceList)) {
+    throw new Error("cmux surface.list payload is not an object")
+  }
+  const listedWorkspaceId = surfaceList.workspace_id
+  if (typeof listedWorkspaceId !== "string" || listedWorkspaceId.trim() === "") {
+    throw new Error("cmux surface.list reported no workspace_id")
+  }
+  const surfaces = surfaceList.surfaces
+  if (!Array.isArray(surfaces) || surfaces.length !== 1) {
+    throw new Error(
+      `cmux workspace must own exactly 1 surface; found ${Array.isArray(surfaces) ? String(surfaces.length) : "none"}`,
+    )
+  }
+  const surface = surfaces[0]
+  if (!isPlainRecord(surface)) {
+    throw new Error("cmux surface.list entry is not an object")
+  }
+  if (surface.id !== ownedSurface) {
+    throw new Error("cmux surface.list surface id differs from the owned surface")
+  }
+  if (surface.type !== "terminal") {
+    throw new Error("cmux owned surface is not a terminal surface")
+  }
+  if (surface.focused !== true) {
+    throw new Error("cmux owned surface is no longer focused")
+  }
+  if (surface.selected_in_pane !== true) {
+    throw new Error("cmux owned surface is not selected in its pane")
+  }
+  if (surface.resume_binding !== null) {
+    throw new Error("cmux owned surface has a resume_binding and is not a fresh launch")
+  }
+  if (surface.tmux_start_command !== null) {
+    throw new Error("cmux owned surface has a tmux_start_command")
+  }
+  if (surface.dock_scope !== undefined && surface.dock_scope !== null) {
+    throw new Error("cmux owned surface is a dock panel")
+  }
+  const initialCommand = surface.initial_command ?? null
+  if (initialCommand !== null && (typeof initialCommand !== "string" || initialCommand.trim() === "")) {
+    throw new Error("cmux owned surface has an invalid initial_command")
+  }
+  if (typeof initialCommand === "string" && CONCURRENT_DIRECTORY_WRITER.test(initialCommand)) {
+    throw new Error("cmux owned surface initial_command carries a concurrent directory writer")
+  }
+  return { listedWorkspaceId, initialCommand }
+}
+
+function parseOwnedCmuxWorkspaceCurrent(
+  stdout: string,
+  listedWorkspaceId: string,
+): { currentWorkspaceId: string; currentDirectory: string } {
+  let workspaceCurrent: unknown
+  try {
+    workspaceCurrent = JSON.parse(stdout)
+  } catch {
+    throw new Error("cmux workspace.current returned malformed JSON")
+  }
+  if (!isPlainRecord(workspaceCurrent)) {
+    throw new Error("cmux workspace.current payload is not an object")
+  }
+  if (workspaceCurrent.scope === "remote_workspace") {
+    throw new Error("cmux workspace.current reported remote_workspace scope")
+  }
+  const currentWorkspaceId = workspaceCurrent.workspace_id
+  if (typeof currentWorkspaceId !== "string" || currentWorkspaceId.trim() === "") {
+    throw new Error("cmux workspace.current reported no workspace_id")
+  }
+  if (currentWorkspaceId !== listedWorkspaceId) {
+    throw new Error("cmux workspace.current workspace_id disagrees with surface.list")
+  }
+  const workspace = workspaceCurrent.workspace
+  if (!isPlainRecord(workspace)) {
+    throw new Error("cmux workspace.current carried no workspace summary")
+  }
+  if (workspace.id !== currentWorkspaceId) {
+    throw new Error("cmux workspace summary id differs from bound workspace_id")
+  }
+  if (workspace.selected !== true) {
+    throw new Error("cmux bound workspace is no longer selected")
+  }
+  const remote = workspace.remote
+  if (remote !== undefined && remote !== null) {
+    if (!isPlainRecord(remote) || remote.enabled !== false || remote.connected === true) {
+      throw new Error("cmux workspace has remote provenance")
+    }
+  }
+  const currentDirectory = workspace.current_directory
+  // eslint-disable-next-line no-control-regex -- directory path must not contain control characters
+  if (
+    typeof currentDirectory !== "string" ||
+    !currentDirectory.startsWith("/") ||
+    /[\x00-\x1f\x7f]/u.test(currentDirectory)
+  ) {
+    throw new Error("cmux workspace.current reported no valid local current_directory")
+  }
+  return { currentWorkspaceId, currentDirectory }
+}
+
+/**
+ * Bound workspace `current_directory` getter for the owned cmux surface (#34905, @cto R1 5df1da90, R2 09ccf969).
+ * Latches the workspace ID and initial_command at baseline acquisition, re-verifying surface/workspace
+ * membership, focus, strict boolean pane selection, local provenance, live owner ancestry, and socket config
+ * hash around every read.
+ */
+export function createOwnedCmuxWorkspaceCwdReader(options: OwnedCmuxWorkspaceCwdOptions) {
+  let boundWorkspaceId: string | undefined
+  let boundInitialCommand: string | null | undefined
+  const pollIntervalMs = options.pollIntervalMs ?? 25
+  const deadlineMs = options.deadlineMs ?? 5000
+
+  const runCli = async (args: readonly string[]) => {
+    await options.checkOwner?.()
+    const result =
+      options.spawn === undefined
+        ? spawnSync(options.executable, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 })
+        : options.spawn(args)
+    const stdout = text(result.stdout)
+    const transcript = options.retainTranscript?.(stdout)
+    const stderr = text(result.stderr)
+    if (stderr.trim() !== "") console.error(`cmux ${args[0] ?? "cli"}: ${stderr.trim()}`)
+    await options.checkOwner?.()
+    const guard = cmuxConfigGuard({ atLaunch: options.configAtLaunch, afterRun: options.observeConfig() })
+    if (guard.status === "refused") {
+      throw new Error(`${guard.refusal}: ${guard.reason}`)
+    }
+    if (result.error !== undefined || result.signal != null || result.status !== 0) {
+      throw new Error(
+        `cmux-read-failed: cmux ${args[0] ?? "cli"} exited without a valid response (${result.error?.message ?? result.signal ?? `exit ${result.status}`})`,
+      )
+    }
+    return { stdout, transcript, config: guard.observed }
+  }
+
+  const readScreen = async (): Promise<{ stdout: string; transcript?: string | undefined }> => {
+    const reply = await runCli(["read-screen", "--surface", options.surface])
+    return { stdout: reply.stdout, transcript: reply.transcript }
+  }
+
+  const readWorkspaceCwd = async () => {
+    const surfaceReply = await runCli(["rpc", "surface.list"])
+    const { listedWorkspaceId, initialCommand } = parseOwnedCmuxSurfaceList(surfaceReply.stdout, options.surface)
+    const workspaceReply = await runCli(["rpc", "workspace.current"])
+    const { currentWorkspaceId, currentDirectory } = parseOwnedCmuxWorkspaceCurrent(
+      workspaceReply.stdout,
+      listedWorkspaceId,
+    )
+    if (boundWorkspaceId === undefined) {
+      const declared = options.declaredWorkspaceId?.trim()
+      if (declared !== undefined && declared !== "" && currentWorkspaceId !== declared) {
+        throw new Error("cmux workspace.current workspace_id differs from CMUX_WORKSPACE_ID")
+      }
+      boundWorkspaceId = currentWorkspaceId
+      boundInitialCommand = initialCommand
+    } else if (currentWorkspaceId !== boundWorkspaceId) {
+      throw new Error("cmux workspace_id changed during semantic read")
+    } else if (initialCommand !== boundInitialCommand) {
+      throw new Error("cmux surface initial_command changed during semantic read")
+    }
+    const transcripts =
+      surfaceReply.transcript !== undefined && workspaceReply.transcript !== undefined
+        ? { transcripts: [surfaceReply.transcript, workspaceReply.transcript] }
+        : {}
+    return {
+      path: currentDirectory,
+      detail: {
+        workspaceId: boundWorkspaceId,
+        surfaceId: options.surface,
+        focused: true,
+        selectedInPane: true,
+        initialCommandPresent: boundInitialCommand !== null,
+        config: workspaceReply.config,
+        ...transcripts,
+      },
+    }
+  }
+
+  return async (checkpoint?: OwnedCmuxCwdCheckpoint): Promise<{ path: string; detail: object }> => {
+    if (checkpoint === undefined) {
+      return readWorkspaceCwd()
+    }
+    const screenDeadline = Date.now() + deadlineMs
+    let markerSeen = false
+    do {
+      const screen = await readScreen()
+      if ((screen.stdout.split("\n")[checkpoint.row - 1] ?? "").includes(checkpoint.marker)) {
+        markerSeen = true
+        break
+      }
+      await sleepMs(pollIntervalMs)
+    } while (Date.now() < screenDeadline)
+    if (!markerSeen) {
+      throw new Error(`App semantic reader did not observe cmux row ${String(checkpoint.row)} marker completion`)
+    }
+
+    const phase = checkpoint.phase ?? "handled"
+    if (phase === "handled" || phase === "restore") {
+      const cwdDeadline = Date.now() + deadlineMs
+      do {
+        const reading = await readWorkspaceCwd()
+        if (checkpoint.expectedPath === undefined || reading.path === checkpoint.expectedPath) {
+          return reading
+        }
+        await sleepMs(pollIntervalMs)
+      } while (Date.now() < cwdDeadline)
+      throw new Error(`App semantic reader did not observe cmux ${phase} directory completion`)
+    }
+
+    if (phase === "unknown") {
+      if (!options.noEventCompletionQualified) {
+        throw new Error("cmux unknown OSC observation lacks exact-pin no-event completion qualification")
+      }
+      const reading = await readWorkspaceCwd()
+      return {
+        path: reading.path,
+        detail: {
+          ...reading.detail,
+          completionQualifier: CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER,
+        },
+      }
+    }
+
+    const first = await readWorkspaceCwd()
+    if (checkpoint.expectedPath !== undefined && first.path === checkpoint.expectedPath) {
+      return first
+    }
+    if (options.noEventCompletionQualified) {
+      return {
+        path: first.path,
+        detail: {
+          ...first.detail,
+          completionQualifier: CMUX_0_65_2_NO_EVENT_COMPLETION_QUALIFIER,
+        },
+      }
+    }
+    const targetDeadline = Date.now() + deadlineMs
+    while (Date.now() < targetDeadline) {
+      await sleepMs(pollIntervalMs)
+      const reading = await readWorkspaceCwd()
+      if (checkpoint.expectedPath !== undefined && reading.path === checkpoint.expectedPath) {
+        return reading
+      }
+    }
+    throw new Error("cmux target directory remained unchanged without exact-pin no-event completion qualification")
+  }
+}

@@ -1568,3 +1568,257 @@ test("the viewport route applies only to hosted alacritty 0.17.0 on macOS in thi
   }
   expect(hostedViewportKeys({ ...qualified, runId: "", expectedLaunchRunId: "" }), "empty launch id").toBeUndefined()
 })
+
+// #34905 (@cto R1 5df1da90, R2 09ccf969): hosted cmux 0.65.2 macOS extensions.osc633-p reads workspace.current
+// current_directory through its verified owner, binds workspace lifetime across every phase, restores initial.cwd
+// through the private writer via pathToFileURL(initial.cwd).href, and preserves both primary and restoration
+// failures in private evidence without leaking host paths into public records.
+test.each([
+  "supported",
+  "unsupported",
+  "inert-control",
+  "moved-workspace",
+  "lost-focus",
+  "null-selected-in-pane",
+  "wrong-bundle",
+  "restore-failed",
+  "primary-and-restore-failed",
+])(
+  "hosted cmux 0.65.2 osc633-p bound reader: %s",
+  (mode) => {
+    const captureDirectory = mkdtempSync(join(tmpdir(), "owned-cmux-cwd-"))
+    directories.push(captureDirectory)
+    const script = `
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    import { fileURLToPath } from "node:url"
+    const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const { extensionsProbes } = await import("./packages/probe-defs/src/extensions.ts")
+    const { replayTermProbeSource } = await import("./packages/probe-defs/src/testing/group-harness.ts")
+    const mode = ${JSON.stringify(mode)}
+    const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+    const initialCwd = "/Users/private-person/cmux-secret-workspace"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    Object.assign(process.env, {
+      TERMINFO_RUN_ID: "b".repeat(32),
+      TERMINFO_MUX_KIND: "",
+      // Contradictory launcher target id must not override the verified Darwin cmux owner (@cto R1 item 3).
+      TERMINFO_TARGET_ID: "foreign-launcher-value",
+      TERMINFO_TARGET_VERSION: "0.65.2",
+      TERMINFO_CAPTURE_DIRECTORY: ${JSON.stringify(captureDirectory)},
+      CMUX_SURFACE_ID: "surface-cmux-1",
+    })
+    delete process.env.CMUX_WORKSPACE_ID
+    const device = { dev: 7n, rdev: 9n, ino: 11n }
+    const realReadFileSync = fs.readFileSync
+    mock.module("node:fs", () => ({
+      ...fs,
+      fstatSync: () => device,
+      statSync: () => device,
+      openSync: () => 7,
+      closeSync: () => {},
+      readFileSync: (path, ...args) =>
+        String(path) === executable ? Buffer.from("cmux-0.65.2-binary") : realReadFileSync(path, ...args),
+      realpathSync: (path) =>
+        mode === "wrong-bundle" && String(path) === executable ? "/outside/cmux" : String(path),
+    }))
+    mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
+    let currentDirectory = initialCwd
+    let workspaceId = "ws-cmux-1"
+    let focused = true
+    let selectedInPane = mode === "null-selected-in-pane" ? null : true
+    let phaseWrites = 0
+    const rows = ["$ prompt", "CMUX-" + "a".repeat(32) + "-BEGIN", "", ""]
+    mock.module("node:child_process", () => ({
+      ...cp,
+      execFileSync: (command, args) => {
+        assert.equal(command, "/bin/ps")
+        const pid = Number(args[args.indexOf("-p") + 1])
+        if (args.includes("tty=")) return "ttys004"
+        if (!args.includes("pid=")) return "/sbin/launchd"
+        return pid === process.pid
+          ? process.pid + " 4242 /bin/zsh"
+          : pid === 4242
+            ? "4242 1 " + executable
+            : "1 0 /sbin/launchd"
+      },
+      spawn: (file) => {
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        child.stdin = {
+          end() {
+            queueMicrotask(() => {
+              child.stdout.emit("data", Buffer.from("\\n"))
+              child.emit("close", 0)
+            })
+          },
+        }
+        if (String(file) === "/bin/stty") {
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from("24 80\\n"))
+            child.emit("close", 0)
+          })
+        }
+        return child
+      },
+      spawnSync: (file, args) => {
+        if (args[0] === "--version") {
+          return { status: 0, stdout: "cmux 0.65.2\\n", stderr: "" }
+        }
+        assert.equal(String(file), executable)
+        if (args[0] === "read-screen") {
+          return { status: 0, stdout: rows.join("\\n") + "\\n", stderr: "" }
+        }
+        if (args[0] === "rpc" && args[1] === "surface.list") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              workspace_id: workspaceId,
+              surfaces: [
+                {
+                  id: "surface-cmux-1",
+                  type: "terminal",
+                  focused,
+                  selected_in_pane: selectedInPane,
+                  resume_binding: null,
+                  tmux_start_command: null,
+                  initial_command: null,
+                },
+              ],
+            }),
+            stderr: "",
+          }
+        }
+        if (args[0] === "rpc" && args[1] === "workspace.current") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              workspace_id: workspaceId,
+              workspace: {
+                id: workspaceId,
+                selected: true,
+                current_directory: currentDirectory,
+                remote: { enabled: false, connected: false },
+              },
+            }),
+            stderr: "",
+          }
+        }
+        return { status: 1, stdout: "", stderr: "unexpected command" }
+      },
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({
+      ...receipt,
+      readDisposableReceipt: () => ({
+        kind: "github-hosted-runner",
+        sha256: "a".repeat(64),
+        appLaunch: { executablePath: executable },
+      }),
+    }))
+    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const retained = []
+    const privateWrites = []
+    const publicWrites = []
+    const realWrite = process.stdout.write.bind(process.stdout)
+    const applyTerminalWrite = (text, fromPrivateWriter) => {
+      const pos = /^\\x1b\\[(\\d+);1H([\\s\\S]*)$/u.exec(text)
+      if (pos) {
+        rows[Number(pos[1]) - 1] = pos[2]
+        phaseWrites += 1
+      }
+      const osc7 = /\\x1b\\]7;([^\\x07]*)\\x07/u.exec(text)?.[1]
+      if (osc7 !== undefined) {
+        const nextPath = osc7.startsWith("file:") ? fileURLToPath(osc7) : osc7
+        if (fromPrivateWriter) {
+          if (mode !== "restore-failed" && mode !== "primary-and-restore-failed") {
+            currentDirectory = nextPath
+          }
+        } else if (mode !== "inert-control") {
+          // Simulate async >50 ms GhosttyCurrentDirectoryActionDispatcher delivery on the positive control.
+          setTimeout(() => {
+            currentDirectory = nextPath
+          }, 70)
+        }
+      }
+      const osc633 = /\\x1b\\]633;P;Cwd=([^\\x07]*)\\x07/u.exec(text)?.[1]
+      if (osc633 !== undefined) {
+        if (mode === "moved-workspace") workspaceId = "ws-cmux-moved"
+        if (mode === "lost-focus" || mode === "primary-and-restore-failed") focused = false
+        if (mode === "supported") currentDirectory = osc633
+      }
+    }
+    process.stdout.write = (chunk) => {
+      const text = String(chunk)
+      privateWrites.push(text)
+      applyTerminalWrite(text, true)
+      return true
+    }
+    const owner = await createOwnedTerminal({
+      captureRunId: "a".repeat(32),
+      expectedLaunchRunId: "b".repeat(32),
+      out: process.stdout,
+      darwinHosted: { receiptPath: "fixture" },
+      onRetained: (artifact) => retained.push(artifact),
+    })
+    try {
+      assert.deepEqual([...owner.appSemanticStateFeatures], ["extensions.osc633-p"])
+      const otherFeature = await owner.readAppSemanticState("extensions.osc133-a", () => {})
+      assert.equal(otherFeature.status, "unavailable")
+
+      const reading = await owner.readAppSemanticState("extensions.osc633-p", (text) => {
+        publicWrites.push(text)
+        applyTerminalWrite(text, false)
+      })
+
+      // Public writes and public reading must never contain the private host directory.
+      assert.equal(publicWrites.some((w) => w.includes("private-person")), false, "public writer must never carry initial.cwd")
+      assert.equal(JSON.stringify(reading).includes("private-person"), false, "public reading must never carry initial.cwd")
+
+      if (mode === "supported" || mode === "unsupported") {
+        assert.equal(reading.status, "measured", JSON.stringify(reading))
+        assert.equal(reading.detail.restoredEqual, true)
+        assert.equal("paneLeftPinned" in reading.detail, false)
+        assert.equal(currentDirectory, initialCwd)
+        const probe = extensionsProbes.find((p) => p.id === "extensions.osc633-p")
+        const ctx = replayTermProbeSource(new Map(), {
+          readAppSemanticState: async () => reading,
+        })
+        const graded = await probe.term(ctx)
+        assert.equal(graded.observation?.outcome, mode)
+      } else {
+        assert.equal(reading.status, "invalid", JSON.stringify(reading))
+        if (mode !== "wrong-bundle") {
+          assert.equal("paneLeftPinned" in (reading.detail ?? {}), false)
+          if (mode === "restore-failed" || mode === "primary-and-restore-failed") {
+            assert.equal(reading.detail?.restoredEqual, false)
+            const evidencePath = ${JSON.stringify(captureDirectory)} + "/" + reading.detail.privateEvidence
+            const privateRecord = JSON.parse(realReadFileSync(evidencePath, "utf8"))
+            const phaseErrors = privateRecord.detail.phases.filter((p) => typeof p.error === "string")
+            if (mode === "primary-and-restore-failed") {
+              assert.ok(phaseErrors.length >= 2, "both primary and restoration failures must survive in private evidence")
+              assert.ok(phaseErrors.some((p) => p.phase === "restore"))
+              assert.ok(phaseErrors.some((p) => p.phase !== "restore"))
+            } else {
+              assert.ok(phaseErrors.some((p) => p.phase === "restore"))
+            }
+          }
+        }
+      }
+    } finally {
+      process.stdout.write = realWrite
+      await owner.dispose()
+    }
+  `
+    const result = spawnSync(process.execPath, ["-e", script], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      timeout: 25_000,
+    })
+    expect(result.status, result.stderr).toBe(0)
+  },
+  15_000,
+)
