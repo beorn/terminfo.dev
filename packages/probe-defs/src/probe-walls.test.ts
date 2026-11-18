@@ -45,8 +45,8 @@ test.each([
   ["reset.sgr", 180_000],
   ["sgr.reset", 180_000],
   ["modes.xtsave", 120_000],
-  ["modes.xtpushsgr", 90_000],
   ["modes.xtpopsgr", 105_000],
+  ["modes.xtpushsgr", 105_000],
 ] as const)("%s declares a %d ms wall", (id, wallMs) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()

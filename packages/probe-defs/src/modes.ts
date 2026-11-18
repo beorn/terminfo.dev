@@ -3110,7 +3110,10 @@ const modeDefinitions: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     // 34641: Linux WezTerm took up to 54.9 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
-    wallMs: 90_000,
+    // 34694 second fold: 83.8 s in the VS Code arm of hosted run 44197283015 (66 captures at 1.27 s) is 93 percent
+    // of 90 s, the last row still outside the 20 percent rule after the 14-row fold. 83.8 x 1.20 = 100.6 rounds up
+    // to 105 s, which is also where its twin xtpopsgr now sits (dev/11, 34694-WALL-MARGIN-FULL).
+    wallMs: 105_000,
   },
 
   // XTPOPSGR — pop SGR stack (CSI # })
