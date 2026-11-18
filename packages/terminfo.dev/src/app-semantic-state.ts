@@ -66,6 +66,10 @@ type AppSemanticCapability = {
   }
 }
 
+// 34841: the reachable reads of Terminal.app 2.15 on macOS 26.6.2, each exercised on an owned Mac on 2026-11-18.
+const TERMINAL_APP_215_INVENTORY =
+  "Exercised on Terminal.app 2.15 (bundle CDHash arm64 113489a0, x86_64 df446fa4) on macOS 26.6.2 build 25G83 at shipped settings, owned Mac, 2026-11-18: screen text through the scripting dictionary's contents and history; window pixels with View > Show Marks; Terminal's own line marks and Edit > Navigate > Select to Previous Mark, whose control (a keyboard prompt auto-mark) stops the selection, while after the emitted sequences the selection ran to the first line, so none left a mark - and the mark store is set by keyboard prompt marking with no protocol-created control, so it cannot decide this row; the accessibility tree, which exposes the window and its title-bar buttons and no text element; the scripting dictionary (Terminal.sdef SHA256 efc515ec), whose tab properties are contents, history, processes, busy, tty and titles; and the window title, which follows an OSC 7 working directory and did not change."
+
 const declarations: readonly AppSemanticCapability[] = [
   // CTO316a2912: this Mac apparatus cannot observe these rows; no capability verdict.
   ...[
@@ -794,6 +798,25 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Ghostty 1.4.0 on macOS stores OSC 8 hyperlinks in core page state and no Mac surface reads a URI back. Read tag v1.4.0 (SHA256 d692bb9b, the source of the bundle version the hosted run records): src/terminal/osc.zig:447,1160 and src/terminal/osc/parsers/hyperlink.zig parse and store the link in page.hyperlink_set (src/terminal/Screen.zig:2199,2222), read internally only by Surface.osc8URI (src/Surface.zig:4603-4613) for the hover and open-url paths. The one Mac consumer is the click action, macos/Sources/Ghostty/Ghostty.App.swift:808 openURL routing the osc8 kind to openUntrustedURL (:860-883), and hover only sets dirty.hyperlink_hover (src/Surface.zig:1717). There is no readback: src/apprt/embedded.zig and macos/Sources contain zero occurrences of hyperlink, so no C API, Swift API, AppleScript property (macos/Ghostty.sdef:89-100) or Shortcuts intent (macos/Sources/Features/App Intents/GetTerminalDetailsIntent.swift:35-47) returns a URI, and hyperlink-emitting serialization is reached only from the snapshot serializers (src/terminal/snapshot/grid.zig:405,412, src/terminal/snapshot/screen.zig:2526, src/terminal/snapshot/page.zig:1140,1145,1242) which have no CLI state-dump verb. The instrument's link-metadata read has no macOS provider, and its plain term fallback cannot stand in: it writes the link, reads the cursor, and always returns probe-todo because cursor movement cannot verify OSC 8 link metadata or click behaviour (packages/probe-defs/src/extensions.ts:7395-7402).",
   },
+  // 34841 (@cto Warp Q2 evidence class; REVISE 2 04:34 Nov 18): closed-source Terminal.app, so each row names the
+  // exact-version surfaces exercised on an owned Mac. OSC 133/633 A, D, semantic-prompts and 633 P stay open.
+  ...(
+    [
+      ["extensions.osc133-b", "an OSC 133 B prompt-end boundary inside the prompt line"],
+      ["extensions.osc633-b", "an OSC 633 B prompt-end boundary inside the prompt line"],
+      ["extensions.osc133-c", "an OSC 133 C output-start region"],
+      ["extensions.osc633-c", "an OSC 633 C output-start region"],
+      ["extensions.osc133-p", "an OSC 133 P prompt property such as k=i"],
+      ["extensions.osc633-e", "an OSC 633 E recorded command line"],
+    ] as const
+  ).map(([featureId, effect]) => ({
+    kind: "term" as const,
+    id: "terminal-app",
+    version: "2.15",
+    os: "macos",
+    featureId,
+    reason: `Untestable (no way): Terminal.app 2.15 on macOS exposes no observable in this version and setup that could carry ${effect}. ${TERMINAL_APP_215_INVENTORY} No reachable read shows this sequence's effect; this records the observation surface, not whether Terminal.app parses the sequence.`,
+  })),
   // 34596 (REVISION 3): a no-setup reason, not a no-way one.
   ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
     kind: "term" as const,

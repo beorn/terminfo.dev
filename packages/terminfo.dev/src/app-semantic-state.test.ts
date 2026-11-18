@@ -2020,6 +2020,46 @@ test.each([
 // 34596 (@cto 764d55f5: per-id source qualification, no predetermined result): four more Ghostty 1.4.0 macOS rows.
 // osc633-p stays undeclared because a public cwd reader exists (AppleScript / Get Terminal Details), and the two
 // command-finish rows are no setup, never no way: a user setting makes the finish observable as a banner.
+// 34841 (@cto REVISE 2): only the rows the exercised inventory settles are declared; the rows with an untried or
+// unqualified read (A, D, semantic-prompts, 633 P) stay open, and no other Terminal version inherits the rows.
+test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its exercised inventory settles", () => {
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  const declared = [
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-e",
+  ] as const
+  for (const id of declared) {
+    expect(mac[id]).toMatch(
+      /^Untestable \(no way\): Terminal\.app 2\.15 on macOS exposes no observable in this version and setup/,
+    )
+    for (const surface of [
+      "CDHash arm64 113489a0",
+      "Select to Previous Mark",
+      "Terminal.sdef SHA256 efc515ec",
+      "OSC 7",
+    ]) {
+      expect(mac[id]).toContain(surface)
+    }
+    expect(mac[id]).toContain("not whether Terminal.app parses the sequence")
+  }
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-d",
+    "extensions.osc633-a",
+    "extensions.osc633-d",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+  ]) {
+    expect(mac).not.toHaveProperty(id)
+  }
+  for (const id of declared) expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
+})
+
 test("Ghostty 1.4.0 on macOS declares osc633-e, osc8, osc133-d and semantic-prompts by their own reasons, and not osc633-p", () => {
   const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
   expect(mac["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
