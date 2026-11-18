@@ -779,8 +779,8 @@ export function resolveOwnedAppId(input: {
 /**
  * History arm for a Linux app that has no installed reader (#34278).
  * Alacritty matches the Darwin declaration (@cto 20b9ffed): the app exposes no pane read.
- * Ghostty stays undeclared: its scrollback-file action is an accepted read (@cto a1663f9d). A launch that
- * declares the export keybind installs that reader (#34278), so this reason names only a launch without it. xterm has no reader among the installed ones
+ * Ghostty stays undeclared: its scrollback-file action is an accepted read (@cto a1663f9d) and this
+ * arm does not invoke it, so the row stays work. xterm has no reader among the installed ones
  * (kitty, screen, tmux, wezterm), so that missing arm stays work too, not a measured absence.
  * A reader already installed, or any non-Linux arm, returns nothing so this cannot replace it.
  * The two checks live here so createOwnedTerminal's complexity does not grow.
@@ -1723,12 +1723,7 @@ export async function createOwnedTerminal(options: {
   onRetained?: Parameters<typeof retain>[3]
   out: NodeJS.WriteStream
   expectedLaunchRunId: string
-  linux?: {
-    receiptPath: string
-    executable: LiveExecutable
-    /** Ghostty's own scrollback export, installed by serve.ts only when the launch declared its keybind (#34278). */
-    ghosttyExport?: () => Promise<TerminalScrollbackReading>
-  }
+  linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
   process?: ProcessOwnerAssertion
   ownedApp?: OwnedAppOwnerAssertion
@@ -2392,7 +2387,6 @@ export async function createOwnedTerminal(options: {
             return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: identity.receipt }
           }
         : undefined) ??
-      (linux && ownedAppId === "ghostty" ? linux.ghosttyExport : undefined) ??
       ownedWezTermHistory ??
       ownedCmuxHistory ??
       readTerminalAppHistoryReading

@@ -16,8 +16,7 @@
 import { createStyle } from "@silvery/ansi"
 import { openProbeResponse } from "./probe-stream.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
-import { GHOSTTY_EXPORT_KEYBIND, readGhosttyExport } from "./linux-ghostty-export.ts"
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, win32 } from "node:path"
 import { homedir } from "node:os"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
@@ -42,7 +41,6 @@ import {
   recordCollectorAttempt,
   collectorIds,
   resolveProbeIds,
-  ScrollbackReadingUnavailable,
   type ProbeSuiteManifest,
   type TermProbeSource,
   type TerminalQueryOutcome,
@@ -1330,32 +1328,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         captureRunId,
         out,
         expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-        linux: {
-          receiptPath: clipboardReceipt,
-          executable,
-          // #34278: only a launch that declared the export keybind gets the reader; the key goes through the XTEST
-          // adapter installed above, and a run without one names the missing adapter on every read.
-          ...(process.env.TERMINFO_GHOSTTY_EXPORT_KEYBIND === GHOSTTY_EXPORT_KEYBIND && {
-            ghosttyExport: () =>
-              readGhosttyExport({
-                press: async (keys) => {
-                  if (input === undefined) {
-                    throw new ScrollbackReadingUnavailable("the Linux input adapter was not installed for this run")
-                  }
-                  await input.injectKey(keys)
-                },
-                readPasted: (pattern, inject) => readResponse(pattern, 5000, inject),
-                now: () => Date.now(),
-                stat: (path) => {
-                  const file = statSync(path)
-                  return { isFile: file.isFile(), mtimeMs: file.mtimeMs }
-                },
-                readOnce: (path) => readFileSync(path, "utf8"),
-                remove: (path) => rmSync(path, { force: true }),
-                screenRows: () => process.stdout.rows,
-              }),
-          }),
-        },
+        linux: { receiptPath: clipboardReceipt, executable },
       })
       // 34632: xterm's viewport steps reach the held-view rows through the same handoff the Darwin arm uses (34313).
       // The route applies from the qualified subject, so nothing here can invent keys for an unqualified run; the
