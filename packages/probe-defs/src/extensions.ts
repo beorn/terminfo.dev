@@ -93,8 +93,8 @@ import {
   KITTY_GUARD_TEXT,
   KITTY_LOOP_FOREVER,
   KITTY_PLACEHOLDER_BOUNDS,
+  KITTY_PLAYBACK_SAMPLES,
   KITTY_REGION,
-  KITTY_RETRY_FACTOR,
   KITTY_WAIT_FACTOR,
   decideKittyAnimation,
   decideKittyPlaceholders,
@@ -109,11 +109,11 @@ import {
   kittyPlaceholderText,
   kittyRootGap,
   kittySelectFrame,
+  sampleKittyPlayback,
   kittyStartPlayback,
   kittyStopPlayback,
   kittyVirtualPlacement,
   kittyWait,
-  type KittyDigestPair,
 } from "./kitty-capture.ts"
 import {
   decideWithPaletteRedRetry,
@@ -6799,28 +6799,23 @@ const extensionDefinitions: ProbeDefinition[] = [
           )
           ctx.write(kittyPark())
           await command("start playback", kittyStartPlayback(playbackId))
-          const playbackFirst = await shoot(
-            "target",
-            `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
-          )
-          // The interval is measured from this capture's completion, and the elapsed value travels in
-          // the response, so a reader never has to infer the wait from the gap it asked for.
-          const intervalStart = sourceNow(ctx)
-          await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
-          const playbackSecond = await shoot(
-            "target",
-            "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
-          )
-          const playbackElapsedMs = sourceNow(ctx) - intervalStart
-          let retry: KittyDigestPair | null = null
-          if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
-            await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
-            const retried = await shoot(
-              "target",
-              "Terminal-driven playback retried at twice the gap, no write since the equal pair",
-            )
-            retry = [playbackSecond.regionDigest, retried.regionDigest]
-          }
+          // 34792: up to KITTY_PLAYBACK_SAMPLES captures with no write between them, each wait measured from the
+          // previous capture's completion and chosen from its duration, so capture latency cannot alias the loop.
+          // Every completion time and duration travels in the response; a reader never infers them from the gap.
+          const playbackRead = await sampleKittyPlayback({
+            shoot: (index) =>
+              shoot(
+                "target",
+                index === 0
+                  ? `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`
+                  : `Terminal-driven playback, sample ${String(index + 1)} of at most ${String(KITTY_PLAYBACK_SAMPLES)}, no write since the first`,
+              ),
+            wait: kittyWait,
+            now: () => sourceNow(ctx),
+          })
+          const playbackLast = playbackRead.last.frame
+          const playbackElapsedMs = playbackRead.elapsedMs
+          const retry = playbackRead.retry
           // Hand selection qualifies moving playback. A negative also needs an exact animation refusal.
           await command("stop playback", kittyStopPlayback(playbackId))
           await command("select frame 1", kittySelectFrame(playbackId, 1))
@@ -6840,7 +6835,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             .map(({ label, message }) => `${label}: ${message}`)
             .join("; ")
           const captureDecision = decideKittyAnimation({
-            playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+            playback: playbackRead.playback,
             retry,
             clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
             still: [stillFirst.regionDigest, stillSecond.regionDigest],
@@ -6870,6 +6865,11 @@ const extensionDefinitions: ProbeDefinition[] = [
             gapMs: KITTY_GAP_MS,
             loop: KITTY_LOOP_FOREVER,
             playbackElapsedMs,
+            playbackSamples: playbackRead.samples.map(({ digest, completedAtMs, captureMs }) => ({
+              digest,
+              completedAtMs,
+              captureMs,
+            })),
             playback: captureDecision.outcome,
             placementAck: placement.raw,
             replies,
@@ -6878,7 +6878,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               reference: reference.regionDigest,
               secondReference: secondReference.regionDigest,
               still: [stillFirst.regionDigest, stillSecond.regionDigest],
-              playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+              playback: playbackRead.playback,
               retry,
               clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
             },
@@ -6891,7 +6891,7 @@ const extensionDefinitions: ProbeDefinition[] = [
               outcome: captureDecision.outcome,
               ...(captureDecision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
               assertionType,
-              screenshotRef: playbackSecond.ref,
+              screenshotRef: playbackLast.ref,
               ...(assertionType === "screenshot" ? { frames } : {}),
               note,
             },
