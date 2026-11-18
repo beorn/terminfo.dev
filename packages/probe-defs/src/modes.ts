@@ -1511,19 +1511,25 @@ const DECSSCLS_LINES_PER_SECOND = 9
  * Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry, and
  * enough of the throttled window survives the capture latency for the timing bound to be decisive.
  *
- * 29, not 16 (34722). 16 gave 17 scrolled lines = 1889 ms, and the target band is first read after
- * two captures, which on the 2026-11-17 image took 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms
- * (Cursor) on run 44200861479: every arm landed outside its own window and the row went
- * probe-invalid, which replaces a decided `unsupported` with nothing. The window has to outlast the
- * band read plus DECSSCLS_TIMING_MARGIN_MS, and hold the editors measured p90 per-frame cost
- * (1.50 s) for two captures with a frame of slack. 29 rows over the screen is 30 scrolled lines,
- * so ceil(30 / 9 * 1000) = 3334 ms and the timing bound is 3184 ms.
+ * 34, not 16 or 29 (34722). The target band is first read after two captures, and on the 2026-11-17
+ * image that read took 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms (Cursor) on run 44200861479,
+ * plus 3044 ms (VS Code) on run 44197283015. At 16 the window was 1889 ms, so every arm landed
+ * outside its own window and the row went probe-invalid, replacing a decided `unsupported` with
+ * nothing. At 29 the bound was 3184 ms, which the 3044 ms arm still passes by 140 ms - inside
+ * DECSSCLS_TIMING_MARGIN_MS, so that arm was not confined either. Sizing is the slowest measured
+ * arm under the 20 percent headroom rule plus the margin: 3044 x 1.2 = 3653, + 150 = 3803 ms, which
+ * needs 35 scrolled lines. At the editors measured p90 per-frame cost (1.50 s) that leaves two
+ * captures plus a frame inside the window; the native terminals (0.82-0.85 s p90) sit far inside it.
+ * 34 rows over a 24-row screen is 35 scrolled lines, so ceil(35 / 9 * 1000) = 3889 ms and the
+ * timing bound is 3739 ms. The phase settle becomes 4389 ms, so the probe still fits the 30 s
+ * default wall against the slowest measured DECSSCLS span of 14.9 s.
  */
-const DECSSCLS_OVERFLOW_ROWS = 29
+const DECSSCLS_OVERFLOW_ROWS = 34
 /**
- * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
- * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
- * before the last settles the band at screen row `rows - 8`: above the cursor, inside the witness.
+ * The marker band is authored this many lines before the burst's last line. The burst runs
+ * DECSSCLS_OVERFLOW_ROWS lines past the screen and its trailing line feed leaves one blank row
+ * under the text, so seven lines before the last settles the band at screen row `rows - 8`: above
+ * the cursor, inside the witness.
  */
 const DECSSCLS_MARKER_LINES_BEFORE_BURST_END = 7
 /**
