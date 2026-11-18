@@ -2444,7 +2444,8 @@ export async function createOwnedTerminal(options: {
         },
       }),
       // 34570: the hosted iTerm2 tab's own prompt marks, through the same API owner and TTY-matched
-      // session as its cell read. Only the prompt rows take it; every other row keeps its own callback.
+      // session as its cell read. Only the prompt rows (OSC 133, and OSC 633 since 34866) take it; every
+      // other row keeps its own callback.
       ...(darwinTextApp === "iterm2" &&
         darwinTextTty !== undefined &&
         muxAttachmentProof === undefined && {
@@ -2475,6 +2476,12 @@ export async function createOwnedTerminal(options: {
                 featureId,
                 runId: expectedLaunchRunId,
                 write,
+                // 34866: P's restoration feed carries the session's own directory, so it bypasses the trace.
+                privateWrite(text) {
+                  check()
+                  out.write(text)
+                  check()
+                },
                 withSession: (work) =>
                   withITermPromptSession(
                     {
