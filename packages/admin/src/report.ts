@@ -16,6 +16,7 @@ import { readExplicitSuiteTarget, readSuiteManifestFile } from "../suite-manifes
 import { retainedSuiteManifestPath } from "../suite-retention.ts"
 import { loadRawCapture } from "../raw-capture.ts"
 import { renderReport } from "../report.tsx"
+import type { ShadowReport } from "../../probes/stored-run-shadow.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 
@@ -338,7 +339,135 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   return `${lines.join("\n")}\n\n${await renderReport(projection, catalogIds)}`
 }
 
-export async function handleReport(options: { scoreboard?: string[] } = {}): Promise<void> {
+/** One explicitly named run of `report --reassert`: its own shadow report, or why it could not be reasserted. */
+export type ReassertedInput =
+  | { input: string; report: ShadowReport }
+  | { input: string; failure: { name: string; message: string } }
+
+/** The machine-readable answer of `report --reassert --json`: one document for every input, in the order given. */
+export interface ReassertDocument {
+  format: "terminfo-reassert"
+  version: 1
+  /** 2: an input refused, failed, run-wide incomplete or with an incomplete row; else 1: a row disagrees; else 0. */
+  exitCode: 0 | 1 | 2
+  inputs: ReassertedInput[]
+}
+
+/**
+ * The one exit across every input (@cto 30932-s4-report-ruling-1818, amendment 1): missing evidence outranks a
+ * disagreement, which outranks agreement. A run-wide refusal counts even when no row is in scope.
+ */
+export function reassertExit(inputs: readonly ReassertedInput[]): 0 | 1 | 2 {
+  const reports = inputs.flatMap((entry) => ("report" in entry ? [entry.report] : []))
+  if (
+    reports.length < inputs.length ||
+    reports.some(
+      (report) => report.runIncomplete !== undefined || report.rows.some((row) => row.outcome === "incomplete"),
+    )
+  ) {
+    return 2
+  }
+  return reports.some((report) => report.rows.some((row) => row.outcome === "disagree")) ? 1 : 0
+}
+
+/**
+ * Reassert saved runs offline (#30932 S4, AC5): each named run is replayed through the existing shadow
+ * (shadowStoredRun) against this checkout's suite, chosen by the run's subject kind: lib through the headless
+ * collector's (its runRevision), term and mux through the app's trusted receipt (its collectorRevision, with the
+ * source-tree launcher's environment supplied first, conflicting values refused). Nothing is written and no backend,
+ * terminal, server or collector starts. A run from another suite or source is refused by the bound reader, by name.
+ */
+export async function reassertRuns(paths: readonly string[]): Promise<ReassertDocument> {
+  const [{ shadowStoredRun }, { headlessReplaySuite }, { trustedReplaySuite }, { ensureSourceSuiteEnvironment }] =
+    await Promise.all([
+      import("../../probes/stored-run-shadow.ts"),
+      import("../../probes/collect-headless.ts"),
+      import("./collected-run.ts"),
+      import("../versions.ts"),
+    ])
+  const inputs: ReassertedInput[] = []
+  for (const input of paths) {
+    try {
+      const stored = parseJsonStrict("stored run " + input, readFileSync(input, "utf8"))
+      const kind = record(stored) && record(stored.subject) ? stored.subject.kind : undefined
+      let suite: Parameters<typeof shadowStoredRun>[1]
+      if (kind === "lib") suite = headlessReplaySuite()
+      else if (kind === "term" || kind === "mux") {
+        ensureSourceSuiteEnvironment()
+        suite = trustedReplaySuite()
+      } else throw new Error(`Stored run subject kind ${JSON.stringify(kind)} is not lib, term or mux`)
+      inputs.push({ input, report: await shadowStoredRun(input, suite) })
+    } catch (error) {
+      inputs.push({
+        input,
+        failure: { name: error instanceof Error ? error.name : "Error", message: errorText(error) },
+      })
+    }
+  }
+  return { format: "terminfo-reassert", version: 1, exitCode: reassertExit(inputs), inputs }
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
+const status = (side: { status: string; reason?: string }) => side.status + (side.reason ? ` (${side.reason})` : "")
+
+/** The human reading of a reassert: every input, its identities, counts, and each row that did not simply agree. */
+export function renderReassert(document: ReassertDocument): string {
+  const lines: string[] = []
+  for (const entry of document.inputs) {
+    if ("failure" in entry) {
+      lines.push(`${entry.input}: NOT REASSERTED (${entry.failure.name}): ${entry.failure.message}`)
+      continue
+    }
+    const { run, replayedWith, runIncomplete, families, excluded, rows } = entry.report
+    const subject = `${run.subject.kind} ${run.subject.id}${run.subject.version ? ` ${run.subject.version}` : ""}`
+    lines.push(
+      `${entry.input}: run ${run.runId} (${subject}), suite ${run.suiteId}, source ${run.sourceRevision}, sha256 ${run.artifact.sha256}; replayed with suite ${replayedWith.suiteId}, source ${replayedWith.sourceRevision}`,
+    )
+    if (runIncomplete !== undefined) lines.push(`  RUN REFUSED: ${runIncomplete}`)
+    if (!rows.length) lines.push("  0 rows in scope: nothing was compared")
+    for (const f of families) {
+      lines.push(
+        `  ${f.family} ${f.rows} rows: ${f.agree} agree, ${f.disagree} disagree, ${f.incomplete} incomplete, ${f.notComparable} not comparable`,
+      )
+    }
+    // A run-wide refusal leaves every row incomplete for the same reason: said once, with the rows it covers.
+    const refused = rows.filter((row) => row.outcome === "incomplete" && row.reason === runIncomplete)
+    if (runIncomplete !== undefined && refused.length) {
+      lines.push(
+        `  incomplete, run refused: ${refused.length} rows (${refused.map((row) => row.featureId).join(", ")})`,
+      )
+    }
+    for (const row of rows) {
+      if (row.outcome === "incomplete" && runIncomplete !== undefined && row.reason === runIncomplete) continue
+      if (row.outcome === "disagree") {
+        lines.push(`  disagree ${row.featureId}: stored ${status(row.stored)}, replayed ${status(row.replayed)}`)
+      } else if (row.outcome === "incomplete") lines.push(`  incomplete ${row.featureId}: ${row.reason}`)
+      else if (row.outcome === "not-comparable") {
+        lines.push(`  not comparable ${row.featureId}: ${row.input} (stored ${row.storedStatus})`)
+      }
+    }
+    for (const entry of excluded) {
+      lines.push(`  excluded, ${entry.reason}: ${entry.rows} rows (${entry.featureIds.join(", ")})`)
+    }
+  }
+  lines.push(
+    `Reassert: ${document.inputs.length} input(s); exit ${document.exitCode} (2: refused or incomplete, 1: a row disagrees, 0: none of those)`,
+  )
+  return lines.join("\n")
+}
+
+export async function handleReport(
+  options: { scoreboard?: string[]; reassert?: string[]; json?: boolean } = {},
+): Promise<void> {
+  if (options.reassert && options.scoreboard) throw new Error("report takes --scoreboard or --reassert, not both")
+  if (options.json && !options.reassert) throw new Error("report --json applies only to --reassert")
+  if (options.reassert) {
+    const document = await reassertRuns(options.reassert)
+    if (options.json) process.stdout.write(JSON.stringify(document, null, 2) + "\n")
+    else console.log(renderReassert(document))
+    process.exitCode = document.exitCode
+    return
+  }
   const contentDir = join(ROOT, "content")
   if (options.scoreboard) {
     console.log(await rawScoreboard(options.scoreboard, contentDir))

@@ -152,7 +152,13 @@ program
     "Show context progress from explicit raw captures or collection pass files/directories",
     (value: string, previous: string[] = []) => [...previous, value],
   )
-  .action(async (opts: { scoreboard?: string[] }) => {
+  .option(
+    "--reassert <runs...>",
+    "Replay saved runs offline against this checkout's suite and compare each row with its stored status; exits 2 on a refused or incomplete run, else 1 on a disagreement, else 0",
+    (value: string, previous: string[] = []) => [...previous, value],
+  )
+  .option("--json", "With --reassert: one JSON document for every run on stdout")
+  .action(async (opts: { scoreboard?: string[]; reassert?: string[]; json?: boolean }) => {
     const { handleReport } = await import("./report.ts")
     await handleReport(opts)
   })

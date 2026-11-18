@@ -178,6 +178,16 @@ function shadowSummary(report: ShadowReport): string {
 }
 
 /**
+ * The suite a saved term or mux run is replayed against: the app's trusted receipt, its collector revision as the
+ * source revision. The one mapping for the collector's shadow and `terminfo report --reassert` (#30932 S4); an
+ * unbundled caller supplies the source-tree launcher's environment first (ensureSourceSuiteEnvironment).
+ */
+export function trustedReplaySuite(): Parameters<typeof shadowStoredRun>[1] {
+  const { manifest, collectorRevision } = getTrustedSuiteReceipt()
+  return { manifest, sourceRevision: collectorRevision }
+}
+
+/**
  * #30932 S2 (@cto 30932-s2-plan-ruling-1430): after collection has saved a run, replay its in-scope rows from the
  * saved artifact and keep the comparison as a private report. The run's bytes are never touched. A replay failure
  * is written to the report as an error and named on stderr, never recorded as agreement; a report that cannot be
@@ -192,11 +202,7 @@ export async function shadowCollectedRun(
   let body: ShadowReport | Record<string, unknown>
   let line: string
   try {
-    const replayedWith = suite
-      ? suite()
-      : (({ manifest, collectorRevision }) => ({ manifest, sourceRevision: collectorRevision }))(
-          getTrustedSuiteReceipt(),
-        )
+    const replayedWith = (suite ?? trustedReplaySuite)()
     const report = await shadowStoredRun(retainedRun, replayedWith)
     body = report
     line = shadowSummary(report)

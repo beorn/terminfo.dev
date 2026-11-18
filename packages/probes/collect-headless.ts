@@ -138,6 +138,16 @@ export function headlessCollectorSuite() {
   return { suite, manifest: derivedSuiteManifest(suite), sourceRevision, runRevision }
 }
 
+/**
+ * The suite a saved headless run is replayed against: this checkout's manifest and the revision its runs carry
+ * (`runRevision`, `+dirty` included), never the bare HEAD. The one mapping for the collector's shadow (termless.ts)
+ * and `terminfo report --reassert` (#30932 S4).
+ */
+export function headlessReplaySuite() {
+  const { manifest, runRevision } = headlessCollectorSuite()
+  return { manifest, sourceRevision: runRevision }
+}
+
 /** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
 async function collectOne(name: string, directory: string): Promise<string> {
   const entry = manifest().backends[name]

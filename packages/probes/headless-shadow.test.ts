@@ -4,14 +4,17 @@
  * the termless command returns before its report exists (#30932 S3, @cto 30932-s3-plan-ruling-1626).
  * @level l2
  * @consumer `terminfo probe termless` (runTermlessProbes) -> the real headless worker -> saved schema-4 run -> the bound
- * reader -> lib replay -> gradeLibRow -> the private shadow report
+ * reader -> lib replay -> gradeLibRow -> the private shadow report; `terminfo report --reassert` (#30932 S4, the
+ * shipped CLI through its own arguments) over that saved run and tampered copies
  * @reach fs-walk <fixture-only: the test reads the collection directory its own command wrote>
  * @testonly none
  */
+import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { afterAll, expect, it, vi } from "vitest"
 import { createXtermBackend } from "@termless/xtermjs"
 import { ALL_PROBES, type CapturedRunDraft, type LibProbeSource } from "@terminfo/probe-defs"
@@ -23,6 +26,12 @@ import { headlessCollectorSuite } from "./collect-headless.ts"
 import { collectBatch, declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
 import { headlessFamily, shadowStoredRun, type ShadowReport } from "./stored-run-shadow.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
+import type { ReassertDocument } from "../admin/src/report.ts"
+
+/** The shipped admin CLI, run as an operator runs it (#30932 S4). */
+const ADMIN = join(dirname(fileURLToPath(import.meta.url)), "..", "admin", "src", "index.ts")
+const reassert = (...args: string[]) =>
+  spawnSync(process.execPath, [ADMIN, "report", "--reassert", ...args], { encoding: "utf8", timeout: 120_000 })
 
 /**
  * Comparable rows from several families; declaration-predicate rows (kitty keyboard, unsupported; the icon title,
@@ -232,6 +241,43 @@ it.runIf(OWNED_LAYOUT)(
       draft.rawReplies[agreed + ".callLog"] = JSON.stringify(log)
     })
     expect(row(diverged, agreed)?.outcome).toBe("incomplete")
+
+    // #30932 S4: the shipped command reasserts the same saved run offline, through its real arguments, and agrees
+    // with the collector's own shadow; the tampered copies above decide its exit, worst first (2 > 1 > 0).
+    const statusCopy = join(dirname(run), `status-${basename(run)}`)
+    const nologCopy = join(dirname(run), `nolog-${basename(run)}`)
+    const agreeing = reassert(run)
+    expect([agreeing.status, agreeing.stderr]).toEqual([0, ""])
+    for (const f of first.report.families) {
+      expect(agreeing.stdout).toContain(
+        `  ${f.family} ${f.rows} rows: ${f.agree} agree, ${f.disagree} disagree, ${f.incomplete} incomplete, ${f.notComparable} not comparable`,
+      )
+    }
+    expect(agreeing.stdout).toContain(
+      "not comparable extensions.osc52-read: fresh-instance repeat passes regraded this row",
+    )
+    expect(agreeing.stdout).toContain(`${run}: run ${stored.runId} (lib xtermjs`)
+    expect(agreeing.stdout).toMatch(/Reassert: 1 input\(s\); exit 0 /)
+    expect(sha256(run)).toBe(first.before) // read only
+    const disagreeing = reassert(run, statusCopy)
+    expect(disagreeing.status).toBe(1)
+    expect(disagreeing.stdout).toContain(`disagree ${agreed}: stored ${other} (tampered), replayed`)
+    const json = reassert(run, statusCopy, nologCopy, "--json")
+    expect(json.status).toBe(2)
+    // One parseable document on stdout, nothing else: every input in order, each with its identity.
+    const document = JSON.parse(json.stdout) as ReassertDocument
+    expect(document).toMatchObject({ format: "terminfo-reassert", version: 1, exitCode: 2 })
+    expect(document.inputs.map((entry) => entry.input)).toEqual([run, statusCopy, nologCopy])
+    const outcomes = document.inputs.map((entry) =>
+      "report" in entry ? entry.report.rows.find((r) => r.featureId === agreed)?.outcome : entry.failure.name,
+    )
+    expect(outcomes).toEqual(["agree", "disagree", "incomplete"])
+    expect(document.inputs[0]).toMatchObject({
+      report: {
+        run: { runId: stored.runId, sourceRevision: stored.sourceRevision },
+        replayedWith: { sourceRevision: stored.sourceRevision },
+      },
+    })
   },
 )
 
