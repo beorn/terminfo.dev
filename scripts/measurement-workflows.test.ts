@@ -1892,6 +1892,17 @@ test.each([
   { app: "ghostty", plist: "1.4.0", cli: undefined, exit: 0, id: "ghostty", version: "1.4.0", error: "" },
   // 34570: the hosted iTerm2 prompt reader binds to TERMINFO_TARGET_VERSION 3.6.11 (run 44133870892 refused without it).
   { app: "iterm2", plist: "3.6.11", cli: undefined, exit: 0, id: "iterm2", version: "3.6.11", error: "" },
+  // 34870: the hosted Terminal.app cwd reader binds to TERMINFO_TARGET_VERSION 2.15 (run 44385516596 refused without it).
+  { app: "terminal-app", plist: "2.15", cli: undefined, exit: 0, id: "terminal-app", version: "2.15", error: "" },
+  {
+    app: "terminal-app",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "terminal-app bundle version is empty",
+  },
   // 34666: runs 44138709249 and 44161536804 recorded the editors' intendedSubject with a version and no id, so a
   // reviewed declaration could bind no app. The hosted Darwin receipt still selects the reader; this names the subject.
   { app: "cursor", plist: "3.25.9", cli: undefined, exit: 0, id: "cursor", version: "3.25.9", error: "" },
