@@ -563,6 +563,31 @@ export function placeSuiteManifest(
   return { suiteId: snapshot.probeHash, path: file.path, outcome }
 }
 
+/** #34885: rows the run refused to capture are not measurements, whatever the record claims. */
+const REFUSED_CAPTURE_REASON_LIMIT = 200
+
+/**
+ * A record carrying rows the run refused to capture is an incomplete reading and must not be placed.
+ * On 2026-11-18 the wezterm/macos context of run 44267909484 carried 71 such rows and 162 screenshots
+ * against 1,481-2,319 for every other context in the run; its declared selection covered what the site
+ * counts as the suite, so the refusal cannot be inferred from coverage, and it was placed as a complete
+ * reading, took the primary from a complete run, and reopened 83 decided cells until withdrawn.
+ */
+export function refusedCaptureRows(loaded: LoadedRun): string | null {
+  const results = loaded.results ?? []
+  const refused = results.filter((result) => result.harnessOutcome === "capture-refused")
+  if (refused.length === 0) return null
+  const [first] = refused
+  const reason = (first?.reason ?? "no reason recorded")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, REFUSED_CAPTURE_REASON_LIMIT)
+  return (
+    `${refused.length} of ${results.length} rows refused capture geometry ` +
+    `(first ${first?.featureId ?? "unknown"}: ${reason})`
+  )
+}
+
 /** Place one collected record after all factual checks, using its own subject and run identity. */
 export function placeCollectedRun(
   source: string,
@@ -592,6 +617,10 @@ export function placeCollectedRun(
     Object.keys(loadFeatures(contentDir)),
     new Map([[manifest.probeHash, manifest]]),
   )
+  const refusedCapture = refusedCaptureRows(loaded)
+  if (refusedCapture !== null) {
+    throw new Error(`${source}: ${refusedCapture}; fix the capture and collect the run again`)
+  }
   const { kind, id, version } = loaded.subject
   const os = loaded.subject.os ?? "unknown"
   for (const [label, value] of Object.entries({ id, version, os, runId: loaded.runId })) {
