@@ -1235,6 +1235,8 @@ test.each([
   "snackbar-wrong-type",
   // #34899: the block-chrome criterion run leaves SnackbarEnabled at stock and writes nothing.
   "stock-chrome",
+  // #34899 setup refusal: a fresh runner has never run Warp, so SnackbarEnabled is absent and `read-type` exits 1.
+  "snackbar-absent",
   "existing-settings",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
@@ -1268,10 +1270,11 @@ else if (name === "defaults") {
   if (args[0] === "write") {
     if (scenario === "write-error" || (scenario === "restore-write-error" && key === "RestoreSession") || (scenario === "snackbar-write-error" && key === "SnackbarEnabled")) { console.error("fixture write denied"); process.exit(9); }
     fs.writeFileSync(marker, args[4]);
-  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled") ? "Type is boolean" : "Type is string");
+  } else if (args[0] === "read-type" && scenario === "snackbar-absent" && key === "SnackbarEnabled") { console.error("The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
+  else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled") ? "Type is boolean" : "Type is string");
   else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : (scenario === "restore-wrong-value" && key === "RestoreSession") || (scenario === "snackbar-wrong-value" && key === "SnackbarEnabled") ? "true" : fs.readFileSync(marker, "utf8"));
   else if (scenario === "existing-settings" && key === "SettingsFileMigrationComplete") console.log("true");
-  else if (scenario === "present") console.log("true");
+  else if (scenario === "present" || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled")) console.log("true");
   else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
 } else throw new Error("Unexpected platform shim " + name);
 `
@@ -1320,7 +1323,14 @@ childBoundary.spawn = (file, args, options) => {
       prepared: boolean
       commands: Array<{ label: string; stdout: string }>
       settingsFile: { path: string; exists: boolean }
-      snackbar?: { mode: string; written: boolean; absent: boolean | null }
+      snackbar?: {
+        mode: string
+        written: boolean
+        absent: boolean | null
+        before: string | null
+        type: string | null
+        restore: { performed: boolean; action: string | null; reason: string | null }
+      }
     }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
@@ -1332,7 +1342,12 @@ childBoundary.spawn = (file, args, options) => {
           ),
       ),
     ).toBe(true)
-    if (scenario !== "success" && scenario !== "existing-settings" && scenario !== "stock-chrome") {
+    if (
+      scenario !== "success" &&
+      scenario !== "existing-settings" &&
+      scenario !== "stock-chrome" &&
+      scenario !== "snackbar-absent"
+    ) {
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain("Warp unattended setup failed")
       expect(launches).toHaveLength(0)
@@ -1371,6 +1386,17 @@ childBoundary.spawn = (file, args, options) => {
         1,
       )
     } else {
+      // 44405740954 died here: the absent key failed the whole setup in the mode that had never run in this shape.
+      if (scenario === "snackbar-absent") {
+        expect(setup.snackbar).toMatchObject({
+          mode: "hidden",
+          written: true,
+          absent: true,
+          before: null,
+          type: null,
+          restore: { performed: false, action: "delete" },
+        })
+      }
       expect(preferenceCalls.map((row) => row.args)).toEqual([
         ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
         ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],

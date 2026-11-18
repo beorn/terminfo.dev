@@ -610,7 +610,12 @@ jobs:
           // needs restoring; the prior value, its type and its absence are recorded here and in the receipt
           // launch deviation. Every other Warp run keeps the header off exactly as before.
           const stockChrome = process.env.WARP_BLOCK_CHROME === "true";
-          if (stockChrome) setup.snackbar = { mode: "stock", written: false, before: null, type: null, absent: null };
+          // #34899 setup refusal (@dev/11 21:57): the header-off path reads this key too, and a fresh hosted runner has
+          // never run Warp, so the key is absent and `defaults read-type` exits 1 exactly as `read` does. Both modes
+          // record the prior state: the hidden mode overwrites it, and a receipt that cannot say what it overwrote — or
+          // that an absent key is honestly restored by deleting it rather than writing a value — is not a receipt.
+          setup.snackbar = { mode: stockChrome ? "stock" : "hidden", written: false, before: null, type: null,
+            absent: null, restore: { performed: false, action: null, reason: null } };
           try {
             // Observe existing state without deleting it or writing a second settings store.
             setup.settingsFile.exists = statSync(setup.settingsFile.path, { throwIfNoEntry: false }) !== undefined;
@@ -647,7 +652,7 @@ jobs:
               if (result.error || result.signal) throw new Error(label + ": " + (result.error?.message ?? result.signal));
               if (label === "before") {
                 if (result.status !== 1 || !stderr.includes("does not exist")) throw new Error("before: expected a fresh absent key, see raw command result");
-              } else if (label === "migration-marker" || label === "restore-before" || label === "snackbar-before" || (stockChrome && label === "snackbar-type")) {
+              } else if (label === "migration-marker" || label === "restore-before" || label === "snackbar-before" || label === "snackbar-type") {
                 if (result.status !== 0 && !(result.status === 1 && stderr.includes("does not exist"))) throw new Error(label + ": command exited " + result.status);
               } else if (result.status !== 0) throw new Error(label + ": command exited " + result.status);
               if (label === "bundle") {
@@ -657,14 +662,19 @@ jobs:
               if (label === "processes" && /\/Warp[^/]*\.app\/Contents\/MacOS\//.test(stdout)) throw new Error("processes: Warp is already running before preparation");
               if (label === "readback" && stdout.trim() !== "true") throw new Error("readback: expected exact string true");
               if ((label === "restore-readback" || label === "snackbar-readback") && stdout.trim() !== "false") throw new Error(label + ": expected exact string false");
-              if ((label === "type" || label === "restore-type" || (label === "snackbar-type" && !(stockChrome && setup.snackbar.absent === true))) && stdout.trim() !== "Type is string") throw new Error(label + ": expected string preference");
-              if (stockChrome && label === "snackbar-before") {
+              if ((label === "type" || label === "restore-type" || (label === "snackbar-type" && setup.snackbar.absent !== true)) && stdout.trim() !== "Type is string") throw new Error(label + ": expected string preference");
+              if (label === "snackbar-before") {
                 setup.snackbar.absent = result.status === 1;
                 setup.snackbar.before = result.status === 1 ? null : stdout.trim();
+                setup.snackbar.restore.action = result.status === 1 ? "delete" : "write";
+                setup.snackbar.restore.reason = stockChrome
+                  ? "stock mode writes nothing, so the recorded value still stands"
+                  : "ephemeral runner: the recorded value is not restored";
               }
-              if (stockChrome && label === "snackbar-type") setup.snackbar.type = stdout.trim();
+              if (label === "snackbar-type") setup.snackbar.type = result.status === 1 ? null : stdout.trim();
+              if (label === "snackbar-readback") setup.snackbar.written = true;
             }
-            if (stockChrome && setup.snackbar.type !== "Type is string" && setup.snackbar.absent !== true) {
+            if (setup.snackbar.type !== "Type is string" && setup.snackbar.absent !== true) {
               throw new Error("snackbar-type: expected string preference or an absent key");
             }
             setup.prepared = true;
