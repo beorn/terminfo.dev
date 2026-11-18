@@ -55,6 +55,20 @@ interface DeviceReply {
   contradicts?: RegExp
   note?: (frame: string) => string | undefined
   direct?: boolean
+  /**
+   * #34937 (@cto 5380390b): the named PROBE INVALID reason for a read whose only bytes are DA1-shaped frames,
+   * given how many were received. It describes the bytes and attributes none of them to this query.
+   */
+  da1PrefixReason?: (frames: number) => string
+}
+
+/** The count of DA1-shaped frames when nothing else precedes the last one (the sentinel's fence), else null. */
+function da1OnlyPrefix(raw: string): number | null {
+  const fence = sentinelAnswer(raw)
+  if (!fence || fence.start === 0 || raw.slice(fence.end).trim() !== "") return null
+  const prefix = raw.slice(0, fence.start)
+  const frames = prefix.match(/\x1b\[\?[0-9;]+c/gu) ?? []
+  return frames.join("") === prefix ? frames.length + 1 : null
 }
 
 function deviceReplyResult(
@@ -147,9 +161,14 @@ function deviceReplyResult(
   if (raw.length === 0) {
     return { ...replyFailure(`${missingReason}; expected ${spec.expected}`), response: raw }
   }
+  const da1Frames = spec.da1PrefixReason ? da1OnlyPrefix(raw) : null
   return {
     pass: false,
     response: raw,
+    ...(da1Frames !== null &&
+      spec.da1PrefixReason && {
+        tests: [{ id: "criterion", status: "probe-invalid" as const, reason: spec.da1PrefixReason(da1Frames) }],
+      }),
     observation: { outcome: "inconclusive", reason: missingReason, assertionType: "query_reply" },
   }
 }
@@ -592,6 +611,8 @@ export const deviceProbes: ProbeDefinition[] = [
     valid: /\x1bP!\|[0-9A-Fa-f]{8}\x1b\\/,
     malformed: /\x1bP!\|/,
     expected: "complete DECRPTUI DCS !| followed by four hexadecimal pairs and ST",
+    da1PrefixReason: (frames) =>
+      `DA3 expected a DECRPTUI frame; ${String(frames)} DA1-shaped frames were received, leaving unmatched output before the last DA1 fence`,
   }),
   decrqssFacilityProbe(),
   deviceQuery({
