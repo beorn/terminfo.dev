@@ -808,6 +808,10 @@ const declarations: readonly AppSemanticCapability[] = [
       ["extensions.osc633-c", "an OSC 633 C output-start region"],
       ["extensions.osc133-p", "an OSC 133 P prompt property such as k=i"],
       ["extensions.osc633-e", "an OSC 633 E recorded command line"],
+      // 34936 (@cpo/term b348b7a3, the 34871 rule: no readback, then a declaration): Wayland and systemd identities
+      // have no macOS surface. osc440 stays open (a host audio-device read is a candidate), as do osc710 and osc666.
+      ["extensions.osc176-app-id", "an OSC 176 application id (a Wayland app-id)"],
+      ["extensions.osc3008-context", "an OSC 3008 systemd context"],
     ] as const
   ).map(([featureId, effect]) => ({
     kind: "term" as const,

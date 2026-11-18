@@ -2169,6 +2169,30 @@ test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its e
   for (const id of declared) expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
 })
 
+// @failure A Wayland app-id or systemd context row stays PROBE TODO on Terminal.app with no reachable read, or a row
+//          whose effect could still be read (osc440 audio device, osc710 cell pixels, osc666 a reply) is declared.
+// 34936 (@cpo/term b348b7a3; the 34871 rule: decide whether any readback exists before any declaration).
+test("Terminal.app 2.15 on macOS declares OSC 176 and OSC 3008 only, from the same exercised inventory", () => {
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  for (const [id, effect] of [
+    ["extensions.osc176-app-id", "a Wayland app-id"],
+    ["extensions.osc3008-context", "an OSC 3008 systemd context"],
+  ] as const) {
+    expect(mac[id]).toMatch(
+      /^Untestable \(no way\): Terminal\.app 2\.15 on macOS exposes no observable in this version and setup/,
+    )
+    expect(mac[id]).toContain(effect)
+    expect(mac[id]).toContain("CDHash arm64 113489a0")
+    expect(mac[id]).toContain("not whether Terminal.app parses the sequence")
+    expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
+    expect(appSemanticDeclarations({ ...subject, os: "linux" })).not.toHaveProperty(id)
+  }
+  for (const id of ["extensions.osc440-audio", "extensions.osc710-font-normal", "extensions.osc666-termprop"]) {
+    expect(mac).not.toHaveProperty(id)
+  }
+})
+
 // 34882 (@chief 48acc556): the five Mac OSC 8 rows @dev/11's reader inventory found no per-cell link read for.
 // Each names its own surface; none may cite iTerm2's static hyperlinks capability or a query reply as evidence.
 test("five macOS apps declare OSC 8 no way at their exact versions, each by its own read surface", () => {
