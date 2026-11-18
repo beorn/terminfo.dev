@@ -1671,10 +1671,17 @@ interface StatefulTerminal {
   /** Every sequence it was queried with, in order. */
   queries: string[]
   captures: string[]
+  /** The background the last whole-screen erase left on every cell, when the terminal erases with its pen. */
+  screenBackground: () => string | undefined
 }
 
 interface StatefulOptions {
   ris?: boolean
+  /**
+   * ED and RIS erase the screen with the ACTIVE background before RIS resets the pen (iTerm2 3.6.11,
+   * run 44209743576, 34712): an erase sent while SGR 42 is set leaves every cell green.
+   */
+  eraseUsesActiveBackground?: boolean
   initial?: readonly SgrAttr[]
   restoreRetains?: readonly SgrAttr[]
   invisible?: readonly SgrAttr[]
@@ -1684,6 +1691,8 @@ interface StatefulOptions {
   hideBoldWithItalic?: boolean
   /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
+  /** Attributes and colours SGR 0 alone does NOT clear, independently of the reset under test (34712). */
+  sgr0Retains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
   /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
   resetMisses?: readonly (SgrAttr | SgrColor)[]
@@ -1706,6 +1715,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   let col = 1
   let reads = 0
   let saved: { state: typeof state; color: typeof color; row: number; col: number } | undefined
+  let screenBackground: string | undefined
   const visible = (attribute: SgrAttr) =>
     state[attribute] &&
     !options.invisible?.includes(attribute) &&
@@ -1728,10 +1738,9 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       const code = codes[index]!
       if (code === 0) {
         // A cleared attribute goes to false; one the terminal fails to clear KEEPS whatever it was.
-        for (const attribute of SGR_ATTRS) clear(attribute)
-        clearColour("fg")
-        clearColour("bg")
-        clearColour("uc")
+        const sgr0Keeps = new Set<SgrAttr | SgrColor>(options.sgr0Retains ?? [])
+        for (const attribute of SGR_ATTRS) if (!sgr0Keeps.has(attribute)) clear(attribute)
+        for (const colour of ["fg", "bg", "uc"] as const) if (!sgr0Keeps.has(colour)) clearColour(colour)
         if (options.resetAddsUnderline) state.underline = true
       } else if (code === 1) {
         if (options.ignoreBold !== "always" && !(options.ignoreBold === "combined" && codes.length > 1)) {
@@ -1794,6 +1803,8 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       if (char === "\x1b" && sequence[index + 1] === "c") {
         // A terminal that ignores RIS leaves both the cells and the SGR state exactly as they were.
         if (options.ris !== false) {
+          // The erase happens first, under the pen still set, and only then is the pen reset.
+          if (options.eraseUsesActiveBackground && options.risClearsCells !== false) screenBackground = color.bg
           const keep = new Set<SgrAttr | SgrColor>(options.risRetains ?? [])
           for (const attribute of SGR_ATTRS) if (!keep.has(attribute)) state[attribute] = false
           if (!keep.has("fg")) color.fg = undefined
@@ -1824,7 +1835,10 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         else if (final === "H") {
           row = params[0] ?? 1
           col = params[1] ?? 1
-        } else if (final === "J") cells.clear()
+        } else if (final === "J") {
+          cells.clear()
+          if (options.eraseUsesActiveBackground) screenBackground = color.bg
+        }
         index = end + 1
         continue
       }
@@ -1884,7 +1898,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     },
     queryMode: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, cells, snapshot, writes, queries, captures }
+  return { ctx, cells, snapshot, writes, queries, captures, screenBackground: () => screenBackground }
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
@@ -1892,8 +1906,39 @@ const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline",
 // #34276 / CTO52218a6e: existing recipe fixtures omit the observer's bytes, so they miss its
 // overwriting the recipe's immutable N. This composes the actual writer with the existing terminal;
 // the callback intentionally bypasses origin resolution, which sentinel-read.test.ts owns.
-function observeThroughSentinel(terminal: StatefulTerminal, captureFailure?: Error | "timeout"): void {
+function observeThroughSentinel(
+  terminal: StatefulTerminal,
+  captureFailure?: Error | "timeout",
+  /**
+   * 34712: read under the run's calibrated background (white), so the observer qualifies each
+   * pre-paint frame against it. The frame is white unless the last erase left a background colour
+   * on the screen, which paints the whole frame that colour (green for SGR 42, as iTerm2 showed).
+   */
+  calibrated = false,
+): void {
   const capture = terminal.ctx.capture!
+  const screen = () => {
+    const background = terminal.screenBackground()
+    const rgb: readonly [number, number, number] =
+      background === undefined ? [255, 255, 255] : background === "42" ? [0, 194, 0] : [128, 128, 128]
+    const rgba = new Uint8Array(terminal.ctx.cols * terminal.ctx.rows * 4)
+    for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([...rgb, 255], offset)
+    return { width: terminal.ctx.cols, height: terminal.ctx.rows, rgba }
+  }
+  const settled = calibrated
+    ? {
+        settled: {
+          origin: { x: 0, y: 0 },
+          basis: "measured by complete raster calibration",
+          basisKind: "complete raster calibration",
+          pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: terminal.ctx.cols, textHeight: terminal.ctx.rows },
+          paintClasses: {
+            background: { anchor: [255, 255, 255] as const, members: new Set([0xffffff]) },
+            sentinel: { anchor: [255, 136, 255] as const, members: new Set([0xff88ff]) },
+          },
+        },
+      }
+    : {}
   const blank = {
     width: terminal.ctx.cols,
     height: terminal.ctx.rows,
@@ -1904,7 +1949,8 @@ function observeThroughSentinel(terminal: StatefulTerminal, captureFailure?: Err
     return readThroughSentinel({
       ...request,
       source: terminal.ctx,
-      prePaint: async () => blank,
+      prePaint: async () => (calibrated ? screen() : blank),
+      ...settled,
       capture: async (resolve) => {
         if (captureFailure && request.label.includes("subset SGR 1")) {
           if (captureFailure === "timeout") {
@@ -2278,6 +2324,27 @@ test.each(GRADED_ROWS)(
   },
 )
 
+// 34712 (@cto 8d123098): iTerm2 3.6.11 erases the screen on RIS with the background still set, and only
+// then resets the pen. The expected frame pre-paints XX/YY with the row's setup, so for sgr.bg.default
+// SGR 42 was active at its RIS and the whole reference frame came back green (run 44209743576), which
+// the observer's calibrated-background qualification refuses. The doubles before this cleared cells
+// without keeping the colour they were erased with, so they could not show it.
+test.each(GRADED_ROWS)(
+  "%s builds its expected frame on a terminal whose RIS erases with the active background (34712)",
+  async (id) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, eraseUsesActiveBackground: true, replies: ["0", "0"] })
+    observeThroughSentinel(terminal, undefined, true)
+    const probe = [...sgrProbes, ...resetProbes].find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result = await probe.term(terminal.ctx)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    // The reference clears the pen itself before its RIS, so the erase leaves the default background.
+    const reference = terminal.writes.find((write) => write.includes("\x1bc"))
+    expect(reference, id).toContain("\x1b[0m\x1bc")
+    expect(terminal.screenBackground(), id).toBeUndefined()
+  },
+)
+
 test.each(SELECTIVE_COMPANION_ROWS)(
   "%s measures a reset that also drops its established companion as unsupported",
   async (id) => {
@@ -2445,9 +2512,13 @@ test("the bold row's faint case is the third no-reference row", async () => {
 
 test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
   // Every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
-  // (what the reset under test misses) x every subset of its SETUP (what RIS keeps), with the cleared
-  // set computed from this model rather than a hand-picked list.
+  // (what the reset under test misses) x every subset of its SETUP (what the reference keeps), with the
+  // cleared set computed from this model rather than a hand-picked list. The six graded rows' reference
+  // is SGR 0 then RIS (34712), so the reference keeps an attribute only when BOTH keep it: each case
+  // runs with RIS broken, SGR 0 broken, and both broken. The no-reference rows test SGR 0 or 22
+  // themselves, so their SGR 0 is the reset under test and only RIS is broken separately.
   for (const id of RESET_FAMILY_ROWS) {
+    const graded = (GRADED_ROWS as readonly string[]).includes(id)
     const row = familyRow(id)
     const probe = statefulTerminal(ALL_ATTRS, { ris: true })
     probe.ctx.write(row.seed)
@@ -2457,26 +2528,32 @@ test("no combination of a missed cleared attribute and a retained reference attr
     const cleared = setup.filter((attribute) => !afterReset.has(attribute))
     for (const misses of subsets(cleared)) {
       for (const keeps of subsets(setup)) {
-        const terminal = statefulTerminal(ALL_ATTRS, {
-          ris: true,
-          resetMisses: misses as Array<SgrAttr | SgrColor>,
-          risRetains: keeps as Array<SgrAttr | SgrColor>,
-        })
-        const result = await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
-        const outcome = result?.observation?.outcome
-        const label = `${id}: reset misses [${misses.join("+")}] and RIS keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
-        if (outcome === "supported") {
-          expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
-        }
-        const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
-        if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
-          if (keeps.length > 0) {
-            // A retained companion contaminates the neutral negative reference. It then equals
-            // the expected preserved companion, so even a correct reset lacks a discriminator.
-            expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
-            expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
-          } else {
-            expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+        for (const broken of graded ? (["ris", "sgr0", "both"] as const) : (["ris"] as const)) {
+          const kept = keeps as Array<SgrAttr | SgrColor>
+          const terminal = statefulTerminal(ALL_ATTRS, {
+            ris: true,
+            resetMisses: misses as Array<SgrAttr | SgrColor>,
+            risRetains: broken === "sgr0" ? [] : kept,
+            sgr0Retains: broken === "ris" ? [] : kept,
+          })
+          const result = await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
+          const outcome = result?.observation?.outcome
+          const label = `${id}: reset misses [${misses.join("+")}] and the reference (${broken} broken) keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
+          if (outcome === "supported") {
+            expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
+          }
+          const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
+          // Only a reference whose SGR 0 and RIS both keep the companion is contaminated by it.
+          const referenceKeeps = broken === "both" ? keeps : []
+          if (misses.length === 0 && keepsOnlyResidual && graded) {
+            if (referenceKeeps.length > 0) {
+              // A retained companion contaminates the neutral negative reference. It then equals
+              // the expected preserved companion, so even a correct reset lacks a discriminator.
+              expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
+              expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
+            } else {
+              expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+            }
           }
         }
       }
