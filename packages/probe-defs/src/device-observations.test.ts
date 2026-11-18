@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
@@ -976,15 +976,17 @@ describe("window-operation qualification", () => {
   test("a failed owned-title cleanup is recorded on the reading, not raised instead of it", async () => {
     for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
       let title = "incoming-title"
-      let reads = 0
+      let restoring = false
       const source = {
         write(bytes: string) {
           for (const [, code, text] of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
             if (code === "2") title = text ?? ""
+            // Only the owned-title restore writes the incoming title back.
+            if (code === "2" && text === "incoming-title") restoring = true
           }
         },
-        // The eighth read is the owned-title restore; it answers a title this surface never shows.
-        readTitle: async () => (++reads === 8 ? "leaked-title" : title),
+        // The owned-title restore reads a title this surface never shows.
+        readTitle: async () => (restoring ? "leaked-title" : title),
         queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
       } as unknown as TermProbeSource
       const result = await callback(id).terminal(source)
@@ -1062,6 +1064,75 @@ describe("window-operation qualification", () => {
       expect(leaked.title(), id).toBe("test-icon")
     }
   })
+
+  /**
+   * @failure #34932: the title-stack controls read the title once, straight after each OSC 2 write. WezTerm applies
+   *   titles asynchronously, so its 13:06Z run read the previous "test-title" as the first control and both
+   *   title-stack rows stayed "Owned title reader failed the OSC 2 controls", whatever the push/pop behaviour.
+   *   Without a title stack, a restore that never arrives must not starve the cleanup's own late OSC 2 write
+   *   (@dev/4 review): that terminal reads unsupported with no restoration mismatch.
+   * @level l1
+   * @consumer device.xtwinops-22/23 App callbacks on a title surface that applies each title a few reads late.
+   * @testonly none
+   */
+  test.each([
+    ["with a title stack", true, "supported"],
+    ["without a title stack", false, "unsupported"],
+  ] as const)(
+    "title-stack controls settle when each title applies a few reads late, %s (34932)",
+    async (_name, hasStack, outcome) => {
+      vi.useFakeTimers()
+      try {
+        for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+          for (let repetition = 0; repetition < 6; repetition++) {
+            let shown = "incoming-title"
+            let current = shown
+            const stack: string[] = []
+            let pending: { title: string; readsLeft: number } | undefined
+            const apply = (title: string) => {
+              current = title
+              pending = { title, readsLeft: 1 + (repetition % 3) }
+            }
+            const source = {
+              write(bytes: string) {
+                for (const match of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07|\x1b\[(22|23);0t/g)) {
+                  if (match[1] === "2") apply(match[2] ?? "")
+                  else if (!hasStack) continue
+                  else if (match[3] === "22") stack.push(current)
+                  else if (match[3] === "23") {
+                    const popped = stack.pop()
+                    if (popped !== undefined) apply(popped)
+                  }
+                }
+              },
+              readTitle: async () => {
+                if (pending && pending.readsLeft-- === 0) {
+                  shown = pending.title
+                  pending = undefined
+                }
+                return shown
+              },
+              queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+            } as unknown as TermProbeSource
+            let settled = false
+            const running = callback(id)
+              .terminal(source)
+              .finally(() => {
+                settled = true
+              })
+            while (!settled) await vi.advanceTimersByTimeAsync(50)
+            const result = await running
+            const label = `${id} repetition ${repetition}`
+            expect(result.criterionBranch, label).not.toBe("app-title-control")
+            expect(result.observation?.outcome, label).toBe(outcome)
+            expect(result.note ?? "", label).not.toMatch(/restoration mismatch/)
+          }
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 
   // #32323: only the controlled round-trip effect decides, independent of any source/artifact identity.
   // Failed restoration is a joint negative; it never identifies which stack primitive is missing.

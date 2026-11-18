@@ -686,6 +686,68 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
   },
 )
 
+// #34932: WezTerm applies each title and icon name a few reads after the OSC that sets it. The icon reader read
+// the title once, straight after OSC 2, saw the previous title and graded "OSC 2 did not set title A" on every run
+// (13:06Z), so both icon rows stayed open whatever the terminal does. Each read now settles like the OSC 2 probe.
+test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
+  "%s settles title and icon reads that apply a few reads late (34932)",
+  async (featureId) => {
+    const runId = "a".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
+    const osc1 = featureId.includes("osc1")
+    vi.useFakeTimers()
+    try {
+      for (let repetition = 0; repetition < 6; repetition++) {
+        const late = 1 + (repetition % 3)
+        const shown = { title: "original title", icon: "original icon" as string | null }
+        const pending: { title?: { value: string; reads: number }; icon?: { value: string; reads: number } } = {}
+        const apply = (key: "title" | "icon") => {
+          const next = pending[key]
+          if (next && next.reads-- === 0) {
+            shown[key] = next.value
+            pending[key] = undefined
+          }
+          return shown[key]
+        }
+        const input = {
+          featureId,
+          runId,
+          executable: { path: "/unused", sha256: "b".repeat(64) },
+          readTitle: async () => apply("title") as string,
+          withIconNameFixture: async (
+            _write: (s: string) => void,
+            work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
+          ) => work(async () => apply("icon")),
+          write(bytes: string) {
+            const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+            if (!match) return
+            const [, code, payload = ""] = match
+            if (code !== "1") pending.title = { value: payload, reads: late }
+            if (code !== "2") pending.icon = { value: payload, reads: late }
+          },
+        }
+        let settled = false
+        const running = readAppSemanticState(input).finally(() => {
+          settled = true
+        })
+        while (!settled) await vi.advanceTimersByTimeAsync(50)
+        const reading = await running
+        const label = `repetition ${repetition}`
+        expect(reading.status, label).toBe("measured")
+        if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
+        const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
+        expect(gradeIconNameReading(featureId, reading).observation, label).toMatchObject({ outcome: "supported" })
+        expect(reading.detail, label).toMatchObject({ icon: expect.stringMatching(/^icon-name-b-/) })
+        if (osc1) expect(reading.detail, label).toMatchObject({ title: expect.stringMatching(/^icon-title-a-/) })
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)
+
 test("Screen never borrows the outer Kitty reader and mismatched attachments are invalid", async () => {
   const runId = "a".repeat(32)
   vi.stubEnv("TERMINFO_RUN_ID", runId)

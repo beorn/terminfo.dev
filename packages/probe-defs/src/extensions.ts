@@ -4667,16 +4667,20 @@ const TITLE_SETTLE_POLL_MS = 50
  * 10-36-01, WezTerm 01-06: "Owned title positive or negative control failed"). Re-read only while the reading equals
  * that previous title and differs from the one written, a bounded number of times; any other reading decides at once.
  * The number of reads depends only on the values read, so a recorded run replays the same reads with no clock.
+ *
+ * #34932: every owned title-surface read that follows its own write settles here (the title stack and the App icon
+ * reader too); `previous` may name every value the surface could still show from before the write.
  */
-async function settledTitle(
-  read: () => Promise<string>,
-  written: string,
-  previous: string,
+export async function settledTitle<T extends string | null>(
+  read: () => Promise<T>,
+  written: T,
+  previous: T | readonly T[],
   budget: number = TITLE_SETTLE_REREADS,
-): Promise<{ value: string; rereads: number }> {
+): Promise<{ value: T; rereads: number }> {
+  const stale = (Array.isArray(previous) ? previous : [previous]) as readonly T[]
   let value = await read()
   let rereads = 0
-  while (value === previous && value !== written && rereads < budget) {
+  while (stale.includes(value) && value !== written && rereads < budget) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, TITLE_SETTLE_POLL_MS)
     })
