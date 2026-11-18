@@ -29,7 +29,9 @@ import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } 
 import type { CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
+  daemonNotStreamingError,
   findOwnedDaemon,
+  isHeadersTimeout,
   readRawDaemonProbeResponse,
   readRetainedDaemonProbeResponse,
   removeProbeRun,
@@ -37,6 +39,7 @@ import {
   saveDaemonProbeRun,
   stopOwnedDaemon,
 } from "./daemon-client.ts"
+import { openProbeResponse } from "./probe-stream.ts"
 
 const trustedReceipt = {
   manifest: {
@@ -510,10 +513,11 @@ it("names the daemon port and the bound when a collection outlasts it", async ()
 
 // 34507 post-merge REVISE1 (@cto 1601): the shipped CLI starts this client under Node when Bun is absent
 // (bin/terminfo.mjs shebang plus explicit Node start, engines node >=24). A blanket runtime rejection removed that
-// public path before any /info or /probe request. 34742 replaced the runtime's fixed 300 s socket timers there, so
-// the proof has to run under real Node: this child starts a daemon-style server that answers /probe after the
-// socket tick, asserts the raised timers both ways, and drives the public entry point to a 200 end to end.
-it("34742 the Node path waits past the fixed socket tick and raises undici's timers above the signal", async () => {
+// public path before any /info or /probe request. 34753 replaced 34742's raised undici timers with a daemon that
+// streams headers and a keepalive byte, so the proof has to run under real Node with stock timers: this child
+// drives the public entry point against the daemon's real streaming owner and records when the first byte and the
+// final body arrived.
+it("34753 the Node path keeps stock timers because the daemon streams", async () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const fixture = join(import.meta.dirname, "fixtures", "node-probe-transport.mjs")
   // Under this runner a bare `node` resolves to Bun, whose undici shim has none of the timers under test, so the
@@ -522,8 +526,11 @@ it("34742 the Node path waits past the fixed socket tick and raises undici's tim
     .split(":")
     .map((dir) => join(dir, "node"))
     .find((candidate) => existsSync(candidate) && /\/node(js-[^/]*)?$|nodejs-/.test(realpathSync(candidate)))
-  if (nodeBin === undefined) throw new Error("34742: no Node binary on PATH; the Node probe path cannot be proven")
-  const client = spawn(nodeBin, ["--experimental-transform-types", "--no-warnings", fixture], {
+  if (nodeBin === undefined) throw new Error("34753: no Node binary on PATH; the Node probe path cannot be proven")
+  // The child imports our TypeScript sources, whose specifiers are bundler-style and extensionless, so it
+  // registers a resolution hook alongside type transform; both live in fixtures/ and never ship.
+  const resolver = join(import.meta.dirname, "fixtures", "node-ts-resolve.mjs")
+  const client = spawn(nodeBin, ["--experimental-transform-types", "--no-warnings", "--import", resolver, fixture], {
     cwd: join(import.meta.dirname, "../../.."),
     env: { ...process.env, HOME: root, USERPROFILE: root },
     stdio: ["ignore", "ignore", "pipe"],
@@ -532,63 +539,80 @@ it("34742 the Node path waits past the fixed socket tick and raises undici's tim
   client.stderr.on("data", (chunk) => stderr.push(chunk))
   const [code] = await once(client, "exit")
   expect(code, Buffer.concat(stderr).toString()).toBe(0)
-  expect(JSON.parse(readFileSync(join(root, "node-probe.json"), "utf8"))).toEqual({
+  const probe = JSON.parse(readFileSync(join(root, "node-probe.json"), "utf8"))
+  expect(probe).toMatchObject({
     bunMemberPresent: false,
-    generousStatus: 200,
-    smallTimer: "UND_ERR_HEADERS_TIMEOUT",
-    timersAboveSignal: true,
-    endToEndStatus: 200,
-    endToEndBody: { ok: true },
+    status: 200,
+    body: { schemaVersion: 4, ok: true },
+    shortSignal: "AbortError",
   })
+  // Headers and the first keepalive byte arrive well before the collection ends; the body settles after it.
+  expect(probe.firstByteMs).toBeLessThan(1000)
+  expect(probe.settleMs).toBeGreaterThanOrEqual(1400)
+  expect(probe.leadingWhitespace).toBeGreaterThan(0)
 }, 60_000)
 
-it("a silent /probe is not aborted by Bun before the 30 min signal", async () => {
-  const runId = "b".repeat(32)
-  const silent = createServer((req, res) => {
+// 34753: the daemon flushes headers and a keepalive byte once the run is admitted, so undici's stock 300 s header
+// window never sees a silent socket. A daemon that answers nothing at all is therefore a fault to name, not a run
+// to wait out: the mapping and the message are proven here, and the real 300 s window is covered by the stock-Node
+// field run recorded on the issue rather than by a five-minute unit run.
+it("34753 names a daemon that sends no byte as not streaming, never as the 30 min bound", async () => {
+  expect(
+    isHeadersTimeout(Object.assign(new Error("headers timeout"), { cause: { code: "UND_ERR_HEADERS_TIMEOUT" } })),
+  ).toBe(true)
+  expect(isHeadersTimeout(Object.assign(new Error("headers timeout"), { code: "UND_ERR_HEADERS_TIMEOUT" }))).toBe(true)
+  expect(isHeadersTimeout(new DOMException("The operation timed out.", "TimeoutError"))).toBe(false)
+  expect(isHeadersTimeout(new Error("socket hang up"))).toBe(false)
+  const fault = daemonNotStreamingError(4321, 300_004)
+  expect(fault).toMatchObject({
+    name: "DaemonNotStreaming",
+    message: expect.stringMatching(
+      /^Daemon on port 4321 sent no response byte within 300004 ms, before the 30 min signal: an admitted \/probe flushes headers at once/,
+    ),
+  })
+})
+
+// 34753: the keepalive bytes are transport. They are stripped once at the retention boundary, so the strict reader
+// and the retained hash both see exactly the payload the daemon meant to send.
+it("34753 a streaming daemon's keepalive never reaches the parsed record", async () => {
+  const runId = "e".repeat(32)
+  const payload = JSON.stringify(collectorRun())
+  server = createServer(async (req, res) => {
     if (req.url === "/info") {
       res.end(JSON.stringify({ runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
+      return
+    }
+    res.setHeader("Content-Type", "application/json")
+    const stream = openProbeResponse(res, runId, 120)
+    try {
+      stream.admitted()
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      res.end(payload)
+    } finally {
+      stream.release()
     }
   })
-  // 34593: this case owns its server, request and timer, so it releases all three itself, also when an
-  // early settlement fails the assertion: close() alone left the request's connection open and unsettled.
-  let pending: Promise<unknown> | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (address === null || typeof address === "string") throw new Error("streaming probe server has no port")
   try {
-    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", () => resolve()))
-    const address = silent.address()
-    if (address === null || typeof address === "string") throw new Error("silent probe server has no port")
-    pending = requestDaemonProbe({
+    const response = await requestDaemonProbe({
       runId,
       pid: 222,
       port: address.port,
-      token: "c".repeat(64),
+      token: "fixture-token",
       terminal: "kitty",
       terminalVersion: "0.49.1",
-    }).then(
-      () => "resolved" as const,
-      (error: unknown) => error,
-    )
-    const outcome = await Promise.race([
-      pending,
-      new Promise<"still-waiting">((resolve) => {
-        timer = setTimeout(() => resolve("still-waiting"), 370_000)
-      }),
-    ])
-    expect(outcome).toBe("still-waiting")
+    })
+    expect(response.status).toBe(200)
+    const decoded = await readRawDaemonProbeResponse(response, trustedReceipt)
+    expect(decoded.kind).toBe("captured")
+    expect(decoded.raw).toBe(payload)
   } finally {
-    clearTimeout(timer)
-    silent.closeAllConnections()
-    await new Promise<void>((resolve, reject) =>
-      silent.close((error) =>
-        error === undefined || (error as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING"
-          ? resolve()
-          : reject(error),
-      ),
-    )
-    // Dropping the connection settles the request; `pending` maps a rejection to a value, so this cannot throw.
-    await pending
+    server.closeAllConnections()
   }
-}, 400_000)
+}, 30_000)
 
 // A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
 it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
@@ -613,6 +637,16 @@ it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])
         const client = spawn(
           process.execPath,
           [
+            // Under Bun the child imports our TypeScript natively; under the Node runtime it needs type
+            // transform plus the extensionless-specifier hook the Node proof child also registers.
+            ...(process.versions.bun === undefined
+              ? [
+                  "--experimental-transform-types",
+                  "--no-warnings",
+                  "--import",
+                  join(import.meta.dirname, "fixtures", "node-ts-resolve.mjs"),
+                ]
+              : []),
             "-e",
             String.raw`
           import {writeFileSync} from "node:fs"
