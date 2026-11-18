@@ -32,6 +32,7 @@ import {
   declaredUntestableResult,
   withUnhandledSgrReport,
 } from "./helpers.ts"
+import { BLINK_CLASS_MAX_PERIOD_MS, BLINK_CLASS_MIN_PERIOD_MS, uncoveredBlinkPeriod } from "./blink-coverage.ts"
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
@@ -60,7 +61,10 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
  * BLINK_MIN_FRAMES frames cannot clear the gate together (their gaps sum to the span, so each
  * would have to equal the ceiling), and because the loop waits for each offset, so the achieved
  * span is never shorter than the requested one on any host. Earlier-return remains the first
- * positive route at any achieved rate. Focus-qualified fade also decides support.
+ * positive route at any achieved rate. Focus-qualified fade also decides support. A negative also
+ * names what it rules out (#34549): the achieved capture times must see a return of every 50%-duty
+ * blink with a period from 600 to 3000 ms at every phase (blink-coverage.ts), because a bounded gap
+ * alone admits samples phase-locked to a blink period.
  *
  * The ceiling is an integer-arithmetic conjunction, not a rounding detail: capturedAt is whole
  * milliseconds, N frames carry only N-1 gaps, and 6000/(12-1) is 545.45, so twelve frames could
@@ -112,6 +116,8 @@ export interface BlinkWitness {
   gapMaxMs?: number
   transitions: number
   halfPeriodMs?: number
+  /** A 50%-duty period of the declared class these capture times leave unseen at some phase (blink-coverage.ts). */
+  uncoveredPeriodMs?: number
 }
 
 export type BlinkSeriesVerdict =
@@ -119,7 +125,7 @@ export type BlinkSeriesVerdict =
   | { kind: "negative-decidable"; witness: BlinkWitness }
   | {
       kind: "open"
-      reason: "control-moved" | "fade-focus" | "capture-too-slow" | "changed-without-return"
+      reason: "control-moved" | "fade-focus" | "capture-too-slow" | "phase-uncovered" | "changed-without-return"
       witness: BlinkWitness
     }
 
@@ -128,7 +134,8 @@ export type BlinkSeriesVerdict =
  * control vetoes; a styled digest returning after a different one decides Supported at any rate;
  * a focus-qualified fade decides Supported; only inside the achieved-frames gate may at most one
  * change followed by stillness speak as a negative at all, and below the gate the series stays
- * open as capture too slow to decide blink. Live qualifications that are not in the series
+ * open as capture too slow to decide blink. Inside the gate, capture times that would miss some
+ * blink of the declared class stay open as phase not covered. Live qualifications that are not in the series
  * (input age, handled repaint) remain the caller's, after a negative-decidable verdict.
  * Exported for the stored-series replay tests, which cannot re-run a live capture schedule.
  */
@@ -174,6 +181,16 @@ export function blinkSeriesDecision(input: {
     witness.spanMs < BLINK_MIN_SPAN_MS ||
     (witness.gapMaxMs !== undefined && witness.gapMaxMs > BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1))
   if (gateMissed) return { kind: "open", reason: "capture-too-slow", witness }
+  // The gap ceiling does not establish phase coverage: samples whose phases lock to a period see one
+  // state throughout (#34549). A negative also needs every member of the declared class to show a return.
+  const uncovered = uncoveredBlinkPeriod(capturedAt)
+  if (uncovered !== undefined) {
+    return {
+      kind: "open",
+      reason: "phase-uncovered",
+      witness: { ...witness, uncoveredPeriodMs: Math.round(uncovered * 1000) / 1000 },
+    }
+  }
   if (transitionAt.length <= 1) return { kind: "negative-decidable", witness }
   return { kind: "open", reason: "changed-without-return", witness }
 }
@@ -468,6 +485,12 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   if (decision.kind === "open" && decision.reason === "capture-too-slow") {
     return inconclusive(
       `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same, and with whole-millisecond capture times this conjunction needs at least ${String(BLINK_MIN_FRAMES + 1)} styled frames: ${String(BLINK_MIN_FRAMES)} frames carry only ${String(BLINK_MIN_FRAMES - 1)} gaps, so clearing the span would demand every one at the ceiling`,
+      witnessed,
+    )
+  }
+  if (decision.kind === "open" && decision.reason === "phase-uncovered") {
+    return inconclusive(
+      `blink phase not covered: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) would miss a 50%-duty blink of period ${String(witness.uncoveredPeriodMs)} ms at some phase; a negative needs these capture times to see a return of every 50%-duty blink with a period from ${String(BLINK_CLASS_MIN_PERIOD_MS)} to ${String(BLINK_CLASS_MAX_PERIOD_MS)} ms at every phase`,
       witnessed,
     )
   }

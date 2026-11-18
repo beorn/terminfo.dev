@@ -177,3 +177,93 @@ test("a moved plain line vetoes every other reading", () => {
   })
   expect(verdict).toMatchObject({ kind: "open", reason: "control-moved" })
 })
+
+// #34549 (@cto coverage criterion ruling): a bounded gap does not establish phase coverage. Both series
+// clear 12 frames, 6000 ms and the gap ceiling, yet a 50%-duty blink inside the declared class reads
+// "on" at every sample: period 1000 ms at phase 0, and period 5002/5 ms at phase 1/10 ms
+// ((10t + 1) mod 10004 < 5002 for every t). Neither may decide a negative.
+const PHASE_LOCKED = [
+  {
+    name: "1000 ms alias",
+    capturedAt: [0, 490, 1000, 1490, 2000, 2490, 3000, 3490, 4000, 4490, 5000, 5490, 6000, 6490, 7000, 7490],
+    blind: [998.4, 1001.6],
+  },
+  {
+    name: "1000.4 ms fractional alias",
+    capturedAt: [1, 500, 1001, 1500, 2001, 2500, 3002, 3501, 4002, 4501, 5003, 5502, 6003, 6502, 7003, 7502],
+    blind: [1000.28, 1000.47],
+  },
+] as const
+
+test.each(PHASE_LOCKED)("a flat series phase-locked to a class period stays open: $name", ({ capturedAt, blind }) => {
+  const verdict = blinkSeriesDecision({
+    styled: capturedAt.map(() => "a"),
+    plain: STEADY,
+    capturedAt,
+    focusQualified: true,
+  })
+  expect(verdict).toMatchObject({ kind: "open", reason: "phase-uncovered" })
+  // The witness names a period inside the measured uncovered interval (an independent 0.001 ms scan).
+  expect(verdict.witness.uncoveredPeriodMs).toBeGreaterThan(blind[0])
+  expect(verdict.witness.uncoveredPeriodMs).toBeLessThan(blind[1])
+})
+
+test("a return still decides Supported at phase-locked capture times", () => {
+  const capturedAt = PHASE_LOCKED[0].capturedAt
+  const verdict = blinkSeriesDecision({
+    styled: capturedAt.map((_, index) => (index % 4 < 2 ? "a" : "b")),
+    plain: STEADY,
+    capturedAt,
+    focusQualified: false,
+  })
+  expect(verdict.kind).toBe("supported")
+})
+
+// Achieved capture times of the seven retained Linux runs (draft records named in
+// /hh/var/@cto/do-20261114T1623/blink34549-independent-2123.json and 34549-bound-retained-proof-1108.json),
+// as gaps. Every one covers the declared class; with the 545 ms ceiling kept only the run whose largest gap
+// is 545 ms decides, and the rest stay capture too slow.
+const RETAINED_GAPS = [
+  {
+    run: "alacritty 2026-11-17T12-06",
+    gaps: [523, 522, 542, 537, 525, 508, 514, 543, 537, 536, 540, 536, 548, 556, 571],
+  },
+  {
+    run: "alacritty 2026-11-17T19-21",
+    gaps: [543, 506, 474, 491, 466, 481, 481, 480, 486, 512, 531, 518, 529, 611, 546],
+  },
+  {
+    run: "alacritty 2026-11-18T00-06",
+    gaps: [519, 479, 502, 499, 516, 522, 522, 503, 524, 528, 574, 509, 497, 505, 535],
+  },
+  {
+    run: "alacritty 2026-11-18T12-06",
+    gaps: [499, 507, 476, 493, 556, 526, 549, 520, 549, 523, 539, 518, 504, 499, 500],
+  },
+  {
+    run: "ghostty 2026-11-17T10-36",
+    gaps: [626, 608, 628, 646, 772, 668, 784, 537, 552, 566, 585, 556, 544, 538, 559],
+  },
+  {
+    run: "ghostty 2026-11-17T17-51",
+    gaps: [543, 472, 474, 475, 465, 503, 493, 515, 486, 500, 493, 545, 486, 518, 492],
+  },
+  {
+    run: "ghostty 2026-11-17T22-36",
+    gaps: [476, 482, 470, 510, 473, 510, 486, 507, 502, 502, 546, 506, 637, 595, 470],
+  },
+] as const
+const timesOf = (gaps: readonly number[]) =>
+  gaps.reduce<number[]>((times, gap) => [...times, (times.at(-1) ?? 0) + gap], [0])
+
+test.each(RETAINED_GAPS)("retained flat run $run covers the declared class", ({ gaps }) => {
+  const capturedAt = timesOf(gaps)
+  const verdict = blinkSeriesDecision({
+    styled: capturedAt.map(() => "a"),
+    plain: STEADY,
+    capturedAt,
+    focusQualified: true,
+  })
+  expect(verdict.witness.uncoveredPeriodMs).toBeUndefined()
+  expect(verdict.kind).toBe(Math.max(...gaps) <= 6000 / 11 ? "negative-decidable" : "open")
+})
