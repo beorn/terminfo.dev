@@ -107,11 +107,8 @@ it.runIf(OWNED_LAYOUT)(
         stored.results!.length,
       )
       for (const featureId of IDS) expect(row(report, featureId)?.family).toBe(headlessFamily(featureId))
-      const total = counts(report)
-      const comparable = total.agree + total.disagree
-      // Reported, so a vacuous pass is visible: at least one comparable row, and every comparable row agrees.
-      console.info("#30932 S3 shadow counts", basename(run), JSON.stringify(total))
-      expect(comparable).toBeGreaterThan(0)
+      // Exact, so a vacuous pass is visible: ten comparable rows agree; the census row is the one not comparable.
+      expect(counts(report)).toEqual({ agree: 10, disagree: 0, incomplete: 0, notComparable: 1 })
       expect(report.rows.filter((entry) => entry.outcome === "disagree")).toEqual([])
       expect(report.rows.filter((entry) => entry.outcome === "incomplete")).toEqual([])
       // The clipboard read is silent on xterm.js, so fresh-instance repeats regrade it; that input is named first.
