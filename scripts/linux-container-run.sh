@@ -661,6 +661,13 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none
         --freetype-load-flags=monochrome
         --window-padding-x=2 --window-padding-y=2 --window-padding-balance=false)
+      # #34278 (@cto a1663f9d condition 3): the history rows read Ghostty's own scrollback export, so its keybind
+      # is a declared launch argument (recorded with the rest of this invocation in the launch receipt), not a
+      # config file to clean up. serve.ts installs the reader only when this exported value matches
+      # GHOSTTY_EXPORT_KEYBIND in linux-ghostty-export.ts; measured on Ghostty 1.4.0 (2026-11-18): the path is
+      # typed into the pane as plain text and the file holds the history above the screen.
+      export TERMINFO_GHOSTTY_EXPORT_KEYBIND='ctrl+shift+f12=write_scrollback_file:paste'
+      target_launch_args+=(--keybind="$TERMINFO_GHOSTTY_EXPORT_KEYBIND")
       target_command_lead=(-e)
       target_render_pin=freetype-monochrome,padding-2x2-unbalanced
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
