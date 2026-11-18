@@ -690,7 +690,7 @@ export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["41
 
 /** The route string a held-view candidate carries, naming the launch that declares the two unbound steps. */
 const XTERM_411_VIEWPORT_ROUTE =
-  "xterm 411 container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
+  "xterm container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
 
 /**
  * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
