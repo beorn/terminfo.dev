@@ -38,9 +38,11 @@ function fakeITerm(
     noTypedCommand?: boolean
     /** OSC 7 back to the initial directory is ignored. */
     failDirectoryRestore?: boolean
+    /** The session's own directory before the row runs. */
+    initialDirectory?: string
   } = {},
 ) {
-  const initialDirectory = "/Users/fixture-person/private-home"
+  const initialDirectory = variant.initialDirectory ?? "/Users/fixture-person/private-home"
   let directory = initialDirectory
   const marks: {
     id: string
@@ -365,4 +367,15 @@ test("osc633-p without the owner's private writer is invalid and never opens the
   expect(reading).toMatchObject({ status: "invalid" })
   expect(iterm.opened()).toBe(0)
   expect(iterm.writes).toEqual([])
+})
+
+// 34888 (@dev/review2 note b on 34866): only text carrying this row's nonce is the reader's own; a session
+// directory that merely looks like fixture text is still the session's, so it is shown by digest only.
+test("a session directory shaped like fixture text but without the row nonce is never shown", async () => {
+  const iterm = fakeITerm({ with633: true, initialDirectory: "/terminfo-home" })
+  const reading = await iterm.read("extensions.osc633-p")
+  expect(decided(reading), JSON.stringify(reading)).toBe(true)
+  expect(iterm.directory()).toBe("/terminfo-home")
+  expect(JSON.stringify(reading)).not.toContain("/terminfo-home")
+  expect(JSON.stringify(reading)).toContain("private-sha256:")
 })

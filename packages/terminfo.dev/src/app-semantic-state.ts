@@ -1682,8 +1682,13 @@ const ITERM_633_COUNTERPARTS: Record<string, string> = {
 }
 const as633 = (feed: string) => feed.replaceAll("\x1b]133;", "\x1b]633;")
 
-/** Directory and command values the reader wrote itself are kept; any other value is logged by digest only. */
-const ITERM_FIXTURE_TEXT = /^\/?terminfo-[A-Za-z0-9-]+$/
+/**
+ * Directory and command values the reader wrote itself are kept; any other value is logged by digest only.
+ * Only text carrying this row's nonce is the reader's own: a session directory that merely looks like fixture
+ * text is still the session's (34888).
+ */
+const itermFixtureText = (value: string, nonce: string) =>
+  /^\/?terminfo-[A-Za-z0-9-]+$/.test(value) && value.endsWith(`-${nonce}`)
 
 /**
  * One controlled iTerm2 prompt-mark observation per row (34570, @cto REVISE-1 R2-R5). Each phase writes its
@@ -1743,7 +1748,7 @@ export async function readITermPromptMarks(input: {
     const digest = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 16)
     /** A command or directory the reader did not write is shown by digest, never as text. */
     const shown = (value: string | undefined) =>
-      value === undefined ? undefined : ITERM_FIXTURE_TEXT.test(value) ? value : `private-sha256:${digest(value)}`
+      value === undefined ? undefined : itermFixtureText(value, nonce) ? value : `private-sha256:${digest(value)}`
     const logged = (read: ITermPromptRead): ITermPromptRead => {
       if (read.status !== "mark") return read
       const { command, workingDirectory, ...mark } = read.mark
