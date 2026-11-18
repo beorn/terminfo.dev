@@ -5,7 +5,7 @@ import type {
   ProbeCallbackResult,
   TerminalQueryOutcome,
 } from "./types.ts"
-import { hasAuditedOscInterfaceAbsence, settledTitle, TITLE_SETTLE_REREADS } from "./extensions.ts"
+import { hasAuditedOscInterfaceAbsence, settledTitle } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
@@ -359,7 +359,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   let restoreBudget: number | undefined
   const settleRestore = async (written: string) => {
     const settled = await settledTitle(read, written, [shown], restoreBudget)
-    if (settled.rereads === TITLE_SETTLE_REREADS) restoreBudget = 0
+    if (settled.value !== written) restoreBudget = 0
     return settled.value
   }
   try {
@@ -403,7 +403,9 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
       if (pushed) ctx.write("\x1b[23;0t")
     } finally {
       set(before)
-      state.restored = await settleRestore(before)
+      // The cleanup is a plain OSC 2 write, not a 23t pop: a stackless terminal still applies it, so it settles with the
+      // full budget and never inherits a zero restore budget (@dev/4 review of slice 1).
+      state.restored = (await settledTitle(read, before, [shown])).value
       if (state.restored !== before) {
         // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
         // either. `result` is undefined here only because the try threw; a plain return added inside that try

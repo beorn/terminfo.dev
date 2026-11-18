@@ -4658,7 +4658,7 @@ function decodedOsc52Reply(outcome: TerminalQueryOutcome): string | undefined {
 }
 
 /** How long an owned title read may still show the title from before its OSC 2 write: 40 re-reads, 50 ms apart. */
-export const TITLE_SETTLE_REREADS = 40
+const TITLE_SETTLE_REREADS = 40
 const TITLE_SETTLE_POLL_MS = 50
 
 /**
