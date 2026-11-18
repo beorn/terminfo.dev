@@ -1521,8 +1521,11 @@ const DECSSCLS_LINES_PER_SECOND = 9
  * needs 35 scrolled lines. At the editors measured p90 per-frame cost (1.50 s) that leaves two
  * captures plus a frame inside the window; the native terminals (0.82-0.85 s p90) sit far inside it.
  * 34 rows over a 24-row screen is 35 scrolled lines, so ceil(35 / 9 * 1000) = 3889 ms and the
- * timing bound is 3739 ms. The phase settle becomes 4389 ms, so the probe still fits the 30 s
- * default wall against the slowest measured DECSSCLS span of 14.9 s.
+ * timing bound is 3739 ms. The phase settle becomes 4389 ms. Measured against that: at 16 rows the
+ * whole probe spanned 11514 ms (cmux), 11948 ms (VS Code) and 12960 ms (Cursor) over 9 captures
+ * each in run 44200861479, and this change adds the 2000 ms of settle it lengthens plus the
+ * throttled scroll of 18 more lines (about 2 s at 9 lines per second), so about 17 s against the
+ * 30 s default wall this probe inherits.
  */
 const DECSSCLS_OVERFLOW_ROWS = 34
 /**
