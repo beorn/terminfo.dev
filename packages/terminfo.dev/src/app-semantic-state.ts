@@ -3310,7 +3310,7 @@ export async function readAppSemanticState(
           if (controls.every((value) => value === initial.cwd)) {
             reading = {
               status: "unavailable",
-              reason: "Terminal.app AXDocument is inert to two distinct OSC 7 controls",
+              reason: "Terminal.app AXDocument did not move for two distinct fresh non-existent OSC 7 control paths",
               detail,
             }
           } else {
@@ -3397,7 +3397,7 @@ export async function readAppSemanticState(
         throw new Error("Owned cwd private evidence retention failed", { cause: error })
       }
       const publicDetail = pairs
-        ? { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: false, restoration }
+        ? { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: !restoration.equal, restoration }
         : { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
       if (reading.status !== "measured" || reading.reader !== "state") {
         // Terminal.app's reasons are built from phases and error numbers only (r1 item 4), so they publish as read;

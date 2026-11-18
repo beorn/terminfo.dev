@@ -178,7 +178,7 @@ test("two inert OSC 7 controls leave the row TODO, never unsupported", async () 
   const { reading, graded } = await read(fakeTerminal({ controls: "none" }))
   expect(reading).toMatchObject({
     status: "unavailable",
-    reason: "Terminal.app AXDocument is inert to two distinct OSC 7 controls",
+    reason: "Terminal.app AXDocument did not move for two distinct fresh non-existent OSC 7 control paths",
   })
   expect(graded.tests?.[0]?.status).toBe("probe-todo")
   expect(graded.observation?.outcome).toBeUndefined()
@@ -198,7 +198,8 @@ test("a failed restoration makes a decided row invalid and says why", async () =
     status: "invalid",
     reason: "Terminal.app cwd was read, but the initial directory did not read back after restoration",
   })
-  expect(reading.detail).toMatchObject({ restoration: { attempted: true, equal: false } })
+  // The pane is unpinned only by a restore that read back; a failed one says the pane stays pinned.
+  expect(reading.detail).toMatchObject({ paneLeftPinned: true, restoration: { attempted: true, equal: false } })
   expect(graded.tests?.[0]?.status).toBe("probe-invalid")
 })
 
