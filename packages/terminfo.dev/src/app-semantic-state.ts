@@ -1556,6 +1556,28 @@ export function beginMuxSgrCommandRead(input: {
 }
 
 /** The existing bounded semantic read loop, shared by native readers without another polling mechanism. */
+/**
+ * An owned cwd getter's failure whose public half is safe to publish: the phase that failed and a reason built only
+ * from error numbers and counts, never a path, title or URI (34870 r1 item 4). The raw diagnostic is the message,
+ * which stays in the private evidence.
+ */
+export class OwnedCwdReadError extends Error {
+  constructor(
+    readonly phase: string,
+    readonly publicReason: string,
+    diagnostic: string,
+  ) {
+    super(diagnostic)
+  }
+}
+
+/** The publishable reason for an owned cwd failure; anything but an OwnedCwdReadError keeps only a pointer. */
+export function ownedCwdFailure(error: unknown): string {
+  return error instanceof OwnedCwdReadError
+    ? `Owned cwd observation failed in the ${error.phase} phase: ${error.publicReason}`
+    : "Owned cwd observation failed; see private evidence"
+}
+
 export async function untilAppSemanticRead(
   read: () => string | Promise<string>,
   complete: (value: string) => boolean,
@@ -2955,6 +2977,11 @@ export async function readAppSemanticState(
       row: number
       marker: string
     }) => Promise<{ uri: string; detail: object } | { path: string; detail: object }>
+    /**
+     * The verified owner's private TTY writer (34870): Terminal.app's restoration feed carries the session's own
+     * directory, which must stay out of the probe source's publishable write trace (CTO6a2de139).
+     */
+    privateWrite?: (text: string) => void | Promise<void>
     onRetained?: Parameters<typeof retainCaptureArtifact>[3]
     /**
      * Private port supplied only by the verified macOS WezTerm owner (34646): the owned pane's top rows from its
@@ -3044,7 +3071,15 @@ export async function readAppSemanticState(
       })
     }
     const appId = env.TERMINFO_TARGET_ID
-    if (input.mux === "screen" || (!input.mux && appId !== "kitty" && appId !== "ghostty" && appId !== "wezterm")) {
+    if (
+      input.mux === "screen" ||
+      (!input.mux &&
+        appId !== "kitty" &&
+        appId !== "ghostty" &&
+        appId !== "wezterm" &&
+        // 34870: Terminal.app has only its owned cwd getter; without one it has no reader here.
+        !(appId === "terminal-app" && input.readCwd !== undefined))
+    ) {
       return { status: "unavailable", reason: "No semantic reader for this App", detail }
     }
     const capture = env.TERMINFO_CAPTURE_DIRECTORY
@@ -3183,13 +3218,27 @@ export async function readAppSemanticState(
         // 34601: Ghostty 1.4.0's AppleScript `working directory` (macos/Ghostty.sdef:98, ScriptTerminal.swift).
         (appId === "ghostty" &&
           env.TERMINFO_TARGET_VERSION === "1.4.0" &&
-          (input.featureId === "extensions.osc633-p" || input.featureId === "extensions.osc7-cwd"))
+          (input.featureId === "extensions.osc633-p" || input.featureId === "extensions.osc7-cwd")) ||
+        // 34870 (@cto 34870-terminalapp-cwd-r1): Terminal.app 2.15's window AXDocument, read through JXA AX.
+        (appId === "terminal-app" &&
+          env.TERMINFO_TARGET_VERSION === "2.15" &&
+          input.featureId === "extensions.osc633-p")
       if (input.mux || !reviewed) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }
+      // Terminal.app runs the accepted two-control, two-target experiment with restoration (r1 item 1); the other
+      // reviewed getters keep their existing single-pair recipe unchanged.
+      const pairs = appId === "terminal-app"
+      const sentControls = [`/terminfo-control-A-${nonce}`, `/terminfo-control-B-${nonce}`]
+      const sentTargets = [`/terminfo-target-A-${nonce}`, `/terminfo-target-B-${nonce}`]
+      const restoration: { attempted: boolean; equal: boolean | null } = { attempted: false, equal: null }
       const observe = async (): Promise<AppSemanticReading> => {
-        const pathValue = (value: string) =>
-          value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+        // Terminal.app 2.15 serialises AXDocument with one trailing slash (34841 ax-0..6.json, file:///private/var/);
+        // its adapter alone removes exactly one, never from "/" (r1 item 3). No case, symlink or host folding.
+        const pathValue = (value: string) => {
+          const path = value.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+          return pairs && path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
+        }
         const get = async (checkpoint?: { row: number; marker: string }) => {
           const read = await ownedCwd(checkpoint)
           let reading: { cwd: string; rawUri?: string; host?: string; sourceKind: string }
@@ -3207,7 +3256,9 @@ export async function readAppSemanticState(
         }
         const initial = await get()
         const processCwd = process.cwd()
-        const freshPaths = [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
+        const freshPaths = pairs
+          ? [...sentControls, ...sentTargets]
+          : [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
         if (freshPaths.includes(processCwd) || freshPaths.includes(initial.cwd)) {
           throw new Error("Owned cwd control/target must differ from process and baseline cwd")
         }
@@ -3226,22 +3277,107 @@ export async function readAppSemanticState(
           }
           return reading
         }
-        return readCwdPhases(
-          initial,
-          sample,
-          () => {
-            detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
-            return Promise.resolve()
-          },
-          pathValue,
-        )
+        if (!pairs) {
+          return readCwdPhases(
+            initial,
+            sample,
+            () => {
+              detail.phases.push({ note: "pane left pinned; owner closes it at end of run" })
+              return Promise.resolve()
+            },
+            pathValue,
+          )
+        }
+        // The probe's own experiment (probe-defs extensions.ts promptCwdPropertyResult) in the reading fields the
+        // iTerm2 arm already uses: both OSC 7 controls must read back exactly before either 633 P target counts.
+        const privateWrite = input.privateWrite
+        const initialUri = initial.rawUri
+        if (privateWrite === undefined || initialUri === undefined || /[\x00-\x1f\x7f]/.test(initialUri)) {
+          return {
+            status: "invalid",
+            reason: "Terminal.app cwd needs the owner's private writer and a restorable initial file URI",
+            detail,
+          }
+        }
+        let reading: AppSemanticReading
+        try {
+          const unknown = await sample(1, osc("133;Z"))
+          const controls: string[] = []
+          for (const [index, path] of sentControls.entries()) {
+            restoration.attempted = true
+            controls.push((await sample(2 + index, osc(`7;file://localhost${path}`))).cwd)
+          }
+          if (controls.every((value) => value === initial.cwd)) {
+            reading = {
+              status: "unavailable",
+              reason: "Terminal.app AXDocument is inert to two distinct OSC 7 controls",
+              detail,
+            }
+          } else {
+            const priors: string[] = []
+            const targets: string[] = []
+            let prior = controls.at(-1) as string
+            for (const [index, path] of sentTargets.entries()) {
+              priors.push(prior)
+              prior = (await sample(4 + index, osc(`633;P;Cwd=${path}`))).cwd
+              targets.push(prior)
+            }
+            reading = {
+              status: "measured",
+              reader: "state",
+              runId: input.runId,
+              unknown: { before: initial.cwd, after: unknown.cwd },
+              handled: {
+                before: JSON.stringify([initial.cwd, controls[0]]),
+                after: JSON.stringify(controls),
+                expected: JSON.stringify(sentControls.map(pathValue)),
+              },
+              target: {
+                before: JSON.stringify(priors),
+                after: JSON.stringify(targets),
+                expected: JSON.stringify(sentTargets.map(pathValue)),
+              },
+              detail,
+            }
+          }
+        } catch (error) {
+          detail.phases.push({ error: error instanceof Error ? error.message : String(error) })
+          reading = { status: "invalid", reason: ownedCwdFailure(error), detail }
+        }
+        if (!restoration.attempted) return reading
+        // Restore through the owner's private TTY writer, so the initial URI never enters the public feed trace,
+        // and read it back under its own fence (r1 item 1). A failed restore keeps the reading's own reason first.
+        let restoreFailure: string | undefined
+        try {
+          const marker = `Q-${nonce}-restore`
+          await privateWrite(`\x1b[6;1H\x1b]7;${initialUri}\x07${marker}`)
+          const restored = await get({ row: 6, marker })
+          restoration.equal = restored.cwd === initial.cwd
+          if (!restoration.equal) restoreFailure = "the initial directory did not read back after restoration"
+        } catch (error) {
+          detail.phases.push({ restoreError: error instanceof Error ? error.message : String(error) })
+          restoreFailure = `restoring the initial directory failed: ${ownedCwdFailure(error)}`
+        }
+        if (restoreFailure === undefined) return reading
+        const primary = reading.status === "measured" ? undefined : reading.reason
+        return {
+          status: "invalid",
+          reason:
+            primary === undefined
+              ? `Terminal.app cwd was read, but ${restoreFailure}`
+              : `${primary}; then ${restoreFailure}`,
+          detail,
+        }
       }
       let reading: AppSemanticReading
       try {
         reading = await observe()
       } catch (error) {
         detail.phases.push({ error: error instanceof Error ? error.message : String(error) })
-        reading = { status: "invalid", reason: "Owned cwd observation failed; see private evidence" }
+        reading = {
+          status: "invalid",
+          reason: pairs ? ownedCwdFailure(error) : "Owned cwd observation failed; see private evidence",
+        }
       }
       const bytes = Buffer.from(JSON.stringify({ reading, detail, processCwd: process.cwd() }))
       // The shared phase reader is private. Clear its diagnostic carrier before any
@@ -3260,26 +3396,37 @@ export async function readAppSemanticState(
       } catch (error) {
         throw new Error("Owned cwd private evidence retention failed", { cause: error })
       }
-      const publicDetail = { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
+      const publicDetail = pairs
+        ? { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: false, restoration }
+        : { privateEvidence, initialSourceKind: "undetermined", paneLeftPinned: true }
       if (reading.status !== "measured" || reading.reader !== "state") {
+        // Terminal.app's reasons are built from phases and error numbers only (r1 item 4), so they publish as read;
+        // an inert pair of controls stays unavailable (TODO), never invalid.
+        if (pairs && reading.status !== "measured") {
+          return { status: reading.status, reason: reading.reason, detail: publicDetail }
+        }
         return { status: "invalid", reason: "Owned cwd observation failed; see private evidence", detail: publicDetail }
       }
+      const fresh = pairs
+        ? [...sentControls, ...sentTargets]
+        : [`/terminfo-control-${nonce}`, `/terminfo-target-${nonce}`]
       const publicValue = (value: string) =>
-        value === `/terminfo-control-${nonce}` || value === `/terminfo-target-${nonce}`
-          ? value
-          : createHash("sha256").update(value).digest("hex")
+        fresh.includes(value) ? value : createHash("sha256").update(value).digest("hex")
+      // The pair experiment's handled/target fields are JSON arrays: hash each element, keep the array.
+      const publicField = (value: string) =>
+        pairs ? JSON.stringify((JSON.parse(value) as string[]).map(publicValue)) : publicValue(value)
       return {
         ...reading,
         unknown: { before: publicValue(reading.unknown.before), after: publicValue(reading.unknown.after) },
         handled: {
-          before: publicValue(reading.handled.before),
-          after: publicValue(reading.handled.after),
-          expected: publicValue(reading.handled.expected),
+          before: publicField(reading.handled.before),
+          after: publicField(reading.handled.after),
+          expected: publicField(reading.handled.expected),
         },
         target: {
-          before: publicValue(reading.target.before),
-          after: publicValue(reading.target.after),
-          expected: publicValue(reading.target.expected),
+          before: publicField(reading.target.before),
+          after: publicField(reading.target.after),
+          expected: publicField(reading.target.expected),
         },
         detail: publicDetail,
       }

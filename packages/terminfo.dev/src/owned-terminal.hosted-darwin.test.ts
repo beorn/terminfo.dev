@@ -160,6 +160,17 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
           "extensions.osc633-p",
           "extensions.semantic-prompts",
         ])
+      } else if (app === "terminal-app") {
+        // 34870: the hosted Terminal.app tab reads only OSC 633 P, through its window's AXDocument, and only bound to
+        // its reviewed 2.15 version; an unbound version refuses before the shared reader runs.
+        assert.deepEqual([...owner.appSemanticStateFeatures], ["extensions.osc633-p"])
+        assert.equal(typeof owner.readAppSemanticState, "function")
+        const other = await owner.readAppSemanticState("extensions.osc133-a", () => {})
+        assert.equal(other.reason, "No owned Terminal.app semantic reader for this feature")
+        delete process.env.TERMINFO_TARGET_VERSION
+        const unbound = await owner.readAppSemanticState("extensions.osc633-p", () => {})
+        assert.equal(unbound.reason, "Terminal.app cwd has no reviewed 2.15 version bound to this App launch")
+        assert.equal(nativeReads.length, 0, "an unbound version must refuse before the shared reader runs")
       } else {
         assert.equal(owner.readAppSemanticState, undefined)
         assert.equal(owner.appSemanticStateFeatures, undefined)

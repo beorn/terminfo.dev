@@ -104,7 +104,12 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
-import { assertOwnedAppOwner, assertOwnedTerminalWindow, ownedAppProbes } from "./terminal-app-window.ts"
+import {
+  assertOwnedAppOwner,
+  assertOwnedTerminalWindow,
+  ownedAppProbes,
+  terminalAppOwnedCwd,
+} from "./terminal-app-window.ts"
 import {
   assertOwnedProcess,
   runScopedMarker,
@@ -2443,6 +2448,63 @@ export async function createOwnedTerminal(options: {
           }
         },
       }),
+      // 34870 (@cto 34870-terminalapp-cwd-r1): the hosted Terminal.app 2.15 tab's OSC 633 P, read through its owned
+      // window's AXDocument (JXA Accessibility, never System Events). The owner re-proves itself around every read,
+      // and restoration goes through the private TTY writer so the session's directory stays out of the trace.
+      ...(darwinTextApp === "terminal-app" &&
+        darwinTextTty !== undefined &&
+        muxAttachmentProof === undefined && {
+          appSemanticStateFeatures: new Set(["extensions.osc633-p"]),
+          async readAppSemanticState(featureId: string, write: (text: string) => void) {
+            const check = () => {
+              if (!verifiedTerminalOwners.has(owner)) {
+                throw new Error("Terminal.app cwd read has no live owned terminal")
+              }
+            }
+            if (featureId !== "extensions.osc633-p") {
+              return {
+                status: "unavailable" as const,
+                reason: "No owned Terminal.app semantic reader for this feature",
+              }
+            }
+            const onRetained = options.onRetained
+            if (
+              process.env.TERMINFO_TARGET_VERSION !== "2.15" ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "Terminal.app cwd has no reviewed 2.15 version bound to this App launch",
+              }
+            }
+            if (hostedAppExecutablePath === undefined || onRetained === undefined) {
+              return {
+                status: "invalid" as const,
+                reason: "Terminal.app cwd needs the hosted App executable and its artifact observer",
+              }
+            }
+            try {
+              check()
+              const sha256 = createHash("sha256").update(readFileSync(hostedAppExecutablePath)).digest("hex")
+              return await readAppSemanticState({
+                featureId,
+                onRetained,
+                runId: expectedLaunchRunId,
+                executable: { path: hostedAppExecutablePath, sha256 },
+                write,
+                privateWrite(text) {
+                  check()
+                  out.write(text)
+                  check()
+                },
+                readCwd: terminalAppOwnedCwd({ tty: darwinTextTty, write, check }),
+              })
+            } catch (error) {
+              return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+            }
+          },
+        }),
       // 34570: the hosted iTerm2 tab's own prompt marks, through the same API owner and TTY-matched
       // session as its cell read. Only the prompt rows (OSC 133, and OSC 633 since 34866) take it; every
       // other row keeps its own callback.

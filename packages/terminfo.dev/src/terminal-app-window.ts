@@ -1,8 +1,10 @@
 /** Exact owned terminal window tests and live GUI process identity. No process runs at module load. */
 import { spawnSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { realpathSync } from "node:fs"
 import { basename } from "node:path"
 import { hostname } from "node:os"
+import { OwnedCwdReadError, untilAppSemanticRead } from "./app-semantic-state.ts"
 import { CENSUS, censusDarwinWindows } from "./darwin-capture.ts"
 import { parseLstart } from "./disposable-receipt.ts"
 import { ownedAppProofSpec, type OwnedAppProofSpec } from "./darwin-owned-app.ts"
@@ -694,4 +696,213 @@ export function runningTerminal(): { app: RunningTerminal; raw: string } {
     throw new Error("Running Terminal process lacks PID, bundle or executable path")
   }
   return { app: app as RunningTerminal, raw }
+}
+
+/**
+ * 34870 (@cto 34870-terminalapp-cwd-r1): Terminal.app 2.15's working directory as its window's AXDocument, the read
+ * 34841's owned run qualified (/hh/var/@dev3/34841/ax-0..6.json: OSC 7 moved it, 633 P left it). One constant JXA
+ * script, the TTY and the fence passed as argv, never placed in source. It goes through the Accessibility API
+ * itself (ApplicationServices), NOT System Events: a hosted `tell application "System Events"` raises an Automation
+ * dialog nobody answers (33821). An untrusted caller gets an AXError number back, never a dialog.
+ *
+ * The owned tab is the one whose TTY is the run's, alone in its window; the AX window is the single one of
+ * Terminal's whose title carries the fence. A window without the fence yet answers fence-pending.
+ */
+export const TERMINAL_APP_DOCUMENT_SCRIPT = `ObjC.import("AppKit"); ObjC.import("ApplicationServices");
+function run(argv) {
+  var ttyPath = argv[0], fence = argv[1];
+  function reply(value) { return JSON.stringify(value) }
+  function attribute(element, name) {
+    var ref = Ref();
+    var error = Number($.AXUIElementCopyAttributeValue(element, $(name), ref));
+    return { error: error, value: error === 0 ? ref[0] : undefined };
+  }
+  function text(value) {
+    var object = ObjC.castRefToObject(value);
+    if (object.isKindOfClass($.NSURL)) return ObjC.unwrap(object.absoluteString);
+    if (object.isKindOfClass($.NSString)) return ObjC.unwrap(object);
+    return null;
+  }
+  function owned(app) {
+    var hits = [];
+    for (var w = 0; w < app.windows.length; w++) {
+      var tabs = app.windows[w].tabs;
+      for (var t = 0; t < tabs.length; t++) if (String(tabs[t].tty()) === ttyPath) hits.push(app.windows[w]);
+    }
+    return hits;
+  }
+  try {
+    var app = Application("Terminal");
+    if (!app.running()) return reply({ status: "refused", phase: "owner", reason: "Terminal is not running" });
+    var windows = owned(app);
+    if (windows.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned TTY is in " + windows.length + " Terminal windows" });
+    var win = windows[0], windowId = Number(win.id());
+    if (win.tabs.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has " + win.tabs.length + " tabs" });
+    if (String(win.name()).indexOf(fence) < 0) return reply({ status: "fence-pending", windowId: windowId });
+    var running = $.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.apple.Terminal");
+    if (Number(running.count) !== 1) return reply({ status: "refused", phase: "owner", reason: Number(running.count) + " running Terminal processes" });
+    var trusted = Boolean($.AXIsProcessTrusted());
+    var list = attribute($.AXUIElementCreateApplication(Number(running.objectAtIndex(0).processIdentifier)), "AXWindows");
+    if (list.error !== 0) return reply({ status: "ax-error", phase: "AXWindows", axError: list.error, trusted: trusted });
+    var axWindows = ObjC.castRefToObject(list.value), matches = [];
+    for (var i = 0; i < Number(axWindows.count); i++) {
+      var title = attribute(axWindows.objectAtIndex(i), "AXTitle");
+      if (title.error === 0 && String(text(title.value)).indexOf(fence) >= 0) matches.push(axWindows.objectAtIndex(i));
+    }
+    if (matches.length !== 1) return reply({ status: "refused", phase: "ax-match", reason: matches.length + " accessibility windows carry the fence", trusted: trusted });
+    var document = attribute(matches[0], "AXDocument");
+    if (document.error !== 0) return reply({ status: "ax-error", phase: "AXDocument", axError: document.error, trusted: trusted });
+    var uri = text(document.value);
+    if (uri === null) return reply({ status: "refused", phase: "AXDocument", reason: "AXDocument is neither a URL nor a string", trusted: trusted });
+    var after = owned(app);
+    if (after.length !== 1 || Number(after[0].id()) !== windowId || after[0].tabs.length !== 1) {
+      return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window changed during the read" });
+    }
+    return reply({ status: "read", document: uri, windowId: windowId, trusted: trusted });
+  } catch (error) {
+    return reply({ status: "refused", phase: "script", reason: "the read raised", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null, message: String(error && error.message ? error.message : error) });
+  }
+}`
+
+export type TerminalAppDocumentReply =
+  | { status: "read"; document: string; windowId: number; trusted: boolean }
+  | { status: "fence-pending"; windowId: number }
+  | {
+      status: "refused"
+      phase: string
+      reason: string
+      trusted?: boolean
+      errorNumber?: number | null
+      message?: string
+    }
+  | { status: "ax-error"; phase: string; axError: number; trusted: boolean }
+
+/** One osascript run of the document script; the default spawns /usr/bin/osascript with a 10 s kill. */
+export type TerminalAppDocumentRun = (argv: readonly [tty: string, fence: string]) => {
+  stdout: string
+  stderr: string
+  status: number | null
+  signal: NodeJS.Signals | null
+  error?: Error
+}
+
+const defaultDocumentRun: TerminalAppDocumentRun = ([ttyPath, fence]) => {
+  const result = spawnSync(
+    "/usr/bin/osascript",
+    ["-l", "JavaScript", "-e", TERMINAL_APP_DOCUMENT_SCRIPT, ttyPath, fence],
+    {
+      encoding: "utf8",
+      timeout: 10_000,
+      killSignal: "SIGKILL",
+    },
+  )
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    status: result.status,
+    signal: result.signal,
+    ...(result.error !== undefined && { error: result.error }),
+  }
+}
+
+/** Parse one reply; anything that is not one of the four shapes is a failure, never a reading. */
+export function readTerminalAppDocument(
+  ttyPath: string,
+  fence: string,
+  run: TerminalAppDocumentRun = defaultDocumentRun,
+): TerminalAppDocumentReply {
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(ttyPath)) {
+    throw new OwnedCwdReadError("owner", "the owned TTY is not a device path", `not a TTY: ${JSON.stringify(ttyPath)}`)
+  }
+  if (!/^[A-Za-z0-9-]{8,}$/.test(fence)) {
+    throw new Error(`Terminal.app fence is not a plain nonce: ${JSON.stringify(fence)}`)
+  }
+  const result = run([ttyPath, fence])
+  if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+    const how =
+      result.signal !== null
+        ? `killed by ${result.signal}`
+        : result.error
+          ? "could not start"
+          : `exit ${String(result.status)}`
+    throw new OwnedCwdReadError(
+      "osascript",
+      `osascript ${how}`,
+      `${how}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    throw new OwnedCwdReadError("osascript", "the reply was not JSON", `unparsed reply: ${result.stdout}`)
+  }
+  const reply = parsed as Record<string, unknown>
+  const ok =
+    typeof reply === "object" &&
+    reply !== null &&
+    ((reply.status === "read" && typeof reply.document === "string" && typeof reply.trusted === "boolean") ||
+      (reply.status === "fence-pending" && typeof reply.windowId === "number") ||
+      (reply.status === "refused" && typeof reply.phase === "string" && typeof reply.reason === "string") ||
+      (reply.status === "ax-error" &&
+        typeof reply.phase === "string" &&
+        Number.isSafeInteger(reply.axError) &&
+        typeof reply.trusted === "boolean"))
+  if (!ok) throw new OwnedCwdReadError("osascript", "the reply had no known shape", `unknown reply: ${result.stdout}`)
+  return reply as TerminalAppDocumentReply
+}
+
+/**
+ * The owned cwd port for readAppSemanticState (34870). Every read, the baseline included, writes its own OSC 2 fence
+ * (the phase's marker, or a fresh baseline nonce) and polls the bounded reader until the owned window's name carries
+ * it; only then is AXDocument read, so each phase's value is fresh. `check` re-proves the live owner around every
+ * native read. Only a "read" reply is a value: every other outcome throws an OwnedCwdReadError naming its phase and
+ * error number, with the raw reply kept as the private diagnostic.
+ */
+export function terminalAppOwnedCwd(options: {
+  readonly tty: string
+  readonly write: (text: string) => void
+  readonly check: () => void
+  readonly run?: TerminalAppDocumentRun
+}) {
+  return async (checkpoint?: { row: number; marker: string }) => {
+    const fence = checkpoint?.marker ?? `terminfo-baseline-${randomUUID()}`
+    const reads: TerminalAppDocumentReply[] = []
+    options.check()
+    options.write(`\x1b]2;${fence}\x07`)
+    try {
+      await untilAppSemanticRead(
+        () => {
+          options.check()
+          const reply = readTerminalAppDocument(options.tty, fence, options.run)
+          reads.push(reply)
+          options.check()
+          return reply.status
+        },
+        (status) => status !== "fence-pending",
+        "Terminal.app title fence",
+        [],
+      )
+    } catch (error) {
+      if (error instanceof OwnedCwdReadError) throw error
+      if (reads.at(-1)?.status === "fence-pending") {
+        throw new OwnedCwdReadError("fence", "the window title never carried the fence", JSON.stringify(reads))
+      }
+      throw error
+    }
+    const last = reads.at(-1) as TerminalAppDocumentReply
+    if (last.status === "read") return { uri: last.document, detail: { tty: options.tty, fence, reads } }
+    if (last.status === "ax-error") {
+      throw new OwnedCwdReadError(
+        last.phase,
+        `AXError ${last.axError} (process trusted for Accessibility: ${String(last.trusted)})`,
+        JSON.stringify(reads),
+      )
+    }
+    if (last.status === "refused") {
+      const number = last.errorNumber === undefined || last.errorNumber === null ? "" : ` (error ${last.errorNumber})`
+      throw new OwnedCwdReadError(last.phase, `${last.reason}${number}`, JSON.stringify(reads))
+    }
+    throw new Error(`Terminal.app document read ended on ${last.status}`)
+  }
 }
