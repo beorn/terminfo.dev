@@ -2040,8 +2040,9 @@ test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its e
     for (const surface of [
       "CDHash arm64 113489a0",
       "Select to Previous Mark",
+      "elements_complete true",
+      "no attributed-string, style or mark attribute",
       "Terminal.sdef SHA256 efc515ec",
-      "OSC 7",
     ]) {
       expect(mac[id]).toContain(surface)
     }
