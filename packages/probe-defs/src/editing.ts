@@ -49,12 +49,15 @@ function loneDa1Answer(outcome: TerminalQueryOutcome): boolean {
   return answer !== undefined && outcome.raw.replace(answer, "").trim() === ""
 }
 
-/** The DA1 asked alone just before a graded request went unanswered: that control's own measured failure. */
-function beforeControlFailure(request: number, response: string): ProbeCallbackResult {
+/**
+ * The DA1 asked alone just before a graded request went unanswered: that control's own measured failure. When the
+ * DA1 written with the request did answer, the reason says so, so the line does not read as a silent terminal.
+ */
+function beforeControlFailure(request: number, response: string, requestDa1Answered = false): ProbeCallbackResult {
   return {
     response,
     ...replyFailure(
-      `no usable checksum reply; the DA1 asked alone just before request ${String(request)} got no lone DA1 answer within ${String(DECRQCRA_DA1_ALONE_TIMEOUT_MS)} ms`,
+      `no usable checksum reply; the DA1 asked alone just before request ${String(request)} got no lone DA1 answer within ${String(DECRQCRA_DA1_ALONE_TIMEOUT_MS)} ms${requestDa1Answered ? "; the DA1 written with the request did answer" : ""}`,
     ),
   }
 }
@@ -1065,7 +1068,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               da1Before: before.raw,
               reply: reply.raw,
             })
-            return beforeControlFailure(reads.length + 1, response)
+            return beforeControlFailure(reads.length + 1, response, true)
           }
           if (reply.raw.length === 0) {
             const after = await ctx.queryOutcome(DA1_ALONE, DA1_ALONE_REPLY, DECRQCRA_DA1_ALONE_TIMEOUT_MS)

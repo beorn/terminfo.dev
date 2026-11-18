@@ -1298,7 +1298,8 @@ it("grades a sentinel-only checksum request only when the DA1 asked alone before
   )
   expect(record(failed.result)).toMatchObject({
     status: "probe-invalid",
-    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
+    reason:
+      "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms; the DA1 written with the request did answer",
   })
 })
 it("takes the DA1 baseline before each graded request, so a silent second request is judged by its own", async () => {
