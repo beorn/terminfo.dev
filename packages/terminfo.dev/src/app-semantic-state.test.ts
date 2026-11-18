@@ -329,6 +329,34 @@ test.each([
   { featureId: "extensions.osc633-e", source: "leaky-unknown", outcome: "controls-failed" },
   { featureId: "extensions.osc633-c", source: "stray-execution", outcome: "invalid" },
   { featureId: "extensions.osc633-d", source: "unpaired-end", outcome: "invalid" },
+  // 34861 (@cto 34861-editor-criterion-r2): A, B and P decide only a qualified negative; a qualified positive is
+  // PROBE TODO because no position or history is shown. Each failing source removes one deciding observation.
+  ...(["extensions.osc133-a", "extensions.osc633-a", "extensions.osc133-b", "extensions.osc633-b"] as const).map(
+    (featureId) => ({ featureId, source: "faithful", outcome: "positive-todo" }),
+  ),
+  { featureId: "extensions.osc133-a", source: "drops-133-a", outcome: "unsupported" },
+  { featureId: "extensions.osc633-a", source: "drops-633-a", outcome: "unsupported" },
+  { featureId: "extensions.osc133-a", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-a", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-a", source: "high-without-e", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-b", source: "drops-133-b", outcome: "unsupported" },
+  { featureId: "extensions.osc633-b", source: "drops-633-b", outcome: "unsupported" },
+  { featureId: "extensions.osc133-b", source: "start-without-b", outcome: "controls-failed" },
+  // The osc633-b controls are OSC 133, so an editor deaf to 633 qualifies them and reads the target empty.
+  { featureId: "extensions.osc633-b", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc133-p", source: "faithful", outcome: "unsupported" },
+  { featureId: "extensions.osc133-p", source: "p-as-a", outcome: "positive-todo" },
+  { featureId: "extensions.osc133-p", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-p", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "faithful", outcome: "supported" },
+  { featureId: "extensions.semantic-prompts", source: "drops-133-a", outcome: "todo" },
+  { featureId: "extensions.semantic-prompts", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "letter-as-c", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "drops-133-b", outcome: "controls-failed" },
+  { featureId: "extensions.osc-633-vscode", source: "vscode-nonce-gated", outcome: "supported" },
+  { featureId: "extensions.osc-633-vscode", source: "faithful", outcome: "supported" },
+  { featureId: "extensions.osc-633-vscode", source: "high-without-e", outcome: "controls-failed" },
+  { featureId: "extensions.osc-633-vscode", source: "ignores-633", outcome: "controls-failed" },
 ] as const)(
   "editor execution row $featureId from a $source native source grades $outcome",
   async ({ featureId, source, outcome }) => {
@@ -378,47 +406,94 @@ test.each([
       pending.push({ eventSequence: ++eventSequence, kind, at: Date.now(), execution: id, ...fields })
       if (kind === "end") current = undefined
     }
+    // VS Code 1.142.0 command detection, in the order the bytes arrive (34861). A sets the prompt start; B the
+    // command start at the cursor column; C fires the start event only after a command start
+    // (UnixPtyHeuristics.handleCommandExecuted); D synthesizes a missing C, ends, and resets the command, except with
+    // no command start, where nothing fires and nothing resets. Confidence: High after E, Medium with a prompt
+    // start, a command start past column 0 and a one-line command, else Low (commandDetectionCapability.ts:93-123).
+    let promptStart = false
+    let commandStart: number | undefined
+    let executed = false
+    let typed = ""
+    let column = 0
+    const start = (fields: Record<string, unknown> = {}) => {
+      const confidence =
+        source === "high-without-e" || commandLine !== undefined
+          ? 2
+          : (promptStart || source === "medium-without-a") &&
+              commandStart !== undefined &&
+              commandStart > 0 &&
+              !typed.trim().includes("\n")
+            ? 1
+            : 0
+      const value = commandLine?.value ?? typed.trim()
+      emit("start", {
+        commandLine: {
+          present: true,
+          valueSha256: digest(value),
+          valueLength: value.length,
+          confidence: { present: true, value: confidence },
+          isTrusted: { present: true, value: commandLine?.isTrusted ?? false },
+        },
+        ...fields,
+      })
+      executed = true
+    }
+    const reset = () => {
+      promptStart = false
+      commandStart = undefined
+      executed = false
+      commandLine = undefined
+      typed = ""
+    }
     const parse = (bytes: string) => {
-      for (const match of bytes.matchAll(/\x1b\](\d+);([A-E])(?:;([^\x07]*))?\x07/gu)) {
-        const [, selector, letter, argument] = match
+      for (const match of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07|([^\x1b]+)/gu)) {
+        const [, selector, body = "", text] = match
+        if (text !== undefined) {
+          if (commandStart !== undefined && !executed) typed += text
+          for (const character of text) column = character === "\r" || character === "\n" ? 0 : column + 1
+          continue
+        }
+        const [letter = "", ...rest] = body.split(";")
+        const argument = rest.join(";")
         const honoured = selector === "133" || selector === "633" || (source === "leaky-unknown" && selector === "9999")
         if (!honoured || (source === "ignores-633" && selector === "633")) continue
+        const dropped = (mark: string) => source === `drops-${selector}-${mark}`
+        if ((letter === "A" || (letter === "P" && source === "p-as-a")) && !dropped("a")) promptStart = true
+        if (letter === "B" && !dropped("b")) {
+          commandStart = column
+          typed = ""
+        }
         if (letter === "E" && selector !== "133") {
-          const [text = "", nonce] = (argument ?? "").split(";")
+          const [line = "", nonce] = argument.split(";")
           const isTrusted = nonce !== undefined && nonce !== "" && nonce === editorNonce
-          // VS Code 1.142.0 / Cursor 3.25.9 CommandDetectionCapability.setCommandLine + UnixPtyHeuristics:
-          // setConfidentCommandLine runs only when nonce === this._nonce; without it, 633;C overwrites command with "".
+          // setConfidentCommandLine runs only when nonce === this._nonce; without it, C takes the buffer text.
           commandLine = {
-            value: source === "vscode-nonce-gated" && !isTrusted ? "" : text,
+            value: source === "vscode-nonce-gated" && !isTrusted ? typed.trim() : line,
             confidence: 2,
             isTrusted,
           }
         }
-        if (letter === "C") {
-          const line =
-            commandLine === undefined
-              ? { present: false, reason: "Native execution.commandLine is undefined" }
-              : {
-                  present: true,
-                  valueSha256: digest(commandLine.value),
-                  valueLength: commandLine.value.length,
-                  confidence: { present: true, value: commandLine.confidence },
-                  isTrusted: { present: true, value: commandLine.isTrusted },
-                }
+        if (letter === "C" || (letter === "Y" && source === "letter-as-c")) {
           if (source === "unpaired-end") {
             commandLine = undefined
             continue
           }
-          emit("start", { commandLine: line })
-          commandLine = undefined
-          if (source === "stray-execution" && selector === "633") emit("start", { commandLine: line })
+          if (commandStart === undefined && source !== "start-without-b") continue
+          start()
+          if (source === "stray-execution" && selector === "633") emit("start", {})
         }
         if (letter === "D") {
+          if (source !== "unpaired-end") {
+            if (commandStart === undefined && source !== "start-without-b") continue
+            if (!executed) start()
+          }
           emit("end", {
             startSeen: current !== undefined,
             commandLine: { present: false, reason: "Native execution.commandLine is undefined" },
             exitCode: { present: true, value: Number(argument) },
           })
+          reset()
         }
       }
     }
@@ -496,16 +571,26 @@ test.each([
         expect(result.tests?.[0]?.status).toBe("probe-invalid")
       } else if (outcome === "invalid") {
         expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("execution") })
+      } else if (outcome === "positive-todo") {
+        // A qualified positive keeps its measured states and says which facts the API cannot show.
+        expect(reading).toMatchObject({ status: "unavailable", reason: expect.stringContaining("earlier history") })
+        expect(result.observation).toBeUndefined()
+        expect(result.tests?.[0]?.status).toBe("probe-todo")
+        expect((reading.detail as { executionStates?: unknown }).executionStates).toBeDefined()
       } else {
+        expect(reading.status).toBe("measured")
         expect(result.observation).toBeUndefined()
         expect(result.tests?.[0]?.status).toBe("probe-todo")
       }
-      // Stages are written apart: A/B, then C (with E), then D; never the whole sequence in one write.
-      const selector = featureId.includes("133") ? "133" : "633"
-      const target = commands.filter((bytes) => bytes.includes(`]${selector};`))
-      if (reading.status === "measured") {
-        expect(target.some((bytes) => bytes.includes(`]${selector};A`) && !bytes.includes(`]${selector};C`))).toBe(true)
-        expect(target.some((bytes) => bytes.includes(`]${selector};C`) && !bytes.includes(`]${selector};D`))).toBe(true)
+      // Stages are written apart: setup (A/B), then C (with E), then D; never the whole sequence in one write.
+      if (reading.status !== "invalid") {
+        expect(commands.some((bytes) => /\]\d+;[AB]/u.test(bytes) && !/\]\d+;C/u.test(bytes))).toBe(true)
+        expect(commands.some((bytes) => /\]\d+;C/u.test(bytes) && !/\]\d+;D/u.test(bytes))).toBe(true)
+      }
+      if (featureId === "extensions.osc133-b" || featureId === "extensions.osc633-b") {
+        // The omission trial is the last one: no B, so VS Code fires nothing and nothing resets.
+        const trials = (reading.detail as { executionTrials: Array<{ phase: string; state: string }> }).executionTrials
+        expect(trials.at(-1)).toMatchObject({ phase: "omitted", state: source === "start-without-b" ? "start" : "none" })
       }
       expect(commands.join("")).not.toContain("executeCommand")
       if (featureId === "extensions.osc633-d" && outcome === "supported") {

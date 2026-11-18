@@ -2426,17 +2426,32 @@ type NativeExecutionFact = {
  * Native editor rows qualified from execution events that the collector's own written marks cause (34685, @cto
  * 34685-execution-scope-ruling-1435). C and D use the opposite selector as the handled control; 633 E uses a known
  * E payload, since OSC 133 has no E. Every other editor row keeps its refusal.
+ *
+ * A, B and P (34861, @cto 34861-editor-criterion-r2): the execution API shows command-line confidence and whether an
+ * execution started, never a mark's position or earlier history, so these rows decide only a qualified negative and
+ * a qualified positive stays PROBE TODO. B, C and D (A and C and D for B rows) stay in the control family. The
+ * composites semantic-prompts and osc-633-vscode name no positions, so they may read Supported; they add no negative.
  */
 const NATIVE_EXECUTION_ROWS: Record<
   string,
-  { mark: "c" | "d" | "e"; selector: "133" | "633"; control: "133" | "633" }
+  { mark: "a" | "b" | "p" | "c" | "d" | "e" | "semantic" | "vscode"; selector: "133" | "633"; control: "133" | "633" }
 > = {
   "extensions.osc633-c": { mark: "c", selector: "633", control: "133" },
   "extensions.osc133-c": { mark: "c", selector: "133", control: "633" },
   "extensions.osc633-d": { mark: "d", selector: "633", control: "133" },
   "extensions.osc133-d": { mark: "d", selector: "133", control: "633" },
   "extensions.osc633-e": { mark: "e", selector: "633", control: "633" },
+  "extensions.osc133-a": { mark: "a", selector: "133", control: "633" },
+  "extensions.osc633-a": { mark: "a", selector: "633", control: "133" },
+  "extensions.osc133-b": { mark: "b", selector: "133", control: "633" },
+  "extensions.osc633-b": { mark: "b", selector: "633", control: "133" },
+  "extensions.osc133-p": { mark: "p", selector: "133", control: "633" },
+  "extensions.semantic-prompts": { mark: "semantic", selector: "133", control: "133" },
+  "extensions.osc-633-vscode": { mark: "vscode", selector: "633", control: "633" },
 }
+
+/** The API's TerminalShellExecutionCommandLineConfidence: Low = 0, Medium = 1, High = 2 (vscode.d.ts 1.142.0). */
+const COMMAND_LINE_CONFIDENCE = ["low", "medium", "high"] as const
 
 /** Public diagnostic for a native editor reading, which the committed run record keeps verbatim (34666). */
 type NativeFailure = { diagnostic: string; privateEvidence?: string; sha256?: string; bytes?: number }
@@ -2470,6 +2485,8 @@ async function readNativeEditorState(input: {
     restoration?: object
     nativeFailure?: NativeFailure
     executionTrials?: Array<{ phase: string; selector: string; state: string; commandLine?: object }>
+    /** A qualified positive that the row cannot grade keeps its measured control and target states (34861). */
+    executionStates?: object
   } = { nativeObservations: [], captures: [] }
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (!captureDirectory || !isAbsolute(captureDirectory)) {
@@ -2693,26 +2710,38 @@ async function readNativeEditorState(input: {
       }
       return window
     }
-    const trial = async (
+    // One trial in three writes, each read apart: setup (A/B), the C stage, then D. `complete` waits the full
+    // deadline after D even with no start, so an empty window is a complete observation (34861: with no B, VS Code
+    // fires no event at all). `synthesized` admits the start-and-end pair D creates when C never arrived
+    // (commandDetectionCapability.ts:390-397); only the C-stage window counts as this trial's start.
+    const staged = async (
       phase: string,
-      selector: string,
-      options: { code?: number; command?: string; commandSelector?: string; nonce?: string; full: boolean },
+      bytes: { ab: string; c: string; d: string },
+      options: { full: boolean; complete?: boolean; synthesized?: boolean; ended?: boolean },
     ) => {
-      input.write(osc(`${selector};A`) + osc(`${selector};B`))
+      input.write(bytes.ab)
       if ((await read(`${phase}-ab`, "start", false)).length !== 0) {
         throw new Error(`Native editor execution event arrived before C in ${phase}; the trial cannot be attributed`)
       }
-      const suffix = options.nonce === undefined || options.nonce === "" ? "" : `;${options.nonce}`
-      const command =
-        options.command === undefined ? "" : osc(`${options.commandSelector ?? selector};E;${options.command}${suffix}`)
-      input.write(command + osc(`${selector};C`))
+      input.write(bytes.c)
       const afterC = await read(`${phase}-c`, "start", options.full)
       if (afterC.length > 1 || afterC.some((fact) => fact.kind !== "start")) {
         throw new Error(`Native editor execution window after C in ${phase} holds extra or unpaired facts`)
       }
       const start = afterC[0]
-      input.write(osc(`${selector};D;${options.code ?? 0}`))
-      const afterD = await read(`${phase}-d`, "end", options.full && start !== undefined)
+      input.write(bytes.d)
+      const afterD = await read(`${phase}-d`, "end", options.complete === true || (options.full && start !== undefined))
+      const [first, second] = afterD
+      if (
+        options.synthesized === true &&
+        start === undefined &&
+        afterD.length === 2 &&
+        first?.kind === "start" &&
+        second?.kind === "end" &&
+        second.execution === first.execution
+      ) {
+        return { start, end: second, synthesized: first }
+      }
       if (afterD.length > 1 || afterD.some((fact) => fact.kind !== "end")) {
         throw new Error(`Native editor execution window after D in ${phase} holds extra or unpaired facts`)
       }
@@ -2724,8 +2753,46 @@ async function readNativeEditorState(input: {
       if (start !== undefined && end !== undefined && end.execution !== start.execution) {
         throw new Error(`Native editor execution end in ${phase} belongs to another execution`)
       }
+      if (options.ended === true && start !== undefined && end === undefined) {
+        // A started trial that never ends would leave its command state for the next one (@cto ruling 2, fix 3).
+        throw new Error(`Native editor execution in ${phase} did not end at D; the next trial would not start clean`)
+      }
       return { start, end }
     }
+    const trial = (
+      phase: string,
+      selector: string,
+      options: { code?: number; command?: string; commandSelector?: string; nonce?: string; full: boolean },
+    ) => {
+      const suffix = options.nonce === undefined || options.nonce === "" ? "" : `;${options.nonce}`
+      const command =
+        options.command === undefined ? "" : osc(`${options.commandSelector ?? selector};E;${options.command}${suffix}`)
+      return staged(
+        phase,
+        {
+          ab: osc(`${selector};A`) + osc(`${selector};B`),
+          c: command + osc(`${selector};C`),
+          d: osc(`${selector};D;${options.code ?? 0}`),
+        },
+        { full: options.full },
+      )
+    }
+    // A prompt and a one-line command, so B sits past column 0 and VS Code can read Medium; the marks given are
+    // written in place, an omitted mark is simply absent, and every started trial must end at D (34861).
+    const prompted = (
+      phase: string,
+      marks: { a?: string; b?: string; e?: string; c?: string; d: string },
+      options: { complete?: boolean; synthesized?: boolean } = {},
+    ) =>
+      staged(
+        phase,
+        {
+          ab: (marks.a === undefined ? "" : osc(marks.a)) + "$ " + (marks.b === undefined ? "" : osc(marks.b)) + "true",
+          c: (marks.e === undefined ? "" : osc(marks.e)) + (marks.c === undefined ? "" : osc(marks.c)) + "\r\nok",
+          d: osc(marks.d) + "\r\n",
+        },
+        { full: true, ended: true, ...options },
+      )
     type Trial = Awaited<ReturnType<typeof trial>>
     const started = (result: Trial) => (result.start === undefined ? "none" : "start")
     const ended = (result: Trial) =>
@@ -2739,13 +2806,19 @@ async function readNativeEditorState(input: {
       result.start?.commandLine?.present === true && result.start.commandLine.valueSha256 === digest(command)
         ? "cmd:match"
         : "cmd:absent"
+    const confidence = (result: Trial) => {
+      if (result.start === undefined) return "none"
+      const value = result.start.commandLine?.confidence
+      if (value?.present !== true || typeof value.value !== "number") return "confidence:absent"
+      return COMMAND_LINE_CONFIDENCE[value.value] ?? `confidence:${value.value}`
+    }
     const record = (phase: string, selector: string, state: string, result: Trial) => {
       const line = result.start?.commandLine
       trials.push({
         phase,
         selector,
         state,
-        ...(row.mark === "e" && line !== undefined
+        ...((row.mark === "e" || row.mark === "vscode") && line !== undefined
           ? {
               commandLine: {
                 present: line.present,
@@ -2758,12 +2831,101 @@ async function readNativeEditorState(input: {
       })
       return state
     }
+    // E is honoured only with the editor's own nonce: CommandDetectionCapability.setCommandLine then sets the
+    // PromptInputModel, which UnixPtyHeuristics.handleCommandExecuted copies into the command at C (34894).
+    const rawNonce = process.env.VSCODE_NONCE
+    const nonce = typeof rawNonce === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(rawNonce) ? rawNonce : undefined
     try {
       facts(await exchange("initial"))
       let unknown: { before: string; after: string }
       let handled: { before: string; after: string; expected: string }
       let target: { before: string; after: string; expected: string }
-      if (row.mark === "c") {
+      // A qualified positive on an A, B or P row: the API shows no position or history (@cto 34861 ruling 2).
+      let positive = false
+      if (row.mark === "a" || row.mark === "p") {
+        // VS Code reads Medium only with a prompt start, a command start past column 0 and a one-line command
+        // (commandDetectionCapability.ts:93-123), so A moves the start event's confidence from Low to Medium.
+        // Two fresh positives bracket the target and the omission runs last; it is the separate Low negative.
+        const promptTrial = async (phase: string, mark: string | undefined) => {
+          const marks = { b: `${row.control};B`, c: `${row.control};C`, d: `${row.control};D;0` }
+          const result = await prompted(phase, mark === undefined ? marks : { a: mark, ...marks })
+          return record(phase, mark ?? "none", confidence(result), result)
+        }
+        const [early, late] = row.mark === "a" ? [`${row.control};A`, `${row.control};A`] : ["133;A", "633;A"]
+        const before = await promptTrial("handled-before", early)
+        const result = await promptTrial("target", row.mark === "a" ? `${row.selector};A` : "133;P")
+        const after = await promptTrial("handled-after", late)
+        const omitted = await promptTrial("omitted", undefined)
+        // `unknown` carries the omission control here: without A the start must read Low.
+        unknown = { before: "low", after: omitted }
+        handled = { before: "low|low", after: `${before}|${after}`, expected: "medium|medium" }
+        // No reading equals this expected state, so the grader can only return Unsupported (Low) or PROBE TODO.
+        target = { before: "low", after: result, expected: "medium-at-known-positions" }
+        positive = result === "medium"
+      } else if (row.mark === "b") {
+        // With no command start VS Code fires no execution event at all (UnixPtyHeuristics.handleCommandExecuted,
+        // commandDetectionCapability.ts:574-589), so B decides whether one execution starts. Each window is read
+        // to its full deadline, so an empty trial is a complete observation, never an invented end.
+        const commandTrial = async (phase: string, mark: string | undefined) => {
+          const marks = { a: `${row.control};A`, c: `${row.control};C`, d: `${row.control};D;0` }
+          const result = await prompted(phase, mark === undefined ? marks : { ...marks, b: mark }, { complete: true })
+          return record(phase, mark ?? "none", started(result), result)
+        }
+        const before = await commandTrial("handled-before", `${row.control};B`)
+        const result = await commandTrial("target", `${row.selector};B`)
+        const after = await commandTrial("handled-after", `${row.control};B`)
+        const omitted = await commandTrial("omitted", undefined)
+        unknown = { before: "none", after: omitted }
+        handled = { before: "none|none", after: `${before}|${after}`, expected: "start|start" }
+        target = { before: "none", after: result, expected: "start-at-known-positions" }
+        positive = result === "start"
+      } else if (row.mark === "semantic") {
+        // Prompt start (Medium against the no-A Low control), output start (a start in the C-stage window and
+        // none before) and command end at both exit codes. Without C, and with an unknown letter in its place,
+        // the C stage must start nothing; D may then synthesize the start, which does not count.
+        const marks = { a: "133;A", b: "133;B", c: "133;C" }
+        const full = (result: Trial) => `${confidence(result)}:${ended(result)}`
+        const zero = await prompted("target-0", { ...marks, d: "133;D;0" })
+        const one = await prompted("target-1", { ...marks, d: "133;D;1" })
+        const noPrompt = await prompted("handled", { b: "133;B", c: "133;C", d: "133;D;0" })
+        const noOutput = await prompted("unknown-no-c", { a: "133;A", b: "133;B", d: "133;D;0" }, { synthesized: true })
+        const letter = await prompted("unknown-letter", { ...marks, c: "133;Y", d: "133;D;0" }, { synthesized: true })
+        unknown = {
+          before: "none|none",
+          after: `${record("unknown-no-c", "133", started(noOutput), noOutput)}|${record("unknown-letter", "133", started(letter), letter)}`,
+        }
+        handled = { before: "none", after: record("handled", "133", confidence(noPrompt), noPrompt), expected: "low" }
+        // The row adds no negative branch (ruling 2): `before` is a state no reading takes, so the grader can
+        // return Supported or PROBE TODO, never Unsupported.
+        target = {
+          before: "none",
+          after: `${record("target-0", "133", full(zero), zero)}|${record("target-1", "133", full(one), one)}`,
+          expected: "medium:end:0|medium:end:1",
+        }
+      } else if (row.mark === "vscode") {
+        // VS Code-specific metadata: E makes the command line High and, with the nonce, its value. Two distinct
+        // payloads over the same buffer text, and the same setup without E read first, below High.
+        const marks = { a: "633;A", b: "633;B", c: "633;C", d: "633;D;0" }
+        const suffix = nonce === undefined ? "" : `;${nonce}`
+        const omitted = await prompted("unknown-no-e", marks)
+        const omittedState = confidence(omitted)
+        const known = `terminfo-control-${randomUUID()}`
+        const first = await prompted("handled", { ...marks, e: `633;E;${known}${suffix}` })
+        const chosen = `terminfo-target-${randomUUID()}`
+        const second = await prompted("target", { ...marks, e: `633;E;${chosen}${suffix}` })
+        const below = omittedState === "low" || omittedState === "medium" ? "below-high" : omittedState
+        unknown = { before: "below-high", after: record("unknown-no-e", "633", below, omitted) }
+        handled = {
+          before: "cmd:absent",
+          after: record("handled", "633", `${confidence(first)}:${commanded(first, known)}`, first),
+          expected: "high:cmd:match",
+        }
+        target = {
+          before: "cmd:absent",
+          after: record("target", "633", `${confidence(second)}:${commanded(second, chosen)}`, second),
+          expected: "high:cmd:match",
+        }
+      } else if (row.mark === "c") {
         const control = await trial("unknown", "9999", { full: false })
         unknown = { before: "none", after: record("unknown", "9999", started(control), control) }
         const known = await trial("handled", row.control, { full: true })
@@ -2788,8 +2950,6 @@ async function readNativeEditorState(input: {
         // VS Code 1.142.0 and Cursor 3.25.9 CommandDetectionCapability.setCommandLine updates PromptInputModel only
         // when the E sequence's nonce matches VSCODE_NONCE, and UnixPtyHeuristics.handleCommandExecuted overwrites
         // currentCommand.command from PromptInputModel at 633;C (34894, run 44267909484).
-        const rawNonce = process.env.VSCODE_NONCE
-        const nonce = typeof rawNonce === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(rawNonce) ? rawNonce : undefined
         const unknownCommand = `terminfo-unknown-${randomUUID()}`
         const control = await trial("unknown", "633", {
           command: unknownCommand,
@@ -2815,7 +2975,20 @@ async function readNativeEditorState(input: {
       }
       detail.captures.push({ phase: "target", observation: await input.editor.capture(input.featureId, "target") })
       executionCaptured = true
-      executionReading = { status: "measured", reader: "state", runId: input.runId, unknown, handled, target, detail }
+      const qualified =
+        unknown.before === unknown.after &&
+        handled.before !== handled.expected &&
+        handled.after === handled.expected
+      if (positive && qualified) {
+        detail.executionStates = { unknown, handled, target }
+        unavailableReason =
+          row.mark === "b"
+            ? "Native editor started one execution after the target B with qualified controls; the execution API shows neither the mark's exact position nor earlier history, so the positive branch stays PROBE TODO"
+            : "Native editor read Medium command-line confidence after the target with qualified controls; the execution API shows neither exact prompt positions nor earlier history, so the positive branch stays PROBE TODO"
+        executionReading = { status: "unavailable", reason: unavailableReason, detail }
+      } else {
+        executionReading = { status: "measured", reader: "state", runId: input.runId, unknown, handled, target, detail }
+      }
     } catch (error) {
       executionReading = {
         status: unavailableReason === undefined ? "invalid" : "unavailable",
