@@ -1696,8 +1696,10 @@ const itermFixtureText = (value: string, nonce: string) =>
  * GetPrompt read of the session's last prompt mark; no row borrows another row's read. A read is projected
  * to the fields a row can change, with the mark named relative to the baseline mark: `same`, `new` or
  * `absent` (never an absolute id or row). The OSC 133 rows' handled control is the fence variable itself, as
- * Kitty's is its title. OSC 133;P has no handler in iTerm2 3.6.11 (PromptStateMachine handles A/B/C/D only)
- * and no prompt field, so its row stays unresolved rather than certified by another letter (R3).
+ * Kitty's is its title. OSC 133;P (34866, @cto osc133p-r2, replacing R3 for this reader) is the secondary
+ * prompt start: two OSC 133;A controls at the criterion's cells must each register a new prompt mark before
+ * two bare P targets at the same cells are read. P adding no mark is Unsupported; any P mark stays a TODO,
+ * since a line mark cannot show the target column (with the history read kept in the reading).
  *
  * The OSC 633 rows (34866) need a control that moves the graded projection, so a fence alone never
  * qualifies them: A-D and the composite take their 133 counterpart; E takes typed command text against
@@ -1716,13 +1718,6 @@ export async function readITermPromptMarks(input: {
   /** Opens the owned session's prompt API for one row; only rows that read anything open it. */
   withSession: (work: (session: ITermPromptSession) => Promise<AppSemanticReading>) => Promise<AppSemanticReading>
 }): Promise<AppSemanticReading> {
-  if (input.featureId === "extensions.osc133-p") {
-    return {
-      status: "unavailable",
-      reason:
-        "iTerm2 3.6.11 has no OSC 133 P handler (PromptStateMachine handles A, B, C and D only) and its prompt API has no field that could observe P; unresolved",
-    }
-  }
   if (input.featureId === "extensions.osc633-p" && input.privateWrite === undefined) {
     return {
       status: "invalid",
@@ -1731,14 +1726,26 @@ export async function readITermPromptMarks(input: {
   }
   const counterpart = ITERM_633_COUNTERPARTS[input.featureId]
   const markRow = ITERM_PROMPT_ROWS[counterpart ?? input.featureId]
-  if (markRow === undefined && input.featureId !== "extensions.osc633-e" && input.featureId !== "extensions.osc633-p") {
+  if (
+    markRow === undefined &&
+    input.featureId !== "extensions.osc633-e" &&
+    input.featureId !== "extensions.osc633-p" &&
+    input.featureId !== "extensions.osc133-p"
+  ) {
     throw new Error(`No iTerm2 prompt-mark reader for ${input.featureId}`)
   }
   return input.withSession(async (session) => {
     const osc = promptOsc
     const nonce = randomUUID().slice(0, 8)
     const phases: object[] = []
-    const detail: { reader: string; nonce: string; phases: object[]; nonceVerification?: string } = {
+    const detail: {
+      reader: string
+      nonce: string
+      phases: object[]
+      nonceVerification?: string
+      column?: string
+      history?: string | object
+    } = {
       reader: "iterm2-prompt",
       nonce,
       phases,
@@ -1827,9 +1834,11 @@ export async function readITermPromptMarks(input: {
           ? await measureCommandText()
           : input.featureId === "extensions.osc633-p"
             ? await measureDirectory()
-            : counterpart !== undefined && markRow !== undefined
-              ? await measureCounterpart(markRow)
-              : await measureRow(markRow as ITermPromptRow)
+            : input.featureId === "extensions.osc133-p"
+              ? await measureSecondaryPrompt()
+              : counterpart !== undefined && markRow !== undefined
+                ? await measureCounterpart(markRow)
+                : await measureRow(markRow as ITermPromptRow)
     } catch (error) {
       reading = {
         status: "invalid",
@@ -1979,6 +1988,128 @@ export async function readITermPromptMarks(input: {
         unknown: { before: start, after: unknown },
         handled: { before: start, after: control, expected: controlExpected },
         target: { before: reset, after: target, expected: JSON.stringify({ command: "text", text: payload }) },
+        detail,
+      }
+    }
+
+    async function measureSecondaryPrompt(): Promise<AppSemanticReading> {
+      // features.json osc133-p: two A controls, then bare P at row 0 col 0 and row 1 col 2. iTerm2 3.6.11
+      // prompt marks are line marks (VT100ScreenMutableState setPromptStartLine writes prompt_range x 0), so a
+      // mark is read as new-or-same plus its line relative to the baseline mark's line; no column is readable.
+      const cells: [number, number][] = [
+        [0, 0],
+        [1, 2],
+      ]
+      const at = ([row, column]: [number, number]) => `\x1b[${row + 1};${column + 1}H`
+      const plainRow: ITermPromptRow = { tail: () => "", feeds: [], expected: [] }
+      let originLine = 0n
+      let lastId: string | undefined
+      /** Bind line numbers and mark identity to the baseline mark just read. */
+      const anchorAt = (read: ITermPromptRead, name: string) => {
+        const range = read.status === "mark" ? read.mark.promptRange : undefined
+        if (range === undefined) throw new BaselineMiss(`iTerm2 ${name} mark has no prompt range to anchor lines`)
+        originLine = BigInt(range.start.y)
+        lastId = baselineId
+      }
+      const position = (read: ITermPromptRead) => {
+        if (read.status !== "mark") return { mark: "prompt-unavailable" }
+        const { uniquePromptId: id, promptRange: range } = read.mark
+        const mark = id === undefined ? "absent" : id === lastId ? "same" : "new"
+        lastId = id
+        return { mark, line: range === undefined ? "absent" : Number(BigInt(range.start.y) - originLine) }
+      }
+      /** The fields a later write cannot move. GetPrompt fills output end from the cursor, and command and
+       * directory from the session when the mark has none (PTYSession getPromptResponseForMark), so those are
+       * not history. */
+      const stable = (read: ITermPromptRead) =>
+        read.status !== "mark"
+          ? read.status
+          : JSON.stringify([
+              read.mark.uniquePromptId,
+              read.mark.promptState,
+              read.mark.exitStatus,
+              read.mark.promptRange,
+              read.mark.commandRange,
+              read.mark.outputRange?.start,
+            ])
+      const history = async (): Promise<Map<string, string> | string> => {
+        try {
+          const marks = new Map<string, string>()
+          for (const id of await session.listPrompts()) marks.set(id, stable(await session.readPrompt(id)))
+          return marks
+        } catch (error) {
+          return message(error)
+        }
+      }
+      if ((await baseline("baseline", plainRow)) === undefined) return unavailableBaseline
+      anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "baseline")
+      const start = { mark: "same", line: 0 }
+      const unknown = position((await phase("unknown", osc("133;Z"))).read)
+      const controls: { mark: string; line?: number | string }[] = []
+      for (const [index, cell] of cells.entries()) {
+        controls.push(position((await phase(`control-133-a-${index}`, at(cell) + osc("133;A"))).read))
+      }
+      detail.column = "not observable: iTerm2 3.6.11 prompt marks are line marks (prompt_range x is always 0)"
+      // An A control that registers no mark leaves the reader blind here: unavailable, never unsupported.
+      if (!controls.every((control) => control.mark === "new")) {
+        return {
+          status: "unavailable",
+          reason: `iTerm2 did not register a new prompt mark for both OSC 133 A controls (${JSON.stringify(controls)}); P cannot be graded here`,
+          detail,
+        }
+      }
+      if ((await baseline("rebaseline", plainRow)) === undefined) return unavailableBaseline
+      anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "rebaseline")
+      const before = await history()
+      const priors: object[] = []
+      const targets: { mark: string; line?: number | string }[] = []
+      const targetIds: (string | undefined)[] = []
+      for (const [index, cell] of cells.entries()) {
+        priors.push({ mark: "same", line: targets.findLast((target) => target.mark === "new")?.line ?? 0 })
+        const read = (await phase(`target-133-p-${index}`, at(cell) + osc("133;P"))).read
+        const target = position(read)
+        targets.push(target)
+        if (target.mark === "new" && read.status === "mark") targetIds.push(read.mark.uniquePromptId)
+      }
+      const after = await history()
+      let preserved: string
+      if (typeof before === "string" || typeof after === "string") {
+        preserved = "not observed"
+        detail.history = `not observed: ${typeof before === "string" ? before : String(after)}`
+      } else {
+        const kept = [...before].every(([id, value]) => after.get(id) === value)
+        const added = [...after.keys()].filter((id) => !before.has(id))
+        preserved = kept && JSON.stringify(added) === JSON.stringify(targetIds) ? "unchanged" : "changed"
+        detail.history = { before: before.size, after: after.size, added: added.length, preserved }
+      }
+      // Supported needs a new mark at each exact target cell. A line mark matching its A control's line cannot
+      // show the column, so any P movement stays a TODO (@cto osc133p-r2 clarification); only a P that added
+      // nothing is graded, without claiming history was read when it was not.
+      if (targets.some((target) => target.mark !== "same")) {
+        return {
+          status: "unavailable",
+          reason: `iTerm2 OSC 133 P targets read ${JSON.stringify(targets)} (history ${preserved}); a line mark cannot show the target column Supported needs`,
+          detail,
+        }
+      }
+      return {
+        status: "measured",
+        reader: "state",
+        runId: input.runId,
+        unknown: { before: JSON.stringify(start), after: JSON.stringify(unknown) },
+        handled: {
+          before: JSON.stringify(cells.map(() => ({ mark: "same" }))),
+          after: JSON.stringify(controls.map(({ mark }) => ({ mark }))),
+          expected: JSON.stringify(cells.map(() => ({ mark: "new" }))),
+        },
+        target: {
+          before: JSON.stringify({ marks: priors, history: preserved === "not observed" ? preserved : "unchanged" }),
+          after: JSON.stringify({ marks: targets, history: preserved }),
+          expected: JSON.stringify({
+            marks: controls.map(({ line }) => ({ mark: "new", line })),
+            history: "unchanged",
+          }),
+        },
         detail,
       }
     }

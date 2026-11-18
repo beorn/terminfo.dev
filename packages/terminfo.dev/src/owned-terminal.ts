@@ -2494,9 +2494,13 @@ export async function createOwnedTerminal(options: {
                     },
                     async (session) => {
                       const reading = await work({
-                        readPrompt: async () => {
+                        readPrompt: async (uniquePromptId) => {
                           check()
-                          return session.readPrompt()
+                          return session.readPrompt(uniquePromptId)
+                        },
+                        listPrompts: async () => {
+                          check()
+                          return session.listPrompts()
                         },
                         readUserVariable: async (name) => {
                           check()
