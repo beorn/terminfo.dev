@@ -1,7 +1,11 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export { SOURCE_CLOCK_MISSING, sourceNow } from "./source-clock.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
-export { ALACRITTY_0_17_VIEWPORT_ROUTE } from "./held-viewport-rows.ts"
+export {
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
+} from "./held-viewport-rows.ts"
 export {
   CAPTURE_BINDING_FORMAT,
   CAPTURE_BINDING_SUFFIX,

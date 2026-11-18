@@ -68,6 +68,8 @@ import {
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
   ScrollbackReadingUnavailable,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
@@ -697,10 +699,6 @@ export const XTERM_411_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = O
  */
 export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["411", "412"])
 
-/** The route string a held-view candidate carries, naming the launch that declares the two unbound steps. */
-const XTERM_411_VIEWPORT_ROUTE =
-  "xterm container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
-
 /**
  * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
  * macOS, this run's own launch, no multiplexer between the run and the app. Decided from the subject alone, before
@@ -747,16 +745,22 @@ export function linuxViewportKeys(subject: {
   readonly multiplexed: boolean
 }): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
   if (
-    subject.appId !== "xterm" ||
     subject.platform !== "linux" ||
-    !XTERM_VIEWPORT_KEY_VERSIONS.includes(subject.targetVersion ?? "") ||
     !subject.expectedLaunchRunId ||
     subject.runId !== subject.expectedLaunchRunId ||
     subject.multiplexed
   ) {
     return undefined
   }
-  return { viewportKeys: { route: XTERM_411_VIEWPORT_ROUTE, keys: XTERM_411_VIEWPORT_KEYS } }
+  if (subject.appId === "xterm" && XTERM_VIEWPORT_KEY_VERSIONS.includes(subject.targetVersion ?? "")) {
+    return { viewportKeys: { route: XTERM_411_VIEWPORT_ROUTE, keys: XTERM_411_VIEWPORT_KEYS } }
+  }
+  // 34278 (@cto a6ed9b08): Alacritty 0.17.0's own default bindings through XTEST, its own route. The arm's
+  // "no pane read" declaration stays for every other subject; this route is checked before it, as on macOS.
+  if (subject.appId === "alacritty" && subject.targetVersion === "0.17.0") {
+    return { viewportKeys: { route: LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, keys: ALACRITTY_0_17_VIEWPORT_KEYS } }
+  }
+  return undefined
 }
 
 /**
