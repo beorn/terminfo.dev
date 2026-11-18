@@ -279,6 +279,29 @@ test("the reader names the surface it reads and returns retained lines, not the 
   expect(transcripts).toEqual([transcriptOf(12), transcriptOf(12)])
 })
 
+test("an empty read names what it read, so a blank screen is not called no output", () => {
+  const base = {
+    executable,
+    ownership: { kind: "surface" as const },
+    configAtLaunch: { read: "present" as const, sha256: configSha256 },
+    observeConfig: () => ({ read: "present" as const, sha256: configSha256 }),
+  }
+  // A cleared screen still returns rows; cmux prints them blank and the reader normalizes them away.
+  const blankRows = readOwnedCmuxHistory({
+    ...base,
+    spawn: () => ({ status: 0, stdout: `${"\n".repeat(35)}\n`, stderr: "" }),
+  })
+  expect(blankRows).toMatchObject({ status: "refused", refusal: "cmux-read-empty" })
+  expect(blankRows.status === "refused" && blankRows.reason).toBe(
+    "cmux read-screen returned no lines (stdout 36 bytes, 36 rows, 36 blank)",
+  )
+  // A CLI that answered nothing says so, with zero bytes.
+  const nothing = readOwnedCmuxHistory({ ...base, spawn: () => ({ status: 0, stdout: "", stderr: "" }) })
+  expect(nothing.status === "refused" && nothing.reason).toBe(
+    "cmux read-screen returned no lines (stdout 0 bytes, 0 rows, 0 blank)",
+  )
+})
+
 test("a surface read refuses empty history, failed reads or a moved guard", () => {
   const retained: string[] = []
   const base = {
