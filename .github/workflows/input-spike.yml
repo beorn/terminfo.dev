@@ -1,7 +1,8 @@
 name: input-spike
 
 # Spike only (29814): prove whether each hosted host can deliver an OS-level key into an owned
-# terminal window, with no permission actuation and no runner configuration change. Workflow-only;
+# terminal window. Its one permission actuation is the Terminal Automation row macos-measurement
+# already seeds (33680, @cpo/term 2026-11-18); no other runner configuration change. Workflow-only;
 # it writes no run document and never changes the probe suite.
 on:
   workflow_dispatch:
@@ -21,6 +22,32 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # The spike drives Terminal through osascript, so it needs the same Automation row that
+      # macos-measurement seeds for terminal-app (copied from there, 33680): run 44326035840 failed
+      # at the osascript call with "Terminal got an error" on the unanswered consent dialog.
+      - name: Grant Automation from the hosted agent to apps driven by Apple events
+        env:
+          APP_BUNDLE: /System/Applications/Utilities/Terminal.app
+        run: |
+          set -euo pipefail
+          plist="$APP_BUNDLE/Contents/Info.plist"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
+          requirement="$(codesign --display -r- "$APP_BUNDLE" | sed -n 's/^designated => //p')"
+          test -n "$requirement" || { echo "Automation grant: $APP_BUNDLE has no designated requirement" >&2; exit 1; }
+          printf '%s\n' "$requirement" | csreq -r- -b "$RUNNER_TEMP/automation-target.csreq"
+          csreq_hex="$(xxd -p "$RUNNER_TEMP/automation-target.csreq" | tr -d '\n')"
+          now="$(date +%s)"
+          events="'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'$bundle_id',X'$csreq_hex',0,$now,NULL,NULL,'UNUSED',$now"
+          grant_events() {
+            local db="${*: -1}"
+            "$@" "INSERT OR REPLACE INTO access VALUES($events);"
+            granted="$("$@" "SELECT auth_value FROM access WHERE service='kTCCServiceAppleEvents' AND client='/opt/hca/hosted-compute-agent' AND indirect_object_identifier='$bundle_id';")"
+            test "$granted" = 2 || { echo "Automation grant for /opt/hca/hosted-compute-agent to $bundle_id did not read back from $db (got '$granted')" >&2; exit 1; }
+            printf 'Automation granted to /opt/hca/hosted-compute-agent for %s in %s\n' "$bundle_id" "$db"
+          }
+          grant_events sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
+          grant_events sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+
       - name: Report the Accessibility grant, then post one key
         run: |
           set -euo pipefail
