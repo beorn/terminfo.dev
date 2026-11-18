@@ -379,15 +379,12 @@ test("osc133-p that adds no mark but rewrites an earlier prompt mark stays unres
 })
 
 // Registration is read from ListPrompts, so without it neither a positive nor a negative is graded.
-test.each([false, true])(
-  "osc133-p without ListPrompts grades nothing (P registers: %s)",
-  async (secondaryP) => {
-    const reading = await fakeITerm({ secondaryP, noHistory: true }).read("extensions.osc133-p")
-    expect(reading).toMatchObject({ status: "unavailable" })
-    expect(reading.status === "unavailable" && reading.reason).toContain("cannot be read without ListPrompts")
-    expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
-  },
-)
+test.each([false, true])("osc133-p without ListPrompts grades nothing (P registers: %s)", async (secondaryP) => {
+  const reading = await fakeITerm({ secondaryP, noHistory: true }).read("extensions.osc133-p")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  expect(reading.status === "unavailable" && reading.reason).toContain("cannot be read without ListPrompts")
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
 
 // @dev/review2 7551f8f9: a session that never reports its fence (SetUserVar not seen on a real 3.6.11)
 // is reported by the phase that failed, with the phase log kept; the restore still runs and its own
