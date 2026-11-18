@@ -1032,10 +1032,12 @@ describe("owned-app ssh transport", () => {
   // #34834: killing the local ssh does not stop the remote probe, so its record is still collectable.
   // Before this change the driver made the same noise and gave up, and the probe's record was lost.
   it("re-attaches a probe that outlives the ssh wall and lands its record instead of abandoning it (34834)", () => {
-    const result = run(
-      { SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "6" },
-      ["--ssh-timeout-ms", "3000", "--reattach-timeout-ms", "60000"],
-    )
+    const result = run({ SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "6" }, [
+      "--ssh-timeout-ms",
+      "3000",
+      "--reattach-timeout-ms",
+      "60000",
+    ])
     expect(result.status, result.stderr).toBe(0)
     expect(result.stderr).toContain("re-attaching rather than abandoning it")
     expect(result.stderr).toContain("re-attach complete")
@@ -1045,10 +1047,12 @@ describe("owned-app ssh transport", () => {
   }, 120_000)
 
   it("refuses by name with the remote pid, the stage and the fetch command when the re-attach wall also expires (34834)", () => {
-    const result = run(
-      { SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "20" },
-      ["--ssh-timeout-ms", "3000", "--reattach-timeout-ms", "3000"],
-    )
+    const result = run({ SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "20" }, [
+      "--ssh-timeout-ms",
+      "3000",
+      "--reattach-timeout-ms",
+      "3000",
+    ])
     expect(result.status, result.stderr).toBe(1)
     expect(result.stderr).toContain("probe abandoned")
     expect(result.stderr).toMatch(/remote probe pid \d+ was still running after 0\.05 min of re-attach/)
@@ -1062,7 +1066,9 @@ describe("owned-app ssh transport", () => {
     const result = run({}, ["--ssh-timeout-ms", "3000", "--probe-budget-ms", "60000"])
     expect(result.status, result.stderr).toBe(1)
     expect(result.stderr).toContain("ssh wall under the cohort bound")
-    expect(result.stderr).toContain("--ssh-timeout-ms 3000 is below the cohort's own per-probe bound --probe-budget-ms 60000")
+    expect(result.stderr).toContain(
+      "--ssh-timeout-ms 3000 is below the cohort's own per-probe bound --probe-budget-ms 60000",
+    )
   }, 30_000)
 
   it("removes an owned stage after a failed run when asked, renaming it aside before deleting", () => {

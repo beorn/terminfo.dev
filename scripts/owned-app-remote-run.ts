@@ -537,13 +537,15 @@ function isTimeout(error: unknown): boolean {
  * re-attach wall expires, refuse by name with the pid, the stage and the exact manual fetch, never an
  * informational note beside a success.
  */
-function awaitOutlivedProbe(
-  options: Parsed,
-  where: { pidFile: string; stage: string; remoteOutput: string },
-): string {
+function awaitOutlivedProbe(options: Parsed, where: { pidFile: string; stage: string; remoteOutput: string }): string {
   const userAndHost = options.transport.slice(4)
   const fetch = `rsync -az ${userAndHost}:${where.remoteOutput}/ <local-output>/transport/ ; ssh ${userAndHost} -- cat ${where.remoteOutput}/transport-receipt.json`
-  const pid = sshRun(options, "probe pid", "probe pid unreadable", `cat ${shq(where.pidFile)} 2>/dev/null || true`).stdout.trim()
+  const pid = sshRun(
+    options,
+    "probe pid",
+    "probe pid unreadable",
+    `cat ${shq(where.pidFile)} 2>/dev/null || true`,
+  ).stdout.trim()
   if (!/^\d+$/u.test(pid)) {
     fail(
       "probe abandoned",
