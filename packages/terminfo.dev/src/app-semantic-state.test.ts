@@ -320,6 +320,7 @@ test.each([
       "extensions.osc633-e",
     ] as const
   ).map((featureId) => ({ featureId, source: "faithful", outcome: "supported" })),
+  { featureId: "extensions.osc633-e", source: "vscode-nonce-gated", outcome: "supported" },
   { featureId: "extensions.osc633-c", source: "ignores-633", outcome: "unsupported" },
   { featureId: "extensions.osc633-d", source: "ignores-633", outcome: "unsupported" },
   { featureId: "extensions.osc133-c", source: "ignores-633", outcome: "controls-failed" },
@@ -356,17 +357,19 @@ test.each([
         evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
       }),
     )
+    const editorNonce = randomUUID()
     vi.stubEnv("TERMINFO_RUN_ID", runId)
     vi.stubEnv("TERMINFO_MUX_KIND", "")
     vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
     vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    vi.stubEnv("VSCODE_NONCE", source === "vscode-nonce-gated" ? editorNonce : "")
     // The native source: execution facts exist only because these bytes were written.
     type Fact = Record<string, unknown> & { eventSequence: number; kind: "start" | "end"; execution: string }
     const pending: Fact[] = []
     let eventSequence = 0
     let executions = 0
     let current: string | undefined
-    let commandLine: string | undefined
+    let commandLine: { value: string; confidence: number; isTrusted: boolean } | undefined
     const commands: string[] = []
     const digest = (text: string) => createHash("sha256").update(text).digest("hex")
     const emit = (kind: "start" | "end", fields: Record<string, unknown>) => {
@@ -380,17 +383,27 @@ test.each([
         const [, selector, letter, argument] = match
         const honoured = selector === "133" || selector === "633" || (source === "leaky-unknown" && selector === "9999")
         if (!honoured || (source === "ignores-633" && selector === "633")) continue
-        if (letter === "E" && selector !== "133") commandLine = argument?.split(";")[0]
+        if (letter === "E" && selector !== "133") {
+          const [text = "", nonce] = (argument ?? "").split(";")
+          const isTrusted = nonce !== undefined && nonce !== "" && nonce === editorNonce
+          // VS Code 1.142.0 / Cursor 3.25.9 CommandDetectionCapability.setCommandLine + UnixPtyHeuristics:
+          // setConfidentCommandLine runs only when nonce === this._nonce; without it, 633;C overwrites command with "".
+          commandLine = {
+            value: source === "vscode-nonce-gated" && !isTrusted ? "" : text,
+            confidence: 2,
+            isTrusted,
+          }
+        }
         if (letter === "C") {
           const line =
             commandLine === undefined
               ? { present: false, reason: "Native execution.commandLine is undefined" }
               : {
                   present: true,
-                  valueSha256: digest(commandLine),
-                  valueLength: commandLine.length,
-                  confidence: { present: true, value: 2 },
-                  isTrusted: { present: true, value: false },
+                  valueSha256: digest(commandLine.value),
+                  valueLength: commandLine.value.length,
+                  confidence: { present: true, value: commandLine.confidence },
+                  isTrusted: { present: true, value: commandLine.isTrusted },
                 }
           if (source === "unpaired-end") {
             commandLine = undefined
@@ -465,7 +478,14 @@ test.each([
       })
       const result = gradeAppSemanticState(reading)
       const serialized = JSON.stringify(reading)
-      for (const secret of [directory, captureRoot, `terminfo-${runId}`, "terminfo-target-", "terminfo-control-"]) {
+      for (const secret of [
+        directory,
+        captureRoot,
+        `terminfo-${runId}`,
+        "terminfo-target-",
+        "terminfo-control-",
+        editorNonce,
+      ]) {
         expect(serialized).not.toContain(secret)
       }
       if (outcome === "supported" || outcome === "unsupported") {
@@ -495,12 +515,12 @@ test.each([
       if (featureId === "extensions.osc633-e" && outcome === "supported") {
         const trials = (reading.detail as { executionTrials: Array<{ phase: string; commandLine?: unknown }> })
           .executionTrials
-        // Command-line confidence and trust stay separate from the digest match: a match proves no nonce check.
+        // Command-line confidence and trust stay separate from the digest match.
         expect(trials.find((trial) => trial.phase === "target")).toMatchObject({
           commandLine: {
             present: true,
             confidence: { present: true, value: 2 },
-            isTrusted: { present: true, value: false },
+            isTrusted: { present: true, value: source === "vscode-nonce-gated" },
           },
         })
       }

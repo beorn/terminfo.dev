@@ -458,6 +458,7 @@ test.each<{
   source?: string
   input?: Buffer
   deadline?: boolean
+  step?: { step: string; budgetMs?: number }
   stdout?: Buffer
   error?: Record<string, unknown>
   stream?: "stdout" | "stderr"
@@ -480,6 +481,7 @@ test.each<{
     name: "deadline SIGKILL",
     source: "process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)",
     deadline: true,
+    step: { step: "window census", budgetMs: 500 },
     error: { killed: true, signal: "SIGKILL" },
   },
   { name: "default SIGTERM", source: "setInterval(()=>{},1000)", error: { killed: true, signal: "SIGTERM" } },
@@ -509,7 +511,7 @@ test.each<{
   },
 ])(
   "capture command contract: $name",
-  async ({ source, input, deadline, stdout, error, stream, observerThrows }) => {
+  async ({ source, input, deadline, step, stdout, error, stream, observerThrows }) => {
     const observed: Buffer[] = []
     const invocation = command(
       source === undefined ? join(directory(), "absent-command") : process.execPath,
@@ -520,6 +522,8 @@ test.each<{
         observed.push(stderr)
         if (observerThrows) throw new Error("observer refused")
       },
+      undefined,
+      step,
     )
     if (error === undefined) {
       expect(await invocation).toEqual(stdout)
@@ -534,6 +538,14 @@ test.each<{
     )
     const diagnostic = Object.fromEntries(Object.keys(error).map((key) => [key, Reflect.get(failure, key)]))
     expect(diagnostic).toMatchObject(error)
+    if (step !== undefined) {
+      // #34892: our own timer killed it, so the message names the step and the budget it passed and
+      // never reads as the measured app's bare signal.
+      expect(failure.message).toContain(step.step)
+      expect(failure.message).toMatch(/this collector's own deadline/)
+      expect(failure.message).not.toMatch(/failed: SIGKILL/)
+      if (step.budgetMs !== undefined) expect(failure.message).toContain(`${step.budgetMs} ms budget`)
+    }
     if (source?.includes("process.exit(17)")) {
       expect(failure.captureCommand).toMatchObject({
         stdoutBase64: Buffer.from([17, 0, 23]).toString("base64"),

@@ -241,6 +241,7 @@ it.each([
     const subscriptions = [], captures = []
     const disposable = () => ({ dispose() {} })
     const executionHandlers = { start: [], end: [] }
+    const editorNonce = "vscode-nonce-fixture-34894"
     let current, pendingLine
     const terminal = {
       name: failed ? "" : "exact native terminal",
@@ -254,7 +255,7 @@ it.each([
       RelativePattern: class {},
       workspace: { createFileSystemWatcher: () => ({ dispose() {}, onDidCreate: disposable, onDidChange: disposable }) },
       window: {
-        createTerminal: options => { Object.assign(process.env, options.env); return terminal },
+        createTerminal: options => { Object.assign(process.env, options.env, { VSCODE_NONCE: editorNonce }); return terminal },
         onDidCloseTerminal: disposable, onDidChangeTerminalShellIntegration: disposable,
         onDidStartTerminalShellExecution: handler => (executionHandlers.start.push(handler), disposable()),
         onDidEndTerminalShellExecution: handler => (executionHandlers.end.push(handler), disposable()),
@@ -294,9 +295,13 @@ it.each([
       writeTTY: text => {
         // The independent native source: shell-integration marks the terminal parsed become execution events.
         for (const [, selector, letter, argument] of text.matchAll(/\x1b\](133|633);([A-E])(?:;([^\x07]*))?\x07/gu)) {
-          if (letter === "E" && selector === "633") pendingLine = argument.split(";")[0]
+          if (letter === "E" && selector === "633") {
+            const [line = "", nonce] = (argument ?? "").split(";")
+            const trusted = nonce === editorNonce
+            pendingLine = { value: trusted ? line : "", confidence: 2, isTrusted: trusted }
+          }
           if (letter === "C") {
-            current = { commandLine: pendingLine === undefined ? undefined : { value: pendingLine, confidence: 2, isTrusted: false } }
+            current = { commandLine: pendingLine }
             pendingLine = undefined
             for (const handler of executionHandlers.start) handler({ terminal, execution: current })
           }
@@ -343,7 +348,7 @@ it.each([
         assert.equal(reading.status, "measured", featureId + ": " + reading.reason)
         assert.equal(record.results.find(row => row.featureId === featureId).status, "supported", featureId)
         // Digest-only public record: no command text, terminal name, private path or process id (34666 rule).
-        for (const secret of ["terminfo-target-", "terminfo-control-", "exact native terminal", directory, '"extensionPid"']) {
+        for (const secret of ["terminfo-target-", "terminfo-control-", "exact native terminal", directory, '"extensionPid"', editorNonce]) {
           assert.equal(publicReading.includes(secret), false, featureId + " " + secret)
         }
       }

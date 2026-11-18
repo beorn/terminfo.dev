@@ -7,6 +7,16 @@ import { constants as zlibConstants, zstdCompressSync } from "node:zlib"
 import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
+/**
+ * What a capture step is, named into the failure when this collector's own deadline kills it (#34892).
+ * A bare SIGKILL cannot tell a wedged app from our own too-small budget; the step and its budget can.
+ */
+export interface CaptureCommandStep {
+  readonly step: string
+  /** The budget the caller gave the step in ms. The enforced timeout may be shorter than this. */
+  readonly budgetMs?: number
+}
+
 export function command(
   file: string,
   args: string[],
@@ -14,6 +24,7 @@ export function command(
   deadline?: number,
   onStderr?: (stderr: Buffer) => void,
   environment?: Readonly<Record<string, string>>,
+  step?: CaptureCommandStep,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let timeout = 10_000
@@ -32,6 +43,9 @@ export function command(
     let stdinError: Error | undefined
     let failure: Error | undefined
     let killed = false
+    // Which of the two killers ended it: our own timer, or the stdio overflow below. Only the timer
+    // means the budget was too small for the step, and only that message may name a deadline (#34892).
+    let killedByDeadline = false
     const maxBuffer = 32 * 1024 * 1024
     const chunks: Record<"stdout" | "stderr", Buffer[]> = { stdout: [], stderr: [] }
     const sizes = { stdout: 0, stderr: 0 }
@@ -43,17 +57,18 @@ export function command(
       // as another process must not inherit the collector's variables (#33333).
       ...(environment === undefined ? {} : { env: { ...environment } }),
     })
-    const terminate = () => {
+    const terminate = (byDeadline: boolean) => {
       if (killed || child.pid === undefined) return
       try {
         if (process.platform === "win32") child.kill(killSignal)
         else process.kill(-child.pid, killSignal)
         killed = true
+        killedByDeadline = byDeadline
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") failure ??= error as Error
       }
     }
-    const timer = setTimeout(terminate, timeout)
+    const timer = setTimeout(() => terminate(true), timeout)
     const collect = (stream: "stdout" | "stderr", chunk: Buffer) => {
       if (failure !== undefined) return
       const remaining = maxBuffer - sizes[stream]
@@ -66,7 +81,7 @@ export function command(
         })
         child.stdout.destroy()
         child.stderr.destroy()
-        terminate()
+        terminate(false)
       }
     }
     child.stdout.on("data", (chunk: Buffer) => collect("stdout", chunk))
@@ -88,7 +103,7 @@ export function command(
         const failureCode = failure && "code" in failure ? failure.code : code
         reject(
           Object.assign(
-            failure ?? new Error(`Capture command ${file} failed: ${signal ?? `exit ${code}`}\n${stderr.toString()}`),
+            failure ?? new Error(captureCommandFailure(file, signal, code, killedByDeadline, timeout, step, stderr)),
             {
               code: failureCode,
               signal,
@@ -113,6 +128,27 @@ export function command(
     })
     child.stdin.end(input)
   })
+}
+
+/**
+ * The message a capture command failure carries. A kill by our own timer names the step and the budget
+ * it passed, because a bare signal reads as the app failing when the sender was this collector (#34892).
+ */
+function captureCommandFailure(
+  file: string,
+  signal: NodeJS.Signals | null,
+  code: number | null,
+  killedByDeadline: boolean,
+  timeout: number,
+  step: CaptureCommandStep | undefined,
+  stderr: Buffer,
+): string {
+  const named = step === undefined ? "" : ` (${step.step})`
+  if (killedByDeadline) {
+    const budget = step?.budgetMs === undefined ? "" : ` of its ${step.budgetMs} ms budget`
+    return `Capture command ${file}${named} was killed at this collector's own deadline: ${timeout} ms${budget} elapsed without the process exiting; the sender is this collector, not the measured app`
+  }
+  return `Capture command ${file}${named} failed: ${signal ?? `exit ${code}`}\n${stderr.toString()}`
 }
 
 function digest(bytes: Buffer): string {
