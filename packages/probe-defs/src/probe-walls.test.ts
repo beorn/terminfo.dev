@@ -20,11 +20,12 @@ test.each(["sgr.underline.color", "sgr.underline-color-rgb"])("%s declares a 45 
 // 34694 second fold, hosted run 44200861479 on the 2026-11-17 image: the two alt screen rows were cut at 45 s while
 // still capturing (33 to 43 captures). Span is max(frame.capturedAt) - attempt.startedAt; a cut row persists no
 // frames in its result row, so the count comes from rawReplies captures, not from the row's frame list (dev/11).
-// altscreen-47 worst 44.8 s x 1.20 = 53.7 -> 60. altscreen-1047 worst 44.3 s x 1.20 = 53.2, but its capture count is
-// app dependent (22 to 50) and at cmux's own 1.03 s per capture the 50-capture path needs 61.8 -> 75, not a 60 floor.
+// altscreen-47 worst 44.8 s x 1.20 = 53.7 -> 60. altscreen-1047 is a 50-capture path wherever it completes (22 only
+// where the row exits early unsupported), so at cmux's 1.00-1.25 s per capture today it needs 60 to 75 s and 80 is the
+// round wall that survives one more load band (@dev/luna6, /hh/var/@dev-luna6/altscreen-sizing-1117/sizing.md).
 test.each([
   ["modes.altscreen-47", 60_000],
-  ["modes.altscreen-1047", 75_000],
+  ["modes.altscreen-1047", 80_000],
 ] as const)("%s declares a %d ms capture-bound wall", (id, wallMs) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()
