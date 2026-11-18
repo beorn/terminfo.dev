@@ -394,7 +394,9 @@ jobs:
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          elif [ "$APP_ID" = ghostty ] || [ "$APP_ID" = iterm2 ] || [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ]; then
+          elif [ "$APP_ID" = ghostty ] || [ "$APP_ID" = iterm2 ] || [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ] || [ "$APP_ID" = terminal-app ]; then
+            # 34870: the hosted Terminal.app cwd reader binds to TERMINFO_TARGET_VERSION 2.15 (run 44385516596 refused
+            # without it: "Terminal.app cwd has no reviewed 2.15 version bound to this App launch").
             # 34666: Cursor and VS Code recorded a version and no id, so no editor declaration could bind; the hosted
             # Darwin receipt still selects their native reader (owned-terminal.ts resolveOwnedAppId).
             # 34562: a Ghostty run with no id or version in its subject can bind no reviewed declaration.
