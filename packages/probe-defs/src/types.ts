@@ -1792,6 +1792,13 @@ export interface TermProbeSource {
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
   /**
+   * 34899 (@cto REVISE 1, r2 C1-C5): set only for a subject whose frame shows each prompt mark as a boundary of its
+   * own — Warp's command-block chrome. That subject's App rows answer the OSC 133/633 mark cells from a same-run
+   * differential (mark, mark omitted, mark moved, plus a stability pair) instead of the cursor-position arm. Every
+   * other subject keeps the cursor arm, and the flag is the collector's statement about the frame, not a grade.
+   */
+  promptMarkBoundaryRendering?: true
+  /**
    * 33628 (@cto ruling 1957): set only on modes.synchronized-output for an owned WezTerm Linux run. Its mux keeps
    * parsing while mode 2026 is held and withholds replies together with the paint, so the App callback grades the
    * rendered hold from colour-only frames instead of a DECRPM reply after DECSET. Every other subject keeps the reply
