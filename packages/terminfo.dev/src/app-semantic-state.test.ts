@@ -2061,6 +2061,28 @@ test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its e
   for (const id of declared) expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
 })
 
+// 34882 (@chief 48acc556): the five Mac OSC 8 rows @dev/11's reader inventory found no per-cell link read for.
+// Each names its own surface; none may cite iTerm2's static hyperlinks capability or a query reply as evidence.
+test("five macOS apps declare OSC 8 no way at their exact versions, each by its own read surface", () => {
+  const rows = [
+    ["iterm2", "3.6.11", "without assigning style.url"],
+    ["com.microsoft.VSCode", "1.142.0", "vscode.d.ts:7672-7683 at tag 1.142.0"],
+    ["cursor", "3.25.9", "VS Code 1.128.0 extension API"],
+    ["terminal-app", "2.15", "attribute census is 49 names"],
+    ["warp", "v0.2026.10.14.08.27.stable_01", "write-only launch configuration YAML"],
+  ] as const
+  for (const [id, version, surface] of rows) {
+    const subject = { kind: "term" as const, id, version, os: "macos" }
+    const reason = appSemanticDeclarations(subject)["extensions.osc8"]
+    expect(reason).toMatch(/^Untestable \(no way\): /)
+    expect(reason).toContain(surface)
+    expect(reason).toContain("OSC 8 has no query form")
+    expect(reason).not.toMatch(/hyperlinks capability|15414/)
+    expect(appSemanticDeclarations({ ...subject, version: `${version}-other` })).not.toHaveProperty("extensions.osc8")
+    expect(appSemanticDeclarations({ ...subject, os: "linux" })).not.toHaveProperty("extensions.osc8")
+  }
+})
+
 test("Ghostty 1.4.0 on macOS declares osc633-e, osc8, osc133-d and semantic-prompts by their own reasons, and not osc633-p", () => {
   const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
   expect(mac["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
