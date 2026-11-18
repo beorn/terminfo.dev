@@ -1,4 +1,0 @@
-{
-  "note": "Archived admission exclusions for legacy (schema 1 and 2) runs. EMPTY since #30759 AC3 and @chief's ruling B (2026-10-23): terminfo 09536925 (the #30764 reset) deleted every run these rows named, so a site that shows only the current round must not publish refusals for runs it deleted. The legacy rows and the reader that produced them remain readable in terminfo history at 09536925^. Current schema-3 refusals are still produced by the projection and appended after this list; the loader treats an empty array as a valid state and refuses a missing file.",
-  "archivedExclusions": []
-}

@@ -1,2 +1,0 @@
-# vendor-kit boundary-lint allowlist — substring matches against hit line or file path.
-@km/infra/14942 # links.yml lychee rollout tracking-bead provenance
