@@ -331,10 +331,17 @@ test("osc133-p A controls that register nothing leave the row a TODO, never unsu
   expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
 })
 
-test("osc133-p with an unknown OSC 133 letter that adds a mark fails its controls", async () => {
-  const graded = gradeAppSemanticState(await fakeITerm({ zAddsMark: true }).read("extensions.osc133-p"))
-  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
-})
+// @dev/review2 (aa31c70b): the unknown fails the row before P runs, so a P that registers cannot turn a
+// corrupt control into a TODO.
+test.each([false, true])(
+  "osc133-p with an unknown OSC 133 letter that adds a mark is invalid (P registers: %s)",
+  async (secondaryP) => {
+    const reading = await fakeITerm({ zAddsMark: true, secondaryP }).read("extensions.osc133-p")
+    expect(reading).toMatchObject({ status: "invalid" })
+    expect(reading.status === "invalid" && reading.reason).toContain("unknown OSC 133 Z moved the prompt mark")
+    expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-invalid")
+  },
+)
 
 // A P that adds no mark but deletes or rewrites an earlier mark moved something: unresolved, never Unsupported.
 test.each(["delete", "change"] as const)(

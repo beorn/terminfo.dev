@@ -2045,6 +2045,14 @@ export async function readITermPromptMarks(input: {
       anchorAt((phases.at(-1) as { read: ITermPromptRead }).read, "baseline")
       const start = { mark: "same", line: 0 }
       const unknown = position((await phase("unknown", osc("133;Z"))).read)
+      // A corrupt control is invalid whatever P later does; the grader only sees it on the measured path.
+      if (JSON.stringify(unknown) !== JSON.stringify(start)) {
+        return {
+          status: "invalid",
+          reason: `iTerm2 unknown OSC 133 Z moved the prompt mark (${JSON.stringify(unknown)}); controls failed in this row`,
+          detail,
+        }
+      }
       const controls: { mark: string; line?: number | string }[] = []
       for (const [index, cell] of cells.entries()) {
         controls.push(position((await phase(`control-133-a-${index}`, at(cell) + osc("133;A"))).read))
