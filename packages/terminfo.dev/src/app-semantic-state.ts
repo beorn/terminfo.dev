@@ -2976,9 +2976,7 @@ async function readNativeEditorState(input: {
       detail.captures.push({ phase: "target", observation: await input.editor.capture(input.featureId, "target") })
       executionCaptured = true
       const qualified =
-        unknown.before === unknown.after &&
-        handled.before !== handled.expected &&
-        handled.after === handled.expected
+        unknown.before === unknown.after && handled.before !== handled.expected && handled.after === handled.expected
       if (positive && qualified) {
         detail.executionStates = { unknown, handled, target }
         unavailableReason =

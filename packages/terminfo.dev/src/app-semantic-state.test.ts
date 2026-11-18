@@ -590,7 +590,10 @@ test.each([
       if (featureId === "extensions.osc133-b" || featureId === "extensions.osc633-b") {
         // The omission trial is the last one: no B, so VS Code fires nothing and nothing resets.
         const trials = (reading.detail as { executionTrials: Array<{ phase: string; state: string }> }).executionTrials
-        expect(trials.at(-1)).toMatchObject({ phase: "omitted", state: source === "start-without-b" ? "start" : "none" })
+        expect(trials.at(-1)).toMatchObject({
+          phase: "omitted",
+          state: source === "start-without-b" ? "start" : "none",
+        })
       }
       expect(commands.join("")).not.toContain("executeCommand")
       if (featureId === "extensions.osc633-d" && outcome === "supported") {
