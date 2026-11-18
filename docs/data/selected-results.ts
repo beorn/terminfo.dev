@@ -1235,7 +1235,8 @@ export function loadSelectedResults(
   const ruleRevision = identityRuleRevision()
   const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => {
     const check = currentIdentityRuleCheck(run)
-    if ("refused" in check) {
+    // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
+    if ("refused" in check && run.identity !== "unverified") {
       console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
     }
     return {
