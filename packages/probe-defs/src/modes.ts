@@ -2424,6 +2424,9 @@ const modeDefinitions: ProbeDefinition[] = [
     term: reverseVideoApp,
     termNeedsGeometry: true,
     libAssertionType: undefined,
+    // 34694 second fold: 22 captures, 28.2 s worst at VS Code in run 44200861479, cut by the 30 s default.
+    // 28.2 x 1.20 = 33.8 rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // Synchronized output
@@ -2752,6 +2755,9 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 34694 second fold: 22 captures, 28.8 s worst at VS Code in run 44200861479, cut by the 30 s default.
+    // 28.8 x 1.20 = 34.5 rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // ?47 — legacy alt screen (no cursor save)
@@ -2776,8 +2782,10 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 34554: ~33 s on wezterm/linux under fleet load, still capturing at the 30 s default. 45 s holds that cadence.
-    wallMs: 45_000,
+    // 34694 second fold: cut at 45000 ms in cmux and VS Code on run 44200861479 while still capturing (33-36 captures,
+    // 44.8 s worst at VS Code = 99 percent of the wall), so 45 was the bug, not a hang witness.
+    // 44.8 x 1.20 = 53.7 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   // ?1047 — alt screen; DECRST 1047 clears the alternate buffer on EXIT (headless: graded by a second entry)
@@ -2814,8 +2822,10 @@ const modeDefinitions: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsGeometry: true,
-    // 34554: ~33 s on wezterm/linux and 28.7 s on xterm/linux (41 captures), the longest case list of the family.
-    wallMs: 45_000,
+    // 34694 second fold: 43 captures at 44.3 s on cmux and 36 at 43.7 s on VS Code in run 44200861479, so 45 s cut it.
+    // The capture count is app dependent (22 on Warp/Alacritty, 50 on Ghostty/WezTerm); at cmux's own 1.03 s per
+    // capture the 50-capture path needs 51.5 x 1.20 = 61.8, which rounds up to 75 s. 60 would be a floor, not a wall.
+    wallMs: 75_000,
     cellReadback: true,
     textClaim: "characters",
   },
@@ -3127,7 +3137,9 @@ const modeDefinitions: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     // 34641: Linux WezTerm took up to 55.1 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
-    wallMs: 90_000,
+    // 34694 second fold: 66 captures, worst arm 75.9 s (VS Code) in run 44200861479 = 84 percent of 90 s.
+    // 75.9 x 1.20 = 91.0 rounds up to 105 s.
+    wallMs: 105_000,
   },
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
@@ -3239,7 +3251,9 @@ const modeDefinitions: ProbeDefinition[] = [
     termNeedsGeometry: true,
     // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 34567: 66 captures at 1.158 s per capture
     // on the Nov 12 hosted image is 76 s, so 105 s is that with 20 percent headroom, rounded up to the next 15 s.
-    wallMs: 105_000,
+    // 34694 second fold: 66 captures, worst arm 90.8 s (cmux) in run 44200861479 = 86 percent of 105 s.
+    // 90.8 x 1.20 = 109.0 rounds up to 120 s.
+    wallMs: 120_000,
   },
 
   // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
