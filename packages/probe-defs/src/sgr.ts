@@ -1613,7 +1613,9 @@ export const sgrProbes: ProbeDefinition[] = [
       },
       "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 44.7 s (VS Code) = 99 percent of the wall.
+    // 44.7 x 1.20 = 53.7 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   {
@@ -1628,7 +1630,8 @@ export const sgrProbes: ProbeDefinition[] = [
       },
       "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 39.8 s (Cursor); 39.8 x 1.20 = 47.8 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   {
@@ -1643,7 +1646,8 @@ export const sgrProbes: ProbeDefinition[] = [
       },
       "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 40.8 s (Cursor); 40.8 x 1.20 = 48.9 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   sgrProbe(
@@ -1673,7 +1677,8 @@ export const sgrProbes: ProbeDefinition[] = [
       { require: [8] },
       "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 41.0 s (Cursor); 41.0 x 1.20 = 49.2 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   {
@@ -1685,7 +1690,8 @@ export const sgrProbes: ProbeDefinition[] = [
       { require: [9] },
       "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 39.5 s (Cursor); 39.5 x 1.20 = 47.4 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   {
@@ -1699,7 +1705,8 @@ export const sgrProbes: ProbeDefinition[] = [
           : null,
       { require: [53] },
     ),
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 38.1 s (Cursor); 38.1 x 1.20 = 45.7 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   // ── Underline color ──
@@ -1825,7 +1832,8 @@ export const sgrProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
-    wallMs: 45_000,
+    // 34694 second fold: 32 captures, worst arm 37.7 s (Cursor); 37.7 x 1.20 = 45.3 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   rgbUnderlineProbe("sgr.underline-color-rgb"),
@@ -1982,7 +1990,9 @@ export const sgrProbes: ProbeDefinition[] = [
   {
     ...resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
     // 34641: Linux WezTerm took up to 110.1 s over 132 captures (run 2026-11-17T13-06Z), 92 percent of the old 120 s wall; 150 s puts it at 73 percent.
-    wallMs: 150_000,
+    // 34694 second fold: 132 captures, worst arm 139.7 s (VS Code) = 93 percent; 180 s is also reset.sgr's value.
+    // 139.7 x 1.20 = 167.6 rounds up to 180 s.
+    wallMs: 180_000,
   },
 ]
 

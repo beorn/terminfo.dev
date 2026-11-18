@@ -11,14 +11,25 @@ import { ALL_PROBES } from "./index.ts"
 
 // 34554: measured under fleet load at 32-33 s on their last case (wezterm/linux altscreen, xterm/linux underline
 // colour); 45 s holds that cadence with room. /hh/var/@dev11/34544/MEASUREMENT.md.
-test.each(["modes.altscreen-47", "modes.altscreen-1047", "sgr.underline.color", "sgr.underline-color-rgb"])(
-  "%s declares a 45 s wall",
-  (id) => {
-    const definition = ALL_PROBES.find((entry) => entry.id === id)
-    expect(definition, id).toBeDefined()
-    expect(definition?.wallMs).toBe(45_000)
-  },
-)
+test.each(["sgr.underline.color", "sgr.underline-color-rgb"])("%s declares a 45 s wall", (id) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs).toBe(45_000)
+})
+
+// 34694 second fold, hosted run 44200861479 on the 2026-11-17 image: the two alt screen rows were cut at 45 s while
+// still capturing (33 to 43 captures). Span is max(frame.capturedAt) - attempt.startedAt; a cut row persists no
+// frames in its result row, so the count comes from rawReplies captures, not from the row's frame list (dev/11).
+// altscreen-47 worst 44.8 s x 1.20 = 53.7 -> 60. altscreen-1047 worst 44.3 s x 1.20 = 53.2, but its capture count is
+// app dependent (22 to 50) and at cmux's own 1.03 s per capture the 50-capture path needs 61.8 -> 75, not a 60 floor.
+test.each([
+  ["modes.altscreen-47", 60_000],
+  ["modes.altscreen-1047", 75_000],
+] as const)("%s declares a %d ms capture-bound wall", (id, wallMs) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs).toBe(wallMs)
+})
 
 // 34641: on Linux WezTerm these ran at 79-99 percent of their walls (capture spans from frame.capturedAt, runs
 // 2026-11-17T12-44Z and 13-06Z; worst median capture gap 921 ms), so they flipped between graded and cut run to run.
@@ -27,12 +38,15 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047", "sgr.underline.color", 
 // 120.5 at VS Code, leaving 150 s only 1.9 s above the worst arm, so 148.1 x 1.20 = 177.7 rounds to 180 s. modes.xtsave
 // measured 74.1 s in all three arms, which 90 s holds at 21.5 percent - but VS Code cut it at 90 s on run 44197283015,
 // so its need is above 90 s and a cut is only a lower bound: 90 x 1.20 = 108 rounds to 120 s.
+// 34694 second fold (dev/11 frame-span table, re-measured here from rawReplies captures): sgr.reset 132 captures at
+// 139.7 s worst needs 167.6 -> 180; xtpopsgr 66 at 75.9 s needs 91.0 -> 105. reset.sgr, xtsave and xtpushsgr are
+// unchanged by this fold and keep the values the 16:50 fold set.
 test.each([
   ["reset.sgr", 180_000],
-  ["sgr.reset", 150_000],
+  ["sgr.reset", 180_000],
   ["modes.xtsave", 120_000],
   ["modes.xtpushsgr", 90_000],
-  ["modes.xtpopsgr", 90_000],
+  ["modes.xtpopsgr", 105_000],
 ] as const)("%s declares a %d ms wall", (id, wallMs) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()
@@ -51,19 +65,21 @@ test.each([
   ["sgr.faint", 45_000],
   ["sgr.italic", 45_000],
   ["sgr.inverse", 45_000],
-  ["sgr.strikethrough", 45_000],
-  ["sgr.overline", 45_000],
-  ["sgr.hidden", 45_000],
+  ["sgr.strikethrough", 60_000],
+  ["sgr.overline", 60_000],
+  ["sgr.hidden", 60_000],
   ["sgr.underline.single", 45_000],
   ["sgr.underline.double", 60_000],
-  ["sgr.underline.curly", 45_000],
-  ["sgr.underline.dashed", 45_000],
-  ["sgr.underline.dotted", 45_000],
-  ["sgr.underline-color-indexed", 45_000],
+  ["sgr.underline.curly", 60_000],
+  ["sgr.underline.dashed", 60_000],
+  ["sgr.underline.dotted", 60_000],
+  ["sgr.underline-color-indexed", 60_000],
   ["modes.alt-screen.exit", 45_000],
-  ["modes.xtpushcolors", 105_000],
+  ["modes.xtpushcolors", 120_000],
   ["modes.xtpopcolors", 105_000],
   ["sgr.selective-reset.bold", 195_000],
+  ["modes.left-right-margin", 45_000],
+  ["modes.reverse-video", 45_000],
 ] as const)("%s declares a %d ms capture-bound wall", (id, wallMs) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()
