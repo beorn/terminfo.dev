@@ -2036,9 +2036,10 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
   const evidence = { snapshot: 2, cell, rgb: sentinel.rgb, form: sentinel.form, writes, reads }
   type Read = { frame: ObservationFrame; requestedMs: number; returnedMs: number; located: CaptureLocated | null }
   const write = (phase: string, bytes: string) => {
-    writes.push({ phase, atMs: elapsed(), bytes })
+    const atMs = elapsed()
+    writes.push({ phase, atMs, bytes })
     ctx.write(bytes)
-    return writes.at(-1)!.atMs
+    return atMs
   }
   const read = async (phase: string): Promise<Read | string> => {
     const requestedMs = elapsed()

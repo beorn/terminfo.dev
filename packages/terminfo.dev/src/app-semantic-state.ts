@@ -2974,7 +2974,7 @@ export async function readAppSemanticState(
           let serial = 0
           const sample = async (_number: number, feed: string) => {
             await phase(`cwd ${serial++}`, feed)
-            return await read()
+            return read()
           }
           return await readCwdPhases(
             initial,
