@@ -39,6 +39,7 @@ import {
   captureAdapterEligible,
   runProbeBatch,
   syncOutputRenderedSubject,
+  wallExceededReason,
   type HeldViewportReaderFor,
 } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
@@ -7557,6 +7558,66 @@ it("a callback that outlives its wall cannot write while the next probe runs and
     Object.assign(slow, originalSlow)
     Object.assign(next, originalNext)
   }
+})
+
+/**
+ * @failure A row stopped by its wall reads only "Probe exceeded Nms", so nobody can tell whether it was slow
+ *   from the start or ran out a few captures short without opening the draft's captures (34641 d).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> criterion reason, rawReplies[feature].captures
+ * @testonly none
+ */
+it("a row stopped by its wall says how many captures it took, the last one's offset and the median gap", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const original = { term: slow.term, termWrites: slow.termWrites, wallMs: slow.wallMs }
+  let releaseTheWall!: () => void
+  const afterTheWall = new Promise<void>((resolve) => {
+    releaseTheWall = resolve
+  })
+  const at = [1_000, 1_900, 2_700]
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      await source.capture!({ role: "control", label: "first" })
+      await source.capture!({ role: "control", label: "second" })
+      await source.capture!({ role: "control", label: "third" })
+      await afterTheWall
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+    }
+    let taken = 0
+    const batch = await runProbeBatch({
+      ids: [slow.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: () => true } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+      capture: async (checkpoint) => ({
+        frame: { role: "control", ref: `sha256:${"c".repeat(64)}`, capturedAt: at[taken++]!, label: checkpoint.label },
+        trace: {},
+      }),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const reason = "Probe exceeded 80ms after 3 captures, last at +1700ms (median gap 850ms)"
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe(reason)
+    expect.soft(row.tests).toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo", reason })])
+    // The count is the row's own recorded captures, the same ones its draft keeps.
+    const recorded = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { captures?: unknown[] }
+    expect.soft(recorded.captures).toHaveLength(3)
+  } finally {
+    releaseTheWall()
+    Object.assign(slow, original)
+  }
+})
+
+it("the wall reason counts from the row's first capture; one capture has no gap and none keeps the bare text", () => {
+  expect(wallExceededReason(120_000, [])).toBe("Probe exceeded 120000ms")
+  expect(wallExceededReason(120_000, [5_000])).toBe("Probe exceeded 120000ms after 1 capture, last at +0ms")
+  // Out of order on input, and an even count of gaps (900, 1000, 1100, 2000): the median is the mean of the middle two.
+  expect(wallExceededReason(60_000, [4_000, 1_000, 6_000, 1_900, 2_900])).toBe(
+    "Probe exceeded 60000ms after 5 captures, last at +5000ms (median gap 1050ms)",
+  )
 })
 
 /**

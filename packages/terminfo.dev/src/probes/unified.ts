@@ -302,6 +302,32 @@ export function scheduleAppProbes<T extends { readonly id: string }>(requested: 
 }
 
 /**
+ * A row stopped by its wall says how far its captures got (34641 d): their count, the last one's offset from the
+ * row's first capture, and the median gap between them, from each frame's own `capturedAt`. A row with no captures
+ * keeps the bare text. Preparation and renewal captures are not this row's, so the span is the fixture's, not the
+ * run's.
+ */
+export function wallExceededReason(wallMs: number, capturedAt: readonly number[]): string {
+  const bare = `Probe exceeded ${wallMs}ms`
+  const [first, ...rest] = [...capturedAt].sort((a, b) => a - b)
+  if (first === undefined) return bare
+  const count = `${rest.length + 1} capture${rest.length === 0 ? "" : "s"}`
+  const last = `last at +${Math.round((rest.at(-1) ?? first) - first)}ms`
+  if (rest.length === 0) return `${bare} after ${count}, ${last}`
+  let before = first
+  const gaps = rest
+    .map((at) => {
+      const gap = at - before
+      before = at
+      return gap
+    })
+    .sort((a, b) => a - b)
+  const middle = gaps.slice(Math.ceil(gaps.length / 2) - 1, Math.floor(gaps.length / 2) + 1)
+  const median = middle.reduce((sum, gap) => sum + gap, 0) / middle.length
+  return `${bare} after ${count}, ${last} (median gap ${Math.round(median)}ms)`
+}
+
+/**
  * The console host a text capture recorded, in the shape the observation publishes: image, the
  * executable this run opened, and that executable's digest. `pid` and `ppid` stay in the trace,
  * because they name one process instance rather than a host a reader can check (30055 AC4; @cto
@@ -1745,7 +1771,16 @@ export async function runProbeBatch(
           }
           result = {
             pass: false,
-            tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
+            tests: [
+              {
+                id: "criterion",
+                status: "probe-todo",
+                reason: wallExceededReason(
+                  wallMs,
+                  captures.map(({ frame }) => frame.capturedAt),
+                ),
+              },
+            ],
           }
         } else {
           result = raced.value
