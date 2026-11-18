@@ -285,6 +285,57 @@ describe("device query observations", () => {
     }
   })
 
+  // #34937 (@cto 5380390b, option b): Terminal.app 2.15 retained ESC[?1;2c twice for CSI = c plus its DA1 sentinel.
+  // The row stays PROBE INVALID with a reason naming those bytes, never the writer's callback-defect default, and
+  // no frame is attributed to CSI = c. The silence negative and on-time/late DA3 replies keep their grades.
+  test("DA3 read of only DA1-shaped frames is a named PROBE INVALID, not the writer default", async () => {
+    const terminalApp = "\x1b[?1;2c"
+    const da3 = callback("device.tertiary-da")
+    const record = (result: Awaited<ReturnType<typeof da3.terminal>>) =>
+      recordExecutedProbe({
+        featureId: "device.tertiary-da",
+        attempt: { scope: "probe", startedAt: "2026-11-18T17:36:27.073Z" },
+        rawReplyRef: "device.tertiary-da",
+        ...(result.observation && { observation: { ...result.observation, featureId: "device.tertiary-da" } }),
+        assertions: (result.assertions ?? []).map((assertion) => ({
+          ...assertion,
+          featureId: "device.tertiary-da",
+          rawReplyRef: "device.tertiary-da",
+        })),
+        ...(result.tests && { tests: result.tests }),
+      })
+    const named =
+      "DA3 expected a DECRPTUI frame; 2 DA1-shaped frames were received, leaving unmatched output before the last DA1 fence"
+    const twice = await da3.terminal(terminal(terminalApp + terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(twice.response).toBe(terminalApp + terminalApp)
+    expect(twice.assertions).toBeUndefined()
+    expect(twice.tests).toStrictEqual([{ id: "criterion", status: "probe-invalid", reason: named }])
+    const stored = record(twice)
+    expect(stored.status).toBe("probe-invalid")
+    expect(stored.tests).toMatchObject([{ id: "criterion", status: "probe-invalid", reason: named }])
+    expect(JSON.stringify(stored)).not.toContain("callback defect")
+
+    // Bytes that are not all DA1-shaped ahead of the fence keep today's unnamed inconclusive.
+    const mixed = await da3.terminal(terminal("\x1b[12;20R" + terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(mixed.tests).toBeUndefined()
+
+    const silent = await da3.terminal(terminal(terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
+    expect(silent.tests).toBeUndefined()
+    expect(record(silent).status).toBe("unsupported")
+
+    const valid = "\x1bP!|1234ABCD\x1b\\"
+    for (const [raw, sentinel] of [
+      [valid + terminalApp, undefined],
+      [terminalApp + valid, { atMs: 2, graceMs: 250 }],
+    ] as const) {
+      const replied = await da3.terminal(terminal(raw, "reply", sentinel))
+      expect(replied.observation, raw).toMatchObject({ outcome: "supported" })
+      expect(replied.tests, raw).toBeUndefined()
+      expect(record(replied).status, raw).toBe("supported")
+    }
+  })
+
   test("a frame between a DA1-shaped reply and the DA1 answer arrived on time and grades by the frame", async () => {
     const da1 = "\x1b[?62;52;c"
     for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
