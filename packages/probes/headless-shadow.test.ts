@@ -212,9 +212,9 @@ it.runIf(OWNED_LAYOUT)(
       input: expect.stringContaining("randomUUID"),
     })
 
-    // The icon-title declaration predicate reads the logged source (getTitle and getIconLabel are functions). Without
-    // getIconLabel in the log's root, the replay takes the other declaration branch, which does not declare the
-    // row's buffer_state assertion: never agreement.
+    // The icon-title declaration predicate and its callback both read getIconLabel from the logged source. Without it
+    // in the log's root, the replayed declaration and callback both change: never agreement. (No xterm.js row has a
+    // source-reading predicate whose branch alone changes the grade, so the branch is not isolated here.)
     const branch = "extensions.osc0-icon-title"
     const flipped = await shadowTampered(run, "declaration", (draft) => {
       const log = JSON.parse(draft.rawReplies[branch + ".callLog"]!) as { root: { entries: [string, unknown][] } }
