@@ -179,7 +179,7 @@ test("a moved plain line vetoes every other reading", () => {
 })
 
 // #34549 (@cto coverage criterion ruling): a bounded gap does not establish phase coverage. Both series
-// clear 12 frames, 6000 ms and the gap ceiling, yet a 50%-duty blink inside the declared class reads
+// clear 12 frames and 6000 ms with no gap above 510 ms, yet a 50%-duty blink inside the declared class reads
 // "on" at every sample: period 1000 ms at phase 0, and period 5002/5 ms at phase 1/10 ms
 // ((10t + 1) mod 10004 < 5002 for every t). Neither may decide a negative.
 const PHASE_LOCKED = [
@@ -221,8 +221,8 @@ test("a return still decides Supported at phase-locked capture times", () => {
 
 // Achieved capture times of the seven retained Linux runs (draft records named in
 // /hh/var/@cto/do-20261114T1623/blink34549-independent-2123.json and 34549-bound-retained-proof-1108.json),
-// as gaps. Every one covers the declared class; with the 545 ms ceiling kept only the run whose largest gap
-// is 545 ms decides, and the rest stay capture too slow.
+// as gaps. Every one covers the declared class, so every one decides, whatever its largest gap; under the
+// former 545 ms ceiling only the run whose largest gap is 545 ms did, and the rest stayed capture too slow.
 const RETAINED_GAPS = [
   {
     run: "alacritty 2026-11-17T12-06",
@@ -265,5 +265,5 @@ test.each(RETAINED_GAPS)("retained flat run $run covers the declared class", ({ 
     focusQualified: true,
   })
   expect(verdict.witness.uncoveredPeriodMs).toBeUndefined()
-  expect(verdict.kind).toBe(Math.max(...gaps) <= 6000 / 11 ? "negative-decidable" : "open")
+  expect(verdict.kind).toBe("negative-decidable")
 })

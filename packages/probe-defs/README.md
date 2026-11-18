@@ -168,18 +168,18 @@ digest), and decides on the samples it achieved, never on the interval it reques
 styled value returning decides Supported first, at any achieved rate, recording the measured
 half-period. At least three distinct values with a differing final pair also decide Supported when
 focus reads before and after qualify and every plain digest agrees. A negative may speak only
-inside the achieved-frames gate — at least 12 styled frames, an actual styled `capturedAt` span of
-at least 6000 ms, and no interim gap above 6000/(12−1) ms — where at most one change followed by
+inside the achieved-frames gate — at least 12 styled frames and an actual styled `capturedAt` span of
+at least 6000 ms — where at most one change followed by
 stillness decides Unsupported only with those focus reads, this row's literal `a` injected and read
 back, input age below 15000 ms at the last styled capture, and a changed third-region repaint
 after sampling. Inside the gate the achieved capture times must also see a return of every
 50%-duty blink with a period from 600 to 3000 ms at every phase, checked exactly over that
 continuous interval (`blink-coverage.ts`); otherwise the row stays PROBE TODO as blink phase not
 covered, naming one uncovered period. A negative therefore rules out that declared class, not every
-blink rate or duty. Below the gate the row stays PROBE TODO as capture too slow to decide blink,
-recording the achieved frame count, span and gap min/median/max, and stating that the
-integer-millisecond conjunction needs at least 13 styled frames (12 frames carry only 11 gaps, so
-the span would demand every one at the ceiling); missing controls remain PROBE
+blink rate or duty. Coverage replaced the former 545 ms gap ceiling, which neither established it
+nor was needed for it (#34549). Below the gate the row stays PROBE TODO as capture too slow to
+decide blink, recording the achieved frame count, span and gap min/median/max; missing controls
+remain PROBE
 TODO naming the condition. The negative reason states the measured span and gaps; the existing
 subject-aware finalizer keeps mux flat results PROBE TODO and names the recorded outer terminal.
 These controls use existing input and capture fixtures.

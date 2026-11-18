@@ -55,26 +55,16 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
  * requested (#33117): one window shot per sample costs 265-493 ms on measured hosts, so a series
  * sampled slower than a blink period aliases a return into a one-way change. The negative gate
  * therefore speaks only about achieved frames: at least BLINK_MIN_FRAMES styled frames spanning
- * at least BLINK_MIN_SPAN_MS of their own capturedAt, with no interim gap above
- * BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1). The requested schedule asks for more than that
- * minimum — jittered offsets near 500 ms apart out to about 7500 ms — because exactly
- * BLINK_MIN_FRAMES frames cannot clear the gate together (their gaps sum to the span, so each
- * would have to equal the ceiling), and because the loop waits for each offset, so the achieved
- * span is never shorter than the requested one on any host. Earlier-return remains the first
- * positive route at any achieved rate. Focus-qualified fade also decides support. A negative also
- * names what it rules out (#34549): the achieved capture times must see a return of every 50%-duty
- * blink with a period from 600 to 3000 ms at every phase (blink-coverage.ts), because a bounded gap
- * alone admits samples phase-locked to a blink period.
- *
- * The ceiling is an integer-arithmetic conjunction, not a rounding detail: capturedAt is whole
- * milliseconds, N frames carry only N-1 gaps, and 6000/(12-1) is 545.45, so twelve frames could
- * reach at best 11 x 545 = 5995 ms and never the 6000 ms span — at least BLINK_MIN_FRAMES+1 frames
- * are needed. Raising BLINK_MIN_FRAMES to 13 would move the ceiling itself to 500 ms (the divisor is
- * frames-1), which grades differently instead of explaining, so the predicate and the number stay as
- * they are and only the refusal names the effective requirement (@cto 34261 ruling). The schedule is
- * a separate question: it must still request more than the minimum, but every requested gap has to
- * leave room for the observed achieved-minus-requested gap delta rather than sit inside the ceiling
- * (34129 margin ruling).
+ * at least BLINK_MIN_SPAN_MS of their own capturedAt, whose times see a return of every blink in a
+ * declared class (#34549, @cto coverage criterion ruling): a 50%-duty blink with any period from
+ * 600 to 3000 ms at any phase, checked exactly in blink-coverage.ts. Coverage replaces the former
+ * 545 ms gap ceiling, which neither established it (samples phase-locked to a period read one state
+ * however close together) nor was needed for it (jittered runs with larger gaps cover the class).
+ * A negative rules out that class, not every blink rate or duty. The requested schedule — jittered
+ * offsets near 500 ms apart out to about 7500 ms — covers the class with margin, and the loop waits
+ * for each offset, so the achieved span is never shorter than the requested one on any host.
+ * Earlier-return remains the first positive route at any achieved rate. Focus-qualified fade also
+ * decides support.
  */
 const BLINK_MIN_FRAMES = 12
 const BLINK_MIN_SPAN_MS = 6000
@@ -176,13 +166,11 @@ export function blinkSeriesDecision(input: {
   if (fade) {
     return focusQualified ? { kind: "supported", witness } : { kind: "open", reason: "fade-focus", witness }
   }
-  const gateMissed =
-    styled.length < BLINK_MIN_FRAMES ||
-    witness.spanMs < BLINK_MIN_SPAN_MS ||
-    (witness.gapMaxMs !== undefined && witness.gapMaxMs > BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1))
-  if (gateMissed) return { kind: "open", reason: "capture-too-slow", witness }
-  // The gap ceiling does not establish phase coverage: samples whose phases lock to a period see one
-  // state throughout (#34549). A negative also needs every member of the declared class to show a return.
+  if (styled.length < BLINK_MIN_FRAMES || witness.spanMs < BLINK_MIN_SPAN_MS) {
+    return { kind: "open", reason: "capture-too-slow", witness }
+  }
+  // A bounded gap does not establish phase coverage: samples whose phases lock to a period see one state
+  // throughout (#34549). A negative needs every member of the declared class to show a return.
   const uncovered = uncoveredBlinkPeriod(capturedAt)
   if (uncovered !== undefined) {
     return {
@@ -484,7 +472,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   }
   if (decision.kind === "open" && decision.reason === "capture-too-slow") {
     return inconclusive(
-      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same, and with whole-millisecond capture times this conjunction needs at least ${String(BLINK_MIN_FRAMES + 1)} styled frames: ${String(BLINK_MIN_FRAMES)} frames carry only ${String(BLINK_MIN_FRAMES - 1)} gaps, so clearing the span would demand every one at the ceiling`,
+      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames spanning ${String(BLINK_MIN_SPAN_MS)} ms; with fewer frames or a shorter span a blink and a one-way paint settle look the same`,
       witnessed,
     )
   }
