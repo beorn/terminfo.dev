@@ -6813,7 +6813,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             wait: kittyWait,
             now: () => sourceNow(ctx),
           })
-          const playbackLast = playbackRead.samples[playbackRead.samples.length - 1]!.frame
+          const playbackLast = playbackRead.last.frame
           const playbackElapsedMs = playbackRead.elapsedMs
           const retry = playbackRead.retry
           // Hand selection qualifies moving playback. A negative also needs an exact animation refusal.

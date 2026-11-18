@@ -345,6 +345,8 @@ export interface KittyPlaybackSample<F> {
 /** A playback read: every sample, and the pair and retry the decision table compares. */
 export interface KittyPlaybackRead<F> {
   readonly samples: readonly KittyPlaybackSample<F>[]
+  /** The last sample taken: the first that differed, the one with no digest, or the final one. */
+  readonly last: KittyPlaybackSample<F>
   /** The first two samples. */
   readonly playback: KittyDigestPair
   /** Taken only when the first two were equal: the second sample and the last one taken. */
@@ -375,23 +377,26 @@ export async function sampleKittyPlayback<F extends { readonly regionDigest?: st
   readonly wait: (ms: number) => Promise<void>
   readonly now: () => number
 }): Promise<KittyPlaybackRead<F>> {
-  const samples: KittyPlaybackSample<F>[] = []
-  for (let index = 0; index < KITTY_PLAYBACK_SAMPLES; index++) {
-    const previous = samples[index - 1]
-    if (previous) await io.wait(kittyPlaybackWait(previous.captureMs))
+  const take = async (index: number): Promise<KittyPlaybackSample<F>> => {
     const started = io.now()
     const frame = await io.shoot(index)
     const completedAtMs = io.now()
-    samples.push({ frame, digest: frame.regionDigest, completedAtMs, captureMs: completedAtMs - started })
-    if (frame.regionDigest === undefined || frame.regionDigest !== samples[0]!.digest) break
+    return { frame, digest: frame.regionDigest, completedAtMs, captureMs: completedAtMs - started }
   }
-  const first = samples[0]!
+  const first = await take(0)
+  const samples: KittyPlaybackSample<F>[] = [first]
+  let last = first
+  while (samples.length < KITTY_PLAYBACK_SAMPLES && last.digest !== undefined && last.digest === first.digest) {
+    await io.wait(kittyPlaybackWait(last.captureMs))
+    last = await take(samples.length)
+    samples.push(last)
+  }
   const second = samples[1]
-  const last = samples[samples.length - 1]!
   return {
     samples,
+    last,
     playback: [first.digest, second?.digest],
-    retry: samples.length > 2 ? [second!.digest, last.digest] : null,
+    retry: second !== undefined && samples.length > 2 ? [second.digest, last.digest] : null,
     elapsedMs: second ? second.completedAtMs - first.completedAtMs : 0,
   }
 }
