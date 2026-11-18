@@ -1,7 +1,7 @@
 /**
  * @failure The iTerm2 prompt-mark reader certifies a row from another row's read, grades a row that never
- *   reached its starting mark, reads PROMPT_UNAVAILABLE as a missing integration, or opens the API for P;
- *   or grades an OSC 633 row unsupported on a control that never moved its projection, or leaks the
+ *   reached its starting mark, reads PROMPT_UNAVAILABLE as a missing integration, or grades OSC 133 P
+ *   without two registering A controls, Supported from a line mark, or Unsupported over changed history; or grades an OSC 633 row unsupported on a control that never moved its projection, or leaks the
  *   session's own directory into a reading or the public write trace (34866).
  * @level l1
  * @consumer OwnedTerminal.readAppSemanticState on the hosted iTerm2 arm, graded by gradeAppSemanticState.
@@ -40,12 +40,21 @@ function fakeITerm(
     failDirectoryRestore?: boolean
     /** The session's own directory before the row runs. */
     initialDirectory?: string
+    /** 34866 osc133-p: bare OSC 133 P starts a prompt exactly as A does. */
+    secondaryP?: boolean
+    /** An A written straight after a cursor move registers nothing. */
+    dropCursorA?: boolean
+    /** Each bare P also deletes, or rewrites the exit code of, the oldest prompt mark. */
+    pHistory?: "delete" | "change"
+    /** ListPromptsRequest answers SESSION_NOT_FOUND. */
+    noHistory?: boolean
   } = {},
 ) {
   const initialDirectory = variant.initialDirectory ?? "/Users/fixture-person/private-home"
   let directory = initialDirectory
   const marks: {
     id: string
+    line: number
     command: boolean
     output: boolean
     ran?: boolean
@@ -59,17 +68,58 @@ function fakeITerm(
   let opened = 0
   const writes: string[] = []
   const privateWrites: string[] = []
-  const add = (command = false) =>
-    marks.push({ id: `mark-${marks.length}`, command, output: false, dir: directory, ...(command && { text: "" }) })
+  // 3.6.11 prompt marks are line marks (VT100ScreenMutableState setPromptStartLine): an A at a column past
+  // 0 first writes CRLF (place prompt at first column), and an A on a line whose mark has no command reuses it.
+  let top = 0
+  let row = 0
+  let column = 0
+  let serial = 0
+  let afterCursorMove = false
+  const add = (command = false) => {
+    if (column > 0) {
+      row++
+      column = 0
+    }
+    const existing = marks.at(-1)
+    if (existing?.line === row && !existing.command) return
+    marks.push({
+      id: `mark-${serial++}`,
+      line: row,
+      command,
+      output: false,
+      dir: directory,
+      ...(command && { text: "" }),
+    })
+  }
   const write = (text: string) => {
     writes.push(text)
     feed(text)
   }
   const feed = (text: string) => {
     const tokens =
-      /\x1b\](?:(133|633);([A-Z])(?:;([^\x07]*))?|7;file:\/\/localhost([^\x07]*)|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07|\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*\x07)|([^\x1b]+)/g
-    for (const [, namespace, letter, argument, path, value, printed] of text.matchAll(tokens)) {
+      /\x1b\](?:(133|633);([A-Z])(?:;([^\x07]*))?|7;file:\/\/localhost([^\x07]*)|1337;SetUserVar=terminfo_fence=([A-Za-z0-9+/=]*))\x07|\x1b\[([0-9;?]*)([A-Za-z])|\x1b\][^\x07]*\x07|([^\x1b]+)/g
+    for (const [, namespace, letter, argument, path, value, csi, final, printed] of text.matchAll(tokens)) {
+      const moved = afterCursorMove
+      afterCursorMove = false
+      if (final !== undefined) {
+        if (final === "J" && csi === "3") {
+          top = row + 50
+          row = top
+          column = 0
+        } else if (final === "H") {
+          const [r = 1, c = 1] = (csi ?? "").split(";").map((n) => Number(n || 1))
+          row = top + r - 1
+          column = c - 1
+          afterCursorMove = csi !== ""
+        }
+        continue
+      }
       if (printed !== undefined) {
+        for (const char of printed) {
+          if (char === "\n") row++
+          else if (char === "\r") column = 0
+          else column++
+        }
         sinceA += printed
         if (sinceB !== undefined) sinceB += printed
         const last = marks.at(-1)
@@ -101,6 +151,13 @@ function fakeITerm(
         }
       }
       const code = argument
+      if (letter === "P" && namespace === "133") {
+        if (variant.pHistory === "delete") marks.shift()
+        if (variant.pHistory === "change" && marks[0]) marks[0].code = 99
+        if (variant.secondaryP) add()
+        continue
+      }
+      if (letter === "A" && variant.dropCursorA && moved) continue
       if (letter === "A" && !variant.markAtB) {
         add()
         sinceA = ""
@@ -122,14 +179,19 @@ function fakeITerm(
     }
   }
   const range = { start: { x: 0, y: "1" }, end: { x: 1, y: "1" } }
+  const lineRange = (line: number) => ({ start: { x: 0, y: String(line) }, end: { x: 0, y: String(line) } })
   const session: ITermPromptSession = {
     readUserVariable: async () => fence,
-    readPrompt: async (): Promise<ITermPromptRead> => {
-      const last = marks.at(-1)
+    listPrompts: async () => {
+      if (variant.noHistory) throw new Error("list_prompts_response SESSION_NOT_FOUND (status 1)")
+      return marks.map((mark) => mark.id)
+    },
+    readPrompt: async (id?: string): Promise<ITermPromptRead> => {
+      const last = id === undefined ? marks.at(-1) : marks.find((mark) => mark.id === id)
       if (!last) return { status: "prompt-unavailable" }
       const mark: ITermPromptMark = {
         uniquePromptId: last.id,
-        promptRange: range,
+        promptRange: lineRange(last.line),
         promptState: last.code !== undefined ? "FINISHED" : last.output ? "RUNNING" : "EDITING",
         ...(last.command && { commandRange: range }),
         ...(last.output && { outputRange: range }),
@@ -237,13 +299,65 @@ test("a row whose baseline mark differs from its assumed start is invalid, not u
   expect(graded.note).toContain("did not reach this row's baseline")
 })
 
-test("osc133-p stays unresolved and never opens the API", async () => {
+// 34866 (@cto osc133p-r2 and its clarification): two A controls at the criterion's cells qualify the
+// mark-registration read; P is graded only on its own two reads. A P adding no mark is Unsupported; a P mark
+// is a line mark that cannot show the exact target column, so it stays a TODO with its history read kept.
+test("osc133-p marks where each A control's mark landed stay a TODO, never Supported", async () => {
+  const reading = await fakeITerm({ secondaryP: true }).read("extensions.osc133-p")
+  expect(reading).toMatchObject({ status: "unavailable" })
+  const reason = reading.status === "unavailable" ? reading.reason : ""
+  // The A at row 1 col 2 lands on line 2 after iTerm2's first-column CRLF; the reading keeps actual lines.
+  expect(reason).toContain('[{"mark":"new","line":0},{"mark":"new","line":2}]')
+  expect(reason).toContain("history unchanged")
+  expect(reason).toContain("cannot show the target column")
+  expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+  const detail = (reading as { detail?: { column?: string; history?: object } }).detail
+  expect(detail?.history).toMatchObject({ added: 2, preserved: "unchanged" })
+  expect(detail?.column).toContain("line marks")
+})
+
+test("osc133-p is unsupported when both A controls register and P adds no mark", async () => {
   const iterm = fakeITerm()
   const reading = await iterm.read("extensions.osc133-p")
-  expect(iterm.opened()).toBe(0)
-  expect(iterm.writes).toEqual([])
+  expect(decided(reading), JSON.stringify(reading)).toBe(false)
+  expect(iterm.opened()).toBe(1)
+  expect(stateOf(reading).detail).toMatchObject({ history: { added: 0, preserved: "unchanged" } })
+})
+
+test("osc133-p A controls that register nothing leave the row a TODO, never unsupported", async () => {
+  const reading = await fakeITerm({ dropCursorA: true }).read("extensions.osc133-p")
   expect(reading).toMatchObject({ status: "unavailable" })
+  expect(reading.status === "unavailable" && reading.reason).toContain("did not register a new prompt mark")
   expect(gradeAppSemanticState(reading).tests?.[0]?.status).toBe("probe-todo")
+})
+
+test("osc133-p with an unknown OSC 133 letter that adds a mark fails its controls", async () => {
+  const graded = gradeAppSemanticState(await fakeITerm({ zAddsMark: true }).read("extensions.osc133-p"))
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+})
+
+// A P that adds no mark but deletes or rewrites an earlier mark moved something: unresolved, never Unsupported.
+test.each(["delete", "change"] as const)(
+  "osc133-p that adds no mark but %ss an earlier prompt mark stays unresolved",
+  async (pHistory) => {
+    const reading = await fakeITerm({ pHistory }).read("extensions.osc133-p")
+    expect(decided(reading), JSON.stringify(reading)).toBe(
+      "pending probe-todo: App semantic target changed to an unexpected state",
+    )
+    expect(stateOf(reading).detail).toMatchObject({ history: { added: 0, preserved: "changed" } })
+  },
+)
+
+test("osc133-p with unreadable history never grades a positive and names the history it lacked", async () => {
+  const positive = await fakeITerm({ secondaryP: true, noHistory: true }).read("extensions.osc133-p")
+  expect(positive).toMatchObject({ status: "unavailable" })
+  expect(positive.status === "unavailable" && positive.reason).toContain("history not observed")
+  expect(gradeAppSemanticState(positive).tests?.[0]?.status).toBe("probe-todo")
+  // A P that added nothing is still Unsupported, and the reading says history was not observed.
+  const negative = await fakeITerm({ noHistory: true }).read("extensions.osc133-p")
+  expect(decided(negative), JSON.stringify(negative)).toBe(false)
+  expect(stateOf(negative).detail).toMatchObject({ history: expect.stringContaining("not observed") })
+  expect(JSON.parse(stateOf(negative).target.after)).toMatchObject({ history: "not observed" })
 })
 
 // @dev/review2 7551f8f9: a session that never reports its fence (SetUserVar not seen on a real 3.6.11)

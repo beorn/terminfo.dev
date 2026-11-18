@@ -335,9 +335,12 @@ export interface ITermPromptMark {
  */
 export type ITermPromptRead = { status: "mark"; mark: ITermPromptMark } | { status: "prompt-unavailable" }
 
-/** The two reads a prompt-mark row needs on the owned session, over one authenticated socket. */
+/** The reads a prompt-mark row needs on the owned session, over one authenticated socket. */
 export interface ITermPromptSession {
-  readPrompt: () => Promise<ITermPromptRead>
+  /** The session's last prompt mark, or the mark with this unique id (GetPromptRequest.unique_prompt_id). */
+  readPrompt: (uniquePromptId?: string) => Promise<ITermPromptRead>
+  /** Every prompt mark id the session holds, oldest first (ListPromptsRequest); SESSION_NOT_FOUND throws. */
+  listPrompts: () => Promise<string[]>
   /** A `user.<name>` session variable set by OSC 1337 SetUserVar; the write-order fence of each phase. */
   readUserVariable: (name: string) => Promise<unknown>
 }
@@ -408,13 +411,31 @@ export async function withITermPromptSession<T>(
 ): Promise<T> {
   return withITermApiSession(options, async ({ rpc, session, variable }) => {
     const result = await work({
-      readPrompt: async () =>
+      readPrompt: async (uniquePromptId) =>
         iTermPromptReadOf(
-          await rpc("get_prompt_request", { session }, "get_prompt_response", {
-            presence: true,
-            acceptStatus: [1, 2, 3],
-          }),
+          await rpc(
+            "get_prompt_request",
+            uniquePromptId === undefined ? { session } : { session, unique_prompt_id: uniquePromptId },
+            "get_prompt_response",
+            { presence: true, acceptStatus: [1, 2, 3] },
+          ),
         ),
+      listPrompts: async () => {
+        const response = await rpc("list_prompts_request", { session }, "list_prompts_response", {
+          presence: true,
+          acceptStatus: [1],
+        })
+        const status = response.status === undefined ? 0 : Number(response.status)
+        if (status !== 0) {
+          const name = status === 1 ? "SESSION_NOT_FOUND" : "unknown status"
+          throw new Error(`list_prompts_response ${name} (status ${String(status)})`)
+        }
+        const ids = response.unique_prompt_id ?? []
+        if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+          throw new Error("list_prompts_response unique_prompt_id is not a list of text")
+        }
+        return ids as string[]
+      },
       readUserVariable: (name) => {
         if (!/^[A-Za-z0-9_]+$/.test(name)) throw new Error(`user variable name ${JSON.stringify(name)} is not plain`)
         return variable(session, `user.${name}`)

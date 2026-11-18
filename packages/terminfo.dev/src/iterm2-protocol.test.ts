@@ -270,10 +270,13 @@ test("a prompt read keeps field presence, including command and directory, and n
     },
     { status: 0, unique_prompt_id: "mark-2", command: "" },
     { status: 3 },
+    { status: 0, unique_prompt_id: "mark-1", prompt_range: range(7) },
     { status: 1 },
     { status: 2 },
   ]
   const promptRequests: unknown[] = []
+  const lists: Record<string, unknown>[] = [{ status: 0, unique_prompt_id: ["mark-1", "mark-2"] }, { status: 1 }]
+  const listRequests: unknown[] = []
   const server = Bun.serve({
     unix: socket,
     fetch(request, server) {
@@ -305,6 +308,9 @@ test("a prompt read keeps field presence, including command and directory, and n
           const [name] = request.variable_request.get as string[]
           const value = name === "tty" ? "/dev/ttys004" : name === "user.terminfo_fence" ? "fence-1" : null
           reply = { variable_response: { status: 0, values: [JSON.stringify(value)] } }
+        } else if (request.list_prompts_request) {
+          listRequests.push(request.list_prompts_request)
+          reply = { list_prompts_response: lists.shift() }
         } else {
           promptRequests.push(request.get_prompt_request)
           reply = { get_prompt_response: prompts.shift() }
@@ -322,6 +328,9 @@ test("a prompt read keeps field presence, including command and directory, and n
         await session.readPrompt(),
         await session.readPrompt(),
         await session.readPrompt(),
+        // 34866 (@cto osc133p-r2): history reads, one mark by its id and the id list.
+        await session.readPrompt("mark-1"),
+        await session.listPrompts(),
       ],
     )
     expect(reads).toEqual([
@@ -342,8 +351,23 @@ test("a prompt read keeps field presence, including command and directory, and n
       // range. An empty command is present text, never absent (34866).
       { status: "mark", mark: { uniquePromptId: "mark-2", command: "" } },
       { status: "prompt-unavailable" },
+      {
+        status: "mark",
+        mark: { uniquePromptId: "mark-1", promptRange: { start: { x: 0, y: "7" }, end: { x: 4, y: "7" } } },
+      },
+      ["mark-1", "mark-2"],
     ])
-    expect(promptRequests).toEqual([{ session: "owned" }, { session: "owned" }, { session: "owned" }])
+    expect(promptRequests).toEqual([
+      { session: "owned" },
+      { session: "owned" },
+      { session: "owned" },
+      { session: "owned", unique_prompt_id: "mark-1" },
+    ])
+    expect(listRequests).toEqual([{ session: "owned" }])
+    const listFailure = await withITermPromptSession({ tty: "/dev/ttys004", deadlineMs: 5000 }, (session) =>
+      session.listPrompts(),
+    ).catch((error: unknown) => error)
+    expect((listFailure as Error).message).toBe("list_prompts_response SESSION_NOT_FOUND (status 1)")
     expect(retained.length).toBeGreaterThan(0)
     for (const [status, name] of [
       [1, "SESSION_NOT_FOUND"],
