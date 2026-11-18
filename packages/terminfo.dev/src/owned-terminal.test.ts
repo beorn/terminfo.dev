@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { ALACRITTY_0_17_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE } from "@terminfo/probe-defs"
 import {
   createOwnedTerminal,
   linuxViewportKeys,
@@ -150,4 +151,32 @@ test("the Linux viewport route applies only to this run's own container launch o
     expect(linuxViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
   }
   expect(linuxViewportKeys({ ...qualified, runId: "", expectedLaunchRunId: "" }), "empty launch id").toBeUndefined()
+})
+
+test("Linux Alacritty 0.17.0 gets its own XTEST route only on its own unmultiplexed launch (34278, @cto a6ed9b08)", () => {
+  const run = "d".repeat(32)
+  const qualified = {
+    appId: "alacritty",
+    platform: "linux",
+    targetVersion: "0.17.0",
+    runId: run,
+    expectedLaunchRunId: run,
+    multiplexed: false,
+  }
+  expect(linuxViewportKeys(qualified)?.viewportKeys).toEqual({
+    route: LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+    keys: { pageUp: "shift+Page_Up", pageDown: "shift+Page_Down", top: "shift+Home", bottom: "shift+End" },
+  })
+  // Not the hosted macOS route: shared key names do not qualify Linux delivery.
+  expect(linuxViewportKeys(qualified)?.viewportKeys.route).not.toBe(ALACRITTY_0_17_VIEWPORT_ROUTE)
+  for (const [change, value] of [
+    ["targetVersion", "0.16.0"],
+    ["targetVersion", "0.17.1"],
+    ["targetVersion", undefined],
+    ["platform", "darwin"],
+    ["runId", "e".repeat(32)],
+    ["multiplexed", true],
+  ] as const) {
+    expect(linuxViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
+  }
 })

@@ -13,6 +13,8 @@ import { describe, expect, it } from "vitest"
 import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
   ALL_PROBES,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
   type ObservationFrame,
   type ProbeCallbackResult,
   type TermProbeSource,
@@ -281,6 +283,21 @@ describe("scrollback.total-lines", () => {
     expect(status(result)).toBe("probe-todo")
     expect(result.note).toMatch(/not bound/)
   })
+
+  // 34278 (@cto a6ed9b08): the Linux xterm 411/412 route and the Linux Alacritty 0.17.0 route are bound by their
+  // exact identity, with every endpoint predicate unchanged; a near-miss string is not the route.
+  for (const route of [XTERM_411_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE]) {
+    it(`binds the endpoint for the exact route "${route}"`, async () => {
+      expect(status(await grade("scrollback.total-lines", { route }))).toBe("supported")
+      expect(status(await grade("scrollback.total-lines", { route, stall: 8 }))).toBe("probe-todo")
+      expect(status(await grade("scrollback.total-lines", { route, short: { pageUp: 1 } }))).toBe("probe-todo")
+    })
+    it(`claims no endpoint on a route that only resembles "${route}"`, async () => {
+      const result = await grade("scrollback.total-lines", { route: `${route} (another build)` })
+      expect(status(result)).toBe("probe-todo")
+      expect(result.note).toMatch(/not bound/)
+    })
+  }
 })
 
 describe("erase.screen.scrollback", () => {

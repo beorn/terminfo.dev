@@ -11,12 +11,29 @@ import type {
 } from "./types.ts"
 
 /**
- * The one viewport route whose endpoint behaviour is bound (@cto 1154): alacritty 0.17.0's default
- * ScrollToTop / ScrollPageUp bindings. owned-terminal.ts installs exactly this string; an endpoint claim on any
- * other route stays TODO.
+ * Hosted macOS Alacritty 0.17.0's default ScrollToTop / ScrollPageUp bindings, the first route whose endpoint
+ * behaviour is bound (@cto 1154). owned-terminal.ts installs exactly this string.
  */
 export const ALACRITTY_0_17_VIEWPORT_ROUTE =
   "hosted alacritty 0.17.0 default bindings (shift+Page_Up/Page_Down/Home/End), keys-only CGEvent"
+
+/** The Linux xterm 411/412 route: its launch declares the two steps xterm leaves unbound (34632). */
+export const XTERM_411_VIEWPORT_ROUTE =
+  "xterm container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
+
+/** Linux Alacritty 0.17.0's own default bindings, pressed through the container's XTEST adapter (34278). */
+export const LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE =
+  "linux alacritty 0.17.0 default bindings (shift+Page_Up/Page_Down/Home/End), XTEST"
+
+/**
+ * The routes whose endpoint behaviour is bound, by exact identity (@cto 1154; the two Linux routes @cto a6ed9b08,
+ * 34278). An endpoint claim on any other route, including one whose name merely resembles these, stays TODO.
+ */
+const ENDPOINT_BOUND_ROUTES: ReadonlySet<string> = new Set([
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+])
 
 /** Rows the fixture needs: 10 lines of growth plus the empty-history line must stay below one screen. */
 export const HELD_ROWS_MIN = 13
@@ -224,7 +241,7 @@ async function endpoint(
   page: Bracket,
   qualify: (bracket: Bracket) => Promise<Qualified | string>,
 ): Promise<{ s: number; evidence: Qualified[] } | string> {
-  if (reader.route !== ALACRITTY_0_17_VIEWPORT_ROUTE) {
+  if (!ENDPOINT_BOUND_ROUTES.has(reader.route)) {
     return `endpoint behaviour is not bound for route "${reader.route}"`
   }
   const a = await qualify(top)
