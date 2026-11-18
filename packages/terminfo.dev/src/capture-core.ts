@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { constants as zlibConstants, zstdCompressSync } from "node:zlib"
 import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
@@ -350,36 +351,123 @@ export type OriginResolver = (input: {
   pixelGeometry: NonNullable<Checkpoint["pixelGeometry"]>
 }) => NamedTextOrigin | Promise<NamedTextOrigin>
 
-/** The one magick depth-8 decode shared by adapters and collector calibration. */
-export async function decodeCapture({
-  source,
-  featureId,
-  deadline,
-}: {
-  source: CaptureSource
+/**
+ * The PNG conversion a capture writes (#30764). Two things made identical pixels hash differently:
+ * magick stamps `tIME` and `date:*` text into every conversion, and it copies the XWD window name
+ * into a `tEXt comment` — 715 of the 2,724 duplicate-image groups on main, measured 2026-10-22,
+ * differ only by that name ("Alacritty", "bun", "osc0-icon-title"). Excluding the date and time
+ * chunks and clearing the comment gives one evidence hash per screen; `-strip` would do the same but
+ * also drops cHRM and bKGD, which describe the pixels.
+ */
+export const PNG_CONVERSION_ARGS = [
+  "xwd:-",
+  "-define",
+  "png:exclude-chunks=date,time",
+  "-set",
+  "comment",
+  "",
+  "png:-",
+] as const
+
+/**
+ * One thread for the acquisition conversion (#34549, @cto fd4e3b66). The run container has 2 CPUs and
+ * several conversions overlap during sgr.blink sampling; ImageMagick's extra worker costs 7-9 ms CPU per
+ * conversion and buys no wall time on these 800x600 frames. Output is byte-identical (retained PNG and
+ * RGBA), measured on retained alacritty and ghostty frames: /hh/var/@dev/1/34549/convert/report.md.
+ */
+export const CONVERSION_THREAD_ARGS = ["-limit", "thread", "1"] as const
+
+/** The depth-8 RGBA output every pixel digest and every reproduction recipe hashes. */
+const DEPTH8_RGBA_ARGS = ["-depth", "8", "rgba:-"] as const
+
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+/** The converter identity a run records: one `magick -version` probe for every adapter (#34549). */
+export async function converterIdentity(): Promise<string> {
+  return (await command("magick", ["-version"])).toString().trim()
+}
+
+/**
+ * One acquisition's conversion input. The retained-PNG policy is the adapter call site's explicit
+ * choice and is never inferred here from the format or the feature (#34549, @cto amendment 1):
+ * - `normalized` (Linux XWD and Linux pointer PNG): the source is re-encoded through
+ *   PNG_CONVERSION_ARGS into a temporary file under `scratchDirectory`, in the same magick process
+ *   that writes the RGBA.
+ * - `original` (Darwin): the screencapture PNG is retained exactly as acquired.
+ */
+export type ConvertCaptureInput = {
+  bytes: Buffer
   featureId: string
+  /** Absolute deadline passed to every command this conversion runs. */
   deadline?: number
-}): Promise<CapturedFrame> {
-  const { width, height, bytes, format } = source
+  /**
+   * The pixel size the caller already measured (Linux: the window's own geometry). Absent, the owner
+   * reads the image's own extent with one `info:` query before decoding (Darwin), and the caller
+   * applies its own acceptance (requireDarwinScale) to the returned frame.
+   */
+  extent?: { width: number; height: number }
+} & ({ retain: "normalized"; format: "xwd" | "png"; scratchDirectory: string } | { retain: "original"; format: "png" })
+
+/**
+ * The one converter for every acquisition path (#34549): the retained PNG plus the depth-8 RGBA
+ * frame finalization digests. Processes per route: Linux normalized = 1 (convert + RGBA), Darwin
+ * original = 2 (extent query, then decode). Malformed output always throws: a wrong PNG signature,
+ * or an RGBA length that is not the extent's; with a caller-measured extent, one `info:` query only
+ * words that error and never yields a frame.
+ */
+export async function convertCapture(input: ConvertCaptureInput): Promise<{ png: Buffer; frame: CapturedFrame }> {
+  const { bytes, format, featureId, deadline } = input
+  const readExtent = async () =>
+    capturePixels((await command("magick", [`${format}:-`, "-format", "%wx%h", "info:"], bytes, deadline)).toString())
+  const { width, height } = input.extent ?? (await readExtent())
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
     throw new Error(`Invalid captured frame extent ${width}x${height}`)
   }
-  const rgba = await command("magick", [`${format}:-`, "-depth", "8", "rgba:-"], bytes, deadline)
+  let png: Buffer
+  let rgba: Buffer
+  if (input.retain === "normalized") {
+    const converted = await mkdtemp(join(input.scratchDirectory, ".converted-"))
+    try {
+      const output = join(converted, "frame.png")
+      rgba = await command(
+        "magick",
+        [
+          ...CONVERSION_THREAD_ARGS,
+          `${format}:-`,
+          ...PNG_CONVERSION_ARGS.slice(1, -1),
+          "-write",
+          `png:${output}`,
+          ...DEPTH8_RGBA_ARGS,
+        ],
+        bytes,
+        deadline,
+      )
+      png = await readFile(output)
+    } finally {
+      await rm(converted, { recursive: true, force: true })
+    }
+  } else {
+    rgba = await command("magick", [`${format}:-`, ...DEPTH8_RGBA_ARGS], bytes, deadline)
+    png = bytes
+  }
+  if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
+  }
   const expected = width * height * 4
   if (rgba.length !== expected) {
-    const captured = capturePixels(
-      (await command("magick", [`${format}:-`, "-format", "%wx%h", "info:"], bytes, deadline)).toString(),
-    )
-    if (captured.width !== width || captured.height !== height) {
-      throw new Error(
-        `capture ${captured.width}x${captured.height} differs from window ${width}x${height} (border included?)`,
-      )
+    if (input.extent !== undefined) {
+      const captured = await readExtent()
+      if (captured.width !== width || captured.height !== height) {
+        throw new Error(
+          `capture ${captured.width}x${captured.height} differs from window ${width}x${height} (border included?)`,
+        )
+      }
     }
     throw new Error(
-      `Raw capture for ${featureId} is ${rgba.length} bytes; ${width}x${height} at depth 8 rgba is ${expected}`,
+      `Capture conversion for ${featureId} returned ${rgba.length} RGBA bytes; ${width}x${height} at depth 8 rgba is ${expected}`,
     )
   }
-  return { width, height, rgba }
+  return { png, frame: { width, height, rgba } }
 }
 
 /**
@@ -497,18 +585,13 @@ export async function finishCapture(input: {
   png: Buffer
   origin: NamedTextOrigin | OriginResolver
   trace: Record<string, unknown>
-  /** Pixels the caller already decoded for this exact capture; finalization reuses them (30092). */
-  decoded?: CapturedFrame
-  /** Absolute deadline for the one decode this finalizer runs when `decoded` is absent (30092). */
-  deadline?: number
+  /** The pixels convertCapture decoded for this exact capture; finalization never decodes (30092, 34549). */
+  decoded: CapturedFrame
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
   const finishEntry = performance.now()
-  const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
+  const { directory, onRetained, checkpoint, source, png, origin, trace, decoded } = input
   const { featureId, role, label, cells, controlCells, pixelGeometry, locate } = checkpoint
   const { width, height, format, capturedAt } = source
-  if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-    throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
-  }
   // The whole of both retains: hashing, the exclusive write or the existing-file read/compare, and
   // the onRetained callback. Deliberately not labelled write time and not corrected for its hash.
   const retainStart = performance.now()
@@ -526,11 +609,6 @@ export async function finishCapture(input: {
   if (controlCells !== undefined && cells === undefined) {
     throw new Error(`Capture ${featureId} was asked for a same-shot control region without the region it controls`)
   }
-  const decodeStart = performance.now()
-  const decoded = predecoded ?? (await decodeCapture({ source, featureId, deadline }))
-  // Absent, never 0, when the caller already decoded: linux captureRaw decodes before this function,
-  // so a measured zero must stay distinguishable from a decode that did not happen here (@cto 34261).
-  const decodeMs = predecoded === undefined ? Math.round(performance.now() - decodeStart) : undefined
   if (decoded.width !== width || decoded.height !== height || decoded.rgba.byteLength !== width * height * 4) {
     throw new Error(
       `Decoded capture for ${featureId} is ${decoded.width}x${decoded.height} with ${decoded.rgba.byteLength} bytes; source is ${width}x${height} with ${width * height * 4} depth-8 RGBA bytes`,
@@ -580,15 +658,16 @@ export async function finishCapture(input: {
     const region = cropRegion(cells)
     const rectangle = region.rectangle
     const control = controlCells !== undefined ? cropRegion(controlCells) : undefined
-    const rawCommand = [`${format}:-`, "-depth", "8", "rgba:-"]
+    // Reproduction recipes, not the acquisition argv (#34549 amendment 6): rawCommand and cropCommand
+    // read the retained source on stdin, reproduceWhole/Region read the retained PNG, and all of them
+    // hash the same depth-8 RGBA the acquisition digested.
+    const rawCommand = [`${format}:-`, ...DEPTH8_RGBA_ARGS]
     const cropCommand = [
       `${format}:-`,
       "-crop",
       `${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y}`,
       "+repage",
-      "-depth",
-      "8",
-      "rgba:-",
+      ...DEPTH8_RGBA_ARGS,
     ]
     regionDigest = region.digest
     frameRendering = renderedAxes(region.rendering)
@@ -667,9 +746,10 @@ export async function finishCapture(input: {
       // performance.now basis. They do not cover the whole served context.capture path: the caller's
       // dispatch and small validation and string work sit outside every bucket, so they need not sum
       // to the complete call. postDecodeMs is one aggregate by decision, not a measured split.
+      // decodeMs is absent: it only ever named a decode run inside this function, and `decoded` is now
+      // required, so none runs here; conversion time belongs to the adapter's own trace (34549).
       finish: {
         retainMs,
-        ...(decodeMs === undefined ? {} : { decodeMs }),
         postDecodeMs: Math.round(performance.now() - postDecodeStart),
         totalMs: Math.round(performance.now() - finishEntry),
       },

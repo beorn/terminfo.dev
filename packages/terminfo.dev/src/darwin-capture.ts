@@ -2,9 +2,9 @@ import { randomBytes } from "node:crypto"
 import { mkdirSync, readFileSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import {
-  capturePixels,
   command,
-  decodeCapture,
+  convertCapture,
+  converterIdentity,
   finishCapture,
   type NamedTextOrigin,
   type OriginResolver,
@@ -286,7 +286,7 @@ export async function createDarwinCapture(
     takenAt: new Date().toISOString(),
   }
   const { window } = installed
-  await command("magick", ["-version"])
+  await converterIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const assertOwned = async (deadline?: number) => {
     const current = await census(deadline)
@@ -311,7 +311,7 @@ export async function createDarwinCapture(
       cause: cause instanceof Error ? { name: cause.name, message: cause.message } : { message: String(cause) },
     }
   }
-  const acquire = async (deadline?: number) => {
+  const acquire = async (featureId: string, deadline?: number) => {
     const preCapture = await assertOwned(deadline)
     const run = async (args: string[]): Promise<ScreencaptureAttempt> => {
       const outputPath = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
@@ -382,10 +382,18 @@ export async function createDarwinCapture(
       )
     const capturedAt = Date.now()
     await assertOwned(deadline)
-    const pixels = capturePixels(
-      (await command("magick", ["png:-", "-format", "%wx%h", "info:"], bytes, deadline)).toString(),
-    )
-    requireDarwinScale(window, pixels)
+    // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
+    // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
+    const convertStart = performance.now()
+    const { png, frame: decoded } = await convertCapture({
+      bytes,
+      format: "png",
+      retain: "original",
+      featureId,
+      deadline,
+    })
+    const convertMs = Math.round(performance.now() - convertStart)
+    requireDarwinScale(window, decoded)
     const trace = {
       platform: "darwin",
       window,
@@ -393,6 +401,8 @@ export async function createDarwinCapture(
       ownedWindows: preCapture.ownedWindows,
       measuredAppPid: appPid,
       scale: 1,
+      // The converter's wall time for this frame: extent query plus decode (#34549).
+      convertMs,
       captureCommand: [producing.file, ...producing.args.slice(0, -1)],
       ...(refused
         ? {
@@ -403,23 +413,22 @@ export async function createDarwinCapture(
           }
         : {}),
     }
-    return { source: { bytes, format: "png" as const, ...pixels, capturedAt }, trace }
+    const source = { bytes, format: "png" as const, width: decoded.width, height: decoded.height, capturedAt }
+    return { source, png, decoded, trace }
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
-    const { source, trace } = await acquire()
-    return finishCapture({ directory, onRetained, checkpoint, source, png: source.bytes, origin, trace })
+    const acquired = await acquire(checkpoint.featureId)
+    return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
-    const { source, trace } = await acquire(deadline)
-    const decoded = await decodeCapture({ source, featureId: checkpoint.featureId, deadline })
+    const { source, png, decoded, trace } = await acquire(checkpoint.featureId, deadline)
     const result = await finishCapture({
       directory,
       onRetained,
       checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       source,
-      png: source.bytes,
+      png,
       decoded,
-      ...(deadline === undefined ? {} : { deadline }),
       origin: () => {
         throw new Error("Darwin calibration raw capture cannot map cells before a named origin")
       },

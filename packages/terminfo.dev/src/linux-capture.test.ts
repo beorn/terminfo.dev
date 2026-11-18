@@ -26,13 +26,19 @@ import {
   createLinuxCapture,
   LINUX_CAPTURE_SETTLE_MS,
   assertLiveExecutable,
-  CONVERSION_THREAD_ARGS,
-  PNG_CONVERSION_ARGS,
   screenPixels,
   windowPixels,
 } from "./linux-capture.ts"
 
-import { capturePixels, cellRectangle, command, finishCapture } from "./capture-core.ts"
+import {
+  capturePixels,
+  cellRectangle,
+  command,
+  CONVERSION_THREAD_ARGS,
+  convertCapture,
+  finishCapture,
+  PNG_CONVERSION_ARGS,
+} from "./capture-core.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
@@ -257,7 +263,8 @@ printf 'xwd-window-%s' "\$id"`,
   )
   executable(
     join(directory, "magick"),
-    `if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
+    `if [ -n "\${TEST_CAPTURE_MAGICK_CALLS:-}" ]; then printf '%s\\037' "$@" >> "$TEST_CAPTURE_MAGICK_CALLS"; printf '\\n' >> "$TEST_CAPTURE_MAGICK_CALLS"; fi
+if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
 if [ -n "\${TEST_CAPTURE_MAGICK_ARGS:-}" ]; then printf '%s\\n' "$@" >> "$TEST_CAPTURE_MAGICK_ARGS"; fi
 cat > "$TEST_CAPTURE_STDIN"
 if [ "${"$"}TEST_CAPTURE_FAIL" = conversion ]; then printf 'conversion failed\\n' >&2; exit 19; fi
@@ -368,6 +375,7 @@ afterEach(() => {
     "TEST_CAPTURE_XWD_SIZE",
     "TEST_CAPTURE_CHROME_ROWS",
     "TEST_CAPTURE_MAGICK_ARGS",
+    "TEST_CAPTURE_MAGICK_CALLS",
   ]) {
     delete process.env[key]
   }
@@ -740,6 +748,72 @@ test.runIf(process.platform === "linux")(
   },
 )
 
+test.runIf(process.platform === "linux")(
+  "Linux runs one magick per acquisition on the XWD and pointer routes; the version probe and a malformed frame's info: are counted apart (#34549)",
+  async () => {
+    const { directory, release, png } = fixture()
+    const callsPath = join(directory, "magick-calls")
+    process.env.TEST_CAPTURE_MAGICK_CALLS = callsPath
+    writeFileSync(release, "continue")
+    const calls = () =>
+      existsSync(callsPath)
+        ? readFileSync(callsPath, "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => line.split("\x1f").slice(0, -1))
+        : []
+    const frames = join(directory, "frames")
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable(), () => {})
+    // The version probe: one process at install, before any acquisition.
+    expect(calls()).toEqual([["-version"]])
+    writeFileSync(callsPath, "")
+    // The PNG target follows "-write", after the thread limit and every PNG argument but the last.
+    const outputAt = CONVERSION_THREAD_ARGS.length + PNG_CONVERSION_ARGS.length
+    const conversion = (input: string, output: string) => [
+      ...CONVERSION_THREAD_ARGS,
+      input,
+      ...PNG_CONVERSION_ARGS.slice(1, -1),
+      "-write",
+      output,
+      "-depth",
+      "8",
+      "rgba:-",
+    ]
+    // XWD route: one conversion process, and nothing else.
+    await captureRaw({ featureId: "fixture", role: "control", label: "xwd route" })
+    const xwd = calls()
+    expect(xwd).toHaveLength(1)
+    expect(xwd[0]![outputAt]).toMatch(/^png:.*\/\.converted-[^/]+\/frame\.png$/)
+    expect(xwd[0]).toEqual(conversion("xwd:-", xwd[0]![outputAt]!))
+    writeFileSync(callsPath, "")
+    // Pointer route: scrot's PNG is normalized in the same single process.
+    const pointer = await captureRaw({ featureId: "extensions.osc22-pointer", role: "control", label: "pointer" })
+    const pointerCalls = calls()
+    expect(pointerCalls).toHaveLength(1)
+    expect(pointerCalls[0]).toEqual(conversion("png:-", pointerCalls[0]![outputAt]!))
+    const pointerRef = pointer.result.frame.ref.replace(/^sha256:/, "")
+    expect(readFileSync(join(frames, `${pointerRef}.png`))).toEqual(readFileSync(png))
+    writeFileSync(callsPath, "")
+    // A malformed frame: one conversion, one diagnostic info:, then a throw; nothing new is retained.
+    const before = readdirSync(frames).sort()
+    process.env.TEST_CAPTURE_FORCE_CAPTURE = "641x480"
+    await expect(captureRaw({ featureId: "fixture", role: "control", label: "malformed" })).rejects.toThrow(
+      "capture 641x480 differs from window 640x480 (border included?)",
+    )
+    const malformed = calls()
+    expect(malformed).toHaveLength(2)
+    expect(malformed[1]).toEqual(["xwd:-", "-format", "%wx%h", "info:"])
+    expect(readdirSync(frames).sort()).toEqual(before)
+    // A conversion that fails cleans its temporary directory and retains nothing.
+    delete process.env.TEST_CAPTURE_FORCE_CAPTURE
+    process.env.TEST_CAPTURE_FAIL = "conversion"
+    await expect(captureRaw({ featureId: "fixture", role: "control", label: "failed" })).rejects.toThrow(
+      "conversion failed",
+    )
+    expect(readdirSync(frames).sort()).toEqual(before)
+  },
+)
+
 /**
  * Two runs of an unchanged screen must mint one evidence hash, whatever window name the XWD carries.
  * ImageMagick is only on the capture hosts (flakes runtimeTools, not the plain shell PATH), so the
@@ -799,7 +873,7 @@ function pngTextValue(png: Buffer, key: string): string | undefined {
 
 test.skipIf(realMagick === undefined)(
   "no tIME, no date text and no window name reach the PNG, so one screen keeps one sha256 (#30764; skipped where magick is not on PATH)",
-  () => {
+  async () => {
     const screen = spawnSync("magick", ["-size", "40x20", "xc:red", "xwd:-"]).stdout
     expect(screen.length).toBeGreaterThan(0)
     const convert = (input: Buffer, args: readonly string[]) =>
@@ -814,22 +888,44 @@ test.skipIf(realMagick === undefined)(
     // The whole point: identical pixels under a different window name are the same evidence.
     expect(createHash("sha256").update(renamed).digest("hex")).toBe(createHash("sha256").update(fixed).digest("hex"))
 
-    // The adapter's single decode must preserve those PNG bytes and the independent depth-8 pixels, with its
-    // one-thread limit too: the references below run with the default thread count (#34549).
-    const converted = mkdtempSync(join(tmpdir(), "terminfo-converted-"))
-    temporary.push(converted)
-    const output = join(converted, "frame.png")
-    const rgba = convert(renamedXwd(screen, "first-window"), [
-      ...CONVERSION_THREAD_ARGS,
-      ...PNG_CONVERSION_ARGS.slice(0, -1),
-      "-write",
-      `png:${output}`,
-      "-depth",
-      "8",
-      "rgba:-",
-    ])
-    expect(readFileSync(output)).toEqual(fixed)
-    expect(rgba).toEqual(convert(renamedXwd(screen, "first-window"), ["xwd:-", "-depth", "8", "rgba:-"]))
+    // The converter owner's single process must preserve those PNG bytes and the independent depth-8
+    // pixels, with its one-thread limit too: the references below run with the default thread count
+    // (#34549). Both Linux routes retain the normalized PNG; Darwin's policy keeps the acquired bytes.
+    const scratch = mkdtempSync(join(tmpdir(), "terminfo-converted-"))
+    temporary.push(scratch)
+    const reference = convert(renamedXwd(screen, "first-window"), ["xwd:-", "-depth", "8", "rgba:-"])
+    const xwdRoute = await convertCapture({
+      bytes: renamedXwd(screen, "first-window"),
+      format: "xwd",
+      extent: { width: 40, height: 20 },
+      retain: "normalized",
+      scratchDirectory: scratch,
+      featureId: "fixture.real-magick",
+    })
+    expect(xwdRoute.png).toEqual(fixed)
+    expect(Buffer.from(xwdRoute.frame.rgba)).toEqual(reference)
+    const pointerPng = convert(renamedXwd(screen, "first-window"), ["xwd:-", "png:-"])
+    const pointerRoute = await convertCapture({
+      bytes: pointerPng,
+      format: "png",
+      extent: { width: 40, height: 20 },
+      retain: "normalized",
+      scratchDirectory: scratch,
+      featureId: "extensions.osc22-pointer",
+    })
+    expect(pointerRoute.png).toEqual(convert(pointerPng, ["png:-", ...PNG_CONVERSION_ARGS.slice(1)]))
+    expect(pngChunks(pointerRoute.png)).not.toContain("tIME")
+    expect(Buffer.from(pointerRoute.frame.rgba)).toEqual(reference)
+    const darwinRoute = await convertCapture({
+      bytes: pointerPng,
+      format: "png",
+      retain: "original",
+      featureId: "fixture.real-magick",
+    })
+    expect(darwinRoute.png).toBe(pointerPng)
+    expect(darwinRoute.frame).toMatchObject({ width: 40, height: 20 })
+    expect(Buffer.from(darwinRoute.frame.rgba)).toEqual(reference)
+    expect(readdirSync(scratch)).toEqual([])
 
     // Control: without the exclusion the same input is unstable, and that is what the tIME assert sees.
     const plain = pngChunks(convert(renamedXwd(screen, "first-window"), ["xwd:-", "png:-"]))
@@ -1109,12 +1205,23 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
     cells: { top: 2, left: 3, bottom: 2, right: 4 },
     pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 480 },
   }
+  // The owner's decode of this source, through the fixture converter: finishCapture requires it (34549).
+  const { png: converted, frame: decoded } = await convertCapture({
+    bytes: source.bytes,
+    format,
+    extent: { width: 640, height: 480 },
+    retain: "normalized",
+    scratchDirectory: directory,
+    featureId: checkpoint.featureId,
+  })
+  expect(converted).toEqual(readFileSync(png))
   const result = await finishCapture({
     onRetained: () => {},
     directory,
     checkpoint,
     source,
     png: readFileSync(png),
+    decoded,
     origin: { origin: { x: 2, y: 34 }, basis: "solid-cell calibration" },
     trace: { converter: "fixture" },
   })
@@ -1142,6 +1249,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       checkpoint,
       source,
       png: readFileSync(png),
+      decoded,
       origin: { origin: { x: 2, y: 34 }, basis: "" },
       trace: {},
     }),
@@ -1153,6 +1261,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       checkpoint,
       source,
       png: readFileSync(png),
+      decoded,
       origin: { origin: { x: 2.5, y: 34 }, basis: "calibration" },
       trace: {},
     }),
@@ -1165,31 +1274,19 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       checkpoint: unpaired,
       source,
       png: readFileSync(png),
+      decoded,
       origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
       trace: {},
     }),
   ).rejects.toThrow(/without both cells/)
-  process.env.TEST_CAPTURE_FORCE_CAPTURE = "639x480"
-  await expect(
-    finishCapture({
-      onRetained: () => {},
-      directory,
-      checkpoint,
-      source,
-      png: readFileSync(png),
-      origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
-      trace: {},
-    }),
-  ).rejects.toThrow("capture 639x480 differs from window 640x480")
-  // A plain frame carries the whole-window digest and resolves no text-area origin (30092): the
-  // decode now runs for every pixel frame, so a conversion failure is no longer survivable here.
-  delete process.env.TEST_CAPTURE_FORCE_CAPTURE
+  // A plain frame carries the whole-window digest and resolves no text-area origin (30092).
   const plain = await finishCapture({
     onRetained: () => {},
     directory,
     checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
     source,
     png: readFileSync(png),
+    decoded,
     origin: () => {
       throw new Error("origin resolver must not run")
     },
@@ -1207,28 +1304,40 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       .digest("hex")}`,
   })
   // The caller's trace survives field for field; the only addition is the finish diagnostic block
-  // (34261). These cases are the supported ORDINARY decode path, so decodeMs is present here - the
-  // complement of the finalizer case that requires it absent when the pixels were already decoded.
+  // (34261). decodeMs is absent: `decoded` is required, so the finalizer never decodes (34549).
   const { finish: plainFinish, ...plainTrace } = plain.trace as Record<string, unknown>
   expect(plainTrace).toEqual({ fixture: "plain" })
   expect(plainFinish).toMatchObject({
     retainMs: expect.any(Number),
-    decodeMs: expect.any(Number),
     postDecodeMs: expect.any(Number),
     totalMs: expect.any(Number),
   })
+  expect(Object.hasOwn(plainFinish as object, "decodeMs")).toBe(false)
+  // Malformed conversion output on this source refuses, through the owner's one diagnostic extent read.
+  process.env.TEST_CAPTURE_FORCE_CAPTURE = "639x480"
+  await expect(
+    convertCapture({
+      bytes: source.bytes,
+      format,
+      extent: { width: 640, height: 480 },
+      retain: "normalized",
+      scratchDirectory: directory,
+      featureId: "fixture.plain",
+    }),
+  ).rejects.toThrow("capture 639x480 differs from window 640x480")
+  delete process.env.TEST_CAPTURE_FORCE_CAPTURE
   process.env.TEST_CAPTURE_FAIL = "conversion"
   await expect(
-    finishCapture({
-      onRetained: () => {},
-      directory,
-      checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
-      source,
-      png: readFileSync(png),
-      origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
-      trace: {},
+    convertCapture({
+      bytes: source.bytes,
+      format,
+      extent: { width: 640, height: 480 },
+      retain: "normalized",
+      scratchDirectory: directory,
+      featureId: "fixture.plain",
     }),
   ).rejects.toThrow("conversion failed")
+  expect(readdirSync(directory).some((file) => file.startsWith(".converted-"))).toBe(false)
 })
 
 // 30092: a whole-frame scrollback capture names no cells, so the old path computed no
@@ -1254,6 +1363,7 @@ test.each(["xwd", "png"] as const)(
       },
       source,
       png: readFileSync(png),
+      decoded: { width: 640, height: 480, rgba: Buffer.alloc(640 * 480 * 4) },
       origin: () => {
         throw new Error("a whole-frame digest names no text area, so no origin may be resolved")
       },

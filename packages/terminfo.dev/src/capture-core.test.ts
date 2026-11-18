@@ -1,12 +1,21 @@
 /**
- * @failure Capture command bytes or failure/cleanup semantics change, or retained artifacts are duplicated or overwritten.
+ * @failure Capture command bytes or failure/cleanup semantics change, retained artifacts are duplicated or overwritten, or the one converter owner changes its process count, retained bytes, deadline or malformed-output refusal.
  * @level l2
- * @consumer Capture apparatus command lifecycle and AC4 immutable content-addressed retention.
+ * @consumer Capture apparatus command lifecycle, the shared converter owner, and AC4 immutable content-addressed retention.
  * @testonly none
  * @reach fs-walk <fixture-only: /tmp/terminfo-retain-witness>
  */
 import { createHash } from "node:crypto"
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { zstdDecompressSync } from "node:zlib"
@@ -15,17 +24,25 @@ import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "
 import {
   cellRectangle,
   command,
+  convertCapture,
+  converterIdentity,
   finishCapture,
   locateChangedColour,
   locateColour,
   retain,
   type CapturedFrame,
+  type ConvertCaptureInput,
   type OriginResolver,
 } from "./capture-core.ts"
 
 const directories: string[] = []
+const originalPath = process.env.PATH
+const STUB_KEYS = ["STUB_CALLS", "STUB_HANG", "STUB_EXTENT", "STUB_FAIL", "STUB_RGBA_BYTES", "STUB_PNG_FILE"]
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
+  if (originalPath === undefined) delete process.env.PATH
+  else process.env.PATH = originalPath
+  for (const key of STUB_KEYS) delete process.env[key]
 })
 
 function directory(): string {
@@ -691,3 +708,192 @@ test("locateChangedColour admits only changed pixels in the calibrated sentinel 
     pixels: 1,
   })
 })
+
+/**
+ * A stub `magick` on PATH that logs each invocation's argv, answers `-version` and `info:`, writes the
+ * PNG named by `-write`, and prints STUB_RGBA_BYTES zero bytes of RGBA. STUB_HANG names the one
+ * command kind that sleeps instead, so a deadline can be shown to reach that command.
+ */
+function stubMagick() {
+  const root = directory()
+  const bin = join(root, "bin")
+  const scratch = join(root, "scratch")
+  mkdirSync(bin)
+  mkdirSync(scratch)
+  const pngFile = join(root, "stub.png")
+  writeFileSync(pngFile, PNG_STUB)
+  const callsPath = join(root, "calls")
+  writeFileSync(
+    join(bin, "magick"),
+    [
+      "#!/bin/sh",
+      String.raw`printf '%s\037' "$@" >> "$STUB_CALLS"; printf '\n' >> "$STUB_CALLS"`,
+      "cat > /dev/null",
+      "kind=decode; out=; prev=",
+      "for arg; do",
+      '  [ "$arg" = info: ] && kind=info',
+      '  [ "$arg" = -version ] && kind=version',
+      '  [ "$prev" = -write ] && out=${arg#png:}',
+      "  prev=$arg",
+      "done",
+      'if [ "$kind" = "${STUB_HANG:-}" ]; then exec sleep 30; fi',
+      'case "$kind" in',
+      "  version) echo 'ImageMagick stub' ;;",
+      "  info) printf '%s' \"${STUB_EXTENT:-2x1}\" ;;",
+      "  decode)",
+      '    if [ -n "$out" ]; then cat "$STUB_PNG_FILE" > "$out"; fi',
+      "    if [ \"${STUB_FAIL:-}\" = decode ]; then echo 'stub conversion failed' >&2; exit 19; fi",
+      '    head -c "${STUB_RGBA_BYTES:-8}" /dev/zero ;;',
+      "esac",
+    ].join("\n"),
+  )
+  chmodSync(join(bin, "magick"), 0o700)
+  process.env.PATH = `${bin}:${originalPath ?? ""}`
+  process.env.STUB_CALLS = callsPath
+  process.env.STUB_PNG_FILE = pngFile
+  const calls = () =>
+    existsSync(callsPath)
+      ? readFileSync(callsPath, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => line.split("\x1f").slice(0, -1))
+      : []
+  const reset = () => writeFileSync(callsPath, "")
+  return { scratch, pngFile, calls, reset }
+}
+
+const DARWIN_PNG = Buffer.concat([PNG_STUB, Buffer.from("screencapture bytes")])
+
+/** The three routes the adapters name, with Linux's caller-measured 2x1 window. */
+function routes(scratch: string): Record<string, ConvertCaptureInput> {
+  return {
+    "Linux XWD": {
+      bytes: Buffer.from("xwd dump"),
+      format: "xwd",
+      extent: { width: 2, height: 1 },
+      retain: "normalized",
+      scratchDirectory: scratch,
+      featureId: "fixture.xwd",
+    },
+    "Linux pointer PNG": {
+      bytes: PNG_STUB,
+      format: "png",
+      extent: { width: 2, height: 1 },
+      retain: "normalized",
+      scratchDirectory: scratch,
+      featureId: "extensions.osc22-pointer",
+    },
+    Darwin: { bytes: DARWIN_PNG, format: "png", retain: "original", featureId: "fixture.darwin" },
+  }
+}
+
+test("the converter owner runs one process per Linux route and two on Darwin; the version probe is its own (34549)", async () => {
+  const { scratch, calls, reset } = stubMagick()
+  const route = routes(scratch)
+  const linuxArgv = (input: string, write: string) => [
+    "-limit",
+    "thread",
+    "1",
+    input,
+    "-define",
+    "png:exclude-chunks=date,time",
+    "-set",
+    "comment",
+    "",
+    "-write",
+    write,
+    "-depth",
+    "8",
+    "rgba:-",
+  ]
+  // Linux XWD: one process, the normalized PNG through a temporary file under the scratch directory.
+  const xwd = await convertCapture(route["Linux XWD"]!)
+  const [xwdCall, ...xwdRest] = calls()
+  expect(xwdRest).toEqual([])
+  expect(xwdCall![10]).toMatch(new RegExp(`^png:${scratch}/\\.converted-[^/]+/frame\\.png$`))
+  expect(xwdCall).toEqual(linuxArgv("xwd:-", xwdCall![10]!))
+  expect(xwd.png).toEqual(PNG_STUB)
+  expect(xwd.frame).toEqual({ width: 2, height: 1, rgba: Buffer.alloc(8) })
+  // Linux pointer PNG: the same single process, normalizing scrot's PNG.
+  reset()
+  await convertCapture(route["Linux pointer PNG"]!)
+  const [pointerCall, ...pointerRest] = calls()
+  expect(pointerRest).toEqual([])
+  expect(pointerCall).toEqual(linuxArgv("png:-", pointerCall![10]!))
+  expect(readdirSync(scratch)).toEqual([])
+  // Darwin: the extent query, then the decode; the screencapture bytes are retained unchanged.
+  reset()
+  const darwin = await convertCapture(route.Darwin!)
+  expect(calls()).toEqual([
+    ["png:-", "-format", "%wx%h", "info:"],
+    ["png:-", "-depth", "8", "rgba:-"],
+  ])
+  expect(darwin.png).toBe(DARWIN_PNG)
+  expect(darwin.frame).toEqual({ width: 2, height: 1, rgba: Buffer.alloc(8) })
+  // The converter identity: one separate process, never part of an acquisition.
+  reset()
+  expect(await converterIdentity()).toBe("ImageMagick stub")
+  expect(calls()).toEqual([["-version"]])
+})
+
+test("malformed conversion output throws on every route and never yields a frame (34549)", async () => {
+  const { scratch, pngFile, calls, reset } = stubMagick()
+  const route = routes(scratch)
+  // A short RGBA stream with a caller-measured extent: one info: words the error, then it throws.
+  process.env.STUB_RGBA_BYTES = "4"
+  for (const name of ["Linux XWD", "Linux pointer PNG"]) {
+    reset()
+    await expect(convertCapture(route[name]!)).rejects.toThrow(/returned 4 RGBA bytes; 2x1 at depth 8 rgba is 8$/)
+    expect(calls().map((call) => call.at(-1))).toEqual(["rgba:-", "info:"])
+  }
+  process.env.STUB_EXTENT = "3x1"
+  reset()
+  await expect(convertCapture(route["Linux XWD"]!)).rejects.toThrow(
+    "capture 3x1 differs from window 2x1 (border included?)",
+  )
+  expect(calls()).toHaveLength(2)
+  // Darwin measured the extent itself, so the mismatch is named without a third process.
+  process.env.STUB_EXTENT = "2x1"
+  reset()
+  await expect(convertCapture(route.Darwin!)).rejects.toThrow(/returned 4 RGBA bytes; 2x1 at depth 8 rgba is 8$/)
+  expect(calls()).toHaveLength(2)
+  // Bytes that are not a PNG are refused on the normalized and the original route alike.
+  delete process.env.STUB_RGBA_BYTES
+  writeFileSync(pngFile, "not a png")
+  await expect(convertCapture(route["Linux XWD"]!)).rejects.toThrow(
+    "Capture conversion did not produce PNG bytes for fixture.xwd",
+  )
+  await expect(convertCapture({ ...route.Darwin!, bytes: Buffer.from("not a png") })).rejects.toThrow(
+    "Capture conversion did not produce PNG bytes for fixture.darwin",
+  )
+  expect(readdirSync(scratch)).toEqual([])
+})
+
+test("a failed normalized conversion removes its temporary directory (34549)", async () => {
+  const { scratch } = stubMagick()
+  process.env.STUB_FAIL = "decode"
+  await expect(convertCapture(routes(scratch)["Linux XWD"]!)).rejects.toThrow("stub conversion failed")
+  expect(readdirSync(scratch)).toEqual([])
+})
+
+test.each([
+  { route: "Linux XWD", hang: "decode", short: false },
+  { route: "Linux XWD", hang: "info", short: true },
+  { route: "Darwin", hang: "info", short: false },
+  { route: "Darwin", hang: "decode", short: false },
+])(
+  "the caller's deadline reaches the $route route's $hang command (34549)",
+  async ({ route, hang, short }) => {
+    const { scratch } = stubMagick()
+    process.env.STUB_HANG = hang
+    if (short) process.env.STUB_RGBA_BYTES = "4"
+    const started = Date.now()
+    await expect(convertCapture({ ...routes(scratch)[route]!, deadline: started + 800 })).rejects.toMatchObject({
+      killed: true,
+      signal: "SIGKILL",
+    })
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(readdirSync(scratch)).toEqual([])
+  },
+  10_000,
+)
