@@ -1968,46 +1968,43 @@ test.each([
     version: undefined,
     error: "WezTerm binary --version failed (3)",
   },
-])(
-  "hosted macOS $app export names the subject from bundle version '$plist' and CLI $cli.out",
-  (row) => {
-    const { app, plist, cli, exit, id, version, error } = row
-    const warpVersion = "warpVersion" in row ? row.warpVersion : undefined
-    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
-    const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
-    const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
-    if (!block) throw new Error("The collect step's target export block is absent")
-    const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
-    try {
-      const plistBuddy = join(directory, "PlistBuddy")
-      writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
-      const bundle = join(directory, `${app}.app`)
-      if (cli) {
-        mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true })
-        writeFileSync(
-          join(bundle, "Contents/MacOS", app),
-          `#!/bin/bash\ntest "$1" = --version || exit 9\nprintf '%s\\n' ${JSON.stringify(cli.out)}\nexit ${cli.status}\n`,
-          { mode: 0o755 },
-        )
-      }
-      const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
-      const result = spawnSync("/bin/bash", ["-c", script], {
-        encoding: "utf8",
-        env: {
-          PATH: process.env.PATH,
-          APP_ID: app,
-          APP_BUNDLE: bundle,
-          WARP_STABLE_VERSION: warpVersion ?? "v0.2026.10.14.08.27.stable_01",
-        },
-      })
-      expect(result.status, result.stderr).toBe(exit)
-      if (exit === 0) {
-        expect(result.stdout.split("\n").slice(-3, -1)).toEqual([id, version])
-      } else {
-        expect(result.stderr).toContain(error)
-      }
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
+])("hosted macOS $app export names the subject from bundle version '$plist' and CLI $cli.out", (row) => {
+  const { app, plist, cli, exit, id, version, error } = row
+  const warpVersion = "warpVersion" in row ? row.warpVersion : undefined
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
+  const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
+  if (!block) throw new Error("The collect step's target export block is absent")
+  const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
+  try {
+    const plistBuddy = join(directory, "PlistBuddy")
+    writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
+    const bundle = join(directory, `${app}.app`)
+    if (cli) {
+      mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true })
+      writeFileSync(
+        join(bundle, "Contents/MacOS", app),
+        `#!/bin/bash\ntest "$1" = --version || exit 9\nprintf '%s\\n' ${JSON.stringify(cli.out)}\nexit ${cli.status}\n`,
+        { mode: 0o755 },
+      )
     }
-  },
-)
+    const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
+    const result = spawnSync("/bin/bash", ["-c", script], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        APP_ID: app,
+        APP_BUNDLE: bundle,
+        WARP_STABLE_VERSION: warpVersion ?? "v0.2026.10.14.08.27.stable_01",
+      },
+    })
+    expect(result.status, result.stderr).toBe(exit)
+    if (exit === 0) {
+      expect(result.stdout.split("\n").slice(-3, -1)).toEqual([id, version])
+    } else {
+      expect(result.stderr).toContain(error)
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
