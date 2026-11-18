@@ -1,5 +1,6 @@
 import { sourceNow } from "./source-clock.ts"
 import { heldOsc720, heldViewportReader } from "./held-viewport-rows.ts"
+import { warpPromptMarkAppResult, type WarpMarkKind } from "./warp-prompt-marks.ts"
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
@@ -2819,7 +2820,7 @@ function promptMarkResult(
  * `rawReplyRef` to — no not-tested coverage is claimed from CPR alone. A null read, or a mark that never
  * advanced, stays a real consumption observation, never not-tested.
  */
-async function promptMarkAppResult(
+async function promptMarkCursorAppResult(
   ctx: TermProbeSource,
   sequence: string,
   noObservable: string,
@@ -2856,6 +2857,21 @@ async function promptMarkAppResult(
     }
   }
   return notTestedResult(noObservable, { home, target, control })
+}
+
+/**
+ * 34899 (@cto REVISE 1, r2 C5): one owner per row. A subject whose frame shows the mark as its own boundary (Warp)
+ * answers from the same-run differential; every other subject keeps the cursor-position arm above, unchanged.
+ */
+async function promptMarkAppResult(
+  ctx: TermProbeSource,
+  sequence: string,
+  noObservable: string,
+  spec: { id: string; kind: WarpMarkKind },
+): Promise<ProbeCallbackResult> {
+  const cursorArm = () => promptMarkCursorAppResult(ctx, sequence, noObservable)
+  if (ctx.promptMarkBoundaryRendering !== true) return cursorArm()
+  return warpPromptMarkAppResult(ctx, { id: spec.id, mark: sequence, kind: spec.kind }, cursorArm)
 }
 
 function colorStackError(actionKind: "query" | "behavior", action: string, error: unknown): ProbeCallbackResult {
@@ -8429,7 +8445,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 133,
           markType: "prompt",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration", {
+          id: "extensions.osc133-a",
+          kind: "prompt-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8444,7 +8464,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 133,
           markType: "command",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration", {
+          id: "extensions.osc133-b",
+          kind: "command-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8459,7 +8483,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 133,
           markType: "output",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration", {
+          id: "extensions.osc133-c",
+          kind: "output-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8473,7 +8501,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           probeId: "extensions.osc133-d",
           selector: "133;D",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration", {
+          id: "extensions.osc133-d",
+          kind: "command-finished",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8488,7 +8520,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 133,
           markType: "prompt",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]133;P\x07", "OSC 133;P secondary prompt start"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]133;P\x07", "OSC 133;P secondary prompt start", {
+          id: "extensions.osc133-p",
+          kind: "secondary-prompt",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8506,7 +8542,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 633,
           markType: "prompt",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration", {
+          id: "extensions.osc633-a",
+          kind: "prompt-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8521,7 +8561,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 633,
           markType: "command",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration", {
+          id: "extensions.osc633-b",
+          kind: "command-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8536,7 +8580,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           selector: 633,
           markType: "output",
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration", {
+          id: "extensions.osc633-c",
+          kind: "output-start",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8550,7 +8598,11 @@ const extensionDefinitions: ProbeDefinition[] = [
           probeId: "extensions.osc633-d",
           selector: 633,
         }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
+      (ctx) =>
+        promptMarkAppResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration", {
+          id: "extensions.osc633-d",
+          kind: "command-finished",
+        }),
     ),
     libAssertionType: "buffer_state",
   },
@@ -8569,6 +8621,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx,
           "\x1b]633;E;ls -la;nonce123\x07",
           "OSC 633;E commandline-with-nonce mark registration",
+          { id: "extensions.osc633-e", kind: "text" },
         ),
     ),
     libAssertionType: "buffer_state",
@@ -8577,7 +8630,10 @@ const extensionDefinitions: ProbeDefinition[] = [
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
   {
     ...probe("extensions.osc633-p", promptCwdPropertyResult, (ctx) =>
-      promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
+      promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration", {
+        id: "extensions.osc633-p",
+        kind: "properties",
+      }),
     ),
     libAssertionType: "buffer_state",
   },

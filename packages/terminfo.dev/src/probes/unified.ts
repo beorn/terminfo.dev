@@ -486,6 +486,15 @@ export function syncOutputRenderedSubject(
   )
 }
 
+/**
+ * 34899 (@cto REVISE 1, r2 C1-C5): the one subject whose frame shows each prompt mark as a boundary of its own.
+ * Its OSC 133/633 mark rows read that frame differential instead of the cursor-position arm; every other subject
+ * keeps the cursor arm, so no second grading mechanism is introduced for them.
+ */
+function promptMarkBoundaryRendering(subject: { kind: "term" | "lib" | "mux"; id: string } | undefined): boolean {
+  return subject?.kind === "term" && subject.id === "warp"
+}
+
 /** Run-fatal: a row's wall could not prove its held viewport back at the bottom (34645, @cto e1cfff79 item 2). */
 class ViewportReturnRefused extends Error {
   constructor(message: string) {
@@ -1271,6 +1280,9 @@ export async function runProbeBatch(
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
     if (probe.id === "modes.synchronized-output" && ownsTerminal && syncOutputRenderedSubject(options.subject)) {
       probeSource.syncOutputRenderedHold = true
+    }
+    if (ownsTerminal && promptMarkBoundaryRendering(options.subject)) {
+      probeSource.promptMarkBoundaryRendering = true
     }
     const isDirectLinuxApp =
       options.subject?.kind === "term" &&
