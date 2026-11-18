@@ -16,11 +16,15 @@ import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 import {
   countContexts,
   projectResults,
+  statesFor,
   maskRunnerStorePath,
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
-import { currentCoverageSentence } from "../docs/data/release-scope.ts"
+import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
+import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
+import { priorDecisionSentence, refusalSummarySentence } from "../docs/data/prior-decision.ts"
 import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
+import { buildFullProjectRows } from "../docs/data/full-project.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -1399,4 +1403,271 @@ it("the parser refuses an unknown harness outcome", () => {
       results: [{ ...feature!, harnessOutcome: "not-a-real-outcome" }],
     }),
   ).toThrow(/harness outcome/)
+})
+
+// @failure A same-version refusal under another suite hides the older decision entirely, or shows it as the current
+//   grade; repeated refusals lose or move it; a version change, a real result or a same-suite keep shows one; or the
+//   history reaches a status, total or rollup (34691, @cto history-reframe-scope-1754).
+// @level l1
+// @consumer projectResults priorDecisionOf -> publicResults featureResults[id].priorDecision -> aggregateCurrentResults.
+describe("a cross-suite refusal keeps the older decision only as dated history (34691)", () => {
+  const featureId = ids[0]!
+  const newer: ProbeSuiteManifest & { schemaVersion: 4 } = {
+    ...suite,
+    probeHash: "newer-suite",
+    sourceRevision: "2".repeat(40),
+  }
+  const suites = new Map([
+    [suite.probeHash, suite],
+    [newer.probeHash, newer],
+  ])
+  const row = (at: string, extra: Partial<ProbeResult>): ProbeResult => {
+    const emitted = { scope: "probe" as const, startedAt: at }
+    return {
+      featureId,
+      status: "probe-todo",
+      attempt: emitted,
+      tests: [{ id: "criterion", status: "probe-todo", attempt: emitted, reason: "refused" }],
+      reason: "refused",
+      ...extra,
+    } as ProbeResult
+  }
+  const attemptRun = (
+    runId: string,
+    at: string,
+    result: ProbeResult,
+    opts: { manifest?: typeof suite; version?: string; extra?: object } = {},
+  ) => {
+    const results = todos()
+    results[0] = result
+    const value = raw(results, opts.manifest ?? newer)
+    return parseRun(
+      "fixture.json",
+      JSON.stringify({
+        ...value,
+        runId,
+        measuredAt: at,
+        subject: { ...value.subject, version: opts.version ?? value.subject.version },
+        ...opts.extra,
+        rawReplies: {
+          ...value.rawReplies,
+          "collector.selection": JSON.stringify({ ids: [featureId] }),
+          "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt: at, result: "completed" }),
+          ...(opts.extra as { rawReplies?: Record<string, string> } | undefined)?.rawReplies,
+        },
+      }),
+      ids,
+      suites,
+    )
+  }
+  const refusal = (runId: string, at: string, opts: { manifest?: typeof suite; version?: string } = {}) =>
+    attemptRun(runId, at, row(at, { harnessOutcome: "capture-refused" }), opts)
+  const project = (runs: ReturnType<typeof parse>[], reopened: Parameters<typeof projectResults>[2]["reopened"] = []) =>
+    projectResults(runs, ids, { currentProbeHash: newer.probeHash, reopened }, [])
+  const cellOf = (runs: ReturnType<typeof parse>[]) => project(runs).contexts["term:kitty"]!.cells[featureId]!
+
+  it("keeps the newest refusal current and open, with the older decision as dated, suite-attributed history", () => {
+    const prior = supportedBaseline()
+    const first = refusal("refusal-run", "2026-10-21T07:00:00.000Z")
+    const projection = project([prior, first])
+    const cell = projection.contexts["term:kitty"]!.cells[featureId]!
+    // B1: the current cell is the refusal, its result and computed status the refusal's own; no older result underneath.
+    expect(cell.origin.runId).toBe("refusal-run")
+    expect(cell.result.status).toBe("probe-todo")
+    expect(cell.featureResult?.status).toBe("probe-todo")
+    expect(cell.refusedAttempt).toBeUndefined()
+    expect(cell.priorDecision).toEqual({
+      runId: prior.runId,
+      resultId: featureId,
+      status: "supported",
+      version: "0.46.2",
+      suiteId: prior.suiteId,
+      measuredAt: prior.measuredAt,
+    })
+    const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults
+    expect(published[featureId]).toMatchObject({
+      status: "probe-todo",
+      reason: "refused",
+      origin: { runId: "refusal-run" },
+      priorDecision: {
+        origin: { runId: prior.runId, resultId: featureId },
+        status: "supported",
+        version: "0.46.2",
+        suiteId: prior.suiteId,
+        measuredAt: prior.measuredAt,
+      },
+    })
+    // B5: history reaches no total; the rollup counts the cell open, and every other output equals the marker-free one.
+    const rows = Object.entries(published).map(([id, result]) => ({ featureId: id, status: result.status }))
+    const rollup = aggregateCurrentResults(rows, ids)
+    expect(rollup.idsByState.supported).not.toContain(featureId)
+    expect(rollup.supported).toBe(3)
+    const context = projection.contexts["term:kitty"]!
+    const { priorDecision: _dropped, ...bare } = context.cells[featureId]!
+    const stripped = {
+      ...projection,
+      contexts: {
+        ...projection.contexts,
+        "term:kitty": { ...context, cells: { ...context.cells, [featureId]: bare } },
+      },
+    }
+    const without = publicResults(stripped, new Map()).projection
+    const withMarker = publicResults(projection, new Map()).projection
+    const { priorDecision: _shown, ...shownBare } = withMarker.contexts["term:kitty"]!.featureResults[featureId]!
+    expect(shownBare).toEqual(without.contexts["term:kitty"]!.featureResults[featureId])
+    const shownContext = withMarker.contexts["term:kitty"]!
+    const bareContext = without.contexts["term:kitty"]!
+    expect({ ...shownContext, featureResults: {}, refusals: [] }).toEqual({
+      ...bareContext,
+      featureResults: {},
+      refusals: [],
+    })
+    // B4: the summary counts the refused cell once under its suite; the historical subset M stays apart from N.
+    const summary = { suiteId: first.suiteId, open: 1, reasons: [{ reason: "refused", cells: 1 }] }
+    expect(shownContext.refusals).toEqual([{ ...summary, withPriorDecision: 1 }])
+    expect(bareContext.refusals).toEqual([{ ...summary, withPriorDecision: 0 }])
+    expect(refusalSummarySentence(shownContext.refusals![0]!)).toBe(
+      `Suite ${first.suiteId}: 1 cell open because the harness refused the attempt (refused: 1). 1 of them had an earlier decision under another suite, shown on its row as not current.`,
+    )
+    expect(priorDecisionSentence(shownContext.featureResults[featureId]!.priorDecision!)).toBe(
+      `Not current: suite ${prior.suiteId} read Supported on ${prior.measuredAt.slice(0, 10)} for version 0.46.2. The newer suite has not measured it yet.`,
+    )
+    expect(withMarker.versions).toEqual(without.versions)
+  })
+
+  it("feeds no release row: the release build reads the same rows with or without the marker (B5)", () => {
+    const prior = supportedBaseline()
+    const projection = project([prior, refusal("refusal-run", "2026-10-21T07:00:00.000Z")])
+    const context = projection.contexts["term:kitty"]!
+    expect(context.cells[featureId]!.priorDecision).toBeDefined()
+    const { priorDecision: _dropped, ...bare } = context.cells[featureId]!
+    const stripped = {
+      ...projection,
+      contexts: {
+        ...projection.contexts,
+        "term:kitty": { ...context, cells: { ...context.cells, [featureId]: bare } },
+      },
+    }
+    const rows = (input: typeof projection) =>
+      buildFullProjectRows({
+        census: [{ context: "kitty/macos", terminalId: "kitty", os: "macos", kind: "term" }],
+        catalogIds: ids,
+        candidates: [
+          candidateFromSelected("term:kitty", input.contexts["term:kitty"]!, statesFor(input, "term:kitty"), input)!,
+        ],
+        requiredSuiteId: newer.probeHash,
+        projection: input,
+        standings: new Map([["term:kitty", "current" as const]]),
+      })
+    const released = rows(projection)
+    expect(released.contexts[0]!.collected).toBe(true)
+    expect(JSON.stringify(released)).not.toContain("priorDecision")
+    expect(released).toEqual(rows(stripped))
+    expect(statesFor(projection, "term:kitty")).toEqual(statesFor(stripped, "term:kitty"))
+  })
+
+  it("keeps one history across repeated refusals, under either suite", () => {
+    const prior = supportedBaseline()
+    const runs = [
+      prior,
+      refusal("refusal-run", "2026-10-21T07:00:00.000Z"),
+      refusal("again-run", "2026-10-21T08:00:00.000Z"),
+      refusal("third-run", "2026-10-21T09:00:00.000Z", { manifest: suite }),
+    ]
+    const cell = cellOf(runs)
+    expect(cell.origin.runId).toBe("third-run")
+    expect(cell.priorDecision).toMatchObject({ runId: prior.runId, status: "supported" })
+  })
+
+  it("records none for a version change, a real replacement or a same-suite keep", () => {
+    const prior = supportedBaseline()
+    // A version change: the row stays as it is today.
+    const upgraded = cellOf([prior, refusal("upgrade-run", "2026-10-21T07:00:00.000Z", { version: "9.9.9" })])
+    expect(upgraded.origin.runId).toBe("upgrade-run")
+    expect(upgraded.priorDecision).toBeUndefined()
+    // A real contrary result replaces the refusal and drops the history.
+    const at = "2026-10-21T09:00:00.000Z"
+    const contrary = attemptRun(
+      "contrary-run",
+      at,
+      row(at, {
+        status: "unsupported",
+        assertionType: "query_reply",
+        rawReplyRef: featureId,
+        reason: undefined,
+        tests: [
+          {
+            id: "criterion",
+            status: "unsupported",
+            attempt: { scope: "probe", startedAt: at },
+            assertionRefs: [0],
+            rawReplyRef: featureId,
+          },
+        ],
+      }),
+      {
+        extra: {
+          rawReplies: { [featureId]: "NAK" },
+          assertions: [
+            {
+              featureId,
+              kind: "negative",
+              assertionType: "query_reply",
+              rawReplyRef: featureId,
+              expected: "ACK",
+              observed: "NAK",
+            },
+          ],
+        },
+      },
+    )
+    const replaced = cellOf([prior, refusal("refusal-run", "2026-10-21T07:00:00.000Z"), contrary])
+    expect(replaced.origin.runId).toBe("contrary-run")
+    expect(replaced.result.status).toBe("unsupported")
+    expect(replaced.priorDecision).toBeUndefined()
+    // A same-suite refusal keeps the decided cell with its existing marker, never a history.
+    const kept = cellOf([prior, refusal("same-suite-run", "2026-10-21T07:00:00.000Z", { manifest: suite })])
+    expect(kept.origin.runId).toBe(prior.runId)
+    expect(kept.refusedAttempt).toMatchObject({ runId: "same-suite-run" })
+    expect(kept.priorDecision).toBeUndefined()
+  })
+
+  it("qualifies a history whose grade a reopened row withdrew, and never shows it as a valid decision", () => {
+    const prior = supportedBaseline()
+    const first = refusal("refusal-run", "2026-10-21T07:00:00.000Z")
+    const reopened = [
+      {
+        kind: "term" as const,
+        id: "kitty",
+        os: "macos",
+        featureId,
+        graded: "supported" as const,
+        reason: "The criterion was wrong; the grade waits for a re-measurement.",
+        reopenedOn: "2026-10-22",
+        ruling: "fixture",
+        evidence: "fixture",
+        exit: { kind: "remeasured" as const, suiteIds: [prior.suiteId] },
+        witnesses: [{ runId: prior.runId, assertionIndex: 0 }],
+      },
+    ] satisfies ReopenedCell[]
+    const projection = project([prior, first], reopened)
+    const cell = projection.contexts["term:kitty"]!.cells[featureId]!
+    expect(cell.featureResult?.status).toBe("probe-todo")
+    expect(cell.reopened).toBeUndefined()
+    expect(cell.priorDecision).toMatchObject({
+      status: "supported",
+      reopened: { reopenedOn: "2026-10-22", reason: "The criterion was wrong; the grade waits for a re-measurement." },
+    })
+    expect(
+      publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!.priorDecision,
+    ).toMatchObject({ reopened: { reopenedOn: "2026-10-22" } })
+    expect(
+      priorDecisionSentence(
+        publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
+          .priorDecision!,
+      ),
+    ).toMatch(
+      /^Not current, and that grade was withdrawn on 2026-10-22 \(The criterion was wrong; the grade waits for a re-measurement\.\): suite /,
+    )
+  })
 })

@@ -231,6 +231,22 @@ export interface CurrentSelectedVersion {
   complete: boolean
 }
 
+/**
+ * 34691: the last decided original a cross-suite harness refusal replaced, for display only. It refers to the original
+ * by run and result; its public reason resolves through the original mapping, never a copy here.
+ */
+export interface PriorDecision {
+  runId: string
+  resultId: string
+  /** The decided effective status it read: supported, unsupported or untestable. */
+  status: FeatureResultStatus
+  version: string
+  suiteId: string
+  measuredAt: string
+  /** Set when a reopened-cells row withdrew this historical grade: it is then never shown as a valid decision. */
+  reopened?: ReopenedMarker
+}
+
 /** A private view refers to the original result and its own run, never to a synthetic capture. */
 export interface SelectedContextCell {
   origin: { runId: string; resultId: string }
@@ -250,6 +266,16 @@ export interface SelectedContextCell {
    * and reason stay the older decision's. A later real replacement drops it, a later refusal replaces it.
    */
   refusedAttempt?: { runId: string; resultId: string; measuredAt: string; harnessOutcome: HarnessOutcome }
+  /**
+   * 34691 (@cto history-reframe-scope-1754): set only when a newer same-version attempt under ANOTHER suite placed a
+   * harness outcome over a decided cell. "Another suite" is tested as a different probeHash (priorDecisionOf); the
+   * same-probeHash case never gets here, because keptDecidedCell keeps the decided cell and names the refusal in
+   * `refusedAttempt`. The cell itself stays that newest refusal, current and open; this names the
+   * last decided original it replaced, shown only as dated history. Nothing that decides status reads it: not
+   * effective status, context joins, method composition, derived cells, totals or release qualification. A refusal
+   * after a refusal keeps it; a version change or a real result drops it; a same-suite keep uses `refusedAttempt`.
+   */
+  priorDecision?: PriorDecision
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
@@ -673,7 +699,26 @@ function applyReopened(
     if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
     const cell = cells[row.featureId]
     const featureResult = cell?.featureResult
-    if (!cell || featureResult?.status !== row.graded) continue
+    if (!cell) continue
+    if (featureResult?.status !== row.graded) {
+      // 34691: the row withdraws the grade this cell shows only as history, so that history is qualified, never shown
+      // as a valid decision. A remeasured row naming other suites leaves it unmatched, and the check below throws.
+      const history = cell.priorDecision
+      if (
+        history?.status === row.graded &&
+        (row.exit.kind !== "remeasured" || row.exit.suiteIds.includes(history.suiteId))
+      ) {
+        cells[row.featureId] = {
+          ...cell,
+          priorDecision: {
+            ...history,
+            reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
+          },
+        }
+        applied.add(row)
+      }
+      continue
+    }
     if (row.exit.kind === "remeasured" && !row.exit.suiteIds.includes(cell.run.suiteId)) {
       throw new Error(
         `Reopened cell ${cellLabel(row)} is graded ${row.graded} in ${contextKey} by run ${cell.run.runId} under suite ${cell.run.suiteId}, which the row does not name; it was re-measured, so delete the row`,
@@ -892,6 +937,26 @@ function composeContextSummaries(
       )
       return true
     }
+    // 34691: the history a harness outcome about to replace this cell carries. Only a same-version refusal under
+    // another suite records one, from the decided cell it replaces or, after an earlier such refusal, that refusal's
+    // own history. A real result, a version change or no prior cell records none, so remember() drops it.
+    const priorDecisionOf = (run: ProjectionRun, result: ProbeResult): PriorDecision | undefined => {
+      if (!isHarnessOutcome(result.harnessOutcome)) return undefined
+      const prior = cells[result.featureId]
+      const version = run.subject.version
+      if (!prior || version.trim() === "" || prior.run.subject.version !== version) return undefined
+      if (prior.priorDecision) return prior.priorDecision
+      const priorStatus = prior.featureResult?.status ?? prior.result.status
+      if (prior.run.probeHash === run.probeHash || !decided.has(priorStatus)) return undefined
+      return {
+        runId: prior.origin.runId,
+        resultId: prior.origin.resultId,
+        status: priorStatus,
+        version,
+        suiteId: prior.run.suiteId,
+        measuredAt: prior.run.measuredAt,
+      }
+    }
     const remember = (run: ProjectionRun, result: ProbeResult): void => {
       const classification = classifyResultMethod(result, run.subject, run.assertions)
       const method = classification.kind === "method" ? classification.method : null
@@ -957,7 +1022,12 @@ function composeContextSummaries(
         const result = emitted.get(id)
         if (!result || attempt?.startedAt === undefined) noOutputIds.push(id)
         else if (keptDecidedCell(run, result)) continue
-        else remember(run, result)
+        else {
+          const history = priorDecisionOf(run, result)
+          remember(run, result)
+          const placed = cells[result.featureId]
+          if (history && placed) cells[result.featureId] = { ...placed, priorDecision: history }
+        }
       }
       attempts.push({ runId: run.runId, path: run.path, selection, attempt, noOutputIds })
     }
