@@ -1396,6 +1396,8 @@ childBoundary.spawn = (file, args, options) => {
           type: null,
           restore: { performed: false, action: "delete" },
         })
+        // The reason a human reads must say delete, not the generic "not restored", for an absent key.
+        expect(setup.snackbar?.restore.reason).toContain("defaults delete")
       }
       expect(preferenceCalls.map((row) => row.args)).toEqual([
         ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],

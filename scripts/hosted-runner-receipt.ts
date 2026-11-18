@@ -196,18 +196,33 @@ function warpLaunchDeviation(setupPath: string): string {
   // and the receipt names the different deviation. A stock record that claims a write, or carries no read of the
   // prior setting, refuses by name rather than publishing a run whose chrome custody is unknown.
   if (setup.snackbar !== undefined) {
-    if (setup.snackbar.mode !== "stock" || setup.snackbar.written !== false) {
+    if (setup.snackbar.mode === "stock") {
+      if (setup.snackbar.written !== false) {
+        throw new Error(
+          `Hosted receipt appLaunch: Warp's preference record ${setupPath} names an unknown snackbar mode`,
+        )
+      }
+      const prior = Array.isArray(setup.commands)
+        ? setup.commands.find((command) => command.label === "snackbar-before")
+        : undefined
+      if (!prior || (prior.status !== 0 && prior.status !== 1)) {
+        throw new Error(
+          `Hosted receipt appLaunch: Warp's preference record ${setupPath} does not read SnackbarEnabled before the launch`,
+        )
+      }
+      return MAC_WARP_STOCK_HEADER_DEVIATION
+    }
+    // #34899: the header-off record now names its own mode instead of relying on the field's absence. It must
+    // confirm the write it claims; the readback below then proves the value the run actually launched with.
+    if (setup.snackbar.mode === "hidden") {
+      if (setup.snackbar.written !== true) {
+        throw new Error(
+          `Hosted receipt appLaunch: Warp's preference record ${setupPath} says the sticky header was hidden but confirms no write`,
+        )
+      }
+    } else {
       throw new Error(`Hosted receipt appLaunch: Warp's preference record ${setupPath} names an unknown snackbar mode`)
     }
-    const prior = Array.isArray(setup.commands)
-      ? setup.commands.find((command) => command.label === "snackbar-before")
-      : undefined
-    if (!prior || (prior.status !== 0 && prior.status !== 1)) {
-      throw new Error(
-        `Hosted receipt appLaunch: Warp's preference record ${setupPath} does not read SnackbarEnabled before the launch`,
-      )
-    }
-    return MAC_WARP_STOCK_HEADER_DEVIATION
   }
   const readback = Array.isArray(setup.commands)
     ? setup.commands.find((command) => command.label === "snackbar-readback")

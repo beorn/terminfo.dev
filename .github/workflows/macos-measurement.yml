@@ -669,7 +669,9 @@ jobs:
                 setup.snackbar.restore.action = result.status === 1 ? "delete" : "write";
                 setup.snackbar.restore.reason = stockChrome
                   ? "stock mode writes nothing, so the recorded value still stands"
-                  : "ephemeral runner: the recorded value is not restored";
+                  : result.status === 1
+                    ? "ephemeral runner: the key was absent, so an honest restore is `defaults delete`, not a write of false; nothing is restored"
+                    : "ephemeral runner: the recorded value is overwritten with false and is not restored";
               }
               if (label === "snackbar-type") setup.snackbar.type = result.status === 1 ? null : stdout.trim();
               if (label === "snackbar-readback") setup.snackbar.written = true;

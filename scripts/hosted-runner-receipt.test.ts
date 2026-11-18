@@ -323,6 +323,28 @@ console.log(value);
         await expect(run("emit", start, join(dir, "warp-stock-unread.json"))).rejects.toThrow(
           /does not read SnackbarEnabled before the launch/,
         )
+        // #34899: the header-off record names its own mode and must confirm the write it claims.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "false\n" }],
+            snackbar: { mode: "hidden", written: true },
+          }),
+        )
+        const hiddenReceipt = join(dir, "warp-hidden-chrome.json")
+        await run("emit", start, hiddenReceipt)
+        const hiddenLaunch = parseDisposableReceipt(await readFile(hiddenReceipt, "utf8")).appLaunch
+        expect(hiddenLaunch && "launchDeviation" in hiddenLaunch ? hiddenLaunch.launchDeviation : undefined).toBe(
+          MAC_WARP_LAUNCH_DEVIATION,
+        )
+        await writeFile(
+          setupPath,
+          JSON.stringify({ prepared: true, commands: [], snackbar: { mode: "hidden", written: false } }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-unwritten.json"))).rejects.toThrow(
+          /says the sticky header was hidden but confirms no write/,
+        )
         await writeFile(setupPath, record("false\n"))
       }
       await run("emit", start, editorReceipt)
