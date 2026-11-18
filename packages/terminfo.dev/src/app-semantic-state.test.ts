@@ -253,10 +253,10 @@ test.each([
         }
         expect(JSON.parse(result.response ?? "{}")).toMatchObject({ status: reading.status })
         if (mode === "capture-failed") {
-          expect(reading.reason).toContain("Native editor evidence capture failed")
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor evidence capture failed") })
         }
         if (mode === "restoration-failed") {
-          expect(reading.reason).toContain("Native editor fixture restoration failed")
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor fixture restoration failed") })
           expect(nativeCwd).not.toBe(original)
         } else if (mode !== "api-absent") expect(nativeCwd).toBe(original)
         return
