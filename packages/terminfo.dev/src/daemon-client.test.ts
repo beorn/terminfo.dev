@@ -565,6 +565,7 @@ it("names Node's 300 s headers timeout as itself, not as the 30 min signal", asy
     ),
     cause: abort,
   })
+  if (!(failure instanceof Error)) throw new Error("the probe did not fail")
   expect(failure.message).not.toContain("needs the Bun runtime")
 })
 
