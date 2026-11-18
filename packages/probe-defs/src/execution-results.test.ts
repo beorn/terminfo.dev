@@ -1282,6 +1282,25 @@ it("brackets a checksum request that drew no byte with DA1 asked alone, and grad
     expect(record(late.result).status).not.toBe("unsupported")
   }
 })
+// 34664 (@cto d0b31f18): the request's own DA1 answering alone through its window is the sentinel negative, and it
+// used to grade Unsupported before the control asked just before it was consulted. A control that went unanswered
+// keeps the row invalid on that branch too (f5e2b27c); a control that answered still lets the window decide.
+it("grades a sentinel-only checksum request only when the DA1 asked alone before it answered", async () => {
+  const sentinelOnly = { reason: "reply", raw: DA1_REPLY, match: null, sentinel: { atMs: 12, graceMs: 250 } }
+  const healthy = await runChecksum([DA1_REPLY], [sentinelOnly])
+  expect(healthy.order).toEqual(['alone "\\u001b[c"', "request"])
+  expect(record(healthy.result)).toMatchObject({ status: "unsupported" })
+
+  const failed = await runChecksum([null], [sentinelOnly])
+  expect(failed.order).toEqual(['alone "\\u001b[c"', "request"])
+  expect(failed.result.response).toBe(
+    JSON.stringify({ request: 1, sent: "\x1b[1;1;1;1;1;5*y\x1b[c", da1Before: "", reply: DA1_REPLY }),
+  )
+  expect(record(failed.result)).toMatchObject({
+    status: "probe-invalid",
+    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
+  })
+})
 it("takes the DA1 baseline before each graded request, so a silent second request is judged by its own", async () => {
   const second = await runChecksum([DA1_REPLY, DA1_REPLY, DA1_REPLY], [checksum("\x1bP1!~014F\x1b\\")])
   expect(second.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
