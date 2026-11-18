@@ -183,13 +183,21 @@ function shadowSummary(report: ShadowReport): string {
  * is written to the report as an error and named on stderr, never recorded as agreement; a report that cannot be
  * written is named on stderr. Neither changes the collection's own result, so neither can hide its failure.
  */
-export async function shadowCollectedRun(retainedRun: string): Promise<void> {
+export async function shadowCollectedRun(
+  retainedRun: string,
+  /** The suite the collecting process ran under, read inside the shadow; omitted, the app's trusted receipt. */
+  suite?: () => Parameters<typeof shadowStoredRun>[1],
+): Promise<void> {
   const path = shadowReportPath(retainedRun)
   let body: ShadowReport | Record<string, unknown>
   let line: string
   try {
-    const { manifest, collectorRevision } = getTrustedSuiteReceipt()
-    const report = await shadowStoredRun(retainedRun, { manifest, sourceRevision: collectorRevision })
+    const replayedWith = suite
+      ? suite()
+      : (({ manifest, collectorRevision }) => ({ manifest, sourceRevision: collectorRevision }))(
+          getTrustedSuiteReceipt(),
+        )
+    const report = await shadowStoredRun(retainedRun, replayedWith)
     body = report
     line = shadowSummary(report)
   } catch (error) {
