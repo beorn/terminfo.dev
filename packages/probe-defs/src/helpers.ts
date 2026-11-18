@@ -2078,7 +2078,9 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
       const cleared = await until("control cleared", false, clearedAt)
       if (typeof cleared === "string") return cleared
       if (whole(cleared) === undefined) return "the cleared baseline frame carries no whole-frame digest"
-      // The held phase lasts until a frame is requested later after its write than the control took to appear.
+      // The held phase lasts until a frame is requested strictly later after its write than the control took to
+      // appear: a frame requested exactly at that latency does not meet the criterion, so the loop takes another
+      // (34938, @cto 2026-11-18).
       const latency = control.returnedMs - controlAt
       const heldAt = write("held", `\x1b[?2026h${paint}`)
       let held: Read
@@ -2090,7 +2092,7 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
         count++
         if (held.located !== null) return `the held paint appeared ${held.requestedMs - heldAt} ms after DECSET 2026`
         if (whole(held) !== whole(cleared)) return "a held frame differs from the cleared baseline"
-      } while (count < 2 || held.requestedMs - heldAt < latency)
+      } while (count < 2 || held.requestedMs - heldAt <= latency)
       const releasedAt = write("release", "\x1b[?2026l")
       const released = await until("released", true, releasedAt)
       if (typeof released === "string") return released

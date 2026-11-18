@@ -1284,6 +1284,73 @@ test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-f
   },
 )
 
+/**
+ * @failure The rendered hold ends on a held frame requested exactly the control's latency after DECSET 2026, which
+ *   the criterion ("requested later than the control took") does not accept (34938, @cto terminfo batch
+ *   2026-11-18 finding 2). The fixtures above advance the clock on every read, so no held request lands on the
+ *   boundary and none of them sees the equality.
+ * @level l1
+ * @consumer modes.synchronized-output App callback with the collector's syncOutputRenderedHold flag.
+ * @testonly none
+ */
+test("the rendered hold needs a held frame requested strictly later than the control's latency, never equal", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.synchronized-output")!
+  const context = captureSource(24, 80, [], [])
+  context.syncOutputRenderedHold = true
+  context.captureGeometry = { ...context.captureGeometry!, sentinel: { form: "basic", rgb: [181, 0, 181] } }
+  const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+  let held = false
+  let shown = false
+  let pending: boolean | undefined
+  context.write = (bytes) => {
+    if (bytes.includes("\x1b[?2026h")) held = true
+    const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+    if (painted !== undefined) {
+      if (held) pending = painted
+      else shown = painted
+    }
+    if (bytes.includes("\x1b[?2026l")) {
+      held = false
+      if (pending !== undefined) shown = pending
+      pending = undefined
+      if (bytes.includes("\x1b[0m \x1b8")) shown = false
+    }
+  }
+  context.queryWithSentinel = async (_sequence, pattern) => pattern.exec("\x1b[?2026;2$y")
+  // The clock moves only while a capture runs, 5 ms each: the control appears 5 ms after its write, the first held
+  // frame is requested 0 ms after DECSET 2026 and the second exactly 5 ms after it, on the boundary.
+  let clock = 0
+  context.now = () => clock
+  let shot = 0
+  context.capture = async (request: CaptureRequest) => {
+    clock += 5
+    shot++
+    return {
+      role: request.role,
+      label: request.label,
+      capturedAt: shot,
+      ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+      kind: "pixels",
+      pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+      located: shown ? box : null,
+    } satisfies ObservationFrame
+  }
+  const result = await definition.term!(context)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  const response = JSON.parse(result.response!) as {
+    writes: { phase: string; atMs: number }[]
+    reads: { phase: string; requestedMs: number; returnedMs: number }[]
+  }
+  const controlAt = response.writes.find((w) => w.phase === "control")!.atMs
+  const latency = response.reads.find((r) => r.phase === "control")!.returnedMs - controlAt
+  const heldAt = response.writes.find((w) => w.phase === "held")!.atMs
+  const since = response.reads.filter((r) => r.phase === "held").map((r) => r.requestedMs - heldAt)
+  expect(latency).toBe(5)
+  // The boundary sample is taken and is not enough: one more, strictly later, ends the held phase.
+  expect(since).toEqual([0, 5, 10])
+  expect(since.at(-1)!).toBeGreaterThan(latency)
+})
+
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
 // The protocol matrix never exercised either effect or its controls.
 test.each([null, 0] as const)("App DECCOLM reads controlled size replies after DECRPM %s", async (ps) => {
