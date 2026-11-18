@@ -1,12 +1,13 @@
 /**
  * @failure Terminal.app 2.15's OSC 633 P reader grades a one-pair or unrestored experiment, compares AXDocument's
- *   trailing-slash URL spelling instead of the path, binds a stale or ambiguous window, or hides why a read failed.
+ *   trailing-slash URL spelling instead of the path, binds a stale or ambiguous window, hides why a read failed, or
+ *   sends OSC 7 controls Terminal drops because the directory does not exist (run 44392648569).
  * @level l2
  * @consumer OwnedTerminal.readAppSemanticState on the hosted Terminal.app arm, through readAppSemanticState's owned
  *   cwd branch and graded by gradeAppSemanticState (34870, @cto 34870-terminalapp-cwd-r1).
  * @testonly none
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
@@ -25,7 +26,11 @@ afterEach(() => {
 const TTY = "/dev/ttys004"
 const INITIAL = "file:///Users/private%20person/secret%20project/"
 
-/** Terminal.app 2.15 as 34841 measured it: AXDocument follows OSC 7 with one trailing slash; OSC 2 sets the title. */
+/**
+ * Terminal.app 2.15 as 34841 measured it: AXDocument follows OSC 7 with one trailing slash; OSC 2 sets the title.
+ * As hosted run 44392648569 measured it: a public OSC 7 naming a directory that does not exist clears AXDocument,
+ * so the next read is kAXErrorNoValue (-25212). The private restoration feed is not checked (34841 restored).
+ */
 function fakeTerminal(options: {
   initial?: string
   honours633?: boolean
@@ -42,7 +47,7 @@ function fakeTerminal(options: {
     return `file://${path}${path.endsWith("/") ? "" : "/"}`
   }
   let title = "codi — zsh"
-  let document = options.initial ?? INITIAL
+  let document: string | undefined = options.initial ?? INITIAL
   let controls = 0
   let reads = 0
   const publicWrites: string[] = []
@@ -58,7 +63,9 @@ function fakeTerminal(options: {
       } else {
         controls++
         const mode = options.controls ?? "both"
-        if (mode === "both" || (mode === "first" && controls === 1)) document = store(osc7)
+        if (mode === "both" || (mode === "first" && controls === 1)) {
+          document = existsSync(new URL(osc7).pathname) ? store(osc7) : undefined
+        }
       }
     }
     const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/.exec(text)?.[1]
@@ -70,6 +77,7 @@ function fakeTerminal(options: {
     let reply: TerminalAppDocumentReply
     if (!title.includes(fence)) reply = { status: "fence-pending", windowId: 7 }
     else if (options.failAfter !== undefined && reads++ >= options.failAfter.reads) reply = options.failAfter.reply
+    else if (document === undefined) reply = { status: "ax-error", phase: "AXDocument", axError: -25212, trusted: true }
     else reply = { status: "read", document, windowId: 7, trusted: true }
     return { stdout: JSON.stringify(reply), stderr: "", status: 0, signal: null }
   }
@@ -143,11 +151,17 @@ test.each([
   expect(reading.status).toBe("measured")
   if (reading.status !== "measured" || reading.reader !== "state") return
   expect(graded.observation?.outcome).toBe(outcome)
-  // Both controls read back as exact nonce paths: the slash AXDocument adds is gone, and nothing else changed.
+  // Both controls read back as the run's own directories, published by name under a fixed label: the slash AXDocument
+  // adds is gone, and neither the runner's temp path nor anything else changed.
   const controls = JSON.parse(reading.handled.after) as string[]
   expect(controls).toHaveLength(2)
-  expect(controls[0]).toMatch(/^\/terminfo-control-A-[0-9a-f]{8}$/)
-  expect(controls[1]).toMatch(/^\/terminfo-control-B-[0-9a-f]{8}$/)
+  expect(controls[0]).toMatch(/^\/run-owned\/osc7-control-A-[0-9a-f]{8}$/)
+  expect(controls[1]).toMatch(/^\/run-owned\/osc7-control-B-[0-9a-f]{8}$/)
+  expect(published(reading)).not.toContain(tmpdir())
+  // Each control and target existed when it was sent and is gone after the read.
+  const sent = [...terminal.publicWrites.join("").matchAll(/\x1b\](?:7;file:\/\/localhost|633;P;Cwd=)([^\x07]+)\x07/g)]
+  expect(sent.map((match) => match[1])).toHaveLength(4)
+  for (const match of sent) expect(existsSync(match[1] as string)).toBe(false)
   expect(reading.handled.after).toBe(reading.handled.expected)
   const targets = JSON.parse(reading.target.expected) as string[]
   expect(targets).toHaveLength(2)
@@ -178,7 +192,7 @@ test("two inert OSC 7 controls leave the row TODO, never unsupported", async () 
   const { reading, graded } = await read(fakeTerminal({ controls: "none" }))
   expect(reading).toMatchObject({
     status: "unavailable",
-    reason: "Terminal.app AXDocument did not move for two distinct fresh non-existent OSC 7 control paths",
+    reason: "Terminal.app AXDocument did not move for two distinct fresh run-owned OSC 7 control directories",
   })
   expect(graded.tests?.[0]?.status).toBe("probe-todo")
   expect(graded.observation?.outcome).toBeUndefined()
