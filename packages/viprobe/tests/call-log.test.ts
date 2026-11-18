@@ -93,6 +93,46 @@ test("deferred callback functions remain ordered operations after persistence", 
   expect(() => skipped.finish()).toThrow(IncompleteReplay)
 })
 
+// #30932 S3: a headless encoder returns bytes the callback decodes. A recorder that handed back a proxy around them
+// changed what the callback observed (TextDecoder refuses a proxy), so recording itself turned supported rows invalid.
+test("recorded and replayed calls hand back real bytes that built-ins accept", () => {
+  const log = createCallLog()
+  const recorded = withCallLog({ encodeKey: (key: string) => new TextEncoder().encode(key + "\r") }, { mode: "record", log })
+  const live = recorded.context.encodeKey("x")
+  expect(live).toBeInstanceOf(Uint8Array)
+  expect(new TextDecoder().decode(live)).toBe("x\r")
+  recorded.finish()
+  const replay = withCallLog<{ encodeKey: (key: string) => Uint8Array }>(null, {
+    mode: "replay",
+    log: readCallLog(JSON.parse(JSON.stringify(log))),
+  })
+  expect(new TextDecoder().decode(replay.context.encodeKey("x"))).toBe("x\r")
+  replay.finish()
+})
+
+// #30932 S3: a probe clones the colours a backend returns. A proxy around returned plain data made structuredClone
+// throw, so recording turned a supported row invalid. Plain data comes back unwrapped, live and in replay.
+test("recorded and replayed plain-data results are accepted by structuredClone", () => {
+  const log = createCallLog()
+  const subject = { colors: () => ({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] }) }
+  const recorded = withCallLog(subject, { mode: "record", log })
+  expect(structuredClone(recorded.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
+  recorded.finish()
+  const replay = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(JSON.stringify(log))) })
+  expect(structuredClone(replay.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
+  replay.finish()
+})
+
+// #30932 S3: a value the log cannot hold (here an array iterator) threw into the live callback. The caller now keeps
+// the live value, and the log refuses to finish or serialize.
+test("an unencodable recorded value poisons the log without changing what the caller observes", () => {
+  const log = createCallLog()
+  const recorded = withCallLog({ items: () => [1, 2].values() }, { mode: "record", log })
+  expect([...recorded.context.items()]).toEqual([1, 2])
+  expect(() => recorded.finish()).toThrow(IncompleteReplay)
+  expect(() => JSON.stringify(log)).toThrow()
+})
+
 // The TTY host needs decoded display data without a second decoder or executable replay handles.
 test("validated operation projection is ordered, inert and detached from canonical bytes", async () => {
   let getterReads = 0
@@ -570,20 +610,16 @@ test("caught unencodable input keeps capture finalization incomplete", () => {
   const cycle: { self?: unknown } = {}
   cycle.self = cycle
   const capture = withCallLog({ write: (value: unknown) => String(value) }, { mode: "record", log: createCallLog() })
-  let failure: unknown
-  try {
-    capture.context.write(cycle)
-  } catch (error) {
-    failure = error
-  }
-  expect.soft(failure).toBeInstanceOf(IncompleteReplay)
+  // Recording never changes what the caller observes (#30932 S3): the live call returns its own result.
+  expect(capture.context.write(cycle)).toBe("[object Object]")
   let finished: unknown
   try {
     capture.finish()
   } catch (error) {
     finished = error
   }
-  expect(finished).toBe(failure)
+  expect(finished).toBeInstanceOf(IncompleteReplay)
+  expect(String(finished)).toContain("cyclic")
 })
 
 test.each(["record", "replay"] as const)(

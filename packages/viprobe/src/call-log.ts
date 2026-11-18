@@ -603,6 +603,32 @@ export function callLogProgress(log: CallLog): { readonly started: number; reado
   return { started, unsettled }
 }
 
+/**
+ * Plain data: bytes, or arrays and plain objects whose own properties are all data holding primitives or plain
+ * data. A recorder hands it back unwrapped. Reading it logs nothing (only calls and accessors are logged), so
+ * replay is unchanged, and built-ins that refuse a proxy (structuredClone, TextDecoder) still accept it.
+ */
+function inert(value: object, seen = new Set<object>()): boolean {
+  if (value instanceof Uint8Array) return true
+  const prototype: unknown = Object.getPrototypeOf(value)
+  if (Array.isArray(value) ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) {
+    return false
+  }
+  if (seen.has(value)) return false
+  seen.add(value)
+  try {
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+      if (!("value" in descriptor)) return false
+      const member: unknown = descriptor.value
+      if (typeof member === "function") return false
+      if (member !== null && typeof member === "object" && !inert(member, seen)) return false
+    }
+    return true
+  } finally {
+    seen.delete(value)
+  }
+}
+
 export function withCallLog<Subject extends object>(
   subject: Subject,
   options: { mode: "record"; log: CallLog },
@@ -680,8 +706,21 @@ export function withCallLog<Subject extends object>(
 
   const decode = (value: Encoded) => decodeValue(value)
 
+  // Recording must never change what the recorded caller observes (#30932 S3: a throw here turned live headless
+  // rows probe-invalid). A value the log cannot hold poisons the log instead: the caller keeps the live value, and
+  // finish() throws, so no incomplete log is ever kept.
+  function record(value: unknown): Encoded {
+    try {
+      return encode(value)
+    } catch (error) {
+      if (!(error instanceof IncompleteReplay)) throw error
+      failure ??= error
+      return { kind: "undefined" }
+    }
+  }
+
   function finishOutcome(outcome: Outcome, value: unknown): unknown {
-    outcome.value = encode(value)
+    outcome.value = record(value)
     outcome.finished = true
     settleTiming(outcome.timing)
     return value
@@ -725,7 +764,7 @@ export function withCallLog<Subject extends object>(
     const call: MethodCall = {
       id: log.calls.length,
       path,
-      args: args.map((value) => encode(value)),
+      args: args.map((value) => record(value)),
       timing,
       finished: false,
       asynchronous: false,
@@ -738,7 +777,7 @@ export function withCallLog<Subject extends object>(
         if (closed) return incomplete(`recording session already finished: ${path}`)
         const callback: CallbackCall = {
           argument,
-          args: callbackArgs.map((entry) => encode(entry)),
+          args: callbackArgs.map((entry) => record(entry)),
           path: `${path}#${call.id}.callback${call.callbacks.length}`,
           timing: startTiming(),
           finished: false,
@@ -827,6 +866,10 @@ export function withCallLog<Subject extends object>(
 
   function wrap(value: unknown, path: string): unknown {
     if (value === null || (typeof value !== "object" && typeof value !== "function")) return value
+    // Bytes are data, logged whole as `bytes`; they have no calls to record. A proxy around them is not a typed array
+    // to built-ins (TextDecoder.decode refuses it), so wrapping would change what the recorded caller observes
+    // (#30932 S3: headless key and mouse encoders return bytes).
+    if (value instanceof Uint8Array || inert(value)) return value
     const proxy = new Proxy(value, {
       apply(target, receiver, args: unknown[]) {
         return mode === "record"
@@ -861,7 +904,7 @@ export function withCallLog<Subject extends object>(
     }
     if (state.started) throw new IncompleteReplay("record mode requires a fresh call log")
     state.started = true
-    log.root = encode(subject)
+    log.root = record(subject)
   } else {
     if (subject !== null) throw new Error("Replay refuses a live subject")
     if (!state.complete) throw new IncompleteReplay("replay requires a completed call log")
