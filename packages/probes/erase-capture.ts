@@ -1,7 +1,4 @@
 /** Host validation of the existing immutable schema-4 capture before offline erase execution. */
-import { createHash } from "node:crypto"
-import { readFileSync, realpathSync } from "node:fs"
-import { isAbsolute, join, relative } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { RunDraft, ProbeSubject, HeadlessRuntimeIdentity, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseJsonStrict } from "@terminfo/run-parser"
@@ -14,38 +11,23 @@ import {
 } from "@terminfo/probe-defs"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
+import { resolveRetained, RetainedStoreError, type RetainedResolution } from "../terminfo.dev/src/capture-core.ts"
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-export function readReference(directory: string, reference: unknown): Buffer {
-  if (
-    !object(reference) ||
-    Object.keys(reference).sort().join(",") !== "path,sha256" ||
-    typeof reference.path !== "string" ||
-    !reference.path ||
-    isAbsolute(reference.path) ||
-    /^[a-z]:/i.test(reference.path) ||
-    reference.path.includes("\\") ||
-    reference.path.includes("\0") ||
-    reference.path.split("/").includes("..") ||
-    typeof reference.sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(reference.sha256)
-  ) {
-    throw new IncompleteReplay("Replay artifact requires a relative path and SHA256")
+/**
+ * One retained reference through the retention owner (#34769): the exact present file, or an absent
+ * original its directory's receipt maps to an encoded file. Refusals keep the replay error type.
+ */
+export function resolveReference(directory: string, reference: unknown): RetainedResolution {
+  try {
+    return resolveRetained(directory, reference)
+  } catch (error) {
+    if (error instanceof RetainedStoreError) throw new IncompleteReplay(error.message)
+    throw error
   }
-  const root = realpathSync(directory)
-  const path = realpathSync(join(root, reference.path))
-  const contained = relative(root, path)
-  if (contained === ".." || contained.startsWith("../") || isAbsolute(contained)) {
-    throw new IncompleteReplay("Replay artifact resolves outside its store: " + reference.path)
-  }
-  const bytes = readFileSync(path)
-  if (createHash("sha256").update(bytes).digest("hex") !== reference.sha256) {
-    throw new IncompleteReplay("Replay artifact SHA256 differs: " + reference.path)
-  }
-  return bytes
 }
 
 /** Shared private schema-4 artifact binding; family-specific checks follow this read. */
@@ -59,7 +41,8 @@ export function readProbeCapture(
     runtimeIdentity?: HeadlessRuntimeIdentity
   },
 ) {
-  const bytes = readReference(directory, source.trace).toString("utf8")
+  const trace = resolveReference(directory, source.trace)
+  const bytes = trace.bytes.toString("utf8")
   const capture = parseRun(
     source.trace.path,
     bytes,
@@ -79,7 +62,8 @@ export function readProbeCapture(
   ) {
     throw new IncompleteReplay("Capture run, suite, source, subject or loaded runtime binding differs")
   }
-  const files = [join(directory, source.trace.path)]
+  // Physical dependencies, as the retention owner resolved them; a receipt serving many blobs is listed once.
+  const files = [...trace.files]
   const references = [...capture.screenshotRefs, ...capture.textSnapshotRefs]
   // These are dependency slots, not a second observation/result parser. Parsed frames
   // already have semantic validation; raw traces need only their binding checked here.
@@ -145,13 +129,13 @@ export function readProbeCapture(
     const blobPaths = new Set<string>()
     const blobDigests = new Set<string>()
     for (const blob of manifest.blobs) {
-      readReference(directory, blob)
+      const resolved = resolveReference(directory, blob)
       if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
         throw new IncompleteReplay("Capture contains duplicate blob references")
       }
       blobPaths.add(blob.path)
       blobDigests.add("sha256:" + blob.sha256)
-      files.push(join(directory, blob.path))
+      for (const file of resolved.files) if (!files.includes(file)) files.push(file)
     }
     for (const path of references) {
       if (!blobDigests.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)

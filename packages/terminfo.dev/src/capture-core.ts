@@ -1,9 +1,23 @@
 import { spawn } from "node:child_process"
-import { createHash } from "node:crypto"
-import { readFileSync, writeFileSync } from "node:fs"
+import { createHash, randomBytes } from "node:crypto"
+import {
+  closeSync,
+  type Stats,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
-import { join } from "node:path"
-import { constants as zlibConstants, zstdCompressSync } from "node:zlib"
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path"
+import { constants as zlibConstants, gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib"
 import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
@@ -855,4 +869,916 @@ export function locateChangedColour(
     }
   }
   return { regions, ignoredPixels }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Retained-capture storage (#34769, @cto 34769-migration-v2-go-2201). This module is the one owner of
+// how a retained `{path, sha256}` reference reaches bytes: the exact present file wins and is hashed as
+// stored; only a genuinely absent path resolves through the directory's `retained-encoding.json`
+// receipt, which maps the logical file name to an encoded file and its codec. Read, transfer and
+// dependency enumeration all go through `resolveRetained`, and `writeRetainedReceipt` is the only
+// writer of a receipt. No caller parses a receipt.
+//
+// Durable order of a migration, each step under the directory's exclusive lock: encoded file + fsync,
+// directory fsync; atomic receipt + directory fsync; original unlink + directory fsync. Readers need
+// no lock: a mapped original is unlinked only after its receipt row is durable, rollback restores the
+// original before withdrawing its row, and encoded objects are never removed here, so every reader
+// sees either the exact file or a committed row whose stored file exists.
+// ---------------------------------------------------------------------------------------------------
+
+/** The per-directory receipt mapping absent originals to encoded files. */
+export const RETAINED_RECEIPT = "retained-encoding.json"
+/** The per-directory exclusive mutation lock; a lock that is present is reported, never broken. */
+export const RETAINED_LOCK = "retained-encoding.lock"
+
+export type RetainedFailure =
+  | "reference" // the reference is not a safe relative path plus SHA256
+  | "outside" // the path resolves outside its store
+  | "missing" // neither the exact file nor a receipt row serves the reference
+  | "integrity" // stored or decoded bytes do not match a declared digest
+  | "receipt" // a receipt is malformed or names an invalid row
+  | "locked" // the directory's mutation lock is held, absent, or changed
+  | "conflict" // an existing file or row differs from what would be written
+  | "unclean" // temporary files from another writer are present
+
+/** A typed refusal from retained storage. `path` names the reference or file it concerns. */
+export class RetainedStoreError extends Error {
+  readonly kind: RetainedFailure
+  readonly path: string | undefined
+  constructor(kind: RetainedFailure, message: string, path?: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = "RetainedStoreError"
+    this.kind = kind
+    this.path = path
+  }
+}
+
+export interface RetainedReference {
+  path: string
+  sha256: string
+}
+
+/** One receipt row. `name` and `stored` are file names in the receipt's own directory. */
+export interface RetainedRow {
+  name: string
+  sha256: string
+  stored: string
+  storedSha256: string
+  codec: "zstd" | "gzip"
+}
+
+export interface RetainedResolution {
+  reference: RetainedReference
+  /** The logical bytes: the exact file's bytes, or the decoded stored bytes. */
+  bytes: Buffer
+  /** The physical file that served the reference, relative to the store, with its verified bytes. */
+  stored: { path: string; bytes: Buffer }
+  /** The receipt row, when the receipt served the reference. */
+  row?: RetainedRow
+  /** Physical dependencies under the caller's directory (containment checked on real paths): the exact file, or the stored file and its receipt. */
+  files: string[]
+}
+
+export interface RetainedLockHolder {
+  pid: number
+  startedAt: string
+  token: string
+}
+
+export interface RetainedLock {
+  directory: string
+  holder: RetainedLockHolder
+  release(): void
+}
+
+const HEX64 = /^[0-9a-f]{64}$/
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function errnoCode(error: unknown): string | undefined {
+  return isRecord(error) && typeof error.code === "string" ? error.code : undefined
+}
+
+function safeRelativePath(path: unknown): path is string {
+  return (
+    typeof path === "string" &&
+    path !== "" &&
+    !isAbsolute(path) &&
+    !/^[a-z]:/i.test(path) &&
+    !path.includes("\\") &&
+    !path.includes("\0") &&
+    !path.split("/").includes("..")
+  )
+}
+
+function safeFileName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    name !== "" &&
+    name !== "." &&
+    name !== ".." &&
+    !name.includes("/") &&
+    !name.includes("\\") &&
+    !name.includes("\0")
+  )
+}
+
+function within(root: string, path: string): boolean {
+  const rel = relative(root, path)
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
+}
+
+/** The validated two-key reference every reader takes; anything else refuses by kind `reference`. */
+export function retainedReference(reference: unknown): RetainedReference {
+  if (
+    !isRecord(reference) ||
+    Object.keys(reference).sort().join(",") !== "path,sha256" ||
+    !safeRelativePath(reference.path) ||
+    typeof reference.sha256 !== "string" ||
+    !HEX64.test(reference.sha256)
+  ) {
+    throw new RetainedStoreError("reference", "Replay artifact requires a relative path and SHA256")
+  }
+  return { path: reference.path, sha256: reference.sha256 }
+}
+
+/** Real path of `relativePath` under `root`; undefined only for ENOENT. An escape refuses by name. */
+function containedRealPath(root: string, relativePath: string): string | undefined {
+  let real: string
+  try {
+    real = realpathSync(join(root, relativePath))
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return undefined
+    throw error
+  }
+  if (!within(root, real)) {
+    throw new RetainedStoreError("outside", "Replay artifact resolves outside its store: " + relativePath, relativePath)
+  }
+  return real
+}
+
+function readIfPresent(path: string): Buffer | undefined {
+  try {
+    return readFileSync(path)
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return undefined
+    throw error
+  }
+}
+
+function lstatIfPresent(path: string): Stats | undefined {
+  try {
+    return lstatSync(path)
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return undefined
+    throw error
+  }
+}
+
+/** Bytes of a regular file in `directory`, refusing a symlink or other non-file; undefined when absent. */
+function readRegular(directory: string, name: string): Buffer | undefined {
+  const path = join(directory, name)
+  const stat = lstatIfPresent(path)
+  if (stat === undefined) return undefined
+  if (!stat.isFile()) {
+    throw new RetainedStoreError("conflict", `Retained storage entry is not a regular file: ${path}`, path)
+  }
+  return readFileSync(path)
+}
+
+function decodeStored(row: RetainedRow, stored: Buffer, label: string): Buffer {
+  try {
+    return row.codec === "zstd" ? zstdDecompressSync(stored) : gunzipSync(stored)
+  } catch (cause) {
+    throw new RetainedStoreError(
+      "integrity",
+      `Retained stored artifact does not decode as ${row.codec}: ${label}`,
+      label,
+      {
+        cause,
+      },
+    )
+  }
+}
+
+function parseReceipt(text: string, label: string): RetainedRow[] {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (cause) {
+    throw new RetainedStoreError("receipt", `Retained receipt is not JSON: ${label}`, label, { cause })
+  }
+  if (
+    !isRecord(value) ||
+    Object.keys(value).sort().join(",") !== "rows,schema" ||
+    value.schema !== 1 ||
+    !Array.isArray(value.rows)
+  ) {
+    throw new RetainedStoreError("receipt", `Retained receipt is not a schema-1 row list: ${label}`, label)
+  }
+  const names = new Set<string>()
+  return value.rows.map((row: unknown) => {
+    if (
+      !isRecord(row) ||
+      Object.keys(row).sort().join(",") !== "codec,name,sha256,stored,storedSha256" ||
+      !safeFileName(row.name) ||
+      !safeFileName(row.stored) ||
+      row.name === row.stored ||
+      typeof row.sha256 !== "string" ||
+      !HEX64.test(row.sha256) ||
+      typeof row.storedSha256 !== "string" ||
+      !HEX64.test(row.storedSha256) ||
+      (row.codec !== "zstd" && row.codec !== "gzip")
+    ) {
+      throw new RetainedStoreError("receipt", `Retained receipt has a malformed row: ${label}`, label)
+    }
+    if (names.has(row.name)) {
+      throw new RetainedStoreError("receipt", `Retained receipt maps ${row.name} more than once: ${label}`, label)
+    }
+    names.add(row.name)
+    return { name: row.name, sha256: row.sha256, stored: row.stored, storedSha256: row.storedSha256, codec: row.codec }
+  })
+}
+
+function serializeReceipt(rows: Iterable<RetainedRow>): string {
+  const sorted = [...rows].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  return (
+    JSON.stringify(
+      {
+        schema: 1,
+        rows: sorted.map(({ name, sha256, stored, storedSha256, codec }) => ({
+          name,
+          sha256,
+          stored,
+          storedSha256,
+          codec,
+        })),
+      },
+      null,
+      2,
+    ) + "\n"
+  )
+}
+
+function readReceiptRows(directory: string): RetainedRow[] {
+  const bytes = readRegular(directory, RETAINED_RECEIPT)
+  return bytes === undefined ? [] : parseReceipt(bytes.toString("utf8"), join(directory, RETAINED_RECEIPT))
+}
+
+/**
+ * Resolve one retained reference to its bytes and physical dependencies. The exact present path is
+ * hashed as stored and a mismatch throws; it never falls through to a substitute. Only ENOENT on the
+ * exact path consults the receipt beside it, which must hold exactly one row for that file name whose
+ * declared digest, stored digest and decoded digest all agree.
+ */
+export function resolveRetained(directory: string, reference: unknown): RetainedResolution {
+  const ref = retainedReference(reference)
+  const root = realpathSync(directory)
+  const exact = containedRealPath(root, ref.path)
+  const exactBytes = exact === undefined ? undefined : readIfPresent(exact)
+  if (exact !== undefined && exactBytes !== undefined) {
+    if (digest(exactBytes) !== ref.sha256) {
+      throw new RetainedStoreError("integrity", "Replay artifact SHA256 differs: " + ref.path, ref.path)
+    }
+    return {
+      reference: ref,
+      bytes: exactBytes,
+      stored: { path: ref.path, bytes: exactBytes },
+      files: [join(directory, ref.path)],
+    }
+  }
+  // Something unreadable at the exact path (a dangling symlink) is not an absence: never serve the receipt for it.
+  if (exact === undefined && lstatIfPresent(join(root, ref.path)) !== undefined) {
+    throw new RetainedStoreError(
+      "conflict",
+      `Replay artifact path is not a readable regular file: ${ref.path}`,
+      ref.path,
+    )
+  }
+  const parent = dirname(ref.path)
+  const receiptRelative = join(parent, RETAINED_RECEIPT)
+  const receiptPath = containedRealPath(root, receiptRelative)
+  const receiptBytes = receiptPath === undefined ? undefined : readIfPresent(receiptPath)
+  if (receiptPath === undefined || receiptBytes === undefined) {
+    throw new RetainedStoreError(
+      "missing",
+      "Replay artifact missing (ENOENT, no retained receipt): " + ref.path,
+      ref.path,
+    )
+  }
+  const name = basename(ref.path)
+  const row = parseReceipt(receiptBytes.toString("utf8"), receiptRelative).find((candidate) => candidate.name === name)
+  if (row === undefined) {
+    throw new RetainedStoreError(
+      "missing",
+      `Replay artifact missing (ENOENT) and unmapped by ${receiptRelative}: ${ref.path}`,
+      ref.path,
+    )
+  }
+  if (row.sha256 !== ref.sha256) {
+    throw new RetainedStoreError("integrity", `Retained receipt maps ${ref.path} to a different SHA256`, ref.path)
+  }
+  const storedRelative = join(parent, row.stored)
+  const storedPath = containedRealPath(root, storedRelative)
+  const stored = storedPath === undefined ? undefined : readIfPresent(storedPath)
+  if (storedPath === undefined || stored === undefined) {
+    throw new RetainedStoreError("missing", `Retained stored artifact missing: ${storedRelative}`, ref.path)
+  }
+  if (digest(stored) !== row.storedSha256) {
+    throw new RetainedStoreError("integrity", `Retained stored artifact SHA256 differs: ${storedRelative}`, ref.path)
+  }
+  const bytes = decodeStored(row, stored, storedRelative)
+  if (digest(bytes) !== ref.sha256) {
+    throw new RetainedStoreError(
+      "integrity",
+      `Retained stored artifact decodes to different bytes: ${ref.path}`,
+      ref.path,
+    )
+  }
+  return {
+    reference: ref,
+    bytes,
+    stored: { path: storedRelative, bytes: stored },
+    row,
+    files: [join(directory, storedRelative), join(directory, receiptRelative)],
+  }
+}
+
+function fsyncDirectory(directory: string): void {
+  const fd = openSync(directory, "r")
+  try {
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/** Create `path` exclusively, write all bytes and fsync it. */
+function writeDurableNew(path: string, bytes: Buffer): void {
+  const fd = openSync(path, "wx", 0o600)
+  try {
+    writeFileSync(fd, bytes)
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function tempName(final: string, token: string): string {
+  return `.${final}.${token}.tmp`
+}
+
+const TEMP_FILE = /^\..+\.([0-9a-f]{16})\.tmp$/
+
+function verifyExisting(path: string, bytes: Buffer): "reused" {
+  const stat = lstatSync(path)
+  if (!stat.isFile()) {
+    throw new RetainedStoreError("conflict", `Retained artifact path is not a regular file: ${path}`, path)
+  }
+  if (!readFileSync(path).equals(bytes)) {
+    throw new RetainedStoreError("conflict", `Retained artifact exists with different bytes: ${path}`, path)
+  }
+  return "reused"
+}
+
+/** Publish `bytes` as `final` in `directory` without replacing anything; an existing file must be byte-equal. */
+function publishNoClobber(directory: string, final: string, bytes: Buffer, token: string): "written" | "reused" {
+  const target = join(directory, final)
+  if (lstatIfPresent(target) !== undefined) return verifyExisting(target, bytes)
+  const temp = join(directory, tempName(final, token))
+  writeDurableNew(temp, bytes)
+  try {
+    linkSync(temp, target)
+  } catch (error) {
+    unlinkSync(temp)
+    if (errnoCode(error) !== "EEXIST") throw error
+    return verifyExisting(target, bytes)
+  }
+  unlinkSync(temp)
+  return "written"
+}
+
+function lockText(holder: RetainedLockHolder): string {
+  return JSON.stringify(holder) + "\n"
+}
+
+/** Take a directory's exclusive mutation lock. A present lock refuses and names its holder. */
+export function lockRetained(directory: string): RetainedLock {
+  const root = realpathSync(directory)
+  const path = join(root, RETAINED_LOCK)
+  const holder: RetainedLockHolder = {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    token: randomBytes(8).toString("hex"),
+  }
+  const text = lockText(holder)
+  try {
+    writeDurableNew(path, Buffer.from(text))
+  } catch (error) {
+    if (errnoCode(error) !== "EEXIST") throw error
+    const current = readIfPresent(path)?.toString("utf8").trim() ?? "<unreadable>"
+    throw new RetainedStoreError(
+      "locked",
+      `Retained storage ${root} is locked by ${current}. A lock is never broken automatically: ` +
+        "if that holder is dead, run recoverRetainedLock with exactly that holder, then rerun.",
+      root,
+    )
+  }
+  fsyncDirectory(root)
+  let released = false
+  return {
+    directory: root,
+    holder,
+    release() {
+      if (released) return
+      for (const name of readdirSync(root)) {
+        if (TEMP_FILE.exec(name)?.[1] === holder.token) unlinkSync(join(root, name))
+      }
+      if (readIfPresent(path)?.toString("utf8") !== text) {
+        throw new RetainedStoreError("locked", `Retained lock ${path} changed under its holder`, root)
+      }
+      unlinkSync(path)
+      fsyncDirectory(root)
+      released = true
+    },
+  }
+}
+
+function assertLockHeld(lock: RetainedLock): void {
+  if (readIfPresent(join(lock.directory, RETAINED_LOCK))?.toString("utf8") !== lockText(lock.holder)) {
+    throw new RetainedStoreError(
+      "locked",
+      `Retained storage ${lock.directory} is not locked by this writer`,
+      lock.directory,
+    )
+  }
+}
+
+function processRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return errnoCode(error) !== "ESRCH"
+  }
+}
+
+/**
+ * The named owner-recovery step for a lock left by a dead writer. The caller names the exact holder it
+ * read from the lock; recovery refuses a different holder or a pid that is still running, then removes
+ * that holder's own temporary files and the lock. Nothing else is touched: the next run re-verifies
+ * every encoded file, row and original before it relies on one.
+ */
+export function recoverRetainedLock(directory: string, expected: RetainedLockHolder): { removedTemps: string[] } {
+  const root = realpathSync(directory)
+  const path = join(root, RETAINED_LOCK)
+  const text = readIfPresent(path)?.toString("utf8")
+  if (text === undefined) throw new RetainedStoreError("locked", `No retained lock to recover in ${root}`, root)
+  if (text !== lockText(expected)) {
+    throw new RetainedStoreError(
+      "locked",
+      `Retained lock in ${root} is held by ${text.trim()}, not the holder named for recovery`,
+      root,
+    )
+  }
+  if (processRunning(expected.pid)) {
+    throw new RetainedStoreError(
+      "locked",
+      `Retained lock holder pid ${expected.pid} is still running; not recovered`,
+      root,
+    )
+  }
+  const removedTemps = readdirSync(root).filter((name) => TEMP_FILE.exec(name)?.[1] === expected.token)
+  for (const name of removedTemps) unlinkSync(join(root, name))
+  unlinkSync(path)
+  fsyncDirectory(root)
+  return { removedTemps }
+}
+
+function refuseForeignTemps(lock: RetainedLock): void {
+  const foreign = readdirSync(lock.directory).filter((name) => {
+    const token = TEMP_FILE.exec(name)?.[1]
+    return token !== undefined && token !== lock.holder.token
+  })
+  if (foreign.length) {
+    throw new RetainedStoreError(
+      "unclean",
+      `Retained storage ${lock.directory} holds another writer's temporary files (${foreign.join(", ")}); ` +
+        "recover that writer's lock or inspect and remove them first",
+      lock.directory,
+    )
+  }
+}
+
+/** Verify a row against the files in its directory: the stored digest, and the decoded digest. */
+function verifyRow(directory: string, row: RetainedRow): void {
+  const expectedStored = row.codec === "zstd" ? `${row.storedSha256}.xwd.zst` : `${row.sha256}.xwd.gz`
+  if (row.stored !== expectedStored || row.name !== `${row.sha256}.xwd`) {
+    throw new RetainedStoreError(
+      "receipt",
+      `Retained row for ${row.name} names ${row.stored}, not ${expectedStored}`,
+      row.name,
+    )
+  }
+  const stored = readRegular(directory, row.stored)
+  if (stored === undefined) {
+    throw new RetainedStoreError(
+      "missing",
+      `Retained stored artifact missing: ${join(directory, row.stored)}`,
+      row.name,
+    )
+  }
+  if (digest(stored) !== row.storedSha256) {
+    throw new RetainedStoreError(
+      "integrity",
+      `Retained stored artifact SHA256 differs: ${join(directory, row.stored)}`,
+      row.name,
+    )
+  }
+  if (digest(decodeStored(row, stored, join(directory, row.stored))) !== row.sha256) {
+    throw new RetainedStoreError(
+      "integrity",
+      `Retained stored artifact decodes to different bytes: ${row.name}`,
+      row.name,
+    )
+  }
+}
+
+/**
+ * The only receipt writer. Under the directory's held lock it re-reads and validates the current
+ * receipt, withdraws only the named rows (each original must be present with its declared digest
+ * first), adds only verified rows, keeps every unrelated row byte-equal, and accepts an identical
+ * existing row as an idempotent retry; a different mapping for the same name refuses. The next receipt
+ * is written to an exclusive temporary file, fsynced, renamed over the receipt, the directory fsynced,
+ * and read back.
+ */
+export function writeRetainedReceipt(
+  lock: RetainedLock,
+  change: { add?: readonly RetainedRow[]; remove?: readonly string[] },
+): RetainedRow[] {
+  assertLockHeld(lock)
+  const directory = lock.directory
+  const receipt = join(directory, RETAINED_RECEIPT)
+  const currentBytes = readRegular(directory, RETAINED_RECEIPT)
+  const rows = new Map(
+    (currentBytes === undefined ? [] : parseReceipt(currentBytes.toString("utf8"), receipt)).map((row) => [
+      row.name,
+      row,
+    ]),
+  )
+  for (const name of change.remove ?? []) {
+    const row = rows.get(name)
+    if (row === undefined) {
+      throw new RetainedStoreError("conflict", `Retained receipt has no row ${name} to withdraw`, name)
+    }
+    // A gzip row's original is its legacy `.xwd.gz`; every other row's is the restored raw file.
+    const original = readRegular(directory, row.codec === "gzip" ? row.stored : name)
+    if (original === undefined || digest(original) !== (row.codec === "gzip" ? row.storedSha256 : row.sha256)) {
+      throw new RetainedStoreError(
+        "integrity",
+        `Retained row ${name} is withdrawn only after its original is restored`,
+        name,
+      )
+    }
+    rows.delete(name)
+  }
+  for (const candidate of change.add ?? []) {
+    const [row] = parseReceipt(serializeReceipt([candidate]), "added row")
+    if (row === undefined) throw new RetainedStoreError("receipt", "Retained receipt addition is empty")
+    const prior = rows.get(row.name)
+    if (prior !== undefined) {
+      if (serializeReceipt([prior]) !== serializeReceipt([row])) {
+        throw new RetainedStoreError("conflict", `Retained receipt already maps ${row.name} differently`, row.name)
+      }
+      continue
+    }
+    verifyRow(directory, row)
+    rows.set(row.name, row)
+  }
+  const text = serializeReceipt(rows.values())
+  if (currentBytes?.toString("utf8") === text) return [...rows.values()]
+  const temp = join(directory, tempName(RETAINED_RECEIPT, lock.holder.token))
+  writeDurableNew(temp, Buffer.from(text))
+  renameSync(temp, receipt)
+  fsyncDirectory(directory)
+  if (readFileSync(receipt, "utf8") !== text) {
+    throw new RetainedStoreError("conflict", `Retained receipt read back differs: ${receipt}`, receipt)
+  }
+  return [...rows.values()]
+}
+
+export interface RetainedMigration {
+  directory: string
+  /** Originals encoded to a new file this run. */
+  encoded: number
+  /** Originals whose encoded file already existed and was verified byte-equal. */
+  reused: number
+  /** Legacy `.xwd.gz` files mapped after a verified decode to a declared digest. */
+  gzipRows: number
+  /** Originals unlinked after their row was durable and revalidated. */
+  unlinked: number
+  /** Allocated bytes of the unlinked originals, and of the encoded files that now serve them. */
+  originalAllocated: number
+  encodedAllocated: number
+  /** Legacy files left unmapped, each with its reason. */
+  skipped: string[]
+}
+
+const RAW_XWD = /^([0-9a-f]{64})\.xwd$/
+const LEGACY_GZIP = /^([0-9a-f]{64})\.xwd\.gz$/
+
+/**
+ * Migrate one retained artifact directory: encode each `<sha>.xwd` original with the capture encoder,
+ * publish its rows in one receipt write, then unlink each original after revalidating its bytes, its
+ * stored file and the committed row. A legacy `<sha>.xwd.gz` is mapped only when `declaredGzip` names
+ * its digest (a real reference declares it) and it decodes to exactly that digest. A restart after an
+ * interruption repeats the same steps: present encoded files are reused only after verification, and a
+ * committed row's original is revalidated before it is unlinked.
+ */
+export function migrateRetained(
+  directory: string,
+  options: { declaredGzip?: ReadonlySet<string>; keepOriginals?: boolean } = {},
+): RetainedMigration {
+  const lock = lockRetained(directory)
+  try {
+    return migrateLocked(lock, options)
+  } finally {
+    lock.release()
+  }
+}
+
+function migrateLocked(
+  lock: RetainedLock,
+  options: { declaredGzip?: ReadonlySet<string>; keepOriginals?: boolean },
+): RetainedMigration {
+  refuseForeignTemps(lock)
+  const directory = lock.directory
+  const report: RetainedMigration = {
+    directory,
+    encoded: 0,
+    reused: 0,
+    gzipRows: 0,
+    unlinked: 0,
+    originalAllocated: 0,
+    encodedAllocated: 0,
+    skipped: [],
+  }
+  const mapped = new Set(readReceiptRows(directory).map((row) => row.name))
+  const entries = readdirSync(directory).sort()
+  const present = new Set(entries)
+  const additions: RetainedRow[] = []
+  for (const name of entries) {
+    const raw = RAW_XWD.exec(name)
+    if (raw?.[1] !== undefined) {
+      if (mapped.has(name)) continue
+      const bytes = readRegular(directory, name)
+      if (bytes === undefined) {
+        throw new RetainedStoreError("missing", `Retained original vanished during migration: ${name}`, name)
+      }
+      if (digest(bytes) !== raw[1]) {
+        throw new RetainedStoreError(
+          "integrity",
+          `Retained original does not hash to its name: ${join(directory, name)}`,
+          name,
+        )
+      }
+      const stored = retainedSource({ bytes, format: "xwd" }).bytes
+      const storedSha256 = digest(stored)
+      const storedName = `${storedSha256}.xwd.zst`
+      const outcome = publishNoClobber(directory, storedName, stored, lock.holder.token)
+      if (!zstdDecompressSync(readFileSync(join(directory, storedName))).equals(bytes)) {
+        throw new RetainedStoreError("integrity", `Encoded file does not decode to its original: ${storedName}`, name)
+      }
+      additions.push({ name, sha256: raw[1], stored: storedName, storedSha256, codec: "zstd" })
+      report[outcome === "written" ? "encoded" : "reused"]++
+      continue
+    }
+    const legacy = LEGACY_GZIP.exec(name)
+    if (legacy?.[1] !== undefined) {
+      const rawName = `${legacy[1]}.xwd`
+      if (mapped.has(rawName) || present.has(rawName)) continue
+      if (!options.declaredGzip?.has(legacy[1])) {
+        report.skipped.push(`${name}: no reference declares ${legacy[1]}`)
+        continue
+      }
+      const stored = readRegular(directory, name)
+      if (stored === undefined) {
+        throw new RetainedStoreError("missing", `Legacy file vanished during migration: ${name}`, name)
+      }
+      const row: RetainedRow = {
+        name: rawName,
+        sha256: legacy[1],
+        stored: name,
+        storedSha256: digest(stored),
+        codec: "gzip",
+      }
+      if (digest(decodeStored(row, stored, name)) !== legacy[1]) {
+        throw new RetainedStoreError(
+          "integrity",
+          `Legacy file does not decode to its declared digest: ${join(directory, name)}`,
+          name,
+        )
+      }
+      additions.push(row)
+      report.gzipRows++
+    }
+  }
+  if (additions.length) {
+    fsyncDirectory(directory)
+    writeRetainedReceipt(lock, { add: additions })
+  }
+  if (options.keepOriginals) return report
+  let unlinked = false
+  for (const row of readReceiptRows(directory)) {
+    if (row.codec !== "zstd") continue
+    const originalPath = join(directory, row.name)
+    const stat = lstatIfPresent(originalPath)
+    if (stat === undefined) continue
+    const original = readRegular(directory, row.name)
+    if (original === undefined || digest(original) !== row.sha256) {
+      throw new RetainedStoreError(
+        "integrity",
+        `Retained original differs from its committed row: ${originalPath}`,
+        row.name,
+      )
+    }
+    const stored = readRegular(directory, row.stored)
+    if (
+      stored === undefined ||
+      digest(stored) !== row.storedSha256 ||
+      !decodeStored(row, stored, row.stored).equals(original)
+    ) {
+      throw new RetainedStoreError(
+        "integrity",
+        `Committed row for ${row.name} no longer verifies; original kept`,
+        row.name,
+      )
+    }
+    report.originalAllocated += stat.blocks * 512
+    report.encodedAllocated += lstatSync(join(directory, row.stored)).blocks * 512
+    unlinkSync(originalPath)
+    report.unlinked++
+    unlinked = true
+  }
+  if (unlinked) fsyncDirectory(directory)
+  return report
+}
+
+/**
+ * Roll back one retained artifact directory: restore and verify each mapped original durably (a legacy gzip
+ * row keeps its `.xwd.gz` as the original and only verifies it), then
+ * withdraw those rows in one receipt write. Encoded objects stay: a prospective `.xwd.zst` reference or
+ * a reused object may still name one directly, and existing retention owns any later removal.
+ */
+export function rollbackRetained(
+  directory: string,
+  names?: readonly string[],
+): { restored: number; withdrawn: number } {
+  const lock = lockRetained(directory)
+  try {
+    refuseForeignTemps(lock)
+    const rows = readReceiptRows(lock.directory)
+    const selected =
+      names === undefined
+        ? rows
+        : names.map((name) => {
+            const row = rows.find((candidate) => candidate.name === name)
+            if (row === undefined) {
+              throw new RetainedStoreError("conflict", `Retained receipt has no row ${name} to roll back`, name)
+            }
+            return row
+          })
+    let restored = 0
+    for (const row of selected) {
+      const original = readRegular(lock.directory, row.name)
+      if (original !== undefined) {
+        if (digest(original) !== row.sha256) {
+          throw new RetainedStoreError(
+            "integrity",
+            `Present original differs from its row: ${join(lock.directory, row.name)}`,
+            row.name,
+          )
+        }
+        continue
+      }
+      const stored = readRegular(lock.directory, row.stored)
+      if (stored === undefined || digest(stored) !== row.storedSha256) {
+        throw new RetainedStoreError(
+          "integrity",
+          `Stored artifact for ${row.name} does not verify; nothing restored`,
+          row.name,
+        )
+      }
+      // A gzip row maps a legacy `.xwd.gz` that was itself the historical original; no raw file ever existed.
+      if (row.codec === "gzip") continue
+      const bytes = decodeStored(row, stored, row.stored)
+      if (digest(bytes) !== row.sha256) {
+        throw new RetainedStoreError(
+          "integrity",
+          `Stored artifact for ${row.name} decodes to different bytes`,
+          row.name,
+        )
+      }
+      publishNoClobber(lock.directory, row.name, bytes, lock.holder.token)
+      restored++
+    }
+    if (restored) fsyncDirectory(lock.directory)
+    if (selected.length) writeRetainedReceipt(lock, { remove: selected.map((row) => row.name) })
+    return { restored, withdrawn: selected.length }
+  } finally {
+    lock.release()
+  }
+}
+
+/**
+ * Transfer retained references from `sourceRoot` into `destination`, the one copy path for collected
+ * runs. Every reference is resolved before anything is written; each is then resolved again and its
+ * verified stored bytes are written only if they match the first pass, so a source changing mid-transfer
+ * refuses instead of tearing the copy, and only one file's bytes are held at a time. Physical dependencies are
+ * written (no-clobber, byte-equal reuse) inside the destination's real root, then each destination
+ * directory gets only the receipt rows its references need, then every reference is re-resolved from
+ * the destination alone. A failure names its reference path.
+ */
+export function transferRetained(sourceRoot: string, destination: string, references: readonly unknown[]): void {
+  // Pass 1 proves every reference before anything is written and keeps no bytes: only the reference, the stored
+  // path and its digest, and the row (a complete historical run holds ~1.1 GB). Pass 2 resolves one reference at
+  // a time again, refuses if its stored bytes changed since pass 1, writes them and drops them.
+  const resolved: { reference: RetainedReference; stored: { path: string; sha256: string }; row?: RetainedRow }[] = []
+  const paths = new Set<string>()
+  for (const reference of references) {
+    const label = isRecord(reference) && typeof reference.path === "string" ? reference.path : "<invalid path>"
+    try {
+      const resolution = resolveRetained(sourceRoot, reference)
+      if (paths.has(resolution.reference.path)) throw new Error("Duplicate retained artifact path")
+      paths.add(resolution.reference.path)
+      resolved.push({
+        reference: resolution.reference,
+        stored: { path: resolution.stored.path, sha256: digest(resolution.stored.bytes) },
+        row: resolution.row,
+      })
+    } catch (cause) {
+      throw Object.assign(new Error(`Retained transfer failed for ${label}`, { cause }), { path: label })
+    }
+  }
+  mkdirSync(destination, { recursive: true })
+  const root = realpathSync(destination)
+  const rowsByDirectory = new Map<string, Map<string, RetainedRow>>()
+  const written = new Map<string, string>()
+  const token = randomBytes(8).toString("hex")
+  for (const resolution of resolved) {
+    const label = resolution.reference.path
+    try {
+      let parent = root
+      for (const part of resolution.stored.path.split("/").slice(0, -1)) {
+        parent = join(parent, part)
+        try {
+          mkdirSync(parent)
+        } catch (error) {
+          if (errnoCode(error) !== "EEXIST") throw error
+        }
+        if (!within(root, realpathSync(parent))) throw new Error("Destination parent escapes capture bundle")
+      }
+      const target = join(root, resolution.stored.path)
+      const prior = written.get(target)
+      const storedDigest = resolution.stored.sha256
+      if (prior === undefined) {
+        const again = resolveRetained(sourceRoot, resolution.reference)
+        if (again.stored.path !== resolution.stored.path || digest(again.stored.bytes) !== storedDigest) {
+          throw new Error(`Source changed during transfer at ${resolution.stored.path}`)
+        }
+        // Exclusive temporary, then a no-clobber link: a crash never leaves a truncated final file.
+        publishNoClobber(parent, basename(target), again.stored.bytes, token)
+        written.set(target, storedDigest)
+      } else if (prior !== storedDigest) {
+        throw new Error(`Two references need different bytes at ${resolution.stored.path}`)
+      }
+      if (resolution.row !== undefined) {
+        const rows = rowsByDirectory.get(realpathSync(parent)) ?? new Map<string, RetainedRow>()
+        rows.set(resolution.row.name, resolution.row)
+        rowsByDirectory.set(realpathSync(parent), rows)
+      }
+    } catch (cause) {
+      throw Object.assign(new Error(`Retained transfer failed for ${label}`, { cause }), { path: label })
+    }
+  }
+  for (const directory of new Set([...written.keys()].map((path) => dirname(path)))) fsyncDirectory(directory)
+  for (const [directory, rows] of rowsByDirectory) {
+    const lock = lockRetained(directory)
+    try {
+      writeRetainedReceipt(lock, { add: [...rows.values()] })
+    } finally {
+      lock.release()
+    }
+  }
+  for (const resolution of resolved) {
+    try {
+      resolveRetained(root, resolution.reference)
+    } catch (cause) {
+      throw Object.assign(new Error(`Retained transfer failed for ${resolution.reference.path}`, { cause }), {
+        path: resolution.reference.path,
+      })
+    }
+  }
 }
