@@ -9,6 +9,7 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { zstdDecompressSync } from "node:zlib"
 import { afterEach, expect, test } from "vitest"
 import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "@terminfo/probe-defs"
 import {
@@ -535,6 +536,45 @@ test.each<{
   },
   15000,
 )
+
+test("a retained X window dump is stored zstd-compressed and named by its stored bytes (34127)", async () => {
+  // An app run's disk is 99.9% raw dumps, so the retained copy is compressed. The requirement is that
+  // every source byte stays recoverable AND that the run's generic stored-byte bindings still hold:
+  // the observer's {path, sha256}, the file name and sourceRef all name the bytes on disk. A test of
+  // retain() alone cannot see this; only the finalizer chooses what retain() is given.
+  const dir = directory()
+  const raw = Buffer.concat(Array.from({ length: 64 }, () => Buffer.from("XWD header and repeated window pixels ")))
+  const retained: Array<{ path: string; sha256: string }> = []
+  const result = await finishCapture({
+    directory: dir,
+    onRetained: (artifact) => retained.push(artifact),
+    source: { bytes: raw, format: "xwd", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: {},
+    checkpoint: {
+      featureId: "xwd-retention-fixture",
+      role: "target" as const,
+      label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  const stored = retained.find(({ path }) => !path.endsWith(".png"))
+  if (!stored) throw new Error("the X window dump was not retained")
+  const bytes = readFileSync(stored.path)
+  expect(stored.path).toBe(join(dir, `${stored.sha256}.xwd.zst`))
+  expect(digest(bytes)).toBe(stored.sha256)
+  expect(result.frame.sourceRef).toBe(`sha256:${stored.sha256}`)
+  expect(bytes.length).toBeLessThan(raw.length)
+  expect(zstdDecompressSync(bytes).equals(raw)).toBe(true)
+  expect((result.trace.retained as Record<string, string>).xwd).toBe(`${stored.sha256}.xwd.zst`)
+  // The PNG, its digest and the reproduction recipe are untouched by the source's encoding.
+  expect(result.frame.ref).toBe(`sha256:${digest(PNG_STUB)}`)
+  expect(readdirSync(dir).sort()).toEqual([`${digest(PNG_STUB)}.png`, `${stored.sha256}.xwd.zst`].sort())
+  expect(result.trace.reproduceWhole).toBe(`magick ${digest(PNG_STUB)}.png -depth 8 rgba:- | sha256sum`)
+})
 
 test("an identical repeat is the same artifact: same ref, one file, bytes untouched (#30764 AC4)", () => {
   const dir = directory()

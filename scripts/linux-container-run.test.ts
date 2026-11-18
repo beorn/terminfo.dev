@@ -977,7 +977,7 @@ describe("frame-less container run", () => {
   // 33334: the receipt block ran against the run's first target frame as if its source were always an
   // xwd, so a launch selecting only extensions.osc22-pointer (png-sourced, pointer-composited frames)
   // exited 2 after its probe result was written. Runs the launcher's own block on an owned /out copy.
-  function receiptFor(frame: { sourceKind: "xwd" | "png" | "none" }) {
+  function receiptFor(frame: { sourceKind: "xwd" | "xwd.zst" | "png" | "none"; corrupt?: boolean }) {
     const source = readFileSync(launcher, "utf8")
     const start = source.indexOf("  capture_frame=$(jq -c")
     const end = source.indexOf("\n  fi\n", start)
@@ -994,6 +994,8 @@ describe("frame-less container run", () => {
       frame.sourceKind === "none"
         ? createHash("sha256").update("absent").digest("hex")
         : write(`source ${frame.sourceKind}`, frame.sourceKind)
+    // A stored file whose bytes no longer match the sha its name carries.
+    if (frame.corrupt) writeFileSync(join(out, "artifacts", `${sourceSha}.${frame.sourceKind}`), "changed bytes")
     writeFileSync(
       join(out, "v3-capture.json"),
       JSON.stringify({
@@ -1041,11 +1043,29 @@ describe("frame-less container run", () => {
     ])
   })
 
+  it("receipts a compressed X window dump under the xwd shape, by its stored-byte sha (34127)", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "xwd.zst" })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(result.stdout) as Record<string, string>
+    expect(Object.entries(receipt)).toEqual([
+      ["xwd", `artifacts/${sourceSha}.xwd.zst`],
+      ["xwdSha256", sourceSha],
+      ["png", `artifacts/${pngSha}.png`],
+      ["pngSha256", pngSha],
+    ])
+  })
+
+  it("refuses a compressed X window dump whose stored bytes differ from its name (34127)", () => {
+    const { result } = receiptFor({ sourceKind: "xwd.zst", corrupt: true })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback capture digest mismatch")
+  })
+
   it("refuses by name when the target frame's source artifact is missing", () => {
     const { result, sourceSha } = receiptFor({ sourceKind: "none" })
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(`Callback capture artifacts are missing`)
-    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd or .png`)
+    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd.zst, .xwd or .png`)
   })
 
   it("composes a frame-less run, whose container receipt carries no capture", () => {

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { constants as zlibConstants, zstdCompressSync } from "node:zlib"
 import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
@@ -136,6 +137,23 @@ export function retain(
   }
   onRetained({ path, sha256: hash })
   return `sha256:${hash}`
+}
+
+/**
+ * How a capture's source is kept on disk (34127). An X window dump is 99.9% of an app run and
+ * compresses about 2,000x, so its retained copy is zstd level 3 under `.xwd.zst`; a PNG source is
+ * already compressed and is kept as it is. The stored bytes are what `retain` names, so the file
+ * name, `sourceRef`, the run's blob manifest and every stored-byte check agree, and the raw dump
+ * is recovered exactly by decompressing. Only the retained copy changes: decoding and the PNG
+ * conversion keep reading the raw in-memory dump. An encoding failure throws; nothing falls back
+ * to writing the raw dump.
+ */
+export function retainedSource(source: Pick<CaptureSource, "bytes" | "format">): { bytes: Buffer; extension: string } {
+  if (source.format === "png") return { bytes: source.bytes, extension: "png" }
+  return {
+    bytes: zstdCompressSync(source.bytes, { params: { [zlibConstants.ZSTD_c_compressionLevel]: 3 } }),
+    extension: "xwd.zst",
+  }
 }
 
 /** One captured frame's raw pixels, exactly the bytes the collector digests. */
@@ -487,14 +505,15 @@ export async function finishCapture(input: {
   const finishEntry = performance.now()
   const { directory, onRetained, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
   const { featureId, role, label, cells, controlCells, pixelGeometry, locate } = checkpoint
-  const { width, height, format, bytes: original, capturedAt } = source
+  const { width, height, format, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
   }
   // The whole of both retains: hashing, the exclusive write or the existing-file read/compare, and
   // the onRetained callback. Deliberately not labelled write time and not corrected for its hash.
   const retainStart = performance.now()
-  const sourceRef = retain(directory, original, format, onRetained)
+  const stored = retainedSource(source)
+  const sourceRef = retain(directory, stored.bytes, stored.extension, onRetained)
   const ref = retain(directory, png, "png", onRetained)
   const retainMs = Math.round(performance.now() - retainStart)
   const sourceStem = sourceRef.replace(/^sha256:/, "")
@@ -614,7 +633,7 @@ export async function finishCapture(input: {
       ...(control !== undefined ? { controlRectangle: control.rectangle } : {}),
       rawCommand: ["magick", ...rawCommand],
       cropCommand: ["magick", ...cropCommand],
-      retained: { png: `${pngStem}.png`, [format]: `${sourceStem}.${format}` },
+      retained: { png: `${pngStem}.png`, [format]: `${sourceStem}.${stored.extension}` },
       reproduceWhole: `magick ${pngStem}.png -depth 8 rgba:- | sha256sum`,
       reproduceRegion: `magick ${pngStem}.png -crop ${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
       ...(control !== undefined

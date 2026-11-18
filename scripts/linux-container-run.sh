@@ -1252,14 +1252,18 @@ if [[ "${1:-}" == "--inside" ]]; then
     # png one, and a selection of only extensions.osc22-pointer has no xwd-sourced frame at all.
     png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
     source_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    if [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd
-    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png
-    else source_kind=""; fi
+    # 34127: a capture now retains its X window dump zstd-compressed as <sha>.xwd.zst, the sha naming
+    # the stored bytes like every other retained file, so the digest check below is unchanged. A raw
+    # <sha>.xwd from an earlier capture still reads; both keep the xwd receipt shape.
+    if [[ -r "/out/artifacts/$source_sha.xwd.zst" ]]; then source_kind=xwd source_extension=xwd.zst
+    elif [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd source_extension=xwd
+    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png source_extension=png
+    else source_kind="" source_extension=""; fi
     [[ -r "/out/artifacts/$png_sha.png" && -n "$source_kind" ]] || {
-      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd or .png" >&2
+      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd.zst, .xwd or .png" >&2
       exit 2
     }
-    source_file="artifacts/$source_sha.$source_kind"
+    source_file="artifacts/$source_sha.$source_extension"
     [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
        "$(sha256sum "/out/$source_file" | cut -d ' ' -f 1)" == "$source_sha" ]] || {
       echo "Callback capture digest mismatch" >&2; exit 2;
