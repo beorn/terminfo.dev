@@ -14,6 +14,7 @@
  */
 
 import { createStyle } from "@silvery/ansi"
+import { openProbeResponse } from "./probe-stream.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, win32 } from "node:path"
@@ -569,9 +570,27 @@ type ProbeCollectionOptions = {
   expectedLaunchRunId?: string
   captureRunId?: string
   intendedSubject?: Partial<ProbeSubject>
+  /**
+   * 34753: fires once the run's draft reservation (the atomic `wx` write below) has established
+   * custody, so a daemon response may flush real headers and start its keepalive. Never fired for a
+   * request refused before admission.
+   */
+  onAdmitted?: () => void
+  /** 34753: stops the active collection when the client's response closes early. */
+  signal?: AbortSignal
 }
 
 /** The same source-tree collector powers daemon and inline CLI entry points. */
+/**
+ * 34753: the one place that names a run's draft checkpoint. The collector reserves it here and the
+ * request handler points a failed (or stream-terminated) response at the same path in its log, so a
+ * post-admission failure still has a custodied record even though its HTTP body never completes.
+ */
+export function probeDraftPath(captureRunId: string): string {
+  const directory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
+  return join(directory, `${captureRunId}.draft.json`)
+}
+
 export function collectProbeRun(
   options?: Omit<ProbeCollectionOptions, "ids"> & { ids?: undefined },
 ): Promise<CapturedRunDraft>
@@ -594,10 +613,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
   })
   let selectedIds = [...(options.ids ?? manifest.probes.term)]
   recordCollectorSelection(draft, selectedIds)
-  const draftDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
-  mkdirSync(draftDirectory, { recursive: true, mode: 0o700 })
-  const draftPath = join(draftDirectory, `${captureRunId}.draft.json`)
+  const draftPath = probeDraftPath(captureRunId)
+  mkdirSync(dirname(draftPath), { recursive: true, mode: 0o700 })
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
+  // Only now is this request admitted: a duplicate run fails above with EEXIST, before any header.
+  options.onAdmitted?.()
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
   if (options.ids?.length === 0) {
     recordCollectorAttempt(draft, { ids: selectedIds, result: "empty" })
@@ -1565,6 +1585,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
                 captureRunId,
                 draft,
                 onCheckpoint: (progress) => {
@@ -1952,6 +1973,9 @@ export function startDaemon(port = 0): void {
   const runId = launchedRunId ?? randomBytes(16).toString("hex")
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    // 34753: named outside the request body so a post-admission failure can point the log at the
+    // draft record it left behind, even though its HTTP body is terminated instead of answered.
+    let captureRunId: string | undefined
     void (async () => {
       res.setHeader("Content-Type", "application/json")
 
@@ -1988,7 +2012,6 @@ export function startDaemon(port = 0): void {
 
       if (url.pathname === "/probe") {
         let requestedIds = ids
-        let captureRunId: string | undefined
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
         let processOwner: ProcessOwnerAssertion | undefined
         let ownedAppOwner: OwnedAppOwnerAssertion | undefined
@@ -2046,6 +2069,9 @@ export function startDaemon(port = 0): void {
         console.log(
           s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`),
         )
+        // 34753: stream this response once the draft reservation admits it, so a long collection is
+        // not a silent socket; a client that leaves mid-run aborts the collection below.
+        const stream = openProbeResponse(res, captureRunId)
         const collected = await collectOrRefuseRepeatedRun(res, captureRunId, () =>
           collectProbeRun({
             ...(requestedIds !== undefined && { ids: requestedIds }),
@@ -2054,8 +2080,11 @@ export function startDaemon(port = 0): void {
             ownedAppOwner,
             expectedLaunchRunId: runId,
             captureRunId,
+            onAdmitted: stream.admitted,
+            signal: stream.signal,
           }),
         )
+        stream.release()
         if (collected === undefined) return
         const run = collected
         if (!run.rawReplies["collector.windowDisposal"]) {
@@ -2092,9 +2121,17 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: identity.refusal }))
           return
         }
+        const stream = openProbeResponse(res, identity.captureRunId)
         const collected = await collectOrRefuseRepeatedRun(res, identity.captureRunId, () =>
-          collectProbeRun({ ids: [probeId], expectedLaunchRunId: launchedRunId, captureRunId: identity.captureRunId }),
+          collectProbeRun({
+            ids: [probeId],
+            expectedLaunchRunId: launchedRunId,
+            captureRunId: identity.captureRunId,
+            onAdmitted: stream.admitted,
+            signal: stream.signal,
+          }),
         )
+        stream.release()
         if (collected === undefined) return
         res.end(JSON.stringify(collected))
         return
@@ -2188,7 +2225,12 @@ export function startDaemon(port = 0): void {
         }),
       )
     })().catch((err) => {
-      console.error("Probe daemon request failed:", err)
+      console.error(
+        captureRunId === undefined
+          ? "Probe daemon request failed:"
+          : `Probe daemon request failed for run ${captureRunId}, draft ${probeDraftPath(captureRunId)}:`,
+        err,
+      )
       if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)))
       else {
         res.statusCode = 500
