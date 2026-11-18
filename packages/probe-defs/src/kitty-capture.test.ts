@@ -22,6 +22,7 @@ import {
   KITTY_LOOP_FOREVER,
   KITTY_PLACEHOLDER,
   KITTY_PLACEHOLDER_BOUNDS,
+  KITTY_PLAYBACK_SAMPLES,
   KITTY_ROW_IMAGES,
   decideKittyAnimation,
   decideKittyPlaceholders,
@@ -38,6 +39,7 @@ import {
   kittyStartPlayback,
   kittyStopPlayback,
   kittyVirtualPlacement,
+  sampleKittyPlayback,
   type KittyAnimationEvidence,
   type KittyRgb,
   type KittyPlaceholderEvidence,
@@ -355,4 +357,108 @@ test("identical pixels need a virtual-placement refusal, and an unmeasured path 
     expect(unqualified.decidedBy).toBe("the ordinary-placement control")
     expect(unqualified.note).toContain("reference")
   }
+})
+
+// 34792: Kitty/Linux read probe-invalid at 06:21Z because each screenshot takes 400-600 ms, so the capture
+// times, not the probe's waits, set where a 500 ms loop is sampled. The fake below is a looping two-frame
+// animation on a virtual clock; a capture reads the frame showing when it completes.
+function loopingPlayback(phaseMs: number, captureMs: (index: number) => number) {
+  let clock = 0
+  let index = 0
+  const frameAt = (t: number) => (Math.floor((t + phaseMs) / KITTY_GAP_MS) % 2 === 0 ? "red" : "blue")
+  return {
+    now: () => clock,
+    wait: async (ms: number) => {
+      clock += ms
+    },
+    shoot: async () => {
+      clock += captureMs(index++)
+      return { regionDigest: frameAt(clock) as string | undefined }
+    },
+  }
+}
+
+/** The run's controls, all alive, around one playback read; only playback and retry come from the fake. */
+function withControls(read: { playback: readonly [string | undefined, string | undefined]; retry: readonly [string | undefined, string | undefined] | null }) {
+  return evidence({
+    playback: read.playback,
+    retry: read.retry,
+    still: ["red", "red"],
+    reference: "red",
+    secondReference: "blue",
+    clientFrame: ["red", "blue"],
+  })
+}
+
+test("the 06:21Z capture spacings (958 ms, then 2,067 ms from the first capture) still read a looping animation as supported", async () => {
+  // Captures of 583 ms and then 609 ms put today's fixed 375 ms and 500 ms waits at exactly the 06:21Z
+  // completion times. At these phases those three captures all land on one frame: the probe-invalid read.
+  const latency = (index: number) => [500, 583, 609][index] ?? 609
+  const aliased: number[] = []
+  for (let phase = 0; phase < 2 * KITTY_GAP_MS; phase++) {
+    const fake = loopingPlayback(phase, latency)
+    const at: number[] = []
+    const seen = new Set<string | undefined>()
+    for (const wait of [0, 375, 500]) {
+      await fake.wait(wait)
+      seen.add((await fake.shoot()).regionDigest)
+      at.push(fake.now())
+    }
+    expect([at[1]! - at[0]!, at[2]! - at[0]!]).toEqual([958, 2067])
+    if (seen.size === 1) aliased.push(phase)
+  }
+  expect(aliased.length).toBeGreaterThan(0)
+  // The probe's own sampling, at the same capture latencies and every phase, sees the animation move.
+  for (let phase = 0; phase < 2 * KITTY_GAP_MS; phase++) {
+    const read = await sampleKittyPlayback(loopingPlayback(phase, latency))
+    expect({ phase, outcome: decideKittyAnimation(withControls(read)).outcome }).toEqual({ phase, outcome: "supported" })
+  }
+})
+
+test("no steady capture latency from 300 to 1,500 ms, at any phase, lands every playback sample on one frame", async () => {
+  for (let latency = 300; latency <= 1500; latency += 7) {
+    for (let phase = 0; phase < 2 * KITTY_GAP_MS; phase += 5) {
+      const read = await sampleKittyPlayback(loopingPlayback(phase, () => latency))
+      expect({ latency, phase, outcome: decideKittyAnimation(withControls(read)).outcome }).toEqual({
+        latency,
+        phase,
+        outcome: "supported",
+      })
+    }
+  }
+})
+
+test("a still image is sampled the full count and reads as an equal pair and an equal retry, never as playback", async () => {
+  let clock = 0
+  const shots: number[] = []
+  const read = await sampleKittyPlayback({
+    now: () => clock,
+    wait: async (ms) => {
+      clock += ms
+    },
+    shoot: async () => {
+      clock += 550
+      shots.push(clock)
+      return { regionDigest: "red" }
+    },
+  })
+  expect(read.samples.map((sample) => sample.digest)).toEqual(Array.from({ length: KITTY_PLAYBACK_SAMPLES }, () => "red"))
+  expect(read.playback).toEqual(["red", "red"])
+  expect(read.retry).toEqual(["red", "red"])
+  // Each sample records when its capture completed and how long it took, measured, never assumed.
+  expect(read.samples.map((sample) => sample.completedAtMs)).toEqual(shots)
+  expect(read.samples.every((sample) => sample.captureMs === 550)).toBe(true)
+  expect(decideKittyAnimation(withControls(read)).outcome).toBe("inconclusive")
+})
+
+test("a capture with no region digest ends sampling and leaves the read inconclusive", async () => {
+  let n = 0
+  const read = await sampleKittyPlayback({
+    now: () => n * 600,
+    wait: async () => {},
+    shoot: async () => ({ regionDigest: n++ === 2 ? undefined : "red" }),
+  })
+  expect(read.samples).toHaveLength(3)
+  expect(read.retry).toEqual(["red", undefined])
+  expect(decideKittyAnimation(withControls(read)).decidedBy).toBe("a missing region digest")
 })
