@@ -1674,13 +1674,19 @@ export async function runProbeBatch(
           out,
           verify,
         ).then((value) => ({ timedOut: false as const, value }))
-        const raced = await Promise.race([
-          operation,
-          new Promise<{ timedOut: true }>((resolve) => {
-            wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
-          }),
-        ])
-        clearTimeout(wall)
+        // The wall is cleared on every exit: a callback that throws must not leave a 30s timer holding
+        // the process open after the run (34835: a refused calibration delayed every collector exit by 30s).
+        let raced: Awaited<typeof operation> | { timedOut: true }
+        try {
+          raced = await Promise.race([
+            operation,
+            new Promise<{ timedOut: true }>((resolve) => {
+              wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
+            }),
+          ])
+        } finally {
+          clearTimeout(wall)
+        }
         if (raced.timedOut) {
           // The callback did not return. Abandon its trace before the queue moves on: the scope
           // keeps the writes it settled before the wall and refuses every later one, so the

@@ -62,37 +62,18 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
+import {
+  command,
+  convertCapture,
+  converterIdentity,
+  finishCapture,
+  type NamedTextOrigin,
+  type OriginResolver,
+} from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
 }
-
-/**
- * The PNG conversion a capture writes (#30764). Two things made identical pixels hash differently:
- * magick stamps `tIME` and `date:*` text into every conversion, and it copies the XWD window name
- * into a `tEXt comment` — 715 of the 2,724 duplicate-image groups on main, measured 2026-10-22,
- * differ only by that name ("Alacritty", "bun", "osc0-icon-title"). Excluding the date and time
- * chunks and clearing the comment gives one evidence hash per screen; `-strip` would do the same but
- * also drops cHRM and bKGD, which describe the pixels.
- */
-export const PNG_CONVERSION_ARGS = [
-  "xwd:-",
-  "-define",
-  "png:exclude-chunks=date,time",
-  "-set",
-  "comment",
-  "",
-  "png:-",
-] as const
-
-/**
- * One thread for the acquisition conversion (#34549, @cto fd4e3b66). The run container has 2 CPUs and
- * several conversions overlap during sgr.blink sampling; ImageMagick's extra worker costs 7-9 ms CPU per
- * conversion and buys no wall time on these 800x600 frames. Output is byte-identical (retained PNG and
- * RGBA), measured on retained alacritty and ghostty frames: /hh/var/@dev/1/34549/convert/report.md.
- */
-export const CONVERSION_THREAD_ARGS = ["-limit", "thread", "1"] as const
 
 /** The window's own pixel size, parsed from xdotool getwindowgeometry --shell. */
 export function windowPixels(geometry: string): { width: number; height: number } {
@@ -321,7 +302,7 @@ export async function createLinuxCapture(
   await assertOwned()
   await assertFocusHelperIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
-  const converter = (await command("magick", ["-version"])).toString().trim()
+  const converter = await converterIdentity()
   const startupGeometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
   const startupWindow = windowPixels(startupGeometry)
   const screen = screenPixels(display)
@@ -422,42 +403,17 @@ export async function createLinuxCapture(
       height: observedWindow.height,
       capturedAt,
     }
-    // Decode the acquired image once for both required outputs. The PNG remains retained evidence;
-    // the existing predecoded-frame handoff keeps finalization from launching another decoder.
-    const converted = await mkdtemp(join(directory, ".converted-"))
-    let png: Buffer
-    let rgba: Buffer
-    try {
-      const output = join(converted, "frame.png")
-      rgba = await command(
-        "magick",
-        [
-          ...CONVERSION_THREAD_ARGS,
-          pointerImage ? "png:-" : PNG_CONVERSION_ARGS[0],
-          ...PNG_CONVERSION_ARGS.slice(1, -1),
-          "-write",
-          `png:${output}`,
-          "-depth",
-          "8",
-          "rgba:-",
-        ],
-        original,
-        deadline,
-      )
-      png = await readFile(output)
-    } finally {
-      await rm(converted, { recursive: true, force: true })
-    }
-    if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-      throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
-    }
-    const expectedBytes = observedWindow.width * observedWindow.height * 4
-    if (rgba.length !== expectedBytes) {
-      // Keep the existing decoder's precise source/window extent diagnostic on malformed output.
-      // This is diagnostic only: even if a second decode succeeds, never accept the broken stream.
-      await decodeCapture({ source, featureId, deadline })
-      throw new Error(`Linux conversion for ${featureId} returned ${rgba.length} RGBA bytes, expected ${expectedBytes}`)
-    }
+    // Decode the acquired image once for both required outputs, through the one converter owner. Both
+    // Linux routes (XWD and the pointer PNG) retain the normalized PNG (#30764), chosen here (#34549).
+    const { png, frame: decoded } = await convertCapture({
+      bytes: original,
+      format: source.format,
+      extent: observedWindow,
+      retain: "normalized",
+      scratchDirectory: directory,
+      featureId,
+      deadline,
+    })
     const convertMs = mark()
     await assertOwned(deadline)
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
@@ -468,7 +424,7 @@ export async function createLinuxCapture(
     return {
       source,
       png,
-      decoded: { width: observedWindow.width, height: observedWindow.height, rgba },
+      decoded,
       trace: {
         featureId,
         collectorPid: process.pid,
@@ -514,8 +470,6 @@ export async function createLinuxCapture(
       onRetained,
       checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       ...acquired,
-      decoded,
-      deadline,
       origin: () => {
         throw new Error("Linux calibration raw capture cannot map cells before a named origin")
       },

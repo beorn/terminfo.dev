@@ -139,6 +139,18 @@ const normalizedLines = (transcript: string): readonly string[] => {
   return rows.slice(0, end)
 }
 
+/**
+ * What a read that normalizes to zero lines actually contained. cmux prints blank rows and the
+ * normalization above strips them, so a cleared screen and a CLI that answered nothing both arrive with
+ * zero lines; naming the bytes, rows and blanks keeps them apart in the run record (#34259). A trailing
+ * newline is the CLI's terminator, not a row, so the row count uses the same split the reader uses.
+ */
+const emptyReadShape = (transcript: string): string => {
+  const rows = lines(transcript)
+  const blank = rows.filter((line) => line === "").length
+  return `stdout ${Buffer.byteLength(transcript, "utf8")} bytes, ${rows.length} rows, ${blank} blank`
+}
+
 const escaped = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")
 
 /**
@@ -411,7 +423,11 @@ export function readOwnedCmuxHistory(options: {
   }
   const historyLines = normalizedLines(stdout)
   if (historyLines.length === 0) {
-    return { status: "refused", refusal: "cmux-read-empty", reason: "cmux read-screen returned no lines" }
+    return {
+      status: "refused",
+      refusal: "cmux-read-empty",
+      reason: `cmux read-screen returned no lines (${emptyReadShape(stdout)})`,
+    }
   }
   const proof =
     options.ownership.kind === "surface"

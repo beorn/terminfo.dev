@@ -1901,7 +1901,7 @@ describe("private finite daemon startup", () => {
       const withoutNote = (run) => JSON.parse(JSON.stringify(run.results, (key, value) => ["reason", "startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.deepEqual(withoutNote(refused), withoutNote(bare))
       const noAdapter = (run) => run.results.filter((o) => /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/.test(o.reason ?? ""))
-      const named = refused.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
+      const named = refused.results.filter((o) => /this run refused capture geometry: /.test(o.reason ?? ""))
       assert.ok(named.length > 0)
       for (const row of named) assert.ok(noAdapter(bare).some(candidate => candidate.featureId === row.featureId), row.featureId)
       assert.equal(noAdapter(refused).length, 0)
@@ -2038,7 +2038,7 @@ describe("private finite daemon startup", () => {
       assert.match(unavailableFact.refusal, /^osascript window census killed; secondary capture restoration failure/)
       assert.deepEqual(unavailableFact.causes[1].captureCommand, censusFailure.captureCommand)
       assert.ok(!unavailable.results.some(o => o.assertionType === "screenshot"))
-      assert.ok(unavailable.results.some(o => /cell-to-pixel geometry was refused.*osascript window census killed/.test(o.reason ?? "")))
+      assert.ok(unavailable.results.some(o => /this run refused capture geometry: osascript window census killed/.test(o.reason ?? "")))
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
       const unseen = await collectProbeRun({})
       assert.equal(unseen.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
@@ -2180,7 +2180,7 @@ describe("private finite daemon startup", () => {
         if (shape.expect === "refused") {
           assert.equal(thrown, null, shape.name + " must complete, not throw: " + String(thrown === null ? "" : thrown.message))
           const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
-          const named = run.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
+          const named = run.results.filter((o) => /this run refused capture geometry: /.test(o.reason ?? ""))
           measured.push({ name: shape.name, kind: "refused", outcome: fact.outcome, refusal: fact.refusal,
             complete: run.results.length === globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length, ungraded: Number("ungradedDiagnostics" in run),
             named: named.length, firstNamed: named.length > 0 ? named[0].reason : "" })
