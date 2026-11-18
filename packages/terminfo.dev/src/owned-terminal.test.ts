@@ -126,19 +126,21 @@ test("the Linux viewport route applies only to this run's own container launch o
     expectedLaunchRunId: run,
     multiplexed: false,
   }
-  expect(linuxViewportKeys(qualified)?.viewportKeys.keys).toEqual({
-    pageUp: "shift+Prior",
-    pageDown: "shift+Next",
-    top: "shift+Home",
-    bottom: "shift+End",
-  })
-  expect(linuxViewportKeys(qualified)?.viewportKeys.route).toContain("xterm 411 container launch")
+  for (const measured of ["411", "412"]) {
+    expect(linuxViewportKeys({ ...qualified, targetVersion: measured })?.viewportKeys.keys, measured).toEqual({
+      pageUp: "shift+Prior",
+      pageDown: "shift+Next",
+      top: "shift+Home",
+      bottom: "shift+End",
+    })
+  }
+  expect(linuxViewportKeys(qualified)?.viewportKeys.route).toContain("container launch viewport keys")
   for (const [change, value] of [
     ["appId", "ghostty"],
     ["appId", "kitty"],
     ["appId", undefined],
     ["platform", "darwin"],
-    ["targetVersion", "412"],
+    ["targetVersion", "413"],
     ["targetVersion", "410"],
     ["targetVersion", undefined],
     ["runId", "c".repeat(32)],

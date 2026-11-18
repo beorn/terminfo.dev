@@ -462,14 +462,15 @@ tmux_config_content() {
   if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
-# #34632: the two viewport steps xterm 411 does not bind, declared in argv rather than a config file, and MERGED
-# with its default table by `#override` (a plain `translations` resource would replace the table and change every
-# other row, paste included). MEASURED 2026-11-18 in terminfo-xterm-probe:default under a private Xvfb over 200
-# rows: with this line shift+Home stops at the top (a Prior after it moves nothing) and shift+End returns
-# byte-exact to the bottom frame from both a page-up and the top; without it, shift+Home and shift+End change
-# pixels but are not scroll-to-top/bottom. `scroll-forw` is this build's action name (the binary carries
-# `scroll-back`, `scroll-forw`, `scroll-to`, never `scroll-forward`, which it rejects silently), and 9999 lines is
-# a bounded jump: both actions clamp at the ends.
+# #34632: the two viewport steps xterm does not bind, declared in argv rather than a config file, and MERGED with
+# its default table by `#override` (a plain `translations` resource would replace the table and change every other
+# row). MEASURED 2026-11-18 under a private Xvfb over 200 rows on BOTH versions this project runs - 411 in
+# terminfo-xterm-probe:default and 412 in the image the flake builds today: with this line shift+Home stops at the
+# top (a Prior after it moves nothing), shift+End returns byte-exact to the bottom frame from both a page-up and
+# the top, shift+Prior/Next still page (so the default table survived the merge), and Shift+Insert pastes PRIMARY
+# byte-exact. Without it, shift+Home and shift+End change pixels but are not scroll-to-top/bottom. `scroll-forw` is
+# this build's action name (the binary carries `scroll-back`, `scroll-forw`, `scroll-to`, never `scroll-forward`,
+# which it rejects silently), and 9999 lines is a bounded jump: both actions clamp at the ends.
 # One variable, so the launch and the paste guard below compare the same bytes.
 xterm_viewport_override='XTerm*VT100.Translations: #override \n Shift<Key>Home: scroll-back(9999,line) \n Shift<Key>End: scroll-forw(9999,line)'
 

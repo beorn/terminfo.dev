@@ -678,6 +678,16 @@ export const XTERM_411_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = O
   bottom: "shift+End",
 })
 
+/**
+ * The xterm versions this route's keys were MEASURED on. 411 in terminfo-xterm-probe:default and 412 in the image
+ * the flake builds today, both under a private Xvfb over 200 rows and with the same launch: shift+Home stops at the
+ * top (a Prior after it moves nothing), shift+End returns byte-exact to the bottom from a page-up and from the top,
+ * and Shift+Insert still pastes PRIMARY, so the #override merge left the default table in place. A new version
+ * does not qualify until its own measurement, so a bump surfaces as the row's probe-todo, never as keys nobody
+ * pressed.
+ */
+export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["411", "412"])
+
 /** The route string a held-view candidate carries, naming the launch that declares the two unbound steps. */
 const XTERM_411_VIEWPORT_ROUTE =
   "xterm 411 container launch viewport keys (XTerm*VT100.Translations #override Shift<Key>Home/End)"
@@ -730,7 +740,7 @@ export function linuxViewportKeys(subject: {
   if (
     subject.appId !== "xterm" ||
     subject.platform !== "linux" ||
-    subject.targetVersion !== "411" ||
+    !XTERM_VIEWPORT_KEY_VERSIONS.includes(subject.targetVersion ?? "") ||
     !subject.expectedLaunchRunId ||
     subject.runId !== subject.expectedLaunchRunId ||
     subject.multiplexed
