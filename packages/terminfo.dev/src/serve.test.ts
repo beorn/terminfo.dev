@@ -2225,6 +2225,8 @@ describe("private finite daemon startup", () => {
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
       let reportedCellSize = null, frames = 0, calibrationFailure
+      const rawTimings = { censusMs: 11, imageMs: 17, restoreMs: 23, convertMs: 29 }
+      const styledTimings = { censusMs: 31, imageMs: 37, restoreMs: 41, convertMs: 43 }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -2255,13 +2257,13 @@ describe("private finite daemon startup", () => {
           const painted = checkpoint.label.includes("paint witness")
           return { frame: { role: checkpoint.role, ref: "sha256:" + (painted ? "d" : "a").repeat(64), capturedAt: 1,
             label: checkpoint.label, regionDigest: "sha256:" + (painted ? "e" : "b").repeat(64),
-            pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture" } }
+            pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture", ...styledTimings } }
         },
         captureRaw: async (checkpoint) => {
           frames++
           return { result: { frame: { role: checkpoint.role, ref: "sha256:" + "f".repeat(64), capturedAt: 1,
             label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) },
-            trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
+            trace: { captureCommand: "fixture", ...rawTimings } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
         }
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw, collectorLaunched }) => {
@@ -2338,6 +2340,17 @@ describe("private finite daemon startup", () => {
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still reaches pixels; RIS rows may renew its calibration within a run.
       assert.ok(frames > 0)
+      // #35145: raw pre-paint acquisitions stay in the existing calibration trace; styled
+      // acquisitions stay in the row trace. Both retain their own buckets, not caller totals.
+      const rawCaptures = JSON.parse(derived.rawReplies["collector.captureCalibration.trace"]).captures
+      const prePaint = rawCaptures.filter(({ frame }) => frame.label.endsWith(": pre-paint"))
+      const styled = JSON.parse(derived.rawReplies["sgr.bold"]).captures
+      assert.ok(prePaint.length > 0)
+      assert.ok(styled.length > 0)
+      for (const capture of prePaint) assert.deepEqual(capture.trace, { captureCommand: "fixture", ...rawTimings })
+      for (const capture of styled) {
+        for (const [key, value] of Object.entries(styledTimings)) assert.equal(capture.trace[key], value)
+      }
       // Capture labels can include independently allocated image IDs; compare all deciding pixel facts, not those labels.
       const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt", "label"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)

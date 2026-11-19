@@ -342,7 +342,9 @@ export async function createDarwinCapture(
     }
   }
   const acquire = async (featureId: string, deadline?: number) => {
+    const censusStart = performance.now()
     const preCapture = await assertOwned("window census")
+    const censusMs = Math.round(performance.now() - censusStart)
     const run = async (args: string[]): Promise<ScreencaptureAttempt> => {
       const outputPath = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
       const attempt: ScreencaptureAttempt = {
@@ -399,6 +401,7 @@ export async function createDarwinCapture(
       }
       throw error
     }
+    const imageStart = performance.now()
     const first = await run(windowArgs)
     // The window server refuses an image of a window it holds no backing store for (an Electron window
     // under the macOS 26 VM compositor, 30390); its point bounds are still on screen, so capture those.
@@ -423,8 +426,11 @@ export async function createDarwinCapture(
         producing,
         refused,
       )
+    const imageMs = Math.round(performance.now() - imageStart)
     const capturedAt = Date.now()
+    const restoreStart = performance.now()
     await assertOwned("restore confirmation")
+    const restoreMs = Math.round(performance.now() - restoreStart)
     // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
     // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
     const convertStart = performance.now()
@@ -444,6 +450,11 @@ export async function createDarwinCapture(
       ownedWindows: preCapture.ownedWindows,
       measuredAppPid: appPid,
       scale: 1,
+      // Disjoint elapsed acquisition steps for this frame; image includes both attempts
+      // when the existing region fallback runs. Installation and conversion are separate.
+      censusMs,
+      imageMs,
+      restoreMs,
       // The converter's wall time for this frame: extent query plus decode (#34549).
       convertMs,
       captureCommand: [producing.file, ...producing.args.slice(0, -1)],

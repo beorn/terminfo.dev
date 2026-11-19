@@ -202,19 +202,30 @@ test("Darwin capture falls back to a region capture of the window bounds when th
     onscreen: true,
   }
   const calls: string[][] = []
+  let elapsed = 0
+  vi.spyOn(performance, "now").mockImplementation(() => elapsed)
   const decoder = convertsTo(1000, 677)
+  decoder.mockImplementation(async (input) => {
+    elapsed += 19
+    return { png: input.bytes, frame: { width: 1000, height: 677, rgba: Buffer.alloc(1000 * 677 * 4) } }
+  })
   const runner = vi
     .spyOn(captureCore, "command")
     .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
-      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "/usr/bin/osascript") {
+        elapsed += 11
+        return Buffer.from(JSON.stringify([own]))
+      }
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       calls.push(args)
       if (args[0] === "-l") {
+        elapsed += 13
         onStderr?.(Buffer.from("could not create image from window\n"))
         throw Object.assign(new Error("command exited 1"), {
           captureCommand: { file, args, stdoutBase64: "", stderrBase64: "", code: 1, signal: null, killed: false },
         })
       }
+      elapsed += 17
       writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
     })
@@ -276,7 +287,9 @@ test("Darwin capture falls back to a region capture of the window bounds when th
         deadline: undefined,
       },
     ])
-    expect(typeof (result.trace as { convertMs?: unknown }).convertMs).toBe("number")
+    // #35145: installation is excluded; both image attempts belong to this acquisition,
+    // and the fresh restore census and conversion each retain their own elapsed time.
+    expect(result.trace).toMatchObject({ censusMs: 11, imageMs: 30, restoreMs: 11, convertMs: 19 })
   } finally {
     decoder.mockRestore()
     runner.mockRestore()
@@ -440,21 +453,27 @@ test("Darwin capture crops target and same-shot control from one acquired screen
     onscreen: true,
   }
   const screenshots: string[][] = []
+  let elapsed = 0
+  vi.spyOn(performance, "now").mockImplementation(() => elapsed)
   // The converter owner hands known pixels to the real finalizer, so the real crop code runs without
   // a real magick decode.
   const decoder = convertsTo(1000, 677)
   const runner = vi
     .spyOn(captureCore, "command")
     .mockImplementation(async (file, args, _input, _deadline, _onStderr) => {
-      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "/usr/bin/osascript") {
+        elapsed += 23
+        return Buffer.from(JSON.stringify([own]))
+      }
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      elapsed += 29
       screenshots.push(args)
       writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
     })
   try {
     const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
-    const { frame } = await adapter.capture(
+    const { frame, trace } = await adapter.capture(
       {
         featureId: "sgr.blink",
         role: "target",
@@ -470,6 +489,11 @@ test("Darwin capture crops target and same-shot control from one acquired screen
     expect(frame.controlRegionRectangle).toEqual({ x: 10, y: 0, width: 30, height: 10 })
     expect(frame.regionDigest).toMatch(/^sha256:/)
     expect(frame.controlRegionDigest).toMatch(/^sha256:/)
+    expect(trace).toMatchObject({ censusMs: 23, imageMs: 29, restoreMs: 23, convertMs: 0 })
+    // Raw pre-paint and styled captures retain separate per-acquisition buckets, never totals
+    // accumulated since installation or the preceding frame.
+    const raw = await adapter.captureRaw({ featureId: "sgr.blink", role: "control", label: "pre-paint" })
+    expect(raw.result.trace).toMatchObject({ censusMs: 23, imageMs: 29, restoreMs: 23, convertMs: 0 })
   } finally {
     decoder.mockRestore()
     runner.mockRestore()
