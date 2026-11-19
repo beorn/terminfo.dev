@@ -2259,6 +2259,8 @@ const modeDefinitions: ProbeDefinition[] = [
     },
     termWrites: undefined,
     termNeedsDisposable: true,
+    // 35128: complete the22-capture region path at the observed slow-host cadence.
+    wallMs: 60_000,
     termNeedsGeometry: true,
   },
 
