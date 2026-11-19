@@ -2628,6 +2628,8 @@ describe("private finite daemon startup", () => {
   it.each([
     // 35140: pixels alone do not prove that the real collector bridges the owned title capability.
     { arm: "process", app: "ghostty", route: "title", retained: true, pid: true },
+    { arm: "process", app: "ghostty", route: "title-uninstalled", retained: false, pid: true },
+    { arm: "process", app: "ghostty", route: "title-install-refused", retained: true, pid: true },
     { arm: "windowsHosted", app: "kitty", route: "absent", retained: false, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "absent", retained: false, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
@@ -2674,6 +2676,7 @@ describe("private finite daemon startup", () => {
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let capture
+      let nativeTitle
       let captureKind = "absent"
       let reads = 0, drains = 0
       let pixelFrames = 0, calibrations = 0, captureOwners = 0, titleReads = 0
@@ -2687,6 +2690,10 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async options => {
+          if (arm === "process") {
+            nativeTitle = options.readDarwinTitle
+            await assert.rejects(nativeTitle(), /no installed capture owner/)
+          }
           if (arm === "terminalApp") {
             assert.ok(options.terminalApp, "Terminal text must retain its existing owner proof")
             if (process.env.FIXTURE_OWNER_FAILS === "yes") throw new Error("owned Terminal.app proof failed")
@@ -2728,6 +2735,7 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
         createDarwinCapture: async (_directory, options) => {
           captureOwners++
+          if (route === "title-install-refused") throw new Error("capture owner install refused")
           assert.equal(options.appPid, 5705)
           assert.equal(options.windowSelection, app === "terminal-app" || app === "iterm2" ? "largest" : "unique")
           if (arm === "terminalApp") {
@@ -2755,6 +2763,10 @@ describe("private finite daemon startup", () => {
             assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 0")
             assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 1")
             assert.equal(captureOwners, 1, "title reads must share the installed capture owner")
+          }
+          if (route === "title-uninstalled") {
+            await assert.rejects(options.ownedTerminal.readTitle(), /no installed capture owner/)
+            assert.equal(captureOwners, 0)
           }
           if (!retained && arm !== "windowsHosted") {
             assert.equal(capture, undefined)
@@ -2806,6 +2818,12 @@ describe("private finite daemon startup", () => {
               tty: "/dev/ttys004", intendedVersion: "1.4.0"
             } })
           : collectProbeRun({ ids: ["device.xtversion"] })
+      if (route === "title-install-refused") {
+        await assert.rejects(collect(), /capture owner install refused/)
+        await assert.rejects(nativeTitle(), /no installed capture owner/)
+        assert.equal(titleReads, 0)
+        process.exit(0)
+      }
       if (route === "platform-refused" || route === "owner-refused") {
         await assert.rejects(collect(), route === "platform-refused"
           ? /Controlled Linux collection requires runtime provenance/
@@ -2821,6 +2839,7 @@ describe("private finite daemon startup", () => {
         process.exit(0)
       }
       const run = await collect()
+      if (arm === "process") await assert.rejects(nativeTitle(), /no installed capture owner/)
       if (app === "terminal-app" && retained) {
         assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")

@@ -1404,8 +1404,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         windowSelection: terminal.captureWindowSelection ?? "unique",
         // Only a hosted runner's disposable VM may fall back to a region capture.
         ownedHost: kind !== "darwinHosted",
-        // No `measureWindowName` for a hosted runner (33821): the apps that need a title declare a measured
-        // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
+        // The title callback shares this exact owner. Hosted declaration refusals are checked by
+        // OwnedTerminal before calling it, so those subjects never request a title census.
         onRetained,
       })
       darwinTitleRead = darwinCapture.readTitle

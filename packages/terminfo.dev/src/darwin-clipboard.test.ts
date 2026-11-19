@@ -5,7 +5,6 @@ import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipb
 
 test("hosted Darwin pasteboard saves, writes, and restores through the owned transaction", async () => {
   let pasteboard = "baseline"
-  const title = "Window"
   const run: DarwinCommand = async (file, args, stdin) => {
     if (file.endsWith("pbpaste")) return `${pasteboard}\n`
     if (file.endsWith("pbcopy")) {
@@ -17,13 +16,10 @@ test("hosted Darwin pasteboard saves, writes, and restores through the owned tra
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
     appId: "iterm2",
-    titleRead: "none",
     assertOwned: async () => {},
     run,
   })
   expect(adapter.config).toBe(null)
-  await expect(adapter.readTitle()).rejects.toThrow(/System Events/)
-  expect(title).toBe("Window")
   const result = await adapter.withClipboardFixture(
     async (fixture) => {
       expect(await fixture.readText()).toBe("baseline")
@@ -60,7 +56,6 @@ test("an owned-host pasteboard is never read: the run writes its own sentinel fi
   const adapter = await createDarwinClipboardAdapter({
     appComm: "Terminal",
     appId: "terminal-app",
-    titleRead: "none",
     ownedHost: true,
     assertOwned: async () => {
       owned += 1
@@ -100,7 +95,6 @@ test("an owned host records the length of foreign text, never its digest", async
   const adapter = await createDarwinClipboardAdapter({
     appComm: "Terminal",
     appId: "terminal-app",
-    titleRead: "none",
     ownedHost: true,
     assertOwned: async () => {},
     run,
@@ -137,7 +131,6 @@ test("an owned host whose window is gone clears nothing on dispose, and says so"
     const adapter = await createDarwinClipboardAdapter({
       appComm: "Terminal",
       appId: "terminal-app",
-      titleRead: "none",
       ownedHost: true,
       assertOwned: async () => {
         if (!owned) throw new Error("owned Terminal window no longer exists uniquely")
@@ -158,49 +151,6 @@ test("an owned host whose window is gone clears nothing on dispose, and says so"
   } finally {
     console.error = originalError
   }
-})
-
-test("a system-events declaration reads the window name and does not depend on the app id", async () => {
-  const scripts: string[] = []
-  const run: DarwinCommand = async (file, args) => {
-    if (file.endsWith("pbpaste")) return "baseline\n"
-    if (file.endsWith("osascript")) {
-      scripts.push(args.join("\n"))
-      return "Measured Title\n"
-    }
-    throw new Error(`unexpected ${file}`)
-  }
-  const adapter = await createDarwinClipboardAdapter({
-    appComm: "stable",
-    appId: "iterm2",
-    titleRead: "system-events",
-    assertOwned: async () => {},
-    run,
-  })
-  await expect(adapter.readTitle()).resolves.toBe("Measured Title")
-  expect(scripts).toEqual([`-e\ntell application "System Events" to get name of window 1 of process "stable"`])
-})
-
-test("a measured title refusal is thrown verbatim and never spawns a reader", async () => {
-  const readers: string[] = []
-  const run: DarwinCommand = async (file) => {
-    if (file.endsWith("pbpaste")) return "baseline\n"
-    readers.push(file)
-    throw new Error(`unexpected ${file}`)
-  }
-  const titleUnavailable =
-    "Hosted Darwin title read unavailable for cmux: the window server reports the app's own window title (\"Terminal\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43327254711: read-failed with that name observed)"
-  const adapter = await createDarwinClipboardAdapter({
-    appComm: "cmux",
-    appId: "iterm2",
-    titleRead: "system-events",
-    titleUnavailable,
-    assertOwned: async () => {},
-    run,
-  })
-  // The refusal is the route's own reason: no osascript, and no generic 5 s System Events timeout.
-  await expect(adapter.readTitle()).rejects.toThrow(titleUnavailable)
-  expect(readers).toEqual([])
 })
 
 // #30724 (@cto 41cd2559 condition 3): a fresh hosted runner's pasteboard is EMPTY, so a negative
@@ -225,7 +175,6 @@ test("a disposable hosted pasteboard writes a random sentinel and proves it roun
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
     appId: "iterm2",
-    titleRead: "none",
     disposableHost: { receiptKind: "github-hosted-runner" },
     assertOwned: async () => {},
     run,
@@ -248,7 +197,6 @@ test("a disposable hosted pasteboard writes a random sentinel and proves it roun
   const second = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
     appId: "iterm2",
-    titleRead: "none",
     disposableHost: { receiptKind: "github-hosted-runner" },
     assertOwned: async () => {},
     run,
@@ -266,7 +214,6 @@ test("a disposable pasteboard whose sentinel does not come back refuses the clip
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
     appId: "iterm2",
-    titleRead: "none",
     disposableHost: { receiptKind: "github-hosted-runner" },
     assertOwned: async () => {},
     run,
@@ -291,7 +238,6 @@ test("the shared-machine and disposable facts cannot be claimed together", async
     createDarwinClipboardAdapter({
       appComm: "Terminal",
       appId: "terminal-app",
-      titleRead: "none",
       ownedHost: true,
       disposableHost: { receiptKind: "github-hosted-runner" },
       assertOwned: async () => {},
@@ -328,7 +274,6 @@ test("the two existing foreign-read digest modes publish exactly what they publi
     const adapter = await createDarwinClipboardAdapter({
       appComm: "iTerm2",
       appId: "iterm2",
-      titleRead: "none",
       ...(mode === "omit" ? { ownedHost: true } : {}),
       assertOwned: async () => {},
       run,
@@ -368,7 +313,6 @@ test("a person's clipboard with more than plain text refuses the rows, writes no
     const adapter = await createDarwinClipboardAdapter({
       appComm: "iTerm2",
       appId: "iterm2",
-      titleRead: "none",
       personClipboard: { foreignReadDigest: "absent" },
       assertOwned: async () => {},
       run,
@@ -407,7 +351,6 @@ test("a person-route type read that fails is a named probe-todo, not a throw out
   const adapter = await createDarwinClipboardAdapter({
     appComm: "iTerm2",
     appId: "iterm2",
-    titleRead: "none",
     personClipboard: { foreignReadDigest: "absent" },
     assertOwned: async () => {},
     run,
@@ -440,7 +383,6 @@ test("a person's clipboard that is plain text, or empty, proceeds and is put bac
     const adapter = await createDarwinClipboardAdapter({
       appComm: "iTerm2",
       appId: "iterm2",
-      titleRead: "none",
       personClipboard: { foreignReadDigest: "absent" },
       assertOwned: async () => {},
       run,
