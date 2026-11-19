@@ -8,7 +8,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, relative, basename, dirname } from "node:path"
-import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
+import { loadStoredRuns, RETAINED_ARTIFACT_KINDS } from "../packages/admin/corpus-placement.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { probeStatusSummary } from "../docs/data/probe-status.ts"
@@ -130,7 +130,14 @@ const probeFiles = loadStoredRuns(contentDir, [...featureIds], (data) => {
   if (data.subject.kind !== expectedKind) {
     throw new Error(`${relative(contentDir, data.path)}: subject.kind must be ${expectedKind} in ${dir}`)
   }
-  return { file: basename(data.path), dir, backendName: data.subject.id, subject: data.subject }
+  return {
+    file: basename(data.path),
+    dir,
+    backendName: data.subject.id,
+    subject: data.subject,
+    screenshotRefs: data.screenshotRefs,
+    textSnapshotRefs: data.textSnapshotRefs ?? [],
+  }
 })
 const probeBackends = new Set(probeFiles.map(({ backendName }) => backendName))
 
@@ -366,6 +373,32 @@ const probeBackends = new Set(probeFiles.map(({ backendName }) => backendName))
     found = true
   }
   if (!found) info(`All ${ALL_PROBES.length} probe definitions have catalog rows`)
+}
+
+// 4h. Every file a run lists in its typed screenshot and text-snapshot lists is placed (35009). These two lists
+// are the run's file references; comparison values such as pixelsDigest name no file and are not read here.
+// A pass says every LISTED reference resolves, not that an older run listed every frame it kept.
+{
+  let found = false
+  let listed = 0
+  for (const run of probeFiles) {
+    for (const [kind, refs] of [
+      ["screenshot", run.screenshotRefs],
+      ["text-snapshot", run.textSnapshotRefs],
+    ] as const) {
+      const rules = RETAINED_ARTIFACT_KINDS[kind]
+      for (const ref of refs) {
+        listed++
+        const file = `${ref.slice("sha256:".length)}.${rules.extension}`
+        if (!existsSync(join(contentDir, "artifacts", file))) {
+          error(`${run.dir}/${run.file} lists ${kind} ${ref}, but content/artifacts/${file} is missing`)
+          errors++
+          found = true
+        }
+      }
+    }
+  }
+  if (!found) info(`All ${listed} listed screenshot and text-snapshot references resolve to content/artifacts`)
 }
 
 // ---------------------------------------------------------------------------

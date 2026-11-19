@@ -343,56 +343,77 @@ test.each(["malformed", "invalid-utf8", "foreign-suite", "conflicting-suite", "i
 
 // Accepted: cited screenshot and text bytes are verified and copied before a run becomes visible.
 // Prior tests exercised the standalone artifact helper, so they could miss writer ordering.
-test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "bom-text", "conflict"] as const)(
-  "retained artifacts: %s",
-  (fault) => {
-    const f = fixture()
-    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1])
-    const text = Buffer.from(
-      fault === "invalid-utf8" ? [0xff] : fault === "bom-text" ? [0xef, 0xbb, 0xbf, 0x68] : [0x68, 0x69],
-    )
-    const pngHash = hash(png)
-    const textHash = hash(text)
-    f.run.screenshotRefs = [`sha256:${pngHash}`]
-    f.run.textSnapshotRefs = [`sha256:${textHash}`]
+// 35009: a missing listed file is refused by its digest, and a decoded-pixel comparison value that names no file
+// (pixelsDigest) beside a listed editor frame is not a file reference, so the run still places.
+test.each([
+  "valid",
+  "comparison-digest",
+  "missing",
+  "wrong-hash",
+  "not-png",
+  "invalid-utf8",
+  "bom-text",
+  "conflict",
+] as const)("retained artifacts: %s", (fault) => {
+  const f = fixture()
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1])
+  const text = Buffer.from(
+    fault === "invalid-utf8" ? [0xff] : fault === "bom-text" ? [0xef, 0xbb, 0xbf, 0x68] : [0x68, 0x69],
+  )
+  const pngHash = hash(png)
+  const textHash = hash(text)
+  f.run.screenshotRefs = [`sha256:${pngHash}`]
+  f.run.textSnapshotRefs = [`sha256:${textHash}`]
+  if (fault === "comparison-digest") {
+    f.run.rawReplies["extensions.osc633-p.callbackResponse"] = JSON.stringify({
+      captures: [
+        {
+          phase: "target",
+          observation: {
+            frame: { kind: "pixels", ref: `sha256:${pngHash}`, pixelsDigest: `sha256:${"c".repeat(64)}` },
+          },
+        },
+      ],
+    })
+  }
+  f.save()
+  mkdirSync(join(f.dir, "artifacts"))
+  if (fault !== "missing") {
+    writeFileSync(join(f.dir, "artifacts", `${pngHash}.png`), fault === "wrong-hash" ? "wrong" : png)
+  }
+  if (fault === "not-png") {
+    const nonPng = Buffer.from("not png")
+    f.run.screenshotRefs = [`sha256:${hash(nonPng)}`]
+    writeFileSync(join(f.dir, "artifacts", `${hash(nonPng)}.png`), nonPng)
     f.save()
-    mkdirSync(join(f.dir, "artifacts"))
-    if (fault !== "missing") {
-      writeFileSync(join(f.dir, "artifacts", `${pngHash}.png`), fault === "wrong-hash" ? "wrong" : png)
+  }
+  writeFileSync(join(f.dir, "artifacts", `${textHash}.txt`), text)
+  if (fault === "conflict") {
+    mkdirSync(join(f.content, "artifacts"))
+    writeFileSync(join(f.content, "artifacts", `${textHash}.txt`), "different")
+  }
+  if (fault === "valid" || fault === "comparison-digest") {
+    const destination = placeCollectedRun(f.source, f.manifest, f.content)
+    expect(existsSync(join(f.content, "artifacts", `${"c".repeat(64)}.png`))).toBe(false)
+    expect(readFileSync(join(f.content, "artifacts", `${pngHash}.png`))).toEqual(png)
+    expect(readFileSync(join(f.content, "artifacts", `${textHash}.txt`))).toEqual(text)
+    expect(readFileSync(destination)).toEqual(readFileSync(f.source))
+    expect(placeCollectedRun(f.source, f.manifest, f.content)).toBe(destination)
+  } else {
+    const errors = {
+      missing: new RegExp(`screenshot sha256:${pngHash}, but .*${pngHash}\\.png does not exist beside the run`),
+      "wrong-hash": /hashes to/,
+      "not-png": /not a PNG/,
+      "invalid-utf8": /not exact UTF-8/,
+      "bom-text": /not exact UTF-8/,
+      conflict: /different text-snapshot/,
     }
-    if (fault === "not-png") {
-      const nonPng = Buffer.from("not png")
-      f.run.screenshotRefs = [`sha256:${hash(nonPng)}`]
-      writeFileSync(join(f.dir, "artifacts", `${hash(nonPng)}.png`), nonPng)
-      f.save()
-    }
-    writeFileSync(join(f.dir, "artifacts", `${textHash}.txt`), text)
-    if (fault === "conflict") {
-      mkdirSync(join(f.content, "artifacts"))
-      writeFileSync(join(f.content, "artifacts", `${textHash}.txt`), "different")
-    }
-    if (fault === "valid") {
-      const destination = placeCollectedRun(f.source, f.manifest, f.content)
-      expect(readFileSync(join(f.content, "artifacts", `${pngHash}.png`))).toEqual(png)
-      expect(readFileSync(join(f.content, "artifacts", `${textHash}.txt`))).toEqual(text)
-      expect(readFileSync(destination)).toEqual(readFileSync(f.source))
-      expect(placeCollectedRun(f.source, f.manifest, f.content)).toBe(destination)
-    } else {
-      const errors = {
-        missing: /does not exist/,
-        "wrong-hash": /hashes to/,
-        "not-png": /not a PNG/,
-        "invalid-utf8": /not exact UTF-8/,
-        "bom-text": /not exact UTF-8/,
-        conflict: /different text-snapshot/,
-      }
-      expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
-      expect(existsSync(join(f.content, "suites"))).toBe(false)
-      expect(existsSync(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))).toBe(false)
-      expect(existsSync(join(f.content, "artifacts", `${pngHash}.png`))).toBe(false)
-    }
-  },
-)
+    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
+    expect(existsSync(join(f.content, "suites"))).toBe(false)
+    expect(existsSync(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))).toBe(false)
+    expect(existsSync(join(f.content, "artifacts", `${pngHash}.png`))).toBe(false)
+  }
+})
 
 // Accepted: measured identity and clean provenance are factual placement constraints.
 // Parser-only cases do not reach the writer's identity/provenance decisions.

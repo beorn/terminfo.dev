@@ -48,6 +48,19 @@ test("validates retained runs through the canonical decoder and names rejected i
       'Probe definition "input.modify-other-keys" has no features.json catalog row',
     )
     writeFileSync(featuresPath, features)
+    // 35009: a listed artifact removed from content/artifacts is an error that names the run, the ref and the file.
+    const listingRun = join(root, "content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json")
+    const listedRef = (JSON.parse(readFileSync(listingRun, "utf8")) as { screenshotRefs: string[] }).screenshotRefs[0]
+    if (listedRef === undefined) throw new Error("fixture run lists no screenshot")
+    const listedFile = join(root, "content/artifacts", `${listedRef.slice("sha256:".length)}.png`)
+    const listedBytes = readFileSync(listedFile)
+    rmSync(listedFile)
+    const missingArtifact = run()
+    expect(missingArtifact.status, missingArtifact.stdout + missingArtifact.stderr).toBe(1)
+    expect(missingArtifact.stdout).toContain(
+      `alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json lists screenshot ${listedRef}, but content/artifacts/${listedRef.slice("sha256:".length)}.png is missing`,
+    )
+    writeFileSync(listedFile, listedBytes)
     const path = join(root, "content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json")
     const raw = JSON.parse(readFileSync(path, "utf8")) as { results: Array<{ status: string }> }
     // Metadata-only inventory previously accepted an invalid stored grade without decoding the run.

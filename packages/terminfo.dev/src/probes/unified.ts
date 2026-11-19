@@ -804,10 +804,22 @@ async function runProbeBatchInRun(
       throw new Error(`Capture adapter returned an invalid frame for ${featureId}`)
     }
     captures.push(result)
-    // The frame's own kind decides which list holds its ref, so a text snapshot is never listed as a
-    // screenshot.
-    const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
-    if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
+    listCapturedFrame(result.frame)
+  }
+  // The frame's own kind decides which list holds its ref, so a text snapshot is never listed as a
+  // screenshot. Placement copies exactly these lists, so a kept frame that skips them is placed with no file.
+  const listCapturedFrame = (frame: CapturedProbeFrame["frame"]) => {
+    const refs = frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
+    if (!refs.includes(frame.ref)) refs.push(frame.ref)
+  }
+  // 35009: an owned App reader's window capture returns outside the probe's capture callback, and its frame
+  // sits in the reading's detail and callback response; it enters the same lists here, by the same rule.
+  const recordReaderCapture = (featureId: string, captured: unknown) => {
+    const frame = (captured as { frame?: { kind?: unknown; ref?: unknown } } | null)?.frame
+    if (typeof frame?.kind !== "string" || typeof frame.ref !== "string" || !/^sha256:[a-f0-9]{64}$/.test(frame.ref)) {
+      throw new Error(`App reader capture for ${featureId} returned no typed frame with a sha256 ref`)
+    }
+    listCapturedFrame(frame as CapturedProbeFrame["frame"])
   }
   const prepareCaptureWith = async (
     prepareCapture: typeof options.prepareCapture,
@@ -1253,7 +1265,7 @@ async function runProbeBatchInRun(
       if (readAppSemanticState && (semanticFeatures === undefined || semanticFeatures.has(probe.id))) {
         probeSource.readAppSemanticState = (featureId, write) => {
           appSemanticRead = true
-          return readAppSemanticState(featureId, write)
+          return readAppSemanticState(featureId, write, (captured) => recordReaderCapture(featureId, captured))
         }
       }
       const read = options.ownedTerminal?.getScrollback
