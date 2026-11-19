@@ -118,3 +118,21 @@ test("a cited default reaches only a run that measured its version; a mismatch n
   expect(clipboardReadDefault("kitty", "deny-read", "0.49.2")).toEqual({})
   expect(clipboardReadDefault("xterm", "default", "411")).toEqual({})
 })
+
+// #34932 (@cto scope ruling Nov 18): WezTerm's allow launch applies no read setting and records read=no-setting, so it
+// alone may read its cited "absent" default, at the exact version read. Kitty's allow profile, which does set read,
+// keeps none; an unknown or other WezTerm version gets the refusal naming both versions.
+test("WezTerm's no-setting allow run reads its exact-version absent default; no other allow run does", () => {
+  const cited = { readDefault: { posture: "absent", source: expect.stringContaining("458a100c1bf4") } }
+  expect(clipboardReadDefault("wezterm", "allow", "0-unstable-2026-11-08")).toEqual(cited)
+  expect(clipboardReadDefault("wezterm", "default", "0-unstable-2026-11-08")).toEqual(cited)
+  expect(clipboardReadDefault("wezterm", "allow", "0-unstable-2026-10-10")).toEqual({
+    readDefaultRefusal:
+      "default not established: this tree cites wezterm 0-unstable-2026-11-08, this run measured 0-unstable-2026-10-10",
+  })
+  expect(clipboardReadDefault("wezterm", "allow", undefined).readDefaultRefusal).toContain("(no version recorded)")
+  for (const app of ["kitty", "ghostty", "alacritty", "xterm"] as const) {
+    expect(clipboardReadDefault(app, "allow", "0-unstable-2026-11-08")).toEqual({})
+  }
+  expect(clipboardReadProfile("wezterm", "allow")).toBeUndefined()
+})
