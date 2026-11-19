@@ -473,7 +473,7 @@ export interface OwnedTerminal {
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
   readonly captureChromeBand?: CaptureChromeBand
-  readonly clipboard?: LinuxClipboardAdapter
+  readonly clipboard?: LinuxClipboardAdapter | Awaited<ReturnType<typeof createDarwinClipboardAdapter>>
   /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
   readonly muxAttachmentProof?: MuxAttachmentProof
   /**
@@ -629,7 +629,7 @@ export type HostedDarwinApp = {
   id: HostedDarwinAppId
   comm: string
   /** Window-title method for this subject. The Darwin reader follows this and names no app. */
-  titleRead: "system-events" | "none"
+  titleRead: "window" | "none"
   /**
    * The measured reason this app's title cannot be read on a hosted runner (33821). Set only where a run
    * measured the window server's name and the reading did not certify the run's own title — the name was
@@ -816,7 +816,7 @@ export function linuxScrollbackArm(
 const TERMINAL_APP_HOSTED: HostedDarwinApp = {
   id: "terminal-app",
   comm: "Terminal",
-  titleRead: "system-events",
+  titleRead: "window",
   captureWindowSelection: "largest",
 }
 
@@ -826,21 +826,21 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none", captureWindowSelection: "largest" },
   // Ghostty's own scrollback-file action is an acceptable read under @cto a1663f9d's five conditions, so the
   // absence here is Alacritty/Code/Cursor only.
-  ghostty: { id: "ghostty", comm: "ghostty", titleRead: "system-events" },
+  ghostty: { id: "ghostty", comm: "ghostty", titleRead: "window" },
   alacritty: {
     id: "alacritty",
     comm: "alacritty",
-    titleRead: "system-events",
+    titleRead: "window",
     scrollbackUnavailable: NO_PANE_READ,
   },
   Alacritty: {
     id: "alacritty",
     comm: "alacritty",
-    titleRead: "system-events",
+    titleRead: "window",
     scrollbackUnavailable: NO_PANE_READ,
   },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
-  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
+  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "window" },
   // On 33821 calibration run 43325922491 the run wrote its own marker title and the window server still
   // reported "[Extension Development Host] Cursor" (other-title). That is the app's window title, so the
   // read could not observe the run's title; the counted runs attempted no title-row read (titleRead none).
@@ -868,7 +868,7 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   stable: {
     id: "warp",
     comm: "stable",
-    titleRead: "system-events",
+    titleRead: "window",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   },
   // On 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its
@@ -1759,6 +1759,8 @@ export async function createOwnedTerminal(options: {
   windowsHosted?: { receiptPath: string }
   /** The collector's already-owned window capture, called before native semantic fixture restoration. */
   appSemanticCapture?: (featureId: string, phase: string) => Promise<unknown>
+  /** The collector's one installed Darwin capture owner, bound after this terminal is constructed. */
+  readDarwinTitle?: TermProbeSource["readTitle"]
 }): Promise<OwnedTerminal> {
   const {
     captureRunId,
@@ -1985,7 +1987,7 @@ export async function createOwnedTerminal(options: {
     binding = windowsHostedOutput(out, windowsConsoleIdentity)
     hostedReceiptSha256 = receipt.sha256
   }
-  let clipboard: LinuxClipboardAdapter | undefined
+  let clipboard: OwnedTerminal["clipboard"]
   const kittyOwner =
     binding.platform === "darwin" && processOwner?.provider === "kitty"
       ? parseProcessOwnerAssertion(processOwner)
@@ -2027,8 +2029,6 @@ export async function createOwnedTerminal(options: {
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
         appId: hostedApp.id,
-        titleRead: hostedApp.titleRead,
-        ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
         disposableHost: { receiptKind: "github-hosted-runner" },
         assertOwned: () =>
           process.platform === "darwin"
@@ -2048,8 +2048,6 @@ export async function createOwnedTerminal(options: {
       clipboard = await createDarwinClipboardAdapter({
         appComm: TERMINAL_APP_HOSTED.comm,
         appId: TERMINAL_APP_HOSTED.id,
-        titleRead: "none",
-        titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
         ownedHost: true,
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
@@ -2061,9 +2059,20 @@ export async function createOwnedTerminal(options: {
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
-    // An owned Terminal.app window reads its title through the tab's JXA reader, never through a
-    // pasteboard adapter: that adapter's title path spawns System Events, which is the 33821 bug.
-    const readTitle = terminalApp ? undefined : clipboard?.readTitle.bind(clipboard)
+    // Native Terminal.app's tab reader is not installed here; a window observation must not stand
+    // in for that separate tab boundary. A mux keeps its own pane reader rather than an outer title.
+    const darwinWindowTitle = binding.platform === "darwin" && !terminalApp && !muxAttachmentProof
+    const darwinTitleRefusal =
+      darwinWindowTitle && hostedApp?.titleRead === "none"
+        ? (hostedApp.titleUnavailable ?? "Hosted Darwin title read does not use System Events")
+        : undefined
+    const readTitle = darwinWindowTitle
+      ? options.readDarwinTitle
+      : terminalApp
+        ? undefined
+        : clipboard && "readTitle" in clipboard
+          ? clipboard.readTitle.bind(clipboard)
+          : undefined
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.
@@ -2492,6 +2501,39 @@ export async function createOwnedTerminal(options: {
                 startLine: 0,
               })
           : undefined
+    const readCurrentOutputBinding = () => {
+      const current = linux
+        ? linuxOutput(out)
+        : terminalApp
+          ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
+          : processOwner && !darwinAttachment
+            ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
+            : darwinHostedOutput(out)
+      if (
+        current.platform !== binding.platform ||
+        current.selectedFd !== binding.selectedFd ||
+        !sameDevice(current.outputDevice, binding.outputDevice) ||
+        (current.platform === "linux" &&
+          binding.platform === "linux" &&
+          current.controllingTtyNr !== binding.controllingTtyNr)
+      ) {
+        throw new Error("Owned geometry output binding changed")
+      }
+      return current
+    }
+    const assertDarwinTitleOwner = () => {
+      if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
+      if (processOwnerRecheck) processOwnerRecheck()
+      else if (darwinHosted && hostedApp && hostedAncestor) {
+        const actual = requireHostedDarwinAppAncestor(
+          hostedApp.comm,
+          readProcessAncestry(process.pid, undefined, true),
+          hostedAppExecutablePath,
+        )
+        if (actual.pid !== hostedAncestor.pid) throw new Error("Owned title read App ancestor changed")
+      } else throw new Error("Owned Darwin title read has no measured process owner")
+      readCurrentOutputBinding()
+    }
     const renditions = windowsTerminalPid === undefined ? undefined : createLineRenditionTracker()
     const readConsoleHostCells = async (): Promise<ConsoleCellRead> => {
       if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
@@ -2562,10 +2604,16 @@ export async function createOwnedTerminal(options: {
           },
         },
       }),
-      ...(readTitle && {
+      ...((readTitle || darwinTitleRefusal !== undefined) && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
-          return readTitle()
+          if (darwinTitleRefusal !== undefined) throw new Error(darwinTitleRefusal)
+          if (!readTitle) throw new Error("Owned title read has no installed reader")
+          if (!darwinWindowTitle) return readTitle()
+          assertDarwinTitleOwner()
+          const title = await readTitle()
+          assertDarwinTitleOwner()
+          return title
         },
       }),
       ...(readTerminalAppHistoryReading && { historyControl: () => historyControl }),
@@ -3059,24 +3107,7 @@ export async function createOwnedTerminal(options: {
           }
           return readBoundGeometry(binding, windowsKernel)
         }
-        const current = linux
-          ? linuxOutput(out)
-          : terminalApp
-            ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
-            : processOwner && !darwinAttachment
-              ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
-              : darwinHostedOutput(out)
-        if (
-          current.platform !== binding.platform ||
-          current.selectedFd !== binding.selectedFd ||
-          !sameDevice(current.outputDevice, binding.outputDevice) ||
-          (current.platform === "linux" &&
-            binding.platform === "linux" &&
-            current.controllingTtyNr !== binding.controllingTtyNr)
-        ) {
-          throw new Error("Owned geometry output binding changed")
-        }
-        return readBoundGeometry(current, windowsKernel)
+        return readBoundGeometry(readCurrentOutputBinding(), windowsKernel)
       },
       ...(hostedWindowsApp?.id === "alacritty" && { readCells: readConsoleHostCells }),
       ...(wezTermExecutable !== undefined && {

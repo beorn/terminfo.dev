@@ -4,9 +4,6 @@ import { createClipboardTransaction, type LinuxClipboardAdapter } from "./linux-
 
 export type DarwinCommand = (file: string, args: string[], stdin?: string) => Promise<string>
 
-/** Declared beside the hosted subject. The reader branches on this value only. */
-export type DarwinTitleRead = "system-events" | "none"
-
 /** pbcopy reads stdin. execFile does not open stdin, so this uses spawn. */
 export function runDarwinCommand(file: string, args: string[], stdin?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -82,13 +79,6 @@ export async function createDarwinClipboardAdapter(input: {
    * run owns this app, so the binding a gate needs is this field, not the summary sentence (#31741).
    */
   appId: string
-  titleRead: DarwinTitleRead
-  /**
-   * The named refusal this route returns instead of a title, when the window-title instrument cannot
-   * observe the app at all (33821). It must say WHY in measured terms — the window name that was
-   * observed and the calibration outcome — because "no title" alone cannot be told from a bug.
-   */
-  titleUnavailable?: string
   assertOwned: () => Promise<void>
   run?: DarwinCommand
   /**
@@ -114,7 +104,7 @@ export async function createDarwinClipboardAdapter(input: {
    * or a length of someone's clipboard: only "read present" / "read empty" survive.
    */
   personClipboard?: { readonly foreignReadDigest: "absent" }
-}): Promise<LinuxClipboardAdapter> {
+}): Promise<Omit<LinuxClipboardAdapter, "readTitle">> {
   const run = input.run ?? runDarwinCommand
   if (input.ownedHost && input.disposableHost) {
     throw new Error(
@@ -223,18 +213,6 @@ export async function createDarwinClipboardAdapter(input: {
       " pasteboard for " +
       input.appComm,
     assertOwned: input.assertOwned,
-    async readTitle() {
-      await input.assertOwned()
-      // A route that knows it cannot observe the title refuses before spawning anything: the hosting
-      // app is not going to answer a System Events prompt, and a 5 s timeout reads like a bug.
-      if (input.titleUnavailable !== undefined) throw new Error(input.titleUnavailable)
-      // `none` never spawns osascript. The subject row records why that subject declares it.
-      if (input.titleRead === "none") {
-        throw new Error("Hosted Darwin title read does not use System Events")
-      }
-      const script = `tell application "System Events" to get name of window 1 of process ${JSON.stringify(input.appComm)}`
-      return (await run("/usr/bin/osascript", ["-e", script])).replace(/\n$/u, "")
-    },
     withClipboardFixture,
     async dispose() {
       if (!sentinelRoute) return

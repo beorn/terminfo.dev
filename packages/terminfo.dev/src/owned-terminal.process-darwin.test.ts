@@ -218,6 +218,7 @@ function runDarwinArm(scenario: {
   /** The window server answering for a window this run no longer has (@cto 1c7e19df, condition 4). */
   windowOwnership?: "refused"
   batch?: "process" | "terminal-app" | "disposed"
+  title?: "fresh" | "revoked-before" | "revoked-during" | "disposed-before" | "disposed-during"
   /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
   comms?: Record<string, string>
   /** The Terminal ancestor's pid the terminal-app owner must adopt. */
@@ -369,11 +370,19 @@ function runDarwinArm(scenario: {
       intendedVersion: "0.44.0",
     }
     try {
+      let titleReads = 0
       const owner = await createOwnedTerminal({
         onRetained: () => {},
         captureRunId: ${JSON.stringify(captureRunId)},
         expectedLaunchRunId: launchRunId,
         out: process.stdout,
+        ...(scenario.title && { readDarwinTitle: async () => {
+          titleReads++
+          await Promise.resolve()
+          if (scenario.title === "revoked-during") parent[self] = 1
+          if (scenario.title === "disposed-during") await owner.dispose()
+          return "measured title " + titleReads
+        } }),
         ...(scenario.batch === "terminal-app"
           ? { terminalApp: { asserter: "terminfo-admin", launchRunId, workerPid: self, windowId: 791, tabTty: "/dev/ttys004", intendedVersion: "2.15" } }
           : { process: assertion }),
@@ -387,7 +396,17 @@ function runDarwinArm(scenario: {
       if (scenario.batch !== "terminal-app") assert.equal(owner.appPid, assertion.ownerPid)
       // Terminal.app's assertion names no app, so its pid is the collector's own Terminal ancestor (33587).
       else assert.equal(owner.appPid, scenario.terminalAppPid)
-      if (scenario.text) {
+      if (scenario.title) {
+        assert.equal(typeof owner.readTitle, "function")
+        if (scenario.title === "revoked-before") parent[self] = 1
+        if (scenario.title === "disposed-before") await owner.dispose()
+        if (scenario.title === "fresh") {
+          assert.equal(await owner.readTitle(), "measured title 1")
+          assert.equal(await owner.readTitle(), "measured title 2")
+        } else await assert.rejects(owner.readTitle())
+        assert.equal(titleReads, scenario.title === "fresh" ? 2 : scenario.title.endsWith("before") ? 0 : 1)
+        console.log("TITLE " + scenario.title)
+      } else if (scenario.text) {
         assert.equal(typeof owner.readCells, "function")
         if (scenario.text.disposed) await owner.dispose()
         const read = await owner.readCells()
@@ -453,6 +472,24 @@ function runDarwinArm(scenario: {
     captureDirectory,
   }
 }
+
+// 35140: a live WeakMap entry alone cannot detect a changed process chain during an awaited read.
+test.each(["fresh", "revoked-before", "revoked-during", "disposed-before", "disposed-during"] as const)(
+  "native Darwin title operation checks actual ownership around its await: %s",
+  (title) => {
+    const result = runDarwinArm({
+      provider: "cli-process",
+      workerPid: "self",
+      ownerPid: 4343,
+      marker: { flag: "--probe-run", value: `run-${launchRunId}` },
+      parent: { self: 4343, "4343": 1 },
+      title,
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout.trim()).toBe(`TITLE ${title}`)
+  },
+)
 
 test("kitty is granted by the shared process proof: marker, executable, TTY and ancestry all checked", () => {
   const result = runDarwinArm({

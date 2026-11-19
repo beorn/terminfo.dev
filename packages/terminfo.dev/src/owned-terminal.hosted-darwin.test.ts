@@ -55,6 +55,7 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
     const editor = app === "cursor" || app === "com.microsoft.VSCode"
     let appPid = 4242
     const nativeReads = [], captures = []
+    let titleReads = 0
     const semantic = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
     mock.module("./packages/terminfo.dev/src/app-semantic-state.ts", () => ({ ...semantic,
       readAppSemanticState: async (input) => {
@@ -110,9 +111,19 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
     process.env.TERMINFO_TARGET_ID = "foreign-launcher-value"
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" },
+      readDarwinTitle: async () => { titleReads++; return "fresh hosted title " + titleReads },
       appSemanticCapture: async (featureId, phase) => { captures.push({ featureId, phase }); return { retained: true } } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
+    if (app === "iterm2" || editor) {
+      await assert.rejects(owner.readTitle(), app === "iterm2"
+        ? /Hosted Darwin title read does not use System Events/
+        : /Hosted Darwin title read unavailable/)
+      assert.equal(titleReads, 0, "a declared refusal must not consult the CG reader")
+    } else {
+      assert.equal(await owner.readTitle(), "fresh hosted title 1")
+      assert.equal(await owner.readTitle(), "fresh hosted title 2")
+    }
     if (app === "ghostty") {
       // 34601: the hosted Ghostty tab reads only cwd, through AppleScript, and only bound to its reviewed version.
       assert.deepEqual([...owner.appSemanticStateFeatures].sort(), ["extensions.osc633-p", "extensions.osc7-cwd"])
@@ -821,7 +832,7 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   ).toEqual({
     id: "terminal-app",
     comm: "Terminal",
-    titleRead: "system-events",
+    titleRead: "window",
     captureWindowSelection: "largest",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/iTerm.app/Contents/MacOS/iTerm2")).toEqual({
@@ -833,19 +844,19 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/Ghostty.app/Contents/MacOS/ghostty")).toEqual({
     id: "ghostty",
     comm: "ghostty",
-    titleRead: "system-events",
+    titleRead: "window",
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/Alacritty.app/Contents/MacOS/alacritty")).toEqual({
     id: "alacritty",
     comm: "alacritty",
-    titleRead: "system-events",
+    titleRead: "window",
     scrollbackUnavailable: "no pane read on this app",
   })
   // WezTerm.app's CFBundleExecutable is wezterm-gui (run 39274899363); the CLI binary never appears here.
   expect(hostedDarwinAppFromExecutablePath("/Applications/WezTerm.app/Contents/MacOS/wezterm-gui")).toEqual({
     id: "wezterm",
     comm: "wezterm-gui",
-    titleRead: "system-events",
+    titleRead: "window",
   })
   // 30211: the receipt names the editor GUI, never its CLI or an Electron helper.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
@@ -866,7 +877,7 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
     id: "warp",
     comm: "stable",
-    titleRead: "system-events",
+    titleRead: "window",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({

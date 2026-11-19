@@ -152,6 +152,43 @@ test("a window name that is not a string is reported as withheld, not as a title
   expect(census.selected.name).toEqual({ present: true, value: null })
 })
 
+// 35140: parsed metadata alone does not prove that each title operation rechecks the pinned window.
+test("Darwin title reads use fresh owned-window names without capturing pixels", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-title-"))
+  let window = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 12, y: 31, width: 800, height: 600 },
+    namePresent: true,
+    name: "installed" as unknown,
+  }
+  let censuses = 0
+  vi.spyOn(captureCore, "command").mockImplementation(async (file) => {
+    expect(file).toBe("/usr/bin/osascript")
+    censuses++
+    return Buffer.from(JSON.stringify([window]))
+  })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
+    expect(censuses).toBe(1)
+    for (const name of ["control", "target", ""]) {
+      window = { ...window, name }
+      await expect(adapter.readTitle()).resolves.toBe(name)
+    }
+    expect(censuses).toBe(4)
+    window = { ...window, namePresent: false }
+    await expect(adapter.readTitle()).rejects.toThrow(/window name key withheld/)
+    window = { ...window, namePresent: true, name: null }
+    await expect(adapter.readTitle()).rejects.toThrow(/window name is not a string/)
+    window = { ...window, name: "foreign", id: 8 }
+    await expect(adapter.readTitle()).rejects.toThrow(/window.*changed|window.*7|ownership/i)
+    expect(readdirSync(directory)).toEqual([])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // 30390: the window server refuses an image of a window without a backing store; the same bounds are
 // still on screen, so the frame comes from a region capture and the trace names both attempts.
 test("Darwin capture falls back to a region capture of the window bounds when the window image is refused", async () => {
