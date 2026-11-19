@@ -132,6 +132,19 @@ test("places a run whose identity the composer handed down", () => {
   expect(loadStoredRuns(f.content, f.manifest.catalogIds!)).toMatchObject([{ runId: handed }])
 })
 
+// #34868: the suites map handed to a projection is the read of `suites/` a caller must use. Proof at
+// this seam keeps a second directory scan from creeping back into a consumer like selected-results.ts.
+test("hands the projection the suites it already parsed", () => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const cohorts = loadStoredRuns(
+    f.content,
+    f.manifest.catalogIds!,
+    (_run, _reread, suites) => suites.get(f.manifest.probeHash)?.probes,
+  )
+  expect(cohorts).toEqual([f.manifest.probes])
+})
+
 test("persists and reloads exact bytes, idempotently, refusing conflicts", () => {
   const f = fixture()
   const bytes = readFileSync(f.source)

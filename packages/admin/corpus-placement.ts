@@ -84,17 +84,21 @@ function storedRunReader(path: string, runId: string, sha256: string): () => Run
   }
 }
 
-/** One corpus read; a projection may retain compact facts while each validated raw run is still local. */
+/**
+ * One corpus read; a projection may retain compact facts while each validated raw run is still local.
+ * The suites map is the only read of the retained suite directory (#34868): a projection that needs a
+ * suite's declared cohort takes it from this argument instead of rescanning `suites/` itself.
+ */
 export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project: (run: LoadedRun, reread: () => RunTraceFacts) => T,
+  project: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
 ): T[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project?: (run: LoadedRun, reread: () => RunTraceFacts) => T,
+  project?: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
 ): Array<LoadedRun | T> {
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
@@ -119,7 +123,7 @@ export function loadStoredRuns<T>(
       .sort()) {
       const runPath = join(path, file)
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
-      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256)) : run)
+      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256), suites) : run)
       if (project || runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }
