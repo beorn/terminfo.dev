@@ -6,7 +6,7 @@
  * @testonly none
  * @reach none <fixture-only: no process, no filesystem>
  */
-import { expect, test, vi } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import type { Run } from "../../terminfo.dev/src/daemon-client.ts"
 import { serveCommand } from "./serve-command.ts"
 
@@ -15,6 +15,14 @@ vi.mock("../versions.ts", () => ({
 }))
 
 const run: Run = { id: "run-1", directory: "/private/run", scriptPath: "/private/run/serve.sh" }
+afterEach(() => vi.unstubAllEnvs())
+
+test("an owned capture launch carries the declared signing identity into its collector, while a plain launch does not", () => {
+  const identity = "ab".repeat(20)
+  vi.stubEnv("TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY", identity)
+  expect(serveCommand(run, "/private/run/artifacts")).toContain(`TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY='${identity}'`)
+  expect(serveCommand(run)).not.toContain("TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY")
+})
 
 test("the serve command carries run and suite identity, and a capture directory only when one is handed in", () => {
   // No recipe declares a capture route here, so nothing is retained and no arm is asked for a frame.
