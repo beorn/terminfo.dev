@@ -598,7 +598,7 @@ func windowId(_ raw: String, _ verb: String) -> Int {
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
-    fail("usage: darwin-input-helper <trust|front|windows|key|mouse> ... [35130 native continuity a]")
+    fail("usage: darwin-input-helper <trust|front|windows|key|mouse> ... [35130 native continuity b]")
 }
 
 switch arguments[1] {
