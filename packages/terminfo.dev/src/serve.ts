@@ -1769,7 +1769,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               return result
             },
             out,
-            clipboard ? () => clipboard.assertOwned() : undefined,
+            clipboard ? clipboard.assertOwned.bind(clipboard) : undefined,
           ),
         out,
       )
