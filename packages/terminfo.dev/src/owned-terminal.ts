@@ -65,7 +65,7 @@ import {
   type CmuxReadFacts,
   readOwnedCmuxHistory,
 } from "./cmux-owned-history.ts"
-import { wasCollectorOpenedControllingTTY } from "./tty.ts"
+import { assertWriteAllowed, wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
   LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
@@ -1561,6 +1561,25 @@ const publishedRefusal = (failure: string): string => {
   return pathSeparator.test(reason) ? code + " (reason withheld: names a host path)" : failure
 }
 
+/**
+ * 34959: the hosted-cmux private writer (osc633-p) consulted only ownership, never the run's abort edge, so a
+ * run whose client had left could still paint a private URI onto a pane nobody reads. It now consults 34941's
+ * edge through `assertWriteAllowed`, then writes to the stream directly: the text carries a private URI and
+ * must NOT enter the recorded write log, which is why it is not routed through `writeTTY`.
+ * `check` keeps the ownership gate on both sides of the write.
+ */
+export function gatedPrivateWrite(
+  check: () => Promise<void>,
+  out: NodeJS.WriteStream,
+): (text: string) => Promise<void> {
+  return async (text: string) => {
+    await check()
+    assertWriteAllowed()
+    out.write(text)
+    await check()
+  }
+}
+
 async function readHostedCmuxSemanticCwd(input: {
   readonly featureId: string
   readonly write: (text: string) => void
@@ -1651,11 +1670,7 @@ async function readHostedCmuxSemanticCwd(input: {
       runId: input.expectedLaunchRunId,
       executable: executableProof,
       write: input.write,
-      privateWrite: async (text) => {
-        await check()
-        input.out.write(text)
-        await check()
-      },
+      privateWrite: gatedPrivateWrite(check, input.out),
       readCwd,
     })
   } catch (error) {
