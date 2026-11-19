@@ -879,6 +879,24 @@ export const CLIPBOARD_READ_DEFAULTS: Readonly<
       "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
       '"only copy sequence is accepted"',
   },
+  // #34932 (@cto scope ruling Nov 18): WezTerm has no clipboard-read setting and no read. Read at the nixpkgs source the
+  // measured build compiles (git rev 458a100c1bf4134d36cb5c42dd90e4c8266d9e1a, nixpkgs version 0-unstable-2026-11-08).
+  wezterm: {
+    posture: "absent",
+    version: "0-unstable-2026-11-08",
+    source:
+      "wezterm 458a100c1bf4 wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as QuerySelection, and " +
+      "term/src/terminalstate/performer.rs:792 handles it as QuerySelection(_) => {}: no reply, no setting",
+  },
+}
+
+/**
+ * The allow launch that applies NO read setting, by the receipt it records (#34932, @cto scope ruling Nov 18). WezTerm
+ * has no clipboard-read control, so its allow run is its default and may read the cited default posture. This is a
+ * declaration per app: an empty CLIPBOARD_ALLOW_ARGS entry alone confers nothing on another app.
+ */
+export const CLIPBOARD_NO_READ_SETTING: Readonly<Partial<Record<ClipboardApp, string>>> = {
+  wezterm: "clipboard: read=no-setting,write=allow",
 }
 
 /**
@@ -894,7 +912,7 @@ export function clipboardReadDefault(
   readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
   readDefaultRefusal?: string
 } {
-  if (profile !== "default") return {}
+  if (profile !== "default" && !(profile === "allow" && CLIPBOARD_NO_READ_SETTING[app] !== undefined)) return {}
   const cited = CLIPBOARD_READ_DEFAULTS[app]
   if (!cited) return {}
   if (cited.version === measuredVersion) return { readDefault: { posture: cited.posture, source: cited.source } }
@@ -971,7 +989,7 @@ function expectedClipboardPermissions(app: ClipboardApp, profile: ClipboardRecei
     case "default":
       return "clipboard: read=ask,write=allow; OSC52: write=run,read=not-run"
     case "allow":
-      return app === "wezterm" ? "clipboard: read=no-setting,write=allow" : "clipboard: read=allow,write=allow"
+      return CLIPBOARD_NO_READ_SETTING[app] ?? "clipboard: read=allow,write=allow"
     case "deny-read":
       return "clipboard: read=deny,write=allow"
   }

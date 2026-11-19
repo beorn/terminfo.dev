@@ -5119,15 +5119,17 @@ async function liveClipboardProbe(
     const profileNote = fixture.readProfile
       ? `${fixture.readProfile.profile}: ${fixture.readProfile.setting}`
       : undefined
-    if (kind === "read") {
+    // #34932 (@cto scope ruling Nov 18): the combined row reaches this point only after the independent clipboard read
+    // saw its own OSC 52 write (every other write outcome returned above), so outside a mux its read takes the read
+    // row's one decision below, control included. A failed or unmeasured write never reaches it.
+    const readsAfterWrite = kind === "roundtrip" && !mux
+    const writeLead = readsAfterWrite ? "OSC 52 write observed on the independent clipboard; " : ""
+    if (kind === "read" || readsAfterWrite) {
       const control = await ctx.queryCursorPosition()
       // probe-todo, never the declared-untestable shape: the channel was not measured, nothing was declared absent.
       if (!control) {
-        return {
-          pass: false,
-          note: "cursor-position control before the OSC 52 read",
-          tests: [{ id: "criterion", status: "probe-todo", reason: "cursor-position control before the OSC 52 read" }],
-        }
+        const reason = `${writeLead}cursor-position control before the OSC 52 read`
+        return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
       }
     }
     if (mux) {
@@ -5194,17 +5196,17 @@ async function liveClipboardProbe(
     //    injects an answer, so the silence grades nothing;
     //  - pinned "deny"/"absent": silence is the default answer — unsupported;
     //  - no citation at all: the row names the missing citation instead of guessing.
-    if (kind === "read" && !outcome.match && !osc52Reply.test(outcome.raw)) {
+    if ((kind === "read" || readsAfterWrite) && !outcome.match && !osc52Reply.test(outcome.raw)) {
       // A deny-read profile configured the refusal this run measured, so its silence is this run's own setting
       // talking, not a statement about the app's default (@dev/16 peer).
       if (fixture.readProfile?.profile === "deny-read") {
-        const reason = "deny-read profile: refusal configured by this run; grades nothing about the default"
+        const reason = `${writeLead}deny-read profile: refusal configured by this run; grades nothing about the default`
         return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
       }
       const granting = fixture.readProfile !== undefined
       const posture = fixture.readDefault?.posture
       if (granting) {
-        const note = `cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
+        const note = `${writeLead}cursor-position control answered; OSC 52 c returned no reply under a read-granting profile${
           profileNote ? ` (${profileNote})` : ""
         }`
         return {
@@ -5217,7 +5219,7 @@ async function liveClipboardProbe(
               assertionType: "query_reply" as const,
               kind: "negative" as const,
               expected: "OSC 52 c returns the independently written payload",
-              observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+              observed: `${readsAfterWrite ? "write=observed; " : ""}control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
             },
           ],
         }
@@ -5228,12 +5230,11 @@ async function liveClipboardProbe(
         // citation exists.
         let reason: string
         if (posture === "ask") {
-          reason = "default asks the user; the prompt was not answered"
+          reason = `${writeLead}default asks the user; the prompt was not answered`
         } else if (fixture.readDefaultRefusal !== undefined) {
-          reason = `cursor-position control answered; OSC 52 c returned no reply; ${fixture.readDefaultRefusal}`
+          reason = `${writeLead}cursor-position control answered; OSC 52 c returned no reply; ${fixture.readDefaultRefusal}`
         } else {
-          reason =
-            "cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)"
+          reason = `${writeLead}cursor-position control answered; OSC 52 c returned no reply; default not established (the app's pinned default for a clipboard read is not cited)`
         }
         // @dev/16 peer, and @cto's "attach an existing capture, do not add one": a frame the run already takes is kept
         // next to an undecided row, in case the prompt is visible in it. Nothing here answers the prompt.
@@ -5254,7 +5255,11 @@ async function liveClipboardProbe(
         }
         return { pass: false, note: reason, tests: [{ id: "criterion", status: "probe-todo", reason }] }
       }
-      const note = `cursor-position control answered; OSC 52 c returned no reply${profileNote ? ` (${profileNote})` : ""}`
+      // The cited default is the configuration evidence this negative rests on, so the row carries it (#34932).
+      const cited = fixture.readDefault ? `; default ${fixture.readDefault.posture}: ${fixture.readDefault.source}` : ""
+      const note = `${writeLead}cursor-position control answered; OSC 52 c returned no reply${
+        profileNote ? ` (${profileNote})` : ""
+      }${cited}`
       return {
         pass: false,
         response: outcome.raw,
@@ -5265,7 +5270,7 @@ async function liveClipboardProbe(
             assertionType: "query_reply" as const,
             kind: "negative" as const,
             expected: "OSC 52 c returns the independently written payload",
-            observed: `control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
+            observed: `${readsAfterWrite ? "write=observed; " : ""}control=answered; osc52=none${profileNote ? ` (${profileNote})` : ""}`,
           },
         ],
       }

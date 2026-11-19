@@ -390,8 +390,10 @@ it.each([
   }
   const missingOsc0State = kind === "lib" && id === "extensions.osc0-icon-title"
   // @cto 2026-11-13: a term OSC 52 read with no reply and no cited read-default is probe-todo,
-  // not a reply failure. The cursor control answered, so silence is ungraded.
-  const osc52ReadSilence = kind === "term" && id === "extensions.osc52-read" && !rawOverride
+  // not a reply failure. The cursor control answered, so silence is ungraded. #34932 (@cto scope ruling Nov 18): the
+  // combined row whose write the fixture saw takes that same read decision, so its silence is ungraded the same way.
+  const osc52ReadSilence =
+    kind === "term" && (id === "extensions.osc52-read" || id === "extensions.osc52-clipboard") && !rawOverride
   const expectedReplyFailure =
     (!rawOverride || id === "extensions.osc0-icon-title") &&
     !highlightZeroReply &&
