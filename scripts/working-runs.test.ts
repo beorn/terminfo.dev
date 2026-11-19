@@ -6,6 +6,8 @@
  * @consumer docs/data/working-runs.ts, read by docs/data/full-project.data.ts (full-273 page) and scripts/generate-api.ts
  * @source-grep these are the first tests of the hourly working-run view; no existing test reads TERMINFO_SITE_WORKING_RUNS_DIR.
  * @testonly none
+ * @reach fs-walk vendor/terminfo.dev/content/**
+ * @reach fs-walk <fixture-only: a temp content root built from the committed corpus>
  */
 import { createHash } from "node:crypto"
 import {
