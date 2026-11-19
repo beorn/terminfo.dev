@@ -1570,7 +1570,9 @@ async function runProbeBatchInRun(
       (ownsTerminal &&
         imageSubject?.kind === "term" &&
         imageSubject.os === "linux" &&
-        ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
+        // 34932 (@cto 21:33 response to 672197f0): 412, the build every hourly xterm Linux run measures since Nov 13,
+        // is admitted as a measurement route beside 411; exact versions only, the callback's same-run controls grade.
+        ((imageSubject.id === "xterm" && (imageSubject.version === "411" || imageSubject.version === "412")) ||
           // 34932 (@cto 34932-wezterm-pointer-version-go-1852): 0-unstable-2026-11-08 (rev 458a100c1bf4) differs from
           // 10-10 (rev e2a98e1b8af1) only in docs and get-deps; exact versions only, the callback's controls grade.
           (imageSubject.id === "wezterm" &&
