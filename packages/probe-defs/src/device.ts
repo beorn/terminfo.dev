@@ -372,24 +372,32 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   let result: ProbeCallbackResult | undefined
   let failure: unknown
   // #34932: the terminal applies each title asynchronously, so every read after a write settles past what the
-  // surface showed before it (WezTerm 13:06Z read the previous "test-title" as the first control). A restore that
-  // never comes (no title stack) costs one bounded budget; later restores then read once.
+  // surface showed before it (WezTerm 13:06Z read the previous "test-title" as the first control). Each kind of write
+  // that never arrives costs one bounded budget, and later writes of that kind then read once: a restore that never
+  // comes (no title stack), and a plain OSC 2 set the reader never shows (Screen's own-title reader, @dev/fixer
+  // f4aa844d: four full budgets ran past the test's 5 s). The two are separate: a stackless terminal still shows sets.
   let shown = before
   let restoreBudget: number | undefined
+  let setBudget: number | undefined
   const settleRestore = async (written: string) => {
     const settled = await settledTitle(read, written, [shown], restoreBudget)
     if (settled.value !== written) restoreBudget = 0
+    return settled.value
+  }
+  const settleSet = async (written: string, previous: readonly string[]) => {
+    const settled = await settledTitle(read, written, previous, setBudget)
+    if (settled.value !== written) setBudget = 0
     return settled.value
   }
   try {
     const fixture = async (originalTitle: string, changedTitle: string) => {
       set(saved)
       set(originalTitle)
-      const original = (await settledTitle(read, originalTitle, [shown, saved])).value
+      const original = await settleSet(originalTitle, [shown, saved])
       pushed = true
       ctx.write("\x1b[22;0t")
       set(changedTitle)
-      const changed = (await settledTitle(read, changedTitle, [original])).value
+      const changed = await settleSet(changedTitle, [original])
       shown = changed
       ctx.write("\x1b[23;0t")
       pushed = false
@@ -422,9 +430,9 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
       if (pushed) ctx.write("\x1b[23;0t")
     } finally {
       set(before)
-      // The cleanup is a plain OSC 2 write, not a 23t pop: a stackless terminal still applies it, so it settles with the
-      // full budget and never inherits a zero restore budget (@dev/4 review of slice 1).
-      state.restored = (await settledTitle(read, before, [shown])).value
+      // The cleanup is a plain OSC 2 write, not a 23t pop: a stackless terminal still applies it, so it takes the set
+      // budget and never inherits a zero restore budget (@dev/4 review of slice 1).
+      state.restored = await settleSet(before, [shown])
       if (state.restored !== before) {
         // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
         // either. `result` is undefined here only because the try threw; a plain return added inside that try

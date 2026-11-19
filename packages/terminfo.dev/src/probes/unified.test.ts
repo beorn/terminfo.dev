@@ -1772,28 +1772,34 @@ it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),
   ),
-)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
-  verifiedBatchFixture()
-  process.stdout.write = (() => true) as typeof process.stdout.write
-  const batch = await runProbeBatch({
-    ids: [id],
-    subject: { kind: "mux", id: "screen", os: "linux" },
-    ownedTerminal: {
-      ...geometryOwner(noGeometry),
-      readTitle: async () => {
-        if (failure === "query") throw new Error("screen -Q title is unavailable")
-        return "unchanged Screen title"
+)(
+  "names Screen's missing own-title reader after $failure fails: $id",
+  async ({ id, failure }) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "mux", id: "screen", os: "linux" },
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        readTitle: async () => {
+          if (failure === "query") throw new Error("screen -Q title is unavailable")
+          return "unchanged Screen title"
+        },
       },
-    },
-  })
-  const row = batch.results.find((result) => result.featureId === id)!
-  expect(row.status).toBe("probe-todo")
-  expect(row.reason).toMatch(/Screen.*screen -Q title/)
-  expect(batch.assertions).toEqual([])
-  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
-  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
-  else expect(reads.length).toBeGreaterThan(1)
-})
+    })
+    const row = batch.results.find((result) => result.featureId === id)!
+    expect(row.status).toBe("probe-todo")
+    expect(row.reason).toMatch(/Screen.*screen -Q title/)
+    expect(batch.assertions).toEqual([])
+    const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
+    if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+    else expect(reads.length).toBeGreaterThan(1)
+    // #34932 red (@dev/fixer f4aa844d): a reader that never shows a set spends one settle budget, not one per set. The
+    // old code took 8.2 s here and passed only under a project timeout above vitest's 5 s default, so the bound is pinned.
+  },
+  5_000,
+)
 
 // #33375: the OSC 7 title reader installs from the owned run, never from a subject name. The first assertion
 // is the installation itself: an App that used to fall through now reads its own title. Only Ghostty, whose
