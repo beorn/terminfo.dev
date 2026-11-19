@@ -9,7 +9,8 @@
  *   bun scripts/retained-encoding.ts recover-lock <artifacts-dir> '<holder json>'
  *
  * A root is a `raw/artifacts` directory or any directory above one (a bundle, a pass, a run). Directories are found
- * with lstat, never following a symlink; a named root that does not exist is reported by name and fails the command.
+ * with lstat, never following a symlink, the named root included; a named root that does not exist, is a symlink or
+ * is not a directory is reported by name and fails the command before any directory is read.
  * Legacy `<sha>.xwd.gz` files are mapped only for digests a JSON file beside the bundle declares as an XWD reference
  * (`xwdSha256`, or a `{path, sha256}` reference whose path ends in `.xwd`). Each directory prints one JSON line; the
  * command stops at the first refusal and exits 1 naming that directory. Nothing is migrated before an operator release
@@ -42,8 +43,22 @@ function lstatOrMissing(path: string): ReturnType<typeof lstatSync> | "missing" 
   }
 }
 
-/** Every `artifacts` directory at or below `root`, found without following symlinks. */
+/**
+ * Why a named root is refused, or undefined when it is a real directory. A symlink is refused, never followed, even as
+ * the named root itself (@cto 34769-rootlink-finding-1646): readdirSync on a linked root would walk its target.
+ */
+export function rootRefusal(root: string): string | undefined {
+  const stat = lstatOrMissing(root)
+  if (stat === "missing" || stat === undefined) return "does not exist"
+  if (stat.isSymbolicLink()) return "is a symlink, which is never followed"
+  if (!stat.isDirectory()) return "is not a directory"
+  return undefined
+}
+
+/** Every `artifacts` directory at or below `root`, found without following symlinks; a refused root throws by name. */
 export function artifactDirectories(root: string): string[] {
+  const refusal = rootRefusal(root)
+  if (refusal !== undefined) throw new Error(`retained-encoding: named root ${root} ${refusal}`)
   const found: string[] = []
   const walk = (directory: string): void => {
     if (basename(directory) === "artifacts") {
@@ -142,9 +157,12 @@ export function main(argv: readonly string[]): number {
     )
     return 2
   }
-  const missing = rest.filter((root) => lstatOrMissing(resolve(root)) === "missing")
-  if (missing.length) {
-    console.error(`retained-encoding: ${missing.length} named root(s) do not exist: ${missing.join(", ")}`)
+  const refused = rest.flatMap((root) => {
+    const refusal = rootRefusal(resolve(root))
+    return refusal === undefined ? [] : [`${root} ${refusal}`]
+  })
+  if (refused.length) {
+    console.error(`retained-encoding: ${refused.length} named root(s) refused: ${refused.join(", ")}`)
     return 1
   }
   for (const root of rest) {

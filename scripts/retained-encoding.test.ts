@@ -56,6 +56,18 @@ describe("retained-encoding command", () => {
     symlinkSync(join(root, "run"), join(root, "run", "pass-a", "loop"))
     expect(artifactDirectories(join(root, "run"))).toEqual([artifacts])
     expect([...declaredXwdDigests(artifacts)]).toEqual([sha(declared)])
+    // The named root is held to the same rule (@cto 34769-rootlink-finding-1646): a link to the run, and a link named
+    // artifacts, are refused by name before any read, and the command exits 1 without counting the target's files.
+    symlinkSync(join(root, "run"), join(root, "run-link"))
+    symlinkSync(artifacts, join(root, "artifacts"))
+    for (const link of [join(root, "run-link"), join(root, "artifacts")]) {
+      expect(() => artifactDirectories(link)).toThrow(`named root ${link} is a symlink`)
+    }
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    expect(main(["census", join(root, "run-link")])).toBe(1)
+    expect(error.mock.calls.flat().join("\n")).toContain(`${join(root, "run-link")} is a symlink`)
+    expect(log).not.toHaveBeenCalled()
   })
 
   test("census reads only; migrate maps the declared gzip and the raw original; rollback restores the original", () => {
