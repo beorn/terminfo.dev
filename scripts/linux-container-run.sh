@@ -21,6 +21,27 @@ set -euo pipefail
 #     batch, not a hang. New trigger for the next raise: a completed batch above 1900 s of captures.
 PROBE_BATCH_TIMEOUT_SECONDS=2400
 
+# 35020: the /probe stream opens with the daemon's keepalive -- leading JSON whitespace (space, tab, LF, CR)
+# written so a stock socket timer never sees a silent socket (34753). Those bytes are transport, not payload:
+# the client strips exactly that leading run once at its retention boundary
+# (packages/terminfo.dev/src/daemon-client.ts stripProbeKeepalivePrefix), so the container has to strip the same
+# run before it validates and hashes the body. Otherwise container-receipt.json names a sha of bytes the
+# collector never retained, and placement refuses the run with "does not bind original capture bytes".
+# Never a BOM, interior whitespace, trailing bytes or anything after the first non-whitespace byte.
+strip_capture_keepalive_prefix() {
+  local file=$1 offset
+  offset=$(head -c 65536 "$file" | od -An -v -tu1 | awk '
+    BEGIN {n=0}
+    {for (i=1;i<=NF;i++){v=$i+0; if (!found) {if (v!=32 && v!=9 && v!=10 && v!=13) {print n; found=1}; n++}}}')
+  if [[ -z "$offset" ]]; then
+    echo "Capture at $file is empty, or opens with nothing but keepalive whitespace in its first 65536 bytes; refusing to strip it blind" >&2
+    return 1
+  fi
+  [[ "$offset" == 0 ]] && return 0
+  tail -c "+$((offset + 1))" "$file" > "$file.keepalive-stripped"
+  mv "$file.keepalive-stripped" "$file"
+}
+
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
 # never an engine grade. The private fontconfig pins the regular face and its style companions,
 # so attribute fixtures can render bold/italic without opening unrelated font fallback.
@@ -1228,6 +1249,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/batch-elapsed-seconds.txt || batch_status=$?
   date -u +%FT%TZ > /out/batch-wall-end.txt
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
+  strip_capture_keepalive_prefix /out/v3-capture.json
   if [[ "$selected_ids" != null ]]; then
     jq -e --argjson ids "$selected_ids" '
       (.rawReplies["collector.selection"] | fromjson | .ids | sort) == ($ids | sort)' /out/v3-capture.json >/dev/null || {

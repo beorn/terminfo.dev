@@ -698,6 +698,45 @@ it.each(["preflight", "mux"])("registration copy names its failed read: %s", (st
   }
 })
 
+// 35020: the daemon's keepalive is leading JSON whitespace and the client strips exactly that run at its
+// retention boundary. If the container hashes the unstripped body instead, container-receipt.json names a sha
+// the collector never retained, and placement refuses every Linux app run with "does not bind original capture
+// bytes". This drives the launcher's own function on owned files, so the two sides cannot drift again.
+describe("capture keepalive prefix", () => {
+  function strip(body: Buffer) {
+    const file = join(dir, "capture.json")
+    writeFileSync(file, body)
+    const result = spawnSync("bash", ["-c", 'source "$1"; strip_capture_keepalive_prefix "$2"', "_", launcher, file], {
+      encoding: "utf8",
+    })
+    return { result, bytes: existsSync(file) ? readFileSync(file) : null }
+  }
+
+  it("strips exactly the leading keepalive run the client strips, so the receipt names the retained bytes", () => {
+    const payload = Buffer.from(`{"schemaVersion":4,"runId":"${"a".repeat(32)}"}\n`)
+    const keepalive = Buffer.from("\n\n \t\r\n".repeat(20))
+    const { result, bytes } = strip(Buffer.concat([keepalive, payload]))
+    expect(result.status).toBe(0)
+    expect(bytes?.equals(payload)).toBe(true)
+  })
+
+  it("leaves a body that opens on payload untouched, trailing newline included", () => {
+    const payload = Buffer.from(`{"schemaVersion":4,"runId":"${"a".repeat(32)}"}\n`)
+    const { result, bytes } = strip(payload)
+    expect(result.status).toBe(0)
+    expect(bytes?.equals(payload)).toBe(true)
+  })
+
+  it("refuses a body that is empty or nothing but keepalive whitespace, by name", () => {
+    const blank = strip(Buffer.from("\n\n\n"))
+    expect(blank.result.status).not.toBe(0)
+    expect(blank.result.stderr).toContain("refusing to strip it blind")
+    const empty = strip(Buffer.alloc(0))
+    expect(empty.result.status).not.toBe(0)
+    expect(empty.result.stderr).toContain("refusing to strip it blind")
+  })
+})
+
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {
     const { result, output } = compose()
