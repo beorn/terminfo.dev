@@ -102,6 +102,7 @@ import {
   buildDarwinInputHelper,
   createDarwinInput,
   DARWIN_INPUT_HELPER_ENV,
+  DARWIN_INPUT_SIGNING_IDENTITY_ENV,
   ownedHostHelperPath,
   viewportScrollRoute,
 } from "./darwin-input.ts"
@@ -905,6 +906,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     let preflightCallLog: string | undefined
     let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
+    let disposeDarwinInputHelper: (() => void) | undefined
+    let darwinInputBuildEvidence: string | undefined
     /**
      * What happened when the Darwin input adapter was installed, so the run record carries it:
      * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
@@ -1309,17 +1312,29 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       const appPid = terminal.appPid
       if (!appPid) return refuse(`the verified ${kind} terminal has no measured app PID`)
+      let helper: ReturnType<typeof buildDarwinInputHelper> | undefined
       try {
-        // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
-        // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
+        // Fresh staged build remains in the run; owned input executes its verified signed copy at
+        // the fixed user path under a lease retained through collector teardown (35130 CTO GO).
         const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
           if (!captureDirectory) {
             throw new Error("macOS input builds its helper in the run directory, and this run has none")
           }
-          return buildDarwinInputHelper(
+          helper = buildDarwinInputHelper(
             join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
             join(dirname(captureDirectory), "darwin-input-helper"),
+            route === "ownedHost"
+              ? {
+                  directory: join(homedir(), "Library", "Application Support", "terminfo.dev", "owned-mac-input"),
+                  identity: process.env[DARWIN_INPUT_SIGNING_IDENTITY_ENV],
+                  report: (evidence) => {
+                    darwinInputBuildEvidence = JSON.stringify(evidence)
+                    process.stderr.write(`collector.inputHelperBuild ${darwinInputBuildEvidence}\n`)
+                  },
+                }
+              : undefined,
           )
+          return helper.path
         })
         const installed = await createDarwinInput({
           appPid,
@@ -1348,8 +1363,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             process.stderr.write(`collector.inputInstall ${fact}\n`)
           },
         })
+        disposeDarwinInputHelper = helper?.dispose
         return { input: installed }
       } catch (error) {
+        helper?.dispose()
         return refuse(error instanceof Error ? error.message : String(error))
       }
     }
@@ -1406,120 +1423,120 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       capture = frameUnavailableCapture()
     }
     let ownedTerminal: OwnedTerminal | undefined
-    if (kind === "linux") {
-      if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-        linux: { receiptPath: clipboardReceipt, executable },
-      })
-      // 34632: xterm's viewport steps reach the held-view rows through the same handoff the Darwin arm uses (34313).
-      // The route applies from the qualified subject, so nothing here can invent keys for an unqualified run; the
-      // XTEST adapter installed above is what it presses. A run whose adapter was not installed keeps the route and
-      // names the missing apparatus on every press instead of dropping back to no pane read.
-      const viewportKeys = ownedTerminal.viewportKeys
-      if (viewportKeys) {
-        viewportScroll = viewportScrollRoute(
-          viewportKeys,
-          input === undefined ? { refusal: "the Linux input adapter was not installed for this run" } : { input },
-        )
-      }
-    } else if (kind === "terminalApp") {
-      if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-        terminalApp: options.terminalAppOwner,
-      })
-      await installDarwinCapture(ownedTerminal)
-      // An owned Mac: keys only, posted to Terminal's pid into the asserted window (@cto 60e39dfc).
-      const installed = await installDarwinInput(ownedTerminal, {
-        windowId: options.terminalAppOwner.windowId,
-        windowTty: options.terminalAppOwner.tabTty,
-      })
-      if ("input" in installed) input = installed.input
-    } else if (kind === "process") {
-      if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-        process: options.processOwner,
-        ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
-        darwinPreflight: !muxSubject,
-      })
-      await installDarwinCapture(ownedTerminal)
-    } else if (kind === "ownedApp") {
-      if (!options.ownedAppOwner) throw new Error("Owned-Mac app collection lacks its launch record")
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-        ownedApp: options.ownedAppOwner,
-        // The launcher asserts the window; the worker proves it again before any row is graded, and
-        // there is no mux to attach, so the outer collector's identity is always retained.
-        darwinPreflight: true,
-      })
-      await installDarwinCapture(ownedTerminal)
-    } else if (kind === "darwinHosted") {
-      if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-        darwinHosted: { receiptPath: hostedReceipt },
-        appSemanticCapture: async (featureId, phase) => {
-          if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
-          return nativeAppCapture({
-            featureId,
-            role: phase === "target" ? "target" : "control",
-            label: `Native App ${phase}`,
-          })
-        },
-      })
-      assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
-      await installDarwinCapture(ownedTerminal)
-      // 34313: the route applies from the qualified subject (owned-terminal.ts viewportKeys), so a failed keys-only
-      // install keeps the route and makes every press a named apparatus failure, never a fall back to "no pane read".
-      const viewportKeys = ownedTerminal.viewportKeys
-      if (viewportKeys) {
-        const installed = await installDarwinInput(
-          ownedTerminal,
-          darwinCaptureWindowId === undefined ? {} : { windowId: darwinCaptureWindowId },
-          "keysOnly",
-        )
-        viewportScroll = viewportScrollRoute(viewportKeys, installed)
-      }
-    } else if (kind === "windowsHosted") {
-      if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
-      // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
-      // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
-      // an ancestor, and every geometry probe then reads the console it is actually writing to.
-      ownedTerminal = await createOwnedTerminal({
-        onRetained,
-        captureRunId,
-        out,
-        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-        windowsHosted: { receiptPath: hostedReceipt },
-      })
-      assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
-      // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
-      installTextCapture(ownedTerminal)
-    }
-    const clipboard = ownedTerminal?.clipboard
-    const attachment = ownedTerminal?.muxAttachmentProof
+    let clipboard: OwnedTerminal["clipboard"]
+    let attachment: OwnedTerminal["muxAttachmentProof"]
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
-    // Set only when this run was handed an ordinary-open receipt: the app a person opened themselves
-    // (@cto 2026-11-13). It grants the three OSC 52 rows and nothing else.
     let ordinaryOpen: OrdinaryOpenRun | undefined
     try {
+      if (kind === "linux") {
+        if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+          linux: { receiptPath: clipboardReceipt, executable },
+        })
+        // 34632: xterm's viewport steps reach the held-view rows through the same handoff the Darwin arm uses (34313).
+        // The route applies from the qualified subject, so nothing here can invent keys for an unqualified run; the
+        // XTEST adapter installed above is what it presses. A run whose adapter was not installed keeps the route and
+        // names the missing apparatus on every press instead of dropping back to no pane read.
+        const viewportKeys = ownedTerminal.viewportKeys
+        if (viewportKeys) {
+          viewportScroll = viewportScrollRoute(
+            viewportKeys,
+            input === undefined ? { refusal: "the Linux input adapter was not installed for this run" } : { input },
+          )
+        }
+      } else if (kind === "terminalApp") {
+        if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+          terminalApp: options.terminalAppOwner,
+        })
+        await installDarwinCapture(ownedTerminal)
+        // An owned Mac: keys only, posted to Terminal's pid into the asserted window (@cto 60e39dfc).
+        const installed = await installDarwinInput(ownedTerminal, {
+          windowId: options.terminalAppOwner.windowId,
+          windowTty: options.terminalAppOwner.tabTty,
+        })
+        if ("input" in installed) input = installed.input
+      } else if (kind === "process") {
+        if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+          process: options.processOwner,
+          ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
+          darwinPreflight: !muxSubject,
+        })
+        await installDarwinCapture(ownedTerminal)
+      } else if (kind === "ownedApp") {
+        if (!options.ownedAppOwner) throw new Error("Owned-Mac app collection lacks its launch record")
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+          ownedApp: options.ownedAppOwner,
+          // The launcher asserts the window; the worker proves it again before any row is graded, and
+          // there is no mux to attach, so the outer collector's identity is always retained.
+          darwinPreflight: true,
+        })
+        await installDarwinCapture(ownedTerminal)
+      } else if (kind === "darwinHosted") {
+        if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+          darwinHosted: { receiptPath: hostedReceipt },
+          appSemanticCapture: async (featureId, phase) => {
+            if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
+            return nativeAppCapture({
+              featureId,
+              role: phase === "target" ? "target" : "control",
+              label: `Native App ${phase}`,
+            })
+          },
+        })
+        assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
+        await installDarwinCapture(ownedTerminal)
+        // 34313: the route applies from the qualified subject (owned-terminal.ts viewportKeys), so a failed keys-only
+        // install keeps the route and makes every press a named apparatus failure, never a fall back to "no pane read".
+        const viewportKeys = ownedTerminal.viewportKeys
+        if (viewportKeys) {
+          const installed = await installDarwinInput(
+            ownedTerminal,
+            darwinCaptureWindowId === undefined ? {} : { windowId: darwinCaptureWindowId },
+            "keysOnly",
+          )
+          viewportScroll = viewportScrollRoute(viewportKeys, installed)
+        }
+      } else if (kind === "windowsHosted") {
+        if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
+        // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
+        // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
+        // an ancestor, and every geometry probe then reads the console it is actually writing to.
+        ownedTerminal = await createOwnedTerminal({
+          onRetained,
+          captureRunId,
+          out,
+          expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+          windowsHosted: { receiptPath: hostedReceipt },
+        })
+        assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
+        // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
+        installTextCapture(ownedTerminal)
+      }
+      clipboard = ownedTerminal?.clipboard
+      attachment = ownedTerminal?.muxAttachmentProof
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
         const ownership = parseJsonStrict("Darwin outer collector ownership", ownedTerminal.summary)
@@ -1752,13 +1769,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               return result
             },
             out,
-            clipboard ? () => clipboard.assertOwned() : undefined,
+            clipboard ? clipboard.assertOwned.bind(clipboard) : undefined,
           ),
         out,
       )
     } finally {
-      await ownedTerminal?.dispose()
+      try {
+        await ownedTerminal?.dispose()
+      } finally {
+        disposeDarwinInputHelper?.()
+      }
     }
+    if (darwinInputBuildEvidence) batch.rawReplies["collector.inputHelperBuild"] = darwinInputBuildEvidence
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
     if (ordinaryOpen) batch.rawReplies[ORDINARY_OPEN_COLLECTOR_KEY] = ordinaryOpenRecord(ordinaryOpen)
