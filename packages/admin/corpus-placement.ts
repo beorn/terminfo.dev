@@ -124,9 +124,14 @@ export function loadStoredRuns<T>(
       const runPath = join(path, file)
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
       runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256), suites) : run)
-      if (project || runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
+      if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }
+  // A projecting load holds only the compact facts its project returns, so a collection at this boundary reclaims
+  // the last batch's parsed runs before the caller projects, verifies and renders on top of them. #34946: collecting
+  // after EVERY projected run bought no peak (the projection phase is not this process's high-water) and cost 24-33%
+  // of the load, so the projected and raw-retaining reads now share the one cadence above and this single boundary.
+  if (project) collectGarbage()
   return runs
 }
 
