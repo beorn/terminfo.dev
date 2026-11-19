@@ -60,7 +60,7 @@ describe("retained-encoding command", () => {
     // artifacts, are refused by name before any read, and the command exits 1 without counting the target's files.
     symlinkSync(join(root, "run"), join(root, "run-link"))
     symlinkSync(artifacts, join(root, "artifacts"))
-    for (const link of [join(root, "run-link"), join(root, "artifacts")]) {
+    for (const link of [join(root, "run-link"), `${join(root, "run-link")}/`, join(root, "artifacts")]) {
       expect(() => artifactDirectories(link)).toThrow(`named root ${link} is a symlink`)
     }
     const error = vi.spyOn(console, "error").mockImplementation(() => {})

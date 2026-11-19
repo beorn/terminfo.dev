@@ -48,7 +48,8 @@ function lstatOrMissing(path: string): ReturnType<typeof lstatSync> | "missing" 
  * the named root itself (@cto 34769-rootlink-finding-1646): readdirSync on a linked root would walk its target.
  */
 export function rootRefusal(root: string): string | undefined {
-  const stat = lstatOrMissing(root)
+  // lstat of "<link>/" follows the link, so the root is judged without its trailing separators (@dev/fixer item 6).
+  const stat = lstatOrMissing(root.length > 1 ? root.replace(/\/+$/u, "") || "/" : root)
   if (stat === "missing" || stat === undefined) return "does not exist"
   if (stat.isSymbolicLink()) return "is a symlink, which is never followed"
   if (!stat.isDirectory()) return "is not a directory"
