@@ -215,7 +215,8 @@ describe("the retained-bytes check fails loudly on altered bytes (#34927 red arm
     const artifact = join(bounded, "artifacts", digest + ".png")
     const original = readFileSync(artifact)
     const altered = Buffer.from(original)
-    altered[original.length >> 1] ^= 0xff
+    const flipped = original.length >> 1
+    altered.writeUInt8(original.readUInt8(flipped) ^ 0xff, flipped)
     writeFileSync(artifact, altered)
     // The loader records identity refusals on stderr; only its refusal to load is under test here.
     const printed = vi.spyOn(console, "error").mockImplementation(() => {})
