@@ -449,6 +449,15 @@ export const PNG_CONVERSION_ARGS = [
  */
 export const CONVERSION_THREAD_ARGS = ["-limit", "thread", "1"] as const
 
+/**
+ * The command budget one capture conversion owns when it is handed a deadline that has already
+ * passed (#35129). A conversion only transforms bytes the caller is holding: it never waits on a
+ * paint, so a paint budget an earlier stage spent must not be able to refuse it before it starts.
+ * Equal to command()'s own default, which is what this conversion would have run under had the
+ * caller passed no deadline at all.
+ */
+export const CONVERSION_FALLBACK_TIMEOUT_MS = 10_000
+
 /** The depth-8 RGBA output every pixel digest and every reproduction recipe hashes. */
 const DEPTH8_RGBA_ARGS = ["-depth", "8", "rgba:-"] as const
 
@@ -470,7 +479,12 @@ export async function converterIdentity(): Promise<string> {
 export type ConvertCaptureInput = {
   bytes: Buffer
   featureId: string
-  /** Absolute deadline passed to every command this conversion runs. */
+  /**
+   * Absolute deadline passed to every command this conversion runs. A deadline that has already
+   * elapsed when the conversion starts is replaced by this conversion's own command budget (#35129):
+   * the conversion transforms bytes already in hand and never waits on a paint, so a paint budget an
+   * earlier stage spent must not refuse it.
+   */
   deadline?: number
   /**
    * The pixel size the caller already measured (Linux: the window's own geometry). Absent, the owner
@@ -489,8 +503,14 @@ export type ConvertCaptureInput = {
  */
 export async function convertCapture(input: ConvertCaptureInput): Promise<{ png: Buffer; frame: CapturedFrame }> {
   const { bytes, format, featureId, deadline } = input
+  // A live caller deadline is honoured exactly; only one that has already elapsed is replaced, and
+  // then by the same default command() would apply with no deadline at all (#35129).
+  const convertDeadline =
+    deadline === undefined || deadline <= Date.now() ? Date.now() + CONVERSION_FALLBACK_TIMEOUT_MS : deadline
   const readExtent = async () =>
-    capturePixels((await command("magick", [`${format}:-`, "-format", "%wx%h", "info:"], bytes, deadline)).toString())
+    capturePixels(
+      (await command("magick", [`${format}:-`, "-format", "%wx%h", "info:"], bytes, convertDeadline)).toString(),
+    )
   const { width, height } = input.extent ?? (await readExtent())
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
     throw new Error(`Invalid captured frame extent ${width}x${height}`)
@@ -512,14 +532,14 @@ export async function convertCapture(input: ConvertCaptureInput): Promise<{ png:
           ...DEPTH8_RGBA_ARGS,
         ],
         bytes,
-        deadline,
+        convertDeadline,
       )
       png = await readFile(output)
     } finally {
       await rm(converted, { recursive: true, force: true })
     }
   } else {
-    rgba = await command("magick", [`${format}:-`, ...DEPTH8_RGBA_ARGS], bytes, deadline)
+    rgba = await command("magick", [`${format}:-`, ...DEPTH8_RGBA_ARGS], bytes, convertDeadline)
     png = bytes
   }
   if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) {

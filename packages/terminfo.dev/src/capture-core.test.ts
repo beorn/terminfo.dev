@@ -800,6 +800,24 @@ function routes(scratch: string): Record<string, ConvertCaptureInput> {
   }
 }
 
+test("a conversion handed a deadline the capture already spent still converts (35129)", async () => {
+  const { scratch, calls, reset } = stubMagick()
+  const route = routes(scratch)
+  const spent = Date.now() - 1
+  // Darwin runs two magick processes (extent query, then decode); both must run despite the spent deadline.
+  const darwin = await convertCapture({ ...route.Darwin!, deadline: spent })
+  expect(calls()).toEqual([
+    ["png:-", "-format", "%wx%h", "info:"],
+    ["png:-", "-depth", "8", "rgba:-"],
+  ])
+  expect(darwin.frame).toEqual({ width: 2, height: 1, rgba: Buffer.alloc(8) })
+  // The normalized Linux route is one process and must survive the same input.
+  reset()
+  const linux = await convertCapture({ ...route["Linux XWD"]!, deadline: spent })
+  expect(calls()).toHaveLength(1)
+  expect(linux.frame).toEqual({ width: 2, height: 1, rgba: Buffer.alloc(8) })
+})
+
 test("the converter owner runs one process per Linux route and two on Darwin; the version probe is its own (34549)", async () => {
   const { scratch, calls, reset } = stubMagick()
   const route = routes(scratch)
