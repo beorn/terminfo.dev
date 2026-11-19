@@ -125,6 +125,21 @@ function boundedContentRoot(...subjects: ReadonlyArray<readonly [string, string]
   // bounds the working-run join, and the reopened projection has its own coverage (scripts/reopened-cells.test.ts).
   const reopened = join(dir, "reopened-cells.json")
   if (existsSync(reopened)) writeFileSync(reopened, JSON.stringify({ rows: [] }))
+  // A declared-untestable row names a context cell, and the projection refuses a row that matches none (#34803).
+  // Keep every row whose subject this root retains; the full table has its own coverage in
+  // scripts/declared-untestable.test.ts against the committed corpus.
+  const declared = join(dir, "declared-untestable.json")
+  if (existsSync(declared)) {
+    const kept = new Set(subjects.map(([subject, os]) => subject + "/" + os))
+    const table = JSON.parse(readFileSync(declared, "utf8")) as { rows?: Array<{ id?: string; os?: string }> }
+    writeFileSync(
+      declared,
+      JSON.stringify({
+        ...table,
+        rows: (table.rows ?? []).filter((row) => row.id && row.os && kept.has(row.id + "/" + row.os)),
+      }),
+    )
+  }
   for (const artifact of cited) {
     const from = join(live, "artifacts", artifact)
     if (!existsSync(from)) throw new Error("bounded content root is missing " + from)
