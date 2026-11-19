@@ -1,5 +1,5 @@
 /** Stored selection and projection for terminal observations. */
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import {
   aggregateCurrentResults,
@@ -43,7 +43,7 @@ import {
   isHarnessOutcome,
   type HarnessOutcome,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, type RunTraceFacts, parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
+import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import {
   currentIdentityRuleCheck,
   identityRuleRevision,
@@ -111,21 +111,6 @@ export function selectionCoversCohort(
   if (selection === undefined || cohort === undefined) return undefined
   const selected = new Set(selection.ids)
   return cohort.every((id) => selected.has(id))
-}
-
-/** The cohort each declared suite names per subject kind, keyed by probe hash. */
-function loadSuiteCohorts(contentDir: string): Map<string, Readonly<Record<string, readonly string[]>>> {
-  const cohorts = new Map<string, Readonly<Record<string, readonly string[]>>>()
-  const suitesDir = join(contentDir, "suites")
-  if (!existsSync(suitesDir)) return cohorts
-  for (const name of readdirSync(suitesDir)
-    .filter((entry) => entry.endsWith(".json"))
-    .sort()) {
-    const path = join(suitesDir, name)
-    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-    cohorts.set(manifest.probeHash, manifest.probes as unknown as Readonly<Record<string, readonly string[]>>)
-  }
-  return cohorts
 }
 
 function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
@@ -1340,15 +1325,14 @@ export function loadSelectedResults(
   const catalog = Object.keys(features)
   // #34617: one rule fingerprint per build; each stored run is checked once against this build's identity rule.
   const ruleRevision = identityRuleRevision()
-  const suiteCohorts = loadSuiteCohorts(contentDir)
-  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => {
+  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw, suites): ProjectionRun => {
     const check = currentIdentityRuleCheck(run)
     // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
     if ("refused" in check && run.identity !== "unverified") {
       console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
     }
     const selection = readCollectorSelection(run.rawReplies)
-    const cohort = run.probeHash === null ? undefined : suiteCohorts.get(run.probeHash)?.[run.subject.kind]
+    const cohort = run.probeHash === null ? undefined : suites.get(run.probeHash)?.probes[run.subject.kind]
     const selectionCoversSuite = selectionCoversCohort(selection, cohort)
     return {
       ...compactRun(run, readRaw),
