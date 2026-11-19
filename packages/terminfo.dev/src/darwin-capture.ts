@@ -479,7 +479,15 @@ export async function createDarwinCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, installCensus }
+  const readTitle = async (): Promise<string> => {
+    const current = await assertOwned("window census")
+    if (!current.name.present) throw new Error("Darwin owned window title is unavailable: window name key withheld")
+    if (typeof current.name.value !== "string") {
+      throw new Error("Darwin owned window title is unavailable: window name is not a string")
+    }
+    return current.name.value
+  }
+  return { capture, captureRaw, installCensus, readTitle }
 }
 
 /**

@@ -2830,7 +2830,7 @@ describe("private finite daemon startup", () => {
       assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
       assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
-      assert.equal(calibrations, route === "pixels" ? 1 : 0)
+      assert.equal(calibrations, route === "pixels" || route === "title" ? 1 : 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
       // Hosted pixel runs must retain the same qualification refusals without replacing pixels.

@@ -1370,7 +1370,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         return refuse(error instanceof Error ? error.message : String(error))
       }
     }
+    let darwinTitleRead: TermProbeSource["readTitle"]
+    const readDarwinTitle = async (): Promise<string> => {
+      const read = darwinTitleRead
+      if (!read) throw new Error("Darwin window title read has no installed capture owner")
+      const title = await read()
+      if (darwinTitleRead !== read) throw new Error("Darwin window title capture owner changed during read")
+      return title
+    }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
+      darwinTitleRead = undefined
       const nativeEditorRead = ["cursor", "com.microsoft.VSCode"].includes(terminal.hostedAppId ?? "")
       const nativeAppRead = nativeEditorRead || terminal.hostedAppId === "cmux"
       if (!captureDirectory) {
@@ -1399,6 +1408,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // refusal instead, so the collector no longer spends a bounded census on a name it cannot certify.
         onRetained,
       })
+      darwinTitleRead = darwinCapture.readTitle
       if (terminal.viewportKeys) darwinCaptureWindowId = darwinCapture.installCensus.window.id
       if (nativeAppRead) nativeAppCapture = async (checkpoint) => (await darwinCapture.captureRaw(checkpoint)).result
       installPixelCapture(
@@ -1472,6 +1482,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           out,
           expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
           process: options.processOwner,
+          readDarwinTitle,
           ...(muxSubject && outerApp && { darwinMux: { subject: muxSubject, outerApp } }),
           darwinPreflight: !muxSubject,
         })
@@ -1484,6 +1495,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           out,
           expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
           ownedApp: options.ownedAppOwner,
+          readDarwinTitle,
           // The launcher asserts the window; the worker proves it again before any row is graded, and
           // there is no mux to attach, so the outer collector's identity is always retained.
           darwinPreflight: true,
@@ -1497,6 +1509,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           out,
           expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
           darwinHosted: { receiptPath: hostedReceipt },
+          readDarwinTitle,
           appSemanticCapture: async (featureId, phase) => {
             if (!nativeAppCapture) throw new Error("Native App read has no owned-window screenshot adapter")
             return nativeAppCapture({
@@ -1774,6 +1787,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
       )
     } finally {
+      darwinTitleRead = undefined
       try {
         await ownedTerminal?.dispose()
       } finally {
