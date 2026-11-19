@@ -2626,6 +2626,8 @@ describe("private finite daemon startup", () => {
   })
 
   it.each([
+    // 35140: pixels alone do not prove that the real collector bridges the owned title capability.
+    { arm: "process", app: "ghostty", route: "title", retained: true, pid: true },
     { arm: "windowsHosted", app: "kitty", route: "absent", retained: false, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "absent", retained: false, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
@@ -2674,7 +2676,7 @@ describe("private finite daemon startup", () => {
       let capture
       let captureKind = "absent"
       let reads = 0, drains = 0
-      let pixelFrames = 0, calibrations = 0
+      let pixelFrames = 0, calibrations = 0, captureOwners = 0, titleReads = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
@@ -2690,12 +2692,17 @@ describe("private finite daemon startup", () => {
             if (process.env.FIXTURE_OWNER_FAILS === "yes") throw new Error("owned Terminal.app proof failed")
           }
           return {
+          // The factory seam delegates only a supplied production dependency; this mock cannot
+          // manufacture the serve-to-capture bridge that the regression asserts.
+          ...(arm === "process" && { readTitle: options.readDarwinTitle }),
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           ...(arm !== "terminalApp" && { hostedAppId: app }),
           ...(arm === "terminalApp" && { expectedWindowId: options.terminalApp.windowId }),
           captureWindowSelection: app === "terminal-app" || app === "iterm2" ? "largest" : "unique",
           ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
-          summary: "owned fixture",
+          summary: arm === "process"
+            ? JSON.stringify({ preflightIdentity: { pid: process.pid, launchRunId: "a".repeat(32), startedAtEpochSeconds: 1795120000 } })
+            : "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => {
             if (app === "terminal-app") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
@@ -2720,13 +2727,17 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
         createDarwinCapture: async (_directory, options) => {
+          captureOwners++
           assert.equal(options.appPid, 5705)
           assert.equal(options.windowSelection, app === "terminal-app" || app === "iterm2" ? "largest" : "unique")
           if (arm === "terminalApp") {
             assert.equal(options.expectedWindowId, 791, "Pixels must come from the asserted Terminal.app window")
             assert.equal(options.ownedHost, true, "An owned Mac must retain window-only capture")
           }
-          return { captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") } }
+          return {
+            readTitle: async () => "fresh installed title " + titleReads++,
+            captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") }
+          }
         }
       }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
@@ -2739,6 +2750,12 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (route === "title") {
+            assert.equal(typeof options.ownedTerminal.readTitle, "function", "native title capability never reached the collector")
+            assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 0")
+            assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 1")
+            assert.equal(captureOwners, 1, "title reads must share the installed capture owner")
+          }
           if (!retained && arm !== "windowsHosted") {
             assert.equal(capture, undefined)
             assert.match(options.captureGeometryRefusal, /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/)
@@ -2781,7 +2798,14 @@ describe("private finite daemon startup", () => {
       const collect = () => arm === "terminalApp"
         // The window and tab an owner assertion always names; input needs both (33587).
         ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: { windowId: 791, tabTty: "/dev/ttys004" } })
-        : collectProbeRun({ ids: ["device.xtversion"] })
+        : arm === "process"
+          ? collectProbeRun({ ids: ["device.xtversion"], processOwner: {
+              asserter: "terminfo-admin", launchRunId: "a".repeat(32), workerPid: process.pid,
+              provider: "cli-process", ownerPid: 5705, executablePath: "/fixture/ghostty",
+              basis: { kind: "marker", marker: { flag: "--run", value: "a".repeat(32) } },
+              tty: "/dev/ttys004", intendedVersion: "1.4.0"
+            } })
+          : collectProbeRun({ ids: ["device.xtversion"] })
       if (route === "platform-refused" || route === "owner-refused") {
         await assert.rejects(collect(), route === "platform-refused"
           ? /Controlled Linux collection requires runtime provenance/
@@ -2830,7 +2854,7 @@ describe("private finite daemon startup", () => {
             FIXTURE_PLATFORM: platform ?? "",
             FIXTURE_OWNER_FAILS: ownerFails ? "yes" : "no",
             TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
-            TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
+            TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" && arm !== "process" ? "hardware-receipt-fixture" : "",
             // An empty value names a run with no helper, so an owned terminalApp arm never compiles one.
             TERMINFO_DARWIN_INPUT_HELPER: "",
             TERMINFO_RUNTIME_PROVENANCE: "",
