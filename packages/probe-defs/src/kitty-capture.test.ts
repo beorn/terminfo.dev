@@ -6,7 +6,7 @@
  * @consumer The two kitty rows in probes-apps and probes-mux, and the reader that grades them.
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { describe, expect, test } from "vitest"
 import type { CaptureLayoutGuard } from "./types.ts"
 import {
   KITTY_BLOCK_COLS,
@@ -26,6 +26,7 @@ import {
   KITTY_PLAYBACK_SAMPLES,
   KITTY_ROW_IMAGES,
   decideKittyAnimation,
+  decideKittyDisplayPixels,
   decideKittyPlaceholders,
   kittyBlockPixels,
   kittyDeleteImage,
@@ -523,4 +524,27 @@ test("a capture with no region digest ends sampling and leaves the read inconclu
   expect(read.samples).toHaveLength(3)
   expect(read.retry).toEqual(["red", undefined])
   expect(decideKittyAnimation(withControls(read)).decidedBy).toBe("a missing region digest")
+})
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 2): the display pixel arm decides Supported only.
+describe("decideKittyDisplayPixels", () => {
+  const qualified = { blank: "blank", target: ["cyan", "cyan"] as const, reference: "cyan" }
+  test("a stable target equal to a reference that differs from blank is Supported", () => {
+    expect(decideKittyDisplayPixels(qualified)).toMatchObject({
+      outcome: "supported",
+      decidedBy: "a stable placement equal to the qualified SGR reference",
+    })
+  })
+  test.each([
+    ["a missing region digest", { ...qualified, target: ["cyan", undefined] as const }],
+    ["a missing region digest", { ...qualified, blank: undefined }],
+    ["a missing region digest", { ...qualified, reference: undefined }],
+    ["an unqualified SGR reference", { blank: "cyan", target: ["cyan", "cyan"] as const, reference: "cyan" }],
+    ["an unstable target pair", { ...qualified, target: ["cyan", "cyan-later"] as const }],
+    ["a target that does not match the reference", { ...qualified, target: ["teal", "teal"] as const }],
+  ])("%s stays inconclusive", (decidedBy, evidence) => {
+    const decision = decideKittyDisplayPixels(evidence)
+    expect(decision.outcome).toBe("inconclusive")
+    expect(decision.decidedBy).toBe(decidedBy)
+  })
 })

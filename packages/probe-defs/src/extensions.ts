@@ -99,10 +99,12 @@ import {
   KITTY_REGION,
   KITTY_WAIT_FACTOR,
   decideKittyAnimation,
+  decideKittyDisplayPixels,
   decideKittyPlaceholders,
   kittyBlockOrigin,
   kittyBlockPixels,
   kittyDeleteImage,
+  kittyDeletePlacements,
   kittyFrameTransfer,
   kittyImageNumber,
   kittyPark,
@@ -4203,6 +4205,112 @@ function placementOutcomeResult(
   )
 }
 
+const KITTY_DISPLAY_ID = "extensions.kitty-graphics.display"
+
+/**
+ * The display row's positive pixel arm (#34932, @cto 34932-five-criteria-ruling-2216 item 2), reached only
+ * after a controlled-silent placement. It places the already-allocated image over the owned block, reads it
+ * twice, and compares it to an independent SGR painting of the image's colour taken AFTER the target. Only
+ * Supported is decided here; every other reading stays open, and the caller frees only its own image.
+ */
+async function kittyDisplayPixels(
+  ctx: TermProbeSource,
+  imageId: number,
+  silentPlacement: TerminalQueryOutcome,
+): Promise<ProbeCallbackResult> {
+  const id = KITTY_DISPLAY_ID
+  const capture = ctx.capture
+  if (!capture) return placementOutcomeResult(silentPlacement, imageId)
+  const refusal = sgrCaptureTooSmall(ctx, id)
+  if (refusal) return refusal
+  const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
+  if ("pass" in reported) return reported
+  const geometry = reported.geometry
+  if (!geometry) {
+    return kittyUnobservableResult(
+      id,
+      "this pixel arm reported no cell-to-pixel geometry, so the placement block cannot be aligned to cells",
+    )
+  }
+  const frames: ObservationFrame[] = []
+  const shoot = async (role: "control" | "target", label: string) => {
+    const frame = await capture({ role, label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+    frames.push(frame)
+    return frame
+  }
+  beginCaptureLifecycle(ctx)
+  try {
+    // The silent placement sat at the cursor; remove it, keep the allocation, and start from a blank block.
+    ctx.write(kittyDeletePlacements(imageId))
+    ctx.write(KITTY_CLEAR)
+    ctx.write(kittyPark())
+    const blank = await shoot("control", "Blank block captured before the placement")
+    ctx.write(kittyBlockOrigin())
+    const blockPlacement = await ctx.queryWithSentinelOutcome(
+      kittyPlace(imageId),
+      kittyReplyFrame({ i: String(imageId) }),
+    )
+    ctx.write(kittyPark())
+    const first = await shoot("target", `Allocated image ${String(imageId)} placed over the block with a=p`)
+    await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+    const second = await shoot("target", "The same placement re-captured after a delayed interval and no write since")
+    ctx.write(kittyDeletePlacements(imageId))
+    kittyPaintReference(ctx, KITTY_ROW_IMAGES[id].image)
+    const reference = await shoot("control", "Independent SGR reference in the row's own image colour, same block")
+    const decision = decideKittyDisplayPixels({
+      blank: blank.regionDigest,
+      target: [first.regionDigest, second.regionDigest],
+      reference: reference.regionDigest,
+    })
+    const observed = JSON.stringify({
+      id,
+      region: KITTY_REGION,
+      imageId,
+      placement: { reason: silentPlacement.reason, raw: silentPlacement.raw },
+      blockPlacement: { reason: blockPlacement.reason, raw: blockPlacement.raw },
+      blank: blank.regionDigest,
+      target: [first.regionDigest, second.regionDigest],
+      reference: reference.regionDigest,
+      frames: frames.map((frame) => frame.ref),
+    })
+    const note = `${decision.note}; the a=p placement had no acknowledgement or error before its DA1 control`
+    return {
+      pass: decision.outcome === "supported",
+      response: observed,
+      observation: {
+        outcome: decision.outcome,
+        ...(decision.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+        assertionType: "screenshot",
+        screenshotRef: second.ref,
+        frames,
+        note,
+      },
+      ...(decision.decidedBy === "a missing region digest"
+        ? {
+            criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+            tests: [{ id: "review" as const, status: "probe-todo" as const, reason: note }],
+          }
+        : {}),
+      ...(decision.outcome === "supported"
+        ? {
+            assertions: [
+              {
+                assertionType: "screenshot" as const,
+                kind: "positive" as const,
+                expected:
+                  "The allocated image placed over the block is pixel-identical, in two captures, to an independent SGR painting of its colour that differs from blank",
+                observed,
+                note: `decided by ${decision.decidedBy}`,
+              },
+            ],
+          }
+        : {}),
+    }
+  } finally {
+    endCaptureLifecycle(ctx)
+  }
+}
+
 /**
  * A named inconclusive for a run that cannot see pixels at all. No image is cited because none was
  * taken, and the note says which measurement is missing rather than implying a negative.
@@ -4320,6 +4428,11 @@ function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefi
             placementRequest(imageId),
             kittyReplyFrame({ i: String(imageId) }),
           )
+          // #34932 (@cto 34932-five-criteria-ruling-2216 item 2): a placement answered by neither an
+          // acknowledgement nor an error before its DA1 control reads pixels when this run owns them.
+          if (!placement.match && placement.reason === "sentinel" && ctx.capture && ctx.captureKind !== "text-cells") {
+            return await kittyDisplayPixels(ctx, imageId, placement)
+          }
           return placementOutcomeResult(placement, imageId)
         } finally {
           // Free only the image the terminal explicitly allocated for this probe.
@@ -4328,6 +4441,8 @@ function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefi
       },
       "query_reply",
     ),
+    // The display row's pixel arm aligns its block to measured cells; transmit reads no pixels.
+    ...(display ? { termNeedsGeometry: true as const } : {}),
     libAssertionType: display
       ? {
           when: (source) =>

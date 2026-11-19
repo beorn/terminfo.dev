@@ -683,16 +683,19 @@ export function compareLayoutGuard(
     }
   }
   const measured = { ...base, changedPixels, maxChannelDelta, alphaExact, maskChangedPixels }
+  // Identical crops hold whatever the background set: there is no mask to compare (@dev/6 peer note on 34932).
   const reason =
-    members === 0
-      ? "no witnessed background members were supplied, so the background/ink mask cannot be compared"
-      : !alphaExact
-        ? "alpha differs"
-        : maxChannelDelta > 1
-          ? `an RGB channel differs by ${maxChannelDelta}`
-          : maskChangedPixels > 0
-            ? `${maskChangedPixels} coordinate(s) changed between background and ink`
-            : undefined
+    changedPixels === 0
+      ? undefined
+      : members === 0
+        ? "no witnessed background members were supplied, so the background/ink mask cannot be compared"
+        : !alphaExact
+          ? "alpha differs"
+          : maxChannelDelta > 1
+            ? `an RGB channel differs by ${maxChannelDelta}`
+            : maskChangedPixels > 0
+              ? `${maskChangedPixels} coordinate(s) changed between background and ink`
+              : undefined
   return reason === undefined ? { ...measured, holds: true } : { ...measured, holds: false, reason }
 }
 

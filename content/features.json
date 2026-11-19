@@ -2319,7 +2319,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
     "tags": ["kitty-extensions"],
     "body": "The display/placement action (<code>a=p</code>) places a previously transmitted image at a screen position. Supports specifying rows/columns, z-index, and cropping. This separation of transmit and display enables efficient re-use — transmit once, place many times. If Kitty graphics transmit is Unsupported in the same run, this reads Unsupported too, because an image must be transmitted before it can be displayed.",
-    "probe": "Transmit a test image, then place it with <code>a=p</code>. Check for acknowledgment.",
+    "probe": "Transmit a test image, then place it with <code>a=p</code>. Check for acknowledgment. App: when the placement gets neither an acknowledgement nor an error before its DA1 control, and the run captures pixels, the same allocated image is placed over a cell block with the cursor parked outside it, the block is captured twice with a delay and no write between, and only then is the same block painted independently with SGR in the image's colour. Supported: both captures are identical and equal that SGR reference, and the reference differs from the blank block captured before the placement. A mismatch, a missing capture, an unstable pair or a reference equal to blank stays open; silence is never Unsupported, and only the image this row allocated is freed.",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.animation": {

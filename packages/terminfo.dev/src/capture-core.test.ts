@@ -1015,7 +1015,8 @@ test("one step across the witnessed background boundary, or no witnessed members
     maxChannelDelta: 1,
     maskChangedPixels: 1,
   })
-  expect(compareLayoutGuard(still, still, undefined)).toMatchObject({
+  // A changed crop with no witnessed members cannot be masked; identical crops need no mask (see below).
+  expect(compareLayoutGuard(still, lifted, undefined)).toMatchObject({
     holds: false,
     backgroundMembers: 0,
     reason: "no witnessed background members were supplied, so the background/ink mask cannot be compared",
@@ -1067,5 +1068,26 @@ test("the finalizer keeps a guard crop, compares a later frame against it once, 
   expect(again.frame.layoutGuardComparison).toMatchObject({
     holds: false,
     reason: `no guard crop is kept for ${kept.frame.ref}`,
+  })
+})
+
+// @dev/6 peer note on #34932 (7d775ef1): identical crops hold with no background members, so the evidence
+// beside two equal digests never reads "does not hold".
+test("identical layout-guard crops hold without background members", () => {
+  const rgba = new Uint8Array([10, 20, 30, 255, 40, 50, 60, 255])
+  const verdict = compareLayoutGuard(
+    { width: 2, height: 1, rgba },
+    { width: 2, height: 1, rgba: rgba.slice() },
+    undefined,
+  )
+  expect(verdict).toMatchObject({ holds: true, changedPixels: 0, backgroundMembers: 0 })
+  expect(verdict.reason).toBeUndefined()
+  const shaded = rgba.slice()
+  shaded[0] = 11
+  expect(
+    compareLayoutGuard({ width: 2, height: 1, rgba }, { width: 2, height: 1, rgba: shaded }, undefined),
+  ).toMatchObject({
+    holds: false,
+    reason: "no witnessed background members were supplied, so the background/ink mask cannot be compared",
   })
 })

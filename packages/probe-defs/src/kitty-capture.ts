@@ -224,6 +224,11 @@ export function kittyDeleteImage(imageId: number): string {
   return `\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`
 }
 
+/** Remove this image's placements and keep its data, so the same allocation can be placed again. */
+export function kittyDeletePlacements(imageId: number): string {
+  return `\x1b_Ga=d,d=i,i=${imageId},q=2\x1b\\`
+}
+
 /**
  * The placeholder code point and the diacritics the protocol's own example pins: U+0305 is 0,
  * U+030D is 1 and U+030E is 2. A 2x2 grid needs only 0 and 1.
@@ -675,5 +680,57 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
     outcome: "unsupported",
     note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still; the terminal refused the tested virtual placement: ${evidence.refusal}`,
     decidedBy: `the virtual-placement refusal, with an equal pixel pair, ${guardHeld} and qualified ordinary placement`,
+  }
+}
+
+/** Region digests of the display row's pixel arm (#34932, @cto 34932-five-criteria-ruling-2216 item 2). */
+export interface KittyDisplayPixelEvidence {
+  /** The block rectangle captured before the placement. */
+  readonly blank: string | undefined
+  /** The allocated image placed over the block, captured twice with a delay and no write between. */
+  readonly target: KittyDigestPair
+  /** Independent SGR background painting of the image's colour in the same rectangle, after the target. */
+  readonly reference: string | undefined
+}
+
+/**
+ * The display row's pixel arm, used only after a controlled-silent placement. It can only establish
+ * Supported: a stable target equal to a qualified independent reference. Every other reading stays open,
+ * and silence never becomes a negative here.
+ */
+export function decideKittyDisplayPixels(evidence: KittyDisplayPixelEvidence): KittyCaptureDecision {
+  const [first, second] = evidence.target
+  if (first === undefined || second === undefined || evidence.blank === undefined || evidence.reference === undefined) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty image display: this arm supplied no cell-aligned region for every capture, so nothing could be compared",
+      decidedBy: "a missing region digest",
+    }
+  }
+  if (evidence.reference === evidence.blank) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the SGR reference is identical to blank (${evidence.reference}), so the reference is not qualified`,
+      decidedBy: "an unqualified SGR reference",
+    }
+  }
+  if (first !== second) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the two captures of the placed image differ (${first} against ${second}), so the target is unstable`,
+      decidedBy: "an unstable target pair",
+    }
+  }
+  if (second !== evidence.reference) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the placed image (${second}) does not match the independent SGR reference (${evidence.reference}); a mismatch is not a negative`,
+      decidedBy: "a target that does not match the reference",
+    }
+  }
+  return {
+    outcome: "supported",
+    note: `Kitty image display: the placed image is pixel-identical, twice, to the independent SGR reference (${second}), which differs from blank (${evidence.blank})`,
+    decidedBy: "a stable placement equal to the qualified SGR reference",
   }
 }
