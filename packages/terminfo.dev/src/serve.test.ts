@@ -2227,6 +2227,15 @@ describe("private finite daemon startup", () => {
       let reportedCellSize = null, frames = 0, calibrationFailure
       const rawTimings = { censusMs: 11, imageMs: 17, restoreMs: 23, convertMs: 29 }
       const styledTimings = { censusMs: 31, imageMs: 37, restoreMs: 41, convertMs: 43 }
+      const sentinelRead = await import("./packages/terminfo.dev/src/sentinel-read.ts")
+      // This collector fixture checks trace custody, not the sentinel's pixel oracle (whose
+      // own suite uses real changed frames). Execute both callbacks through the served route.
+      mock.module("./packages/terminfo.dev/src/sentinel-read.ts", () => ({ ...sentinelRead,
+        readThroughSentinel: async input => {
+          await input.prePaint()
+          return input.capture(() => ({ origin: input.reading, basis: "fixture sentinel" }))
+        }
+      }))
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -2275,7 +2284,8 @@ describe("private finite daemon startup", () => {
         }
         if (calibrationFailure) throw calibrationFailure
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
-        return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
+        return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 },
+          basis: "fixture complete raster", sentinel: { form: "basic", rgb: [255, 0, 255] } }
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
         probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
