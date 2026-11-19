@@ -1896,7 +1896,7 @@ test("a sentinel paint the mode leaves unchanged is still the witnessed reverse 
 test("an ignored reverse screen mode is witnessed with the measured paint, which equals the normal pair", async () => {
   const run = calibration({
     screenMode: "reverse",
-    frames: { "reverse screen blank": [blank], "reverse screen solid paint": [rasterFrame("solid")] },
+    frames: { "reverse screen blank": [blank, blank], "reverse screen solid paint": Array(2).fill(rasterFrame("solid")) },
   })
   const result = await run.promise
   expect(result.reverseScreen).toMatchObject({ status: "witnessed", canvasUnchanged: true })
