@@ -595,7 +595,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         (line) =>
           !/^Warning: Terminal '.+' has no stored current runs$/.test(line) &&
           !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
-          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line),
+          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line) &&
+          // A row a review declared untestable (content/declared-untestable.json, #34803) is logged by design (#35123).
+          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line),
       )
     expect(unexpectedStderr).toEqual([])
     const receipt = JSON.parse(result.stdout) as {
