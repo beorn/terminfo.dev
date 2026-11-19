@@ -1995,6 +1995,13 @@ export function startDaemon(port = 0): void {
     // 34753: named outside the request body so a post-admission failure can point the log at the
     // draft record it left behind, even though its HTTP body is terminated instead of answered.
     let captureRunId: string | undefined
+    // 34995: set only by THIS request's admission (its own draft reservation), never inferred from a draft
+    // file existing, which another request in the same run may have written.
+    let draftReserved = false
+    const admitted = (stream: { admitted: () => void }) => () => {
+      draftReserved = true
+      stream.admitted()
+    }
     void (async () => {
       res.setHeader("Content-Type", "application/json")
 
@@ -2099,7 +2106,7 @@ export function startDaemon(port = 0): void {
             ownedAppOwner,
             expectedLaunchRunId: runId,
             captureRunId,
-            onAdmitted: stream.admitted,
+            onAdmitted: admitted(stream),
             signal: stream.signal,
           }),
         ).finally(() => stream.release())
@@ -2145,7 +2152,7 @@ export function startDaemon(port = 0): void {
             ids: [probeId],
             expectedLaunchRunId: launchedRunId,
             captureRunId: identity.captureRunId,
-            onAdmitted: stream.admitted,
+            onAdmitted: admitted(stream),
             signal: stream.signal,
           }),
         ).finally(() => stream.release())
@@ -2242,10 +2249,7 @@ export function startDaemon(port = 0): void {
         }),
       )
     })().catch((err) => {
-      console.error(
-        requestFailurePrefix(captureRunId, captureRunId !== undefined && existsSync(probeDraftPath(captureRunId))),
-        err,
-      )
+      console.error(requestFailurePrefix(captureRunId, draftReserved), err)
       if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)))
       else {
         res.statusCode = 500
