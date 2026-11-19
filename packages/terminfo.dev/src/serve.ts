@@ -84,7 +84,7 @@ import {
 } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
-import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
+import { calibrateCaptureOrigin, type CaptureChromeBand, type ReverseScreenWitness } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
@@ -120,6 +120,36 @@ import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
+
+/**
+ * The reading a successful calibration installs on its source: the normal sentinel always, and the reverse
+ * one only when that calibration witnessed it (#34932, @cto 34932-reverse-seam-ruling-2325).
+ */
+function installedGeometry(
+  origin: Awaited<ReturnType<typeof calibrateCaptureOrigin>>,
+): NonNullable<TermProbeSource["captureGeometry"]> {
+  return {
+    geometry: origin.pixelGeometry,
+    source: "measured by complete raster calibration",
+    sentinel: origin.sentinel,
+    ...(origin.reverseScreen?.status === "witnessed" ? { reverseSentinel: origin.reverseScreen.sentinel } : {}),
+  }
+}
+
+/** A read that asked for a screen mode this run's current calibration did not witness (#34932 item 4). */
+function screenModeUnwitnessed(label: string, screenMode: "reverse", witness: ReverseScreenWitness | undefined): Error {
+  const error = new Error(
+    `${label}: the ${screenMode} screen mode was requested, but ${
+      witness === undefined
+        ? "this run's current calibration did not witness its paint"
+        : witness.status === "unavailable"
+          ? `this run's current calibration left it unavailable: ${witness.reason}`
+          : "its witness is not installed"
+    }`,
+  )
+  error.name = "CaptureScreenModeUnwitnessed"
+  return error
+}
 
 /**
  * Every region the sentinel chooser must stay out of for this shot: the digested crop, its same-shot
@@ -854,6 +884,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           /** The row whose read asked for this preparation, on a renewal; absent on the pre-flight. */
           row?: string
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
+          /** A screen mode a selected row declared; calibration also witnesses its paint (#34932). */
+          screenMode?: "reverse"
         }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>)
       | undefined
     let finishCapture: typeof prepareCapture
@@ -897,6 +929,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       const prepareTextCapture = prepareCapture
       const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
+      /**
+       * #34932 (@cto 34932-reverse-seam-ruling-2325 item 3): the reverse screen paint the CURRENT origin's calibration witnessed. Its
+       * own slot, cleared before every preparation and renewal and replaced only by a calibration that
+       * succeeded, so a refused renewal can never leave a witness from the previous origin readable.
+       */
+      let activeReverseScreen: ReverseScreenWitness | undefined
       let calibrationError: Error | undefined
       /** The source whose next read anchors its crop on the sentinel it paints (33000). */
       let pixelSource: TermProbeSource | undefined
@@ -926,19 +964,32 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         textCapture = false
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
-          const calibrated = assertCalibratedCaptureGeometry(textOrigin, checkpoint, platform)
+          // #34932 (@cto 34932-reverse-seam-ruling-2325 item 4): a read under the reverse screen mode selects the paint this
+          // calibration witnessed under it, or fails by name. It never falls back to the normal paint, and
+          // the adapter never sees the field: frames are unchanged.
+          const { screenMode, ...request } = checkpoint
+          let reverse: Extract<ReverseScreenWitness, { status: "witnessed" }> | undefined
+          if (screenMode !== undefined) {
+            if (activeReverseScreen?.status !== "witnessed") {
+              throw screenModeUnwitnessed(checkpoint.label, screenMode, activeReverseScreen)
+            }
+            reverse = activeReverseScreen
+          }
+          const calibrated = assertCalibratedCaptureGeometry(textOrigin, request, platform)
           if (!calibrated) {
-            const result = await adapter.captureRaw(checkpoint)
+            const result = await adapter.captureRaw(request)
             return result.result
           }
-          const sentinel = calibrated.sentinel
-          const regions = chooserRegions(checkpoint)
+          const sentinel = reverse ? reverse.sentinel : calibrated.sentinel
+          const paintClasses = reverse ? reverse.paintClasses : calibrated.paintClasses
+          const settled = reverse ? { ...calibrated, paintClasses } : calibrated
+          const regions = chooserRegions(request)
           const source = pixelSource
           // #34932: a layout guard classifies background by this calibration's witnessed members.
           const served =
-            checkpoint.layoutGuard !== undefined && calibrated.paintClasses !== undefined
-              ? { ...checkpoint, layoutGuardBackground: calibrated.paintClasses.background.members }
-              : checkpoint
+            request.layoutGuard !== undefined && paintClasses !== undefined
+              ? { ...request, layoutGuardBackground: paintClasses.background.members }
+              : request
           if (sentinel === undefined || source === undefined || regions.length === 0) {
             return adapter.capture(served, calibrated)
           }
@@ -955,7 +1006,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // 34163: the origin is settled HERE, once. Forwarding only the sentinel made the read
             // re-derive an origin from the pair, which is a second source for one read and the
             // reason a held viewport cropped N rows low.
-            settled: calibrated,
+            settled,
             ...(checkpoint.scroll !== undefined ? { scroll: checkpoint.scroll } : {}),
             prePaint: () =>
               prePaintMeter.run(() =>
@@ -978,11 +1029,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           })
           return withPrePaintReading(read, prePaintMeter.reading())
         }
-        prepareCapture = async ({ source: probeSource, featureId, recordCapture, row }) => {
+        prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode }) => {
           // 34306 AC1: the origin the rows before this one were graded against. This is the last
           // install that succeeded, not `textOrigin`, which a refused attempt clears.
           const previousOrigin = installedOrigin
           textOrigin = undefined
+          activeReverseScreen = undefined
           calibrationError = undefined
           pixelSource = probeSource
           frameRecord = recordCapture
@@ -1005,12 +1057,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ((kind === "process" || kind === "ownedApp") && process.platform === "darwin") ||
                 (process.platform === "linux" && kind === "linux"),
               captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
+              ...(screenMode !== undefined ? { screenMode } : {}),
             })
-            probeSource.captureGeometry = {
-              geometry: textOrigin.pixelGeometry,
-              source: "measured by complete raster calibration",
-              sentinel: textOrigin.sentinel,
-            }
+            activeReverseScreen = textOrigin.reverseScreen
+            probeSource.captureGeometry = installedGeometry(textOrigin)
             // 34306 AC1: a renewal is a fact of the run, not of one install. Carry the renewals the
             // earlier installs recorded, then add this one, so replacing `captureCalibration` here
             // never drops the renewals a later row or the hook already named.
@@ -1099,6 +1149,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // against, and the pair is what a reader needs to place the renewal in run order.
               const from = textOrigin.pixelGeometry
               const fromOrigin = textOrigin.origin
+              // #34932 item 3: the previous origin's reverse witness is gone before the re-measure, so a
+              // renewal that refuses leaves the mode unavailable rather than readable from a moved origin.
+              activeReverseScreen = undefined
+              if (probeSource.captureGeometry?.reverseSentinel !== undefined) {
+                const { reverseSentinel: _previousOrigin, ...normal } = probeSource.captureGeometry
+                probeSource.captureGeometry = normal
+              }
               textOrigin = await calibrateCaptureOrigin({
                 ctx: probeSource,
                 pixelGeometry: reportedGeometry,
@@ -1110,11 +1167,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   (process.platform === "linux" && kind === "linux"),
                 captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
               })
-              probeSource.captureGeometry = {
-                geometry: textOrigin.pixelGeometry,
-                source: "measured by complete raster calibration",
-                sentinel: textOrigin.sentinel,
+              // #34932 item 3: a renewal runs inside the asking row's wall, so it re-measures the normal
+              // paint only and leaves the reverse witness explicitly unavailable. The row after a renewing
+              // row prepares again in full, under the declared requirement, outside any row's wall.
+              if (screenMode !== undefined) {
+                activeReverseScreen = {
+                  status: "unavailable",
+                  reason: `the ${screenMode} screen paint is not re-witnessed by an in-row renewal (${row}); the next preparation witnesses it again`,
+                }
               }
+              probeSource.captureGeometry = installedGeometry(textOrigin)
               // The hook is an install too: it moves the live origin, so a preparation that follows
               // it must read the origin the hook left, not the one before the hook ran (#34306).
               installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }

@@ -212,6 +212,91 @@ test.each([null, 0] as const)("App reverse video reads controlled pixels after D
   expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
 })
 
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 1, 4, 6): the row declares the reverse calibration, and
+// every read taken while DECSCNM is set (the target's baseline, paint witness, roundtrip and target) asks for
+// the reverse paint, while every read of a normal frame asks for nothing. A dropped field on any one of them
+// fails here, which a direct sentinel-read unit test cannot see.
+test("App reverse video selects the reverse screen paint on exactly the reads taken while DECSCNM is set", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  expect(definition.termScreenMode).toBe("reverse")
+  const cols = 20
+  const rows = 5
+  const surface = createSemanticSurface({ cols, rows })
+  let sequence = 0
+  const reads: Array<{ label: string; reversed: boolean; screenMode: CaptureRequest["screenMode"] }> = []
+  const plane = (rectangle: CaptureCells) => {
+    const cells: unknown[] = []
+    for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+      for (let col = rectangle.left; col <= rectangle.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        cells.push([cell.char, cell.inverse !== (surface.getMode("reverseVideo") === true)])
+      }
+    }
+    return JSON.stringify(cells)
+  }
+  const source = replayTermProbeSource(new Map(), {
+    cols,
+    rows,
+    captureKind: "pixels",
+    write: (text) => surface.feed(text),
+    queryCursorPosition: async () => {
+      const cursor = surface.getCursor()
+      return { row: cursor.y + 1, col: cursor.x + 1 }
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry, screenMode }) => {
+      if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+      reads.push({ label, reversed: surface.getMode("reverseVideo") === true, screenMode })
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+  })
+  vi.useFakeTimers()
+  let result: ProbeCallbackResult
+  try {
+    const pending = definition.term(source)
+    await vi.runAllTimersAsync()
+    result = await pending
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(result.observation?.outcome).toBe("supported")
+  const reversed = reads.filter((read) => read.reversed)
+  const normal = reads.filter((read) => !read.reversed)
+  // The target step's own baseline, paint witness, both roundtrip returns and the target itself.
+  expect(reversed.map((read) => read.label)).toEqual(
+    expect.arrayContaining([
+      "modes.reverse-video: post-sequence target — baseline",
+      "modes.reverse-video: post-sequence target — paint witness",
+      "modes.reverse-video: post-sequence target — space return — paint witness",
+      "modes.reverse-video: post-sequence target — glyph return — paint witness",
+      "modes.reverse-video: post-sequence target",
+    ]),
+  )
+  expect(reversed.every((read) => read.screenMode === "reverse")).toBe(true)
+  // Stability, seed, expected and ignored frames are normal, and say nothing.
+  expect(normal.length).toBeGreaterThan(reversed.length)
+  expect(normal.filter((read) => read.screenMode !== undefined)).toEqual([])
+  expect(surface.getMode("reverseVideo")).toBe(false)
+})
+
 // #33036: the DA sentinel answers in the same raw reply as the DECRPM 0, so the probe records
 // whose 0 it was beside the no-change pixel read; without DA bytes beside it, no witness exists.
 test.each([

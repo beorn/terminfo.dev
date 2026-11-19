@@ -84,6 +84,8 @@ export type RegionRead = (request: {
   /** Cells the probe's own output may cover; the read's sentinel is never painted there (33985). */
   avoid?: CellRegion
   restoreAfterPaint?: string
+  /** The screen mode the probe's own write left set for this read (#34932, @cto 34932-reverse-seam-ruling-2325 item 4). */
+  screenMode?: "reverse"
 }) => Promise<RegionCapture>
 
 /**
@@ -95,7 +97,11 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
   // A text arm hands the region readback its own cells adapter; every other arm reads pixels.
   const capture = ctx.cells ?? ctx.capture
   if (!capture) return null
-  return async ({ role, label, region, pixelGeometry, avoid, restoreAfterPaint }) => {
+  return async ({ role, label, region, pixelGeometry, avoid, restoreAfterPaint, screenMode }) => {
+    // A cells read has no paint to select, so asking it for a screen mode is a caller bug, never ignored.
+    if (screenMode !== undefined && ctx.cells) {
+      throw new Error(`${label}: a text-cells read cannot select the ${screenMode} screen mode`)
+    }
     const frame = await capture({
       role,
       label,
@@ -103,6 +109,7 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
       pixelGeometry,
       ...(avoid ? { avoid } : {}),
       ...(restoreAfterPaint !== undefined ? { restoreAfterPaint } : {}),
+      ...(screenMode !== undefined ? { screenMode } : {}),
     })
     // ONE accessor for both kinds: a pixel frame hands over its raw-pixel digests, a
     // text frame its cell digests. The comparison below never names a field, so it is one path.
@@ -125,6 +132,13 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
 export interface RegionReadback {
   /** The cells the verdict compares. The witness cell and the cursor row lie outside it. */
   region: CellRegion
+  /**
+   * The screen mode `edit` leaves set until the next frame's writes reset it (#34932, @cto 34932-reverse-seam-ruling-2325 item 4).
+   * Every read taken while the edit is active (the target, its baseline, paint witness, roundtrip and
+   * layout check) selects that mode's witnessed paint; reads of every other frame stay normal. The probe
+   * definition must declare the same `termScreenMode`, so its calibration witnesses that paint.
+   */
+  editScreenMode?: "reverse"
   /** One visual signal and whether its qualified expected frame changes the seed. Omit for legacy decisions. */
   discriminator?: { signal: string; expected: "change" | "no-change" }
   /** The reserved one-cell paint witness, outside every compared region. */
@@ -1086,11 +1100,19 @@ export async function layoutSinceCalibration(check: {
   calibratedCrop: CaptureRectangle
   timeoutMs: number
   pollMs: number
+  /** The screen mode the checked read was taken under; its witnessed sentinel is repainted (#34932). */
+  screenMode?: "reverse"
 }): Promise<string | undefined> {
-  const { ctx, label, cell, calibratedCrop: crop, timeoutMs, pollMs } = check
-  const sentinel = ctx.captureGeometry?.sentinel
+  const { ctx, label, cell, calibratedCrop: crop, timeoutMs, pollMs, screenMode } = check
+  if (screenMode !== undefined && ctx.capture && ctx.captureKind !== "text-cells") {
+    if (ctx.captureGeometry?.reverseSentinel === undefined) {
+      return `layout not re-checked: this run's calibration witnessed no ${screenMode} screen sentinel to repaint`
+    }
+  }
+  const sentinel = screenMode === "reverse" ? ctx.captureGeometry?.reverseSentinel : ctx.captureGeometry?.sentinel
   if (!ctx.capture || ctx.captureKind === "text-cells" || !sentinel) return undefined
-  const capture = ctx.capture
+  const moded = ctx.capture
+  const capture: typeof moded = screenMode === undefined ? moded : (request) => moded({ ...request, screenMode })
   const geometry = ctx.captureGeometry?.geometry
   const at = `\x1b[${cell.row};${cell.col}H`
   const where = `cell ${cell.row},${cell.col}`
@@ -1183,6 +1205,7 @@ function layoutCheckFor(
   baseline: RegionCapture | undefined,
   timeoutMs: number,
   pollMs: number,
+  screenMode?: "reverse",
 ): (() => Promise<string | undefined>) | undefined {
   const calibratedCrop = baseline?.regionRectangle
   if (!calibratedCrop) return undefined
@@ -1194,6 +1217,7 @@ function layoutCheckFor(
       calibratedCrop,
       timeoutMs,
       pollMs,
+      ...(screenMode === undefined ? {} : { screenMode }),
     })
 }
 
@@ -2423,6 +2447,8 @@ export async function captureRegionReadbackDecision(
     rendition?: string
     phase?: "baseline" | "before" | "styled" | "restored" | "setup" | "control" | "target"
     subset?: string
+    /** This step's writes leave `edit` active for its reads (#34932). Selected by phase, never by label. */
+    underEdit?: true
   }> = savedRendition
     ? [
         { role: "control", label: `${id}: initial N`, writes: spec.expected, phase: "baseline" },
@@ -2458,11 +2484,22 @@ export async function captureRegionReadbackDecision(
           writes: `${savedRendition.control.sequence}${spec.expected}`,
           phase: "control",
         },
-        { role: "target", label: `${id}: reset target`, writes: spec.edit, phase: "target" },
+        {
+          role: "target",
+          label: `${id}: reset target`,
+          writes: spec.edit,
+          phase: "target",
+          ...(spec.editScreenMode === undefined ? {} : { underEdit: true as const }),
+        },
       ]
     : [
         { role: "control" as const, label: `${id}: pre-edit seed`, writes: spec.seed },
-        { role: "target" as const, label: `${id}: post-sequence target`, writes: `${spec.seed}${spec.edit}` },
+        {
+          role: "target" as const,
+          label: `${id}: post-sequence target`,
+          writes: `${spec.seed}${spec.edit}`,
+          ...(spec.editScreenMode === undefined ? {} : { underEdit: true as const }),
+        },
         { role: "control" as const, label: `${id}: expected frame`, writes: spec.expected },
         ...(spec.ignored === undefined
           ? []
@@ -2569,7 +2606,10 @@ export async function captureRegionReadbackDecision(
       // challenge a space/glyph pair in both directions before trusting the requested paint.
       const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`
       if (witnessedPixels) ctx.write(`${sentinelWrite} `)
-      const baseline = await read({
+      // #34932 item 4: every read of an under-edit step, and only those, selects the edit's screen mode.
+      const screenMode = step.underEdit ? spec.editScreenMode : undefined
+      const stepRead: RegionRead = screenMode === undefined ? read : (request) => read({ ...request, screenMode })
+      const baseline = await stepRead({
         role: "control",
         label: `${step.label} — baseline`,
         region: witnessCell,
@@ -2577,7 +2617,7 @@ export async function captureRegionReadbackDecision(
       })
       ctx.write(`${sentinelWrite}${witnessGlyph(index)}`)
       const witnessOptions = {
-        read,
+        read: stepRead,
         now: () => sourceNow(ctx),
         id,
         label: step.label,
@@ -2589,7 +2629,7 @@ export async function captureRegionReadbackDecision(
         pollMs,
         requireSameCrop: witnessedPixels,
         assertionType,
-        layout: layoutCheckFor(ctx, step.label, witnessCell, baseline, timeoutMs, pollMs),
+        layout: layoutCheckFor(ctx, step.label, witnessCell, baseline, timeoutMs, pollMs, screenMode),
       }
       witnessBaseline = baseline
       const result = await awaitPaintWitness(witnessOptions)
@@ -2618,7 +2658,7 @@ export async function captureRegionReadbackDecision(
       } else {
         frames.push(result.witness.frame)
       }
-      const measured = await read({
+      const measured = await stepRead({
         role: step.role,
         label: step.label,
         region: spec.region,

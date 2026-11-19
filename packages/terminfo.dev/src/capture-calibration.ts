@@ -356,6 +356,19 @@ export interface CalibratedPaintClasses {
   readonly sentinel: CalibratedPaintClass
 }
 
+/**
+ * The background and sentinel paint witnessed on calibration's own blank canvas while the reverse screen
+ * mode (DECSCNM) was set, or why no usable witness exists (#34932, @cto 34932-reverse-seam-ruling-2325 item 2). Collector-local,
+ * like the normal classes: it selects paint for a read and is never a frame or run fact.
+ */
+export type ReverseScreenWitness =
+  | {
+      readonly status: "witnessed"
+      readonly sentinel: CalibrationSentinel
+      readonly paintClasses: CalibratedPaintClasses
+    }
+  | { readonly status: "unavailable"; readonly reason: string }
+
 function packRgb(red: number, green: number, blue: number): number {
   return (red << 16) | (green << 8) | blue
 }
@@ -783,6 +796,7 @@ export async function calibrateCaptureOrigin({
   captureRaw,
   collectorLaunched = false,
   chromeBand,
+  screenMode,
 }: {
   ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
@@ -792,11 +806,14 @@ export async function calibrateCaptureOrigin({
   collectorLaunched?: boolean
   /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
+  /** Also witness the paint under this screen mode, on the same canvas and lifetime (@cto 34932-reverse-seam-ruling-2325). */
+  screenMode?: "reverse"
 }): Promise<
   NamedTextOrigin & {
     pixelGeometry: CapturePixelGeometry
     sentinel: CalibrationSentinel
     paintClasses?: CalibratedPaintClasses
+    reverseScreen?: ReverseScreenWitness
   }
 > {
   if (
@@ -866,6 +883,8 @@ export async function calibrateCaptureOrigin({
   let failure: unknown
   // The band excuses nothing until it is proven clear of the witnessed grid; the restore match stays strict before that.
   let bandClearOfGrid = false
+  // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
+  let reverseSet = false
   const inBand = (y: number) => chromeBand !== undefined && y >= chromeBand.y && y < chromeBand.y + chromeBand.height
   /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
   const bandDifference = (
@@ -891,6 +910,7 @@ export async function calibrateCaptureOrigin({
         pixelGeometry: CapturePixelGeometry
         sentinel: CalibrationSentinel
         paintClasses?: CalibratedPaintClasses
+        reverseScreen?: ReverseScreenWitness
       })
     | undefined
   const eraseVisibleGrid = collectorLaunched
@@ -1038,6 +1058,94 @@ export async function calibrateCaptureOrigin({
         `Capture calibration reported geometry ${JSON.stringify(pixelGeometry)} disagrees with witnessed grid ${JSON.stringify(measured)}`,
       )
     }
+    // #34932 (@cto 34932-reverse-seam-ruling-2325 items 2-3): on this same blank canvas and lifetime, normal -> reverse -> normal.
+    // The witness is the paint the sentinel path really uses under the mode, never an inverted RGB, and it is
+    // always the witnessed reverse pair (equal to the normal one when the mode leaves that paint unchanged).
+    // An ignored mode or an ambiguous witness is a named unavailable outcome; a failed return to the normal
+    // paint invalidates the whole calibration.
+    let reverseScreen: ReverseScreenWitness | undefined
+    if (screenMode === "reverse") {
+      const rowsFrame = rows
+      reverseSet = true
+      ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5h`)
+      reverseScreen = await (async (): Promise<ReverseScreenWitness> => {
+        let reverseBlank: CapturedFrame
+        try {
+          reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame), before)
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+          return {
+            status: "unavailable",
+            reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+          }
+        }
+        paintGrid("solid", form)
+        let reverseSolid: CapturedFrame
+        try {
+          reverseSolid = await confirmedFrame("reverse screen solid paint", () => true, reverseBlank)
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+          return {
+            status: "unavailable",
+            reason: `reverse screen sentinel paint (${form}) was not observed on the reversed blank canvas`,
+          }
+        }
+        try {
+          const reversed = findSolidWitnessClass(reverseBlank, reverseSolid)
+          const painted = reverseSolid
+          const shrunk = shrinkEdgeBlendPerimeter(
+            painted,
+            reverseBlank,
+            rectangle(painted, (offset) => inColorClass(painted, offset, reversed.witnessClass)),
+            reversed.witness,
+            reversed.witnessClass,
+          )
+          const at = (rectangle: CaptureRectangle) =>
+            `${rectangle.width}x${rectangle.height} at ${rectangle.x},${rectangle.y}`
+          if (
+            shrunk.grid.x !== grid.x ||
+            shrunk.grid.y !== grid.y ||
+            shrunk.grid.width !== grid.width ||
+            shrunk.grid.height !== grid.height
+          ) {
+            return {
+              status: "unavailable",
+              reason: `reverse screen sentinel paint covers ${at(shrunk.grid)}, not the normal grid ${at(grid)}`,
+            }
+          }
+          const reverseFillets = dilateFilletMask(shrunk.fillets, shrunk.grid, painted.width)
+          // The existing within-pair separation rule; no rule between the normal and the reverse pair.
+          const background = findBackgroundPaintClass(reverseBlank, shrunk.grid, reverseFillets, reversed.witnessClass)
+          const [r, g, b] = reversed.witness
+          return {
+            status: "witnessed",
+            sentinel: { form, rgb: [r, g, b] },
+            paintClasses: {
+              background: { anchor: background.anchor, members: background.members },
+              sentinel: { anchor: reversed.witnessClass.anchor, members: reversed.witnessClass.members },
+            },
+          }
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "CaptureCalibrationRefused") throw cause
+          return { status: "unavailable", reason: `reverse screen witness ambiguous: ${cause.message}` }
+        }
+      })()
+      // Item 3: reset the mode and prove the NORMAL sentinel paint returns before anything installs.
+      ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5l`)
+      paintGrid("solid", form)
+      const normalSolid = solidFrame
+      try {
+        await confirmedFrame("reverse screen return", (frame) =>
+          bandClearOfGrid ? bandDifference(frame, normalSolid).equalOutside : equal(frame, normalSolid),
+        )
+      } catch (cause) {
+        if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+        throw refusal(
+          "Capture calibration reverse screen: the normal sentinel paint did not return after DECSCNM was reset, so this calibration is invalid",
+          cause,
+        )
+      }
+    }
     const filletTrace =
       fillets.length === 0
         ? ""
@@ -1094,6 +1202,7 @@ export async function calibrateCaptureOrigin({
         background: { anchor: backgroundClass.anchor, members: backgroundClass.members },
         sentinel: { anchor: witnessClass.anchor, members: witnessClass.members },
       },
+      ...(reverseScreen === undefined ? {} : { reverseScreen }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
       basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
@@ -1105,7 +1214,7 @@ export async function calibrateCaptureOrigin({
     try {
       let surfaceFailure: unknown
       try {
-        ctx.write(`\x1b[0m${eraseVisibleGrid}`)
+        ctx.write(`\x1b[0m${reverseSet ? "\x1b[?5l" : ""}${eraseVisibleGrid}`)
         if (!baseline) {
           throw new Error(
             failure === undefined

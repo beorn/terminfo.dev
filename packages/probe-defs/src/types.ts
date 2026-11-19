@@ -807,6 +807,13 @@ export interface CaptureRequest {
    * byte for byte the previous path. A frame whose arm cropped no cells answers nothing.
    */
   layoutGuard?: CaptureLayoutGuardRequest
+  /**
+   * Read this frame under the reverse screen mode (DECSCNM) the probe's own write left set (#34932,
+   * @cto 34932-reverse-seam-ruling-2325 item 1). It selects the background and sentinel paint this run's calibration witnessed
+   * under that mode. Absent keeps the normal path. A collector with no witnessed reverse paint refuses the
+   * read by name; it never reads it as normal.
+   */
+  screenMode?: "reverse"
 }
 
 export interface CaptureLayoutGuardRequest {
@@ -1729,6 +1736,12 @@ export interface TermProbeSource {
      * before the check existed.
      */
     sentinel?: CalibrationSentinel
+    /**
+     * The same sentinel paint and the colour calibration measured for it while the reverse screen mode
+     * was set (#34932, @cto 34932-reverse-seam-ruling-2325 item 2). Present only when that witness succeeded; a layout check
+     * of a read under the mode repaints with it.
+     */
+    reverseSentinel?: CalibrationSentinel
   }
   /**
    * Re-measure this run's pixel origin after a frame that re-lays-out the window. A full reset (RIS)
@@ -1751,6 +1764,7 @@ export interface TermProbeSource {
         geometry: CapturePixelGeometry
         source: "measured by complete raster calibration"
         sentinel?: CalibrationSentinel
+        reverseSentinel?: CalibrationSentinel
       }
     | undefined
   >
@@ -1908,6 +1922,12 @@ export interface ProbeDefinition {
   termFootprint?: import("./term-footprints.ts").TermFootprint
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
+  /**
+   * This row reads frames under the reverse screen mode, so the run's capture calibration also witnesses
+   * the background and sentinel paint under it (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). It asks for a calibration
+   * capability only; it does not say the callback runs reversed.
+   */
+  termScreenMode?: "reverse"
   /** This callback decides at least one row through the region readback, so a text-cells run hands
    * it the cells adapter. Every other probe is handed nothing on such a run. */
   cellReadback?: true

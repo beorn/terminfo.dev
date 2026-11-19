@@ -949,6 +949,208 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
   },
 )
 
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 1, 3, 4, 6): the preparation input carries a row's
+// declared screen mode to calibration, a read under the mode selects the witnessed reverse classes or fails
+// by name, an undeclared read keeps the normal ones, and a renewal never leaves a previous origin's witness.
+it("selects a witnessed reverse screen per read and drops it on preparation and renewal", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-reverse-seam-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    Object.defineProperty(process, "platform", { value: "linux" })
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+    const hash = "a".repeat(12), revision = "b".repeat(40)
+    const pixelGeometry = { cellWidth: 9, cellHeight: 22, textWidth: 720, textHeight: 528 }
+    const measured = { origin: { x: 13, y: 57 }, pixelGeometry, basis: "fixture complete raster" }
+    const decoded = { width: 800, height: 600, rgba: Buffer.alloc(800 * 600 * 4) }
+    const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
+      capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
+    const digest = seed => createHash("sha256").update(seed).digest("hex")
+    // Synthetic receipt bytes exercise custody, not a claim about installed fonts or HarfBuzz.
+    const proofState = process.env.FONT_CONTROL_PROOF_STATE
+    const fontReceipt = proofState === "absent" ? "DejaVu Sans Mono | /fixture/dejavu.ttf" : JSON.stringify({
+      fixture: "synthetic font-source receipt", proofState, reason: "synthetic source-control state",
+      requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
+      source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
+      harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
+        featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
+    const fontKey = "collector.fontSource", visualId = "extensions.font-ligatures"
+    const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
+      sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
+      runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
+        nixLockRevision: "2".repeat(40), sourceRevision: revision, cleanTree: true, suiteHash: hash },
+      fixture: { definition: "fixture", config: "--config NONE", font: fontReceipt, geometry: "80x24", display: "fixture", gl: "fixture" } }
+    writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
+      catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+      probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
+    }, collectorRevision: revision }
+    let calibrations = 0, rawCaptures = 0, source, calibrationFailure
+    const checkpoints = [
+      { featureId: visualId, role: "control", label: "spaced operator control", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
+      { featureId: visualId, role: "target", label: "contiguous operator target", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
+    ]
+    const capturedCheckpoints = []
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
+      name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture"
+    }) }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const reply = sequence === "\x1b[16t" ? "\x1b[6;22;9t"
+          : sequence === "\x1b[14t" ? "\x1b[4;528;720t"
+          : sequence === "\x1b[18t" ? "\x1b[8;24;80t" : "\x1bP>|kitty(0.49.2)\x1b\\"
+        return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
+      }
+    }))
+    let declaredResizeHook
+    const declareWindowSize = () => {}
+    mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async (_executable, options) => {
+      declaredResizeHook = options?.onResizeWindow
+      return undefined
+    } }))
+    mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async (directory, executable) => {
+      assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
+      assert.deepEqual(executable, { path: provenance.executable.path, sha256: provenance.executable.sha256 })
+      return {
+        declareWindowSize,
+        captureRaw: async (checkpoint) => {
+          rawCaptures++
+          assert.match(checkpoint.featureId, /^collector\.captureCalibration(?:\.renewal\.\d+)?$/)
+          assert.equal(checkpoint.role, "control")
+          assert.equal(checkpoint.label, "origin witness")
+          return { result: raw, decoded }
+        },
+        capture: async (checkpoint, origin) => {
+          assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
+          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
+          assert.strictEqual(origin.pixelGeometry, pixelGeometry)
+          capturedCheckpoints.push(checkpoint)
+          return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
+            ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
+        }
+      }
+    } }))
+    // Same cell and text dimensions every time, distinct origins: the shape a block terminal makes
+    // when it re-lays-out its text area by whole rows, which dimensions alone cannot tell apart.
+    const grantedReadings: Array<typeof measured> = []
+    const readingAt = index => {
+      const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+      grantedReadings.push(stable)
+      return stable
+    }
+    // #34932 reverse seam: calibration returns a reverse witness only when the preparation asked for it.
+    const calibrationModes = []
+    let reverseWitness
+    const normalClasses = { background: { anchor: [0, 0, 0], members: new Set([0]) },
+      sentinel: { anchor: [255, 0, 255], members: new Set([0xff00ff]) } }
+    const reverseClasses = { background: { anchor: [250, 250, 250], members: new Set([0xfafafa]) },
+      sentinel: { anchor: [10, 20, 30], members: new Set([0x0a141e]) } }
+    const reverseSentinel = { form: "basic", rgb: [10, 20, 30] }
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
+      calibrations++
+      calibrationModes.push(options.screenMode)
+      if (calibrationFailure) throw calibrationFailure
+      assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
+      const reading = { ...readingAt(grantedReadings.length + 1), paintClasses: normalClasses }
+      if (options.screenMode === "reverse" && reverseWitness) reading.reverseScreen = reverseWitness
+      grantedReadings.push(reading)
+      return reading
+    } }))
+    let checked = false
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified, runProbeBatch: async options => {
+      // No cells: the read goes straight to the adapter, whose checkpoint shows the classes this read selected.
+      const guarded = { featureId: "modes.reverse-video", role: "target", label: "reverse read", pixelGeometry, layoutGuard: {} }
+      const unwitnessed = error => error.name === "CaptureScreenModeUnwitnessed"
+      const source = { kind: "live", rows: 24, cols: 80 }
+      // A preparation that did not ask for the mode witnesses nothing, so a reverse read fails by name.
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: () => {} })
+      assert.deepEqual(calibrationModes, [undefined])
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }), unwitnessed)
+      // Asked and witnessed: the reverse read selects the reverse classes, and the adapter never sees the mode.
+      reverseWitness = { status: "witnessed", sentinel: reverseSentinel, paintClasses: reverseClasses }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.1",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      assert.deepEqual(calibrationModes, [undefined, "reverse"])
+      assert.deepEqual(source.captureGeometry.reverseSentinel, reverseSentinel)
+      await options.capture({ ...guarded, screenMode: "reverse" })
+      assert.equal("screenMode" in capturedCheckpoints.at(-1), false, "frames are unchanged: the adapter never sees the mode")
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, reverseClasses.background.members)
+      // An undeclared read on the same calibration keeps the normal classes.
+      await options.capture(guarded)
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, normalClasses.background.members)
+      // A refused renewal leaves no witness from the previous origin, on the source or for a read.
+      calibrationFailure = Object.assign(new Error("renewal fixture refused"), { name: "CaptureCalibrationRefused" })
+      await assert.rejects(() => source.renewCaptureGeometry("modes.reverse-video"), error => error === calibrationFailure)
+      calibrationFailure = undefined
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }), unwitnessed)
+      // A successful in-row renewal re-measures the normal paint only, so the reverse witness stays
+      // explicitly unavailable until the next preparation, while normal reads keep working.
+      const renewed = await source.renewCaptureGeometry("reset.sgr-0")
+      assert.equal(calibrationModes.at(-1), undefined)
+      assert.equal(renewed.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }),
+        error => unwitnessed(error) && error.message.includes("not re-witnessed by an in-row renewal (reset.sgr-0)"))
+      await options.capture(guarded)
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, normalClasses.background.members)
+      // The next preparation, under the declared requirement, witnesses the reverse paint again.
+      const renewedClasses = { background: { anchor: [240, 240, 240], members: new Set([0xf0f0f0]) },
+        sentinel: reverseClasses.sentinel }
+      reverseWitness = { status: "witnessed", sentinel: reverseSentinel, paintClasses: renewedClasses }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.2",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      assert.equal(calibrationModes.at(-1), "reverse")
+      await options.capture({ ...guarded, screenMode: "reverse" })
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, renewedClasses.background.members)
+      // A calibration that left the mode unavailable names its reason on the read.
+      reverseWitness = { status: "unavailable", reason: "reverse screen mode ignored: fixture" }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.3",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }),
+        error => unwitnessed(error) && error.message.includes("reverse screen mode ignored: fixture"))
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      checked = true
+      throw new Error("reverse seam fixture complete")
+    } }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    await collectProbeRun({ ids: [visualId] }).catch(error => {
+      if (!checked) throw error
+    })
+    assert.equal(checked, true)
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        FONT_CONTROL_PROOF_STATE: "absent",
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        TERMINFO_DISPOSABLE_RECEIPT: "",
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
 // 34306 AC1, the test the earlier head could not pass: the renewal record has to come out of the
 // production path, so this drives the REAL collectProbeRun and the REAL runProbeBatch (neither is
 // mocked) with two rows, and reads the published array. Only the custody grant and the terminal's

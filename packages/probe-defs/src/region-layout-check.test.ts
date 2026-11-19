@@ -292,6 +292,77 @@ test("a run whose calibration recorded no sentinel runs no check and writes noth
   expect(writes).toEqual([])
 })
 
+// #34932 (@cto 34932-reverse-seam-ruling-2325 item 4): a layout check of a read taken under the reverse
+// screen mode repaints and looks for the sentinel calibration witnessed under that mode, and every frame it
+// takes asks for that mode. A run with no reverse witness says so instead of checking the normal colour.
+test("a reverse screen layout check without a witnessed reverse sentinel names that and takes nothing", async () => {
+  const writes: string[] = []
+  const clause = await layoutSinceCalibration({
+    ctx: {
+      write: (text) => writes.push(text),
+      capture: async () => {
+        throw new Error("no capture expected")
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+        sentinel: { form: "basic", rgb: [255, 0, 255] },
+      },
+    },
+    label: "fixture",
+    cell: { row: 3, col: 1 },
+    calibratedCrop: crop({ top: 3, left: 1, bottom: 3, right: 1 }),
+    timeoutMs: 10,
+    pollMs: 1,
+    screenMode: "reverse",
+  })
+  expect(clause).toBe("layout not re-checked: this run's calibration witnessed no reverse screen sentinel to repaint")
+  expect(writes).toEqual([])
+})
+
+test("a reverse screen layout check looks for the reverse sentinel, and every frame it takes asks for the mode", async () => {
+  const requests: Array<{ screenMode?: string; locate?: { rgb: readonly [number, number, number] } }> = []
+  const clause = await layoutSinceCalibration({
+    ctx: {
+      now: () => Date.now(),
+      write: () => {},
+      capture: async (request) => {
+        requests.push(request)
+        const frame = {
+          kind: "pixels",
+          role: request.role,
+          label: request.label,
+          capturedAt: 1,
+          ref: `sha256:${"0".repeat(64)}`,
+        }
+        return (
+          request.locate
+            ? { ...frame, located: null }
+            : { ...frame, regionDigest: "witness", rendering: { inkCount: 0, background: "0,0,0" } }
+        ) as never
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+        sentinel: { form: "basic", rgb: [255, 0, 255] },
+        reverseSentinel: { form: "basic", rgb: [10, 20, 30] },
+      },
+    },
+    label: "fixture",
+    cell: { row: 3, col: 1 },
+    calibratedCrop: crop({ top: 3, left: 1, bottom: 3, right: 1 }),
+    timeoutMs: 10,
+    pollMs: 1,
+    screenMode: "reverse",
+  })
+  expect(clause).toContain("probe text not in view")
+  expect(requests.length).toBeGreaterThan(1)
+  expect(requests.every((request) => request.screenMode === "reverse")).toBe(true)
+  expect(
+    requests.filter((request) => request.locate).every((request) => request.locate?.rgb.join() === "10,20,30"),
+  ).toBe(true)
+})
+
 /** A witness that never changes while the whole frame does: Warp's ticking header timer. */
 function stillWitness(frameMoves: boolean) {
   let reads = 0

@@ -232,6 +232,8 @@ export type ProbeCapture = (checkpoint: {
    * request; never set by a probe.
    */
   layoutGuardBackground?: ReadonlySet<number>
+  /** Select the screen mode's witnessed paint for this read, forwarded verbatim (#34932, @cto 34932-reverse-seam-ruling-2325). */
+  screenMode?: CaptureRequest["screenMode"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
@@ -558,6 +560,11 @@ async function runProbeBatchInRun(
        * on the pre-flight, which no row asked for (#34306 AC1). */
       row?: string
       recordCapture: (result: CapturedProbeFrame) => void
+      /**
+       * A screen mode a selected row declared (`termScreenMode`), whose paint this preparation and every
+       * renewal it installs also witness (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). Absent keeps the normal calibration.
+       */
+      screenMode?: "reverse"
       /** A preparation that can read held viewports returns the per-row reader factory (34693). */
     }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
@@ -835,6 +842,7 @@ async function runProbeBatchInRun(
     calibrationId = "collector.captureCalibration",
     askingRow?: string,
     rowIndex?: number,
+    screenMode?: "reverse",
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -926,6 +934,7 @@ async function runProbeBatchInRun(
                   source: preparationSource,
                   featureId: calibrationId,
                   ...(askingRow !== undefined && { row: askingRow }),
+                  ...(screenMode !== undefined && { screenMode }),
                   recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
                 }),
               {
@@ -1670,6 +1679,8 @@ async function runProbeBatchInRun(
         calibrationId,
         calibrationId === "collector.captureCalibration" ? undefined : probe.id,
         selected.indexOf(probe),
+        // #34932 item 1: calibration is shared by the batch, so it witnesses a mode any selected row declares.
+        selected.some((candidate) => candidate.termScreenMode === "reverse") ? "reverse" : undefined,
       )
       activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry

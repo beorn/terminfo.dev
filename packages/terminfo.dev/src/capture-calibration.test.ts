@@ -174,9 +174,30 @@ function gridFrame(
   return { width: size, height: size, rgba }
 }
 
-type Stage = "before grid paint" | "solid grid paint" | "column edge paint" | "row edge paint" | "restore grid paint"
+type Stage =
+  | "before grid paint"
+  | "solid grid paint"
+  | "column edge paint"
+  | "row edge paint"
+  | "reverse screen blank"
+  | "reverse screen solid paint"
+  | "reverse screen return"
+  | "restore grid paint"
+
+/** `source` with every pixel of the blank canvas colour (black) repainted `rgb`: the same paint on a reversed screen. */
+function onCanvas(source: CapturedFrame, rgb: readonly [number, number, number]): CapturedFrame {
+  const rgba = new Uint8Array(source.rgba)
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    if (rgba[offset] === 0 && rgba[offset + 1] === 0 && rgba[offset + 2] === 0) rgba.set(rgb, offset)
+  }
+  return { width: source.width, height: source.height, rgba }
+}
+const REVERSED_CANVAS = [250, 250, 250] as const
+const reversedBlank = onCanvas(blank, REVERSED_CANVAS)
+
 function calibration(
   options: {
+    screenMode?: "reverse"
     geometry?: typeof geometry
     rows?: number
     cols?: number
@@ -191,6 +212,9 @@ function calibration(
     "solid grid paint": rasterFrame("solid"),
     "column edge paint": rasterFrame("columns"),
     "row edge paint": rasterFrame("rows"),
+    "reverse screen blank": reversedBlank,
+    "reverse screen solid paint": onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS),
+    "reverse screen return": rasterFrame("solid"),
     "restore grid paint": blank,
   }
   const reads = new Map<Stage, number>()
@@ -222,6 +246,7 @@ function calibration(
     pixelGeometry: options.geometry,
     collectorLaunched: options.collectorLaunched,
     chromeBand: options.chromeBand,
+    ...(options.screenMode === undefined ? {} : { screenMode: options.screenMode }),
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
       options.beforeCapture?.(label, writes)
@@ -1813,4 +1838,102 @@ test("calibration returns collector-local occupied background and sentinel paint
   await expect(closeRun.promise).rejects.toThrow(
     /background class .* and witness class .* are separated by 15 < 16 codes/,
   )
+})
+
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 2, 3, 6): with the reverse screen mode requested, the
+// same canvas and lifetime witnesses normal -> reverse -> normal. No existing case sets DECSCNM at all, so
+// none of them can see a witness that is synthesized, skipped, kept after a failed return, or left set.
+const DECSCNM_SET = "\x1b[?5h"
+const DECSCNM_RESET = "\x1b[?5l"
+
+test("an undeclared calibration never sets the reverse screen mode and returns no reverse witness", async () => {
+  const run = calibration()
+  const result = await run.promise
+  expect(result.reverseScreen).toBeUndefined()
+  expect(run.writes.join("")).not.toContain(DECSCNM_SET)
+  expect(run.reads.get("reverse screen blank")).toBeUndefined()
+})
+
+test("a working inversion witnesses the reverse background and the sentinel paint actually seen under it", async () => {
+  const run = calibration({ screenMode: "reverse" })
+  const result = await run.promise
+  // The normal reading is unchanged by the extra witness.
+  expect(result).toMatchObject({ pixelGeometry: geometry, sentinel: { form: "basic", rgb: [255, 0, 255] } })
+  expect(result.reverseScreen).toMatchObject({
+    status: "witnessed",
+    sentinel: { form: "basic", rgb: [10, 20, 30] },
+    paintClasses: { background: { anchor: [250, 250, 250] }, sentinel: { anchor: [10, 20, 30] } },
+  })
+  // Normal -> reverse -> normal on one canvas: set after the row stage, reset before the return is proven.
+  const all = run.writes.join("")
+  const set = all.indexOf(DECSCNM_SET)
+  const reset = all.indexOf(DECSCNM_RESET, set)
+  expect(set).toBeGreaterThan(all.indexOf("\x1b[41m"))
+  expect(reset).toBeGreaterThan(set)
+  expect(run.reads.get("reverse screen return")).toBe(2)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+})
+
+test("a sentinel paint the mode leaves unchanged is still the witnessed reverse pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen solid paint": Array(2).fill(onCanvas(rasterFrame("solid"), REVERSED_CANVAS)) },
+  })
+  const result = await run.promise
+  // Same sentinel colour as the normal paint, but measured on the reversed canvas: its background is the
+  // reverse one, which no copy of the normal pair could carry.
+  expect(result.reverseScreen).toMatchObject({
+    status: "witnessed",
+    sentinel: { rgb: [255, 0, 255] },
+    paintClasses: { background: { anchor: [250, 250, 250] }, sentinel: { anchor: [255, 0, 255] } },
+  })
+})
+
+test("an ignored reverse screen mode is a named unavailable witness, never a calibration of the normal paint", async () => {
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen blank": [blank] } })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+  })
+  expect(run.reads.get("reverse screen solid paint")).toBeUndefined()
+  // The mode is still reset and the normal paint proven before the result is returned.
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("an ambiguous reverse witness is a named unavailable outcome", async () => {
+  const holed = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
+  holed.rgba.set([...REVERSED_CANVAS, 255], (5 * 12 + 5) * 4)
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen solid paint": [holed, holed] } })
+  const result = await run.promise
+  expect(result.reverseScreen).toMatchObject({
+    status: "unavailable",
+    reason: expect.stringContaining("reverse screen witness ambiguous: Capture calibration non-solid grid"),
+  })
+})
+
+test("a failed return to the normal paint invalidates the whole calibration", async () => {
+  const stuck = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen return": [stuck] } })
+  await expect(run.promise).rejects.toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  // The established restore still runs and is witnessed after the refusal.
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("an error while reversed still resets the mode before the restore is witnessed", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint")) throw new Error("fixture capture lost")
+    },
+  })
+  await expect(run.promise).rejects.toThrow("fixture capture lost")
+  const restoreWrite = run.writes.findLastIndex((write) => write.includes(DECSCNM_RESET))
+  expect(restoreWrite).toBeGreaterThan(run.writes.findLastIndex((write) => write.includes(DECSCNM_SET)))
+  expect(run.writes[restoreWrite]).toMatch(/^\x1b\[0m\x1b\[\?5l/)
+  expect(run.reads.get("restore grid paint")).toBe(2)
 })

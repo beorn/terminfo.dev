@@ -2195,6 +2195,8 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     minCols: 8,
     seed: plain,
     edit: "\x1b[?5h",
+    // The edit leaves DECSCNM set for the target's reads; the expected and ignored frames reset it first.
+    editScreenMode: "reverse",
     expected: "\x1b[?5l\x1b[0;7m\x1b[2J\x1b[HREVERSED",
     ignored: plain,
     discriminator: { signal: "reverse-video-pixels", expected: "change" },
@@ -2440,6 +2442,8 @@ const modeDefinitions: ProbeDefinition[] = [
     ...reverseVideoProtocol,
     term: reverseVideoApp,
     termNeedsGeometry: true,
+    // #34932 (@cto 34932-reverse-seam-ruling-2325 item 1): its target is read under DECSCNM, so calibration witnesses that paint.
+    termScreenMode: "reverse",
     libAssertionType: undefined,
     // 34694 second fold: 22 captures, 28.2 s worst at VS Code in run 44200861479, cut by the 30 s default.
     // 28.2 x 1.20 = 33.8 rounds up to 45 s.
