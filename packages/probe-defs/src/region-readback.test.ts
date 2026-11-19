@@ -1689,6 +1689,8 @@ interface StatefulOptions {
   resetAddsUnderline?: boolean
   resetDropsItalic?: boolean
   hideBoldWithItalic?: boolean
+  /** Italic paints nothing while bold is set, so bold+italic reads as bold (@cto batch finding 52df21a4). */
+  hideItalicWithBold?: boolean
   /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
   /** Attributes and colours SGR 0 alone does NOT clear, independently of the reset under test (34712). */
@@ -1719,7 +1721,8 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   const visible = (attribute: SgrAttr) =>
     state[attribute] &&
     !options.invisible?.includes(attribute) &&
-    !(attribute === "bold" && options.hideBoldWithItalic && state.italic)
+    !(attribute === "bold" && options.hideBoldWithItalic && state.italic) &&
+    !(attribute === "italic" && options.hideItalicWithBold && state.bold)
   const paint = (char: string) =>
     cells.set(
       `${row},${col}`,
@@ -2231,6 +2234,13 @@ describe("SGR22 when the faint attempt paints exactly N", () => {
       name: "a restore keeps italic",
       options: { invisible: ["faint"], restoreRetains: ["italic"] },
       failed: /restored.*3/,
+    },
+    // @cto batch finding 52df21a4: bold == bold+italic left two distinct crops yet qualified and read Supported.
+    // hideBoldWithItalic below is the opposite collision, which the expected-subset check already refuses.
+    {
+      name: "italic hidden while bold is set",
+      options: { invisible: ["faint"], hideItalicWithBold: true },
+      failed: /reduced branch's styled controls are not pairwise distinct: SGR 1 and SGR 1;3 read the same cells/,
     },
   ] satisfies Array<{ name: string; options: StatefulOptions; failed: RegExp }>)(
     "$name: the reduced branch does not qualify and no SGR 22 is sent",

@@ -2736,6 +2736,22 @@ export async function captureRegionReadbackDecision(
           }
         } else if (step.phase === "setup") {
           const styled = resetReference.checks.filter((check) => check.phase === "styled")
+          // #34932 (@cto batch finding 52df21a4, ruling 2136): the reduced branch is graded on bold, italic and
+          // bold+italic, so every control it painted must read pairwise distinct. Two equal crops leave the facet
+          // one of them hides unproven, so the row stays undecided by name and no reset is sent.
+          if (resetReference.unobserved !== undefined) {
+            const collisions = styled.flatMap((check, index) =>
+              styled
+                .slice(index + 1)
+                .filter((other) => other.digest === check.digest)
+                .map((other) => `${check.subset ?? check.label} and ${other.subset ?? other.label}`),
+            )
+            if (collisions.length > 0) {
+              return invalid(
+                `${id}: the reduced branch's styled controls are not pairwise distinct: ${collisions.join(", ")} read the same cells`,
+              )
+            }
+          }
           if (expectedLabel !== undefined) {
             const expected = styled.find((check) => check.subset === expectedLabel)?.digest
             if (
