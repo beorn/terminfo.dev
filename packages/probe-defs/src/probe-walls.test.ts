@@ -32,19 +32,12 @@ test.each([
   expect(definition?.wallMs).toBe(wallMs)
 })
 
-// 34641: on Linux WezTerm these ran at 79-99 percent of their walls (capture spans from frame.capturedAt, runs
-// 2026-11-17T12-44Z and 13-06Z; worst median capture gap 921 ms), so they flipped between graded and cut run to run.
-// Each wall is sized from that measured span with at least 20 percent headroom: 132 captures need 150 s, 66 need 90 s.
-// 34694 fix-forward (hosted run 44200861479, current image): reset.sgr measured 148.1 s at cursor, 145.1 at cmux and
-// 120.5 at VS Code, leaving 150 s only 1.9 s above the worst arm, so 148.1 x 1.20 = 177.7 rounds to 180 s. modes.xtsave
-// measured 74.1 s in all three arms, which 90 s holds at 21.5 percent - but VS Code cut it at 90 s on run 44197283015,
-// so its need is above 90 s and a cut is only a lower bound: 90 x 1.20 = 108 rounds to 120 s.
-// 34694 second fold (dev/11 frame-span table, re-measured here from rawReplies captures): sgr.reset 132 captures at
-// 139.7 s worst needs 167.6 -> 180; xtpopsgr 66 at 75.9 s needs 91.0 -> 105. reset.sgr, xtsave and xtpushsgr are
-// unchanged by this fold and keep the values the 16:50 fold set.
+// 35128: both132-capture reset rows need306.7s at the recorded1936ms cadence with20% headroom.
+// Existing XT walls remain from their independent capture spans: xtsave74.1s (and a90s cut),
+// xtpopsgr75.9s/66captures, xtpushsgr's earlier measured105s budget.
 test.each([
-  ["reset.sgr", 180_000],
-  ["sgr.reset", 180_000],
+  ["reset.sgr", 315_000],
+  ["sgr.reset", 315_000],
   ["modes.xtsave", 120_000],
   ["modes.xtpopsgr", 105_000],
   ["modes.xtpushsgr", 105_000],
@@ -60,7 +53,8 @@ test.each([
 // that row's need x 1.20 headroom, rounded up to the next 15 s, where the need is the greater of its capture count
 // x 1.158 s and its old elapsed time scaled by its app per-frame rise: 22 to 32 captures need 45 s, except
 // sgr.underline.double at 60 s (old cmux 30.0 s scales to 38.0 s, above its 37.1 s of captures); 66 need 105 s;
-// 132 need 195 s. Rows the measurement did not cut keep their walls and the 30 s default stays.
+// 132 needed195s at that older cadence;35128 now sizes selective-reset.bold at315s.
+// Other rows the measurement did not cut keep their walls and the30s default stays.
 test.each([
   ["sgr.bold", 45_000],
   ["sgr.faint", 45_000],
@@ -78,7 +72,7 @@ test.each([
   ["modes.alt-screen.exit", 45_000],
   ["modes.xtpushcolors", 120_000],
   ["modes.xtpopcolors", 105_000],
-  ["sgr.selective-reset.bold", 195_000],
+  ["sgr.selective-reset.bold", 315_000],
   ["modes.left-right-margin", 45_000],
   ["modes.reverse-video", 45_000],
 ] as const)("%s declares a %d ms capture-bound wall", (id, wallMs) => {
@@ -94,4 +88,22 @@ test.each(["scrollback.total-lines", "erase.screen.scrollback"])("%s declares a 
   const definition = ALL_PROBES.find((entry) => entry.id === id)
   expect(definition, id).toBeDefined()
   expect(definition?.wallMs).toBe(90_000)
+})
+
+// 35128: actual VSCode/Cursor61100ae0 and WezTerm79448f37 cuts retained 15–119 captures
+// at up to1936ms per capture. Existing complete reset paths need132 captures; ordinary region
+// paths22. Require the complete work at that observed cadence plus20%, not the truncated span.
+test.each([
+  ["reset.sgr", 132],
+  ["sgr.reset", 132],
+  ["sgr.selective-reset.bold", 132],
+  ["sgr.selective-reset.underline", 22],
+  ["sgr.selective-reset.italic", 22],
+  ["sgr.selective-reset.inverse", 22],
+  ["sgr.underline-color-reset", 22],
+  ["modes.alt-screen.enter", 22],
+] as const)("%s has room for %d captures at the observed slow-host cadence (35128)", (id, captures) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)
+  expect(definition, id).toBeDefined()
+  expect(definition?.wallMs ?? 30_000).toBeGreaterThanOrEqual(captures * 1_936 * 1.2)
 })

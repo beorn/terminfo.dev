@@ -1958,6 +1958,8 @@ export const sgrProbes: ProbeDefinition[] = [
       ),
       null,
     ),
+    // 35128: 22 region captures at1.936 s plus20% need51.1 s.
+    wallMs: 60_000,
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
   },
@@ -1984,26 +1986,23 @@ export const sgrProbes: ProbeDefinition[] = [
       preserve: ["italic", "underline"],
       preserveMode: "any",
     }),
-    // 34641 sized this at 150 s from the Linux WezTerm span; on the Nov 12 hosted image cmux runs the whole 150 s
-    // over 132 captures (34567), so 195 s is 132 x 1.158 s x 1.20 headroom rounded up.
-    wallMs: 195_000,
+    // 35128: 132 captures at the observed1.936 s cadence plus20% need306.7 s.
+    wallMs: 315_000,
   },
 
-  resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]), wallMs: 60_000 },
 
-  resetProbe("sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", ["italic"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", ["italic"], ["bold"]), wallMs: 60_000 },
 
-  resetProbe("sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", ["inverse"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", ["inverse"], ["bold"]), wallMs: 60_000 },
 
   // ── Full SGR reset ──
 
   // Run 42853381528: 72 captures at about 400ms, so the 30s wall cuts the probe mid-capture.
   {
     ...resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
-    // 34641: Linux WezTerm took up to 110.1 s over 132 captures (run 2026-11-17T13-06Z), 92 percent of the old 120 s wall; 150 s puts it at 73 percent.
-    // 34694 second fold: 132 captures, worst arm 139.7 s (VS Code) = 93 percent; 180 s is also reset.sgr's value.
-    // 139.7 x 1.20 = 167.6 rounds up to 180 s.
-    wallMs: 180_000,
+    // 35128: same132-capture path and measured1.936 s cadence as reset.sgr.
+    wallMs: 315_000,
   },
 ]
 
