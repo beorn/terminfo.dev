@@ -5,11 +5,12 @@
  * @reach in-process: fake mechanism, no helper binary and no WindowServer
  * @testonly none
  */
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  buildDarwinInputHelper,
   createDarwinInput,
   keysOnlyMechanism,
   ownedHostHelperPath,
@@ -25,6 +26,137 @@ import { ALACRITTY_0_17_VIEWPORT_KEYS } from "./owned-terminal.ts"
 import { describeInputContract, fakeInputMechanism } from "./testing/input-contract.ts"
 import { withTTYOperation, withTTYQueryTrace } from "./tty.ts"
 import type { InputMechanism } from "./input-fixture.ts"
+
+const helperBuild = vi.hoisted(() => ({
+  run: undefined as undefined | ((file: string, args: readonly string[], options?: unknown) => Buffer),
+}))
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>()
+  return {
+    ...actual,
+    execFileSync(file: string, args: readonly string[] = [], options?: unknown) {
+      return helperBuild.run
+        ? helperBuild.run(file, args, options)
+        : actual.execFileSync(file, args, options as import("node:child_process").ExecFileSyncOptions)
+    },
+  }
+})
+afterEach(() => {
+  helperBuild.run = undefined
+})
+
+// 35130: compile/sign are process-boundary stubs, not native trust proof. Files and overlapping kernel locks are real.
+async function helperBuildFixture(fail?: "compile" | "sign" | "verify") {
+  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process")
+  helperBuild.run = (file, args, options) => {
+    if (file === "/usr/bin/lockf") {
+      if (process.platform === "darwin") {
+        return actual.execFileSync(file, args, options as import("node:child_process").ExecFileSyncOptions) as Buffer
+      }
+      try {
+        return actual.execFileSync(
+          "/usr/bin/flock",
+          ["--exclusive", "--nonblock", "3"],
+          options as import("node:child_process").ExecFileSyncOptions,
+        ) as Buffer
+      } catch (error) {
+        // Darwin lockf uses EX_TEMPFAIL; Linux flock uses 1 for the same real contention.
+        if ((error as { status?: number }).status === 1) Object.assign(error as object, { status: 75 })
+        throw error
+      }
+    }
+    if (file === "/usr/bin/swiftc") {
+      if (args[0] === "--version") return Buffer.from("fixture Swift toolchain")
+      if (fail === "compile") throw new Error("compiler rejected staged source")
+      writeFileSync(args[2]!, readFileSync(args[3]!))
+      return Buffer.alloc(0)
+    }
+    if (file === "/usr/bin/codesign") {
+      if (args.includes("--sign")) {
+        if (fail === "sign") throw new Error("signer unavailable")
+        const path = args.at(-1)!
+        writeFileSync(path, Buffer.concat([readFileSync(path), Buffer.from("-signed")]))
+      }
+      if (args.includes("--verify") && fail === "verify") throw new Error("candidate signature invalid")
+      return args.includes("--display")
+        ? Buffer.from(
+            'designated => identifier "dev.terminfo.owned-input-helper" and certificate leaf = H"abababababababababababababababababababab"',
+          )
+        : Buffer.alloc(0)
+    }
+    throw new Error(`unexpected helper build command ${file}`)
+  }
+}
+
+describe("owned Mac helper publication", () => {
+  it("publishes fresh owned builds at one path and retains exclusive ownership until release", async () => {
+    await helperBuildFixture()
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-publication-")))
+    const source = join(root, "main.swift")
+    const evidence: unknown[] = []
+    const owned = {
+      directory: join(root, "installed"),
+      identity: "ab".repeat(20),
+      report: (fact: unknown) => evidence.push(fact),
+    }
+    let current: ReturnType<typeof buildDarwinInputHelper> | undefined
+    try {
+      writeFileSync(source, "first staged source")
+      current = buildDarwinInputHelper(source, join(root, "run-a"), owned)
+      expect(typeof current === "string" ? current : current.path).toBe(join(owned.directory, "darwin-input-helper"))
+      expect(readFileSync(current.path, "utf8")).toBe("first staged source-signed")
+      expect(readFileSync(join(root, "run-a", "darwin-input-helper"), "utf8")).toBe("first staged source-signed")
+      expect(() => buildDarwinInputHelper(source, join(root, "overlap"), owned)).toThrow(/publication.*in use/)
+      current.dispose()
+      current = undefined
+      writeFileSync(source, "second staged source")
+      current = buildDarwinInputHelper(source, join(root, "run-b"), owned)
+      expect(current.path).toBe(join(owned.directory, "darwin-input-helper"))
+      expect(readFileSync(current.path, "utf8")).toBe("second staged source-signed")
+      expect(evidence.at(-1)).toMatchObject({
+        compiler: "/usr/bin/swiftc",
+        compilerVersion: "fixture Swift toolchain",
+        identity: owned.identity,
+        executedPath: current.path,
+        installedBytesEqual: true,
+      })
+      current.dispose()
+      current = undefined
+      const hosted = buildDarwinInputHelper(source, join(root, "hosted"))
+      expect(hosted.path).toBe(join(root, "hosted", "darwin-input-helper"))
+      expect(readFileSync(hosted.path, "utf8")).toBe("second staged source")
+      hosted.dispose()
+    } finally {
+      if (typeof current === "object") current.dispose()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it.each(["compile", "sign", "verify"] as const)(
+    "does not use prior installed bytes after a %s failure and releases the failed lease",
+    async (fail) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-failure-")))
+      const source = join(root, "main.swift")
+      const owned = { directory: join(root, "installed"), identity: "ab".repeat(20) }
+      try {
+        await helperBuildFixture()
+        writeFileSync(source, "previous source")
+        const previous = buildDarwinInputHelper(source, join(root, "previous"), owned)
+        previous.dispose()
+        await helperBuildFixture(fail)
+        writeFileSync(source, "new source")
+        expect(() => buildDarwinInputHelper(source, join(root, "failed"), owned)).toThrow(/helper.*failed/)
+        expect(readFileSync(join(owned.directory, "darwin-input-helper"), "utf8")).toBe("previous source-signed")
+        await helperBuildFixture()
+        const next = buildDarwinInputHelper(source, join(root, "next"), owned)
+        expect(readFileSync(next.path, "utf8")).toBe("new source-signed")
+        next.dispose()
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
+})
 
 function options(overrides: Partial<DarwinInputOptions> = {}): DarwinInputOptions {
   return {

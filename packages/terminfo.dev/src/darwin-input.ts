@@ -1,6 +1,21 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
+import { createHash, randomUUID } from "node:crypto"
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  copyFileSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+} from "node:fs"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 
 import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
@@ -9,26 +24,186 @@ import { currentTTYTraceMark } from "./tty.ts"
 
 /** The compiled helper the macOS job builds from native/darwin-input/main.swift; never a committed binary. */
 export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
+export const DARWIN_INPUT_SIGNING_IDENTITY_ENV = "TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY"
+const DARWIN_INPUT_IDENTIFIER = "dev.terminfo.owned-input-helper"
+
+interface OwnedHelperPublication {
+  directory: string
+  /** Approved certificate SHA-1 fingerprint, not an ambiguous keychain display name. Never a private key. */
+  identity: string | undefined
+  report?: (evidence: Record<string, unknown>) => void
+}
+
+function helperHash(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex")
+}
+
+function requireHelperDestination(directory: string): number {
+  const uid = process.getuid?.()
+  if (uid === undefined || !isAbsolute(directory) || resolve(directory) !== directory) {
+    throw new Error("macOS input helper publication requires this user's absolute directory")
+  }
+  let ancestor = directory
+  while (!existsSync(ancestor)) ancestor = dirname(ancestor)
+  if (realpathSync(ancestor) !== ancestor) throw new Error("macOS input helper publication directory follows a symlink")
+  const parent = lstatSync(ancestor)
+  if (parent.uid !== uid || (parent.mode & 0o022) !== 0) {
+    throw new Error("macOS input helper publication parent is not controlled by this user")
+  }
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  const controlled = (path: string, directoryExpected: boolean) => {
+    const stat = lstatSync(path, { throwIfNoEntry: false })
+    if (
+      stat &&
+      (stat.isSymbolicLink() ||
+        (directoryExpected ? !stat.isDirectory() : !stat.isFile()) ||
+        stat.uid !== uid ||
+        (stat.mode & 0o022) !== 0)
+    ) {
+      throw new Error(
+        `macOS input helper publication requires a user-controlled ${directoryExpected ? "directory" : "regular file"}: ${path}`,
+      )
+    }
+  }
+  controlled(directory, true)
+  controlled(join(directory, "darwin-input-helper"), false)
+  return uid
+}
+
+/** Parent retains the inherited open-file-description lock after lockf exits; close releases it, even on process death. */
+function helperPublicationLease(directory: string): () => void {
+  const uid = requireHelperDestination(directory)
+  const fd = openSync(
+    join(directory, ".publication.lock"),
+    constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW,
+    0o600,
+  )
+  try {
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.uid !== uid || (stat.mode & 0o022) !== 0) {
+      throw new Error("macOS input helper publication lock is not this user's controlled regular file")
+    }
+    try {
+      execFileSync("/usr/bin/lockf", ["-t", "0", "3"], { stdio: ["ignore", "pipe", "pipe", fd], timeout: 5_000 })
+    } catch (error) {
+      if ((error as { status?: number }).status === 75) {
+        throw new Error("macOS input helper publication is in use by another collector")
+      }
+      throw error
+    }
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
+  let held = true
+  return () => {
+    if (held) {
+      held = false
+      closeSync(fd)
+    }
+  }
+}
 
 /**
  * Compile the helper with the host's own swiftc, for an owned Mac that has no job step to build it
- * (33587), into a fresh directory of this run that is kept as evidence (@cto 75732b9d). An existing
- * directory or a build failure refuses by name with the compiler's own output; nothing is retried.
+ * (33587), retaining a fresh run artifact. The owned route publishes a verified signed copy at its
+ * fixed path under a collector-lifetime lease (35130); hosted input keeps the run path.
  */
-export function buildDarwinInputHelper(source: string, outputDirectory: string): string {
-  mkdirSync(outputDirectory)
+export function buildDarwinInputHelper(
+  source: string,
+  outputDirectory: string,
+  owned?: OwnedHelperPublication,
+): { path: string; dispose(): void } {
   const helper = join(outputDirectory, "darwin-input-helper")
+  let release = () => {}
+  let replacement: string | undefined
   try {
-    execFileSync("/usr/bin/swiftc", ["-O", "-o", helper, source], {
+    const identity = owned?.identity?.trim().toLowerCase()
+    if (owned) {
+      if (!identity || !/^[a-f0-9]{40}$/.test(identity)) {
+        throw new Error(
+          `owned macOS input requires ${DARWIN_INPUT_SIGNING_IDENTITY_ENV} to name the approved certificate fingerprint`,
+        )
+      }
+      release = helperPublicationLease(owned.directory)
+    }
+    mkdirSync(outputDirectory)
+    const sourceHash = owned ? helperHash(source) : undefined
+    const argv = ["-O", "-o", helper, source]
+    execFileSync("/usr/bin/swiftc", argv, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 300_000,
     })
+    if (!owned || !identity) return { path: helper, dispose: release }
+    const compilerVersion = String(
+      execFileSync("/usr/bin/swiftc", ["--version"], { timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }),
+    ).trim()
+    if (!compilerVersion) throw new Error("macOS input helper compiler returned no version")
+    const expectedRequirement = `identifier "${DARWIN_INPUT_IDENTIFIER}" and certificate leaf = H"${identity}"`
+    execFileSync(
+      "/usr/bin/codesign",
+      [
+        "--sign",
+        identity,
+        "--identifier",
+        DARWIN_INPUT_IDENTIFIER,
+        "--timestamp=none",
+        "--requirements",
+        `=designated => ${expectedRequirement}`,
+        helper,
+      ],
+      { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] },
+    )
+    execFileSync(
+      "/usr/bin/codesign",
+      ["--verify", "--strict", "--test-requirement", `=${expectedRequirement}`, helper],
+      { timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
+    )
+    const requirementOutput = String(
+      execFileSync("/usr/bin/codesign", ["--display", "--requirements", "-", helper], {
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    )
+    const actualRequirement = requirementOutput.match(/(?:#\s*)?designated\s*=>\s*(.+)/)?.[1]?.trim()
+    if (!actualRequirement) throw new Error("macOS input helper has no readable designated requirement")
+    if (sourceHash !== helperHash(source)) {
+      throw new Error("macOS input helper staged source changed during compilation")
+    }
+    const binaryHash = helperHash(helper)
+    const executedPath = join(owned.directory, "darwin-input-helper")
+    replacement = join(owned.directory, `.darwin-input-helper-${randomUUID()}`)
+    copyFileSync(helper, replacement, constants.COPYFILE_EXCL)
+    chmodSync(replacement, 0o700)
+    if (helperHash(replacement) !== binaryHash) {
+      throw new Error("macOS input helper publication copy differs from the signed run artifact")
+    }
+    renameSync(replacement, executedPath)
+    replacement = undefined
+    if (helperHash(executedPath) !== binaryHash) {
+      throw new Error("macOS input helper installed bytes differ from the signed run artifact")
+    }
+    owned.report?.({
+      sourceHash,
+      compiler: "/usr/bin/swiftc",
+      compilerArgv: argv,
+      compilerVersion,
+      binaryHash,
+      identity,
+      expectedRequirement,
+      actualRequirement,
+      executedPath,
+      installedBytesEqual: true,
+    })
+    return { path: executedPath, dispose: release }
   } catch (error) {
+    release()
     const stderr = (error as { stderr?: Buffer | string }).stderr
     const detail = stderr && String(stderr).trim() ? String(stderr).trim() : String(error)
     throw new Error(`macOS input helper build failed: /usr/bin/swiftc ${source}: ${detail}`)
+  } finally {
+    if (replacement !== undefined && existsSync(replacement)) unlinkSync(replacement)
   }
-  return helper
 }
 
 /**

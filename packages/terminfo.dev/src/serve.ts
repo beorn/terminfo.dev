@@ -102,6 +102,7 @@ import {
   buildDarwinInputHelper,
   createDarwinInput,
   DARWIN_INPUT_HELPER_ENV,
+  DARWIN_INPUT_SIGNING_IDENTITY_ENV,
   ownedHostHelperPath,
   viewportScrollRoute,
 } from "./darwin-input.ts"
@@ -905,6 +906,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     let preflightCallLog: string | undefined
     let captureInstallationRefusal: string | undefined
     let input: InputFixture | undefined
+    let disposeDarwinInputHelper: (() => void) | undefined
+    let darwinInputBuildEvidence: string | undefined
     /**
      * What happened when the Darwin input adapter was installed, so the run record carries it:
      * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
@@ -1309,17 +1312,29 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       const appPid = terminal.appPid
       if (!appPid) return refuse(`the verified ${kind} terminal has no measured app PID`)
+      let helper: ReturnType<typeof buildDarwinInputHelper> | undefined
       try {
-        // An owned Mac (33587) has no job step that builds the helper, so it is always compiled here
-        // from the staged source, into this run's own directory, and kept there as evidence (@cto 75732b9d).
+        // Fresh staged build remains in the run; owned input executes its verified signed copy at
+        // the fixed user path under a lease retained through collector teardown (35130 CTO GO).
         const helperPath = ownedHostHelperPath(process.env[DARWIN_INPUT_HELPER_ENV], () => {
           if (!captureDirectory) {
             throw new Error("macOS input builds its helper in the run directory, and this run has none")
           }
-          return buildDarwinInputHelper(
+          helper = buildDarwinInputHelper(
             join(SOURCE_ROOT, "native", "darwin-input", "main.swift"),
             join(dirname(captureDirectory), "darwin-input-helper"),
+            route === "ownedHost"
+              ? {
+                  directory: join(homedir(), "Library", "Application Support", "terminfo.dev", "owned-mac-input"),
+                  identity: process.env[DARWIN_INPUT_SIGNING_IDENTITY_ENV],
+                  report: (evidence) => {
+                    darwinInputBuildEvidence = JSON.stringify(evidence)
+                    process.stderr.write(`collector.inputHelperBuild ${darwinInputBuildEvidence}\n`)
+                  },
+                }
+              : undefined,
           )
+          return helper.path
         })
         const installed = await createDarwinInput({
           appPid,
@@ -1348,8 +1363,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             process.stderr.write(`collector.inputInstall ${fact}\n`)
           },
         })
+        disposeDarwinInputHelper = helper?.dispose
         return { input: installed }
       } catch (error) {
+        helper?.dispose()
         return refuse(error instanceof Error ? error.message : String(error))
       }
     }
@@ -1757,8 +1774,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         out,
       )
     } finally {
-      await ownedTerminal?.dispose()
+      try {
+        await ownedTerminal?.dispose()
+      } finally {
+        disposeDarwinInputHelper?.()
+      }
     }
+    if (darwinInputBuildEvidence) batch.rawReplies["collector.inputHelperBuild"] = darwinInputBuildEvidence
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
     if (ordinaryOpen) batch.rawReplies[ORDINARY_OPEN_COLLECTOR_KEY] = ordinaryOpenRecord(ordinaryOpen)
