@@ -691,12 +691,15 @@ export interface KittyDisplayPixelEvidence {
   readonly target: KittyDigestPair
   /** Independent SGR background painting of the image's colour in the same rectangle, after the target. */
   readonly reference: string | undefined
+  /** An error the terminal returned for the block placement itself; never paired with a pixel positive. */
+  readonly placementError?: string
 }
 
 /**
  * The display row's pixel arm, used only after a controlled-silent placement. It can only establish
  * Supported: a stable target equal to a qualified independent reference. Every other reading stays open,
- * and silence never becomes a negative here.
+ * and silence never becomes a negative here. Equality to a reference painted after the target stands in
+ * for a layout guard: a screen that moved or reflowed between them cannot equal it.
  */
 export function decideKittyDisplayPixels(evidence: KittyDisplayPixelEvidence): KittyCaptureDecision {
   const [first, second] = evidence.target
@@ -705,6 +708,13 @@ export function decideKittyDisplayPixels(evidence: KittyDisplayPixelEvidence): K
       outcome: "inconclusive",
       note: "Kitty image display: this arm supplied no cell-aligned region for every capture, so nothing could be compared",
       decidedBy: "a missing region digest",
+    }
+  }
+  if (evidence.placementError !== undefined) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the terminal returned ${evidence.placementError} for the block placement, which contradicts any pixel reading, so the row stays open`,
+      decidedBy: "a refused block placement",
     }
   }
   if (evidence.reference === evidence.blank) {

@@ -4220,10 +4220,19 @@ async function kittyDisplayPixels(
 ): Promise<ProbeCallbackResult> {
   const id = KITTY_DISPLAY_ID
   const capture = ctx.capture
-  if (!capture) return placementOutcomeResult(silentPlacement, imageId)
-  const refusal = sgrCaptureTooSmall(ctx, id)
+  // @dev/6 peer F1 on #34932 (6b7e48cb): this row declares no terminal geometry, so its protocol answer
+  // decides on every run exactly as before. Only this branch needs a grid, and it takes the one this row's
+  // complete-raster capture calibration measured, which the capture adapter re-asserts on every capture.
+  // A run without that calibration keeps the protocol result.
+  const calibrated = ctx.captureGeometry?.geometry
+  if (!capture || !calibrated) return placementOutcomeResult(silentPlacement, imageId)
+  const grid = Object.create(ctx, {
+    rows: { value: calibrated.textHeight / calibrated.cellHeight },
+    cols: { value: calibrated.textWidth / calibrated.cellWidth },
+  }) as TermProbeSource
+  const refusal = sgrCaptureTooSmall(grid, id)
   if (refusal) return refusal
-  const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
+  const reported = await captureRegionGeometry(grid, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
   if ("pass" in reported) return reported
   const geometry = reported.geometry
   if (!geometry) {
@@ -4257,10 +4266,14 @@ async function kittyDisplayPixels(
     ctx.write(kittyDeletePlacements(imageId))
     kittyPaintReference(ctx, KITTY_ROW_IMAGES[id].image)
     const reference = await shoot("control", "Independent SGR reference in the row's own image colour, same block")
+    const blockMessage = blockPlacement.match?.[2]
     const decision = decideKittyDisplayPixels({
       blank: blank.regionDigest,
       target: [first.regionDigest, second.regionDigest],
       reference: reference.regionDigest,
+      ...(blockPlacement.reason === "reply" && blockMessage !== undefined && blockMessage !== "OK"
+        ? { placementError: blockMessage }
+        : {}),
     })
     const observed = JSON.stringify({
       id,
@@ -4441,8 +4454,6 @@ function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefi
       },
       "query_reply",
     ),
-    // The display row's pixel arm aligns its block to measured cells; transmit reads no pixels.
-    ...(display ? { termNeedsGeometry: true as const } : {}),
     libAssertionType: display
       ? {
           when: (source) =>

@@ -542,6 +542,7 @@ describe("decideKittyDisplayPixels", () => {
     ["an unqualified SGR reference", { blank: "cyan", target: ["cyan", "cyan"] as const, reference: "cyan" }],
     ["an unstable target pair", { ...qualified, target: ["cyan", "cyan-later"] as const }],
     ["a target that does not match the reference", { ...qualified, target: ["teal", "teal"] as const }],
+    ["a refused block placement", { ...qualified, placementError: "ENOENT:no such image" }],
   ])("%s stays inconclusive", (decidedBy, evidence) => {
     const decision = decideKittyDisplayPixels(evidence)
     expect(decision.outcome).toBe("inconclusive")

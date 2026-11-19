@@ -502,6 +502,39 @@ test("an acknowledged display placement keeps its query-reply verdict and takes 
   expect(result.observation?.assertionType).toBe("query_reply")
 })
 
+// @dev/6 peer F1 on #34932 (6b7e48cb): the display row declares no terminal geometry, so a source whose grid
+// accessors throw (as unified's source does for an undeclared row) still decides the protocol answer, and the
+// pixel branch sizes its block from the row's capture calibration alone.
+function withoutDeclaredGrid(context: TermProbeSource): TermProbeSource {
+  const undeclared = () => {
+    throw Object.assign(new Error("undeclared terminal geometry"), { name: "UndeclaredTerminalGeometry" })
+  }
+  return Object.defineProperties({ ...context }, { rows: { get: undeclared }, cols: { get: undeclared } })
+}
+
+test("the display row declares no geometry, and its acknowledgement decides without a grid", async () => {
+  expect(extensionsProbes.find((definition) => definition.id === DISPLAY)?.termNeedsGeometry).toBeUndefined()
+  const { context, captures } = surface({ region: ["unused"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid(context))
+  expect(captures).toHaveLength(0)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+})
+
+test("a silent display placement reads pixels from the calibrated grid when the row has no declared grid", async () => {
+  const { context, captures } = surface({ placement: "silent", region: ["blank", "cyan", "cyan", "cyan"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid(context))
+  expect(captures).toHaveLength(4)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+})
+
+test("a silent display placement with no capture calibration keeps the protocol result and takes no capture", async () => {
+  const { context, captures } = surface({ placement: "silent", region: ["unused"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid({ ...context, captureGeometry: undefined }))
+  expect(captures).toHaveLength(0)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+})
+
 test("a silent display placement on a text-cells run takes no pixel capture", async () => {
   const { context, captures } = surface({ placement: "silent", region: ["unused"] })
   const cellsRun = { ...context, captureKind: "text-cells" as const }
