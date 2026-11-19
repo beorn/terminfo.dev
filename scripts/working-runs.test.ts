@@ -193,6 +193,49 @@ const OLD = "2026-11-02T19-34-05-072Z-e8437509ec6a"
 const PARTIAL = "2026-11-02T20-34-05-309Z-75c7a72a53da"
 const WRITING = "2026-11-02T21-34-03-594Z-2d0bc819ffc1"
 
+/**
+ * #34927 acceptance (@cto 2026-11-18, `34927-metadata-receipt-r1.md`): the red arm for the verifier this bead
+ * keeps. The bounded fixture exists to cut test cost, so the cheap path must not become a trust boundary: the
+ * load still hashes every artifact a run cites, and one altered byte has to fail loudly with the file named.
+ * @dev/11 measured the red arm from the outside; this keeps it from being refactored away.
+ */
+describe("the retained-bytes check fails loudly on altered bytes (#34927 red arm)", () => {
+  it("names the artifact whose bytes no longer hash to the ref that cites it", () => {
+    // Its own bounded root: this test rewrites bytes on disk, so it must not share a root another test reads.
+    const bounded = boundedContentRoot(["ghostty", "macos"])
+    const runFiles = join(bounded, "probes-apps")
+    const runName = readdirSync(runFiles).find(
+      (name) => name.startsWith("ghostty-") && name.includes("-macos-") && name.endsWith(".json"),
+    )
+    expect(runName).toBeDefined()
+    const cited = JSON.parse(readFileSync(join(runFiles, runName!), "utf8")) as { screenshotRefs?: string[] }
+    const ref = cited.screenshotRefs?.[0]
+    expect(ref).toMatch(/^sha256:[a-f0-9]{64}$/)
+    const digest = ref!.slice("sha256:".length)
+    const artifact = join(bounded, "artifacts", digest + ".png")
+    const original = readFileSync(artifact)
+    const altered = Buffer.from(original)
+    altered[original.length >> 1] ^= 0xff
+    writeFileSync(artifact, altered)
+    // The loader records identity refusals on stderr; only its refusal to load is under test here.
+    const printed = vi.spyOn(console, "error").mockImplementation(() => {})
+    let thrown: unknown
+    try {
+      loadSelectedCorpus(bounded)
+    } catch (error) {
+      thrown = error
+    } finally {
+      writeFileSync(artifact, original)
+      printed.mockRestore()
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    // The message has to name the file AND say the bytes failed their cited digest: a bare digest, a
+    // missing-file message or a silent pass would each leave an operator unable to act.
+    expect((thrown as Error).message).toContain(digest + ".png")
+    expect((thrown as Error).message).toMatch(/hashes to [a-f0-9]{64}, not its cited/)
+  }, 180_000)
+})
+
 describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requirement 2)", () => {
   it("skips a finished-partial run and a run still being written", () => {
     const parent = runsDir()
