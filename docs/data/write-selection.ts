@@ -17,7 +17,7 @@ import {
   type SelectedProjection,
 } from "./selected-results.ts"
 import { compatibilitySubjects, joinedAppCells, type CurrentResult } from "./current-results.ts"
-import type { RunEntryHashes } from "./legacy-entry-hashes.ts"
+import { sameRunEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
@@ -253,8 +253,11 @@ function retainedEntryHashes(reads: readonly WorkingRead[]): Map<string, RunEntr
   for (const { run, retained } of reads) {
     if (retained === undefined) continue
     const seen = byRun.get(run.runId)
-    if (seen !== undefined && JSON.stringify(seen) !== JSON.stringify(retained)) {
-      throw new Error(`working run ${run.runId} was read twice through different retained manifests`)
+    if (seen !== undefined && !sameRunEntryHashes(seen, retained)) {
+      throw new Error(
+        `working run ${run.runId} was read twice through different retained manifests; ` +
+          "pass each raw run once with --working-run, or re-capture it so one manifest holds it",
+      )
     }
     byRun.set(run.runId, retained)
   }

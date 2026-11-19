@@ -12,7 +12,12 @@ import { join } from "node:path"
 import { expect, it } from "vitest"
 import { loadFeatures } from "../packages/catalog/src/index.ts"
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
-import { cellEntryHashes, loadLegacyEntryHashes, suiteEntryHashes } from "../docs/data/legacy-entry-hashes.ts"
+import {
+  cellEntryHashes,
+  loadLegacyEntryHashes,
+  sameRunEntryHashes,
+  suiteEntryHashes,
+} from "../docs/data/legacy-entry-hashes.ts"
 
 const content = join(import.meta.dirname, "..", "content")
 const legacy = loadLegacyEntryHashes(content)
@@ -109,6 +114,10 @@ it("keeps the committed declaration authoritative and refuses a retained record 
   expect(() => disagreeing(XTERM_SUITE, XTERM_READ_ALLOWED_RUN)).toThrow(
     /working run 746b496d58f2c0ec92c6c45b0a189972 retained entry hashes that disagree/,
   )
+  // 34999: the refusal names its cure, not only the symptom.
+  expect(() => disagreeing(XTERM_SUITE, XTERM_READ_ALLOWED_RUN)).toThrow(
+    /place the working run so its manifest becomes the declaration, or re-capture it at the declared suite/,
+  )
 })
 
 it("refuses two working runs whose retained manifests give one suite different entry hashes", () => {
@@ -118,4 +127,30 @@ it("refuses two working runs whose retained manifests give one suite different e
     [XTERM_READ_ALLOWED_RUN, { suiteId: XTERM_SUITE, catalogEntrySha256: changed }],
   ])
   expect(() => cellEntryHashes(noDeclaration, working)).toThrow(/retained manifests with different entry hashes/)
+  // 34999: the refusal names its cure, not only the symptom.
+  expect(() => cellEntryHashes(noDeclaration, working)).toThrow(
+    /re-capture one of them at the suite the placement declares/,
+  )
+})
+
+// @failure 34999: one run read through two retained records with the same hashes in another key order refuses as if they
+// differed (write-selection compared JSON text), stopping a selection build on a false conflict.
+it("treats the same retained record in any key order as one, and a different suite or hash as different", () => {
+  const record = { suiteId: XTERM_SUITE, catalogEntrySha256: XTERM_RETAINED }
+  const reordered = {
+    suiteId: XTERM_SUITE,
+    catalogEntrySha256: {
+      "extensions.osc52-clipboard": XTERM_RETAINED["extensions.osc52-clipboard"],
+      "extensions.osc52-read": XTERM_RETAINED["extensions.osc52-read"],
+    },
+  }
+  expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(record))
+  expect(sameRunEntryHashes(record, reordered)).toBe(true)
+  expect(sameRunEntryHashes(record, { ...record, suiteId: "044c44b73a50" })).toBe(false)
+  expect(
+    sameRunEntryHashes(record, {
+      ...record,
+      catalogEntrySha256: { ...XTERM_RETAINED, "extensions.osc52-read": "0".repeat(64) },
+    }),
+  ).toBe(false)
 })

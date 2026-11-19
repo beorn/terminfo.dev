@@ -80,6 +80,11 @@ const sameHashes = (left: Readonly<Record<string, string>>, right: Readonly<Reco
   return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key])
 }
 
+/** Two retained records agree when they name one suite and the same entry hashes, in any key order (34999). */
+export function sameRunEntryHashes(left: RunEntryHashes, right: RunEntryHashes): boolean {
+  return left.suiteId === right.suiteId && sameHashes(left.catalogEntrySha256, right.catalogEntrySha256)
+}
+
 /**
  * One cell's entry hashes for the site's per-row join, by its suite and run (34953, @cto
  * 34953-retained-manifest-go-1830). Committed and legacy declarations stay the authority. A working run's own retained
@@ -96,7 +101,9 @@ export function cellEntryHashes(
     const seen = bySuite.get(retained.suiteId)
     if (seen !== undefined && !sameHashes(seen.hashes, retained.catalogEntrySha256)) {
       throw new Error(
-        `suite ${retained.suiteId}: working runs ${seen.runId} and ${runId} retained manifests with different entry hashes`,
+        `suite ${retained.suiteId}: working runs ${seen.runId} and ${runId} retained manifests with different entry hashes; ` +
+          "one record was edited or corrupted after capture, since a suite id is the hash of its entries: " +
+          "re-capture one of them at the suite the placement declares",
       )
     }
     bySuite.set(retained.suiteId, { runId, hashes: retained.catalogEntrySha256 })
@@ -107,7 +114,8 @@ export function cellEntryHashes(
     const own = retained?.suiteId === suiteId ? retained.catalogEntrySha256 : undefined
     if (authority !== undefined && own !== undefined && !sameHashes(authority, own)) {
       throw new Error(
-        `suite ${suiteId}: working run ${runId} retained entry hashes that disagree with its committed or legacy declaration`,
+        `suite ${suiteId}: working run ${runId} retained entry hashes that disagree with its committed or legacy declaration; ` +
+          "place the working run so its manifest becomes the declaration, or re-capture it at the declared suite",
       )
     }
     return authority ?? own
