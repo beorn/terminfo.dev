@@ -8,7 +8,7 @@ import { expect, test, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { inflateSync } from "node:zlib"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
-import type { CapturedFrame } from "./capture-core.ts"
+import { command, type CapturedFrame } from "./capture-core.ts"
 import type { TermProbeSource, TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 const geometry = { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 }
@@ -1911,6 +1911,63 @@ test("an ambiguous reverse witness is a named unavailable outcome", async () => 
     status: "unavailable",
     reason: expect.stringContaining("reverse screen witness ambiguous: Capture calibration non-solid grid"),
   })
+})
+
+// #35058: kitty 0.49.2 on Linux. Its sentinel paint never showed on the reversed blank canvas, so the stage
+// kept capturing until its deadline, and the last capture's own xdotool step then refused "deadline expired
+// before invocation" inside the capture. That is the unseen-paint outcome the stage already names; it was
+// rethrown as an apparatus error instead, so calibration failed and every row of the batch with it
+// (run 2026-11-19T11-06-01-457Z-d1ff1d7e06b2: 264 of 273 rows probe-invalid, no capture returned).
+test("an unseen reverse paint whose stage deadline expires inside a capture is a named unavailable witness", async () => {
+  // The error the collector's own command step raises once the stage deadline handed to it has passed.
+  const expired: unknown = await command("true", [], undefined, Date.now() - 1).catch((error: unknown) => error)
+  expect(expired).toMatchObject({ message: "Capture command true deadline expired before invocation" })
+  let solidReads = 0
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen solid paint": [reversedBlank, reversedBlank, reversedBlank] },
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint") && ++solidReads === 3) throw expired
+    },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason: "reverse screen sentinel paint (basic) was not observed on the reversed blank canvas",
+  })
+  // The mode is still reset and the normal paint proven before the result is returned.
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+// #35058: GNU screen ignores DECSCNM, so the blank canvas never changes and the same expiry lands in the
+// blank stage (run 2026-11-19T11-36-03-419Z-a1cb26f9ea61).
+test("an ignored reverse mode whose stage deadline expires inside a capture is a named unavailable witness", async () => {
+  const expired: unknown = await command("true", [], undefined, Date.now() - 1).catch((error: unknown) => error)
+  let blankReads = 0
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, blank, blank] },
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen blank") && ++blankReads === 3) throw expired
+    },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+  })
+  expect(run.reads.get("reverse screen solid paint")).toBeUndefined()
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("an apparatus error inside a reverse capture before its stage deadline stays fatal", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint")) throw new Error("adapter I/O")
+    },
+  })
+  await expect(run.promise).rejects.toThrow("adapter I/O")
 })
 
 test("a failed return to the normal paint invalidates the whole calibration", async () => {

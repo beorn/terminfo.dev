@@ -7,7 +7,7 @@ import {
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { clearLine, cursorHome, cursorTo } from "@silvery/ansi"
-import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
+import { CAPTURE_COMMAND_DEADLINE, type CapturedFrame, type NamedTextOrigin } from "./capture-core.ts"
 
 function refusal(message: string, cause?: unknown): Error {
   const error = new Error(message, { cause })
@@ -19,6 +19,15 @@ function paintTimeout(message: string): Error {
   const error = new Error(message)
   error.name = "CapturePaintTimeout"
   return error
+}
+
+/**
+ * Whether a reverse witness stage ran out of time (#35058). The stage deadline is also the one each capture's
+ * own command steps receive, so it can expire inside a capture as well as between captures; either way the
+ * paint was not seen in time.
+ */
+function reverseStageTimedOut(cause: unknown): boolean {
+  return cause instanceof Error && (cause.name === "CapturePaintTimeout" || cause.name === CAPTURE_COMMAND_DEADLINE)
 }
 
 function validateFrame(frame: CapturedFrame): void {
@@ -1073,7 +1082,7 @@ export async function calibrateCaptureOrigin({
         try {
           reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame), before)
         } catch (cause) {
-          if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+          if (!reverseStageTimedOut(cause)) throw cause
           return {
             status: "unavailable",
             reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
@@ -1084,7 +1093,7 @@ export async function calibrateCaptureOrigin({
         try {
           reverseSolid = await confirmedFrame("reverse screen solid paint", () => true, reverseBlank)
         } catch (cause) {
-          if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+          if (!reverseStageTimedOut(cause)) throw cause
           return {
             status: "unavailable",
             reason: `reverse screen sentinel paint (${form}) was not observed on the reversed blank canvas`,

@@ -37,6 +37,19 @@ export interface CaptureCommandStep {
   readonly budgetMs?: number
 }
 
+/**
+ * Name of the error a capture command raises when this collector's own deadline ends it: refused before
+ * spawning because the deadline had already passed, or killed when it arrived (#35058). A caller whose
+ * stage deadline it was can read it as that stage running out of time.
+ */
+export const CAPTURE_COMMAND_DEADLINE = "CaptureCommandDeadline"
+
+function commandDeadlineError(message: string): Error {
+  const error = new Error(message)
+  error.name = CAPTURE_COMMAND_DEADLINE
+  return error
+}
+
 export function command(
   file: string,
   args: string[],
@@ -55,7 +68,7 @@ export function command(
       }
       const remaining = deadline - Date.now()
       if (remaining <= 0) {
-        reject(new Error(`Capture command ${file} deadline expired before invocation`))
+        reject(commandDeadlineError(`Capture command ${file} deadline expired before invocation`))
         return
       }
       timeout = Math.min(timeout, Math.ceil(remaining))
@@ -123,7 +136,10 @@ export function command(
         const failureCode = failure && "code" in failure ? failure.code : code
         reject(
           Object.assign(
-            failure ?? new Error(captureCommandFailure(file, signal, code, killedByDeadline, timeout, step, stderr)),
+            failure ??
+              (killedByDeadline ? commandDeadlineError : (message: string) => new Error(message))(
+                captureCommandFailure(file, signal, code, killedByDeadline, timeout, step, stderr),
+              ),
             {
               code: failureCode,
               signal,
