@@ -1283,6 +1283,44 @@ describe("daemon HTTP boundary", () => {
     expect(failure.error).not.toContain(".draft.json")
   })
 
+  // 34995: the failure line named "draft <path>" whenever a draft FILE existed, not when THIS request reserved it.
+  // A second request in the same run that fails before admission pointed its reader at the first request's draft.
+  // The suite receipt breaks once a marker file exists, so only the second request fails, before its reservation.
+  it("a second request that fails before admission does not name the first request's draft (34995)", async () => {
+    const handed = "d".repeat(32)
+    const breaking = suiteDaemon.replace(
+      `probeHash:"a".repeat(12),`,
+      `get probeHash(){return require("node:fs").existsSync(process.env.SUITE_BREAK_MARKER) ? "broken" : "a".repeat(12)},`,
+    )
+    if (breaking === suiteDaemon) throw new Error("Fixture: the suite daemon no longer names probeHash as expected")
+    const marker = join(tmpdir(), `terminfo-34995-${process.pid}-${Date.now()}`)
+    const { registration, stderr } = await startTestDaemon(breaking, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      SUITE_BREAK_MARKER: marker,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const url = `http://127.0.0.1:${registration.port}/probe`
+    const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
+    const body = JSON.stringify({ ids: [] })
+    const first = await fetch(url, { method: "POST", headers, body })
+    expect(first.status, await first.clone().text()).toBe(200)
+    const draft = join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`)
+    expect(existsSync(draft), `first request's draft ${draft}`).toBe(true)
+    writeFileSync(marker, "")
+    try {
+      const second = await fetch(url, { method: "POST", headers, body })
+      const text = await second.text()
+      expect(second.status, text).toBe(500)
+      expect(text).toContain("invalid suite or collector revision metadata")
+      await vi.waitFor(() => expect(stderr()).toContain(`Probe daemon request failed for run ${handed}`))
+      expect(stderr()).toContain(`for run ${handed}, before its draft was reserved:`)
+      expect(stderr()).not.toContain(draft)
+    } finally {
+      rmSync(marker, { force: true })
+    }
+  })
+
   // A generic helper test misses both serialization and the client's early non-OK rejection.
   // Only the OS command is substituted: the Darwin census, command callback, HTTP handler and
   // client are real. This fixture establishes byte custody, never a native macOS failure cause.
