@@ -1242,6 +1242,33 @@ describe("daemon HTTP boundary", () => {
     expect(existsSync(drafts), `draft directory ${drafts} was never created`).toBe(false)
   })
 
+  // 35014: /probe/single reserved its draft but never named the request's run, so a post-admission failure logged
+  // "Probe daemon request failed:" with neither run nor draft, breaking 34753's custody line (the /probe twin is 30412).
+  it("names the run and its draft when /probe/single fails after admission (35014)", async () => {
+    const handed = "d".repeat(32)
+    const failing = answeringDaemon.replace(
+      "runProbeBatch:async options=>({results: options.draft.results, rawReplies: {}, observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false})",
+      `runProbeBatch:async()=>{throw new Error("fixture batch failure 35014")}`,
+    )
+    if (failing === answeringDaemon) {
+      throw new Error("Fixture: the answering daemon no longer substitutes runProbeBatch as expected")
+    }
+    const { registration, stderr } = await startTestDaemon(failing, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    await fetch(`http://127.0.0.1:${registration.port}/probe/single?id=sgr.bold`, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+    })
+      .then((response) => response.arrayBuffer())
+      .catch(() => undefined) // post-admission: the streamed body is ended, so the read may fail; the log is the record
+    const draft = join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`)
+    await vi.waitFor(() => expect(stderr()).toContain("fixture batch failure 35014"), { timeout: 10_000 })
+    expect(existsSync(draft), `the reserved draft ${draft}`).toBe(true)
+    expect(stderr()).toContain(`Probe daemon request failed for run ${handed}, draft ${draft}:`)
+  }, 30_000)
+
   it("refuses /probe/single a capture identity naming another run before collecting (34018)", async () => {
     const handed = "d".repeat(32)
     const other = "e".repeat(32)

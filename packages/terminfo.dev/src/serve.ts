@@ -2146,6 +2146,7 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: identity.refusal }))
           return
         }
+        captureRunId = identity.captureRunId // 35014: the failure line names this run, as /probe does
         const stream = openProbeResponse(res, identity.captureRunId)
         const collected = await collectOrRefuseRepeatedRun(res, identity.captureRunId, () =>
           collectProbeRun({
