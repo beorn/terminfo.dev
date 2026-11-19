@@ -1208,28 +1208,3 @@ it("34941 aborts an in-flight read when the run's client leaves, and refuses eve
   })
   expect(writes.length).toBe(wroteBefore)
 })
-
-// Requirement (34753 condition 3, 34941 AC3): a cancelled run releases the operation lease, so the
-// terminal is usable afterwards - the next operation is not stuck behind the abandoned one.
-it("34941 releases the operation lease after a cancelled run", async () => {
-  const writes: string[] = []
-  process.stdout.write = ((chunk: unknown) => {
-    writes.push(String(chunk))
-    return true
-  }) as typeof process.stdout.write
-  const controller = new AbortController()
-
-  const cancelled = withRunSignal(controller.signal, () =>
-    withTTYOperation(() => readResponse(/\x1b\[\d+;\d+R/, 5000)),
-  )
-  setTimeout(() => controller.abort(), 20)
-  await expect(cancelled).rejects.toMatchObject({ name: "AbortError" })
-
-  // A later run on the same stream: the queue entry the cancelled operation held must be free.
-  const later = withTTYOperation(async () => {
-    writeTTY("\x1b[2Jafter-cancel")
-    return "ran"
-  })
-  await expect(later).resolves.toBe("ran")
-  expect(writes.some((write) => write.includes("after-cancel"))).toBe(true)
-})

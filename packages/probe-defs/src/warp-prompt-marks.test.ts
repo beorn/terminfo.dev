@@ -137,7 +137,7 @@ test("a reader the mark leaves unchanged stays open naming that failure", async 
   expect(recorded.rectangles).toEqual({
     boundary: "rows 3-5, cols 1-40",
     history: "rows 1-2, cols 1-40",
-    shiftedBoundary: "rows 5-7, cols 1-40",
+    shiftedBoundary: "rows 6-8, cols 1-40",
   })
 })
 
@@ -235,4 +235,29 @@ test("the moved-position comparison records its own omission read", async () => 
   const recorded = JSON.parse(String(result.response)) as Record<string, { boundary?: string }>
   expect(recorded.shiftedOmission?.boundary).toBeDefined()
   expect(recorded.shiftedOmission?.boundary).not.toBe(recorded.shifted?.boundary)
+})
+
+// @dev/12's peer REVISE on #34949: band(r) spans r-1..r+1, so the two bands overlapped at row 5 and a
+// reader painting every boundary at a fixed row inside the overlap passed both comparisons. The bands
+// are disjoint now, and a fixed painter at any row the old geometry shared must fail.
+test("a boundary painted at the old overlap row never grades supported", async () => {
+  const result = await warpPromptMarkAppResult(
+    screenSource({ acceptsMarks: true, withCapture: true, boundaryRow: 5 }),
+    { id: "extensions.osc133-a", mark: "\x1b]133;A\x07", kind: "prompt-start" },
+    fallback,
+  )
+  expect(result.pass).not.toBe(true)
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
+})
+
+test("a boundary painted at a fixed row inside the moved band alone never grades supported", async () => {
+  for (const boundaryRow of [6, 8]) {
+    const result = await warpPromptMarkAppResult(
+      screenSource({ acceptsMarks: true, withCapture: true, boundaryRow }),
+      { id: "extensions.osc133-a", mark: "\x1b]133;A\x07", kind: "prompt-start" },
+      fallback,
+    )
+    expect(result.pass, String(boundaryRow)).not.toBe(true)
+    expect(result.tests?.[0]?.status, String(boundaryRow)).toBe("probe-todo")
+  }
 })
