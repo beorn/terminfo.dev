@@ -18,6 +18,7 @@ import {
   readInjectedOutcome,
   readResponse,
   withRawMode,
+  withRunSignal,
   withTTYOperation,
   withTTYQueryTrace,
   currentTTYTraceMark,
@@ -1181,4 +1182,29 @@ describe("live TTY trace mark", () => {
     expect(marks.inside).toMatchObject({ abandoned: true })
     expect(marks.viaScope).toMatchObject({ abandoned: true })
   })
+})
+
+// Requirement (34753 condition 3, 34941): the run signal reaches a wait that is already in flight, so an
+// active callback stops at the edge instead of running to its own timeout and painting afterwards.
+it("34941 aborts an in-flight read when the run's client leaves, and refuses every later write", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((chunk: unknown) => {
+    writes.push(String(chunk))
+    return true
+  }) as typeof process.stdout.write
+  const controller = new AbortController()
+
+  const run = withRunSignal(controller.signal, () => withTTYOperation(() => readResponse(/\x1b\[\d+;\d+R/, 5000)))
+  setTimeout(() => controller.abort(), 25)
+  const startedAt = Date.now()
+
+  await expect(run).rejects.toMatchObject({ name: "AbortError" })
+  // Promptly: the 5000 ms read deadline did not decide this.
+  expect(Date.now() - startedAt).toBeLessThan(1000)
+
+  const wroteBefore = writes.length
+  await expect(withRunSignal(controller.signal, async () => writeTTY("\x1b[2J"))).rejects.toMatchObject({
+    name: "AbortError",
+  })
+  expect(writes.length).toBe(wroteBefore)
 })
