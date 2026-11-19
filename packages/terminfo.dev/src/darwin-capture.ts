@@ -19,6 +19,15 @@ import type { ProbeCapture } from "./probes/unified.ts"
  */
 const DARWIN_CENSUS_TIMEOUT_MS = 10_000
 
+/**
+ * The window image owns its own budget too (#35043). Giving the census its own 10 s (#34892) let the
+ * census legally outlive the caller's paint deadline, and the image that followed was then handed a
+ * deadline already in the past: `command` refuses "deadline expired before invocation" before it
+ * spawns, so the collection died before grading a single cell. Anchored where the image runs, the
+ * 0.12 s a screencapture actually takes always fits.
+ */
+const DARWIN_IMAGE_TIMEOUT_MS = 10_000
+
 export interface DarwinWindow {
   id: number
   ownerPid: number
@@ -344,16 +353,21 @@ export async function createDarwinCapture(
         stderr: Buffer.alloc(0),
       }
       try {
+        // #35043: never hand the image a deadline the census has already spent. The census owns its own
+        // budget (#34892) and may use all of it, so the caller's paint deadline can be in the past by the
+        // time this spawns; the image step takes its own budget from this moment, and a caller whose
+        // deadline is further out still bounds it.
+        const imageDeadline = Math.max(deadline ?? 0, Date.now() + DARWIN_IMAGE_TIMEOUT_MS)
         attempt.stdout = await command(
           attempt.file,
           attempt.args,
           undefined,
-          deadline,
+          imageDeadline,
           (output) => {
             attempt.stderr = output
           },
           undefined,
-          { step: "window image" },
+          { step: "window image", budgetMs: DARWIN_IMAGE_TIMEOUT_MS },
         )
         attempt.bytes = readFileSync(outputPath)
       } catch (cause) {

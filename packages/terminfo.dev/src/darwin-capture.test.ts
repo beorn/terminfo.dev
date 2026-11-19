@@ -290,11 +290,59 @@ test("the window census and restore confirmation own their budget while the wind
       expect(call.step?.budgetMs).toBe(10_000)
       expect(call.deadline).toBeGreaterThanOrEqual(paintDeadline + 5_000)
     }
-    // The image itself still honours the caller's paint deadline: this is a budget split, not a removal.
+    // The image owns its own budget too (#35043): a paint deadline the census has already spent is
+    // lifted to one measured from where the image runs, and the step names the budget it got.
     const shots = calls.filter((call) => call.file === "/usr/sbin/screencapture")
     expect(shots).toHaveLength(1)
-    expect(shots[0]?.deadline).toBe(paintDeadline)
-    expect(shots[0]?.step).toEqual({ step: "window image" })
+    expect(shots[0]?.deadline).toBeGreaterThanOrEqual(paintDeadline + 5_000)
+    expect(shots[0]?.step).toEqual({ step: "window image", budgetMs: 10_000 })
+  } finally {
+    decoder.mockRestore()
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// #35043: a census that uses its own 10 s (#34892) leaves the paint deadline the caller passed in the
+// past. The image that follows used to be handed that spent deadline, so `command` refused "deadline
+// expired before invocation" before spawning and the collection died before grading a cell (run
+// d28f90afe49aaa80a36cf3ad78781be3 and 1bae5ea901f4a926a8446125ed38873a, VS Code on macOS 26.7.3).
+test("a census that outlives the paint deadline still leaves the window image a live budget (35043)", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-image-budget-"))
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width: 80, height: 63 },
+    alpha: 1,
+    onscreen: true,
+  }
+  const shots: Array<{ deadline: number | undefined }> = []
+  const decoder = convertsTo(80, 63)
+  const runner = vi
+    .spyOn(captureCore, "command")
+    .mockImplementation(async (file, args, _input, deadline, _onStderr, _environment, step) => {
+      if (file === "/usr/bin/osascript") {
+        // The census answers late enough to spend the caller's paint deadline, as a cold window
+        // enumeration on a six-window app did in the live failure.
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        return Buffer.from(JSON.stringify([own]))
+      }
+      if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      expect(step?.step).toBe("window image")
+      shots.push({ deadline })
+      expect(deadline).toBeGreaterThan(Date.now())
+      writeFileSync(args.at(-1)!, PNG_STUB)
+      return Buffer.alloc(0)
+    })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
+    const { result } = await adapter.captureRaw(
+      { featureId: "extensions.truecolor", role: "control", label: "diagnostic" },
+      Date.now() + 40,
+    )
+    expect(result.frame.pixelsDigest).toMatch(/^sha256:/)
+    expect(shots).toHaveLength(1)
   } finally {
     decoder.mockRestore()
     runner.mockRestore()
