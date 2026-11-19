@@ -631,59 +631,73 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     vi.stubEnv("TERMINFO_MUX_KIND", "")
     vi.stubEnv("TERMINFO_TARGET_ID", "xterm")
     const osc1 = featureId.includes("osc1")
-    for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
-      let title = "original title"
-      let icon: string | null = "original icon"
-      const writes: string[] = []
-      const input = {
-        featureId,
-        runId,
-        executable: { path: "/unused", sha256: "b".repeat(64) },
-        readTitle: async () => title,
-        withIconNameFixture: async (
-          _write: (s: string) => void,
-          work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
-        ) => work(async () => icon),
-        write(bytes: string) {
-          writes.push(bytes)
-          const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
-          if (!match) return
-          const code = match[1]
-          const payload = match[2]
-          if (!code || payload === undefined) throw Error("invalid OSC fixture")
-          if (code === "2") {
-            title = payload
-            return
-          }
-          if (mode === "unchanged" || mode === "absent") {
-            if (mode === "absent") icon = null
-            return
-          }
-          if (mode === "title-becomes-b") {
-            title = payload
+    // #34932 red (@dev/8, Nov 18): a mode whose title or icon never moves waits each read's whole settle budget, which
+    // is right for a live terminal and took 8 s over five readings here. The budget runs on fake time; the outcomes
+    // are the same.
+    vi.useFakeTimers()
+    try {
+      for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
+        let title = "original title"
+        let icon: string | null = "original icon"
+        const writes: string[] = []
+        const input = {
+          featureId,
+          runId,
+          executable: { path: "/unused", sha256: "b".repeat(64) },
+          readTitle: async () => title,
+          withIconNameFixture: async (
+            _write: (s: string) => void,
+            work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
+          ) => work(async () => icon),
+          write(bytes: string) {
+            writes.push(bytes)
+            const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+            if (!match) return
+            const code = match[1]
+            const payload = match[2]
+            if (!code || payload === undefined) throw Error("invalid OSC fixture")
+            if (code === "2") {
+              title = payload
+              return
+            }
+            if (mode === "unchanged" || mode === "absent") {
+              if (mode === "absent") icon = null
+              return
+            }
+            if (mode === "title-becomes-b") {
+              title = payload
+              icon = payload
+              return
+            }
+            if (mode === "mirrors-title") {
+              title = payload
+              icon = `${payload}-mirrored`
+              return
+            }
             icon = payload
-            return
-          }
-          if (mode === "mirrors-title") {
-            title = payload
-            icon = `${payload}-mirrored`
-            return
-          }
-          icon = payload
-        },
+          },
+        }
+        let settled = false
+        const running = readAppSemanticState(input).finally(() => {
+          settled = true
+        })
+        while (!settled) await vi.advanceTimersByTimeAsync(50)
+        const reading = await running
+        expect(reading.status).toBe("measured")
+        if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
+        const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
+        const result = gradeIconNameReading(featureId, reading)
+        const supported =
+          mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
+        expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
+        expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
+        expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
       }
-      const reading = await readAppSemanticState(input)
-      expect(reading.status).toBe("measured")
-      if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
-      const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
-      const result = gradeIconNameReading(featureId, reading)
-      const supported =
-        mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
-      expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
-      expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
-      expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
+    } finally {
+      vi.useRealTimers()
     }
   },
+  5_000,
 )
 
 // #34932: WezTerm applies each title and icon name a few reads after the OSC that sets it. The icon reader read

@@ -890,7 +890,21 @@ describe("window-operation qualification", () => {
           readTitle: async () => fixture.ctx.getTitle(),
           queryCursorPosition: async () => ({ row: 1, col: 1 }),
         } as unknown as TermProbeSource
-        const result = await callback(id).terminal(source)
+        // #34932: a restore or set that never arrives waits one real settle budget (2 s); on fake time the case runs
+        // in milliseconds with the same outcome, instead of 4 s per case against vitest's 5 s.
+        vi.useFakeTimers()
+        let settled = false
+        const running = callback(id)
+          .terminal(source)
+          .finally(() => {
+            settled = true
+          })
+        try {
+          while (!settled) await vi.advanceTimersByTimeAsync(50)
+        } finally {
+          vi.useRealTimers()
+        }
+        const result = await running
         if (behavior === "unobservable") {
           expect(result.observation).toBeUndefined()
           expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
