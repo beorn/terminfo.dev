@@ -2012,19 +2012,29 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
   })
   const capture = ctx.capture
   const sentinel = ctx.captureGeometry?.sentinel
+  // #34961 (@cto 34961-hold-geometry-go-0603): this definition declares no terminal geometry, so `ctx.cols` is
+  // refused for every subject. The hold paints at the last column of the grid this run's complete-raster calibration
+  // measured, the same raster the sentinel comes from; nothing is rounded or defaulted.
+  const raster = ctx.captureGeometry?.geometry
+  const cols =
+    raster === undefined ||
+    !(Number.isFinite(raster.textWidth) && raster.textWidth > 0) ||
+    !(Number.isFinite(raster.cellWidth) && raster.cellWidth > 0)
+      ? undefined
+      : raster.textWidth / raster.cellWidth
   const missing = !capture
     ? "no capture adapter"
     : ctx.captureKind === "text-cells"
       ? "only a text-cells capture"
       : !sentinel
         ? "no calibration sentinel"
-        : !Number.isSafeInteger(ctx.cols) || ctx.cols < 1
-          ? `no measured width (${String(ctx.cols)} columns)`
+        : cols === undefined || !Number.isSafeInteger(cols) || cols < 1
+          ? `no measured width (calibrated text width ${String(raster?.textWidth)} px over cell width ${String(raster?.cellWidth)} px)`
           : undefined
-  if (missing !== undefined || !capture || !sentinel) {
+  if (missing !== undefined || !capture || !sentinel || cols === undefined) {
     return open(`synchronized-output rendered hold unmeasured: this run offers ${missing}, so the hold cannot be read`)
   }
-  const cell = { row: 1, col: ctx.cols }
+  const cell = { row: 1, col: cols }
   const at = `\x1b[${cell.row};${cell.col}H`
   const paint = `\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`
   const blank = `\x1b7${at}\x1b[0m \x1b8`

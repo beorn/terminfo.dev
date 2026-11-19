@@ -39,6 +39,7 @@ import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding, withTTYOperation, writeTTY } from "../tty.ts"
 import {
   captureAdapterEligible,
+  createTermProbeSource,
   runProbeBatch,
   syncOutputRenderedSubject,
   wallExceededReason,
@@ -8786,4 +8787,121 @@ it("only WezTerm Linux 0-unstable-2026-10-10 and 0-unstable-2026-11-08 are grade
   ] as const) {
     expect(syncOutputRenderedSubject(other)).toBe(false)
   }
+})
+
+/**
+ * @failure The 05:06 PST 2026-11-19 WezTerm Linux run reached the rendered hold for the first time (snapshot Ps 2) and
+ *   graded probe-invalid "accessed undeclared or unavailable terminal geometry": the hold painted at `ctx.cols`, which
+ *   the collector's source refuses because this definition declares no terminal geometry. The modes-observations hold
+ *   fixtures hand a plain-number `cols`, so they never met the guard (#34961, @cto 34961-hold-geometry-go-0603).
+ * @level l1
+ * @consumer modes.synchronized-output App callback through the collector's own createTermProbeSource.
+ * @testonly none
+ */
+describe("34961: the rendered hold runs on the collector's own probe source", () => {
+  const definition = () => ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+
+  /** The real source (no declared geometry), with its terminal I/O replaced by a WezTerm-shaped hold. */
+  function holdSource(raster: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }) {
+    const source = createTermProbeSource({
+      probe: definition(),
+      utf8Decoding: async () => {
+        throw new Error("not read by this row")
+      },
+    })
+    const writes: string[] = []
+    let held = false
+    let shown = false
+    let pending: boolean | undefined
+    let decrpm = 0
+    let shot = 0
+    let clock = 0
+    source.syncOutputRenderedHold = true
+    source.captureKind = "pixels"
+    source.captureGeometry = {
+      geometry: raster,
+      source: "measured by complete raster calibration",
+      sentinel: { form: "basic", rgb: [181, 0, 181] },
+    }
+    source.now = () => (clock += 5)
+    source.write = (bytes) => {
+      writes.push(bytes)
+      if (bytes.includes("\x1b[?2026h")) held = true
+      const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+      if (painted !== undefined) {
+        if (held) pending = painted
+        else shown = painted
+      }
+      if (bytes.includes("\x1b[?2026l")) {
+        held = false
+        if (pending !== undefined) shown = pending
+        pending = undefined
+        if (bytes.includes("\x1b[0m \x1b8")) shown = false
+      }
+    }
+    source.queryWithSentinel = async (_sequence, pattern) => {
+      if (held) return null
+      decrpm++
+      return pattern.exec("\x1b[?2026;2$y")
+    }
+    source.capture = async (request: CaptureRequest) => {
+      shot++
+      return {
+        role: request.role,
+        label: request.label,
+        capturedAt: shot,
+        ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+        kind: "pixels",
+        pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+        located: shown ? box : null,
+      } satisfies ObservationFrame
+    }
+    return { source, writes, decrpmReads: () => decrpm }
+  }
+
+  it("keeps the declaration guard and paints at the calibrated last column (800 px / 10 px = 80)", async () => {
+    const { source, writes } = holdSource({ cellWidth: 10, cellHeight: 22, textWidth: 800, textHeight: 528 })
+    expect(definition().termNeedsGeometry).toBeUndefined()
+    expect(() => source.cols).toThrow(/accessed undeclared or unavailable terminal geometry/)
+    const result = await definition().term!(source)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    expect(JSON.parse(result.response!)).toMatchObject({ snapshot: 2, cell: { row: 1, col: 80 } })
+    expect(writes.some((bytes) => bytes.includes("\x1b[1;80H"))).toBe(true)
+  })
+
+  it.each([
+    ["a fractional quotient", { cellWidth: 10, cellHeight: 22, textWidth: 805, textHeight: 528 }],
+    ["a zero cell width", { cellWidth: 0, cellHeight: 22, textWidth: 800, textHeight: 528 }],
+    ["a negative text width", { cellWidth: 10, cellHeight: 22, textWidth: -800, textHeight: 528 }],
+    ["a non-finite text width", { cellWidth: 10, cellHeight: 22, textWidth: Number.NaN, textHeight: 528 }],
+    [
+      "an infinite cell width",
+      { cellWidth: Number.POSITIVE_INFINITY, cellHeight: 22, textWidth: 800, textHeight: 528 },
+    ],
+  ])("%s is a named probe-todo before any hold paint", async (_name, raster) => {
+    const { source, writes } = holdSource(raster)
+    const result = await definition().term!(source)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toEqual([
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringMatching(/rendered hold unmeasured: .*no measured width/),
+      },
+    ])
+    expect(writes).toEqual([])
+  })
+
+  it("a subject without the hold flag keeps the DECRPM criterion and reads no geometry", async () => {
+    const { source } = holdSource({ cellWidth: 10, cellHeight: 22, textWidth: 800, textHeight: 528 })
+    delete source.syncOutputRenderedHold
+    delete source.captureGeometry
+    let reads = 0
+    source.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[?2026;${++reads === 2 ? 1 : 2}$y`)
+    const result = await definition().term!(source)
+    expect(JSON.parse(result.response!)).toEqual({ snapshot: 2, afterSet: 1, afterRestore: 2 })
+    expect(result.tests?.[0]?.status).not.toBe("probe-invalid")
+    expect(result.observation).toMatchObject({ outcome: "supported" })
+  })
 })
