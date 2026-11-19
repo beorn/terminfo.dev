@@ -24,7 +24,13 @@ function hash(text: string): string {
 }
 
 /** A 24x80 screen model: CUU/clear/OSC are understood, and a mark paints a boundary above its row. */
-function screenSource(options: { acceptsMarks: boolean; withCapture: boolean; unstable?: boolean }): TermProbeSource {
+function screenSource(options: {
+  acceptsMarks: boolean
+  withCapture: boolean
+  unstable?: boolean
+  /** A broken reader: every mark paints its boundary at this row, wherever the mark itself is written. */
+  boundaryRow?: number
+}): TermProbeSource {
   const screen: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(" "))
   let captures = 0
   let row = 0
@@ -50,7 +56,7 @@ function screenSource(options: { acceptsMarks: boolean; withCapture: boolean; un
         }
         const osc = /^\x1b\][^\x07]*\x07/.exec(rest)
         if (osc !== null) {
-          if (options.acceptsMarks && row > 0) screen[row - 1]![col] = "="
+          if (options.acceptsMarks && row > 0) screen[(options.boundaryRow ?? row) - 1]![col] = "="
           index += osc[0].length - 1
           continue
         }
@@ -202,4 +208,31 @@ test("without the flag the same row keeps the cursor-position arm", async () => 
   )
   expect(result.tests?.[0]?.status).not.toBe("supported")
   expect(result.observation?.note ?? "").not.toContain("moves with the mark")
+})
+
+// #34949 (@cto fixed-position finding, condition C2): a screen that paints every mark's boundary at a
+// fixed row — row 3 here, while the mark moves from row 4 to row 6 — used to grade Supported, because
+// the moved mark's band carried different block text and therefore a different digest whatever it did.
+test("a boundary painted at a fixed row never grades supported", async () => {
+  const result = await warpPromptMarkAppResult(
+    screenSource({ acceptsMarks: true, withCapture: true, boundaryRow: 3 }),
+    { id: "extensions.osc133-a", mark: "\x1b]133;A\x07", kind: "prompt-start" },
+    fallback,
+  )
+  expect(result.pass).not.toBe(true)
+  expect(result.tests?.[0]?.status).toBe("probe-todo")
+  expect(result.tests?.[0]?.reason).toContain("did not follow the mark")
+})
+
+// The moved mark is compared with the same band and the same fixed text, so the response must carry
+// that second omission read: a reader can re-derive the comparison without trusting the summary.
+test("the moved-position comparison records its own omission read", async () => {
+  const result = await warpPromptMarkAppResult(
+    screenSource({ acceptsMarks: true, withCapture: true }),
+    { id: "extensions.osc133-a", mark: "\x1b]133;A\x07", kind: "prompt-start" },
+    fallback,
+  )
+  const recorded = JSON.parse(String(result.response)) as Record<string, { boundary?: string }>
+  expect(recorded.shiftedOmission?.boundary).toBeDefined()
+  expect(recorded.shiftedOmission?.boundary).not.toBe(recorded.shifted?.boundary)
 })

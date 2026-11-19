@@ -127,6 +127,12 @@ export async function warpPromptMarkAppResult(
   const targetAgain = await read(spec.id + ": mark alone, second read", MARK_ROW)
   writeVariant(ctx, MARK_ROW, "")
   const omission = await read(spec.id + ": mark omitted", MARK_ROW)
+  // #34949 (@cto fixed-position finding): the moved mark is compared with the SAME band holding the
+  // SAME fixed text, never with the band it occupied before. Two crops of different rows carry
+  // different block lines, so their digests differ whatever the mark did - which is how a boundary
+  // painted at a fixed row graded Supported.
+  writeVariant(ctx, SHIFTED_MARK_ROW, "")
+  const shiftedOmission = await read(spec.id + ": mark omitted at the moved position", SHIFTED_MARK_ROW)
   writeVariant(ctx, SHIFTED_MARK_ROW, spec.mark)
   const shifted = await read(spec.id + ": mark at another position", SHIFTED_MARK_ROW)
 
@@ -135,12 +141,15 @@ export async function warpPromptMarkAppResult(
     history: describeRect(retainedHistory()),
     shiftedBoundary: describeRect(band(SHIFTED_MARK_ROW)),
   }
-  const response = JSON.stringify({ rectangles, target, targetAgain, omission, shifted })
+  const response = JSON.stringify({ rectangles, target, targetAgain, omission, shiftedOmission, shifted })
   const targetStable = target.boundary === targetAgain.boundary && target.history === targetAgain.history
   const boundaryAppeared = target.boundary !== undefined && target.boundary !== omission.boundary
   const historyRetained = target.history !== undefined && target.history === omission.history
   const followedPosition =
-    shifted.boundary !== undefined && shifted.boundary !== target.boundary && shifted.history === omission.history
+    shifted.boundary !== undefined &&
+    shiftedOmission.boundary !== undefined &&
+    shifted.boundary !== shiftedOmission.boundary &&
+    shifted.history === omission.history
   const open = (reason: string): ProbeCallbackResult => ({
     pass: false,
     response,
@@ -166,9 +175,7 @@ export async function warpPromptMarkAppResult(
   }
   if (!targetStable) {
     const disagreed = [
-      target.boundary !== targetAgain.boundary
-        ? "the boundary band (" + describeRect(band(MARK_ROW)) + ")"
-        : undefined,
+      target.boundary !== targetAgain.boundary ? "the boundary band (" + describeRect(band(MARK_ROW)) + ")" : undefined,
       target.history !== targetAgain.history
         ? "the retained history (" + describeRect(retainedHistory()) + ")"
         : undefined,
@@ -176,7 +183,10 @@ export async function warpPromptMarkAppResult(
       .filter((named) => named !== undefined)
       .join(" and ")
     return open(
-      spec.id + ": two reads of the same frame disagreed in " + disagreed + ", so no comparison this run makes is stable",
+      spec.id +
+        ": two reads of the same frame disagreed in " +
+        disagreed +
+        ", so no comparison this run makes is stable",
     )
   }
   if (!boundaryAppeared) {
@@ -196,11 +206,16 @@ export async function warpPromptMarkAppResult(
     )
   }
   if (!followedPosition) {
+    const sameBand = shifted.boundary === shiftedOmission.boundary
     return open(
       spec.id +
         ": the boundary did not follow the mark to another position (" +
         describeRect(band(SHIFTED_MARK_ROW)) +
-        "), so it is not that marker's boundary",
+        ")" +
+        (sameBand
+          ? ", where the same rows with the same block text were unchanged by the mark"
+          : " and no omission read is available to compare it with") +
+        ", so it is not that marker's boundary",
     )
   }
   return {
