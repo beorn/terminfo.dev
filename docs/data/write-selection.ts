@@ -8,7 +8,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
-import { loadRawCapture } from "../../packages/admin/raw-capture.ts"
+import { loadRawCapture, loadRawCaptureWithManifest } from "../../packages/admin/raw-capture.ts"
 import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.ts"
 import {
   loadSelectedResults,
@@ -17,6 +17,7 @@ import {
   type SelectedProjection,
 } from "./selected-results.ts"
 import { compatibilitySubjects, joinedAppCells, type CurrentResult } from "./current-results.ts"
+import type { RunEntryHashes } from "./legacy-entry-hashes.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
@@ -227,25 +228,49 @@ export function workingRunRecord(rawPath: string, contentDir: string): WorkingRu
   )
 }
 
-function readWorkingRun(rawPath: string, contentDir: string, root: string, catalogIds: readonly string[]): LoadedRun {
+/** A loaded working run, with its retained manifest's entry hashes when the run was read through one (34953). */
+interface WorkingRead {
+  run: LoadedRun
+  retained?: RunEntryHashes
+}
+
+function readWorkingRun(rawPath: string, contentDir: string, root: string, catalogIds: readonly string[]): WorkingRead {
   const found = workingRunRecord(rawPath, contentDir)
-  if (found === undefined) return loadRawCapture(rawPath, { root, catalogIds })
+  if (found === undefined) return { run: loadRawCapture(rawPath, { root, catalogIds }) }
   const record = parseJsonStrict(found.recordPath, readFileSync(found.recordPath, "utf8"))
   if (!isRecord(record)) throw new Error(`${found.recordPath}: a collection record is a JSON object`)
   // A pass written before the field existed keeps the custody it had (33987, @cto c11afb84 cure (a)).
-  if (!("suiteManifest" in record)) return loadRawCapture(rawPath, { root, catalogIds })
+  if (!("suiteManifest" in record)) return { run: loadRawCapture(rawPath, { root, catalogIds }) }
   const manifestPath = retainedSuiteManifestPath(found.directory, record.suiteManifest, found.recordPath)
-  return loadRawCapture(rawPath, { root, catalogIds, manifestPath })
+  const { run, manifest } = loadRawCaptureWithManifest(rawPath, { root, catalogIds, manifestPath })
+  const hashes = manifest.catalogEntrySha256
+  return hashes === undefined ? { run } : { run, retained: { suiteId: manifest.probeHash, catalogEntrySha256: hashes } }
+}
+
+/** Each working run read through its retained manifest, by run id; one id read twice must agree (34953). */
+function retainedEntryHashes(reads: readonly WorkingRead[]): Map<string, RunEntryHashes> {
+  const byRun = new Map<string, RunEntryHashes>()
+  for (const { run, retained } of reads) {
+    if (retained === undefined) continue
+    const seen = byRun.get(run.runId)
+    if (seen !== undefined && JSON.stringify(seen) !== JSON.stringify(retained)) {
+      throw new Error(`working run ${run.runId} was read twice through different retained manifests`)
+    }
+    byRun.set(run.runId, retained)
+  }
+  return byRun
 }
 
 export function writeSelection(options: { out: string; content: string; workingRuns: readonly string[] }): number {
   refuseOutputUnderContent(options.out, options.content)
   const catalog = Object.keys(loadFeatures(options.content))
   const root = resolve(options.content, "..")
-  const loaded = options.workingRuns.map((path) => readWorkingRun(path, options.content, root, catalog))
+  const reads = options.workingRuns.map((path) => readWorkingRun(path, options.content, root, catalog))
+  const loaded = reads.map((read) => read.run)
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
   const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
-  const apps = appSections(projection, compatibilitySubjects(projection, options.content), options.content)
+  const subjects = compatibilitySubjects(projection, options.content)
+  const apps = appSections(projection, subjects, options.content, retainedEntryHashes(reads))
   writeFileSync(options.out, `${JSON.stringify({ ...document, apps }, null, 2)}\n`)
   console.log(`wrote ${document.cells.length} cells`)
   return document.cells.length
@@ -286,8 +311,9 @@ export function appSections(
   projection: SelectedProjection,
   subjects: ReadonlyMap<string, CurrentResult>,
   contentDir: string,
+  working: ReadonlyMap<string, RunEntryHashes> = new Map(),
 ): Record<string, SelectionFileApp> {
-  const joined = joinedAppCells(projection, subjects, contentDir)
+  const joined = joinedAppCells(projection, subjects, contentDir, undefined, working)
   const apps: Record<string, SelectionFileApp> = {}
   for (const [key, subject] of subjects) {
     const app = joined.get(key)
