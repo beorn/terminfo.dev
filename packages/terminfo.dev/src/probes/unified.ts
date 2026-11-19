@@ -225,6 +225,13 @@ export type ProbeCapture = (checkpoint: {
   avoid?: CaptureRequest["avoid"]
   /** The viewport hold this read is taken under, forwarded verbatim to the collector (34163). */
   scroll?: CaptureRequest["scroll"]
+  /** A layout guard over `cells`, forwarded verbatim to the collector (#34932). */
+  layoutGuard?: CaptureRequest["layoutGuard"]
+  /**
+   * The calibration's witnessed background members, added by the served route for a `layoutGuard`
+   * request; never set by a probe.
+   */
+  layoutGuardBackground?: ReadonlySet<number>
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>

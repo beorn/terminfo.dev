@@ -18,12 +18,13 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { zstdDecompressSync } from "node:zlib"
+import { gunzipSync, zstdDecompressSync } from "node:zlib"
 import { afterEach, expect, test } from "vitest"
 import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "@terminfo/probe-defs"
 import {
   cellRectangle,
   command,
+  compareLayoutGuard,
   convertCapture,
   converterIdentity,
   finishCapture,
@@ -909,3 +910,162 @@ test.each([
   },
   10_000,
 )
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 5): the bounded layout-guard comparison. The retained pair is
+// the real kitty Linux guard whose exact digests differed while nothing moved: 18 glyph-edge pixels one step
+// apart. Existing guard tests compare digests only, so they cannot tell that pair from a moved layout.
+const GUARD_PAIR = JSON.parse(
+  readFileSync(join(import.meta.dirname, "fixtures/kitty-placeholder-guard-pair.json"), "utf8"),
+) as { width: number; height: number; withImage: string; withoutImage: string }
+const guardCrop = (encoded: string) => ({
+  width: GUARD_PAIR.width,
+  height: GUARD_PAIR.height,
+  rgba: new Uint8Array(gunzipSync(Buffer.from(encoded, "base64"))),
+})
+/** The crop's own background colour, the only member these fixtures witness. */
+const BLACK = new Set([0])
+
+/** The same crop moved by whole pixels, the uncovered edge filled with background. */
+function shifted(crop: ReturnType<typeof guardCrop>, dx: number, dy: number) {
+  const rgba = new Uint8Array(crop.rgba.length)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 255
+  for (let y = 0; y < crop.height; y++) {
+    for (let x = 0; x < crop.width; x++) {
+      const sx = x - dx
+      const sy = y - dy
+      if (sx < 0 || sy < 0 || sx >= crop.width || sy >= crop.height) continue
+      rgba.set(crop.rgba.subarray((sy * crop.width + sx) * 4, (sy * crop.width + sx) * 4 + 4), (y * crop.width + x) * 4)
+    }
+  }
+  return { ...crop, rgba }
+}
+
+/** The first pixel of the crop that is ink (not background) when `ink`, else background. */
+function firstPixel(crop: ReturnType<typeof guardCrop>, ink: boolean): number {
+  for (let offset = 0; offset < crop.rgba.length; offset += 4) {
+    const packed = ((crop.rgba[offset] ?? 0) << 16) | ((crop.rgba[offset + 1] ?? 0) << 8) | (crop.rgba[offset + 2] ?? 0)
+    if (BLACK.has(packed) !== ink && (crop.rgba[offset] ?? 0) < 250) return offset
+  }
+  throw new Error("fixture has no such pixel")
+}
+
+test("the retained kitty guard pair holds: 18 pixels one step apart, the background/ink mask identical", () => {
+  const verdict = compareLayoutGuard(guardCrop(GUARD_PAIR.withImage), guardCrop(GUARD_PAIR.withoutImage), BLACK)
+  expect(verdict).toEqual({
+    holds: true,
+    width: 39,
+    height: 87,
+    changedPixels: 18,
+    maxChannelDelta: 1,
+    alphaExact: true,
+    maskChangedPixels: 0,
+    backgroundMembers: 1,
+  })
+})
+
+test.each([
+  { name: "a glyph moved one pixel right", dx: 1, dy: 0 },
+  { name: "a glyph moved one pixel down", dx: 0, dy: 1 },
+])("$name fails the guard", ({ dx, dy }) => {
+  const still = guardCrop(GUARD_PAIR.withoutImage)
+  const verdict = compareLayoutGuard(still, shifted(still, dx, dy), BLACK)
+  expect(verdict.holds).toBe(false)
+  expect(verdict.maskChangedPixels).toBeGreaterThan(0)
+  expect(verdict.reason).toBeDefined()
+})
+
+test("new ink, a channel delta of 2, an alpha change and changed dimensions each fail by name", () => {
+  const still = guardCrop(GUARD_PAIR.withoutImage)
+  const inked = { ...still, rgba: new Uint8Array(still.rgba) }
+  inked.rgba.set([200, 200, 200], firstPixel(still, false))
+  expect(compareLayoutGuard(still, inked, BLACK)).toMatchObject({ holds: false, maskChangedPixels: 1 })
+
+  const two = { ...still, rgba: new Uint8Array(still.rgba) }
+  const ink = firstPixel(still, true)
+  two.rgba[ink] = (two.rgba[ink] ?? 0) + 2
+  expect(compareLayoutGuard(still, two, BLACK)).toMatchObject({
+    holds: false,
+    maxChannelDelta: 2,
+    maskChangedPixels: 0,
+    reason: "an RGB channel differs by 2",
+  })
+
+  const alpha = { ...still, rgba: new Uint8Array(still.rgba) }
+  alpha.rgba[3] = 254
+  expect(compareLayoutGuard(still, alpha, BLACK)).toMatchObject({
+    holds: false,
+    alphaExact: false,
+    reason: "alpha differs",
+  })
+
+  const narrower = { width: 38, height: 87, rgba: new Uint8Array(38 * 87 * 4) }
+  expect(compareLayoutGuard(still, narrower, BLACK)).toMatchObject({
+    holds: false,
+    reason: "the crops are 39x87 and 38x87",
+  })
+})
+
+test("one step across the witnessed background boundary, or no witnessed members, fails the guard", () => {
+  const still = guardCrop(GUARD_PAIR.withoutImage)
+  // Background (0,0,0) against (1,0,0): within 1, but the class changed, so the mask is not identical.
+  const lifted = { ...still, rgba: new Uint8Array(still.rgba) }
+  lifted.rgba[firstPixel(still, false)] = 1
+  expect(compareLayoutGuard(still, lifted, BLACK)).toMatchObject({
+    holds: false,
+    maxChannelDelta: 1,
+    maskChangedPixels: 1,
+  })
+  expect(compareLayoutGuard(still, still, undefined)).toMatchObject({
+    holds: false,
+    backgroundMembers: 0,
+    reason: "no witnessed background members were supplied, so the background/ink mask cannot be compared",
+  })
+})
+
+test("the finalizer keeps a guard crop, compares a later frame against it once, and names an unknown ref", async () => {
+  const base = {
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png" as const, width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    origin: { origin: { x: 0, y: 0 }, basis: "measured fixture" },
+    trace: {},
+  }
+  const checkpoint = {
+    featureId: "guard-fixture",
+    role: "control" as const,
+    label: "guard",
+    cells: { top: 2, left: 2, bottom: 3, right: 3 },
+    pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    layoutGuardBackground: new Set([0xffffff]),
+  }
+  const kept = await finishCapture({
+    ...base,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    checkpoint: { ...checkpoint, layoutGuard: {} },
+  })
+  expect(kept.frame.layoutGuardComparison).toBeUndefined()
+  const shaded = new Uint8Array(FRAME_RGBA)
+  shaded[20] = (shaded[20] ?? 0) + 1
+  const compared = await finishCapture({
+    ...base,
+    decoded: { width: 4, height: 3, rgba: shaded },
+    checkpoint: { ...checkpoint, layoutGuard: { against: kept.frame.ref } },
+  })
+  expect(compared.frame.layoutGuardComparison).toMatchObject({
+    against: kept.frame.ref,
+    holds: true,
+    changedPixels: 1,
+    maxChannelDelta: 1,
+  })
+  // The comparison consumed the kept crop: a second comparison against it is named, never a pass.
+  const again = await finishCapture({
+    ...base,
+    decoded: { width: 4, height: 3, rgba: shaded },
+    checkpoint: { ...checkpoint, layoutGuard: { against: kept.frame.ref } },
+  })
+  expect(again.frame.layoutGuardComparison).toMatchObject({
+    holds: false,
+    reason: `no guard crop is kept for ${kept.frame.ref}`,
+  })
+})

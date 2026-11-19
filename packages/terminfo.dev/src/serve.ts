@@ -934,8 +934,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           const sentinel = calibrated.sentinel
           const regions = chooserRegions(checkpoint)
           const source = pixelSource
+          // #34932: a layout guard classifies background by this calibration's witnessed members.
+          const served =
+            checkpoint.layoutGuard !== undefined && calibrated.paintClasses !== undefined
+              ? { ...checkpoint, layoutGuardBackground: calibrated.paintClasses.background.members }
+              : checkpoint
           if (sentinel === undefined || source === undefined || regions.length === 0) {
-            return adapter.capture(checkpoint, calibrated)
+            return adapter.capture(served, calibrated)
           }
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
           // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
@@ -960,7 +965,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   Date.now() + DEFAULT_TIMEOUT_MS,
                 ),
               ),
-            capture: (resolve) => adapter.capture(checkpoint, resolve),
+            capture: (resolve) => adapter.capture(served, resolve),
             label: checkpoint.label,
             sentinel,
             regions,

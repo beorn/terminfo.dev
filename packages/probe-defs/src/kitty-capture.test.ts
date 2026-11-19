@@ -7,6 +7,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import type { CaptureLayoutGuard } from "./types.ts"
 import {
   KITTY_BLOCK_COLS,
   KITTY_BLOCK_LEFT,
@@ -335,6 +336,59 @@ test("each veto names itself instead of becoming a verdict", () => {
   expect(decideKittyPlaceholders(placeholders({ guard: [undefined, "guard"] })).decidedBy).toBe(
     "a missing region digest",
   )
+})
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 5): a guard whose raw digests differ holds only through the
+// collector's bounded comparison. The veto test above sees digests alone, so it cannot show that a holding
+// comparison admits the pair, that a failing or absent one does not, or that the bound reaches only the guard.
+function comparison(overrides: Partial<CaptureLayoutGuard> = {}): CaptureLayoutGuard {
+  return {
+    against: "sha256:guard-with-image",
+    holds: true,
+    width: 39,
+    height: 87,
+    changedPixels: 18,
+    maxChannelDelta: 1,
+    alphaExact: true,
+    maskChangedPixels: 0,
+    backgroundMembers: 1,
+    ...overrides,
+  }
+}
+
+test("a guard with different digests holds only through a bounded comparison that holds, and says which rule held", () => {
+  const shaded = decideKittyPlaceholders(placeholders({ guard: ["guard", "shaded"], guardComparison: comparison() }))
+  expect(shaded.outcome).toBe("supported")
+  expect(shaded.decidedBy).toContain("layout guard within its bounded comparison")
+  expect(decideKittyPlaceholders(placeholders()).decidedBy).toContain("layout guard equal")
+
+  const moved = decideKittyPlaceholders(
+    placeholders({
+      guard: ["guard", "moved"],
+      guardComparison: comparison({
+        holds: false,
+        maskChangedPixels: 3,
+        reason: "3 coordinate(s) changed between background and ink",
+      }),
+    }),
+  )
+  expect(moved.outcome).toBe("inconclusive")
+  expect(moved.decidedBy).toBe("the layout guard control")
+  expect(moved.note).toContain("3 coordinate(s) changed between background and ink")
+
+  const absent = decideKittyPlaceholders(placeholders({ guard: ["guard", "shaded"] }))
+  expect(absent.outcome).toBe("inconclusive")
+  expect(absent.note).toContain("no bounded guard comparison was supplied")
+
+  // The bound is the guard's alone: the placeholder pair, the same-image control and the reference stay exact.
+  const unstable = decideKittyPlaceholders(
+    placeholders({ guard: ["guard", "shaded"], guardComparison: comparison(), withImage: ["first", "second"] }),
+  )
+  expect(unstable.outcome).toBe("inconclusive")
+  const notOrdinary = decideKittyPlaceholders(
+    placeholders({ guard: ["guard", "shaded"], guardComparison: comparison(), ordinary: "near", reference: "near" }),
+  )
+  expect(notOrdinary.decidedBy).toBe("the same-image control")
 })
 
 test("identical pixels need a virtual-placement refusal, and an unmeasured path implicates nothing", () => {
