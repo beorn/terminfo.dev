@@ -4036,6 +4036,13 @@ it("offers a text run's adapter to cell-readback probes alone and never gates it
 it.each([
   { kind: "term", id: "xterm", version: "411", os: "linux", allowed: true },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux", allowed: true },
+  // 34932 (@cto 1852): the exact 11-08 build the hourly runs measure is admitted; a near version, a prefix and an
+  // absent version stay out.
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "linux", allowed: true },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-09", os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026", os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: undefined, os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "darwin", allowed: false },
   // 32593: the off-window control decides Ghostty 1.4.0 and Alacritty 0.17.0; other versions stay unreviewed.
   { kind: "term", id: "ghostty", version: "1.4.0", os: "linux", allowed: true },
   { kind: "term", id: "alacritty", version: "0.17.0", os: "linux", allowed: true },
