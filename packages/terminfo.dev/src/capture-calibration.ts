@@ -375,6 +375,11 @@ export type ReverseScreenWitness =
       readonly status: "witnessed"
       readonly sentinel: CalibrationSentinel
       readonly paintClasses: CalibratedPaintClasses
+      /**
+       * DECSCNM left the blank canvas exactly as the normal blank (#34932, @cpo/term 167a05b6): a terminal that
+       * ignores the mode. The classes are still the ones measured under the mode, so they equal the normal pair.
+       */
+      readonly canvasUnchanged?: true
     }
   | { readonly status: "unavailable"; readonly reason: string }
 
@@ -1070,8 +1075,10 @@ export async function calibrateCaptureOrigin({
     // #34932 (@cto 34932-reverse-seam-ruling-2325 items 2-3): on this same blank canvas and lifetime, normal -> reverse -> normal.
     // The witness is the paint the sentinel path really uses under the mode, never an inverted RGB, and it is
     // always the witnessed reverse pair (equal to the normal one when the mode leaves that paint unchanged).
-    // An ignored mode or an ambiguous witness is a named unavailable outcome; a failed return to the normal
-    // paint invalidates the whole calibration.
+    // An ignored mode is witnessed too: its blank and sentinel paint under the mode are measured like any other,
+    // and equal the normal pair (#34932, @cpo/term 167a05b6: an unavailable witness refused the pixel read that
+    // had decided Alacritty Unsupported). An unconfirmed blank or paint, or an ambiguous witness, is a named
+    // unavailable outcome; a failed return to the normal paint invalidates the whole calibration.
     let reverseScreen: ReverseScreenWitness | undefined
     if (screenMode === "reverse") {
       const rowsFrame = rows
@@ -1080,14 +1087,15 @@ export async function calibrateCaptureOrigin({
       reverseScreen = await (async (): Promise<ReverseScreenWitness> => {
         let reverseBlank: CapturedFrame
         try {
-          reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame), before)
+          reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame))
         } catch (cause) {
           if (!reverseStageTimedOut(cause)) throw cause
           return {
             status: "unavailable",
-            reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+            reason: "reverse screen blank canvas was not confirmed after DECSCNM was set",
           }
         }
+        const canvasUnchanged = equal(reverseBlank, before)
         paintGrid("solid", form)
         let reverseSolid: CapturedFrame
         try {
@@ -1133,6 +1141,7 @@ export async function calibrateCaptureOrigin({
               background: { anchor: background.anchor, members: background.members },
               sentinel: { anchor: reversed.witnessClass.anchor, members: reversed.witnessClass.members },
             },
+            ...(canvasUnchanged ? { canvasUnchanged: true as const } : {}),
           }
         } catch (cause) {
           if (!(cause instanceof Error) || cause.name !== "CaptureCalibrationRefused") throw cause

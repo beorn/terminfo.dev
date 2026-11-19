@@ -1890,16 +1890,28 @@ test("a sentinel paint the mode leaves unchanged is still the witnessed reverse 
   })
 })
 
-test("an ignored reverse screen mode is a named unavailable witness, never a calibration of the normal paint", async () => {
-  const run = calibration({ screenMode: "reverse", frames: { "reverse screen blank": [blank] } })
-  const result = await run.promise
-  expect(result.reverseScreen).toEqual({
-    status: "unavailable",
-    reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+// #34932 (@cpo/term 167a05b6): Alacritty on Linux ignores DECSCNM. An unavailable witness refused every read under the
+// mode, so modes.reverse-video went from Unsupported (its pixel read saw no change) to PROBE INVALID. The paint
+// under an ignored mode is still measured, and equals the normal pair, so the reads run as before the seam.
+test("an ignored reverse screen mode is witnessed with the measured paint, which equals the normal pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank], "reverse screen solid paint": [rasterFrame("solid")] },
   })
-  expect(run.reads.get("reverse screen solid paint")).toBeUndefined()
-  // The mode is still reset and the normal paint proven before the result is returned.
+  const result = await run.promise
+  expect(result.reverseScreen).toMatchObject({ status: "witnessed", canvasUnchanged: true })
+  if (result.reverseScreen?.status !== "witnessed") throw new Error("expected a witnessed reverse screen")
+  expect(result.reverseScreen.paintClasses).toEqual(result.paintClasses)
+  // Measured under the mode, never copied: both reverse stages were read.
+  expect(run.reads.get("reverse screen blank")).toBe(2)
+  expect(run.reads.get("reverse screen solid paint")).toBe(2)
   expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("a reversing terminal's witness does not claim an unchanged canvas", async () => {
+  const result = await calibration({ screenMode: "reverse" }).promise
+  expect(result.reverseScreen?.status).toBe("witnessed")
+  expect(result.reverseScreen).not.toHaveProperty("canvasUnchanged")
 })
 
 test("an ambiguous reverse witness is a named unavailable outcome", async () => {
@@ -1939,14 +1951,14 @@ test("an unseen reverse paint whose stage deadline expires inside a capture is a
   expect(run.reads.get("reverse screen return")).toBe(2)
 })
 
-// #35058: GNU screen ignores DECSCNM, so the blank canvas never changes and the same expiry lands in the
-// blank stage (run 2026-11-19T11-36-03-419Z-a1cb26f9ea61).
-test("an ignored reverse mode whose stage deadline expires inside a capture is a named unavailable witness", async () => {
+// #35058: the same expiry can land in the blank stage (GNU screen, run 2026-11-19T11-36-03-419Z-a1cb26f9ea61, before
+// an unchanged blank was accepted); here the blank never settles, so the stage runs out inside a capture.
+test("a reverse blank whose stage deadline expires inside a capture is a named unavailable witness", async () => {
   const expired: unknown = await command("true", [], undefined, Date.now() - 1).catch((error: unknown) => error)
   let blankReads = 0
   const run = calibration({
     screenMode: "reverse",
-    frames: { "reverse screen blank": [blank, blank, blank] },
+    frames: { "reverse screen blank": [blank, reversedBlank, blank] },
     beforeCapture: (label) => {
       if (label.includes("reverse screen blank") && ++blankReads === 3) throw expired
     },
@@ -1954,7 +1966,7 @@ test("an ignored reverse mode whose stage deadline expires inside a capture is a
   const result = await run.promise
   expect(result.reverseScreen).toEqual({
     status: "unavailable",
-    reason: "reverse screen mode ignored: the blank canvas did not change after DECSCNM was set",
+    reason: "reverse screen blank canvas was not confirmed after DECSCNM was set",
   })
   expect(run.reads.get("reverse screen solid paint")).toBeUndefined()
   expect(run.reads.get("reverse screen return")).toBe(2)
