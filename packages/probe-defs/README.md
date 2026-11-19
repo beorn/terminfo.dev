@@ -580,15 +580,20 @@ capability declaration. The setting does not decide the measured resize phases.
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support result. Callbacks retain it explicitly.
 App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
-and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
-roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
+and DECRST1004. A full bounded read retains enable-time input; its reader starts before enabling.
+Each enabled attempt reads ordered focus-out/in separately before injecting and reading a plain key.
+At most three attempts run, retaining every phase's exact bytes and the attempt's own focus witness;
+reports from different attempts, enable-time input or the key phase cannot complete one another.
+The reset roundtrip retains its entire bounded window, including reports arriving after the key.
 The existing fixture returns its verified owned/helper/owned X window IDs, retained in the assertion.
 Its optional work callback runs after helper focus is verified and before restoration. The callback can
 read the current focus immediately around a target write and hold focus through its observation deadline.
 The same fixture restores the owned window in `finally`, including when that work fails.
 At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
-Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.
-A wrong read, missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
+One witnessed complete enabled attempt and only a plain key throughout reset is Supported.
+Missing, partial or wrong reports after verified X focus are PROBE INVALID for every App:
+the X witness does not establish that the terminal processed its callbacks. Malformed enable-time input,
+a missing key or focus report while reset is also PROBE INVALID. DECRPM is retained as detail;
 the library callback is unchanged.
 App UTF8 mouse uses the optional owned-window resize and positioned-click fixture.
 CSI18t polling runs every100ms under one absolute2s deadline for resize and restoration.

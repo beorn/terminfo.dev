@@ -28,99 +28,143 @@ import type {
   ProbeSuiteManifest,
 } from "./types.ts"
 
-// A DECRPM reply does not witness focus delivery. Both set/reset arms must run,
-// including when the enabled arm has no reports (the reviewed Screen reading).
-test("App focus tracking grades delivered set/reset input rather than DECRPM", async () => {
-  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
-  for (const [enableTime, enabled, reset, outcome] of [
-    ["", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[I", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[O", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["", "a", "a", "unsupported"],
-    ["\x1b[I", "a", "a", "unsupported"],
-    ["\x1b[O", "a", "a", "unsupported"],
-    ["", "\x1b[Oa", "a", "invalid"],
-    ["\x1b[O", "\x1b[Ia", "a", "invalid"],
-    ["\x1b[I\x1b[I", "\x1b[O\x1b[Ia", "a", "invalid"],
-    ["", "\x1b[I\x1b[Oa", "a", "invalid"],
-    ["", "\x1b[O\x1b[I", "a", "invalid"],
-    ["", "\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
-  ] as const) {
-    let arm = 0
-    let bytes = ""
-    const input = {
+// The transport exposes immediate and later bytes separately. A matching read ends before later
+// bytes; a bounded absence read retains them. The final declared enabled frame repeats on retries.
+function focusFixture(options: {
+  enabled: readonly { report: string; late?: string }[]
+  enable?: string
+  enableLate?: string
+  resetLate?: string
+  noEnabledKey?: boolean
+  enabledKey?: string
+  missingWitness?: "enabled" | "reset"
+}) {
+  if (options.enabled.length === 0) throw new Error("Focus fixture needs an enabled stimulus")
+  let mode = false
+  let bytes = ""
+  let later = ""
+  let enabledTrips = 0
+  let resetTrips = 0
+  const readings: { raw: string; timeout: number }[] = []
+  const read: NonNullable<TermProbeSource["readInjected"]> = async (pattern, timeout, inject) => {
+    bytes = ""
+    later = ""
+    await inject()
+    let match = pattern.exec(bytes)
+    if (!match) {
+      bytes += later
+      match = pattern.exec(bytes)
+    }
+    readings.push({ raw: bytes, timeout })
+    return { match, reason: match ? "reply" : "timeout", raw: bytes, rawBase64: Buffer.from(bytes).toString("base64") }
+  }
+  const source = replayTermProbeSource(new Map(), {
+    input: {
       injectClick: async () => {
         throw new Error("Focus fixture received a click")
       },
+      injectKey: async () => {
+        if (!(mode && enabledTrips > 0 && options.noEnabledKey)) {
+          bytes += mode && enabledTrips > 0 ? (options.enabledKey ?? "a") : "a"
+        }
+      },
       focusRoundTrip: async () => {
-        bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
-        return {
+        if (mode) {
+          const frame = options.enabled[Math.min(enabledTrips++, options.enabled.length - 1)]!
+          bytes += frame.report
+          later += frame.late ?? ""
+        } else {
+          resetTrips++
+          later += options.resetLate ?? ""
+        }
+        const witness = {
           ownedWindowId: "42",
           helperWindowId: "543",
           focusedWindowIds: ["42", "543", "42"] as [string, string, string],
         }
+        return options.missingWitness === (mode ? "enabled" : "reset")
+          ? (undefined as unknown as typeof witness)
+          : witness
       },
-      injectKey: async () => {
-        if (arm === 0 || (arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
-      },
-    }
-    const source = replayTermProbeSource(new Map(), {
-      input,
-      write: (sequence) => {
-        if (sequence === "\x1b[?1004h") bytes += enableTime
-      },
-      readInput: async (pattern, _timeout, inject) => {
-        bytes = ""
-        await inject?.()
-        return pattern.exec(bytes)
-      },
-    })
-    const result = await definition.term!(source)
-    expect(arm, `${outcome}: both focus arms`).toBe(2)
-    if (outcome === "invalid") {
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
-    } else {
-      expect(result.observation?.outcome).toBe(outcome)
-    }
-  }
-})
-
-// Condition 2 of @cto 07d1c4d5 (#33305): the owned -> helper -> owned roundtrip IS the witness. An arm that
-// retains no witness is PROBE INVALID by name, so the reason names the helper step rather than a root window
-// the probe no longer visits (GTK reports no focus change to the display root).
-test("App focus tracking refuses a roundtrip that retained no X focus witness", async () => {
-  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
-  const witness = {
-    ownedWindowId: "42",
-    helperWindowId: "543",
-    focusedWindowIds: ["42", "543", "42"] as [string, string, string],
-  }
-  let arm = 0
-  let bytes = ""
-  const input: NonNullable<TermProbeSource["input"]> = {
-    injectClick: async () => {
-      throw new Error("Focus fixture received a click")
     },
-    focusRoundTrip: async () => (arm++ === 0 ? witness : (undefined as unknown as typeof witness)),
-    injectKey: async () => {
-      bytes += "a"
+    write: (sequence) => {
+      if (sequence === "\x1b[?1004h") {
+        mode = true
+        bytes += options.enable ?? ""
+        later += options.enableLate ?? ""
+      }
+      if (sequence === "\x1b[?1004l") mode = false
     },
-  }
-  const source = replayTermProbeSource(new Map(), {
-    input,
-    readInput: async (pattern, _timeout, inject) => {
-      bytes = ""
-      await inject?.()
-      return pattern.exec(bytes)
-    },
+    readInjected: read,
+    readInput: async (pattern, timeout, inject) =>
+      (
+        await read(pattern, timeout ?? 1000, async () => {
+          await inject?.()
+        })
+      ).match,
   })
-  const result = await definition.term!(source)
-  expect(arm, "both focus arms ran before the gate").toBe(2)
-  expect(result.tests).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned/helper/owned") }),
-    ]),
+  return {
+    source,
+    readings,
+    get enabledTrips() {
+      return enabledTrips
+    },
+    get resetTrips() {
+      return resetTrips
+    },
+    get enabled() {
+      return mode
+    },
+  }
+}
+
+const OI = "\x1b[O\x1b[I"
+test.each([
+  ["complete", { enabled: [{ report: OI }] }, "supported", 1],
+  ["enable-time I", { enabled: [{ report: OI }], enable: "\x1b[I" }, "supported", 1],
+  ["enable-time O", { enabled: [{ report: OI }], enable: "\x1b[O" }, "supported", 1],
+  ["late enable-time I", { enabled: [{ report: OI }], enableLate: "\x1b[I" }, "supported", 1],
+  ["idle-deferred I", { enabled: [{ report: "\x1b[O", late: "\x1b[I" }] }, "supported", 1],
+  ["raced partial O then complete", { enabled: [{ report: "\x1b[O" }, { report: OI }] }, "supported", 2],
+  ["raced bare key then complete", { enabled: [{ report: "" }, { report: OI }] }, "supported", 2],
+  ["absent reports", { enabled: [{ report: "" }] }, "invalid", 3],
+  ["enable-time report alone", { enabled: [{ report: "" }], enable: "\x1b[I" }, "invalid", 3],
+  ["enable-time O cannot complete I", { enabled: [{ report: "\x1b[I" }], enable: "\x1b[O" }, "invalid", 3],
+  ["key-phase I cannot complete O", { enabled: [{ report: "\x1b[O" }], enabledKey: "\x1b[Ia" }, "invalid", 3],
+  [
+    "no cross-attempt stitching",
+    { enabled: [{ report: "\x1b[O" }, { report: "\x1b[I" }, { report: "\x1b[O" }] },
+    "invalid",
+    3,
+  ],
+  ["wrong order", { enabled: [{ report: "\x1b[I\x1b[O" }] }, "invalid", 3],
+  ["extra enable-time reports", { enabled: [{ report: OI }], enable: "\x1b[I\x1b[I" }, "invalid", 1],
+  ["malformed enable-time input", { enabled: [{ report: OI }], enable: "x" }, "invalid", 1],
+  ["late reset report after key", { enabled: [{ report: OI }], resetLate: OI }, "invalid", 1],
+  ["missing enabled key", { enabled: [{ report: OI }], noEnabledKey: true }, "invalid", 3],
+  ["missing enabled witness", { enabled: [{ report: OI }], missingWitness: "enabled" }, "invalid", 3],
+  ["missing reset witness", { enabled: [{ report: OI }], missingWitness: "reset" }, "invalid", 1],
+] as const)("App focus tracking: %s", async (_name, options, outcome, attempts) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  const fixture = focusFixture(options)
+  const result = await definition.term!(fixture.source)
+  if (outcome === "supported") expect(result.observation?.outcome).toBe("supported")
+  else expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(fixture.enabledTrips).toBe(attempts)
+  expect(fixture.resetTrips).toBe(1)
+  expect(fixture.enabled).toBe(false)
+  if (typeof result.response !== "string") throw new Error("Focus result did not retain its observations")
+  const observed = JSON.parse(result.response) as {
+    enabledAttempts: { reports: string; key: string; reportsBase64: string; keyBase64: string }[]
+  }
+  expect(observed.enabledAttempts).toHaveLength(attempts)
+  expect(observed.enabledAttempts.flatMap((arm) => [arm.reports, arm.key])).toEqual(
+    fixture.readings.slice(1, -1).map((read) => read.raw),
   )
+  for (const arm of observed.enabledAttempts) {
+    expect(Buffer.from(arm.reportsBase64, "base64").toString()).toBe(arm.reports)
+    expect(Buffer.from(arm.keyBase64, "base64").toString()).toBe(arm.key)
+  }
 })
 
 // Constructed pixel-equivalence planes are derived from the semantic parser's
