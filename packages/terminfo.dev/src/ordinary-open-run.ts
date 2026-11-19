@@ -9,7 +9,6 @@
 import { basename } from "node:path"
 import { appBundleId } from "./app-bundles.ts"
 import { createDarwinClipboardAdapter, type DarwinCommand } from "./darwin-clipboard.ts"
-import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import {
   checkOrdinaryOpenLiveAncestry,
   readOrdinaryOpenReceipt,
@@ -28,7 +27,7 @@ export interface OrdinaryOpenRun {
   /** The registry's bundle id for this subject: the receipt must name exactly this bundle. */
   readonly expectedBundleId: string
   /** Built here, from the receipt's own subject; the gate only admits it, and never ORs it into ownership. */
-  readonly clipboard: LinuxClipboardAdapter
+  readonly clipboard: Awaited<ReturnType<typeof createDarwinClipboardAdapter>>
 }
 
 export interface OrdinaryOpenSubject {
@@ -126,9 +125,6 @@ export async function resolveOrdinaryOpenRun(input: {
   const clipboard = await createDarwinClipboardAdapter({
     appId: receipt.subject.id,
     appComm: basename(receipt.subject.executableInBundle),
-    titleRead: "none",
-    titleUnavailable:
-      "an ordinary-open run has no owned window: the receipt names the app's process, it does not own its window",
     ownedHost: false,
     // The person's own pasteboard: neither its digest nor its length may be published (@cto 2026-11-13).
     personClipboard: { foreignReadDigest: "absent" },
