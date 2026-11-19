@@ -37,13 +37,19 @@ export interface WarpMarkSpec {
 /** The fixed block every variant writes: one line per row, so any boundary is attributable to the mark. */
 const BLOCK_ROWS = 8
 const MARK_ROW = 4
-const SHIFTED_MARK_ROW = 6
+// #34949 (@dev/12's peer REVISE): band(r) spans r-1..r+1, so a moved mark one row below the first (6)
+// shared row 5 with band(4), and a reader painting every boundary at that fixed row passed BOTH
+// comparisons. Seven gives band(7) = rows 6-8, disjoint from band(4) = rows 3-5 and still inside the
+// eight-row block, so no fixed row can sit in both comparisons.
+const SHIFTED_MARK_ROW = 7
 const RIGHT = 40
 
 /**
  * Rows compared as the boundary band and as retained history. The history band is fixed at the block
  * above the target mark and is never widened with the mark's row: the shifted variant carries a
- * different band, and comparing two rectangles of different size would always differ.
+ * different band, and comparing two rectangles of different size would always differ. The two
+ * boundary bands are DISJOINT (#34949): otherwise a fixed row inside their shared neighbourhood
+ * satisfies the appeared and the followed comparisons at once.
  */
 const band = (row: number): CaptureCells => ({ top: row - 1, left: 1, bottom: row + 1, right: RIGHT })
 const retainedHistory = (): CaptureCells => ({ top: 1, left: 1, bottom: MARK_ROW - 2, right: RIGHT })
