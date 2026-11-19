@@ -10,7 +10,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createCallLog, withCallLog } from "viprobe"
 import { afterEach, expect, test, vi } from "vitest"
+import { type AppSemanticReading, extensionsProbes, type TermProbeSource } from "@terminfo/probe-defs"
 import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
 import { OwnedCwdReadError, readAppSemanticState } from "./app-semantic-state.ts"
 import {
@@ -107,7 +109,7 @@ function fakeTerminal(options: {
 
 async function read(
   terminal: ReturnType<typeof fakeTerminal>,
-  overrides: { privateWrite?: false; check?: () => void } = {},
+  overrides: { privateWrite?: false; check?: () => void; callLog?: true } = {},
 ) {
   const runId = "c".repeat(32)
   vi.stubEnv("TERMINFO_RUN_ID", runId)
@@ -117,8 +119,8 @@ async function read(
   const directory = mkdtempSync(join(tmpdir(), "terminfo-terminal-app-cwd-"))
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", directory)
   const retained: string[] = []
-  try {
-    const reading = await readAppSemanticState({
+  const owned = (write: (text: string) => void) =>
+    readAppSemanticState({
       featureId: "extensions.osc633-p",
       onRetained: (artifact: { path: string }) => {
         retained.push(artifact.path)
@@ -128,19 +130,44 @@ async function read(
         path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
         sha256: "d".repeat(64),
       },
-      write: (text: string) => terminal.write(text),
+      write,
       ...(overrides.privateWrite !== false && { privateWrite: (text: string) => terminal.privateWrite(text) }),
       readCwd: terminalAppOwnedCwd({
         tty: TTY,
-        write: (text) => terminal.write(text),
+        write,
         check: overrides.check ?? (() => {}),
         run: terminal.run,
       }),
     })
+  try {
+    let reading: AppSemanticReading
+    // The collector's own public trace (34935): the extensions.osc633-p arm run through the call-log recorder, whose
+    // log is the published callLog and whose writes are what rawReplies record.
+    let trace: { callLog: string; result: string } | undefined
+    if (overrides.callLog) {
+      let read: AppSemanticReading | undefined
+      const source = {
+        kind: "live",
+        cols: 80,
+        rows: 24,
+        write: (text: string) => terminal.write(text),
+        readAppSemanticState: async (_featureId: string, write: (text: string) => void) => (read = await owned(write)),
+      }
+      const log = createCallLog()
+      const session = withCallLog(source as unknown as TermProbeSource, { mode: "record", log })
+      const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc633-p")!
+      const result = await definition.term!(session.context)
+      session.finish()
+      if (read === undefined) throw new Error("the osc633-p arm never called the owned reader")
+      reading = read
+      trace = { callLog: JSON.stringify(log), result: JSON.stringify(result) }
+    } else {
+      reading = await owned((text: string) => terminal.write(text))
+    }
     const detail = reading.detail as { privateEvidence?: string } | undefined
     const privateEvidence =
       detail?.privateEvidence === undefined ? "" : readFileSync(join(directory, detail.privateEvidence), "utf8")
-    return { reading, graded: gradeAppSemanticState(reading), privateEvidence, retained }
+    return { reading, graded: gradeAppSemanticState(reading), privateEvidence, retained, trace }
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -286,6 +313,26 @@ test("an AX error names its phase and number, and the directory is still restore
   expect(terminal.privateWrites.join("")).toContain(INITIAL)
   expect(graded.tests?.[0]?.status).toBe("probe-invalid")
   expectPublicTraceClean(terminal, reading)
+})
+
+// @failure The arm's published callLog or result names a run-owned directory under the runner's capture area, or
+//   carries an OSC 7 control or OSC 633 P target that the reading maps to /run-owned/<name> (34935, hosted Terminal.app).
+test.each([
+  ["measured", { honours633: true }],
+  ["one control (invalid)", { honours633: true, controls: "first" }],
+] as const)("the collector's recorded trace omits the run-owned stimuli: %s", async (_name, options) => {
+  const terminal = fakeTerminal(options)
+  const { reading, trace } = await read(terminal, { callLog: true })
+  expect(reading.status).toBe("measured")
+  if (trace === undefined) throw new Error("no recorded trace")
+  // The recorder saw the public writes (the fences), so an empty log cannot pass.
+  expect(trace.callLog).toContain("terminfo-baseline-")
+  for (const text of [trace.callLog, trace.result]) {
+    expect(text).not.toContain(tmpdir())
+    // A directory name appears only in its public mapped form.
+    expect(text.replaceAll("/run-owned/osc7-", "")).not.toContain("osc7-")
+    expect(text).not.toMatch(/\\u001b\]7;|\\u001b\]633;P;/)
+  }
 })
 
 // @failure A private stimulus that throws is recorded as sent, is published, or skips evidence and restoration.
