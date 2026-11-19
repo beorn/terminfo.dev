@@ -85,6 +85,37 @@ test("App focus tracking grades delivered set/reset input rather than DECRPM", a
   }
 })
 
+// Retained Ghostty cases (#35126) delivered a partial focus-out or no focus report before the key.
+// A later complete roundtrip must still be measured instead of accepting that raced first answer.
+test.each(["\x1b[Oa", "a"])("App focus tracking retries the raced first input %j", async (first) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  let enabled = false
+  let bytes = ""
+  let enabledTrips = 0
+  const source = replayTermProbeSource(new Map(), {
+    input: {
+      injectClick: async () => { throw new Error("Focus fixture received a click") },
+      injectKey: async () => { bytes += "a" },
+      focusRoundTrip: async () => {
+        if (enabled) bytes += enabledTrips++ === 0 ? first.replace(/a$/, "") : "\x1b[O\x1b[I"
+        return { ownedWindowId: "42", helperWindowId: "543", focusedWindowIds: ["42", "543", "42"] as [string, string, string] }
+      },
+    },
+    write: (sequence) => {
+      if (sequence === "\x1b[?1004h") { enabled = true; bytes += "\x1b[I" }
+      if (sequence === "\x1b[?1004l") enabled = false
+    },
+    readInput: async (pattern, _timeout, inject) => {
+      bytes = ""
+      await inject?.()
+      return pattern.exec(bytes)
+    },
+  })
+  const result = await definition.term!(source)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(enabledTrips).toBe(2)
+})
+
 // Condition 2 of @cto 07d1c4d5 (#33305): the owned -> helper -> owned roundtrip IS the witness. An arm that
 // retains no witness is PROBE INVALID by name, so the reason names the helper step rather than a root window
 // the probe no longer visits (GTK reports no focus change to the display root).
