@@ -36,7 +36,7 @@ import { raiseRefusedCapture } from "../../../probe-defs/src/refused-capture.ts"
 import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
-import { measureUtf8Decoding, withTTYOperation } from "../tty.ts"
+import { measureUtf8Decoding, withTTYOperation, writeTTY } from "../tty.ts"
 import {
   captureAdapterEligible,
   runProbeBatch,
@@ -110,6 +110,47 @@ it.each([
     }
   },
 )
+
+// Requirement (34753 condition 3, 34941): the run's signal reaches a callback that is already ACTIVE, so
+// a disconnect stops it at the edge instead of letting it run to its own timeout and paint afterwards.
+it("34941 stops an active callback at the disconnect edge and writes nothing after it", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  const writes: string[] = []
+  const stdoutWrite = process.stdout.write
+  const controller = new AbortController()
+  let entered: (() => void) | undefined
+  const started = new Promise<void>((resolve) => (entered = resolve))
+  try {
+    process.stdout.write = ((chunk: unknown) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    definition.termWrites = "query"
+    definition.term = async () => {
+      entered?.()
+      await withTTYOperation(async () => {
+        // A setup wait with no deadline of its own: only the run's signal can end it early.
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        writeTTY("\x1b[2J late-write")
+      })
+      return notTestedResult("never reached", { input: false })
+    }
+
+    const run = runProbeBatch({ ids: [id], signal: controller.signal })
+    await started
+    const writesAtEdge = writes.length
+    controller.abort()
+
+    await expect(run).rejects.toMatchObject({ name: "AbortError" })
+    expect(writes.slice(writesAtEdge).filter((write) => write.includes("late-write"))).toEqual([])
+  } finally {
+    process.stdout.write = stdoutWrite
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
 
 // @failure A declaration silently coexists with a measurement, hiding that its route ruling is stale.
 // Preserve the measured evidence while refusing the contradictory declaration by name (CTO1dbd273f).
