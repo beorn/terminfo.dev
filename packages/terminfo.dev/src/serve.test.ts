@@ -2505,7 +2505,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
-      let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
+      let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = [], startupFailure = false
       let launch, expectedBatchVersion
       let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
@@ -2514,7 +2514,8 @@ describe("private finite daemon startup", () => {
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned, createOwnedTerminal: async () => ({
-        geometryAtGrant:{status:"measured",rows:24,cols:80},hostedAppId:terminal.name,summary:"owned fixture",dispose:async()=>{disposed++}
+        geometryAtGrant:{status:"measured",rows:24,cols:80},hostedAppId:terminal.name,summary:"owned fixture",dispose:async()=>{disposed++},
+        get clipboard(){ if(startupFailure)throw new Error("fixture startup failed after owner acquisition");return undefined }
       })}))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty,
         withRawMode:async callback=>callback(),drainStdin:async()=>{},
@@ -2539,6 +2540,12 @@ describe("private finite daemon startup", () => {
         executablePath:"/Applications/iTerm.app/Contents/MacOS/iTerm2",executableSha256:"a".repeat(64),
         sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
+      // 35130: fixture resources acquired during setup must be released even before runProbeBatch starts.
+      startupFailure=true
+      const beforeStartupFailure=disposed
+      await assert.rejects(collectProbeRun({ids,terminalAppOwner:{}}),/fixture startup failed after owner acquisition/)
+      assert.equal(disposed,beforeStartupFailure+1,"dispose acquired resources when startup fails before the batch")
+      startupFailure=false
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
       assert.equal(run.subject.version,"0.49.2")
       assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)

@@ -117,6 +117,7 @@ export function buildDarwinInputHelper(
   const helper = join(outputDirectory, "darwin-input-helper")
   let release = () => {}
   let replacement: string | undefined
+  let step = "configuration"
   try {
     const identity = owned?.identity?.trim().toLowerCase()
     if (owned) {
@@ -125,21 +126,25 @@ export function buildDarwinInputHelper(
           `owned macOS input requires ${DARWIN_INPUT_SIGNING_IDENTITY_ENV} to name the approved certificate fingerprint`,
         )
       }
+      step = "publication ownership"
       release = helperPublicationLease(owned.directory)
     }
     mkdirSync(outputDirectory)
     const sourceHash = owned ? helperHash(source) : undefined
     const argv = ["-O", "-o", helper, source]
+    step = "compilation"
     execFileSync("/usr/bin/swiftc", argv, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 300_000,
     })
     if (!owned || !identity) return { path: helper, dispose: release }
+    step = "compiler identity"
     const compilerVersion = String(
       execFileSync("/usr/bin/swiftc", ["--version"], { timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }),
     ).trim()
     if (!compilerVersion) throw new Error("macOS input helper compiler returned no version")
     const expectedRequirement = `identifier "${DARWIN_INPUT_IDENTIFIER}" and certificate leaf = H"${identity}"`
+    step = "signing"
     execFileSync(
       "/usr/bin/codesign",
       [
@@ -154,11 +159,13 @@ export function buildDarwinInputHelper(
       ],
       { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] },
     )
+    step = "signature verification"
     execFileSync(
       "/usr/bin/codesign",
       ["--verify", "--strict", "--test-requirement", `=${expectedRequirement}`, helper],
       { timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] },
     )
+    step = "designated requirement inspection"
     const requirementOutput = String(
       execFileSync("/usr/bin/codesign", ["--display", "--requirements", "-", helper], {
         timeout: 10_000,
@@ -170,6 +177,7 @@ export function buildDarwinInputHelper(
     if (sourceHash !== helperHash(source)) {
       throw new Error("macOS input helper staged source changed during compilation")
     }
+    step = "publication"
     const binaryHash = helperHash(helper)
     const executedPath = join(owned.directory, "darwin-input-helper")
     replacement = join(owned.directory, `.darwin-input-helper-${randomUUID()}`)
@@ -200,7 +208,7 @@ export function buildDarwinInputHelper(
     release()
     const stderr = (error as { stderr?: Buffer | string }).stderr
     const detail = stderr && String(stderr).trim() ? String(stderr).trim() : String(error)
-    throw new Error(`macOS input helper build failed: /usr/bin/swiftc ${source}: ${detail}`)
+    throw new Error(`macOS input helper build failed during ${step} for ${source}: ${detail}`)
   } finally {
     if (replacement !== undefined && existsSync(replacement)) unlinkSync(replacement)
   }

@@ -2,10 +2,19 @@
  * @failure macOS input installs a CGEvent adapter without the Accessibility grant, without a built helper, or after an injected key never reached the app, so a runner failure is read as terminal behaviour.
  * @level l2
  * @consumer macOS app collector input binding (33574)
- * @reach in-process: fake mechanism, no helper binary and no WindowServer
+ * @reach fake input and compiler/signing processes; real temporary files/kernel locks; no native TCC or WindowServer proof
  * @testonly none
  */
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -46,7 +55,7 @@ afterEach(() => {
 })
 
 // 35130: compile/sign are process-boundary stubs, not native trust proof. Files and overlapping kernel locks are real.
-async function helperBuildFixture(fail?: "compile" | "sign" | "verify") {
+async function helperBuildFixture(fail?: "compile" | "sign" | "verify" | "metadata") {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process")
   helperBuild.run = (file, args, options) => {
     if (file === "/usr/bin/lockf") {
@@ -78,6 +87,7 @@ async function helperBuildFixture(fail?: "compile" | "sign" | "verify") {
         writeFileSync(path, Buffer.concat([readFileSync(path), Buffer.from("-signed")]))
       }
       if (args.includes("--verify") && fail === "verify") throw new Error("candidate signature invalid")
+      if (args.includes("--display") && fail === "metadata") return Buffer.alloc(0)
       return args.includes("--display")
         ? Buffer.from(
             'designated => identifier "dev.terminfo.owned-input-helper" and certificate leaf = H"abababababababababababababababababababab"',
@@ -132,7 +142,7 @@ describe("owned Mac helper publication", () => {
     }
   })
 
-  it.each(["compile", "sign", "verify"] as const)(
+  it.each(["compile", "sign", "verify", "metadata"] as const)(
     "does not use prior installed bytes after a %s failure and releases the failed lease",
     async (fail) => {
       const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-failure-")))
@@ -156,6 +166,38 @@ describe("owned Mac helper publication", () => {
       }
     },
   )
+
+  it.each([
+    "missing signer",
+    "ambiguous signer",
+    "linked directory",
+    "writable directory",
+    "linked executable",
+  ] as const)("refuses %s without changing an existing file", async (bad) => {
+    await helperBuildFixture()
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-destination-")))
+    const source = join(root, "main.swift")
+    const directory = join(root, "installed")
+    const outside = join(root, "outside")
+    const identity =
+      bad === "missing signer" ? undefined : bad === "ambiguous signer" ? "display name" : "ab".repeat(20)
+    try {
+      writeFileSync(source, "staged source")
+      writeFileSync(outside, "existing file")
+      if (bad === "linked directory") symlinkSync(root, directory)
+      else {
+        mkdirSync(directory, { mode: 0o700 })
+        if (bad === "writable directory") chmodSync(directory, 0o777)
+        if (bad === "linked executable") symlinkSync(outside, join(directory, "darwin-input-helper"))
+      }
+      expect(() => buildDarwinInputHelper(source, join(root, "run"), { directory, identity })).toThrow(
+        /approved certificate fingerprint|symlink|controlled/,
+      )
+      expect(readFileSync(outside, "utf8")).toBe("existing file")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
 
 function options(overrides: Partial<DarwinInputOptions> = {}): DarwinInputOptions {
