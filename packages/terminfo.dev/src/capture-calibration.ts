@@ -375,11 +375,6 @@ export type ReverseScreenWitness =
       readonly status: "witnessed"
       readonly sentinel: CalibrationSentinel
       readonly paintClasses: CalibratedPaintClasses
-      /**
-       * DECSCNM left the blank canvas exactly as the normal blank (#34932, @cpo/term 167a05b6): a terminal that
-       * ignores the mode. The classes are still the ones measured under the mode, so they equal the normal pair.
-       */
-      readonly canvasUnchanged?: true
     }
   | { readonly status: "unavailable"; readonly reason: string }
 
@@ -1075,11 +1070,14 @@ export async function calibrateCaptureOrigin({
     // #34932 (@cto 34932-reverse-seam-ruling-2325 items 2-3): on this same blank canvas and lifetime, normal -> reverse -> normal.
     // The witness is the paint the sentinel path really uses under the mode, never an inverted RGB, and it is
     // always the witnessed reverse pair (equal to the normal one when the mode leaves that paint unchanged).
-    // An ignored mode is witnessed too: its blank and sentinel paint under the mode are measured like any other,
-    // and equal the normal pair (#34932, @cpo/term 167a05b6: an unavailable witness refused the pixel read that
-    // had decided Alacritty Unsupported). An unconfirmed blank or paint, or an ambiguous witness, is a named
-    // unavailable outcome; a failed return to the normal paint invalidates the whole calibration.
+    // Paint the mode leaves equal is witnessed too (@cto 34932-equal-paint-amendment-0443, amending item 2): a
+    // blank confirmed equal to the normal blank and a freshly painted, confirmed sentinel, both measured under the
+    // mode, whose classes match the normal pair. It is never copied, and says nothing about feature support; the
+    // probe still decides that. An unconfirmed blank or paint, a sentinel that differs from the normal pair on an
+    // equal blank, or an ambiguous witness is a named unavailable outcome; a failed return to the normal paint
+    // invalidates the whole calibration.
     let reverseScreen: ReverseScreenWitness | undefined
+    let reversePaintEqual = false
     if (screenMode === "reverse") {
       const rowsFrame = rows
       reverseSet = true
@@ -1134,6 +1132,20 @@ export async function calibrateCaptureOrigin({
           // The existing within-pair separation rule; no rule between the normal and the reverse pair.
           const background = findBackgroundPaintClass(reverseBlank, shrunk.grid, reverseFillets, reversed.witnessClass)
           const [r, g, b] = reversed.witness
+          if (canvasUnchanged) {
+            const sameClass = (left: PaintColorClass, right: PaintColorClass) =>
+              packRgb(...left.anchor) === packRgb(...right.anchor) &&
+              left.members.size === right.members.size &&
+              [...left.members].every((member) => right.members.has(member))
+            if (!sameClass(background, backgroundClass) || !sameClass(reversed.witnessClass, witnessClass)) {
+              return {
+                status: "unavailable",
+                reason:
+                  "reverse screen blank stayed equal to the normal blank, but its measured sentinel paint classes differ from the normal pair",
+              }
+            }
+            reversePaintEqual = true
+          }
           return {
             status: "witnessed",
             sentinel: { form, rgb: [r, g, b] },
@@ -1141,7 +1153,6 @@ export async function calibrateCaptureOrigin({
               background: { anchor: background.anchor, members: background.members },
               sentinel: { anchor: reversed.witnessClass.anchor, members: reversed.witnessClass.members },
             },
-            ...(canvasUnchanged ? { canvasUnchanged: true as const } : {}),
           }
         } catch (cause) {
           if (!(cause instanceof Error) || cause.name !== "CaptureCalibrationRefused") throw cause
@@ -1222,7 +1233,7 @@ export async function calibrateCaptureOrigin({
       },
       ...(reverseScreen === undefined ? {} : { reverseScreen }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {

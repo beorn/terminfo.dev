@@ -1890,9 +1890,10 @@ test("a sentinel paint the mode leaves unchanged is still the witnessed reverse 
   })
 })
 
-// #34932 (@cpo/term 167a05b6): Alacritty on Linux ignores DECSCNM. An unavailable witness refused every read under the
-// mode, so modes.reverse-video went from Unsupported (its pixel read saw no change) to PROBE INVALID. The paint
-// under an ignored mode is still measured, and equals the normal pair, so the reads run as before the seam.
+// #34932 (@cpo/term 167a05b6; @cto 34932-equal-paint-amendment-0443): Alacritty on Linux ignores DECSCNM. An
+// unavailable witness refused every read under the mode, so modes.reverse-video went from Unsupported (its pixel read
+// saw no change) to PROBE INVALID. A current blank and a fresh sentinel paint, both confirmed under the mode and
+// equal to the normal pair, are a witness; the probe, not calibration, still decides the feature.
 test("an ignored reverse screen mode is witnessed with the measured paint, which equals the normal pair", async () => {
   const run = calibration({
     screenMode: "reverse",
@@ -1902,19 +1903,48 @@ test("an ignored reverse screen mode is witnessed with the measured paint, which
     },
   })
   const result = await run.promise
-  expect(result.reverseScreen).toMatchObject({ status: "witnessed", canvasUnchanged: true })
+  expect(result.reverseScreen?.status).toBe("witnessed")
   if (result.reverseScreen?.status !== "witnessed") throw new Error("expected a witnessed reverse screen")
   expect(result.reverseScreen.paintClasses).toEqual(result.paintClasses)
+  expect(result.basis).toContain("reverse screen paint measured under DECSCNM stayed equal to the normal pair")
   // Measured under the mode, never copied: both reverse stages were read.
   expect(run.reads.get("reverse screen blank")).toBe(2)
   expect(run.reads.get("reverse screen solid paint")).toBe(2)
   expect(run.reads.get("reverse screen return")).toBe(2)
 })
 
-test("a reversing terminal's witness does not claim an unchanged canvas", async () => {
+test("a reversing terminal's witness does not claim paint equal to the normal pair", async () => {
   const result = await calibration({ screenMode: "reverse" }).promise
   expect(result.reverseScreen?.status).toBe("witnessed")
-  expect(result.reverseScreen).not.toHaveProperty("canvasUnchanged")
+  expect(result.basis).not.toContain("stayed equal to the normal pair")
+})
+
+test("a sentinel that differs from the normal pair on an equal reverse blank is a named unavailable witness", async () => {
+  const other = rasterFrame("solid", false, [10, 20, 30])
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, blank], "reverse screen solid paint": [other, other] },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason:
+      "reverse screen blank stayed equal to the normal blank, but its measured sentinel paint classes differ from the normal pair",
+  })
+  expect(result.basis).not.toContain("stayed equal to the normal pair")
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("an ignored mode whose sentinel paint never shows is a named unavailable witness, never the normal pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, blank], "reverse screen solid paint": [blank, blank, blank, blank] },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toMatchObject({
+    status: "unavailable",
+    reason: expect.stringContaining("was not observed on the reversed blank canvas"),
+  })
 })
 
 test("an ambiguous reverse witness is a named unavailable outcome", async () => {
