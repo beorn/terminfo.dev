@@ -196,6 +196,20 @@ export interface RegionReadback {
     control: { label: string; sequence: string }
     signal: string
     branch: string
+    /**
+     * A facet an app may paint nothing for (#34932, @cto 34932-observed-reset-scope-2136). When the `attempt` subset's
+     * qualified crop equals initial N, the subsets in `omitted` are not run, the full setup is `setup` (whose crop must
+     * equal the `setupSubset` crop), and the verdict says `facet` was not observable in this run. A painted attempt
+     * keeps every subset, so a measured failure of that facet's reset can never reach this branch.
+     */
+    unobservable?: {
+      facet: string
+      attempt: string
+      omitted: readonly string[]
+      setup: string
+      setupSubset: string
+      measured: string
+    }
   }
   /**
    * Two row groups of `region`, read on the seed, target and expected frames right after each
@@ -2290,9 +2304,13 @@ export async function captureRegionReadbackDecision(
   const witnessedPixels = discriminator !== undefined || savedRendition !== undefined
   const resetReference: {
     qualified: boolean
-    checks: Array<{ phase: string; label: string; digest: string }>
+    checks: Array<{ phase: string; label: string; digest: string; subset?: string }>
     failedAt?: string
+    /** The facet whose qualified attempt painted exactly N in this run, so its reset is not claimed. */
+    unobserved?: string
   } = { qualified: false, checks: [] }
+  const unobservable = savedRendition?.unobservable
+  const expectedLabel = expectedSubset < 0 ? undefined : savedRendition?.subsets[expectedSubset]?.label
   let initialRenditionSaved = false
   let restoreAfterPaint: string | undefined
   let readFailed = false
@@ -2404,6 +2422,7 @@ export async function captureRegionReadbackDecision(
     writes: string
     rendition?: string
     phase?: "baseline" | "before" | "styled" | "restored" | "setup" | "control" | "target"
+    subset?: string
   }> = savedRendition
     ? [
         { role: "control", label: `${id}: initial N`, writes: spec.expected, phase: "baseline" },
@@ -2413,6 +2432,7 @@ export async function captureRegionReadbackDecision(
             label: `${id}: N before ${subset.label}`,
             writes: `\x1b8${spec.expected}`,
             phase: "before" as const,
+            subset: subset.label,
           },
           {
             role: "control" as const,
@@ -2420,12 +2440,14 @@ export async function captureRegionReadbackDecision(
             writes: `${subset.sequence}${spec.expected}`,
             rendition: subset.sequence,
             phase: "styled" as const,
+            subset: subset.label,
           },
           {
             role: "control" as const,
             label: `${id}: N restored after ${subset.label}`,
             writes: `\x1b8${spec.expected}`,
             phase: "restored" as const,
+            subset: subset.label,
           },
         ]),
         { role: "control", label: `${id}: N before full setup`, writes: `\x1b8${spec.expected}`, phase: "before" },
@@ -2516,18 +2538,28 @@ export async function captureRegionReadbackDecision(
     )
     if (instability) return review(instability)
     for (const [index, step] of steps.entries()) {
+      // The unobserved facet's combined subsets are never run: they cannot separate anything this run can see.
+      if (resetReference.unobserved !== undefined && step.subset && unobservable?.omitted.includes(step.subset)) {
+        continue
+      }
+      const stepWrites =
+        resetReference.unobserved !== undefined && step.phase === "setup" && unobservable
+          ? `${unobservable.setup}${spec.expected}`
+          : step.writes
       if (savedRendition && initialRenditionSaved) {
         const rendition =
           step.phase === "styled"
             ? step.rendition
             : step.phase === "setup" || step.phase === "control"
-              ? savedRendition.subsets.at(-1)?.sequence
+              ? resetReference.unobserved !== undefined && unobservable
+                ? unobservable.setup
+                : savedRendition.subsets.at(-1)?.sequence
               : ""
         if (rendition === undefined) throw new Error(`${id}: ${step.label} has no declared rendition setter`)
         restoreAfterPaint = `\x1b8${rendition}${park}`
       }
-      ctx.write(step.writes)
-      await renewAfterWindowMove(step.writes)
+      ctx.write(stepWrites)
+      await renewAfterWindowMove(stepWrites)
       ctx.write(park)
       // YY already records this phase, including a corrupt control or unknown target. Restore its
       // future pen BEFORE the first witness space, so observer cleanup cannot change the witness
@@ -2599,7 +2631,12 @@ export async function captureRegionReadbackDecision(
       frames.push(measured.frame)
       if (step.role === "target") targetScreenshotRef = measured.frame.ref
       if (savedRendition && step.phase) {
-        resetReference.checks.push({ phase: step.phase, label: step.label, digest: measured.regionDigest })
+        resetReference.checks.push({
+          phase: step.phase,
+          label: step.label,
+          digest: measured.regionDigest,
+          ...(step.subset === undefined ? {} : { subset: step.subset }),
+        })
         const response = () =>
           JSON.stringify({
             resetReference,
@@ -2649,29 +2686,46 @@ export async function captureRegionReadbackDecision(
           failed = measured.regionDigest !== initial
         } else if (step.phase === "styled") {
           failed = measured.regionDigest === initial
+          // #34932 (@cto 2136): the declared facet's own attempt painting exactly N, after its N-before qualified,
+          // is retained as the reason for a smaller claim; its restore below must still return N.
+          if (failed && unobservable && step.subset === unobservable.attempt) {
+            const attempt = resetReference.checks.at(-1)
+            if (attempt) attempt.phase = "unobserved"
+            resetReference.unobserved = unobservable.facet
+            failed = false
+          }
         } else if (step.phase === "setup") {
-          if (expectedSubset >= 0) {
-            const styled = resetReference.checks.filter((check) => check.phase === "styled")
-            const expected = styled[expectedSubset]?.digest
+          const styled = resetReference.checks.filter((check) => check.phase === "styled")
+          if (expectedLabel !== undefined) {
+            const expected = styled.find((check) => check.subset === expectedLabel)?.digest
             if (
               expected === undefined ||
               expected === initial ||
-              styled.some((check, index) => index !== expectedSubset && check.digest === expected)
+              styled.some((check) => check.subset !== expectedLabel && check.digest === expected)
             ) {
               return invalid(`${id}: expected subset is not separated from every wrong-state crop`)
             }
           }
-          const full = resetReference.checks.findLast((check) => check.phase === "styled")
-          failed = measured.regionDigest !== full?.digest
+          const full =
+            resetReference.unobserved !== undefined && unobservable
+              ? styled.find((check) => check.subset === unobservable.setupSubset)
+              : styled.at(-1)
+          failed = full === undefined || measured.regionDigest !== full.digest
           resetReference.qualified = !failed
         } else if (step.phase === "control") {
-          failed = measured.regionDigest !== digests[index - 1]
+          // The digest measured just before this one: the setup. Omitted subsets push nothing, so never the step index.
+          failed = measured.regionDigest !== digests.at(-2)
         } else if (step.phase === "target") {
           const expected =
-            expectedSubset < 0
+            expectedLabel === undefined
               ? initial
-              : resetReference.checks.filter((check) => check.phase === "styled")[expectedSubset]?.digest
+              : resetReference.checks.find((check) => check.phase === "styled" && check.subset === expectedLabel)
+                  ?.digest
           const supported = measured.regionDigest === expected
+          const reduced =
+            resetReference.unobserved !== undefined && unobservable
+              ? `${id}: ${unobservable.measured}; ${unobservable.facet} was not observable in this run (subset ${unobservable.attempt} painted exactly initial N), so its reset is not claimed`
+              : ""
           const subset = resetReference.checks.find(
             (check) => check.phase === "styled" && check.digest === measured.regionDigest,
           )
@@ -2687,16 +2741,21 @@ export async function captureRegionReadbackDecision(
               outcome: supported ? "supported" : "unsupported",
               assertionType,
               ...cite(targetScreenshotRef, frames),
-              ...(subset && !supported && { note: `${id}: target retains ${subset.label}` }),
+              ...((reduced || (subset && !supported)) && {
+                note: [subset && !supported ? `${id}: target retains ${subset.label}` : "", reduced]
+                  .filter(Boolean)
+                  .join("; "),
+              }),
             },
             assertions: [
               {
                 assertionType,
                 kind: supported ? "positive" : "negative",
-                expected:
+                expected: `${
                   expectedSubset < 0
                     ? `${id}: reset returns the crop to immutable initial rendition ${initial}, after qualified subsets, restores and ${savedRendition.control.label}`
-                    : `${id}: reset returns the crop to the independently separated expected subset ${expected}, after qualified subsets, restores and ${savedRendition.control.label}`,
+                    : `${id}: reset returns the crop to the independently separated expected subset ${expected}, after qualified subsets, restores and ${savedRendition.control.label}`
+                }${reduced ? `; ${reduced}` : ""}`,
                 observed: measured.regionDigest,
               },
             ],

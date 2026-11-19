@@ -10,7 +10,7 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { expect, test } from "vitest"
+import { describe, expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
   captureRegionGeometry,
@@ -2168,6 +2168,91 @@ test("SGR22 clearing the preserved italic is a measured negative", async () => {
   const result = await sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!.term!(terminal.ctx)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
   expect(terminal.queries).toEqual([])
+})
+
+// #34932 (@cto 34932-observed-reset-scope-2136): an app that paints no faint (xterm 412) is graded on the facets it
+// shows. The full-branch tests above assume all seven subsets qualify, so they cannot see this branch, nor a measured
+// faint failure escaping through it.
+describe("SGR22 when the faint attempt paints exactly N", () => {
+  const selectiveReset = () => sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!
+  const evidence = (result: ProbeCallbackResult) =>
+    (
+      JSON.parse(result.response!) as {
+        resetReference: { unobserved?: string; checks: Array<{ phase: string; subset?: string; digest: string }> }
+      }
+    ).resetReference
+
+  test.each([
+    { name: "a correct reduced reset", options: {}, status: "supported" },
+    { name: "an ignored SGR 22", options: { resetMisses: ["bold"] }, status: "unsupported", retains: "SGR 1;3" },
+    { name: "a reset that loses italic", options: { resetDropsItalic: true }, status: "unsupported" },
+  ] satisfies Array<{ name: string; options: StatefulOptions; status: string; retains?: string }>)(
+    "$name is graded on bold reset and italic preservation, naming faint as not observed",
+    async ({ options, status, retains }) => {
+      const terminal = statefulTerminal(ALL_ATTRS, { ...options, invisible: ["faint"] })
+      const result = await selectiveReset().term!(terminal.ctx)
+      expect(result.criterionBranch).toBe("sgr-selective-reset-saved-rendition")
+      expect(result.tests).toMatchObject([{ id: "criterion", status }])
+      expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
+      expect(result.observation?.note).toContain("faint was not observable in this run")
+      if (retains) expect(result.observation?.note).toContain(`subset ${retains}`)
+      expect(result.assertions?.[0]?.expected).toContain("SGR 22 graded on clearing bold while keeping italic")
+      expect(terminal.queries).toEqual([])
+      const reference = evidence(result)
+      expect(reference.unobserved).toBe("faint")
+      const baseline = reference.checks[0]!.digest
+      expect(reference.checks.filter((check) => check.phase === "unobserved")).toMatchObject([
+        { subset: "SGR 2", digest: baseline },
+      ])
+      expect(reference.checks.filter((check) => check.phase === "styled").map((check) => check.subset)).toEqual([
+        "SGR 1",
+        "SGR 3",
+        "SGR 1;3",
+      ])
+      expect(reference.checks.filter((check) => check.phase === "restored")).toHaveLength(4)
+      // The faint combinations are never painted, and the setup is the qualified bold+italic, not 1;2;3.
+      const painted = terminal.writes.join("")
+      for (const omitted of ["\x1b[1;2m", "\x1b[2;3m", "\x1b[1;2;3m"]) expect(painted).not.toContain(omitted)
+      // Bold+italic is painted twice: its own subset, then as the repeated setup the SGR 99 control and SGR 22 follow.
+      const setups = terminal.writes.flatMap((write, at) =>
+        write.startsWith("\x1b[1;3m") && write.includes("YY") ? [at] : [],
+      )
+      expect(setups).toHaveLength(2)
+      const control = terminal.writes.findIndex((write) => write.startsWith("\x1b[99m"))
+      const target = terminal.writes.findIndex((write) => write.startsWith("\x1b[22m"))
+      expect(setups[1]).toBeLessThan(control)
+      expect(control).toBeLessThan(target)
+    },
+  )
+
+  test.each([
+    { name: "bold paints nothing", options: { invisible: ["faint", "bold"] }, failed: /subset SGR 1:/ },
+    {
+      name: "a restore keeps italic",
+      options: { invisible: ["faint"], restoreRetains: ["italic"] },
+      failed: /restored.*3/,
+    },
+  ] satisfies Array<{ name: string; options: StatefulOptions; failed: RegExp }>)(
+    "$name: the reduced branch does not qualify and no SGR 22 is sent",
+    async ({ options, failed }) => {
+      const terminal = statefulTerminal(ALL_ATTRS, options)
+      const result = await selectiveReset().term!(terminal.ctx)
+      expect(result.observation).toBeUndefined()
+      expect(result.tests?.[0]?.reason).toMatch(failed)
+      expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+    },
+  )
+
+  test("a painted faint that SGR 22 leaves behind stays a full-branch negative", async () => {
+    const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: ["faint"] })
+    const result = await selectiveReset().term!(terminal.ctx)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+    expect(result.observation?.note ?? "").not.toContain("not observable")
+    const reference = evidence(result)
+    expect(reference.unobserved).toBeUndefined()
+    expect(reference.checks.filter((check) => check.phase === "styled")).toHaveLength(7)
+    expect(terminal.writes.join("")).toContain("\x1b[1;2;3m")
+  })
 })
 
 test("SGR22 rejects an expected/wrong-subset collision before sending the target", async () => {

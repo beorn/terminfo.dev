@@ -163,6 +163,17 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
       control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
       signal: "criterion",
       branch: "sgr-selective-reset-saved-rendition",
+      // #34932 (@cto 34932-observed-reset-scope-2136): an app that paints no faint (xterm 412) is graded on the facets
+      // it shows. The faint-only attempt painting exactly N drops the faint combinations; the setup becomes the
+      // qualified bold+italic, SGR 99 stays its control, and SGR 22 must clear bold and keep italic.
+      unobservable: {
+        facet: "faint",
+        attempt: "SGR 2",
+        omitted: ["SGR 1;2", "SGR 2;3", "SGR 1;2;3"],
+        setup: "\x1b[1;3m",
+        setupSubset: "SGR 1;3",
+        measured: "SGR 22 graded on clearing bold while keeping italic",
+      },
     },
   },
   "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m", "\x1b[1m\x1b[4m"),

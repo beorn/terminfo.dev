@@ -4121,6 +4121,13 @@ it("offers a text run's adapter to cell-readback probes alone and never gates it
 // @consumer Exact owned App subject -> unified capture forwarding -> OSC22 callback.
 it.each([
   { kind: "term", id: "xterm", version: "411", os: "linux", allowed: true },
+  // 34932 (@cto 672197f0 response 21:33): the exact 412 build every hourly xterm Linux run measures since Nov 13 is
+  // admitted as a measurement route; a near version, a prefix, an absent version and another OS stay out.
+  { kind: "term", id: "xterm", version: "412", os: "linux", allowed: true },
+  { kind: "term", id: "xterm", version: "413", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "41", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: undefined, os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "412", os: "darwin", allowed: false },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux", allowed: true },
   // 34932 (@cto 1852): the exact 11-08 build the hourly runs measure is admitted; a near version, a prefix and an
   // absent version stay out.
@@ -4136,7 +4143,6 @@ it.each([
   { kind: "term", id: "alacritty", version: "0.16.1", os: "linux", allowed: false },
   { kind: "term", id: "kitty", version: "0.49.2", os: "linux", allowed: false },
   { kind: "mux", id: "tmux", version: "3.8", os: "linux", allowed: false },
-  { kind: "term", id: "xterm", version: "412", os: "linux", allowed: false },
   { kind: "term", id: "xterm", version: "411", os: "darwin", allowed: false },
 ] as const)("limits OSC22 image forwarding to the reviewed $id/$version/$os tuple", async (entry) => {
   verifiedBatchFixture()
