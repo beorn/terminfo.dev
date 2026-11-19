@@ -939,6 +939,92 @@ it("binds an App state assertion whose reader never wrote through the publishabl
   )
 })
 
+// @failure A native editor reader keeps a window capture in its reading's detail and callback response, but the
+//   frame never enters screenshotRefs, so placement copies no file for it and the published run cites a PNG that
+//   content/artifacts lacks (35004: 18 such refs across five macOS editor runs; 35009).
+// Placement's own missing-file refusal only sees listed refs, so its existing cases cannot catch a producer that
+// never lists the frame. This drives the reader's recorder through the real batch and the strict run decoder.
+// @level l1
+// @consumer Owned editor reader -> batch capture recorder -> run screenshotRefs -> placeCollectedRun.
+it.each(["measured", "invalid", "untyped"] as const)(
+  "lists an owned editor reader's window captures in the run's screenshotRefs: %s",
+  async (shape) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const id = "extensions.osc633-p"
+    const ref = (byte: number) =>
+      `sha256:${createHash("sha256")
+        .update(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, byte]))
+        .digest("hex")}`
+    // A decoded-pixel comparison value names no file and must stay out of the typed lists.
+    const pixelsDigest = `sha256:${"c".repeat(64)}`
+    const frame = (phase: string, byte: number) => ({
+      frame: {
+        kind: "pixels",
+        role: phase === "target" ? "target" : "control",
+        label: `Native App ${phase}`,
+        ref: ref(byte),
+        pixelsDigest,
+      },
+    })
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        async readAppSemanticState(featureId, _write, recordCapture) {
+          expect(featureId).toBe(id)
+          if (shape === "untyped") {
+            recordCapture({ retained: true })
+            throw new Error("unreachable: an untyped capture is refused as it is recorded")
+          }
+          const target = frame("target", 1)
+          recordCapture(target)
+          if (shape === "measured") {
+            return {
+              status: "measured",
+              reader: "state",
+              runId: "a".repeat(32),
+              unknown: { before: "control", after: "control" },
+              handled: { before: "control", after: "handled", expected: "handled" },
+              target: { before: "control", after: "target", expected: "target" },
+              detail: { captures: [{ phase: "target", observation: target }] },
+            }
+          }
+          // A failed read keeps its window too; that frame lives only in the invalid reading's detail.
+          const failed = frame("failed-read", 2)
+          recordCapture(failed)
+          return {
+            status: "invalid",
+            reason: "Native editor fixture",
+            detail: {
+              captures: [
+                { phase: "target", observation: target },
+                { phase: "failed-read", observation: failed },
+              ],
+            },
+          }
+        },
+      },
+    })
+    if (shape === "untyped") {
+      expect(batch.screenshotRefs).toEqual([])
+      expect(JSON.stringify(batch)).toContain(`App reader capture for ${id} returned no typed frame with a sha256 ref`)
+      return
+    }
+    const expected = shape === "measured" ? [ref(1)] : [ref(1), ref(2)]
+    expect(batch.screenshotRefs).toEqual(expected)
+    expect(batch.textSnapshotRefs).not.toContain(pixelsDigest)
+    const decoded = decodeCollectorDraft(
+      "owned-editor.json",
+      JSON.stringify(asRun(batch)),
+      manifest,
+      sourceRevision,
+    ).run
+    expect(decoded.screenshotRefs).toEqual(expected)
+    expect(decoded.screenshotRefs).not.toContain(pixelsDigest)
+  },
+)
+
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
   { label: "sentinel", response: "nonsecret-callback-response" },

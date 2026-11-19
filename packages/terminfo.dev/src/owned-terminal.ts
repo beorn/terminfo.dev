@@ -441,7 +441,16 @@ export interface OwnedTerminal {
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
-  readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /**
+   * `recordCapture` receives every window capture the reader keeps, including a capture kept only in a
+   * failed or invalid reading, so its file reference enters the run's typed screenshot list; a capture
+   * that skips it is a placed reference with no file (35009).
+   */
+  readonly readAppSemanticState?: (
+    featureId: string,
+    write: (text: string) => void,
+    recordCapture: (captured: unknown) => void,
+  ) => ReturnType<NonNullable<TermProbeSource["readAppSemanticState"]>>
   /** When present, only these rows consume this owner's reader; other rows retain their term callbacks. */
   readonly appSemanticStateFeatures?: ReadonlySet<string>
   /**
@@ -2588,11 +2597,23 @@ export async function createOwnedTerminal(options: {
         },
       }),
       ...(nativeEditorId !== undefined && {
-        async readAppSemanticState(featureId: string, write: (text: string) => void) {
+        async readAppSemanticState(
+          featureId: string,
+          write: (text: string) => void,
+          recordCapture: (captured: unknown) => void,
+        ) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "Native editor read has no live owned terminal" }
           }
-          const capture = options.appSemanticCapture
+          const windowCapture = options.appSemanticCapture
+          // 35009: every editor capture, target or failed-read, is recorded as it is kept.
+          const capture =
+            windowCapture &&
+            (async (captureFeatureId: string, phase: string) => {
+              const captured = await windowCapture(captureFeatureId, phase)
+              recordCapture(captured)
+              return captured
+            })
           if (!capture) {
             return { status: "unavailable" as const, reason: "Native editor read has no owned window capture" }
           }

@@ -125,8 +125,11 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
       assert.equal(nativeReads.length, 0, "an unbound version must refuse before the shared reader runs")
     } else if (editor) {
       assert.equal(typeof owner.readAppSemanticState, "function", "editor owner must install its native API reader")
-      const result = await owner.readAppSemanticState("extensions.osc633-p", () => {})
+      const recorded = []
+      const result = await owner.readAppSemanticState("extensions.osc633-p", () => {}, (captured) => recorded.push(captured))
       assert.equal(result.reason, "Native API boundary fixture")
+      // 35009: the editor's window capture reaches the batch recorder, so its file enters the typed list.
+      assert.deepEqual(recorded, [{ retained: true }])
       assert.equal(nativeReads.length, 1)
       assert.equal(nativeReads[0].editor.appId, app, "receipt, not launcher environment, selects the native reader")
       assert.deepEqual(captures, [{ featureId: "extensions.osc633-p", phase: "target" }])
@@ -135,7 +138,7 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
       await nativeReads[0].editor.assertProcess(7777)
       await assert.rejects(async () => nativeReads[0].editor.assertProcess(7777, true), /collector.*ancestor|ancestor.*collector/i)
       appPid = 5555
-      await assert.rejects(owner.readAppSemanticState("extensions.osc633-p", () => {}), /5555|4242/)
+      await assert.rejects(owner.readAppSemanticState("extensions.osc633-p", () => {}, () => {}), /5555|4242/)
       assert.equal(nativeReads.length, 1, "a changed App must refuse before native API evaluation")
     } else {
       assert.equal(typeof owner.readCells, "function")
