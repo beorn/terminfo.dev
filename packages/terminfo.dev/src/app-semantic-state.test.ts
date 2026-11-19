@@ -2156,6 +2156,9 @@ test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its e
     }
     expect(mac[id]).toContain("not whether Terminal.app parses the sequence")
   }
+  // @cto batch 1534: the P row names the criterion it declares (bare secondary-prompt start), never a prompt property.
+  expect(mac["extensions.osc133-p"]).toContain("secondary-prompt start")
+  expect(mac["extensions.osc133-p"]).not.toContain("k=i")
   for (const id of [
     "extensions.osc133-a",
     "extensions.osc133-d",

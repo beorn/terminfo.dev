@@ -806,7 +806,9 @@ const declarations: readonly AppSemanticCapability[] = [
       ["extensions.osc633-b", "an OSC 633 B prompt-end boundary inside the prompt line"],
       ["extensions.osc133-c", "an OSC 133 C output-start region"],
       ["extensions.osc633-c", "an OSC 633 C output-start region"],
-      ["extensions.osc133-p", "an OSC 133 P prompt property such as k=i"],
+      // @cto batch 1534 Nov 18: the P criterion is bare secondary-prompt start (new marks at two positions, history
+      // unchanged), not a prompt property; the only candidate surface, the mark store, is covered by the inventory.
+      ["extensions.osc133-p", "an OSC 133 P secondary-prompt start (a new prompt mark at each emitted position)"],
       ["extensions.osc633-e", "an OSC 633 E recorded command line"],
       // 34936 (@cpo/term b348b7a3, the 34871 rule: no readback, then a declaration): Wayland and systemd identities
       // have no macOS surface. osc440 stays open (a host audio-device read is a candidate), as do osc710 and osc666.
