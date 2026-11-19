@@ -703,11 +703,24 @@ it.each(["preflight", "mux"])("registration copy names its failed read: %s", (st
 // the collector never retained, and placement refuses every Linux app run with "does not bind original capture
 // bytes". This drives the launcher's own function on owned files, so the two sides cannot drift again.
 describe("capture keepalive prefix", () => {
+  // The image declares coreutils but no awk (flake.nix runtimeTools), and the host has both, so a host run alone
+  // cannot see a tool the image lacks: the 2026-11-19T05:51Z ghostty run failed `awk: command not found` (exit
+  // 127) while these tests passed. Every case runs with PATH holding only the coreutils tools the function names.
+  const imageTools = ["head", "od", "tail", "mv"]
   function strip(body: Buffer) {
     const file = join(dir, "capture.json")
     writeFileSync(file, body)
-    const result = spawnSync("bash", ["-c", 'source "$1"; strip_capture_keepalive_prefix "$2"', "_", launcher, file], {
+    const bin = join(dir, "image-bin")
+    mkdirSync(bin, { recursive: true })
+    for (const tool of imageTools) {
+      const found = spawnSync("bash", ["-c", 'command -v "$1"', "_", tool], { encoding: "utf8" }).stdout.trim()
+      if (!found) throw new Error(`host has no ${tool} to stand in for the image's coreutils`)
+      if (!existsSync(join(bin, tool))) symlinkSync(found, join(bin, tool))
+    }
+    const bash = spawnSync("bash", ["-c", "command -v bash"], { encoding: "utf8" }).stdout.trim()
+    const result = spawnSync(bash, ["-c", 'source "$1"; strip_capture_keepalive_prefix "$2"', "_", launcher, file], {
       encoding: "utf8",
+      env: { PATH: bin },
     })
     return { result, bytes: existsSync(file) ? readFileSync(file) : null }
   }

@@ -28,11 +28,21 @@ PROBE_BATCH_TIMEOUT_SECONDS=2400
 # run before it validates and hashes the body. Otherwise container-receipt.json names a sha of bytes the
 # collector never retained, and placement refuses the run with "does not bind original capture bytes".
 # Never a BOM, interior whitespace, trailing bytes or anything after the first non-whitespace byte.
+# Bash and coreutils only: the image declares no awk (flake.nix runtimeTools), and the 2026-11-19T05:51Z ghostty
+# run died here on `awk: command not found`.
 strip_capture_keepalive_prefix() {
-  local file=$1 offset
-  offset=$(head -c 65536 "$file" | od -An -v -tu1 | awk '
-    BEGIN {n=0}
-    {for (i=1;i<=NF;i++){v=$i+0; if (!found) {if (v!=32 && v!=9 && v!=10 && v!=13) {print n; found=1}; n++}}}')
+  local file=$1 offset='' count=0 byte
+  local -a bytes
+  read -r -d '' -a bytes < <(head -c 65536 "$file" | od -An -v -tu1) || true
+  for byte in "${bytes[@]}"; do
+    case $byte in
+      32 | 9 | 10 | 13) count=$((count + 1)) ;;
+      *)
+        offset=$count
+        break
+        ;;
+    esac
+  done
   if [[ -z "$offset" ]]; then
     echo "Capture at $file is empty, or opens with nothing but keepalive whitespace in its first 65536 bytes; refusing to strip it blind" >&2
     return 1
