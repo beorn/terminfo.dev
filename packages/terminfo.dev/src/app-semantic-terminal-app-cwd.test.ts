@@ -10,7 +10,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createCallLog, withCallLog } from "viprobe"
 import { afterEach, expect, test, vi } from "vitest"
+import { type AppSemanticReading, extensionsProbes, type TermProbeSource } from "@terminfo/probe-defs"
 import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
 import { OwnedCwdReadError, readAppSemanticState } from "./app-semantic-state.ts"
 import {
@@ -41,6 +43,8 @@ function fakeTerminal(options: {
   failAfter?: { reads: number; reply: TerminalAppDocumentReply }
   /** The title never carries the fence. */
   staleTitle?: boolean
+  /** The private writer throws on this row's write (34935: a stimulus that never reached the terminal). */
+  privateThrowsOnRow?: number
 }) {
   const store = (uri: string) => {
     const path = uri.startsWith("file:") ? new URL(uri).pathname : uri
@@ -58,7 +62,10 @@ function fakeTerminal(options: {
     if (osc2 !== undefined && !options.staleTitle) title = `${osc2} — zsh`
     const osc7 = /\x1b\]7;([^\x07]*)\x07/.exec(text)?.[1]
     if (osc7 !== undefined) {
-      if (channel === "private") {
+      // The reader restores on row 6 and sends its OSC 7 controls on rows 2-3; since 34935 both go through the
+      // private writer, so the row, not the channel, says which one this is.
+      const row = Number(/^\x1b\[(\d+);1H/.exec(text)?.[1])
+      if (channel === "private" && row === 6) {
         if (options.restores !== false) document = store(osc7)
       } else {
         controls++
@@ -91,6 +98,9 @@ function fakeTerminal(options: {
       consume(text, "public")
     },
     privateWrite(text: string) {
+      if (options.privateThrowsOnRow !== undefined && text.startsWith(`\x1b[${options.privateThrowsOnRow};1H`)) {
+        throw new Error("private writer refused")
+      }
       privateWrites.push(text)
       consume(text, "private")
     },
@@ -99,7 +109,7 @@ function fakeTerminal(options: {
 
 async function read(
   terminal: ReturnType<typeof fakeTerminal>,
-  overrides: { privateWrite?: false; check?: () => void } = {},
+  overrides: { privateWrite?: false; check?: () => void; callLog?: true } = {},
 ) {
   const runId = "c".repeat(32)
   vi.stubEnv("TERMINFO_RUN_ID", runId)
@@ -109,8 +119,8 @@ async function read(
   const directory = mkdtempSync(join(tmpdir(), "terminfo-terminal-app-cwd-"))
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", directory)
   const retained: string[] = []
-  try {
-    const reading = await readAppSemanticState({
+  const owned = (write: (text: string) => void) =>
+    readAppSemanticState({
       featureId: "extensions.osc633-p",
       onRetained: (artifact: { path: string }) => {
         retained.push(artifact.path)
@@ -120,25 +130,73 @@ async function read(
         path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
         sha256: "d".repeat(64),
       },
-      write: (text: string) => terminal.write(text),
+      write,
       ...(overrides.privateWrite !== false && { privateWrite: (text: string) => terminal.privateWrite(text) }),
       readCwd: terminalAppOwnedCwd({
         tty: TTY,
-        write: (text) => terminal.write(text),
+        write,
         check: overrides.check ?? (() => {}),
         run: terminal.run,
       }),
     })
+  try {
+    let reading: AppSemanticReading
+    // The collector's own public trace (34935): the extensions.osc633-p arm run through the call-log recorder, whose
+    // log is the published callLog and whose writes are what rawReplies record.
+    let trace: { callLog: string; result: string } | undefined
+    if (overrides.callLog) {
+      let read: AppSemanticReading | undefined
+      const source = {
+        kind: "live",
+        cols: 80,
+        rows: 24,
+        write: (text: string) => terminal.write(text),
+        readAppSemanticState: async (_featureId: string, write: (text: string) => void) => (read = await owned(write)),
+      }
+      const log = createCallLog()
+      const session = withCallLog(source as unknown as TermProbeSource, { mode: "record", log })
+      const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc633-p")!
+      const result = await definition.term!(session.context)
+      session.finish()
+      if (read === undefined) throw new Error("the osc633-p arm never called the owned reader")
+      reading = read
+      trace = { callLog: JSON.stringify(log), result: JSON.stringify(result) }
+    } else {
+      reading = await owned((text: string) => terminal.write(text))
+    }
     const detail = reading.detail as { privateEvidence?: string } | undefined
     const privateEvidence =
       detail?.privateEvidence === undefined ? "" : readFileSync(join(directory, detail.privateEvidence), "utf8")
-    return { reading, graded: gradeAppSemanticState(reading), privateEvidence, retained }
+    return { reading, graded: gradeAppSemanticState(reading), privateEvidence, retained, trace }
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
 }
 
 const published = (value: unknown) => JSON.stringify(value)
+
+/**
+ * 34935 (@cto option A): the public feed trace, which becomes rawReplies' writes/events and the callLog, carries no
+ * run-owned directory: no OSC 7 control, no OSC 633 P target and nothing under the capture area's parent.
+ */
+function expectPublicTraceClean(terminal: ReturnType<typeof fakeTerminal>, reading: unknown) {
+  const trace = terminal.publicWrites.join("")
+  expect(trace).not.toContain(tmpdir())
+  expect(trace).not.toContain("\x1b]7;")
+  expect(trace).not.toContain("\x1b]633;P;")
+  expect(published(reading)).not.toContain(tmpdir())
+}
+
+/** The private evidence's ordered stimuli: row, kind, whether the write returned, and the run-owned path it named. */
+function privateStimuli(privateEvidence: string) {
+  const evidence = JSON.parse(privateEvidence) as { detail: { phases: Array<{ stimulus?: Record<string, unknown> }> } }
+  return evidence.detail.phases.flatMap((phase) => (phase.stimulus === undefined ? [] : [phase.stimulus])) as Array<{
+    row: number
+    stimulus: string
+    feed: string
+    written: boolean
+  }>
+}
 
 // @failure A reader that ignores 633 P, or honours it, is misgraded because AXDocument's slash survives into the
 //   comparison, a target counts before both controls qualify, or the session's own directory leaks into the trace.
@@ -158,10 +216,20 @@ test.each([
   expect(controls[0]).toMatch(/^\/run-owned\/osc7-control-A-[0-9a-f]{8}$/)
   expect(controls[1]).toMatch(/^\/run-owned\/osc7-control-B-[0-9a-f]{8}$/)
   expect(published(reading)).not.toContain(tmpdir())
-  // Each control and target existed when it was sent and is gone after the read.
-  const sent = [...terminal.publicWrites.join("").matchAll(/\x1b\](?:7;file:\/\/localhost|633;P;Cwd=)([^\x07]+)\x07/g)]
+  // Each control and target existed when it was sent and is gone after the read. All four went through the owner's
+  // private writer (34935), so the public trace carries none of them, and private evidence keeps the exact bytes.
+  const sent = [...terminal.privateWrites.join("").matchAll(/\x1b\](?:7;file:\/\/localhost|633;P;Cwd=)([^\x07]+)\x07/g)]
   expect(sent.map((match) => match[1])).toHaveLength(4)
   for (const match of sent) expect(existsSync(match[1] as string)).toBe(false)
+  expectPublicTraceClean(terminal, reading)
+  const stimuli = privateStimuli(privateEvidence)
+  expect(stimuli.map(({ row, stimulus, written }) => [row, stimulus, written])).toEqual([
+    [2, "osc7-control", true],
+    [3, "osc7-control", true],
+    [4, "osc633p-target", true],
+    [5, "osc633p-target", true],
+  ])
+  expect(stimuli.map(({ feed }) => feed)).toEqual(terminal.privateWrites.slice(0, 4))
   expect(reading.handled.after).toBe(reading.handled.expected)
   const targets = JSON.parse(reading.target.expected) as string[]
   expect(targets).toHaveLength(2)
@@ -200,9 +268,11 @@ test("two inert OSC 7 controls leave the row TODO, never unsupported", async () 
 
 // @failure One qualifying control is treated as enough to read a target.
 test("a control that does not read back makes the row invalid", async () => {
-  const { reading, graded } = await read(fakeTerminal({ controls: "first", honours633: true }))
+  const terminal = fakeTerminal({ controls: "first", honours633: true })
+  const { reading, graded } = await read(terminal)
   expect(reading.status).toBe("measured")
   expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expectPublicTraceClean(terminal, reading)
 })
 
 // @failure A measurement is graded although the session's directory was never restored.
@@ -242,6 +312,42 @@ test("an AX error names its phase and number, and the directory is still restore
   )
   expect(terminal.privateWrites.join("")).toContain(INITIAL)
   expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expectPublicTraceClean(terminal, reading)
+})
+
+// @failure The arm's published callLog or result names a run-owned directory under the runner's capture area, or
+//   carries an OSC 7 control or OSC 633 P target that the reading maps to /run-owned/<name> (34935, hosted Terminal.app).
+test.each([
+  ["measured", { honours633: true }],
+  ["one control (invalid)", { honours633: true, controls: "first" }],
+] as const)("the collector's recorded trace omits the run-owned stimuli: %s", async (_name, options) => {
+  const terminal = fakeTerminal(options)
+  const { reading, trace } = await read(terminal, { callLog: true })
+  expect(reading.status).toBe("measured")
+  if (trace === undefined) throw new Error("no recorded trace")
+  // The recorder saw the public writes (the fences), so an empty log cannot pass.
+  expect(trace.callLog).toContain("terminfo-baseline-")
+  for (const text of [trace.callLog, trace.result]) {
+    expect(text).not.toContain(tmpdir())
+    // A directory name appears only in its public mapped form.
+    expect(text.replaceAll("/run-owned/osc7-", "")).not.toContain("osc7-")
+    expect(text).not.toMatch(/\\u001b\]7;|\\u001b\]633;P;/)
+  }
+})
+
+// @failure A private stimulus that throws is recorded as sent, is published, or skips evidence and restoration.
+test("a private stimulus that fails is recorded as attempted, never written, and the row is invalid", async () => {
+  const terminal = fakeTerminal({ honours633: true, privateThrowsOnRow: 4 })
+  const { reading, graded, privateEvidence } = await read(terminal)
+  expect(reading.status).toBe("invalid")
+  expect(graded.tests?.[0]?.status).toBe("probe-invalid")
+  expect(privateStimuli(privateEvidence).map(({ row, written }) => [row, written])).toEqual([
+    [2, true],
+    [3, true],
+    [4, false],
+  ])
+  expect(reading.detail).toMatchObject({ restoration: { attempted: true, equal: true } })
+  expectPublicTraceClean(terminal, reading)
 })
 
 // @failure An ambiguous accessibility window match is read as the owned window's document.

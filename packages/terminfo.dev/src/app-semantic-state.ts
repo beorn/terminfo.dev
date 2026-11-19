@@ -3500,7 +3500,25 @@ export async function readAppSemanticState(
           const phase: "unknown" | "handled" | "target" = number === 1 ? "unknown" : number === 2 ? "handled" : "target"
           const expectedPath =
             number === 1 ? initial.cwd : number === 2 ? `/terminfo-control-${nonce}` : `/terminfo-target-${nonce}`
-          input.write(`\x1b[${number};1H${feed}${marker}`)
+          const text = `\x1b[${number};1H${feed}${marker}`
+          if (pairs && number >= 2) {
+            // 34935 (@cto option A): Terminal.app's two OSC 7 controls and two OSC 633 P targets name run-owned
+            // directories under the runner's capture area. They go through the owner's private writer, so the
+            // public trace (rawReplies and callLog) omits them; the exact ordered bytes stay in private evidence,
+            // marked written only once the write returned.
+            if (privateWrite === undefined) throw new Error("Terminal.app cwd needs the owner's private writer")
+            const stimulus = {
+              row: number,
+              stimulus: number <= 3 ? "osc7-control" : "osc633p-target",
+              feed: text,
+              written: false,
+            }
+            detail.phases.push({ stimulus })
+            await privateWrite(text)
+            stimulus.written = true
+          } else {
+            input.write(text)
+          }
           const reading = await get({ row: number, marker, phase, expectedPath })
           const expectedHost = number === 1 ? initial.host : new URL("file://localhost/").hostname
           // Host is compared only between URI readings; a path getter's readings never carry one.

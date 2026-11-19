@@ -95,7 +95,11 @@ restoration of the initial URI. The private capture retains the initial/restored
 trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
 An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
 is published only after the write succeeds, and retention failure is a named collector error.
-The restoration writer bypasses the publishable call log. Failed restoration throws through the
+The restoration writer bypasses the publishable call log. Terminal.app 2.15's OSC 633 P reader (34935) also
+sends its two OSC 7 controls and two OSC 633 P targets through that private writer, because they name run-owned
+directories under the runner's capture area. Its public rawReplies and callLog therefore omit those four feeds and are not
+a complete replay of the experiment. Private evidence keeps their ordered bytes, each marked written only once the
+write returned, and the public reading names each directory `/run-owned/<name>`. Failed restoration throws through the
 collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
 neither process-CWD inference nor URI normalization supplies an answer.
 The reading carries the existing path-free owned-pane identity receipt. Native pane-list and get-text
