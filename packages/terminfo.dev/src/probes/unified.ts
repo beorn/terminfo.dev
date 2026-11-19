@@ -1571,7 +1571,10 @@ async function runProbeBatchInRun(
         imageSubject?.kind === "term" &&
         imageSubject.os === "linux" &&
         ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
-          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10") ||
+          // 34932 (@cto 34932-wezterm-pointer-version-go-1852): 0-unstable-2026-11-08 (rev 458a100c1bf4) differs from
+          // 10-10 (rev e2a98e1b8af1) only in docs and get-deps; exact versions only, the callback's controls grade.
+          (imageSubject.id === "wezterm" &&
+            (imageSubject.version === "0-unstable-2026-10-10" || imageSubject.version === "0-unstable-2026-11-08")) ||
           (imageSubject.id === "ghostty" && imageSubject.version === "1.4.0") ||
           (imageSubject.id === "alacritty" && imageSubject.version === "0.17.0")))
     const captureEligible =
