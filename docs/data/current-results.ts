@@ -23,7 +23,7 @@ import {
 } from "./run-selection.ts"
 import { joinContextCells, type ContextCellFacts, type ContextFacts, type JoinedApp } from "./app-cells.ts"
 import { definitionDiffers, gitSourceHistory, type SourceHistory } from "./source-history.ts"
-import { suiteEntryHashes } from "./legacy-entry-hashes.ts"
+import { cellEntryHashes, suiteEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import { loadTerminals } from "@terminfo/catalog"
@@ -278,7 +278,7 @@ export function compatibilitySubjects(
 /** One context reduced to the facts the join compares and names (`app-cells.ts`). */
 function contextFacts(
   summary: SelectedContextSummary,
-  entryHashes: (suiteId: string) => Readonly<Record<string, string>> | undefined,
+  entryHashes: (suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined,
 ): ContextFacts {
   const cells: Record<string, ContextCellFacts | undefined> = {}
   for (const [featureId, cell] of Object.entries(summary.cells)) {
@@ -289,7 +289,7 @@ function contextFacts(
       // never equal another context's absence and join on it (@cto c5ddabf3).
       version: cell.run.subject.version || null,
       suite,
-      entryHash: (suite === null ? undefined : entryHashes(suite)?.[featureId]) ?? null,
+      entryHash: (suite === null ? undefined : entryHashes(suite, cell.run.runId)?.[featureId]) ?? null,
       sourceRevision: cell.run.sourceRevision || null,
       runId: cell.run.runId,
       ...(cell.reopened !== undefined && { reopened: true }),
@@ -311,8 +311,10 @@ export function joinedAppCells(
   subjects: ReadonlyMap<string, { contextKey: string }>,
   contentDir: string,
   history: SourceHistory = gitSourceHistory(),
+  /** Each loaded working run's validated retained manifest hashes, by run id (34953); placed rows never read these. */
+  working: ReadonlyMap<string, RunEntryHashes> = new Map(),
 ): Map<string, JoinedApp> {
-  const entryHashes = suiteEntryHashes(contentDir)
+  const entryHashes = cellEntryHashes(suiteEntryHashes(contentDir), working)
   const definition = (featureId: string, left: string, right: string): string | null =>
     definitionDiffers(history, featureId, left, right)
   const bySubject = new Map<string, SelectedContextSummary[]>()

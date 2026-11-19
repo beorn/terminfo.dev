@@ -67,6 +67,14 @@ export function loadRawCapture(
   path: string,
   options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
 ): LoadedRun {
+  return loadRawCaptureWithManifest(path, options).run
+}
+
+/** `loadRawCapture`, also returning the manifest the capture was validated against (34953: its entry hashes). */
+export function loadRawCaptureWithManifest(
+  path: string,
+  options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
+): { run: LoadedRun; manifest: ProbeSuiteManifest } {
   let bytes = options.bytes
   if (bytes === undefined) {
     try {
@@ -95,5 +103,5 @@ export function loadRawCapture(
   }
   const run = parseRun(path, bytes, options.catalogIds, new Map([[manifest.probeHash, manifest]]))
   if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
-  return run
+  return { run, manifest }
 }
