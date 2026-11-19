@@ -8,10 +8,12 @@ import { expect, test } from "vitest"
 import { ALACRITTY_0_17_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE } from "@terminfo/probe-defs"
 import {
   createOwnedTerminal,
+  gatedPrivateWrite,
   linuxViewportKeys,
   parseOwnedAppOwnerAssertion,
   parseTerminalAppOwner,
 } from "./owned-terminal.ts"
+import { withRunSignal } from "./tty.ts"
 
 const valid = {
   asserter: "terminfo-admin",
@@ -21,6 +23,40 @@ const valid = {
   tabTty: "/dev/ttys004",
   intendedVersion: "2.15",
 }
+
+// 34959: on the hosted cmux route the osc633-p private write is the one writer that reached the owned pane
+// without consulting the run's abort edge. It now composes with the same gated writer as the public one, so a
+// run whose client has left must refuse BEFORE anything reaches the stream, and the ownership check must still
+// run on both sides.
+test("34959 the cmux private writer refuses past the abort edge and never records the private URI", async () => {
+  const writes: string[] = []
+  const out = {
+    write(chunk: unknown) {
+      writes.push(String(chunk))
+      return true
+    },
+  } as unknown as NodeJS.WriteStream
+  const controller = new AbortController()
+  let checks = 0
+  const privateWrite = gatedPrivateWrite(async () => {
+    checks += 1
+  }, out)
+  const privateUri = "\x1b[6;1H\x1b]7;file:///Users/private-person/secret-project\x07marker"
+
+  // Before the edge the private write reaches the stream (the row needs it to measure the App).
+  await withRunSignal(controller.signal, () => privateWrite(privateUri))
+  expect(writes.join("")).toContain("secret-project")
+
+  // Past the edge it is refused before a byte lands, and the ownership check still ran once.
+  writes.length = 0
+  checks = 0
+  controller.abort()
+  await expect(withRunSignal(controller.signal, () => privateWrite(privateUri))).rejects.toMatchObject({
+    name: "AbortError",
+  })
+  expect(writes).toEqual([])
+  expect(checks).toBe(1)
+})
 
 test("Terminal.app owner assertion has one strict authenticated-request shape", () => {
   expect(parseTerminalAppOwner(valid)).toEqual(valid)

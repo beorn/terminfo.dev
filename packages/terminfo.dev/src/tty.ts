@@ -371,11 +371,21 @@ export function withTTYOperation<T>(
   return current
 }
 
+/**
+ * 34941's run abort edge as a predicate, for writers that reach the pane without entering the recorded write
+ * log (34959: the hosted cmux private writer carries a private URI, so recording it would leak the path the
+ * private route exists to keep out of the artifact). One predicate, two callers - never a second rule.
+ */
+export function assertWriteAllowed(): void {
+  const lease = operationContext.getStore()
+  const signal = lease?.signal ?? runAbort.getStore()
+  if (signal?.aborted) throw abortedByClient(signal)
+}
+
 function currentTTYOutput(): NodeJS.WriteStream {
   const lease = operationContext.getStore()
   // 34941: a client that left stops the run's writes here, so no abandoned wait can paint a pane nobody reads.
-  const signal = lease?.signal ?? runAbort.getStore()
-  if (signal?.aborted) throw abortedByClient(signal)
+  assertWriteAllowed()
   return lease?.active ? lease.out : process.stdout
 }
 

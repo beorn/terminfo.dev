@@ -591,6 +591,18 @@ export function probeDraftPath(captureRunId: string): string {
   return join(directory, `${captureRunId}.draft.json`)
 }
 
+/**
+ * 34959: the request failure line names the run's draft ONLY when the draft reservation actually happened.
+ * Before admission there is no file at that path, so naming one pointed an operator at a record that could
+ * not exist; the line now says where the run stopped instead.
+ */
+export function requestFailurePrefix(captureRunId: string | undefined, draftReserved: boolean): string {
+  if (captureRunId === undefined) return "Probe daemon request failed:"
+  return draftReserved
+    ? `Probe daemon request failed for run ${captureRunId}, draft ${probeDraftPath(captureRunId)}:`
+    : `Probe daemon request failed for run ${captureRunId}, before its draft was reserved:`
+}
+
 export function collectProbeRun(
   options?: Omit<ProbeCollectionOptions, "ids"> & { ids?: undefined },
 ): Promise<CapturedRunDraft>
@@ -2231,9 +2243,7 @@ export function startDaemon(port = 0): void {
       )
     })().catch((err) => {
       console.error(
-        captureRunId === undefined
-          ? "Probe daemon request failed:"
-          : `Probe daemon request failed for run ${captureRunId}, draft ${probeDraftPath(captureRunId)}:`,
+        requestFailurePrefix(captureRunId, captureRunId !== undefined && existsSync(probeDraftPath(captureRunId))),
         err,
       )
       if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)))
