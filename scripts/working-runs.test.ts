@@ -10,17 +10,20 @@
 import { createHash } from "node:crypto"
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { join, resolve } from "node:path"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import type { LoadedRun } from "@terminfo/run-parser"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { loadFeatures } from "@terminfo/catalog"
@@ -58,6 +61,106 @@ const storedRollupFixture = (rollup: TerminalStatusRollup) => storedRollup(rollu
 function runsDir(): string {
   return mkdtempSync(join(tmpdir(), "terminfo-working-runs-"))
 }
+
+/**
+ * #34927 (@cto option 3, @chief scope): a bounded content root for the tests that must read committed
+ * evidence rather than a synthetic fixture. The live tree had grown to 134 runs / 1.73 GiB of run JSON and
+ * 74,131 artifacts / 1.9 GB, so a cold run parsed and sha256-verified the whole corpus before its first
+ * assertion (44 s at load 31, and the corpus keeps growing). This copies every catalogue file unchanged and
+ * only the newest run per requested subject, plus exactly the artifacts those runs cite, so the assertions
+ * keep reading real committed bytes from a few hundred files instead of the whole store.
+ * The source is this repository's content/; TERMINFO_FIXTURE_SOURCE points it at another checkout.
+ */
+const RUN_DIRECTORIES = ["probes-apps", "probes-mux", "probes-libs"] as const
+const boundedRoots = new Map<string, string>()
+
+function boundedContentRoot(...subjects: ReadonlyArray<readonly [string, string]>): string {
+  const key = JSON.stringify(subjects)
+  const cached = boundedRoots.get(key)
+  if (cached !== undefined) return cached
+  const live = process.env.TERMINFO_FIXTURE_SOURCE ?? join(import.meta.dirname, "..", "content")
+  const dir = mkdtempSync(join(tmpdir(), "terminfo-bounded-content-"))
+  mkdirSync(join(dir, "artifacts"))
+  for (const entry of readdirSync(live)) {
+    if (entry === "artifacts" || (RUN_DIRECTORIES as readonly string[]).includes(entry)) continue
+    cpSync(join(live, entry), join(dir, entry), { recursive: true })
+  }
+  for (const entry of RUN_DIRECTORIES) {
+    mkdirSync(join(dir, entry))
+    const unified = join(live, entry, "unified.json")
+    if (existsSync(unified)) copyFileSync(unified, join(dir, entry, "unified.json"))
+  }
+  const cited = new Set<string>()
+  const copied = new Set<string>()
+  const copyRun = (entry: string, name: string): void => {
+    const key = entry + "/" + name
+    if (copied.has(key)) return
+    copied.add(key)
+    const from = join(live, entry, name)
+    copyFileSync(from, join(dir, entry, name))
+    const run = JSON.parse(readFileSync(from, "utf8")) as {
+      screenshotRefs?: string[]
+      textSnapshotRefs?: string[]
+    }
+    for (const ref of run.screenshotRefs ?? []) cited.add(ref.slice("sha256:".length) + ".png")
+    for (const ref of run.textSnapshotRefs ?? []) cited.add(ref.slice("sha256:".length) + ".txt")
+  }
+  // Every run of the named subject, not just the newest: the projection needs a pass' default run to place
+  // its supplements beside, and picking one run per subject dropped that default.
+  for (const [subject, os] of subjects) {
+    let found = 0
+    for (const entry of RUN_DIRECTORIES) {
+      for (const name of readdirSync(join(live, entry))) {
+        if (name === "unified.json" || !name.endsWith(".json")) continue
+        if (!name.startsWith(subject + "-") || !name.includes("-" + os + "-")) continue
+        copyRun(entry, name)
+        found += 1
+      }
+    }
+    if (found === 0) throw new Error("no run for " + subject + "/" + os + " under " + live)
+  }
+  // Reopened-cell rows cite witness runs by id, and the reader names a witness it cannot find; this fixture
+  // bounds the working-run join, and the reopened projection has its own coverage (scripts/reopened-cells.test.ts).
+  const reopened = join(dir, "reopened-cells.json")
+  if (existsSync(reopened)) writeFileSync(reopened, JSON.stringify({ rows: [] }))
+  for (const artifact of cited) {
+    const from = join(live, "artifacts", artifact)
+    if (!existsSync(from)) throw new Error("bounded content root is missing " + from)
+    copyFileSync(from, join(dir, "artifacts", artifact))
+  }
+  boundedRoots.set(key, dir)
+  return dir
+}
+
+/** The one bounded content root this file's live reads share (#34927): real committed runs, a few subjects. */
+function liveContentRoot(): string {
+  return boundedContentRoot(["ghostty", "macos"], ["ghostty", "linux"], ["kitty", "linux"], ["vterm", "linux"])
+}
+
+// Build the one shared fixture in a hook, so its first-build cost never lands on a test's own timeout.
+beforeAll(() => {
+  liveContentRoot()
+}, 120_000)
+
+/** The repository's own content root, which is what the page loaders read through a module constant. */
+const REPO_CONTENT = join(import.meta.dirname, "..", "content")
+
+/**
+ * Every read of the repository corpus in this file goes to the bounded fixture instead (#34927); a caller that
+ * names its own directory (a temp root under test) is untouched, so the refusal cases still exercise their own tree.
+ */
+const loadSelectedCorpus = currentResults.loadCurrentResults
+
+afterAll(() => {
+  for (const dir of boundedRoots.values()) rmSync(dir, { recursive: true, force: true })
+  boundedRoots.clear()
+})
+
+beforeEach(() => {
+  vi.spyOn(currentResults, "loadCurrentResults").mockImplementation((dir, options) =>
+    loadSelectedCorpus(resolve(dir) === resolve(REPO_CONTENT) ? liveContentRoot() : dir, options),
+  )
+})
 
 function run(parent: string, name: string, summary?: unknown, cells = true): string {
   const dir = join(parent, name)
@@ -122,7 +225,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     vi.restoreAllMocks()
   })
   const root = join(import.meta.dirname, "..")
-  const catalogIds = Object.keys(loadFeatures(join(root, "content")))
+  const catalogIds = Object.keys(loadFeatures(liveContentRoot()))
   // Reuse a real committed payload and its committed manifest. Only the hourly envelope is synthetic.
   function collection(parent = runsDir(), name = OLD) {
     const dir = run(parent, name, { complete: true })
@@ -315,7 +418,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     startedAt: "2026-11-02T19:34:05.072Z",
   })
   const linuxContext = () =>
-    fullContextCensus(join(root, "content")).contexts.find(
+    fullContextCensus(liveContentRoot()).contexts.find(
       (row) => row.kind === "term" && row.terminalId === "ghostty" && row.os === "linux",
     )!
 
@@ -342,7 +445,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   // Walking the live content tree passed the 5s default on CI (run 42830234597).
   // Hang protection only, never a speed budget (@cto 2436c804): 33.5 s on dev main at load 17
   // (/hh/var/@dev/fixer/reds-1118/working-runs-3.log) and 44.0 s at load 31; 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
-  // The cold-read cost itself stays open on #34925.
+  // 34927: reads a bounded fixture root (liveContentRoot), not the live tree, so the corpus' size no longer sets
+  // this test's cost; the timeout below is hang protection only.
   it(
     "retains app pass contexts and named store gaps without changing the newest-only view",
     { timeout: 120_000 },
@@ -351,18 +455,19 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       // runner fails any test that prints (34925: 13 such cmux lines at main 139e60d8). Those lines are the reader's
       // own record, so they are captured and each must be that record; any other error line still fails.
       const placed = vi.spyOn(console, "error").mockImplementation(() => {})
+      const bounded = liveContentRoot()
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
       mkdirSync(libraries)
       collection(libraries)
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
-      const before = JSON.stringify(siteWorkingView(join(root, "content")))
+      const before = JSON.stringify(siteWorkingView(bounded))
       const linux = appCollection(instrument, "linux", OLD, [
         { name: "read-allowed", featureIds: ["extensions.osc52-read", "extensions.osc52-clipboard"] },
       ])
       appCollection(instrument, "linux", PARTIAL)
       appCollection(instrument, "macos")
-      const history = siteWorkingHistory(join(root, "content"))!
+      const history = siteWorkingHistory(bounded)!
       const apps = history.flatMap((view) => view.contexts).filter((context) => context.kind === "term")
       expect(apps).toHaveLength(3)
       expect(new Set(apps.map((context) => context.contextKey)).size).toBe(2)
@@ -370,9 +475,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       // A newly placed Mac corpus may supply a reviewed peer; it must never attach the Linux context.
       const mac = apps.find((context) => context.contextKey.includes('"macos"'))!
       expect(mac.reviewedContextKey).not.toBeNull()
-      expect(
-        loadCurrentResults(join(root, "content")).projection.contexts[mac.reviewedContextKey!]?.subject,
-      ).toMatchObject({ kind: "term", id: "ghostty", os: "macos" })
+      expect(loadCurrentResults(bounded).projection.contexts[mac.reviewedContextKey!]?.subject).toMatchObject({
+        kind: "term",
+        id: "ghostty",
+        os: "macos",
+      })
       expect(apps.find((context) => context.contextKey.includes('"linux"'))).toMatchObject({
         runId: linux.original.runId,
         measuredAt: linux.original.measuredAt,
@@ -390,7 +497,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
               gap.engine === "kitty/linux" && gap.reason.includes(join(instrument, "apps", "kitty", "linux", "runs")),
           ),
       ).toBe(true)
-      expect(JSON.stringify(siteWorkingView(join(root, "content")))).toBe(before)
+      expect(JSON.stringify(siteWorkingView(bounded))).toBe(before)
       // Accepted (33550, @cto 2c2f2394 condition 4): the preview reads only the default row, so it names the
       // pass's supplements it did not apply, and only on the collection whose pass declares one. Asserted on
       // this case's one history read: a second live-content read would cost the worker its RSS headroom.
@@ -411,6 +518,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   it.each(["untrusted suite", "multiple passes"])(
     "keeps an app collection with %s visible and uncounted",
     (failure) => {
+      const bounded = liveContentRoot()
       const warning = failure === "multiple passes" ? vi.spyOn(console, "warn").mockImplementation(() => {}) : undefined
       const instrument = runsDir()
       const libraries = join(instrument, "runs")
@@ -425,7 +533,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         copyFileSync(join(app.dir, "pass-fixture", "pass.json"), join(app.dir, "pass-second", "pass.json"))
       }
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", libraries)
-      const unavailable = siteWorkingHistory(join(root, "content"))!.find(
+      const unavailable = siteWorkingHistory(bounded)!.find(
         (view) =>
           view.unreadable && view.unreadable.reason.includes(failure === "untrusted suite" ? "aaaaaaaaaaaa" : "pass"),
       )
@@ -527,13 +635,14 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   // Accepted history requirement: page data retains older complete collections automatically.
   // The existing manual reopen test cannot detect a newest-only page loader.
   it("retains complete ordinary history in page data without changing accepted results", { timeout: 30_000 }, () => {
+    const bounded = liveContentRoot()
     const older = collection()
     collection(older.parent, PARTIAL)
     run(older.parent, WRITING, undefined, false)
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
     const acceptedCounts = () =>
       JSON.stringify(
-        Object.entries(loadCurrentResults(join(root, "content")).projection.contexts).map(([key, context]) => [
+        Object.entries(loadCurrentResults(bounded).projection.contexts).map(([key, context]) => [
           key,
           context.counts,
           context.score,
@@ -548,7 +657,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     // Serializing every terminal/probe history into the preview was 83 MB on the real retained population.
     expect(history?.every((entry) => entry.contexts[0]?.cells.length === 0)).toBe(true)
     expect(
-      siteWorkingHistory(join(root, "content"))?.every(
+      siteWorkingHistory(liveContentRoot())?.every(
         (entry) => Object.keys(entry.contexts[0]?.states ?? {}).length === 273,
       ),
     ).toBe(true)
@@ -567,7 +676,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(parent, OLD)
     collection(parent, PARTIAL)
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
-    const server = siteWorkingHistory(join(root, "content"))!
+    const server = siteWorkingHistory(liveContentRoot())!
     const client = clientProbes.load()
     const refs = client.workingHistory!.flatMap((view) => view.contexts.map((context) => context.statesRef))
     expect(refs.length).toBeGreaterThan(1)
@@ -582,8 +691,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     "enforces reviewed cell provenance (%s) in siteWorkingHistory with newest-error vs older-gap semantics",
     (failure) => {
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
-      const base = loadCurrentResults(join(root, "content")).projection
-      const vtermEntry = [...compatibilitySubjects(base, join(root, "content")).values()].find(
+      const base = loadCurrentResults(liveContentRoot()).projection
+      const vtermEntry = [...compatibilitySubjects(base, liveContentRoot()).values()].find(
         (candidate) => candidate.selected.subject?.id === "vterm",
       )!
       const vtermKey = vtermEntry.contextKey
@@ -617,16 +726,16 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         .spyOn(currentResults, "loadCurrentResults")
         .mockReturnValue({ projection: brokenProjection })
       try {
-        expect(() =>
-          siteWorkingHistory(join(root, "content"), { TERMINFO_SITE_WORKING_RUNS_DIR: historyParent }),
-        ).toThrow(expectedError)
+        expect(() => siteWorkingHistory(liveContentRoot(), { TERMINFO_SITE_WORKING_RUNS_DIR: historyParent })).toThrow(
+          expectedError,
+        )
         expect(warning).toHaveBeenCalledOnce()
         expect(warning).toHaveBeenCalledWith(expect.stringContaining("headless/collection.json"))
       } finally {
         resultsSpy.mockRestore()
       }
 
-      const history = siteWorkingHistory(join(root, "content"), {
+      const history = siteWorkingHistory(liveContentRoot(), {
         TERMINFO_SITE_WORKING_RUNS_DIR: historyParent,
       })!
       expect(history.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
@@ -635,7 +744,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       expect(history[1]?.contexts[0]?.cells).toEqual([])
       expect(Object.keys(history[1]?.contexts[0]?.states ?? {})).toHaveLength(273)
 
-      const fullView = siteWorkingView(join(root, "content"), {
+      const fullView = siteWorkingView(liveContentRoot(), {
         TERMINFO_SITE_WORKING_RUNS_DIR: historyParent,
       })
       expect(fullView?.run.id).toBe(PARTIAL)
@@ -647,11 +756,12 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   // Selected-original history is required on feature pages and for Mac contexts without raw stores.
   // Raw collection tests cannot catch dropping these originals or leaking their full evidence payload.
   // Hang protection only, never a speed budget (@cto 2436c804): 9.3 s at load 17 and 10.3 s at load 31 against the
-  // 5 s default, loading the live probe pages cold; 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
+  // 5 s default, loading the live probe pages cold; 34927: the corpus it reads is now the bounded fixture; 34925: the live store grew from 0.51 GB / 27k artifacts (11-16) to 1.79 GB / 74k (11-18), and the reader sha256-verifies every artifact it reads, so a cold first load reads the whole store: 38.8 s and 3.67 GB measured by @dev/luna5.
   it(
     "keeps compact original measurements in private page data with their canonical contexts",
     { timeout: 30_000 },
     () => {
+      const bounded = liveContentRoot()
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
       const publicPage = clientProbes.load()
       expect(publicPage).not.toHaveProperty("workingOriginals")
@@ -698,7 +808,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     Object.assign(newer.summary, { moved: { since: older.dir, range: "recorded source range", moves: [] } })
     newer.save()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
-    const history = siteWorkingHistory(join(root, "content"))
+    const history = siteWorkingHistory(liveContentRoot())
     const first = history?.[0]?.contexts[0] as { changeBaseline?: string; changes?: Record<string, string> } | undefined
     const next = history?.[1]?.contexts[0] as typeof first
     expect(first?.changes).toBeUndefined()
@@ -719,7 +829,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     })
     newer.save()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
-    const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+    const context = siteWorkingHistory(liveContentRoot())?.[1]?.contexts[0]
     expect(context?.changes).toBeUndefined()
     expect(context?.changeQualification).toContain("does not match")
   })
@@ -784,7 +894,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       })
       newer.save()
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", older.parent)
-      const context = siteWorkingHistory(join(root, "content"))?.[1]?.contexts[0]
+      const context = siteWorkingHistory(liveContentRoot())?.[1]?.contexts[0]
       if (identity === "matching") {
         expect(context?.changes).toEqual({ "sgr.bold": "unsupported → supported (same-suite move)" })
         expect(context?.changeQualification).toContain("not runtime verification")
@@ -1301,7 +1411,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
       unreadable: loaded.unreadable?.reason,
     })
 
-    const contentDir = join(root, "content")
+    const contentDir = liveContentRoot()
     const plain = readFileSync(
       generateApi(mkdtempSync(join(tmpdir(), "terminfo-api-plain-")), { contentDir, working: null }).dataPath,
       "utf8",
