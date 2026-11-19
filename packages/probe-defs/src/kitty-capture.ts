@@ -15,6 +15,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import type { CaptureLayoutGuard } from "./types.ts"
 
 /** The image block: two cells square, placed away from the cursor column. */
 export const KITTY_BLOCK_ROWS = 2
@@ -549,6 +550,12 @@ export interface KittyPlaceholderEvidence {
    * reflows when the image arrives fails it by name instead of being graded on a moved rectangle.
    */
   readonly guard: KittyDigestPair
+  /**
+   * The collector's bounded comparison of the two guard crops (#34932, @cto 34932-five-criteria-ruling-2216
+   * item 5): each RGB channel within 1, exact alpha, identical witnessed background/ink mask. Consulted only
+   * when the raw guard digests differ; both raw digests are kept either way.
+   */
+  readonly guardComparison?: CaptureLayoutGuard
   /** A captured blank rectangle, before the ordinary placement paints it. */
   readonly blank: string | undefined
   /** The ordinary `a=p` placement of the same pixels in the same rectangle. */
@@ -612,13 +619,23 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "the cell readback veto",
     }
   }
-  if (guardWith !== guardWithout) {
+  const guardComparison = evidence.guardComparison
+  if (guardWith !== guardWithout && guardComparison?.holds !== true) {
     return {
       outcome: "inconclusive",
-      note: `Kitty unicode placeholders: layout changed between states (${guardWith} against ${guardWithout} beside the placeholder grid and on the row below it), so the rectangles compared two different screens and no verdict follows`,
+      note: `Kitty unicode placeholders: layout changed between states (${guardWith} against ${guardWithout} beside the placeholder grid and on the row below it; ${
+        guardComparison === undefined
+          ? "no bounded guard comparison was supplied"
+          : `the bounded guard comparison does not hold: ${guardComparison.reason ?? "no reason recorded"}`
+      }), so the rectangles compared two different screens and no verdict follows`,
       decidedBy: "the layout guard control",
     }
   }
+  // Which rule held the guard, said in every verdict: equal digests, or the bounded comparison (#34932).
+  const guardHeld =
+    guardWith === guardWithout
+      ? "layout guard equal"
+      : "layout guard within its bounded comparison (each RGB channel within 1, background/ink mask identical)"
   if (withFirst !== withSecond) {
     return {
       outcome: "inconclusive",
@@ -644,8 +661,7 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
     return {
       outcome: "supported",
       note: `Kitty unicode placeholders: the placeholder rectangle painted with the image composited over it (${withSecond} against ${evidence.withoutImage}) and matched the ordinary placement of the same pixels exactly, while the layout guard held still and that placement painted against the captured blank`,
-      decidedBy:
-        "the with-image and without-image pair, with the ordinary placement identical and the layout guard equal",
+      decidedBy: `the with-image and without-image pair, with the ordinary placement identical and the ${guardHeld}`,
     }
   }
   if (!evidence.refusal) {
@@ -658,7 +674,6 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
   return {
     outcome: "unsupported",
     note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still; the terminal refused the tested virtual placement: ${evidence.refusal}`,
-    decidedBy:
-      "the virtual-placement refusal, with an equal pixel pair, layout guard equal and qualified ordinary placement",
+    decidedBy: `the virtual-placement refusal, with an equal pixel pair, ${guardHeld} and qualified ordinary placement`,
   }
 }

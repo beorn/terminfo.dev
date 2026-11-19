@@ -13,6 +13,7 @@ import type {
   TerminalQueryOutcome,
   TerminalScrollbackReading,
   CallbackHostRecipeCause,
+  CaptureLayoutGuardRequest,
   HostInputName,
   HostRecipeName,
   ObservationFrame,
@@ -7041,8 +7042,15 @@ const extensionDefinitions: ProbeDefinition[] = [
             readonly bottom: number
             readonly right: number
           } = KITTY_REGION,
+          layoutGuard?: CaptureLayoutGuardRequest,
         ) => {
-          const frame = await capture({ role, label, cells: { ...region }, pixelGeometry: geometry })
+          const frame = await capture({
+            role,
+            label,
+            cells: { ...region },
+            pixelGeometry: geometry,
+            ...(layoutGuard === undefined ? {} : { layoutGuard }),
+          })
           frames.push(frame)
           return frame
         }
@@ -7086,6 +7094,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             "control",
             `Layout guard "${KITTY_GUARD_TEXT}" beside the placeholder grid and on the row below it, with the image`,
             KITTY_GUARD_REGION,
+            {},
           )
           const cellsWithImage = await readCells("Placeholder rectangle cells with the image composited")
           ctx.write(kittyDeleteImage(placeholderId))
@@ -7099,6 +7108,8 @@ const extensionDefinitions: ProbeDefinition[] = [
             "control",
             "Layout guard beside the placeholder grid and on the row below it, with the image deleted",
             KITTY_GUARD_REGION,
+            // #34932 (@cto 2216 item 5): compared to the with-image guard under the bounded layout rule.
+            { against: guardWithImage.ref },
           )
           const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
           // Qualify the ordinary placement against independently painted pixels. A changed rectangle
@@ -7127,6 +7138,9 @@ const extensionDefinitions: ProbeDefinition[] = [
             withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
             withoutImage: withoutImage.regionDigest,
             guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
+            ...(guardWithoutImage.layoutGuardComparison === undefined
+              ? {}
+              : { guardComparison: guardWithoutImage.layoutGuardComparison }),
             blank: blank.regionDigest,
             ordinary: ordinary.regionDigest,
             reference: reference.regionDigest,
@@ -7150,7 +7164,11 @@ const extensionDefinitions: ProbeDefinition[] = [
             ordinaryId,
             placementAck: placement.raw,
             virtualPlacement,
-            guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
+            guard: {
+              withImage: guardWithImage.regionDigest,
+              withoutImage: guardWithoutImage.regionDigest,
+              comparison: guardWithoutImage.layoutGuardComparison ?? null,
+            },
             digests: {
               withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
               withoutImage: withoutImage.regionDigest,

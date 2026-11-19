@@ -15,7 +15,13 @@ import { parseProbeResults } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION, KITTY_ROW_IMAGES } from "./kitty-capture.ts"
-import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
+import type {
+  CaptureLayoutGuard,
+  CaptureLayoutGuardRequest,
+  ObservationFrame,
+  TermProbeSource,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { finishCapture } from "../../terminfo.dev/src/capture-core.ts"
 
 const sha = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -36,6 +42,8 @@ interface Surface {
   readonly ack?: "ok" | "silent"
   /** Cell digests for the placeholder readback pair, when this run reads cells at all. */
   readonly cells?: readonly string[]
+  /** The collector's answer to a guard capture that names `layoutGuard.against` (#34932). */
+  readonly guardComparison?: Omit<CaptureLayoutGuard, "against">
 }
 
 interface Capture {
@@ -45,6 +53,7 @@ interface Capture {
   /** How many writes had happened when this capture was taken. */
   readonly writesBefore: number
   readonly ref: string
+  readonly layoutGuard?: CaptureLayoutGuardRequest
 }
 
 function surface(options: Surface) {
@@ -87,10 +96,17 @@ function surface(options: Surface) {
       return ack(sequence)
     },
     queryMode: async () => null,
-    capture: async ({ role, label, cells }) => {
+    capture: async ({ role, label, cells, layoutGuard }) => {
       const index = captures.length + 1
       const ref = `sha256:${String(index).padStart(64, "0")}`
-      captures.push({ role, label, cells: cells !== undefined, writesBefore: writes.length, ref })
+      captures.push({
+        role,
+        label,
+        cells: cells !== undefined,
+        writesBefore: writes.length,
+        ref,
+        ...(layoutGuard === undefined ? {} : { layoutGuard }),
+      })
       if (cells !== undefined) {
         const isGuard =
           cells.top === KITTY_GUARD_REGION.top &&
@@ -111,6 +127,9 @@ function surface(options: Surface) {
           regionDigest: digest,
           pixelsDigest: `whole-${String(digest)}`,
           regionRectangle: { x: 20, y: 40, width: 20, height: 40 },
+          ...(layoutGuard?.against !== undefined && options.guardComparison !== undefined
+            ? { layoutGuardComparison: { against: layoutGuard.against, ...options.guardComparison } }
+            : {}),
         } satisfies ObservationFrame
       }
       const whole = options.whole?.[Math.min(wholeIndex, (options.whole?.length ?? 1) - 1)] ?? "whole-same"
@@ -375,6 +394,51 @@ test("a frame 2 that never gives way to frame 1 records unsupported from pixels"
   expect(JSON.parse(result.response!)).toMatchObject({
     digests: { reference: sha("red"), secondReference: sha("blue") },
   })
+})
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 5): the arm asks the collector to keep the with-image guard
+// crop and compare the image-deleted guard to it, and its verdict follows that comparison when the raw digests
+// differ. The test above uses equal guard digests, so it never reaches the bounded comparison.
+test("placeholders compare the two guard crops under the bounded rule and keep both raw digests", async () => {
+  const held = {
+    holds: true,
+    width: 39,
+    height: 87,
+    changedPixels: 18,
+    maxChannelDelta: 1,
+    alphaExact: true,
+    maskChangedPixels: 0,
+    backgroundMembers: 1,
+  }
+  const { context, captures } = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "shaded"],
+    guardComparison: held,
+  })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  const guards = captures.filter((capture) => capture.label.includes("Layout guard"))
+  expect(guards.map((capture) => capture.layoutGuard)).toEqual([{}, { against: guards[0]!.ref }])
+  expect(result.observation?.outcome).toBe("supported")
+  const evidence = JSON.parse(result.response!) as { guard: Record<string, unknown> }
+  expect(evidence.guard).toEqual({
+    withImage: "guard",
+    withoutImage: "shaded",
+    comparison: { against: guards[0]!.ref, ...held },
+  })
+
+  const failing = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "moved"],
+    guardComparison: {
+      ...held,
+      holds: false,
+      maskChangedPixels: 3,
+      reason: "3 coordinate(s) changed between background and ink",
+    },
+  })
+  const refused = await term("extensions.kitty-graphics.unicode-placeholders")(failing.context)
+  expect(refused.observation?.outcome).toBe("inconclusive")
+  expect(JSON.stringify(refused)).toContain("3 coordinate(s) changed between background and ink")
 })
 
 test("placeholders decide from pixels, with a queried virtual transfer and an ordinary placement alive", async () => {

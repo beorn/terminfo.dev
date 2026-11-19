@@ -368,6 +368,8 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * the same buffer as `pixelsDigest`. Present exactly when the request named cells.
    */
   regionDigest?: string
+  /** The answer to a request's `layoutGuard` with `against` (#34932): present only on such a frame. */
+  layoutGuardComparison?: CaptureLayoutGuard
   /**
    * Raw-pixel digest of the whole captured window, over raw pixel bytes at a fixed depth and
    * colorspace — never the encoded container, whose text chunks differ between identical frames.
@@ -433,6 +435,7 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   controlRegionRectangle?: never
   located?: never
   cellCrop?: never
+  layoutGuardComparison?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -797,6 +800,42 @@ export interface CaptureRequest {
    * a request without it is byte for byte the previous path. Needs no `cells`.
    */
   locate?: { rgb: readonly [number, number, number] }
+  /**
+   * A layout guard over `cells` (#34932, @cto 34932-five-criteria-ruling-2216 item 5). Without `against`
+   * the collector keeps this crop for one later comparison; with `against` (the `ref` of that earlier
+   * frame) it compares this crop to it and answers `layoutGuardComparison`. Optional: a request without it is
+   * byte for byte the previous path. A frame whose arm cropped no cells answers nothing.
+   */
+  layoutGuard?: CaptureLayoutGuardRequest
+}
+
+export interface CaptureLayoutGuardRequest {
+  /** The `ref` of the earlier frame, taken with `layoutGuard: {}` over the same cells, to compare against. */
+  readonly against?: string
+}
+
+/**
+ * A layout guard's bounded comparison of two crops of the same cells (#34932, @cto 2216 item 5). It holds
+ * only when the dimensions are equal, alpha is exact, no RGB channel differs by more than 1, and every
+ * coordinate keeps its background/ink class under the run's witnessed background members. No
+ * neighbourhood matching, resampling or changed-pixel allowance. Only a layout guard uses it.
+ */
+export interface CaptureLayoutGuard {
+  /** The earlier frame's `ref`. */
+  against: string
+  holds: boolean
+  /** Why the guard does not hold; absent exactly when it holds. */
+  reason?: string
+  width: number
+  height: number
+  /** Pixels whose RGBA differs at all between the two crops. */
+  changedPixels: number
+  maxChannelDelta: number
+  alphaExact: boolean
+  /** Coordinates whose background/ink class differs between the two crops. */
+  maskChangedPixels: number
+  /** How many witnessed background colours classified the mask; 0 means none were supplied. */
+  backgroundMembers: number
 }
 
 /** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */

@@ -18,7 +18,13 @@ import {
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path"
 import { constants as zlibConstants, gunzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib"
-import type { CaptureLocated, CaptureRectangle, CaptureRenderingAxes, PixelCellCrop } from "@terminfo/probe-defs"
+import type {
+  CaptureLayoutGuard,
+  CaptureLocated,
+  CaptureRectangle,
+  CaptureRenderingAxes,
+  PixelCellCrop,
+} from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 /**
@@ -626,6 +632,78 @@ export function renderingAxes(cropped: Buffer): CaptureRenderingAxes {
   }
 }
 
+type LayoutGuardVerdict = Omit<CaptureLayoutGuard, "against">
+
+/**
+ * The bounded layout-guard comparison (#34932, @cto 34932-five-criteria-ruling-2216 item 5): exact
+ * dimensions and coordinate correspondence, exact alpha, every RGB channel within 1, and an identical
+ * background/ink mask under the run's witnessed background members. A pixel is background exactly when
+ * its packed RGB is one of those members. No neighbourhood matching, resampling, averaging or allowance.
+ */
+export function compareLayoutGuard(
+  earlier: { readonly width: number; readonly height: number; readonly rgba: Uint8Array },
+  later: { readonly width: number; readonly height: number; readonly rgba: Uint8Array },
+  background: ReadonlySet<number> | undefined,
+): LayoutGuardVerdict {
+  const members = background?.size ?? 0
+  const base = { width: later.width, height: later.height, backgroundMembers: members }
+  if (earlier.width !== later.width || earlier.height !== later.height) {
+    return {
+      ...base,
+      holds: false,
+      reason: `the crops are ${earlier.width}x${earlier.height} and ${later.width}x${later.height}`,
+      changedPixels: 0,
+      maxChannelDelta: 0,
+      alphaExact: false,
+      maskChangedPixels: 0,
+    }
+  }
+  let changedPixels = 0
+  let maxChannelDelta = 0
+  let alphaExact = true
+  let maskChangedPixels = 0
+  for (let offset = 0; offset < later.rgba.length; offset += 4) {
+    const a = earlier.rgba
+    const b = later.rgba
+    let changed = false
+    for (let channel = 0; channel < 3; channel++) {
+      const delta = Math.abs((a[offset + channel] ?? 0) - (b[offset + channel] ?? 0))
+      if (delta > 0) changed = true
+      if (delta > maxChannelDelta) maxChannelDelta = delta
+    }
+    if (a[offset + 3] !== b[offset + 3]) {
+      alphaExact = false
+      changed = true
+    }
+    if (changed) changedPixels++
+    if (background) {
+      const packedA = ((a[offset] ?? 0) << 16) | ((a[offset + 1] ?? 0) << 8) | (a[offset + 2] ?? 0)
+      const packedB = ((b[offset] ?? 0) << 16) | ((b[offset + 1] ?? 0) << 8) | (b[offset + 2] ?? 0)
+      if (background.has(packedA) !== background.has(packedB)) maskChangedPixels++
+    }
+  }
+  const measured = { ...base, changedPixels, maxChannelDelta, alphaExact, maskChangedPixels }
+  const reason =
+    members === 0
+      ? "no witnessed background members were supplied, so the background/ink mask cannot be compared"
+      : !alphaExact
+        ? "alpha differs"
+        : maxChannelDelta > 1
+          ? `an RGB channel differs by ${maxChannelDelta}`
+          : maskChangedPixels > 0
+            ? `${maskChangedPixels} coordinate(s) changed between background and ink`
+            : undefined
+  return reason === undefined ? { ...measured, holds: true } : { ...measured, holds: false, reason }
+}
+
+/**
+ * Crops kept for one later layout-guard comparison, by frame ref. A comparison consumes its entry; the
+ * oldest is dropped past a small bound, so an abandoned guard cannot grow this, and a comparison against
+ * a dropped or unknown ref answers that by name.
+ */
+const layoutGuardCrops = new Map<string, { cells: string; width: number; height: number; rgba: Uint8Array }>()
+const LAYOUT_GUARD_KEPT = 8
+
 /** Finish one acquired frame; currency and capture scheduling belong to the caller. */
 export async function finishCapture(input: {
   directory: string
@@ -673,6 +751,7 @@ export async function finishCapture(input: {
   let controlRegionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
   let cellCrop: PixelCellCrop | undefined
+  let layoutGuard: CaptureLayoutGuard | undefined
   const located = locate === undefined ? undefined : locateColour(decoded, locate.rgb)
   if (cells !== undefined && pixelGeometry !== undefined) {
     const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
@@ -703,7 +782,7 @@ export async function finishCapture(input: {
           `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
         )
       }
-      return { rectangle, digest: `sha256:${digest(cropped)}`, rendering: renderingAxes(cropped) }
+      return { rectangle, cropped, digest: `sha256:${digest(cropped)}`, rendering: renderingAxes(cropped) }
     }
     const region = cropRegion(cells)
     const rectangle = region.rectangle
@@ -721,6 +800,55 @@ export async function finishCapture(input: {
     ]
     regionDigest = region.digest
     frameRendering = renderedAxes(region.rendering)
+    if (checkpoint.layoutGuard !== undefined) {
+      const crop = {
+        cells: JSON.stringify(cells),
+        width: rectangle.width,
+        height: rectangle.height,
+        rgba: new Uint8Array(region.cropped),
+      }
+      const against = checkpoint.layoutGuard.against
+      if (against === undefined) {
+        layoutGuardCrops.delete(ref)
+        layoutGuardCrops.set(ref, crop)
+        while (layoutGuardCrops.size > LAYOUT_GUARD_KEPT) {
+          const oldest = layoutGuardCrops.keys().next().value
+          if (oldest === undefined) break
+          layoutGuardCrops.delete(oldest)
+        }
+      } else {
+        const earlier = layoutGuardCrops.get(against)
+        layoutGuardCrops.delete(against)
+        layoutGuard =
+          earlier === undefined
+            ? {
+                against,
+                holds: false,
+                reason: `no guard crop is kept for ${against}`,
+                width: crop.width,
+                height: crop.height,
+                changedPixels: 0,
+                maxChannelDelta: 0,
+                alphaExact: false,
+                maskChangedPixels: 0,
+                backgroundMembers: checkpoint.layoutGuardBackground?.size ?? 0,
+              }
+            : earlier.cells !== crop.cells
+              ? {
+                  against,
+                  holds: false,
+                  reason: `the guard crops name different cells (${earlier.cells} and ${crop.cells})`,
+                  width: crop.width,
+                  height: crop.height,
+                  changedPixels: 0,
+                  maxChannelDelta: 0,
+                  alphaExact: false,
+                  maskChangedPixels: 0,
+                  backgroundMembers: checkpoint.layoutGuardBackground?.size ?? 0,
+                }
+              : { against, ...compareLayoutGuard(earlier, crop, checkpoint.layoutGuardBackground) }
+      }
+    }
     regionRectangle = rectangle
     const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
     const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
@@ -782,6 +910,7 @@ export async function finishCapture(input: {
       sourceRef,
       pixelsDigest,
       ...(regionDigest !== undefined ? { regionDigest } : {}),
+      ...(layoutGuard !== undefined ? { layoutGuardComparison: layoutGuard } : {}),
       ...(frameRendering !== undefined ? { rendering: frameRendering } : {}),
       ...(regionRectangle !== undefined ? { regionRectangle } : {}),
       ...(controlRegionDigest !== undefined ? { controlRegionDigest } : {}),
