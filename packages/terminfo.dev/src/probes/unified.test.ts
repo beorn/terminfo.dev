@@ -8668,13 +8668,18 @@ describe("the row wall returns a held viewport to the bottom before the next row
   })
 })
 
-// 33628 (@cto 1957): only the one WezTerm Linux build is handed the rendered hold; every other context keeps the
-// reply criterion, so a change here cannot alter an unapproved row.
-it("only WezTerm Linux 0-unstable-2026-10-10 is graded by the rendered hold", () => {
+// 33628 (@cto 1957), 34961 (@cto cc2dac5d): only the two qualified WezTerm Linux builds are handed the rendered
+// hold; every other context keeps the reply criterion, so a change here cannot alter an unapproved row.
+it("only WezTerm Linux 0-unstable-2026-10-10 and 0-unstable-2026-11-08 are graded by the rendered hold", () => {
   const wezterm = { kind: "term", id: "wezterm", os: "linux", version: "0-unstable-2026-10-10" } as const
   expect(syncOutputRenderedSubject(wezterm)).toBe(true)
+  // 34961: the hourly runs since 2026-11-16 measure 0-unstable-2026-11-08 and fell back to the withheld in-mode reply.
+  expect(syncOutputRenderedSubject({ ...wezterm, version: "0-unstable-2026-11-08" })).toBe(true)
   for (const other of [
     { ...wezterm, version: "20240203" },
+    { ...wezterm, version: "0-unstable-2026-11-09" },
+    { ...wezterm, version: "0-unstable-2026" },
+    { ...wezterm, version: undefined },
     { ...wezterm, os: "macos" },
     { ...wezterm, id: "alacritty" },
     { ...wezterm, kind: "lib" },

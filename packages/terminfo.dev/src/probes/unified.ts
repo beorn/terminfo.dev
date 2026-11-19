@@ -475,7 +475,18 @@ function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string
   return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
 }
 
-/** 33628 (@cto 1957): the one subject whose synchronized-output App row is graded by its rendered hold. */
+/**
+ * The WezTerm Linux builds whose mux holds parsed actions while ?2026 is set, so their synchronized-output App row is
+ * graded by its rendered hold. 33628 (@cto 1957) qualified 0-unstable-2026-10-10 (rev e2a98e1b8af1); 34961 (@cto
+ * cc2dac5d) added 0-unstable-2026-11-08 (rev 458a100c1bf4), whose source differs only in docs and get-deps, with
+ * mux/src/lib.rs byte-identical. Exact versions only: the run's own rendered-hold controls still decide each result.
+ */
+const SYNC_OUTPUT_RENDERED_WEZTERM_LINUX: ReadonlySet<string> = new Set([
+  "0-unstable-2026-10-10",
+  "0-unstable-2026-11-08",
+])
+
+/** 33628 (@cto 1957), 34961: the one subject whose synchronized-output App row is graded by its rendered hold. */
 export function syncOutputRenderedSubject(
   subject: { kind: "term" | "lib" | "mux"; id: string; os: string; version?: string } | undefined,
 ): boolean {
@@ -483,7 +494,8 @@ export function syncOutputRenderedSubject(
     subject?.kind === "term" &&
     subject.id === "wezterm" &&
     subject.os === "linux" &&
-    subject.version === "0-unstable-2026-10-10"
+    subject.version !== undefined &&
+    SYNC_OUTPUT_RENDERED_WEZTERM_LINUX.has(subject.version)
   )
 }
 
