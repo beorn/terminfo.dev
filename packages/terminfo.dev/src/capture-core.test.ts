@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { gunzipSync, zstdDecompressSync } from "node:zlib"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import { originFromSentinel, sentinelBlockRefusal, sentinelCellsInFrame } from "@terminfo/probe-defs"
 import {
   cellRectangle,
@@ -816,6 +816,30 @@ test("a conversion handed a deadline the capture already spent still converts (3
   const linux = await convertCapture({ ...route["Linux XWD"]!, deadline: spent })
   expect(calls()).toHaveLength(1)
   expect(linux.frame).toEqual({ width: 2, height: 1, rgba: Buffer.alloc(8) })
+})
+
+// An omitted deadline keeps command()'s per-process budget; only a finite spent deadline is renewed.
+// The spent-deadline case above cannot detect a second Darwin command losing its original budget.
+test("conversion preserves the omitted deadline default for each subprocess", async () => {
+  const { scratch, calls } = stubMagick()
+  const route = routes(scratch).Darwin!
+  const started = Date.now()
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => started + (calls().length === 0 ? 0 : 11_000))
+  try {
+    // Advance the wall clock between completed subprocesses; omitted deadlines remain relative per-process limits.
+    await expect(convertCapture(route)).resolves.toMatchObject({ frame: { width: 2, height: 1 } })
+    expect(calls()).toHaveLength(2)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test("conversion refuses nonfinite deadlines before starting a subprocess", async () => {
+  const { scratch, calls } = stubMagick()
+  for (const deadline of [-Infinity, Infinity, NaN]) {
+    await expect(convertCapture({ ...routes(scratch).Darwin!, deadline })).rejects.toThrow("requires a finite deadline")
+    expect(calls()).toEqual([])
+  }
 })
 
 test("the converter owner runs one process per Linux route and two on Darwin; the version probe is its own (34549)", async () => {

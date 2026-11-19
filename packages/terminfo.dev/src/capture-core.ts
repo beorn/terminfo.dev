@@ -503,10 +503,12 @@ export type ConvertCaptureInput = {
  */
 export async function convertCapture(input: ConvertCaptureInput): Promise<{ png: Buffer; frame: CapturedFrame }> {
   const { bytes, format, featureId, deadline } = input
-  // A live caller deadline is honoured exactly; only one that has already elapsed is replaced, and
-  // then by the same default command() would apply with no deadline at all (#35129).
+  // Renew only a finite deadline the earlier capture already spent (#35129). Omitted deadlines
+  // keep command()'s per-process default; nonfinite values keep its existing validation error.
   const convertDeadline =
-    deadline === undefined || deadline <= Date.now() ? Date.now() + CONVERSION_FALLBACK_TIMEOUT_MS : deadline
+    deadline !== undefined && Number.isFinite(deadline) && deadline <= Date.now()
+      ? Date.now() + CONVERSION_FALLBACK_TIMEOUT_MS
+      : deadline
   const readExtent = async () =>
     capturePixels(
       (await command("magick", [`${format}:-`, "-format", "%wx%h", "info:"], bytes, convertDeadline)).toString(),
