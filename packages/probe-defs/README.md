@@ -344,6 +344,20 @@ transport only: without the criterion's own DECRPM reply, these mode results ret
 Application-cursor and reverse-video opt into a public-state criterion when DECRPM is absent:
 reset false, set true, reset false, an unknown mode leaves the state unchanged, and the other
 flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
+Library reverse-video presentation stays unmeasured. The application arm keeps the DECRPM set
+check, and when mode 5 answers Ps 0 or nothing it reads the effect in pixels: a seeded `REVERSED`
+line, then DECSCNM set, compared against an SGR 7 reference and the unchanged line
+(`reverse-video-pixels`). A text-cell collector records PROBE INVALID, since text cells cannot
+show the effect. Those target reads are taken with the screen inverted, so the definition declares
+`termScreenMode: "reverse"` and its region-readback spec marks the under-edit steps with
+`editScreenMode: "reverse"`. Each such read reaches the collector as `CaptureRequest.screenMode`.
+Calibration on that blank canvas then observes normal, reverse, normal: with DECSCNM set it
+witnesses the reverse background and the same sentinel paint (`reverseSentinel`), all measured and
+none synthesized, and it refuses the whole calibration if the normal paint does not return. A
+`screenMode` read projects, locates and layout-guards with those witnessed reverse classes; with no
+witness, including after an in-row renewal, which re-measures only the normal paint, it fails as
+`CaptureScreenModeUnwitnessed` with the reason named. Adapters never see the field, and frames and
+the run JSON are unchanged (#34932).
 The seventeen DEC1 mode/mouse definitions also consult the existing unhandled report after an
 undecided prior arm. DECAWM off must read false and add no entry, then one exact own command
 must add one or more new entries all carrying that command's code. Explicit multi-code targets
