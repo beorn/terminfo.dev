@@ -513,6 +513,12 @@ export async function runProbeBatch(
     /** What the installed adapter reads; a text adapter is honest even where pixel geometry was
      * refused, so it is installed regardless of `captureGeometryRefusal`. */
     captureKind?: "pixels" | "text-cells"
+    /**
+     * #34940: the qualified terminal-owned text adapter, kept beside a pixel `capture`. Each probe with
+     * `textClaim: "characters"` and cellReadback reads it instead of pixels; it is absent on a text-only run, where
+     * `capture` is already that adapter, and on any run without a text qualification recipe.
+     */
+    textCellsCapture?: ProbeCapture
     /** Prepare owned capture through its existing factory, query trace and frame recorder. */
     prepareCapture?: (input: {
       source: TermProbeSource
@@ -1509,7 +1515,21 @@ export async function runProbeBatch(
         return result
       }
     }
-    const capture = options.capture
+    // #34940 (@cto 28ff372f): a pixel run that also holds the qualified terminal-owned text adapter reads each
+    // text-claimed cell-readback row from text cells. The route is chosen here, once, before the callback, and
+    // this attempt's kind feeds eligibility, error attribution and the finalizer below. A failed read on either
+    // route stays that route's own result; neither ever falls back to the other. Only Terminal.app on macOS
+    // takes it (@cto 34940-text-claims-40-go): other apps with a text recipe keep their run-wide route.
+    const textRoute =
+      options.captureKind !== "text-cells" &&
+      options.textCellsCapture !== undefined &&
+      options.subject?.kind === "term" &&
+      options.subject.id === "terminal-app" &&
+      options.subject.os === "macos" &&
+      probe.textClaim === "characters" &&
+      probe.cellReadback === true
+    const attemptCaptureKind = textRoute ? "text-cells" : options.captureKind
+    const capture = textRoute ? options.textCellsCapture : options.capture
     // A run-level fact, set for every row whether or not this row gets the adapter: a row may state
     // what no capture in this run can see (#33032).
     if (options.captureSettleMs !== undefined) probeSource.captureSettleMs = options.captureSettleMs
@@ -1519,7 +1539,7 @@ export async function runProbeBatch(
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
     // the no-capture branches exist to avoid.
-    const textCells = options.captureKind === "text-cells"
+    const textCells = attemptCaptureKind === "text-cells"
     const imageSubject = options.subject
     const pointerImageEligible =
       probe.id !== "extensions.osc22-pointer" ||
@@ -1531,7 +1551,7 @@ export async function runProbeBatch(
           (imageSubject.id === "ghostty" && imageSubject.version === "1.4.0") ||
           (imageSubject.id === "alacritty" && imageSubject.version === "0.17.0")))
     const captureEligible =
-      pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
+      pointerImageEligible && captureAdapterEligible(probe, attemptCaptureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
       // One served path for both kinds. The caller measurement starts at the served entry, BEFORE
       // withTTYOperation, or the queue and verification interval before the adapter disappears
@@ -2154,7 +2174,7 @@ export async function runProbeBatch(
         name === "SentinelFrameMoved"
           ? undefined
           : captureAttempted
-            ? options.captureKind === "text-cells"
+            ? attemptCaptureKind === "text-cells"
               ? "buffer_state"
               : "screenshot"
             : undefined
@@ -2245,7 +2265,7 @@ export async function runProbeBatch(
       // missing-paint arm then raises the named FrameUnavailable diagnostic HERE, after the callback catch, so it
       // is caught at this boundary and recorded through the same recorder as the callback's own diagnostics.
       // Any other error keeps propagating, so a fatal custody failure is never swallowed or replaced.
-      const finalizerRefusal = options.captureKind === "text-cells" ? undefined : probeSource.captureGeometryRefusal
+      const finalizerRefusal = attemptCaptureKind === "text-cells" ? undefined : probeSource.captureGeometryRefusal
       let finalized = recorded
       if (subject?.kind === "term" || subject?.kind === "mux") {
         try {

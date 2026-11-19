@@ -19,8 +19,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } fro
 import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
+  TEXT_QUALIFICATION_SPEC,
   initializeRunDraft,
   type ProbeSuiteManifest,
+  type CapturedRunDraft,
   type ProbeCallbackResult,
   type ObservationFrame,
   type TextQualification,
@@ -41,6 +43,7 @@ import {
   syncOutputRenderedSubject,
   wallExceededReason,
   type HeldViewportReaderFor,
+  type ProbeCapture,
 } from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
@@ -54,7 +57,7 @@ import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
 import { finishCapture } from "../capture-core.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
-import { collectTextQualification } from "../text-qualification.ts"
+import { collectTextQualification, recordTextQualificationTests } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
 import { parseOrdinaryOpenReceipt, type LiveAncestryReader } from "../ordinary-open-receipt.ts"
 
@@ -4089,6 +4092,239 @@ it("records a text run's collector throw as text evidence", async () => {
   })
   expect(batch.results.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({
     status: "probe-invalid",
+  })
+})
+
+// #34940 (@cto 28ff372f): a pixel run that also holds the qualified terminal-owned text adapter. The text fake
+// answers each checkpoint from its own label: a seed, the post-sequence target and the expected frame are distinct
+// screens, and `applied` says what the target shows: the expected frame (the DEC glyph drawn, the region scrolled),
+// the seed (the sequence ignored) or a third screen (a wrong margin). Expected characters never enter a target read.
+function mixedTextAdapter(applied: "expected" | "seed" | "other", calls: string[], fail = false): ProbeCapture {
+  return async ({ featureId, role, label }) => {
+    calls.push(featureId)
+    if (fail) throw new Error("the terminal's text snapshot read refused")
+    const step = label.split(": ").slice(1).join(": ")
+    const content = label.includes("capture stability")
+      ? "stable"
+      : step.startsWith("post-sequence target")
+        ? "edited"
+        : step.startsWith("expected frame")
+          ? "expected"
+          : "seed"
+    const phase = label.endsWith("— baseline") ? "base" : label.includes("paint witness") ? "witness" : "measured"
+    const screen = content === "edited" && phase === "measured" ? applied : content
+    const cells = `sha256:${createHash("sha256").update(`${screen}:${phase}`).digest("hex")}`
+    const whole = `sha256:${createHash("sha256").update(`${screen}:${phase}:whole`).digest("hex")}`
+    return {
+      frame: {
+        kind: "text-cells" as const,
+        role,
+        label,
+        capturedAt: Date.now(),
+        ref: whole,
+        cellDigest: cells,
+        frameDigest: whole,
+        cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+      },
+      trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+    }
+  }
+}
+
+describe("a pixel run with a qualified text adapter (#34940)", () => {
+  const claimed = ["charsets.dec-special", "scrollback.decstbm", "scrollback.decstbm-reset"] as const
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  // The charsets rows ask the run's decode context; answer it here so these runs neither wait on a
+  // terminal reply nor leave calls on the shared mock for the once-per-run test below.
+  beforeEach(() => {
+    vi.mocked(measureUtf8Decoding).mockResolvedValue("utf8")
+  })
+  afterEach(() => {
+    vi.mocked(measureUtf8Decoding).mockRestore()
+  })
+
+  // @failure A text-claimed cell row keeps the run's pixel reader (or a pixel row gets text) because the route is
+  //   chosen per run, so Terminal.app's DEC-glyph and margin rows stay a pixel "third distinct frame" forever.
+  it("routes each text-claimed cell-readback row to text cells and every other row to pixels", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    // The manifest's textClaims are every app probe declaring textClaim "characters" (admin/versions.ts).
+    const claims = ALL_PROBES.filter((p) => p.term !== null && p.textClaim === "characters").map((p) => p.id)
+    expect(claims).toHaveLength(40)
+    const textRows = claims.filter((id) => ALL_PROBES.find((p) => p.id === id)!.cellReadback === true)
+    const ids = [...claims, "erase.el-with-attrs", "cursor.shape"]
+    const definitions = ids.map((id) => ALL_PROBES.find((p) => p.id === id)!)
+    const originals = definitions.map(({ term }) => term)
+    const seen: Record<string, { kind: string | undefined; cells: boolean; pixels: boolean }> = {}
+    try {
+      for (const definition of definitions) {
+        definition.term = async (ctx) => {
+          seen[definition.id] = {
+            kind: ctx.captureKind,
+            cells: typeof ctx.cells === "function",
+            pixels: typeof ctx.capture === "function",
+          }
+          return notTestedResult("Capture routing exercised without terminal operations", {})
+        }
+      }
+      const pixelCalls: string[] = []
+      const run = (withText: boolean, runSubject: typeof subject) =>
+        runProbeBatch({
+          ids,
+          capture: async () => {
+            pixelCalls.push("pixels")
+            throw new Error("Routing test must not capture")
+          },
+          ...(withText && { textCellsCapture: mixedTextAdapter("expected", []) }),
+          subject: runSubject,
+          ownedTerminal: geometryOwner(measured(24, 80)),
+        })
+      const pixelRoute = { kind: undefined, cells: false, pixels: true }
+      await run(true, subject)
+      expect(textRows.length).toBeGreaterThan(0)
+      for (const id of claims) {
+        expect(seen[id], id).toEqual(
+          textRows.includes(id) ? { kind: "text-cells", cells: true, pixels: false } : pixelRoute,
+        )
+      }
+      for (const id of ["erase.el-with-attrs", "cursor.shape"]) expect(seen[id], id).toEqual(pixelRoute)
+      // Without the text adapter, and on another app that has a text recipe, every row keeps today's pixel route.
+      for (const [withText, runSubject] of [
+        [false, subject],
+        [true, { ...subject, id: "iterm2", version: "3.6.11" }],
+      ] as const) {
+        await run(withText, runSubject)
+        for (const id of ids) expect(seen[id], `${runSubject.id} ${id}`).toEqual(pixelRoute)
+      }
+      expect(pixelCalls).toEqual([])
+    } finally {
+      definitions.forEach((definition, index) => (definition.term = originals[index]!))
+    }
+  })
+
+  // @failure A run-wide pixel geometry refusal also withholds the text reader, or erases the pixel rows' refusal.
+  it("keeps the text reader for claimed rows when pixel geometry was refused, and the refusal for pixel rows", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const textCalls: string[] = []
+    const pixelCalls: string[] = []
+    const refusal = "the app answers no cell geometry"
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special", "erase.el-with-attrs"],
+      captureGeometryRefusal: refusal,
+      capture: async ({ featureId }) => {
+        pixelCalls.push(featureId)
+        throw new Error("a refused pixel route must not be read")
+      },
+      textCellsCapture: mixedTextAdapter("expected", textCalls),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    expect(pixelCalls).toEqual([])
+    expect(new Set(textCalls)).toEqual(new Set(["charsets.dec-special"]))
+    expect(batch.observations.find((item) => item.featureId === "charsets.dec-special")).toMatchObject({
+      outcome: "supported",
+      assertionType: "buffer_state",
+    })
+    const pixelRow = batch.results.find((item) => item.featureId === "erase.el-with-attrs")
+    expect(pixelRow?.status).not.toBe("supported")
+    expect(JSON.stringify(pixelRow)).toContain(refusal)
+    expect(batch.screenshotRefs).toEqual([])
+    expect(batch.textSnapshotRefs?.length).toBeGreaterThan(0)
+  })
+
+  // @failure A failed selected text read is labelled a screenshot error, or the row quietly retries on pixels.
+  it("attributes a throwing selected text reader to buffer_state and never reads pixels", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const pixelCalls: string[] = []
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special"],
+      capture: async ({ featureId }) => {
+        pixelCalls.push(featureId)
+        throw new Error("a text-routed row must not fall back to pixels")
+      },
+      textCellsCapture: mixedTextAdapter("expected", [], true),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    expect(pixelCalls).toEqual([])
+    const observation = batch.observations.find((item) => item.featureId === "charsets.dec-special")
+    expect(observation).toMatchObject({ outcome: "error", assertionType: "buffer_state" })
+    expect(observation?.note).toContain("text snapshot read refused")
+    expect(batch.screenshotRefs).toEqual([])
+  })
+
+  // @failure A mixed run's text-decided row stays Supported without a passing qualification, its pixel row loses
+  //   the refusal, or the strict draft reader drops one of the two reference lists.
+  it("holds a mixed run's text row to the qualification and keeps both reference lists through the reader", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const refusal = "the app answers no cell geometry"
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special", "erase.el-with-attrs"],
+      captureGeometryRefusal: refusal,
+      capture: async () => {
+        throw new Error("a refused pixel route must not be read")
+      },
+      textCellsCapture: mixedTextAdapter("expected", []),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    const textClaims = ALL_PROBES.filter((p) => p.term !== null && p.textClaim === "characters").map((p) => p.id)
+    const claimedManifest = { ...manifest, textClaims, textQualification: TEXT_QUALIFICATION_SPEC }
+    const pixelBefore = batch.results.find((row) => row.featureId === "erase.el-with-attrs")
+    expect(batch.results.find((row) => row.featureId === "charsets.dec-special")?.status).toBe("supported")
+    for (const [attempt, status, reason] of [
+      [undefined, "probe-todo", "Text qualification has not been attempted"],
+      [{ scope: "probe" as const, startedAt: "2026-09-28T00:00:00.000Z" }, "probe-invalid", undefined],
+    ] as const) {
+      const run = asRun(batch, claimedManifest) as CapturedRunDraft
+      run.subject = { ...run.subject!, id: "terminal-app", version: "2.15", os: "macos" }
+      run.intendedSubject = { kind: "term", id: "terminal-app" }
+      recordTextQualificationTests(run, claimedManifest, new Map(), attempt)
+      const textRow = run.results.find((row) => row.featureId === "charsets.dec-special")
+      expect(textRow?.status, status).toBe(status)
+      if (reason) expect(textRow?.reason).toBe(reason)
+      expect(
+        run.results.find((row) => row.featureId === "erase.el-with-attrs"),
+        status,
+      ).toEqual(pixelBefore)
+      const decoded = decodeCollectorDraft("mixed.json", JSON.stringify(run), claimedManifest, sourceRevision).run
+      expect(decoded.results.find((row) => row.featureId === "charsets.dec-special")?.status).toBe(status)
+      expect(decoded.textSnapshotRefs).toEqual(batch.textSnapshotRefs)
+      expect(decoded.screenshotRefs).toEqual(batch.screenshotRefs)
+      expect(JSON.stringify(decoded.results.find((row) => row.featureId === "erase.el-with-attrs"))).toContain(refusal)
+    }
+  })
+
+  // @failure The text route decides a DEC glyph from the literal seed, or an ignored or wrong margin as scrolled.
+  it.each([
+    ["expected", "supported"],
+    ["seed", "unsupported"],
+    ["other", "inconclusive"],
+  ] as const)("grades each claimed row from its own text reads when the target shows %s", async (applied, outcome) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const textCalls: string[] = []
+    const batch = await runProbeBatch({
+      ids: [...claimed],
+      capture: async () => {
+        throw new Error("a text-routed row must not read pixels")
+      },
+      textCellsCapture: mixedTextAdapter(applied, textCalls),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    for (const id of claimed) {
+      expect(textCalls, id).toContain(id)
+      const observation = batch.observations.find((item) => item.featureId === id)
+      expect(observation, id).toMatchObject({ outcome, assertionType: "buffer_state" })
+      expect(
+        observation?.frames?.every((frame) => frame.kind === "text-cells"),
+        id,
+      ).toBe(true)
+    }
   })
 })
 

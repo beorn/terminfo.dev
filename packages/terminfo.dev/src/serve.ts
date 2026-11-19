@@ -727,6 +727,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     let captureSettleMs: number | undefined
     /** Set when `capture` above reads the terminal's own text rather than pixels. */
     let textCapture = false
+    /** #34940: the qualified text adapter, kept when pixels later replace `capture`; claimed rows still read it. */
+    let textCellsCapture: ProbeCapture | undefined
     let textQualification: TextQualification | undefined
     let textQualificationStartedAt: string | undefined
     const retainedTextSnapshots = new Map<string, Uint8Array>()
@@ -800,6 +802,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           (kind === "terminalApp" && process.platform === "darwin") ||
           (kind === "darwinHosted" && terminal.hostedAppId === "terminal-app")
         const textAdapter = capture
+        textCellsCapture = textAdapter
         const consoleHostOwnership = terminal.consoleHostOwnership?.bind(terminal)
         const qualify: typeof prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           if (disposeQualifiedWindow) await drainStdin(1000)
@@ -1622,6 +1625,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(captureInstallationRefusal && { captureGeometryRefusal: captureInstallationRefusal }),
                 ...(capture && !textCapture && captureSettleMs !== undefined && { captureSettleMs }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
+                ...(!textCapture && textCellsCapture && { textCellsCapture }),
                 ...(input && { input }),
                 ...(viewportScroll && { viewportScroll }),
                 ...(ownedTerminal && { ownedTerminal }),
