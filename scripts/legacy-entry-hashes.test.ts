@@ -128,7 +128,9 @@ it("refuses two working runs whose retained manifests give one suite different e
   ])
   expect(() => cellEntryHashes(noDeclaration, working)).toThrow(/retained manifests with different entry hashes/)
   // 34999: the refusal names its cure, not only the symptom.
-  expect(() => cellEntryHashes(noDeclaration, working)).toThrow(/re-capture one of them at the suite the placement declares/)
+  expect(() => cellEntryHashes(noDeclaration, working)).toThrow(
+    /re-capture one of them at the suite the placement declares/,
+  )
 })
 
 // @failure 34999: one run read through two retained records with the same hashes in another key order refuses as if they
