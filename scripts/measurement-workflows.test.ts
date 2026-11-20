@@ -2085,8 +2085,9 @@ test.each([
 })
 
 // 32555 (@cto c8b7704b): the direct-binary arms launch under one helper that names this job's receipt run id as
-// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process; Terminal.app and
-// iTerm2 keep their named PROBE TODO. The helper is read out of the workflow and run with stubbed node and pgrep.
+// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process; Terminal.app,
+// iTerm2 and cmux (`open -a`) keep their named PROBE TODO. The helper is read out of the workflow and run with
+// stubbed node and pgrep.
 test("the direct-binary arms launch under the TERM_FEATURES marker helper, which refuses a missing id or a reused app", () => {
   const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const helper = /^ {10}term_features_launch_env\(\) \{\n[\s\S]*?\n {10}\}\n/mu.exec(macos)?.[0]
@@ -2097,12 +2098,19 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
     (step) => step.id === "collect",
   )!.run!
   for (const m of collect.matchAll(/^ {2}([a-z0-9.|-]+)\)\n([\s\S]*?)\n {4};;$/gmu)) arms.set(m[1]!, m[2]!)
-  for (const app of ["ghostty", "wezterm", "warp"]) {
+  for (const app of ["ghostty", "wezterm", "alacritty", "warp"]) {
     expect(arms.get(app), `${app} arm`).toMatch(
       /term_features_launch_env \|\| exit 1\n.*"\$\{TERM_FEATURES_LAUNCH_ENV\[@\]\}"/u,
     )
   }
-  for (const app of ["terminal-app", "iterm2"]) {
+  // Alacritty joined after the first proof run (@dev/8 de116252): an arm that starts "${APP_ARGV[@]}" itself, at
+  // the start of a command, starts it without the marker.
+  for (const [app, arm] of arms) {
+    expect(arm, `${app} arm starts its app binary without the marker`).not.toMatch(
+      /^\s*(?:nohup )?"\$\{APP_ARGV\[@\]\}"/mu,
+    )
+  }
+  for (const app of ["terminal-app", "iterm2", "cmux"]) {
     expect(arms.get(app), `${app} arm`).not.toContain("term_features_launch_env")
   }
 
