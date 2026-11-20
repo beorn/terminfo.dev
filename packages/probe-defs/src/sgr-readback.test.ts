@@ -380,6 +380,13 @@ test.each([
   ["sgr.fg.256", "0;38;2;95;135;175", "inconclusive"],
   ["sgr.fg.truecolor", "0;38:2::255:128:0", "supported"],
   ["sgr.bg.truecolor", "0;48:2:0:0:255:128", "supported"],
+  // iTerm2 3.6.11 reports these exact three replies in run d153d57f.
+  ["extensions.truecolor", "0;38:2:1:255:128:0", "supported"],
+  ["sgr.fg.truecolor", "0;38:2:1:255:128:0", "supported"],
+  ["sgr.bg.truecolor", "0;48:2:1:0:255:128", "supported"],
+  ["sgr.fg.truecolor", "0;38:2:2:255:128:0", "inconclusive"],
+  ["sgr.bg.truecolor", "0;48:2:1:0:255:256", "inconclusive"],
+  ["sgr.underline-color-rgb", "0;4;58:2:1:255:0:128", "inconclusive"],
   ["sgr.underline.color", "0;4;58:2:255:0:128", "supported"],
   ["sgr.selective-reset.bold", "0;3;38;2;255;1;5", "supported"],
   ["sgr.fg.default", "0;38;5;31", "unsupported"],

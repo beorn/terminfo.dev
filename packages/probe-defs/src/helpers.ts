@@ -1139,8 +1139,12 @@ function evaluateSgrReadback(
       const operands = mode === "2" ? 3 : mode === "5" ? 1 : 0
       parts = [token, ...(mode === undefined ? [] : [mode]), ...remaining.splice(0, operands)]
     }
-    // The optional ISO color-space slot is omitted or zero in the equivalent RGB form.
-    if (parts[1] === "2" && parts.length === 6 && (parts[2] === "" || parts[2] === "0")) parts.splice(2, 1)
+    // iTerm2 also writes slot 1 followed by the stored RGB for foreground and background.
+    const colorSpace = parts[2]
+    const itermRgb = colorSpace === "1" && (selector === 38 || selector === 48)
+    if (parts[1] === "2" && parts.length === 6 && (colorSpace === "" || colorSpace === "0" || itermRgb)) {
+      parts.splice(2, 1)
+    }
     const values = parts.slice(2)
     const complete = (parts[1] === "2" && values.length === 3) || (parts[1] === "5" && values.length === 1)
     if (!complete || values.some((value) => !/^\d+$/.test(value) || Number(value) > 255)) {
