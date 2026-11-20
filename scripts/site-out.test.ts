@@ -146,9 +146,9 @@ it("analysis generation writes under the override and leaves the source tree alo
     expect(existsSync(join(out, "content", "analysis.json"))).toBe(false)
     expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
     const probes = JSON.parse(readFileSync(join(writeRoot, "content", "probes.json"), "utf8"))
-    expect(probes.sourceCommit).toMatch(/^[a-f0-9]{40}$/)
-    expect(probes.data).toHaveProperty("features")
-    expect(probes.data).not.toHaveProperty("selected")
+    expect(probes).toHaveProperty("sourceCommit", expect.stringMatching(/^[a-f0-9]{40}$/))
+    expect(probes).toHaveProperty("data.features")
+    expect(probes).not.toHaveProperty("data.selected")
     expect(existsSync(join(out, "content", "probes.json"))).toBe(false)
   } finally {
     // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
