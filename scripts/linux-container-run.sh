@@ -528,6 +528,54 @@ xterm_paste_rebinding_arg() {
   return 1
 }
 
+# #37259: a scheduled Linux collection can die seconds into the batch when the /probe stream closes early
+# (curl 18). kitty's own log then ends on a broken X, which is the cleanup trap tearing down, so the retained
+# run says nothing about WHICH process died. Record that before any teardown: the script's exit status, the
+# batch status, which owned processes were still alive, and the cgroup's memory peak and events. Additive
+# only - a failure to write is reported on stderr and never changes the run's exit status.
+record_teardown_witness() {
+  local witness=${TERMINFO_TEARDOWN_WITNESS:-/out/teardown-witness.json}
+  local status=$1 batch_status=${2:-} daemon_pid=${3:-} xvfb_pid=${4:-} collector_pid=${5:-}
+  local daemon_alive=false xvfb_alive=false collector_alive=false
+  local cgroup=${TERMINFO_CGROUP_ROOT:-/sys/fs/cgroup}
+  local peak=null current=null oom=null oom_kill=null batch_json=null
+  if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then daemon_alive=true; fi
+  if [[ -n "$xvfb_pid" ]] && kill -0 "$xvfb_pid" 2>/dev/null; then xvfb_alive=true; fi
+  if [[ -n "$collector_pid" ]] && kill -0 "$collector_pid" 2>/dev/null; then collector_alive=true; fi
+  if [[ -r "$cgroup/memory.peak" ]]; then peak=$(cat "$cgroup/memory.peak" 2>/dev/null || true); fi
+  if [[ -r "$cgroup/memory.current" ]]; then current=$(cat "$cgroup/memory.current" 2>/dev/null || true); fi
+  if [[ -r "$cgroup/memory.events" ]]; then
+    oom=$(sed -n 's/^oom //p' "$cgroup/memory.events" 2>/dev/null || true)
+    oom_kill=$(sed -n 's/^oom_kill //p' "$cgroup/memory.events" 2>/dev/null || true)
+  fi
+  [[ -n "$peak" ]] || peak=null
+  [[ -n "$current" ]] || current=null
+  [[ -n "$oom" ]] || oom=null
+  [[ -n "$oom_kill" ]] || oom_kill=null
+  [[ -z "$batch_status" ]] || batch_json=$batch_status
+  if jq -n \
+      --argjson exitStatus "$status" \
+      --argjson batchStatus "$batch_json" \
+      --argjson daemonAlive "$daemon_alive" \
+      --argjson xvfbAlive "$xvfb_alive" \
+      --argjson collectorAlive "$collector_alive" \
+      --argjson memoryPeakBytes "$peak" \
+      --argjson memoryCurrentBytes "$current" \
+      --argjson oom "$oom" \
+      --argjson oomKill "$oom_kill" \
+      --arg recordedAt "$(date -u +%FT%TZ)" \
+      '{schemaVersion:1,recordedAt:$recordedAt,exitStatus:$exitStatus,batchStatus:$batchStatus,
+        processes:{daemonAlive:$daemonAlive,xvfbAlive:$xvfbAlive,collectorAlive:$collectorAlive},
+        cgroup:{memoryPeakBytes:$memoryPeakBytes,memoryCurrentBytes:$memoryCurrentBytes,
+          memoryEvents:{oom:$oom,oomKill:$oomKill}}}' \
+      > "$witness.tmp" 2>/dev/null &&
+     mv "$witness.tmp" "$witness"; then
+    return 0
+  fi
+  echo "Teardown witness not written at $witness; the run's own evidence still stands" >&2
+  return 1
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -845,9 +893,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   primary_helper_pid=
   daemon_pid=
   collector_pid=
+  batch_status=
   cleanup() {
     local status=$?
     trap - EXIT
+    record_teardown_witness "$status" "${batch_status:-}" "$daemon_pid" "$xvfb_pid" "$collector_pid" || true
     stop_owned_processes "$daemon_pid" "$focus_helper_pid" "$helper_pid" "$primary_helper_pid" "$notify_recorder_pid" "$xvfb_pid" "$collector_pid"
     # The bus stops after its recorder, so a recorder stopped by SIGTERM never reads a closed bus as fatal.
     stop_owned_processes "$session_bus_pid"
