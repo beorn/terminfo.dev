@@ -81,6 +81,13 @@ export interface DarwinInstallCensus {
 
 type DarwinCensusRow = Omit<DarwinOwnedWindow, "disposition">
 
+/** Foreign, unclaimed windows still carry validated identities, without unrelated field decoding. */
+interface DarwinIdentityOnly {
+  id: number
+  ownerPid: number
+  identityOnly: true
+}
+
 const SCREENCAPTURE = "/usr/sbin/screencapture"
 const WINDOW_IMAGE_REFUSAL = "could not create image from window"
 
@@ -100,11 +107,23 @@ export function censusDarwinWindows(
   if (!Number.isSafeInteger(appPid) || appPid < 2 || !Array.isArray(rows)) {
     throw new Error("Darwin owned window census requires a measured app PID and window list")
   }
-  const census: DarwinCensusRow[] = rows.map((row: unknown) => {
+  const census = rows.flatMap((row: unknown): DarwinCensusRow[] => {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw new Error("Darwin owned window census contains a non-object row")
     }
     const value = row as Record<string, unknown>
+    if (value.identityOnly === true) {
+      if (typeof value.id !== "number" || typeof value.ownerPid !== "number") {
+        throw new Error("Darwin owned window census contains malformed identity or point bounds")
+      }
+      const identity: DarwinIdentityOnly = { id: value.id, ownerPid: value.ownerPid, identityOnly: true }
+      if (identity.ownerPid === appPid || identity.id === expectedWindowId) {
+        throw new Error(
+          `Darwin census identity-only row matches an owned or claimed window: ${JSON.stringify(identity)}`,
+        )
+      }
+      return []
+    }
     const bounds = value.bounds
     if (!bounds || typeof bounds !== "object" || Array.isArray(bounds)) {
       throw new Error("Darwin owned window census row lacks point bounds")
@@ -121,22 +140,24 @@ export function censusDarwinWindows(
     ) {
       throw new Error("Darwin owned window census contains malformed identity or point bounds")
     }
-    return {
-      window: {
-        id: value.id,
-        ownerPid: value.ownerPid,
-        layer: value.layer,
-        bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+    return [
+      {
+        window: {
+          id: value.id,
+          ownerPid: value.ownerPid,
+          layer: value.layer,
+          bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+        },
+        alpha: typeof value.alpha === "number" ? value.alpha : null,
+        onscreen: typeof value.onscreen === "boolean" ? value.onscreen : null,
+        sharingState: typeof value.sharingState === "number" ? value.sharingState : null,
+        memoryUsage: typeof value.memoryUsage === "number" ? value.memoryUsage : null,
+        name: {
+          present: value.namePresent === true,
+          value: typeof value.name === "string" ? value.name : null,
+        },
       },
-      alpha: typeof value.alpha === "number" ? value.alpha : null,
-      onscreen: typeof value.onscreen === "boolean" ? value.onscreen : null,
-      sharingState: typeof value.sharingState === "number" ? value.sharingState : null,
-      memoryUsage: typeof value.memoryUsage === "number" ? value.memoryUsage : null,
-      name: {
-        present: value.namePresent === true,
-        value: typeof value.name === "string" ? value.name : null,
-      },
-    }
+    ]
   })
   const area = (row: DarwinCensusRow) => row.window.bounds.width * row.window.bounds.height
   const owned = census
@@ -220,10 +241,12 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
 }
 
 /**
- * Every window the server knows (not only the onscreen ones), so a refusal names the windows that
- * were excluded and why: layer, alpha and the onscreen flag beside the identity and point bounds.
+ * Enumerate every window, retaining full fields for the measured app and the claimed window.
+ * Capture supplies scope as JSON; discovery callers omit it to read the full census as before.
+ * Owned offscreen/transparent/layered rivals remain full rows for the existing selector and refusals.
  */
 export const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+var scope = typeof scope === 'undefined' ? null : scope;
 function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
 function bounds(dict) {
   var b = dict.objectForKey('kCGWindowBounds');
@@ -237,8 +260,13 @@ if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
 var rows = [], count = $.CFArrayGetCount(raw);
 for (var i = 0; i < count; i++) {
   var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+  var id = value(w, 'kCGWindowNumber'), ownerPid = value(w, 'kCGWindowOwnerPID');
+  if (scope !== null && ownerPid !== scope.appPid && id !== scope.expectedWindowId) {
+    rows.push({ id: id, ownerPid: ownerPid, identityOnly: true });
+    continue;
+  }
   var nameRef = w.objectForKey('kCGWindowName');
-  rows.push({ id: value(w, 'kCGWindowNumber'), ownerPid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), alpha: value(w, 'kCGWindowAlpha'), onscreen: onscreen(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage'), namePresent: nameRef ? true : false, name: nameRef ? nameRef.js : null });
+  rows.push({ id: id, ownerPid: ownerPid, layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), alpha: value(w, 'kCGWindowAlpha'), onscreen: onscreen(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage'), namePresent: nameRef ? true : false, name: nameRef ? nameRef.js : null });
 }
 JSON.stringify(rows);`
 
@@ -289,7 +317,12 @@ export async function createDarwinCapture(
       (
         await command(
           "/usr/bin/osascript",
-          ["-l", "JavaScript", "-e", CENSUS],
+          [
+            "-l",
+            "JavaScript",
+            "-e",
+            `var scope = ${JSON.stringify({ appPid, expectedWindowId: windowId ?? null })};\n${CENSUS}`,
+          ],
           undefined,
           Date.now() + DARWIN_CENSUS_TIMEOUT_MS,
           undefined,

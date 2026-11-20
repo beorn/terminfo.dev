@@ -9,9 +9,10 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { runInNewContext } from "node:vm"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
-import { censusDarwinWindows, createDarwinCapture, requireDarwinScale } from "./darwin-capture.ts"
+import { CENSUS, censusDarwinWindows, createDarwinCapture, requireDarwinScale } from "./darwin-capture.ts"
 
 import { readTerminalLaunchWindowId } from "./owned-terminal.ts"
 
@@ -36,6 +37,139 @@ function convertsTo(width: number, height: number) {
 }
 /** The capture target alone, as the selection tests read it. */
 const selectDarwinWindow = (rows: unknown, appPid: number) => censusDarwinWindows(rows, appPid).selected.window
+
+// 35145: existing adapter tests replace the entire JXA producer. Execute its actual command here:
+// unrelated windows must not spend the bridge work, but owned rivals and a claimed foreign ID must.
+test("the real Darwin census script projects unrelated identities without reading their expensive fields", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-projection-"))
+  const values = (id: number, pid: number, extra: Record<string, unknown> = {}) => ({
+    kCGWindowNumber: id,
+    kCGWindowOwnerPID: pid,
+    kCGWindowLayer: 0,
+    kCGWindowBounds: { X: 0, Y: 0, Width: 80, Height: 63 },
+    kCGWindowAlpha: 1,
+    kCGWindowIsOnscreen: true,
+    kCGWindowSharingState: 1,
+    kCGWindowMemoryUsage: 2048,
+    ...extra,
+  })
+  let allowForeignFields = false
+  const accessed: string[] = []
+  const windows = [values(7, 41, { kCGWindowName: "" }), values(8, 41, { kCGWindowIsOnscreen: false }), values(9, 99)]
+  const raw = windows.map((fields) => ({
+    objectForKey(key: string): unknown {
+      accessed.push(`${fields.kCGWindowNumber}:${key}`)
+      if (
+        fields.kCGWindowOwnerPID === 99 &&
+        !allowForeignFields &&
+        !["kCGWindowNumber", "kCGWindowOwnerPID"].includes(key)
+      ) {
+        throw new Error(`Unrelated window expensive field read: ${key}`)
+      }
+      const value = (fields as Record<string, unknown>)[key]
+      if (value === undefined) return null
+      if (key === "kCGWindowBounds") {
+        return { objectForKey: (axis: string) => ({ js: (value as Record<string, number>)[axis] }) }
+      }
+      return { js: value }
+    },
+  }))
+  const jxa = {
+    ObjC: { import: () => {}, castRefToObject: (value: unknown) => value },
+    $: {
+      CGWindowListCopyWindowInfo: () => raw,
+      CFArrayGetCount: () => raw.length,
+      CFArrayGetValueAtIndex: (_array: unknown, index: number) => raw[index],
+      kCGWindowListOptionAll: 0,
+      kCGWindowListExcludeDesktopElements: 16,
+      kCGNullWindowID: 0,
+    },
+  }
+  const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args) => {
+    if (file !== "/usr/bin/osascript") throw new Error(`Unexpected command ${file}`)
+    const result = runInNewContext(args[3]!, { ...jxa })
+    return Buffer.from(result)
+  })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41, expectedWindowId: 7, onRetained: () => {} })
+    expect(adapter.installCensus.ownedWindows.map((row) => [row.window.id, row.disposition, row.name])).toEqual([
+      [7, "selected", { present: true, value: "" }],
+      [8, "offscreen", { present: false, value: null }],
+    ])
+    expect(accessed.filter((key) => key.startsWith("9:"))).toEqual(["9:kCGWindowNumber", "9:kCGWindowOwnerPID"])
+    allowForeignFields = true
+    // terminal-app-window reads the same exported script without an app scope during discovery.
+    const allRows = JSON.parse(runInNewContext(CENSUS, { ...jxa }))
+    expect(allRows.map((row: { id: number }) => row.id)).toEqual([7, 8, 9])
+    expect(allRows[2].bounds).toEqual({ x: 0, y: 0, width: 80, height: 63 })
+    await expect(
+      createDarwinCapture(directory, { appPid: 41, expectedWindowId: 9, onRetained: () => {} }),
+    ).rejects.toThrow("Darwin capture expected window 9 is owned by PID 99, not the launched app PID 41;")
+    expect(accessed).toContain("9:kCGWindowBounds")
+    ;(windows[2] as Record<string, unknown>).kCGWindowOwnerPID = null
+    await expect(
+      createDarwinCapture(directory, { appPid: 41, expectedWindowId: 7, onRetained: () => {} }),
+    ).rejects.toThrow("Darwin owned window census contains malformed identity or point bounds")
+  } finally {
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// The new transport form may skip unrelated full fields, never a raw identity or a needed full row.
+test("Darwin identity-only rows retain global identity validation and cannot stand in for owned or claimed windows", () => {
+  const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
+  expect(censusDarwinWindows([own, { id: 9, ownerPid: 99, identityOnly: true }], 41, 7).selected.window).toEqual(own)
+  for (const identity of [
+    { id: "9", ownerPid: 99 },
+    { id: 9, ownerPid: null },
+  ]) {
+    expect(() => censusDarwinWindows([own, { ...identity, identityOnly: true }], 41, 7)).toThrow(
+      "malformed identity or point bounds",
+    )
+  }
+  for (const [row, expected] of [
+    [{ id: 8, ownerPid: 41 }, 7],
+    [{ id: 9, ownerPid: 99 }, 9],
+  ] as const) {
+    expect(() => censusDarwinWindows([own, { ...row, identityOnly: true }], 41, expected)).toThrow(
+      /identity-only.*owned or claimed/,
+    )
+  }
+})
+
+test("Darwin narrowed census keeps the full census selection, names and refusal bytes", () => {
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width: 80, height: 63 },
+    namePresent: true,
+    name: "",
+  }
+  const foreign = { ...own, id: 9, ownerPid: 99 }
+  const observe = (rows: unknown[], expected: number) => {
+    try {
+      return JSON.stringify(censusDarwinWindows(rows, 41, expected))
+    } catch (error) {
+      return (error as Error).message
+    }
+  }
+  for (const [rows, expected] of [
+    [[own, { ...own, id: 8, onscreen: false }, foreign], 7],
+    [[own, { ...own, id: 8, alpha: 0 }, foreign], 7],
+    [[own, { ...own, id: 8 }, foreign], 7],
+    [[{ ...own, namePresent: false, name: null }, foreign], 7],
+    [[own, foreign], 9],
+    [[own, foreign], 10],
+    [[{ ...own, bounds: null }, foreign], 7],
+  ] as Array<[Array<Record<string, unknown>>, number]>) {
+    const reduced = rows.map((row) =>
+      row.ownerPid !== 41 && row.id !== expected ? { id: row.id, ownerPid: row.ownerPid, identityOnly: true } : row,
+    )
+    expect(observe(reduced, expected)).toBe(observe(rows, expected))
+  }
+})
 
 test("Darwin capture admits exactly one measured app window and scale one", () => {
   const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
