@@ -483,13 +483,15 @@ screen_config_content() {
   if [[ "$1" == truecolor ]]; then printf 'truecolor on\n'; fi
 }
 
-# The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919): the default profile's file stays
-# empty, and set-titles is the profile's one documented option, so tmux forwards a pane title to the outer terminal.
+# The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919). Both profiles remove the
+# status clock so calibration can restore identical pixels (#37175), retaining the bar and its grid geometry.
+# set-titles forwards a pane title to the outer terminal.
 # set-titles-string "#T" keeps that forwarded title the pane title itself, nonce included, rather than tmux's default
 # "#S:#I:#W - ..." wrapper.
 # The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
 # accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
 tmux_config_content() {
+  printf 'set -g status-right ""\n'
   if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
