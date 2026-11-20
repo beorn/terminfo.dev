@@ -898,10 +898,12 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     titleRead: "window",
   })
   // 30211: the receipt names the editor GUI, never its CLI or an Electron helper.
+  // 37222: Cursor declares only its measured scrollbar rectangle beside the grid.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
+    captureChromeBand: { y: 105, height: 547, x: 890, width: 14, reason: "Cursor terminal scrollbar" },
     scrollbackUnavailable: "no pane read on this app",
     titleUnavailable: expect.stringContaining('"[Extension Development Host] Cursor"'),
   })
@@ -912,7 +914,7 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     scrollbackUnavailable: "no pane read on this app",
     titleUnavailable: expect.stringContaining('"[Extension Development Host] Visual Studio Code"'),
   })
-  // 33056: Warp alone declares a chrome band; every other row's exact match proves the default is none.
+  // 33056: Warp declares a full-width band and Cursor a rectangle; every other row's exact match proves the default is none.
   expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
     id: "warp",
     comm: "stable",

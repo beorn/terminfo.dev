@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { inflateSync } from "node:zlib"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
 import { command, type CapturedFrame } from "./capture-core.ts"
+import { hostedDarwinAppFromExecutablePath } from "./owned-terminal.ts"
 import type { TermProbeSource, TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 const geometry = { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 }
@@ -1368,6 +1369,89 @@ test("a change outside both the grid and the declared band still refuses", async
 test("a declared band that reaches the grid is refused", async () => {
   const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
   await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
+})
+
+// Captured from the row-band-only collector (main 92abecb3f) before the rectangle form existed.
+const WARP_BASIS =
+  "collector complete witnessed raster: 123 columns x 39 rows, every unmasked scanline measures 8x16, visible 984x624 grid at 17,46; paint basic (basic: observed); paint classes R<=1 G>=16 (solid 1, columns 1/1, rows 1/1 occupied triples); current paints and restore identical outside the declared chrome band confirmed; owned disposable session cursor explicitly set before calibration and restored set; declared chrome band y 0..39 full width (Warp title bar), changed px excused: solid 0 px, columns 0 px, rows 797 px; restore 797 px"
+// 37222: the full-width default keeps Warp's whole record byte-identical to the row-band-only collector (@cto 4b98fa6f).
+test("the retained Warp band's whole basis is unchanged by the rectangle form", async () => {
+  const origin = await warpRun(WARP_TITLE_BAR).promise
+  expect(origin.basis).toBe(WARP_BASIS)
+})
+
+// 37222: hosted Cursor 3.30.14 run 44688285702 refused "paint changed pixels outside the witnessed grid". Across its 268
+// retained window frames the only change outside the 124x41 grid (x 20..887, y 78..651) is the terminal's overlay
+// scrollbar thumb, fading in and out at x 890..903 inside rows 105..651; the toolbar and status bar never change
+// (/hh/var/@dev2/cursor-run-44688285702/outside-grid-diff.md). The artifacts keep no frame order, so the sequence pairs
+// the run's own erased, column and row frames (thumb hidden) with its solid frame that shows the thumb.
+const CURSOR_FRAMES: Record<string, string> = {
+  before: "c42f1b66902b967dc0df7925c5cad92028fce7486690adb000115841c5398c42",
+  solid: "a70c42a9458b8de5f91c6abe2264ab5382365fcdff3f3ecbf586e3ef792729ca",
+  columns: "dfbdb3096711e8744ebe75cd3a220fe8ae0468994f335a58b3b1a234ad5f5b6d",
+  rows: "5c3c6ab2e3f79f614a80e5e7a854effd65f954fda6b2eaf91190ea620b03b945",
+}
+const CURSOR_SCROLLBAR = hostedDarwinAppFromExecutablePath(
+  "/Applications/Cursor.app/Contents/MacOS/Cursor",
+).captureChromeBand
+function cursorRun(chromeBand?: CaptureChromeBand) {
+  const [before, solid, columns, rows] = ["before", "solid", "columns", "rows"].map((name) =>
+    retainedFrame(name, CURSOR_FRAMES),
+  )
+  return calibration({
+    rows: 41,
+    cols: 124,
+    ...(chromeBand ? { chromeBand } : {}),
+    frames: {
+      "before grid paint": [before!, before!],
+      "solid grid paint": [solid!, solid!],
+      "column edge paint": [columns!, columns!],
+      "row edge paint": [rows!, rows!],
+      "restore grid paint": [before!, before!],
+    },
+  })
+}
+
+test("the retained Cursor scrollbar thumb refuses without a declared rectangle", async () => {
+  await expect(cursorRun().promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("Cursor's declared scrollbar rectangle excuses the retained thumb and records it", async () => {
+  expect(CURSOR_SCROLLBAR).toMatchObject({ x: 890, width: 14, y: 105, height: 547 })
+  const origin = await cursorRun(CURSOR_SCROLLBAR).promise
+  expect(origin.pixelGeometry).toMatchObject({ cellWidth: 7, cellHeight: 14, textWidth: 868, textHeight: 574 })
+  expect(origin.basis).toContain(
+    `declared chrome band y 105..651 x 890..903 (${CURSOR_SCROLLBAR!.reason}), changed px excused: solid 7476 px, columns 0 px, rows 0 px; restore 0 px`,
+  )
+})
+
+test("a declared rectangle that reaches the grid's edge line is refused", async () => {
+  // The synthetic grid is x 2..9, so its right edge line is x 10.
+  const run = calibration({ chromeBand: { y: 0, height: 12, x: 10, width: 2, reason: "test strip" } })
+  await expect(run.promise).rejects.toThrow(
+    /chrome band y 0..11 x 10..11 overlaps the witnessed grid y 2..9 x 2..9 \(with its edge line\)/,
+  )
+})
+
+test("a change in the rectangle's rows but outside its columns still refuses", async () => {
+  const rows = rasterFrame("rows")
+  rows.rgba.set([255, 255, 255, 255], (11 * 12 + 0) * 4)
+  const run = calibration({
+    chromeBand: { y: 10, height: 2, x: 11, width: 1, reason: "test strip" },
+    frames: { "row edge paint": [rows, rows] },
+  })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a rectangle needs both x and width as integers inside the window's left edge", async () => {
+  for (const chromeBand of [
+    { y: 0, height: 1, x: 11, reason: "test strip" },
+    { y: 0, height: 1, width: 1, reason: "test strip" },
+    { y: 0, height: 1, x: -1, width: 1, reason: "test strip" },
+    { y: 0, height: 1, x: 11, width: 0, reason: "test strip" },
+  ]) {
+    await expect(calibration({ chromeBand }).promise).rejects.toThrow(/chrome band must be/)
+  }
 })
 
 // 34664: hosted iTerm2 3.6.11 run 44161536804 retained these calibration frames. Its rounded window corner is drawn in

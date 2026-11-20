@@ -845,10 +845,15 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   // On 33821 calibration run 43325922491 the run wrote its own marker title and the window server still
   // reported "[Extension Development Host] Cursor" (other-title). That is the app's window title, so the
   // read could not observe the run's title; the counted runs attempted no title-row read (titleRead none).
+  // Cursor's terminal overlay scrollbar fades in and out beside the grid: across the 268 window frames of hosted run
+  // 44688285702 (Cursor 3.30.14, grid x 20-887, y 78-651) the only change outside the grid is its thumb at x 890-903
+  // in rows 105-651, while the toolbar and status bar never change (/hh/var/@dev2/cursor-run-44688285702/
+  // outside-grid-diff.md). Calibration excuses exactly that rectangle and records the count (37222, @cto 4b98fa6f).
   Cursor: {
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
+    captureChromeBand: { y: 105, height: 547, x: 890, width: 14, reason: "Cursor terminal scrollbar" },
     scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
       "Hosted Darwin title read unavailable for Cursor: on 33821 calibration run 43325922491 the read saw the window server report the app's own window title (\"[Extension Development Host] Cursor\") rather than that run's title, so it could not observe the title and the row recorded other-title; the counted runs attempted no title-row read (titleRead none)",
