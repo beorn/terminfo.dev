@@ -43,12 +43,82 @@ function validateFrame(frame: CapturedFrame): void {
 }
 
 /**
- * A full-width horizontal strip of the window, in window pixels, that the terminal's own chrome repaints by itself:
- * Warp's title bar shows an "Update Warp" pill about 3 s after launch (33056, @cto f15dec92). Declared per terminal;
- * absent keeps the whole-window rule. Inside it, changes are excused for the outside-grid comparison and the restore
- * match only, and the record states the band and how many pixels changed in it. It may not touch the grid.
+ * A strip of the window, in window pixels, that the terminal's own chrome repaints by itself: Warp's title bar shows an
+ * "Update Warp" pill about 3 s after launch (33056, @cto f15dec92), and Cursor's terminal scrollbar fades in and out
+ * beside the grid (37222, @cto 4b98fa6f). Without `x` and `width` it spans the full window width; with both it is the
+ * rectangle x..x+width-1. Declared per terminal; absent keeps the whole-window rule. Inside it, changes are excused
+ * for the outside-grid comparison and the restore match only, and the record states the strip and how many pixels
+ * changed in it. It may not touch the grid or the grid's one-pixel edge line.
  */
-export type CaptureChromeBand = { readonly y: number; readonly height: number; readonly reason: string }
+export type CaptureChromeBand = {
+  readonly y: number
+  readonly height: number
+  readonly x?: number
+  readonly width?: number
+  readonly reason: string
+}
+
+/** A validated band's half-open pixel bounds; a band without columns runs from x 0 past any window's right edge. */
+type ChromeBandBounds = { readonly top: number; readonly bottom: number; readonly left: number; readonly right: number }
+
+function chromeBandBounds(band: CaptureChromeBand): ChromeBandBounds {
+  const { x, width } = band
+  const columns =
+    x === undefined && width === undefined
+      ? { left: 0, right: Infinity }
+      : x !== undefined &&
+          width !== undefined &&
+          Number.isSafeInteger(x) &&
+          Number.isSafeInteger(width) &&
+          x >= 0 &&
+          width >= 1
+        ? { left: x, right: x + width }
+        : undefined
+  if (
+    !columns ||
+    !Number.isSafeInteger(band.y) ||
+    !Number.isSafeInteger(band.height) ||
+    band.y < 0 ||
+    band.height < 1 ||
+    band.reason.trim() === ""
+  ) {
+    throw new Error(
+      `Capture calibration chrome band must be integer y >= 0, height >= 1, x >= 0 and width >= 1 together or neither, with a reason: ${JSON.stringify(band)}`,
+    )
+  }
+  return { top: band.y, bottom: band.y + band.height, ...columns }
+}
+
+/** The band's rows, and its columns unless it spans the full width, as the record and refusals print them. */
+function chromeBandExtent(band: CaptureChromeBand): string {
+  const rows = `y ${band.y}..${band.y + band.height - 1}`
+  return band.x === undefined || band.width === undefined
+    ? `${rows} full width`
+    : `${rows} x ${band.x}..${band.x + band.width - 1}`
+}
+
+/**
+ * The refusal when the band reaches the grid or the one-pixel blend line beside it, so no paint the grid owns is
+ * excused; undefined when it stays clear. A full-width band keeps its original wording; a rectangle names both axes.
+ */
+function chromeBandOverlap(
+  band: CaptureChromeBand,
+  bounds: ChromeBandBounds,
+  grid: CaptureRectangle,
+): string | undefined {
+  const touches =
+    bounds.top < grid.y + grid.height + 1 &&
+    bounds.bottom > grid.y - 1 &&
+    bounds.left < grid.x + grid.width + 1 &&
+    bounds.right > grid.x - 1
+  if (!touches) return undefined
+  const gridRows = `${grid.y}..${grid.y + grid.height - 1}`
+  const overlap =
+    band.x === undefined
+      ? `y ${band.y}..${band.y + band.height - 1} overlaps the witnessed grid rows ${gridRows}`
+      : `${chromeBandExtent(band)} overlaps the witnessed grid y ${gridRows} x ${grid.x}..${grid.x + grid.width - 1}`
+  return `Capture calibration declared chrome band ${overlap} (with its edge line)`
+}
 
 function equal(left: CapturedFrame, right: CapturedFrame): boolean {
   validateFrame(left)
@@ -813,7 +883,7 @@ export async function calibrateCaptureOrigin({
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>
   /** Verified collector-owned disposable session: it clears its own rows, and the cursor is restored set either way. */
   collectorLaunched?: boolean
-  /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
+  /** The terminal's declared self-repainting chrome strip or rectangle; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
   /** Also witness the paint under this screen mode, on the same canvas and lifetime (@cto 34932-reverse-seam-ruling-2325). */
   screenMode?: "reverse"
@@ -825,18 +895,7 @@ export async function calibrateCaptureOrigin({
     reverseScreen?: ReverseScreenWitness
   }
 > {
-  if (
-    chromeBand &&
-    (!Number.isSafeInteger(chromeBand.y) ||
-      !Number.isSafeInteger(chromeBand.height) ||
-      chromeBand.y < 0 ||
-      chromeBand.height < 1 ||
-      chromeBand.reason.trim() === "")
-  ) {
-    throw new Error(
-      `Capture calibration chrome band must be integer y >= 0, height >= 1, with a reason: ${JSON.stringify(chromeBand)}`,
-    )
-  }
+  const bandBounds = chromeBand && chromeBandBounds(chromeBand)
   if (![ctx.rows, ctx.cols].every((value) => Number.isSafeInteger(value) && value >= 2)) {
     throw new Error("Capture calibration requires a verified grid of at least 2x2 cells")
   }
@@ -894,7 +953,12 @@ export async function calibrateCaptureOrigin({
   let bandClearOfGrid = false
   // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
   let reverseSet = false
-  const inBand = (y: number) => chromeBand !== undefined && y >= chromeBand.y && y < chromeBand.y + chromeBand.height
+  const inBand = (x: number, y: number) =>
+    bandBounds !== undefined &&
+    y >= bandBounds.top &&
+    y < bandBounds.bottom &&
+    x >= bandBounds.left &&
+    x < bandBounds.right
   /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
   const bandDifference = (
     frame: CapturedFrame,
@@ -908,7 +972,8 @@ export async function calibrateCaptureOrigin({
     let changed = 0
     for (let offset = 0; offset < frame.rgba.length; offset += 4) {
       if ([0, 1, 2, 3].every((channel) => frame.rgba[offset + channel] === reference.rgba[offset + channel])) continue
-      if (!inBand(Math.floor(offset / 4 / frame.width))) return { equalOutside: false, changed }
+      const pixel = offset / 4
+      if (!inBand(pixel % frame.width, Math.floor(pixel / frame.width))) return { equalOutside: false, changed }
       changed++
     }
     return { equalOutside: true, changed }
@@ -964,11 +1029,8 @@ export async function calibrateCaptureOrigin({
     const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
     const backgroundClass = findBackgroundPaintClass(before, grid, filletMask, witnessClass)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
-    if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
-      throw refusal(
-        `Capture calibration declared chrome band y ${chromeBand.y}..${chromeBand.y + chromeBand.height - 1} overlaps the witnessed grid rows ${grid.y}..${grid.y + grid.height - 1} (with its edge line)`,
-      )
-    }
+    const overlap = chromeBand && bandBounds && chromeBandOverlap(chromeBand, bandBounds, grid)
+    if (overlap) throw refusal(overlap)
     bandClearOfGrid = chromeBand !== undefined
     const outsideUnchanged = (frame: CapturedFrame, stage: string): EdgeBlend[] => {
       validateFrame(frame)
@@ -980,11 +1042,10 @@ export async function calibrateCaptureOrigin({
       for (const blend of blends) for (const key of blend.pixels) explained.add(key)
       let changedInBand = 0
       for (let y = 0; y < frame.height; y++) {
-        const band = inBand(y)
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
           const offset = (y * frame.width + x) * 4
-          if (band) {
+          if (inBand(x, y)) {
             if ([0, 1, 2, 3].some((channel) => frame.rgba[offset + channel] !== before.rgba[offset + channel])) {
               changedInBand++
             }
@@ -1217,7 +1278,7 @@ export async function calibrateCaptureOrigin({
     const restoreTrace = chromeBand ? "restore identical outside the declared chrome band" : "identical restore"
     // Last, so the restore stage's own excused count (added after the restore is confirmed) reads in sequence.
     const bandTrace = chromeBand
-      ? `; declared chrome band y ${chromeBand.y}..${chromeBand.y + chromeBand.height - 1} full width (${chromeBand.reason}), changed px excused: ${excused.map(({ stage, changed }) => `${stage} ${changed} px`).join(", ")}`
+      ? `; declared chrome band ${chromeBandExtent(chromeBand)} (${chromeBand.reason}), changed px excused: ${excused.map(({ stage, changed }) => `${stage} ${changed} px`).join(", ")}`
       : ""
     result = {
       origin: { x: authored.x, y: authored.y },
