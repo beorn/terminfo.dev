@@ -36,6 +36,7 @@ import {
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
+import type { LaunchSettle } from "./launch-settle.ts"
 import {
   readDisposableReceipt,
   parseLstart,
@@ -474,6 +475,8 @@ export interface OwnedTerminal {
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
   readonly captureChromeBand?: CaptureChromeBand
+  /** The hosted app's declared wait after launch, before the first probe (37225). Absent: no wait. */
+  readonly launchSettle?: LaunchSettle
   readonly clipboard?: LinuxClipboardAdapter | Awaited<ReturnType<typeof createDarwinClipboardAdapter>>
   /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
   readonly muxAttachmentProof?: MuxAttachmentProof
@@ -640,6 +643,8 @@ export type HostedDarwinApp = {
   titleUnavailable?: string
   /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
   captureChromeBand?: CaptureChromeBand
+  /** A wait after launch, before the first probe, for an app whose frame is measured to move early (37225). */
+  launchSettle?: LaunchSettle
   captureWindowSelection?: "largest" | "unique"
   /**
    * This app was measured and exposes no permitted read of its own pane (#31741, @cto 20b9ffed). The
@@ -871,6 +876,13 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
     comm: "stable",
     titleRead: "window",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
+    // Run 44687076948: launch 06:24:15Z, six reads 06:25:11-06:26:23Z refused off the calibrated origin, and the
+    // first read on it came 139 s after launch (83 s after the first probe). Ruling C on 33774 (@chief b83b016c,
+    // 2411997): grade only settled frames, with a wait of 90 s or more once before the first probe (37225, @cto 4fe1d8be).
+    launchSettle: {
+      seconds: 90,
+      reason: "ruling C on 33774: run 44687076948 first held its calibrated origin 139 s after launch",
+    },
   },
   // On 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its
   // last observation "Terminal", the pre-marker name. Every raster-capture census of the same cmux window
@@ -2565,6 +2577,7 @@ export async function createOwnedTerminal(options: {
       ...(binding.platform === "darwin" && { captureWindowSelection: hostedApp?.captureWindowSelection ?? "unique" }),
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
+      ...(hostedApp?.launchSettle && { launchSettle: hostedApp.launchSettle }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
       // 34313: chosen here, from the qualified subject, BEFORE any input install, so a failed install keeps the
       // route (and its named TODO) instead of leaving the rows on the declaration above.

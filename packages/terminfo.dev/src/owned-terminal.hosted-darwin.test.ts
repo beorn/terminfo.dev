@@ -918,6 +918,10 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     comm: "stable",
     titleRead: "window",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
+    launchSettle: {
+      seconds: 90,
+      reason: "ruling C on 33774: run 44687076948 first held its calibrated origin 139 s after launch",
+    },
   })
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",

@@ -1007,7 +1007,7 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
     fail(path, "invalid probe attempt scope")
   }
   if (value.scope === "none") {
-    if (value.startedAt !== undefined || value.diagnosticRef !== undefined) {
+    if (value.startedAt !== undefined || value.diagnosticRef !== undefined || value.msAfterLaunchSettle !== undefined) {
       fail(path, "unstarted attempt cannot carry execution facts")
     }
     return { scope: "none" }
@@ -1019,10 +1019,20 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
   ) {
     fail(path, "missing attempt diagnostic bytes")
   }
+  // 37225: a row's settle witness exists only beside the run's own launch-settle record.
+  if (value.msAfterLaunchSettle !== undefined) {
+    if (!Number.isSafeInteger(value.msAfterLaunchSettle) || (value.msAfterLaunchSettle as number) < 0) {
+      fail(path, "msAfterLaunchSettle must be a whole number of ms >= 0")
+    }
+    if (!Object.hasOwn(rawReplies, "collector.launchSettle")) {
+      fail(path, "msAfterLaunchSettle without the run's collector.launchSettle record")
+    }
+  }
   return {
     scope: value.scope as "collection" | "probe",
     startedAt: value.startedAt,
     ...(typeof value.diagnosticRef === "string" ? { diagnosticRef: value.diagnosticRef } : {}),
+    ...(typeof value.msAfterLaunchSettle === "number" ? { msAfterLaunchSettle: value.msAfterLaunchSettle } : {}),
   }
 }
 

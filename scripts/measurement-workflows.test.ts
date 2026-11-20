@@ -1755,7 +1755,7 @@ test.each(["granted", "unreadable", "other-app"] as const)(
     const grant = steps.find((step) => step.name?.startsWith("Grant Screen Recording"))
     if (!grant?.if) throw new Error("the macOS workflow has no Screen Recording grant condition")
     expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
-    for (const id of ["terminal-app", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+    for (const id of ["terminal-app", "iterm2", "cmux", "cursor", "com.microsoft.VSCode", "warp"]) {
       expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
     }
     const directory = mkdtempSync(join(tmpdir(), "screen-grant-"))
@@ -1846,8 +1846,10 @@ test.each([
     const grant = steps.find((step) => step.name?.startsWith("Grant Automation"))
     if (!grant?.if) throw new Error("the macOS workflow has no Automation grant condition")
     expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
-    for (const id of ["terminal-app", "ghostty"]) expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
-    for (const id of ["alacritty", "wezterm", "warp", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+    for (const id of ["terminal-app", "ghostty", "warp"]) {
+      expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
+    }
+    for (const id of ["alacritty", "wezterm", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
       expect(runInNewContext(grant.if, { matrix: { id } })).toBe(false)
     }
     const directory = mkdtempSync(join(tmpdir(), "automation-grant-"))

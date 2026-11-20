@@ -285,10 +285,12 @@ jobs:
       # Ghostty, Alacritty, WezTerm and Warp are spawned from this shell, so the agent stays their
       # TCC responsible process. Terminal.app needs its own explicit grant: run 41806285584 retained
       # its Screen Recording prompt despite the image's expected grant. iTerm2 and cmux open through
-      # LaunchServices and the two editors answer TCC as themselves (run 39701460666 TCC log).
+      # LaunchServices and the two editors answer TCC as themselves (run 39701460666 TCC log). Warp
+      # run 44792556294 skipped this step and the Automation one below because warp was in neither
+      # condition; its settle rerun takes both (37225, @chief 6fe5d2a5).
       # Grant these apps using the existing access row in both TCC databases and replayd approval.
       - name: Grant Screen Recording to apps that are their own responsible process
-        if: matrix.id == 'terminal-app' || matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
+        if: matrix.id == 'terminal-app' || matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode' || matrix.id == 'warp'
         env:
           APP_ID: ${{ matrix.id }}
           APP_BUNDLE: ${{ matrix.bundle }}
@@ -325,9 +327,10 @@ jobs:
       # Apple-events rows for that agent (runner-images configure-tccdb-macos.sh), so seed one per target
       # app, carry the target's designated requirement the way the image's Finder row carries Finder's,
       # and read it back so a missing row fails here, not as a timeout. Whether the row stops the
-      # dialog is proved only by a run that tries it.
+      # dialog is proved only by a run that tries it. Warp gets the row before any of its rows drives
+      # it by Apple events (37225), so such a row cannot stall on the consent dialog.
       - name: Grant Automation from the hosted agent to apps driven by Apple events
-        if: matrix.id == 'terminal-app' || matrix.id == 'ghostty'
+        if: matrix.id == 'terminal-app' || matrix.id == 'ghostty' || matrix.id == 'warp'
         env:
           APP_BUNDLE: ${{ matrix.bundle }}
         run: |
