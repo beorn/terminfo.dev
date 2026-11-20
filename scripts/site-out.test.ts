@@ -1,14 +1,14 @@
 /**
- * @failure A site build run from a read-only hab landing writes into the landing's own checkout, or `TERMINFO_SITE_OUT_DIR` changes the paths of an unset build.
+ * @failure A site build writes into its read-only landing, or its client loader recomputes the corpus instead of reading that build's prepared probe data.
  * @level l2
  * @consumer The terminfo-site resident's landed serve and `bun run build`.
  * @testonly none
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   siteAnalysisPath,
   siteCacheDir,
@@ -37,6 +37,50 @@ it("roots every build write under TERMINFO_SITE_OUT_DIR when it is set", () => {
   expect(siteCacheDir(env)).toBe(join("/var/terminfo-site", "cache"))
   expect(siteTempDir(env)).toBe(join("/var/terminfo-site", "temp"))
   expect(siteAnalysisPath(repoRoot, env)).toBe(join("/var/terminfo-site", "content", "analysis.json"))
+})
+
+it("the client loader reads only its own landing's prepared probe data", async () => {
+  // AC1: analysis-path tests cannot detect VitePress recomputing the expensive corpus.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-client-probes-"))
+  const first = join(directory, "first")
+  const second = join(directory, "second")
+  const sourceCommit = "a".repeat(40)
+  vi.doMock("../docs/data/current-results.ts", async (original) => ({
+    ...(await original<typeof import("../docs/data/current-results.ts")>()),
+    loadCurrentResults() {
+      throw new Error("client loader requested corpus after pre-build")
+    },
+  }))
+  vi.doMock("./build-metadata.ts", () => ({ createBuildMetadata: () => ({ sourceCommit }) }))
+  vi.resetModules()
+  try {
+    for (const [root, generated] of [
+      [first, "first landing"],
+      [second, "second landing"],
+    ]) {
+      mkdirSync(join(root!, "content"), { recursive: true })
+      writeFileSync(join(root!, "content", "probes.json"), JSON.stringify({ sourceCommit, data: { generated } }))
+    }
+    const loader = (await import("../docs/data/probes.data.ts")).default
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", first)
+    expect(loader.load()).toEqual({ generated: "first landing" })
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", second)
+    expect(loader.load()).toEqual({ generated: "second landing" })
+    const path = join(second, "content", "probes.json")
+    writeFileSync(path, JSON.stringify({ sourceCommit: "b".repeat(40), data: { generated: "stale" } }))
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    writeFileSync(path, "{")
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    rmSync(path)
+    expect(() => loader.load()).toThrow(/probes\.json/)
+  } finally {
+    vi.unstubAllEnvs()
+    vi.doUnmock("../docs/data/current-results.ts")
+    vi.doUnmock("./build-metadata.ts")
+    vi.resetModules()
+    // raw-delete-allow: only this test's own mkdtemp fixture; standalone CI has no removely dependency.
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 it("analysis generation writes under the override and leaves the source tree alone", () => {
