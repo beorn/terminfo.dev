@@ -11,6 +11,7 @@
  * constant per property and the owned TTY travels as an argv item.
  */
 import { spawnSync } from "node:child_process"
+import type { InputFixture, ViewportStep } from "@terminfo/probe-defs"
 import { untilAppSemanticRead } from "./app-semantic-state.ts"
 
 const GHOSTTY_BUNDLE_ID = "com.mitchellh.ghostty"
@@ -46,6 +47,78 @@ export function readGhosttyTerminal(tty: string, property: GhosttyTerminalProper
     throw new Error(`Ghostty AppleScript ${property} did not end its reply with a newline`)
   }
   return result.stdout.slice(0, -1)
+}
+
+/**
+ * Ghostty 1.4.0's own viewport actions, one per held-viewport step (#37249, @cto f584ccea). Source, not a delivery
+ * proof: src/input/Binding.zig:442-458 at v1.4.0 defines scroll_to_top, scroll_to_bottom, scroll_page_up and
+ * scroll_page_down, and the held rows observe every step's effect before they trust it (34313).
+ */
+export const GHOSTTY_1_4_VIEWPORT_ACTIONS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "scroll_page_up",
+  pageDown: "scroll_page_down",
+  top: "scroll_to_top",
+  bottom: "scroll_to_bottom",
+})
+
+const VIEWPORT_ACTIONS: ReadonlySet<string> = new Set(Object.values(GHOSTTY_1_4_VIEWPORT_ACTIONS))
+
+// macos/Ghostty.sdef:162-166 at v1.4.0: `perform action <text> on <terminal>` returns true when performed
+// (ScriptTerminal.swift:90-94 returns false when AppleScript is disabled or the surface is gone).
+const PERFORM_SCRIPT = `on run argv
+  set ttyPath to item 1 of argv
+  set actionName to item 2 of argv
+  if not (application id "${GHOSTTY_BUNDLE_ID}" is running) then error "Ghostty is not running"
+  tell application id "${GHOSTTY_BUNDLE_ID}"
+    set matches to every terminal whose tty is ttyPath
+    if (count of matches) is not 1 then error "owned TTY " & ttyPath & " matches " & (count of matches) & " Ghostty terminals"
+    return perform action actionName on item 1 of matches
+  end tell
+end run`
+
+/**
+ * Perform one of Ghostty's viewport actions on the terminal whose TTY is the owned tab's. The script is constant;
+ * the TTY and the action travel as argv. Anything but a performed action (a refusal, a 0 or 2+ TTY match, a
+ * `false` from Ghostty, an unknown action) throws by name.
+ */
+export function performGhosttyViewportAction(tty: string, action: string): void {
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(tty)) {
+    throw new Error(`${JSON.stringify(tty)} is not an owned TTY device path`)
+  }
+  if (!VIEWPORT_ACTIONS.has(action)) throw new Error(`${JSON.stringify(action)} is not a Ghostty viewport action`)
+  const result = spawnSync("/usr/bin/osascript", ["-e", PERFORM_SCRIPT, tty, action], {
+    encoding: "utf8",
+    timeout: 10_000,
+    killSignal: "SIGKILL",
+  })
+  if (result.error || result.status !== 0 || result.signal) {
+    const why = result.stderr?.trim() || result.error?.message || `status ${result.status}, signal ${result.signal}`
+    throw new Error(`Ghostty AppleScript perform action ${action} failed: ${why}`)
+  }
+  if (result.stdout !== "true\n") {
+    throw new Error(`Ghostty AppleScript perform action ${action} was not performed: ${JSON.stringify(result.stdout)}`)
+  }
+}
+
+/**
+ * The viewport route's input for hosted Ghostty 1.4.0 on macOS: each step is the app's own action through
+ * AppleScript, no key press (#37249). `check` re-proves the owned terminal before every Apple Event.
+ */
+export function ghosttyViewportInput(options: {
+  readonly tty: string
+  readonly check: () => void
+}): Pick<InputFixture, "injectKey"> {
+  return {
+    injectKey(action) {
+      try {
+        options.check()
+        performGhosttyViewportAction(options.tty, action)
+        return Promise.resolve()
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    },
+  }
 }
 
 /**

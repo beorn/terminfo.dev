@@ -1850,6 +1850,80 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
  * @level l1 — reads the launcher's ghostty launch args, the production rendering context.
  * @consumer scripts/linux-container-run.sh ghostty rendering pin (#31331)
  */
+/**
+ * @failure a Ghostty config file or launch argument rebinds shift+Page_Up/Home and the Linux viewport route
+ *   still trusts Ghostty 1.4.0's defaults, or the run keeps no record of the config it launched with (#37249,
+ *   @cto f584ccea condition 2).
+ * @level l1 — runs the launcher's own record_ghostty_config helper against a private HOME.
+ * @consumer the Linux Ghostty viewport route (owned-terminal.ts linuxViewportKeys).
+ */
+describe("the Linux Ghostty launch records its config files and refuses a rebinding one (#37249)", () => {
+  const source = readFileSync(launcher, "utf8")
+  const helper = /^ {2}record_ghostty_config\(\) \{\n[\s\S]*?\n {2}\}\n/mu.exec(source)?.[0]
+  const run = (files: Record<string, string>, args: string[] = []) => {
+    const dir = mkdtempSync(join(tmpdir(), "ghostty-config-"))
+    try {
+      const home = join(dir, "home")
+      const out = join(dir, "out")
+      mkdirSync(join(home, ".config", "ghostty"), { recursive: true })
+      mkdirSync(out)
+      for (const [name, text] of Object.entries(files)) writeFileSync(join(home, ".config", "ghostty", name), text)
+      const script = `set -euo pipefail\n${helper!.replaceAll("/out/", `${out}/`)}\nrecord_ghostty_config "$@"`
+      const env: Record<string, string | undefined> = { ...process.env, HOME: home }
+      delete env.XDG_CONFIG_HOME
+      const result = spawnSync("bash", ["-c", script, "_", ...args], { encoding: "utf8", env })
+      const record = existsSync(join(out, "ghostty-config.txt"))
+        ? readFileSync(join(out, "ghostty-config.txt"), "utf8")
+        : ""
+      return { result, record, home }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it("is one helper, called for the ghostty target before the declared invocation", () => {
+    expect(helper, "record_ghostty_config in the launcher").toBeDefined()
+    const call = source.indexOf(
+      'record_ghostty_config "${target_launch_args[@]}" "${target_clipboard_args[@]}" || exit 2',
+    )
+    expect(call).toBeGreaterThan(0)
+    expect(call).toBeLessThan(source.indexOf("# The declared invocation"))
+  })
+
+  it("records both default paths as absent in a fresh HOME, and no keybind", () => {
+    const { result, record, home } = run({}, ["--font-size=16", "--clipboard-read=allow"])
+    expect(result.status, result.stderr).toBe(0)
+    expect(record).toBe(
+      `absent\t${home}/.config/ghostty/config\nabsent\t${home}/.config/ghostty/config.ghostty\nkeybind\tnone\n`,
+    )
+  })
+
+  it("records a present file by digest when it binds nothing", () => {
+    const text = "font-size = 16\n"
+    const { result, record } = run({ "config.ghostty": text })
+    expect(result.status, result.stderr).toBe(0)
+    expect(record).toContain(`present\t`)
+    expect(record).toContain(createHash("sha256").update(text).digest("hex"))
+    expect(record.endsWith("keybind\tnone\n")).toBe(true)
+  })
+
+  it("refuses a config file that binds a key or includes another file, and a --keybind argument", () => {
+    const rebinding: Array<Record<string, string>> = [
+      { config: "keybind = shift+page_up=scroll_to_top\n" },
+      { "config.ghostty": "  config-file = x\n" },
+    ]
+    for (const files of rebinding) {
+      const { result, record } = run(files)
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain("the default-binding viewport route cannot hold")
+      expect(record).not.toContain("keybind\tnone")
+    }
+    const { result } = run({}, ["--keybind=shift+home=ignore"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("Ghostty launch argument --keybind=shift+home=ignore")
+  })
+})
+
 describe("ghostty rendering is pinned AND RECORDED: antialias off, padding explicit (#31331)", () => {
   it("launches ghostty with monochrome FreeType rendering and 2x2 unbalanced padding, and records the pin", () => {
     const source = readFileSync(launcher, "utf8")

@@ -1077,6 +1077,36 @@ if [[ "${1:-}" == "--inside" ]]; then
     export TERMINFO_OUTER_COLOUR_RECORD=/out/outer-colour-record.json
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
+  # #37249 (@cto f584ccea condition 2): the Linux Ghostty viewport route presses Ghostty 1.4.0's DEFAULT
+  # bindings, so the run records every config file Ghostty loads at launch and refuses one that could rebind
+  # them. Ghostty 1.4.0 reads $XDG_CONFIG_HOME/ghostty/config, then config.ghostty (src/config/Config.zig
+  # loadDefaultFiles; XDG_CONFIG_HOME defaults to $HOME/.config). The private HOME is a fresh tmpfs, so both are
+  # normally absent. A keybind or config-file line, in a file or in the launch arguments, refuses the launch.
+  record_ghostty_config() {
+    local dir="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty" file arg
+    : > /out/ghostty-config.txt
+    for file in "$dir/config" "$dir/config.ghostty"; do
+      if [[ -e "$file" ]]; then
+        printf 'present\t%s\t%s\n' "$file" "$(sha256sum "$file" | cut -d ' ' -f 1)" >> /out/ghostty-config.txt
+        if grep -Eq '^[[:space:]]*(keybind|config-file)[[:space:]]*=' "$file"; then
+          echo "Ghostty config $file binds keys or includes another file; the default-binding viewport route cannot hold" >&2
+          return 1
+        fi
+      else
+        printf 'absent\t%s\n' "$file" >> /out/ghostty-config.txt
+      fi
+    done
+    for arg in "$@"; do
+      if [[ "$arg" == --keybind* || "$arg" == --config-file* ]]; then
+        echo "Ghostty launch argument $arg rebinds keys or loads another config; the default-binding viewport route cannot hold" >&2
+        return 1
+      fi
+    done
+    printf 'keybind\tnone\n' >> /out/ghostty-config.txt
+  }
+  if [[ "$target_id" == ghostty ]]; then
+    record_ghostty_config "${target_launch_args[@]}" "${target_clipboard_args[@]}" || exit 2
+  fi
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
   printf -v target_config '%q ' nice -n 10 "$target_binary" "${target_launch_args[@]}" \
     "${target_clipboard_args[@]}" "${target_command_lead[@]}" "${collector_command[@]}"

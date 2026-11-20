@@ -1528,11 +1528,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         // install keeps the route and makes every press a named apparatus failure, never a fall back to "no pane read".
         const viewportKeys = ownedTerminal.viewportKeys
         if (viewportKeys) {
-          const installed = await installDarwinInput(
-            ownedTerminal,
-            darwinCaptureWindowId === undefined ? {} : { windowId: darwinCaptureWindowId },
-            "keysOnly",
-          )
+          // #37249: a route that performs its own steps (Ghostty's AppleScript actions) installs no key input.
+          const installed = viewportKeys.input
+            ? { input: viewportKeys.input }
+            : await installDarwinInput(
+                ownedTerminal,
+                darwinCaptureWindowId === undefined ? {} : { windowId: darwinCaptureWindowId },
+                "keysOnly",
+              )
           viewportScroll = viewportScrollRoute(viewportKeys, installed)
         }
       } else if (kind === "windowsHosted") {
