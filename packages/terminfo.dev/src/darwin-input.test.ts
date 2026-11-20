@@ -39,6 +39,7 @@ import type { InputMechanism } from "./input-fixture.ts"
 const helperBuild = vi.hoisted(() => ({
   run: undefined as undefined | ((file: string, args: readonly string[], options?: unknown) => Buffer),
   home: undefined as string | undefined,
+  restoreUid: undefined as undefined | (() => void),
   calls: [] as { file: string; args: readonly string[]; options?: unknown }[],
 }))
 vi.mock("node:os", async (original) => {
@@ -65,6 +66,8 @@ vi.mock("node:child_process", async (original) => {
 })
 afterEach(() => {
   helperBuild.run = undefined
+  helperBuild.restoreUid?.()
+  helperBuild.restoreUid = undefined
 })
 afterAll(() => {
   if (helperBuild.home) rmSync(helperBuild.home, { recursive: true, force: true })
@@ -105,8 +108,11 @@ async function helperBuildFixture(
     | "wrong-keychain-path"
     | "string-keychain-flag"
     | "missing-keychain-fields"
+    | "wrong-owned-keychain"
     | "missing-keychain-resource",
 ) {
+  helperBuild.restoreUid?.()
+  helperBuild.restoreUid = undefined
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process")
   const keychain = join(helperBuild.home!, "Library", "Keychains", "terminfo-helper.keychain-db")
   if (fail === "missing-keychain-resource") rmSync(keychain)
@@ -132,7 +138,16 @@ async function helperBuildFixture(
       }
     }
     if (file === "/usr/bin/swiftc") {
-      if (args[0] === "--version") return Buffer.from("fixture Swift toolchain")
+      if (args[0] === "--version") {
+        if (fail === "wrong-owned-keychain") {
+          // Model a keychain uid different from the reader after the real publication lease is acquired.
+          // No chown/sudo or forged filesystem metadata; only the reader's reported uid is injected.
+          const uid = process.getuid!()
+          const spy = vi.spyOn(process, "getuid").mockReturnValue(uid + 1)
+          helperBuild.restoreUid = () => spy.mockRestore()
+        }
+        return Buffer.from("fixture Swift toolchain")
+      }
       if (fail === "compile") throw new Error("compiler rejected staged source")
       writeFileSync(args[2]!, readFileSync(args[3]!))
       return Buffer.alloc(0)
@@ -229,6 +244,7 @@ describe("owned Mac helper publication", () => {
     "wrong-keychain-path",
     "string-keychain-flag",
     "missing-keychain-fields",
+    "wrong-owned-keychain",
     "missing-keychain-resource",
   ] as const)("does not use prior installed bytes after a %s failure and releases the failed lease", async (fail) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-failure-")))
@@ -250,6 +266,9 @@ describe("owned Mac helper publication", () => {
       )
       if (fail.includes("keychain")) {
         expect(helperBuild.calls.filter((call) => call.file === "/usr/bin/codesign")).toHaveLength(0)
+      }
+      if (fail === "wrong-owned-keychain") {
+        expect(helperBuild.calls.filter((call) => call.args[0] === "signing-keychain-status")).toHaveLength(0)
       }
       expect(readFileSync(join(owned.directory, "darwin-input-helper"), "utf8")).toBe("previous source-signed")
       await helperBuildFixture()
