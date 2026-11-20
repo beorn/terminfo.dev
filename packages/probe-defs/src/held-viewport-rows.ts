@@ -77,7 +77,9 @@ class Fixture {
 
   /** One more line at the bottom: the top screen line moves into history. */
   displace(tag: string) {
-    this.ctx.write(`\r\n${this.line(tag)}`)
+    const text = this.line(tag)
+    this.ctx.write(`\r\n${text}`)
+    return text
   }
 
   /** Reconstruct a previously observed fixture, including its history, before triggering a hold. */
@@ -335,7 +337,7 @@ export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Pr
   return heldRow(ctx, reader, "scrollback.viewport-hold-output", async (fixture, bracket, qualify) => {
     const frames: ObservationFrame[] = []
     const phases: object[] = []
-    const finish = (result: ProbeCallbackResult) => async () => result
+    const finish = (result: ProbeCallbackResult) => () => Promise.resolve(result)
     const missing = (reason: string) => finish(todo(reason, { route: reader.route, phases }))
     const remember = (...observed: HeldViewportFrame[]) => frames.push(...observed.map((frame) => frame.recorded))
     const sameView = (a: HeldViewportFrame, b: HeldViewportFrame) =>
@@ -349,8 +351,7 @@ export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Pr
         fixture.prepare()
         for (let index = 0; index < GROWTH; index++) fixture.displace("g")
         const seed = [...fixture.lines]
-        fixture.displace("o")
-        const output = fixture.lines.at(-1)!
+        const output = fixture.displace("o")
         const future = await reader.reference(`${phase}: observed post-output bottom before trigger`)
         if (future.status !== "reference") return missing(`${phase}: future bottom ${future.reason}: ${future.detail}`)
         remember(future.frame)
@@ -366,8 +367,9 @@ export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Pr
         fixture.rebuild(seed)
         await route.press("pageUp")
         const before = await reader.reference(`${phase}: actual held view before output`)
-        if (before.status !== "reference")
+        if (before.status !== "reference") {
           return missing(`${phase}: pre-output hold ${before.reason}: ${before.detail}`)
+        }
         remember(before.frame)
         if (!sameView(before.frame, positive.candidate.held[0]) || sameView(before.frame, future.frame)) {
           return missing(`${phase}: the actual pre-output hold did not reproduce its positive control`)
@@ -379,11 +381,13 @@ export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Pr
         if (!witness) return missing(`${phase}: no processed-output status reply before the held bracket`)
         const target = await bracket(`${phase}: held after output`, "already-held", future.frame)
         const restored = await reader.reference(`${phase}: fresh bottom after restoration`)
-        if (restored.status !== "reference")
+        if (restored.status !== "reference") {
           return missing(`${phase}: restored bottom ${restored.reason}: ${restored.detail}`)
+        }
         remember(restored.frame)
-        if (!sameView(restored.frame, future.frame))
+        if (!sameView(restored.frame, future.frame)) {
           return missing(`${phase}: restored bottom differs from the observed output bottom`)
+        }
 
         const state = {
           phase,
@@ -412,7 +416,7 @@ export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Pr
                 `${phase} output snapped the held view to the bottom`,
                 expected,
                 frames,
-                held[0]!.recorded,
+                held[0]?.recorded,
                 { route: reader.route, phases },
               ),
             )
