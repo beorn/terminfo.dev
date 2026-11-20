@@ -29,6 +29,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const APPS = join(CONTENT_DIR, "probes-apps")
 const dirs: string[] = []
 afterEach(() => {
+  // raw-delete-allow: dirs holds only this test's own mkdtemp fixture directories
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -70,7 +71,7 @@ test("a hosted Warp run that would turn 79 served decided cells undecided is ref
   // The candidate descends from the placed reading's revision, so the projection's lineage pick takes it:
   // without this the test would not exercise the pick at all (@dev/luna3 case 1).
   expect(run.sourceRevision).toBe("92abecb3fccfc624ef1d35a7040612b879d75aa7")
-  execFileSync("git", ["merge-base", "--is-ancestor", "c4b53b5f", run.sourceRevision], { cwd: ROOT })
+  execFileSync("git", ["merge-base", "--is-ancestor", "c4b53b5f", "92abecb3fccfc624ef1d35a7040612b879d75aa7"], { cwd: ROOT })
 
   // The projection names, on stderr, a placed harness row it keeps over a changed probe; that note is not this test's.
   const notes = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -103,4 +104,16 @@ test("a Cursor cohort run that selected 3 rows cannot displace the complete read
   expect(report.downgrades).toEqual([])
   expect(report.after).toBe(report.before)
   expect(() => checkDowngrades(cohort, report)).not.toThrow()
+}, 120_000)
+
+test("a trimmed run is refused by the run parser, before any downgrade comparison (case 4)", () => {
+  const text = gunzipSync(readFileSync(join(ROOT, "packages/admin/fixtures/warp-44792556294-run.json.gz"))).toString(
+    "utf8",
+  )
+  const run = JSON.parse(text) as { results: unknown[] }
+  run.results.pop()
+  // placeCheckedRun parses through prepareCollectedRun first, so this refusal precedes placementDowngrades.
+  expect(() => loadRun("trimmed-run.json", JSON.stringify(run))).toThrow(
+    "results differ from frozen catalogue membership",
+  )
 }, 120_000)
