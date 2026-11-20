@@ -357,6 +357,12 @@ export interface CaptureRenderingAxes {
    * guesses when it is missing.
    */
   readonly coverage?: Uint8Array
+  /**
+   * Three bytes per pixel, row-major, of the crop's own RGB. IN MEMORY ONLY, exactly as `coverage`:
+   * the underline-band reader (#37240, @cto 5dd1c2ee) compares exact colours inside a band of rows,
+   * which a coverage fraction cannot do, and it refuses when this is missing.
+   */
+  readonly rgb?: Uint8Array
 }
 
 export interface PixelObservationFrame extends ObservationFrameBase {

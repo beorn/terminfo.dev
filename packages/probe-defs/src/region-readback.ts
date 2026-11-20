@@ -1601,6 +1601,187 @@ export function colourOnlyAttempts(
   }
 }
 
+/**
+ * The rows whose verdict the underline band reader decides (#37240, @cto 5dd1c2ee). A reset of the
+ * underline colour claims nothing about the glyph above the line, and a glyph re-rasterised between
+ * frames moves the whole-region digest by a few anti-aliased pixels: on the VS Code and Cursor
+ * Mac runs (a9352136, 56d65f1b) the glyph rows differ by two anti-aliased pixels per row between
+ * frames and the region read as a third frame. Only the band is graded, exactly. Each id maps to the
+ * colour its setup paints the underline (SGR 58:2::255:0:128).
+ */
+export const UNDERLINE_BAND_ROWS: ReadonlyMap<string, string> = new Map([["sgr.underline-color-reset", "#ff0080"]])
+
+export type UnderlineBandVerdict =
+  | {
+      kind: "supported" | "no-effect" | "wrong-colour"
+      /** Crop rows (0-based, within the region) that make up the band. */
+      rows: number[]
+      afterColour: string
+      expectedColour: string
+      seedColour: string
+      note: string
+    }
+  | { kind: "third-frame" | "inconclusive"; note: string }
+
+/**
+ * Grade a reset-family underline row on its band alone (@cto 5dd1c2ee, revised 872c53eb, ruling A).
+ * The band is DERIVED: the rows where the seed and ignored-attribute frames differ on every pixel.
+ * A row that differs on only some pixels is glyph anti-aliasing (the terminal re-rasterises the glyph
+ * between frames), is never graded, and is named in the note so the ungraded part stays visible.
+ * Guards, each failing to a third frame unless named otherwise:
+ * 1. the band is 1-2 contiguous rows touching the crop's bottom edge (an underline's thickness);
+ * 2. every seed band pixel is exactly the row's setup colour, so the band is the setup's underline;
+ * 3. the post-sequence and expected bands are each exactly one colour;
+ * 4. the expected band differs from the seed band, or the run cannot tell a reset from no effect
+ *    (inconclusive).
+ * Then: after band = expected band is Supported; = seed band is Unsupported (no effect); any other
+ * single colour is Unsupported, naming the three colours. No tolerance anywhere.
+ * Undefined when the axes carry no RGB (a record read back from disk), the crops differ in size, or
+ * no row differs on every pixel: the region verdict then stands unchanged.
+ */
+export function underlineBandVerdict(
+  id: string,
+  setupColour: string,
+  width: number,
+  seed: CaptureRenderingAxes | undefined,
+  after: CaptureRenderingAxes | undefined,
+  expected: CaptureRenderingAxes | undefined,
+  ignored: CaptureRenderingAxes | undefined,
+): UnderlineBandVerdict | undefined {
+  if (!Number.isSafeInteger(width) || width <= 0) return undefined
+  const s = seed?.rgb
+  const a = after?.rgb
+  const e = expected?.rgb
+  const i = ignored?.rgb
+  if (!s || !a || !e || !i) return undefined
+  const length = s.length
+  if (a.length !== length || e.length !== length || i.length !== length || length % (width * 3) !== 0) return undefined
+  const height = length / (width * 3)
+  const packed = (rgb: Uint8Array, pixel: number) =>
+    ((rgb[pixel * 3] ?? 0) << 16) | ((rgb[pixel * 3 + 1] ?? 0) << 8) | (rgb[pixel * 3 + 2] ?? 0)
+  const hex = (value: number) => `#${value.toString(16).padStart(6, "0")}`
+  const rows: number[] = []
+  const partial: string[] = []
+  for (let row = 0; row < height; row++) {
+    let differing = 0
+    for (let column = 0; column < width; column++) {
+      const pixel = row * width + column
+      if (packed(s, pixel) !== packed(i, pixel)) differing++
+    }
+    if (differing === width) rows.push(row)
+    else if (differing > 0) partial.push(`row ${row}: ${differing} px`)
+  }
+  if (rows.length === 0) return undefined
+  const ungraded = `ungraded glyph rows where seed and ignored differ on some pixels: ${partial.length === 0 ? "none" : partial.join(", ")}`
+  const bandRows = `crop row${rows.length === 1 ? "" : "s"} ${rows.join(",")} of ${height}, ${width} px wide`
+  const third = (why: string): UnderlineBandVerdict => ({
+    kind: "third-frame",
+    note: `${id}: no underline band: ${why}, so the region stays a third distinct frame (${ungraded})`,
+  })
+  const contiguous = rows.every((row, index) => index === 0 || row === (rows[index - 1] ?? -2) + 1)
+  if (rows.length > 2 || !contiguous || rows.at(-1) !== height - 1) {
+    return third(
+      `the rows where seed and ignored differ on every pixel (${bandRows}) are not 1-2 contiguous rows at the cell's bottom edge`,
+    )
+  }
+  const bandColour = (rgb: Uint8Array): number | undefined => {
+    const colours = new Set<number>()
+    for (const row of rows) {
+      for (let column = 0; column < width; column++) colours.add(packed(rgb, row * width + column))
+    }
+    return colours.size === 1 ? [...colours][0] : undefined
+  }
+  const colours = { seed: bandColour(s), after: bandColour(a), expected: bandColour(e) }
+  if (colours.seed === undefined || hex(colours.seed) !== setupColour) {
+    return third(`the seed band (${bandRows}) is not exactly the setup underline colour ${setupColour}`)
+  }
+  if (colours.after === undefined || colours.expected === undefined) {
+    const mixed =
+      colours.after === undefined ? (colours.expected === undefined ? "after and expected" : "after") : "expected"
+    return third(`the band (${bandRows}) is not one colour in the ${mixed} frame`)
+  }
+  const seedColour = hex(colours.seed)
+  const afterColour = hex(colours.after)
+  const expectedColour = hex(colours.expected)
+  if (colours.expected === colours.seed) {
+    return {
+      kind: "inconclusive",
+      note: `${id}: the expected underline band equals the seed's (${seedColour}, ${bandRows}), so this run cannot tell a reset from no effect (${ungraded})`,
+    }
+  }
+  const measured = `compared exactly over the underline band (${bandRows}); ${ungraded}`
+  const verdict = { rows, afterColour, expectedColour, seedColour }
+  if (colours.after === colours.expected) {
+    return {
+      kind: "supported",
+      ...verdict,
+      note: `${id}: the reset underline is ${afterColour}, the expected frame's own colour (setup colour ${seedColour}); ${measured}`,
+    }
+  }
+  if (colours.after === colours.seed) {
+    return {
+      kind: "no-effect",
+      ...verdict,
+      note: `${id}: the underline keeps the setup colour ${seedColour} after the reset; the expected frame draws ${expectedColour}; ${measured}`,
+    }
+  }
+  return {
+    kind: "wrong-colour",
+    ...verdict,
+    note: `${id}: resets to ${afterColour}, not the theme foreground ${expectedColour} the expected frame draws (setup colour ${seedColour}); ${measured}`,
+  }
+}
+
+/**
+ * Attempt agreement for the underline band (@cto 5dd1c2ee, as colourOnlyAttempts): every attempt
+ * must read the same band verdict with the same post-sequence colour. A round ends at its
+ * ignored-attribute frame, the last of the four frames the band reads.
+ */
+export function underlineBandAttempts(id: string, frames: ObservationFrame[]): { disagreement: string } | undefined {
+  const pixel = frames.filter((frame): frame is PixelObservationFrame => frame.kind !== "text-cells")
+  const rounds: PixelObservationFrame[][] = []
+  let current: PixelObservationFrame[] = []
+  for (const frame of pixel) {
+    current.push(frame)
+    if (frame.label.endsWith("ignored-attribute frame")) {
+      rounds.push(current)
+      current = []
+    }
+  }
+  if (rounds.length < 2) return undefined
+  const readings: string[] = []
+  for (const round of rounds) {
+    const pick = (suffix: string) => round.find((frame) => frame.label.endsWith(suffix))
+    const seed = pick("pre-edit seed")
+    const setupColour = UNDERLINE_BAND_ROWS.get(id)
+    const verdict =
+      setupColour === undefined
+        ? undefined
+        : underlineBandVerdict(
+            id,
+            setupColour,
+            seed?.regionRectangle?.width ?? 0,
+            seed?.rendering,
+            pick("post-sequence target")?.rendering,
+            pick("expected frame")?.rendering,
+            pick("ignored-attribute frame")?.rendering,
+          )
+    readings.push(
+      verdict === undefined
+        ? "no band reading"
+        : "afterColour" in verdict
+          ? `${verdict.kind} ${verdict.afterColour}`
+          : verdict.kind,
+    )
+  }
+  const decided = (reading: string) => /^(supported|no-effect|wrong-colour) /.test(reading)
+  const [first] = readings
+  if (first !== undefined && new Set(readings).size === 1 && decided(first)) return undefined
+  return {
+    disagreement: `${id}: attempts disagree on the underline band — ${readings.map((reading, index) => `attempt ${index + 1}: ${reading}`).join("; ")} — so no band result is published for this row`,
+  }
+}
+
 /** The declared row groups' Unsupported, citing every frame the region verdict would have cited. */
 function rowGroupsUnsupported(
   id: string,
@@ -3059,6 +3240,54 @@ export async function captureRegionReadbackDecision(
       })
     }
     if (!supported && !unsupported) {
+      // The underline band (#37240, @cto 5dd1c2ee): a reset-family underline row is graded on the
+      // seed-vs-ignored band alone, exactly, when all four crops are the same cells.
+      const setupColour = UNDERLINE_BAND_ROWS.get(id)
+      const seedCrop = cropRectangles[0]
+      const band =
+        assertionType === "screenshot" &&
+        setupColour !== undefined &&
+        ignored !== undefined &&
+        seedCrop !== undefined &&
+        cropRectangles.slice(1, 4).every((rectangle) => rectangle !== undefined && sameRectangle(rectangle, seedCrop))
+          ? underlineBandVerdict(
+              id,
+              setupColour,
+              seedCrop.width,
+              renderings[0],
+              renderings[1],
+              renderings[2],
+              renderings[3],
+            )
+          : undefined
+      if (band !== undefined && "afterColour" in band) {
+        const pass = band.kind === "supported"
+        return review({
+          pass,
+          criterionBranch: "underline-band",
+          tests: [{ id: "criterion", status: pass ? "supported" : "unsupported", assertionRefs: [0] }],
+          response: observed,
+          observation: {
+            outcome: pass ? "supported" : "unsupported",
+            assertionType,
+            ...cite(targetScreenshotRef, frames),
+            note: band.note,
+          },
+          assertions: [
+            {
+              assertionType,
+              kind: pass ? "positive" : "negative",
+              expected: `${id}: the underline band (crop rows ${band.rows.join(",")}) of cell-aligned region ${JSON.stringify(spec.region)} is exactly the same-run expected frame's ${band.expectedColour} after ${JSON.stringify(spec.edit)}`,
+              observed: `band ${band.afterColour} (seed ${band.seedColour}); region ${after}`,
+            },
+          ],
+        })
+      }
+      if (band !== undefined) {
+        return review(
+          inconclusive(id, band.note, "insufficient-evidence", assertionType, cite(targetScreenshotRef, frames)),
+        )
+      }
       // A pair that is the expected frame's own geometry and background in a different ink colour is
       // a measurable colour result (osc104): the sequence did not reach the expected paint, and the
       // only axis that differs is the ink colour the reset should have restored. Graded negative, and
