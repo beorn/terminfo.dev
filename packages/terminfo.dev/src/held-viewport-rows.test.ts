@@ -48,6 +48,10 @@ interface Behaviour {
   readonly leftover?: number
   /** Screen rows; 14 unless a case needs the 24-row example. */
   readonly rows?: number
+  /** A held viewport preserves its content, snaps, or keeps its distance from the bottom when output scrolls. */
+  readonly holdOutput?: "preserve" | "snap" | "follow"
+  /** A missing in-order status reply cannot prove that the output was parsed. */
+  readonly witnessReply?: boolean
 }
 
 /** A text terminal for the fixture's escapes, painted as pixels a reader crops: one colour per line text. */
@@ -74,10 +78,13 @@ function terminal(behaviour: Behaviour = {}) {
     history.push(top)
     if (history.length > keep) history = history.slice(history.length - keep)
     screen = [...rest, ""]
+    if (offset > 0 && behaviour.holdOutput === "preserve") offset = Math.min(history.length, offset + 1)
+    if (offset > 0 && behaviour.holdOutput === "snap") offset = 0
   }
   const write = (text: string) => {
     trace.started++
-    const pattern = /\x1bc|\x1b\[3J|\x1b\[2J|\x1b\[\?25[lh]|\x1b\[(\d+);1H|\x1b\[H|\x1b\]720\x07|\r\n|[^\x1b\r]+/g
+    const pattern =
+      /\x1bc|\x1b\[3J|\x1b\[2J|\x1b\[0m|\x1b\[\?2026[lh]|\x1b\[\?25[lh]|\x1b\[(\d+);1H|\x1b\[H|\x1b\]720\x07|\r\n|[^\x1b\r]+/g
     for (const [token, row] of text.matchAll(pattern)) {
       if (token === "\x1bc") {
         screen = screen.map(() => "")
@@ -135,7 +142,22 @@ function terminal(behaviour: Behaviour = {}) {
     })
     return { width: WIDTH, height: HEIGHT, rgba: Buffer.from(rgba) }
   }
-  const route = { route: behaviour.route ?? ALACRITTY_0_17_VIEWPORT_ROUTE, press }
+  let held = false
+  const route = {
+    route: behaviour.route ?? ALACRITTY_0_17_VIEWPORT_ROUTE,
+    async press(step: ViewportStep) {
+      held = step !== "bottom"
+      await press(step)
+    },
+    adoptHold() {
+      held = true
+    },
+    async returnToBottom() {
+      if (!held) return "not-held" as const
+      await route.press("bottom")
+      return "bottom-pressed" as const
+    },
+  }
   const reader = createHeldViewportReader({
     featureId: "model",
     route: () => route,
@@ -155,6 +177,10 @@ function terminal(behaviour: Behaviour = {}) {
     viewportScroll: route,
     readHeldViewport: reader.read,
     readViewportReference: reader.reference,
+    queryCursorPosition: async () => {
+      trace.started++
+      return behaviour.witnessReply === false ? null : { row: ROWS, col: 1 }
+    },
   } as unknown as TermProbeSource
   return { ctx, view: () => ({ offset, history: history.length }) }
 }
@@ -170,6 +196,29 @@ async function grade(id: string, behaviour: Behaviour = {}): Promise<ProbeCallba
 }
 
 const status = (result: ProbeCallbackResult) => result.tests?.[0]?.status
+
+describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("viewport hold on %s", (route) => {
+  it.each([
+    ["preserve", "supported"],
+    ["snap", "unsupported"],
+    ["follow", "unsupported"],
+  ] as const)("qualifies %s output through the real held reader", async (holdOutput, expected) => {
+    const result = await grade("scrollback.viewport-hold-output", { route, holdOutput })
+    expect(status(result)).toBe(expected)
+    citesItsFrames(result)
+    if (holdOutput === "follow") expect(result.note).toMatch(/view followed output by 1 rows?/)
+  })
+
+  it("does not call stable held crops Supported without the processed-output witness", async () => {
+    const result = await grade("scrollback.viewport-hold-output", {
+      route,
+      holdOutput: "preserve",
+      witnessReply: false,
+    })
+    expect(status(result)).toBe("probe-todo")
+    expect(result.tests?.[0]?.reason).toMatch(/processed|witness|status.*reply/i)
+  })
+})
 
 /** The run-parser's pixel-frame rule: control and target frames, a target primary, targets strictly in order. */
 function citesItsFrames(result: ProbeCallbackResult) {
