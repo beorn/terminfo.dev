@@ -399,3 +399,41 @@ test("a person's clipboard that is plain text, or empty, proceeds and is put bac
     expect(pasteboard).toBe("person baseline")
   }
 })
+
+// #37240: the hosted Mac run hands its version's pinned read default to the fixture, so a silent OSC 52 read grades
+// from the citation instead of saying "default not established".
+test("the Darwin fixture carries the read default it was given, and nothing when given none", async () => {
+  let pasteboard = ""
+  const run: DarwinCommand = async (file, _args, stdin) => {
+    if (file.endsWith("pbpaste")) return `${pasteboard}\n`
+    if (file.endsWith("pbcopy")) {
+      pasteboard = stdin ?? ""
+      return ""
+    }
+    throw new Error(`unexpected ${file}`)
+  }
+  const readDefault = { posture: "absent" as const, source: "wezterm 20240203-110809-5046fc22 cited" }
+  for (const [choice, expected] of [
+    [{ readDefault }, readDefault],
+    [{}, undefined],
+  ] as const) {
+    const adapter = await createDarwinClipboardAdapter({
+      appComm: "wezterm-gui",
+      appId: "wezterm",
+      disposableHost: { receiptKind: "github-hosted-runner" },
+      assertOwned: async () => {},
+      run,
+      readDefaultChoice: choice,
+    })
+    let seen: unknown = "unset"
+    await adapter.withClipboardFixture(
+      async (fixture) => {
+        seen = fixture.readDefault
+        return { pass: true, note: "read" } as ProbeCallbackResult
+      },
+      () => {},
+      async () => {},
+    )
+    expect(seen).toEqual(expected)
+  }
+})
