@@ -2282,7 +2282,8 @@ describe("mux profile configs", () => {
             await Bun.sleep(100)
             // Like a terminal, emit reports only when the attached client requested mode 1004.
             // tmux accepts unsolicited reports even with focus-events off; always injecting masks the bug.
-            await expect.poll(() => [...outerOutput.matchAll(/\x1b\[\?1004([hl])/g)].at(-1)?.[1], { timeout: 5000 })
+            await expect
+              .poll(() => [...outerOutput.matchAll(/\x1b\[\?1004([hl])/g)].at(-1)?.[1], { timeout: 5000 })
               .toBe("h")
             client.terminal!.write("\x1b[O")
             await Bun.sleep(100)

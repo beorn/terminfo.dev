@@ -150,7 +150,13 @@ export function supplementOf(subject: {
   return (LINUX_SUPPLEMENTS[subject.id] ?? []).find((supplement) =>
     subject.kind === "term"
       ? subject.permissions !== null && supplement.permissions?.[subject.id] === subject.permissions
-      : subject.config !== null && supplement.config?.[subject.id] === subject.config,
+      : subject.config !== null &&
+        (supplement.config?.[subject.id] === subject.config ||
+          // Retained set-titles runs predate focus qualification; their original label still identifies
+          // the same OSC22 supplement. This does not claim focus-events was enabled in those runs.
+          (subject.id === "tmux" &&
+            supplement === SET_TITLES_ON &&
+            subject.config === 'tmux: set-titles on; set-titles-string "#T"')),
   )
 }
 
