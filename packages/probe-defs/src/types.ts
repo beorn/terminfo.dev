@@ -119,7 +119,13 @@ export const FEATURE_RESULT_STATUSES = [...PROBE_STATUSES, "probe-conflict"] as 
 export type FeatureResultStatus = (typeof FEATURE_RESULT_STATUSES)[number]
 export type ProbeAttempt =
   | { scope: "none" }
-  | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
+  | {
+      scope: "collection" | "probe"
+      startedAt: string
+      diagnosticRef?: string
+      /** On a run whose app declares a launch settle (37225): ms from the end of that wait to this start. */
+      msAfterLaunchSettle?: number
+    }
 
 /** Resolved callback intent; an empty list explicitly schedules no work. */
 export interface CollectorSelection {
