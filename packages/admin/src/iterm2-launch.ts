@@ -1,7 +1,7 @@
 /**
  * The owned iTerm2 launch (33845, @cto 11983ea0 amended by e1efdd39). Ownership rests on a
  * preflight: no iTerm2 of this account runs before the launch, exactly one started after it runs once
- * the daemon registers, and exactly one new layer-0 CG window belongs to that pid. The shared CLI launcher
+ * the daemon registers, and exactly one new visible layer-0 CG window belongs to that pid. The shared CLI launcher
  * isolates startup with a private suite and command; no iTerm Apple event is sent.
  * No process runs at module load.
  */
@@ -9,7 +9,6 @@ import { isAbsolute } from "node:path"
 import { tty } from "../../terminfo.dev/src/owned-process.ts"
 import {
   accountProcessesRunning,
-  layerZeroWindowIds,
   readDarwinWindowRows,
   type Iterm2Window,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
@@ -54,8 +53,8 @@ export function prepareIterm2Launch(scriptPath: string, executablePath: string):
 /**
  * After the daemon registers: exactly one
  * iTerm2 of this account runs and its start second is strictly later than the preflight read's second (lstart has whole-second
- * resolution); and exactly one layer-0 CG window owned by it is new. Every other shape refuses by name;
- * nothing picks one of several (@cto 11983ea0, condition 2).
+ * resolution); and exactly one new visible layer-0 CG window belongs to it. Hidden auxiliaries may
+ * coexist, while a second visible window or sheet makes ownership ambiguous (@cto 0b57bab0).
  */
 export function resolveIterm2Window(launch: Iterm2Launch, recordedTty: string): Iterm2Window {
   const recorded = tty(recordedTty)
@@ -73,18 +72,14 @@ export function resolveIterm2Window(launch: Iterm2Launch, recordedTty: string): 
   }
   const rows = readDarwinWindowRows()
   const before = new Set(launch.beforeWindowIds)
-  const fresh = layerZeroWindowIds(rows, owner.pid).filter((id) => !before.has(id))
-  const [windowId] = fresh
-  if (windowId === undefined || fresh.length !== 1) {
-    throw new Error(
-      `iTerm2 launch: expected exactly one new layer-0 window owned by pid ${owner.pid}; found ${fresh.length} (${JSON.stringify(fresh)}). Several means restored sessions or a second window, and none is picked`,
-    )
-  }
-  // The existing census checks the one new window is on screen and not transparent.
-  censusDarwinWindows(rows, owner.pid, windowId)
+  const fresh = rows.filter((row) => {
+    const id = (row as { id?: unknown } | null)?.id
+    return typeof id !== "number" || !before.has(id)
+  })
+  const { selected } = censusDarwinWindows(fresh, owner.pid, undefined, "unique")
   return {
     provider: "iterm2",
-    windowId,
+    windowId: selected.window.id,
     // The existing live process assertion checks this against ps TTY and daemon ancestry before use.
     tty: recorded,
     ownerPid: owner.pid,

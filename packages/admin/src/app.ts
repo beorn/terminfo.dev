@@ -377,23 +377,19 @@ const APPS: AppDef[] = [
     appPath: "/Applications/iTerm.app",
     binaryPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     bundleId: APP_BUNDLE_IDS.iterm2,
-    // Keep saved windows out of this owned launch: AppKit persistence and iTerm's standing keep-windows
-    // preference are separate restoration inputs. Argument-domain overrides last only for this process.
-    // The private suite remains the owner marker; the iTerm-specific arm proves the one exact CG window.
+    // Disable iTerm's initial untitled window in this run's private defaults domain. The explicit
+    // command still opens its own window, which the iTerm-specific arm proves after registration.
     cliLaunch: {
       spawnPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
       executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
       markerFlag: "-suite",
       markerValue: (run) => `dev.terminfo.iterm2.${run.id}`,
-      args: (script, markerValue) => [
-        "-suite",
-        markerValue,
-        "-ApplePersistenceIgnoreState",
-        "YES",
-        "-NSQuitAlwaysKeepsWindows",
-        "NO",
-        `--command=${script}`,
-      ],
+      prepare: (_run, markerValue) => {
+        execFileSync("/usr/bin/defaults", ["write", markerValue, "OpenNoWindowsAtStartup", "-bool", "YES"], {
+          timeout: 5_000,
+        })
+      },
+      args: (script, markerValue) => ["-suite", markerValue, `--command=${script}`],
     },
   },
   {
@@ -744,8 +740,8 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
     // launch to an already-running instance. The marker is what survives, so the owner is resolved
     // from it once the daemon has registered, never from this child handle.
+    const iterm2 = app.id === "iterm2" ? prepareIterm2Launch(run.scriptPath, app.cliLaunch.executablePath) : undefined
     const prepared = prepareCliLaunch(app.id, run)
-    const iterm2 = app.id === "iterm2" ? prepareIterm2Launch(run.scriptPath, prepared.executablePath) : undefined
     const launched = launchPreparedCli(prepared, mode === "hand-read" ? run.directory : undefined)
     return iterm2 === undefined ? launched : { ...launched, iterm2 }
   }
