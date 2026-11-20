@@ -100,8 +100,11 @@ test("the real Darwin census script projects unrelated identities without readin
     allowForeignFields = true
     // terminal-app-window reads the same exported script without an app scope during discovery.
     const allRows = JSON.parse(runInNewContext(CENSUS, { ...jxa }))
-    expect(allRows.map((row: { id: number }) => row.id)).toEqual([7, 8, 9])
-    expect(allRows[2].bounds).toEqual({ x: 0, y: 0, width: 80, height: 63 })
+    expect(allRows).toEqual([
+      expect.objectContaining({ id: 7 }),
+      expect.objectContaining({ id: 8 }),
+      expect.objectContaining({ id: 9, bounds: { x: 0, y: 0, width: 80, height: 63 } }),
+    ])
     await expect(
       createDarwinCapture(directory, { appPid: 41, expectedWindowId: 9, onRetained: () => {} }),
     ).rejects.toThrow("Darwin capture expected window 9 is owned by PID 99, not the launched app PID 41;")
