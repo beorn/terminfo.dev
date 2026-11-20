@@ -27,7 +27,7 @@ import {
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { launchIterm2Window, resolveIterm2Window } from "./iterm2-launch.ts"
+import { prepareIterm2Launch, resolveIterm2Window } from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -91,7 +91,7 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
   stopOwnedDaemon: vi.fn(),
   shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
-vi.mock("./iterm2-launch.ts", () => ({ launchIterm2Window: vi.fn(), resolveIterm2Window: vi.fn() }))
+vi.mock("./iterm2-launch.ts", () => ({ prepareIterm2Launch: vi.fn(), resolveIterm2Window: vi.fn() }))
 vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
@@ -274,11 +274,18 @@ test.each([undefined, "stale-parent"])("WezTerm preparation replaces inherited t
 
 test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
   expect(() =>
-    assertOwnedWindowAssertion({ name: "iTerm2", id: "iterm2" }, {
-      proc: null,
-      identityPath: "/private/run/owner-tty.txt",
-      iterm2: { tty: "/dev/ttys009", beforeWindowIds: [1] },
-    } as AppLaunch),
+    assertOwnedWindowAssertion(
+      { name: "iTerm2", id: "iterm2" },
+      {
+        proc: null,
+        identityPath: "/private/run/owner-tty.txt",
+        iterm2: {
+          executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+          preflightAtEpochSeconds: 1794489720,
+          beforeWindowIds: [1],
+        },
+      },
+    ),
   ).not.toThrow()
 })
 
@@ -369,13 +376,12 @@ test("an omitted selection sends no ids to the daemon", async () => {
   )
 })
 
-test("an owned iTerm2 launch is collected on its sole-instance proof, then closed by its recorded pid", async () => {
+// The codimac census found a fresh untitled login window beside the daemon window.
+test("an isolated iTerm2 CLI launch disables the initial untitled window in its private suite", async () => {
   const launch = {
     executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     preflightAtEpochSeconds: 1794489720,
     beforeWindowIds: [10],
-    appleScriptWindowId: 3,
-    tty: "/dev/ttys009",
   }
   const owned = {
     provider: "iterm2" as const,
@@ -385,11 +391,41 @@ test("an owned iTerm2 launch is collected on its sole-instance proof, then close
     executablePath: launch.executablePath,
     startedAtEpochSeconds: 1794489721,
   }
-  vi.mocked(launchIterm2Window).mockReturnValue(launch)
+  vi.mocked(prepareIterm2Launch).mockReturnValue(launch)
   vi.mocked(resolveIterm2Window).mockReturnValue(owned)
   vi.mocked(closeOwnedTerminalWindow).mockReturnValue(undefined)
   await handleApp("iterm2", {})
-  expect(launchIterm2Window).toHaveBeenCalledWith("/private/run/serve.sh", launch.executablePath)
+  expect(
+    vi
+      .mocked(execFileSync)
+      .mock.calls.filter(([path]) => path === "/usr/bin/defaults")
+      .map(([, args]) => args),
+  ).toEqual([["write", "dev.terminfo.iterm2.private-run", "OpenNoWindowsAtStartup", "-bool", "YES"]])
+  const preferenceWrite = vi.mocked(execFileSync).mock.calls.findIndex(([path]) => path === "/usr/bin/defaults")
+  expect(vi.mocked(execFileSync).mock.invocationCallOrder[preferenceWrite]).toBeLessThan(
+    vi.mocked(spawn).mock.invocationCallOrder[0]!,
+  )
+  // Project only the launch contract: a failing argv assertion must not dump the inherited environment.
+  expect(
+    vi.mocked(spawn).mock.calls.map(([command, args, options]) => [
+      command,
+      args,
+      {
+        detached: options?.detached,
+        stdio: options?.stdio,
+      },
+    ]),
+  ).toEqual([
+    [
+      launch.executablePath,
+      ["-suite", "dev.terminfo.iterm2.private-run", "--command=/private/run/serve.sh"],
+      { detached: true, stdio: "ignore" },
+    ],
+  ])
+  expect(vi.mocked(prepareIterm2Launch).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(spawn).mock.invocationCallOrder[0]!,
+  )
+  expect(prepareIterm2Launch).toHaveBeenCalledWith("/private/run/serve.sh", launch.executablePath)
   const script = String(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1])
   expect(script).toContain(`printf '%s\\n' "$(tty)" > '/private/run/owner-tty.txt'`)
   expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
@@ -414,7 +450,7 @@ test("an owned iTerm2 launch is collected on its sole-instance proof, then close
     undefined,
   )
   expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(owned)
-  // The one Apple event is the launch; no osascript close follows it.
+  // The isolated CLI launch, probe and cleanup send iTerm no Apple event.
   expect(vi.mocked(execFileSync).mock.calls.some(([file]) => file === "osascript")).toBe(false)
   expect(removeProbeRun).toHaveBeenCalled()
 })
