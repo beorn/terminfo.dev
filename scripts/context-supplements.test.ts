@@ -7,7 +7,7 @@
  * @consumer projectResults, the one selection the site, write-selection and the project map read (33119).
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
@@ -24,6 +24,8 @@ import {
 } from "../docs/data/context-supplements.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import * as currentResults from "../docs/data/current-results.ts"
+import { loadFullProbes } from "../docs/data/probes.data.ts"
 
 const READ = "extensions.osc52-read"
 const ROUND_TRIP = "extensions.osc52-clipboard"
@@ -123,6 +125,23 @@ function run(
 const project = (runs: ReturnType<typeof run>[]) => projectResults(runs, ids, { currentProbeHash: suite.probeHash }, [])
 const projectWith = (runs: ReturnType<typeof run>[], catalog: string[]) =>
   projectResults(runs, catalog, { currentProbeHash: suite.probeHash }, [])
+
+// The matrix uses data.meta, not the recorded subject's config detail. Historical empty-config
+// runs must keep their plain label; otherwise enabling the fixture silently changes the default claim.
+it.each([
+  ["tmux: focus-events on", "tmux (focus-events on; default off)"],
+  ["/out/mux-empty.conf", "tmux"],
+])("labels the measured tmux fixture %s in the matrix metadata", (config, label) => {
+  const projection = project([run("tmux", "label-run", { "sgr.bold": "supported" }, null, at, { config: config! })])
+  const source = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({
+    projection,
+  } as ReturnType<typeof currentResults.loadCurrentResults>)
+  try {
+    expect(loadFullProbes().meta.tmux?.label).toBe(label)
+  } finally {
+    source.mockRestore()
+  }
+})
 
 describe("read-allowed supplement (33119)", () => {
   const allowed = READ_ALLOWED.permissions!.kitty!

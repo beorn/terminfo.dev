@@ -295,12 +295,16 @@ export function loadFullProbes(): ProbeData {
             slug: routeKey,
           })
     routeMeta.set(routeKey, original)
-    meta[key] = {
+    const contextMeta = {
       ...original,
       ...((systemCounts.get(routeKey) ?? 0) > 1 && {
         label: `${original.label ?? id} (${os === null ? "OS not recorded" : (platformLabels[os] ?? os)})`,
       }),
     }
+    if (selected.subject.kind === "mux" && id === "tmux" && selected.subject.config === "tmux: focus-events on") {
+      contextMeta.label = `${contextMeta.label ?? id} (focus-events on; default off)`
+    }
+    meta[key] = contextMeta
   }
   const annotations = loadAnnotations()
   const backends: BackendInfo[] = []
