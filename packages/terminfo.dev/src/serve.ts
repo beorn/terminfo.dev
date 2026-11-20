@@ -119,6 +119,7 @@ import {
 import { cmuxHistoryEvidence } from "./cmux-history-record.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
+import { holdLaunchSettle, stampMsAfterLaunchSettle } from "./launch-settle.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
@@ -672,6 +673,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
   }
   let collectionStartedAt: string | undefined
   let collectionStartedMs: number | undefined
+  /** When the app's declared launch settle released the frame (37225); undefined when it declares none. */
+  let launchSettledAt: number | undefined
   let delegatedIds = manifest.probes.term.filter((id) => !options.ids || options.ids.includes(id))
   try {
     const terminal = detectTerminal()
@@ -1593,6 +1596,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           throw new Error("Outer preflight differs from the verified mux attachment")
         }
       }
+      // 37225: the app table's launch settle runs once here, before the collection and its first probe.
+      if (ownedTerminal?.launchSettle) {
+        launchSettledAt = await holdLaunchSettle(draft, ownedTerminal.launchSettle, options.signal)
+        checkpoint()
+      }
       collectionStartedAt = new Date().toISOString()
       collectionStartedMs = Date.now()
       recordCollectorAttempt(draft, {
@@ -1946,6 +1954,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
     if (retainedArtifacts.size > 0) {
       captured.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...retainedArtifacts.values()] })
     }
+    if (launchSettledAt !== undefined) stampMsAfterLaunchSettle(captured.results, launchSettledAt)
     recordCollectorAttempt(captured, { ids: selectedIds, startedAt: collectionStartedAt, result: "completed" })
     if (collectionStartedMs !== undefined) captured.collectorDurationMs = Date.now() - collectionStartedMs
     Object.assign(draft, captured)
@@ -1968,6 +1977,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         if (row.status === "probe-todo" && selectedIds.includes(row.featureId)) row.reason = diagnostic
       }
     }
+    if (launchSettledAt !== undefined) stampMsAfterLaunchSettle(draft.results, launchSettledAt)
     checkpoint()
     throw error
   }
