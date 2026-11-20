@@ -878,16 +878,17 @@ describe("window-operation qualification", () => {
     return { ctx, title: () => title, depth: () => stack.length }
   }
 
-  test.each(["working", "stale", "none", "unobservable"] as const)(
+  test.each(["working", "stale", "none", "unobservable", "reader-absent"] as const)(
     "App title stack reads its owned state and restores it: %s",
     async (behavior) => {
       // #32573: the library fixture models title/stack state; the App callback must actually read it.
       // Existing library-only cases cannot catch an App arm that merely receives a cursor reply.
+      // CTO35140: an exercised reader with failed controls is INVALID; only an absent reader is TODO.
       for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
-        const fixture = titleContext(behavior)
+        const fixture = titleContext(behavior === "reader-absent" ? "working" : behavior)
         const source = {
           write: fixture.ctx.feed,
-          readTitle: async () => fixture.ctx.getTitle(),
+          ...(behavior !== "reader-absent" && { readTitle: async () => fixture.ctx.getTitle() }),
           queryCursorPosition: async () => ({ row: 1, col: 1 }),
         } as unknown as TermProbeSource
         // #34932: a restore or set that never arrives waits one real settle budget (2 s); on fake time the case runs
@@ -905,9 +906,11 @@ describe("window-operation qualification", () => {
           vi.useRealTimers()
         }
         const result = await running
-        if (behavior === "unobservable") {
+        if (behavior === "unobservable" || behavior === "reader-absent") {
           expect(result.observation).toBeUndefined()
-          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
+          expect(result.tests).toContainEqual(
+            expect.objectContaining({ status: behavior === "unobservable" ? "probe-invalid" : "probe-todo" }),
+          )
         } else {
           expect(result.observation).toMatchObject({
             assertionType: "buffer_state",

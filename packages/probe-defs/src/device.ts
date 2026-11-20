@@ -10,7 +10,6 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
   replyFailure,
-  methodUnavailable,
   notTestedResult,
   declaredUntestableResult,
   NO_SAME_PATH_CONTROL,
@@ -420,7 +419,7 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
           "XTWINOPS 22/23 restores both controlled pushed titles",
           state,
         )
-      : { ...methodUnavailable("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
+      : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
     if (!controlled) result.criterionBranch = "app-title-control"
   } catch (error) {
     failure = error
