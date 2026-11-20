@@ -75,9 +75,12 @@ import {
 import { assertWriteAllowed, wasCollectorOpenedControllingTTY } from "./tty.ts"
 import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
+  GHOSTTY_1_4_VIEWPORT_ROUTE,
   LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
   XTERM_411_VIEWPORT_ROUTE,
   ScrollbackReadingUnavailable,
+  type InputFixture,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
   type TextQualificationRecipe,
@@ -106,7 +109,7 @@ import {
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import { readITermCells, withITermPromptSession } from "./iterm2-protocol.ts"
-import { ghosttyOwnedCwd } from "./ghostty-applescript.ts"
+import { GHOSTTY_1_4_VIEWPORT_ACTIONS, ghosttyOwnedCwd, ghosttyViewportInput } from "./ghostty-applescript.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -535,7 +538,15 @@ export interface OwnedTerminal {
    * 0.17.0 on macOS, this run's own launch, no multiplexer. serve.ts installs keys-only input for it, and a
    * failed install stays a named apparatus TODO on the route rather than removing the route.
    */
-  readonly viewportKeys?: { readonly route: string; readonly keys: Readonly<Record<ViewportStep, string>> }
+  readonly viewportKeys?: {
+    readonly route: string
+    readonly keys: Readonly<Record<ViewportStep, string>>
+    /**
+     * Present when the route performs its steps itself instead of pressing keys: hosted Ghostty 1.4.0's
+     * AppleScript `perform action` on the owned TTY's terminal (#37249). serve.ts then installs no key input.
+     */
+    readonly input?: Pick<InputFixture, "injectKey">
+  }
   /** Presence only, never the values: whether this run's pane published what an owned read needs (A0). */
   readonly wezTermPaneEnvironment?: { readonly socket: boolean; readonly paneId: boolean }
   readGeometry(): Promise<GeometryMeasurement>
@@ -693,6 +704,19 @@ export const ALACRITTY_0_17_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>
 })
 
 /**
+ * Ghostty 1.4.0's default viewport bindings on Linux (#37249): src/config/Config.zig:6954-6973 at v1.4.0, inside
+ * the `!isDarwin()` branch opened at 6826, binds shift+Home scroll_to_top, shift+End scroll_to_bottom,
+ * shift+Page_Up scroll_page_up and shift+Page_Down scroll_page_down. The same keys as Alacritty's, kept as their
+ * own constant because they come from another source. Source, not a delivery proof (34313).
+ */
+export const LINUX_GHOSTTY_1_4_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "shift+Page_Up",
+  pageDown: "shift+Page_Down",
+  top: "shift+Home",
+  bottom: "shift+End",
+})
+
+/**
  * xterm 411's viewport steps on this Linux arm (#34632). xterm binds shift+Prior and shift+Next outside the
  * alternate screen but binds nothing to scroll-to-top/bottom, so the container script declares both through its
  * own launch (`XTerm*VT100.Translations: #override Shift<Key>Home: scroll-back(9999,line); Shift<Key>End:
@@ -720,9 +744,11 @@ export const XTERM_411_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = O
 export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["411", "412"])
 
 /**
- * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
- * macOS, this run's own launch, no multiplexer between the run and the app. Decided from the subject alone, before
- * any input install, so an install failure can never remove the route.
+ * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 or
+ * hosted ghostty at the reviewed 1.4.0 (#37249, @cto f584ccea) on macOS, this run's own launch, no multiplexer
+ * between the run and the app. Decided from the subject alone, before any input install, so an install failure can
+ * never remove the route. Ghostty's steps are its own actions through AppleScript on the owned tab's TTY, each one
+ * re-proving the owner first, so that route carries its own input and nothing presses a key.
  */
 export function hostedViewportKeys(subject: {
   readonly hostedAppId: string | undefined
@@ -731,23 +757,41 @@ export function hostedViewportKeys(subject: {
   readonly runId: string | undefined
   readonly expectedLaunchRunId: string
   readonly multiplexed: boolean
+  readonly tabTty?: string
+  readonly isOwnerLive?: () => boolean
 }): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
   if (
-    subject.hostedAppId !== "alacritty" ||
     subject.platform !== "darwin" ||
-    subject.targetVersion !== "0.17.0" ||
     !subject.expectedLaunchRunId ||
     subject.runId !== subject.expectedLaunchRunId ||
     subject.multiplexed
   ) {
     return undefined
   }
-  return {
-    viewportKeys: {
-      route: ALACRITTY_0_17_VIEWPORT_ROUTE,
-      keys: ALACRITTY_0_17_VIEWPORT_KEYS,
-    },
+  if (subject.hostedAppId === "alacritty" && subject.targetVersion === "0.17.0") {
+    return { viewportKeys: { route: ALACRITTY_0_17_VIEWPORT_ROUTE, keys: ALACRITTY_0_17_VIEWPORT_KEYS } }
   }
+  const { tabTty, isOwnerLive } = subject
+  if (
+    subject.hostedAppId === "ghostty" &&
+    subject.targetVersion === "1.4.0" &&
+    tabTty !== undefined &&
+    isOwnerLive !== undefined
+  ) {
+    return {
+      viewportKeys: {
+        route: GHOSTTY_1_4_VIEWPORT_ROUTE,
+        keys: GHOSTTY_1_4_VIEWPORT_ACTIONS,
+        input: ghosttyViewportInput({
+          tty: tabTty,
+          check() {
+            if (!isOwnerLive()) throw new Error("Ghostty viewport action has no live owned terminal")
+          },
+        }),
+      },
+    }
+  }
+  return undefined
 }
 
 /**
@@ -779,6 +823,11 @@ export function linuxViewportKeys(subject: {
   // "no pane read" declaration stays for every other subject; this route is checked before it, as on macOS.
   if (subject.appId === "alacritty" && subject.targetVersion === "0.17.0") {
     return { viewportKeys: { route: LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, keys: ALACRITTY_0_17_VIEWPORT_KEYS } }
+  }
+  // #37249 (@cto f584ccea): Ghostty 1.4.0's own default bindings through XTEST. The container launches it in a
+  // fresh private HOME with no config file, and the run records that (linux-container-run.sh).
+  if (subject.appId === "ghostty" && subject.targetVersion === "1.4.0") {
+    return { viewportKeys: { route: LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE, keys: LINUX_GHOSTTY_1_4_VIEWPORT_KEYS } }
   }
   return undefined
 }
@@ -2603,6 +2652,8 @@ export async function createOwnedTerminal(options: {
         runId: process.env.TERMINFO_RUN_ID,
         expectedLaunchRunId,
         multiplexed: muxAttachmentProof !== undefined,
+        ...(binding.platform === "darwin" && { tabTty: binding.tabTty }),
+        isOwnerLive: () => verifiedTerminalOwners.has(owner),
       }),
       // 34632: the same question for the Linux arm's own xterm launch, answered from the same subject shape.
       ...linuxViewportKeys({

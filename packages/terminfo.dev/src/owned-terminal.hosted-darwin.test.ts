@@ -1628,6 +1628,53 @@ test("the viewport route applies only to hosted alacritty 0.17.0 on macOS in thi
   expect(hostedViewportKeys({ ...qualified, runId: "", expectedLaunchRunId: "" }), "empty launch id").toBeUndefined()
 })
 
+// @failure Hosted Ghostty gets a viewport route outside its reviewed subject, presses keys instead of performing its
+//   own actions, or performs an action without re-proving the owner, so a held row reads a view nobody bound
+//   (#37249, @cto f584ccea).
+// @level l1
+// @consumer The hosted owner record that serve.ts reads before installing any viewport input.
+test("hosted ghostty 1.4.0 gets the AppleScript action route, carrying its own input, and nothing else does", async () => {
+  const run = "d".repeat(32)
+  let live = true
+  const qualified = {
+    hostedAppId: "ghostty",
+    platform: "darwin",
+    targetVersion: "1.4.0",
+    runId: run,
+    expectedLaunchRunId: run,
+    multiplexed: false,
+    tabTty: "/dev/ttys007",
+    isOwnerLive: () => live,
+  }
+  const route = hostedViewportKeys(qualified)?.viewportKeys
+  expect(route?.route).toContain("AppleScript perform action, no keys")
+  expect(route?.keys).toEqual({
+    pageUp: "scroll_page_up",
+    pageDown: "scroll_page_down",
+    top: "scroll_to_top",
+    bottom: "scroll_to_bottom",
+  })
+  expect(typeof route?.input?.injectKey).toBe("function")
+  // The owner is re-proved before every Apple Event: a dead owner refuses before osascript could run.
+  live = false
+  await expect(route?.input?.injectKey("scroll_to_top")).rejects.toThrow(/no live owned terminal/)
+  for (const [change, value] of [
+    ["targetVersion", "1.3.1"],
+    ["targetVersion", undefined],
+    ["platform", "linux"],
+    ["runId", "e".repeat(32)],
+    ["multiplexed", true],
+    ["tabTty", undefined],
+    ["isOwnerLive", undefined],
+  ] as const) {
+    expect(hostedViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
+  }
+  // Alacritty's keys route carries no input of its own: serve.ts still installs keys-only input for it.
+  expect(
+    hostedViewportKeys({ ...qualified, hostedAppId: "alacritty", targetVersion: "0.17.0" })?.viewportKeys,
+  ).not.toHaveProperty("input")
+})
+
 // #34905 (@cto R1 5df1da90, R2 09ccf969): hosted cmux 0.65.2 macOS extensions.osc633-p reads workspace.current
 // current_directory through its verified owner, binds workspace lifetime across every phase, restores initial.cwd
 // through the private writer via pathToFileURL(initial.cwd).href, and preserves both primary and restoration

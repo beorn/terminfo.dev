@@ -5,7 +5,11 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { ALACRITTY_0_17_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE } from "@terminfo/probe-defs"
+import {
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
+} from "@terminfo/probe-defs"
 import {
   createOwnedTerminal,
   gatedPrivateWrite,
@@ -208,6 +212,36 @@ test("Linux Alacritty 0.17.0 gets its own XTEST route only on its own unmultiple
   for (const [change, value] of [
     ["targetVersion", "0.16.0"],
     ["targetVersion", "0.17.1"],
+    ["targetVersion", undefined],
+    ["platform", "darwin"],
+    ["runId", "e".repeat(32)],
+    ["multiplexed", true],
+  ] as const) {
+    expect(linuxViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
+  }
+})
+
+// @failure Linux Ghostty gets a viewport route at an unreviewed version, under a multiplexer or another run's launch,
+//   or under Alacritty's route name, so held rows trust keys nobody bound for that app (#37249, @cto f584ccea).
+// @level l1
+// @consumer The Linux owner record that createOwnedTerminal hands the held-viewport reader.
+test("Linux Ghostty 1.4.0 gets its own default-binding XTEST route only on its own unmultiplexed launch (#37249)", () => {
+  const run = "f".repeat(32)
+  const qualified = {
+    appId: "ghostty",
+    platform: "linux",
+    targetVersion: "1.4.0",
+    runId: run,
+    expectedLaunchRunId: run,
+    multiplexed: false,
+  }
+  expect(linuxViewportKeys(qualified)?.viewportKeys).toEqual({
+    route: LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
+    keys: { pageUp: "shift+Page_Up", pageDown: "shift+Page_Down", top: "shift+Home", bottom: "shift+End" },
+  })
+  expect(LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE).not.toBe(LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE)
+  for (const [change, value] of [
+    ["targetVersion", "1.3.1"],
     ["targetVersion", undefined],
     ["platform", "darwin"],
     ["runId", "e".repeat(32)],

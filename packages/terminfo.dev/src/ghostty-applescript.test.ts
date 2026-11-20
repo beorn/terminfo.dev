@@ -6,7 +6,13 @@
  * @testonly none
  */
 import { afterEach, expect, test, vi } from "vitest"
-import { ghosttyOwnedCwd, readGhosttyTerminal } from "./ghostty-applescript.ts"
+import {
+  GHOSTTY_1_4_VIEWPORT_ACTIONS,
+  ghosttyOwnedCwd,
+  ghosttyViewportInput,
+  performGhosttyViewportAction,
+  readGhosttyTerminal,
+} from "./ghostty-applescript.ts"
 
 const { spawn } = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock("node:child_process", async (original) => ({
@@ -124,4 +130,70 @@ test("a title fence that never lands fails the read instead of reading a stale c
   const read = ghosttyOwnedCwd({ tty, write() {}, check: () => {} })
   await expect(read({ row: 1, marker: "Q-1a2b3c4d-0" })).rejects.toThrow(/did not observe Ghostty title fence/)
   expect(spawn.mock.calls.some(([, args]) => !(args[1] as string).includes("return name of"))).toBe(false)
+})
+
+// #37249 (@cto f584ccea condition 1): the viewport route performs Ghostty's own actions; the script is constant,
+// the TTY and the action are argv, and anything but a performed action refuses by name.
+test("a viewport action runs a constant perform-action script with the TTY and the action as argv", () => {
+  spawn.mockReturnValue(ok("true\n"))
+  performGhosttyViewportAction(tty, GHOSTTY_1_4_VIEWPORT_ACTIONS.top)
+  const [file, args] = spawn.mock.calls[0]!
+  expect(file).toBe("/usr/bin/osascript")
+  expect(args).toEqual(["-e", expect.any(String), tty, "scroll_to_top"])
+  const script = args[1] as string
+  expect(script).toContain("every terminal whose tty is ttyPath")
+  expect(script).toContain("return perform action actionName on item 1 of matches")
+  expect(script).not.toContain(tty)
+  expect(script).not.toContain("scroll_to_top")
+})
+
+test.each([
+  { result: ok("false\n"), message: /perform action scroll_page_up was not performed: "false\\n"/ },
+  {
+    result: {
+      status: 1,
+      signal: null,
+      stdout: "",
+      stderr: "execution error: owned TTY /dev/ttys004 matches 0 Ghostty terminals (-2700)\n",
+    },
+    message: /perform action scroll_page_up failed: .*matches 0 Ghostty terminals/,
+  },
+  {
+    result: {
+      status: 1,
+      signal: null,
+      stdout: "",
+      stderr: "execution error: owned TTY /dev/ttys004 matches 2 Ghostty terminals (-2700)\n",
+    },
+    message: /perform action scroll_page_up failed: .*matches 2 Ghostty terminals/,
+  },
+  { result: { status: null, signal: "SIGKILL", stdout: "", stderr: "" }, message: /failed: .*SIGKILL/ },
+])("a viewport action that was not performed refuses by name: $message", ({ result, message }) => {
+  spawn.mockReturnValue(result)
+  expect(() => performGhosttyViewportAction(tty, "scroll_page_up")).toThrow(message)
+})
+
+test("an action outside the four viewport actions, or a TTY that is not a device path, refuses before osascript", () => {
+  expect(() => performGhosttyViewportAction(tty, "write_scrollback_file:paste")).toThrow(
+    /not a Ghostty viewport action/,
+  )
+  expect(() => performGhosttyViewportAction('/dev/ttys004" & quit', "scroll_to_top")).toThrow(/not an owned TTY/)
+  expect(spawn).not.toHaveBeenCalled()
+})
+
+test("the viewport input re-proves the owner before every action", async () => {
+  spawn.mockReturnValue(ok("true\n"))
+  let checks = 0
+  const input = ghosttyViewportInput({ tty, check: () => void (checks += 1) })
+  await input.injectKey("scroll_page_down")
+  expect(checks).toBe(1)
+  expect(spawn.mock.calls[0]![1]).toEqual(["-e", expect.any(String), tty, "scroll_page_down"])
+  const refused = ghosttyViewportInput({
+    tty,
+    check: () => {
+      throw new Error("owner gone")
+    },
+  })
+  await expect(refused.injectKey("scroll_to_bottom")).rejects.toThrow("owner gone")
+  expect(spawn).toHaveBeenCalledTimes(1)
 })

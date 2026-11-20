@@ -26,13 +26,28 @@ export const LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE =
   "linux alacritty 0.17.0 default bindings (shift+Page_Up/Page_Down/Home/End), XTEST"
 
 /**
+ * Hosted macOS Ghostty 1.4.0: each step is the app's own action through its AppleScript `perform action`, so the
+ * view moves by the app's action API, not a key press. The literal name stays in every cell's evidence
+ * (#37249, @cto f584ccea 1).
+ */
+export const GHOSTTY_1_4_VIEWPORT_ROUTE =
+  "hosted ghostty 1.4.0 AppleScript perform action, no keys (scroll_page_up/scroll_page_down/scroll_to_top/scroll_to_bottom on the TTY-matched terminal)"
+
+/** Linux Ghostty 1.4.0's own default bindings through the container's XTEST adapter (#37249, @cto f584ccea 2). */
+export const LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE =
+  "linux ghostty 1.4.0 default bindings (shift+Page_Up/Page_Down/Home/End), XTEST"
+
+/**
  * The routes whose endpoint behaviour is bound, by exact identity (@cto 1154; the two Linux routes @cto a6ed9b08,
- * 34278). An endpoint claim on any other route, including one whose name merely resembles these, stays TODO.
+ * 34278; the two Ghostty routes @cto f584ccea, #37249). An endpoint claim on any other route, including one whose
+ * name merely resembles these, stays TODO.
  */
 const ENDPOINT_BOUND_ROUTES: ReadonlySet<string> = new Set([
   ALACRITTY_0_17_VIEWPORT_ROUTE,
   XTERM_411_VIEWPORT_ROUTE,
   LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  GHOSTTY_1_4_VIEWPORT_ROUTE,
+  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
 ])
 
 /** Rows the fixture needs: 10 lines of growth plus the empty-history line must stay below one screen. */

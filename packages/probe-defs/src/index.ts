@@ -3,7 +3,9 @@ export { SOURCE_CLOCK_MISSING, sourceNow } from "./source-clock.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
 export {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
+  GHOSTTY_1_4_VIEWPORT_ROUTE,
   LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
   XTERM_411_VIEWPORT_ROUTE,
 } from "./held-viewport-rows.ts"
 export {
