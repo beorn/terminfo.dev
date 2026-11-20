@@ -541,6 +541,22 @@ async function context(mode: "start" | "emit") {
   }
 }
 
+/**
+ * The receipt's run id, from the job identity alone, so the launch step can name it before the receipt exists
+ * (32555: the TERM_FEATURES clean-launch marker must equal the run id the receipt later carries).
+ */
+function hostedRunId(job: {
+  repository: string
+  githubRunId: string
+  githubRunAttempt: string
+  jobId: string
+}): string {
+  return createHash("sha256")
+    .update(["github-hosted-runner", job.repository, job.githubRunId, job.githubRunAttempt, job.jobId].join("\n"))
+    .digest("hex")
+    .slice(0, 32)
+}
+
 async function main(): Promise<void> {
   const [mode, startPath, receiptPath, extra] = process.argv.slice(2)
   if (mode === "--app-argv") {
@@ -553,9 +569,33 @@ async function main(): Promise<void> {
     process.stdout.write(JSON.stringify(transformInvocation(argv)) + "\n")
     return
   }
+  if (mode === "run-id") {
+    // 32555 (@cto c8b7704b): the launch helper reads the id from the job-start sample; no API call, no write.
+    if (!startPath || !isAbsolute(startPath) || receiptPath !== undefined) {
+      throw new Error("Usage: hosted-runner-receipt.ts run-id <absolute-start.json>")
+    }
+    let sample: { phase?: string; job?: Parameters<typeof hostedRunId>[0] }
+    try {
+      sample = JSON.parse(readFileSync(startPath, "utf8")) as typeof sample
+    } catch (cause) {
+      throw new Error(`Hosted receipt cannot read job-start sample ${startPath} for the launch run id`, { cause })
+    }
+    const job = sample.job
+    if (
+      sample.phase !== "job-start" ||
+      !job ||
+      ![job.repository, job.githubRunId, job.githubRunAttempt, job.jobId].every(
+        (v) => typeof v === "string" && v.length > 0,
+      )
+    ) {
+      throw new Error(`Hosted receipt job-start sample ${startPath} has no complete job identity; no launch run id`)
+    }
+    process.stdout.write(hostedRunId(job) + "\n")
+    return
+  }
   if ((mode !== "start" && mode !== "emit") || !startPath || (mode === "emit" ? !receiptPath : receiptPath) || extra) {
     throw new Error(
-      "Usage: hosted-runner-receipt.ts start <absolute-start.json> | emit <absolute-start.json> <absolute-host-measured.json>",
+      "Usage: hosted-runner-receipt.ts start <absolute-start.json> | emit <absolute-start.json> <absolute-host-measured.json> | run-id <absolute-start.json>",
     )
   }
   if (!isAbsolute(startPath) || (receiptPath && !isAbsolute(receiptPath))) {
@@ -594,18 +634,7 @@ async function main(): Promise<void> {
       `Hosted receipt job-start sample ${startPath} does not describe this job/runner; refuse the handoff`,
     )
   }
-  const runId = createHash("sha256")
-    .update(
-      [
-        "github-hosted-runner",
-        current.job.repository,
-        current.job.githubRunId,
-        current.job.githubRunAttempt,
-        current.job.jobId,
-      ].join("\n"),
-    )
-    .digest("hex")
-    .slice(0, 32)
+  const runId = hostedRunId(current.job)
   // Both hosted app routes measure their launch; a declared installation version is never evidence.
   const os = required("RUNNER_OS")
   let appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
