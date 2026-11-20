@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
+import { safeRemoveSync } from "removely"
 import {
   buildDarwinInputHelper,
   createDarwinInput,
@@ -70,7 +71,7 @@ afterEach(() => {
   helperBuild.restoreUid = undefined
 })
 afterAll(() => {
-  if (helperBuild.home) rmSync(helperBuild.home, { recursive: true, force: true })
+  if (helperBuild.home) safeRemoveSync(helperBuild.home, { within: realpathSync(tmpdir()), allowMissing: true })
 })
 
 function keychainStatusFixture(fail: string | undefined, args: readonly string[]): Buffer {

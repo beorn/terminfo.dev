@@ -54,6 +54,7 @@
     "@termless/xtermjs": "0.11.0",
     "@vue/server-renderer": "3.5.45",
     "oxfmt": "0.76.0",
+    "removely": "0.5.0",
     "terminfo.dev": "workspace:*",
     "vitepress": "1.6.4",
     "vitepress-enrich": "0.5.0",
