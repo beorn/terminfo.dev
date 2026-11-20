@@ -128,11 +128,27 @@ test("WezTerm's no-setting allow run reads its exact-version absent default; no 
   expect(clipboardReadDefault("wezterm", "default", "0-unstable-2026-11-08")).toEqual(cited)
   expect(clipboardReadDefault("wezterm", "allow", "0-unstable-2026-10-10")).toEqual({
     readDefaultRefusal:
-      "default not established: this tree cites wezterm 0-unstable-2026-11-08, this run measured 0-unstable-2026-10-10",
+      "default not established: this tree cites wezterm 0-unstable-2026-11-08 or 20240203-110809-5046fc22, this run measured 0-unstable-2026-10-10",
   })
   expect(clipboardReadDefault("wezterm", "allow", undefined).readDefaultRefusal).toContain("(no version recorded)")
   for (const app of ["kitty", "ghostty", "alacritty", "xterm"] as const) {
     expect(clipboardReadDefault(app, "allow", "0-unstable-2026-11-08")).toEqual({})
   }
   expect(clipboardReadProfile("wezterm", "allow")).toBeUndefined()
+})
+
+// #37240: the Mac measures WezTerm's release tag, not the nixpkgs build. Each version gets its own citation, read at
+// that version's own source, and neither citation grades the other version's run.
+test("WezTerm's Mac release tag has its own absent citation, distinct from the Linux nixpkgs one", () => {
+  const mac = clipboardReadDefault("wezterm", "default", "20240203-110809-5046fc22")
+  expect(mac).toEqual({
+    readDefault: { posture: "absent", source: expect.stringContaining("wezterm 20240203-110809-5046fc22 termwiz") },
+  })
+  expect(mac.readDefault?.source).not.toContain("458a100c1bf4")
+  expect(clipboardReadDefault("wezterm", "default", "0-unstable-2026-11-08").readDefault?.source).toContain(
+    "458a100c1bf4",
+  )
+  expect(clipboardReadDefault("wezterm", "default", "20240203-110809-5046fc23").readDefaultRefusal).toContain(
+    "this run measured 20240203-110809-5046fc23",
+  )
 })

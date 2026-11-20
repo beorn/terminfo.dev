@@ -850,44 +850,62 @@ export const CLIPBOARD_ALLOW_ARGS: Readonly<Record<ClipboardApp, readonly string
  * (@cto 2026-11-13): a silent read means "the user was asked" for one app and "the answer is no" for another, and a
  * default taken from the silence is a guess, not evidence. An app absent here is unpinned: its read rows say
  * "default not established" by name. A version not named below has no entry — extend this with that version's own
- * source rather than reusing another version's citation.
+ * source rather than reusing another version's citation. An app measured at more than one version (WezTerm: a nixpkgs
+ * build on Linux, a release tag on the Mac) lists one citation per version, each read at that version's own source.
  */
 export const CLIPBOARD_READ_DEFAULTS: Readonly<
   Partial<
     Record<
       ClipboardApp,
-      { readonly posture: "ask" | "deny" | "absent"; readonly version: string; readonly source: string }
+      readonly { readonly posture: "ask" | "deny" | "absent"; readonly version: string; readonly source: string }[]
     >
   >
 > = {
-  kitty: {
-    posture: "ask",
-    version: "0.49.2",
-    source:
-      "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
-      "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
-  },
-  ghostty: {
-    posture: "ask",
-    version: "1.4.0",
-    source: 'ghostty v1.4.0 src/config/Config.zig:2458: "clipboard-read": ClipboardAccess = .ask',
-  },
-  alacritty: {
-    posture: "deny",
-    version: "0.17.0",
-    source:
-      "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
-      '"only copy sequence is accepted"',
-  },
+  kitty: [
+    {
+      posture: "ask",
+      version: "0.49.2",
+      source:
+        "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
+        "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
+    },
+  ],
+  ghostty: [
+    {
+      posture: "ask",
+      version: "1.4.0",
+      source: 'ghostty v1.4.0 src/config/Config.zig:2458: "clipboard-read": ClipboardAccess = .ask',
+    },
+  ],
+  alacritty: [
+    {
+      posture: "deny",
+      version: "0.17.0",
+      source:
+        "alacritty v0.17.0 alacritty_terminal/src/term/mod.rs:372-384: Osc52::OnlyCopy is #[default] — " +
+        '"only copy sequence is accepted"',
+    },
+  ],
   // #34932 (@cto scope ruling Nov 18): WezTerm has no clipboard-read setting and no read. Read at the nixpkgs source the
   // measured build compiles (git rev 458a100c1bf4134d36cb5c42dd90e4c8266d9e1a, nixpkgs version 0-unstable-2026-11-08).
-  wezterm: {
-    posture: "absent",
-    version: "0-unstable-2026-11-08",
-    source:
-      "wezterm 458a100c1bf4 wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as QuerySelection, and " +
-      "term/src/terminalstate/performer.rs:792 handles it as QuerySelection(_) => {}: no reply, no setting",
-  },
+  wezterm: [
+    {
+      posture: "absent",
+      version: "0-unstable-2026-11-08",
+      source:
+        "wezterm 458a100c1bf4 wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as QuerySelection, and " +
+        "term/src/terminalstate/performer.rs:792 handles it as QuerySelection(_) => {}: no reply, no setting",
+    },
+    // #37240: the Mac measures the release the hosted job installs, whose own --version prints this tag
+    // (macos-measurement.yml exports it as TERMINFO_TARGET_VERSION). Read at that tag's source.
+    {
+      posture: "absent",
+      version: "20240203-110809-5046fc22",
+      source:
+        "wezterm 20240203-110809-5046fc22 termwiz/src/escape/osc.rs:169-170 parses OSC 52 ? as QuerySelection, and " +
+        "term/src/terminalstate/performer.rs:770 handles it as QuerySelection(_) => {}: no reply, no setting",
+    },
+  ],
 }
 
 /**
@@ -902,7 +920,8 @@ export const CLIPBOARD_NO_READ_SETTING: Readonly<Partial<Record<ClipboardApp, st
 /**
  * The default a run may use: its OWN version's citation or nothing (@cto 2026-11-13 — a citation from another version
  * must never grade a run, and "deny" is the case where that writes a wrong negative). A run whose version has no
- * citation gets a refusal naming both versions, so the row says which citation was missing, not that none exists.
+ * citation gets a refusal naming the cited versions and the measured one, so the row says which citation was missing,
+ * not that none exists.
  */
 export function clipboardReadDefault(
   app: ClipboardApp,
@@ -914,10 +933,11 @@ export function clipboardReadDefault(
 } {
   if (profile !== "default" && !(profile === "allow" && CLIPBOARD_NO_READ_SETTING[app] !== undefined)) return {}
   const cited = CLIPBOARD_READ_DEFAULTS[app]
-  if (!cited) return {}
-  if (cited.version === measuredVersion) return { readDefault: { posture: cited.posture, source: cited.source } }
+  if (!cited || cited.length === 0) return {}
+  const own = cited.find((citation) => citation.version === measuredVersion)
+  if (own) return { readDefault: { posture: own.posture, source: own.source } }
   return {
-    readDefaultRefusal: `default not established: this tree cites ${app} ${cited.version}, this run measured ${
+    readDefaultRefusal: `default not established: this tree cites ${app} ${cited.map((c) => c.version).join(" or ")}, this run measured ${
       measuredVersion ?? "(no version recorded)"
     }`,
   }
@@ -960,8 +980,13 @@ function clipboardControls(app: ClipboardApp, options: string[]): string[] {
   }
 }
 
+/** True when `id` names an app this tree declares a clipboard control for. */
+export function isClipboardApp(id: string): id is ClipboardApp {
+  return Object.hasOwn(CLIPBOARD_ALLOW_ARGS, id)
+}
+
 function clipboardApp(id: string | undefined): ClipboardApp {
-  if (id !== undefined && Object.hasOwn(CLIPBOARD_ALLOW_ARGS, id)) return id as ClipboardApp
+  if (id !== undefined && isClipboardApp(id)) return id
   throw new Error(`Owned clipboard target ${id ?? "(unset)"} has no declared clipboard control`)
 }
 

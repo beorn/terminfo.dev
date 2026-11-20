@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { createClipboardTransaction, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { clipboardReadDefault, createClipboardTransaction, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 
 export type DarwinCommand = (file: string, args: string[], stdin?: string) => Promise<string>
 
@@ -104,6 +104,12 @@ export async function createDarwinClipboardAdapter(input: {
    * or a length of someone's clipboard: only "read present" / "read empty" survive.
    */
   personClipboard?: { readonly foreignReadDigest: "absent" }
+  /**
+   * The app's pinned clipboard-read default for THIS run's version, or the refusal naming the versions this tree cites
+   * (#37240, clipboardReadDefault): without it a silent OSC 52 read on the Mac says "default not established" even
+   * for an app whose default is cited.
+   */
+  readDefaultChoice?: ReturnType<typeof clipboardReadDefault>
 }): Promise<Omit<LinuxClipboardAdapter, "readTitle">> {
   const run = input.run ?? runDarwinCommand
   if (input.ownedHost && input.disposableHost) {
@@ -154,6 +160,7 @@ export async function createDarwinClipboardAdapter(input: {
     },
     {
       foreignReadDigest: input.personClipboard?.foreignReadDigest ?? (sentinelRoute ? "omit" : "record"),
+      ...input.readDefaultChoice,
     },
   )
   // @dev/8 R1: the sentinel readback belongs INSIDE the fixture, where a failure refuses the probes

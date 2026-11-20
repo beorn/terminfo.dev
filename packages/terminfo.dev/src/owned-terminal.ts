@@ -51,7 +51,12 @@ import {
   type TerminalBusReading,
 } from "./terminal-environment.ts"
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
-import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import {
+  clipboardReadDefault,
+  createLinuxClipboardAdapter,
+  isClipboardApp,
+  type LinuxClipboardAdapter,
+} from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
 import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
@@ -2048,6 +2053,11 @@ export async function createOwnedTerminal(options: {
         appComm: hostedApp.comm,
         appId: hostedApp.id,
         disposableHost: { receiptKind: "github-hosted-runner" },
+        // #37240: the hosted job's default launch at the version macos-measurement.yml exported, so a cited default
+        // grades the read and an uncited version names the citation it is missing.
+        ...(isClipboardApp(hostedApp.id) && {
+          readDefaultChoice: clipboardReadDefault(hostedApp.id, "default", process.env.TERMINFO_TARGET_VERSION),
+        }),
         assertOwned: () =>
           process.platform === "darwin"
             ? Promise.resolve()
