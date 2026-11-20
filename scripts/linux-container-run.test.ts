@@ -2182,7 +2182,6 @@ describe("mux profile configs", () => {
   it("writes tmux's set-titles bytes, exactly the bytes the receipt check declares", () => {
     const content = (profile: string) =>
       spawnSync("bash", ["-c", 'source "$1"; tmux_config_content "$2"', "_", launcher, profile], { encoding: "utf8" })
-    expect(content("default")).toMatchObject({ status: 0, stdout: "" })
     expect(content("set-titles")).toMatchObject({
       status: 0,
       stdout: MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content,
@@ -2196,21 +2195,51 @@ describe("mux profile configs", () => {
   // #33995: tmux reads a bare option line as a command name, ignores it, and starts with set-titles off — which is
   // how the supplement reached its readiness gate with titles off and a "[tmux]" window name. The profile's bytes
   // must therefore be tmux commands, and this reads the option back out of a real server started from them.
+  // #37175: a clock in status-right repaints the calibration baseline despite an unchanged terminal grid.
+  // Read both profiles from the launcher's actual config and keep the bar's geometry and title forwarding.
   // A host without tmux reports the case as skipped, never as a pass: the point of the case is the server's own
   // answer, so an unasked question must stay visible in the report.
   it.skipIf(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status !== 0)(
-    "starts tmux with set-titles on from the profile's own bytes",
+    "starts tmux with stable status pixels and profile title forwarding",
     () => {
       const scratch = mkdtempSync(join(tmpdir(), "set-titles-profile-"))
       const config = join(scratch, "tmux.conf")
-      writeFileSync(config, MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content ?? "")
       const socket = join(scratch, "server.sock")
       try {
-        const shown = spawnSync("tmux", ["-S", socket, "-f", config, "start-server", ";", "show", "-g", "set-titles"], {
-          encoding: "utf8",
-        })
-        expect(shown.stderr).toBe("")
-        expect(shown.stdout.trim()).toBe("set-titles on")
+        for (const profile of ["default", "set-titles"]) {
+          const content = spawnSync("bash", ["-c", 'source "$1"; tmux_config_content "$2"', "_", launcher, profile], {
+            encoding: "utf8",
+          })
+          expect(content.status).toBe(0)
+          writeFileSync(config, content.stdout)
+          const shown = spawnSync(
+            "tmux",
+            [
+              "-S",
+              socket,
+              "-f",
+              config,
+              "start-server",
+              ";",
+              "show",
+              "-gv",
+              "status-right",
+              ";",
+              "show",
+              "-gv",
+              "status",
+              ";",
+              "show",
+              "-gv",
+              "set-titles",
+            ],
+            { encoding: "utf8" },
+          )
+          expect(shown.status).toBe(0)
+          expect(shown.stderr).toBe("")
+          expect(shown.stdout.split("\n")).toEqual(["", "on", profile === "set-titles" ? "on" : "off", ""])
+          spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
+        }
       } finally {
         spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
         rmSync(scratch, { recursive: true, force: true })
