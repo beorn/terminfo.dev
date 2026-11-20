@@ -10,11 +10,25 @@
 import type { CapturePixelGeometry, CaptureRequest } from "./types.ts"
 
 /**
- * The SGR that paints one cell of calibration's solid grid, by form, written before a space. The
- * ONE sentinel paint: calibration paints its solid grid with it, and the region readback's layout
- * check repaints one cell with it to find where that cell lands now (33000).
+ * The text that paints one cell of calibration's solid grid, by form: the SGR and the glyph it is written
+ * with. The ONE sentinel paint: calibration paints its solid grid with it, and the region readback's layout
+ * check repaints one cell with it to find where that cell lands now (33000). `block` (#37240, @cto 99c11b1d)
+ * is a magenta full block on a magenta background, last in the candidate order: WezTerm 20240203 paints every
+ * space as the default foreground under DECSCNM, whatever its SGR background, so only a coloured glyph shows.
  */
-export const CALIBRATION_SOLID_PAINT = { basic: "\x1b[45m", reverse: "\x1b[7m" } as const
+export const CALIBRATION_SOLID_PAINT = {
+  basic: "\x1b[45m ",
+  reverse: "\x1b[7m ",
+  block: "\x1b[35;45m\u2588",
+} as const
+
+/** A sentinel form, in candidate order: the order calibration tries them in. */
+export type CalibrationSentinelForm = keyof typeof CALIBRATION_SOLID_PAINT
+export const CALIBRATION_SENTINEL_FORMS = [
+  "basic",
+  "reverse",
+  "block",
+] as const satisfies readonly CalibrationSentinelForm[]
 
 export type CalibratedGeometrySource =
   | { readonly geometry: CapturePixelGeometry; readonly pixelGeometry?: never }

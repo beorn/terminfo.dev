@@ -195,7 +195,9 @@ export {
 } from "./region-readback.ts"
 export {
   assertCalibratedCaptureGeometry,
+  CALIBRATION_SENTINEL_FORMS,
   CALIBRATION_SOLID_PAINT,
+  type CalibrationSentinelForm,
   type CalibratedGeometrySource,
 } from "./calibrated-capture-geometry.ts"
 

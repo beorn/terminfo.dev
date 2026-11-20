@@ -1136,7 +1136,7 @@ export async function layoutSinceCalibration(check: {
     return `layout not re-checked: the witness cell holds ink (${String(inkCount)} px differ from its ${before.rendering?.background ?? "unrecorded"} background) at ${where}, so calibration's sentinel was not painted there`
   }
   let located: ObservationFrame["located"]
-  ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`)
+  ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]}\x1b[0m\x1b8`)
   try {
     const deadline = sourceNow(ctx) + timeoutMs
     for (;;) {

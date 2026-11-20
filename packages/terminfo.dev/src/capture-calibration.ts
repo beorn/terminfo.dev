@@ -1,5 +1,7 @@
 import {
+  CALIBRATION_SENTINEL_FORMS,
   CALIBRATION_SOLID_PAINT,
+  type CalibrationSentinelForm,
   beginCaptureLifecycle,
   type CalibrationSentinel,
   type CapturePixelGeometry,
@@ -935,13 +937,19 @@ export async function calibrateCaptureOrigin({
       }
     }
   }
-  const paintGrid = (stage: "solid" | "columns" | "rows", form: "basic" | "reverse") => {
+  // Column and row edge cells per form: the solid form's own SGR and glyph, alternated with a dark cell.
+  const edgePaint: Record<CalibrationSentinelForm, readonly [on: string, off: string]> = {
+    basic: ["\x1b[41m ", "\x1b[40m "],
+    reverse: ["\x1b[7m ", "\x1b[27m "],
+    block: ["\x1b[31;41m\u2588", "\x1b[30;40m\u2588"],
+  }
+  const paintGrid = (stage: "solid" | "columns" | "rows", form: CalibrationSentinelForm) => {
     let text = ""
     for (let row = 0; row < ctx.rows; row++) {
       text += `\x1b[${row + 1};1H`
       for (let col = 0; col < ctx.cols; col++) {
         const on = stage === "solid" || (stage === "columns" ? col : row) % 2 === 0
-        text += `${stage === "solid" ? CALIBRATION_SOLID_PAINT[form] : form === "basic" ? (on ? "\x1b[41m" : "\x1b[40m") : on ? "\x1b[7m" : "\x1b[27m"} `
+        text += stage === "solid" ? CALIBRATION_SOLID_PAINT[form] : edgePaint[form][on ? 0 : 1]
       }
     }
     ctx.write(text)
@@ -953,17 +961,17 @@ export async function calibrateCaptureOrigin({
    * SGR 45 space shows the default foreground) is answered by the next form, never by a copied loop.
    */
   const solidPaintCandidates = async (
-    label: (candidate: "basic" | "reverse") => string,
+    label: (candidate: CalibrationSentinelForm) => string,
     reference: CapturedFrame,
     timedOut: (cause: unknown) => boolean,
   ): Promise<{
-    observed?: { frame: CapturedFrame; form: "basic" | "reverse" }
+    observed?: { frame: CapturedFrame; form: CalibrationSentinelForm }
     attempts: string[]
     lastTimeout?: Error
   }> => {
     const attempts: string[] = []
     let lastTimeout: Error | undefined
-    for (const candidate of ["basic", "reverse"] as const) {
+    for (const candidate of CALIBRATION_SENTINEL_FORMS) {
       ctx.write("\x1b[0m")
       paintGrid("solid", candidate)
       try {
