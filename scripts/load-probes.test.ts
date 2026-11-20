@@ -150,3 +150,29 @@ test.each(["terminals", "annotations", "categories"] as const)(
     }
   },
 )
+
+test("prepared client JSON preserves the computed fixture projection", async () => {
+  const root = join(import.meta.dirname, "..")
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-client-parity-"))
+  vi.stubEnv("TERMINFO_SITE_OUT_DIR", directory)
+  try {
+    const { default: loader, loadClientProbes } = await import("../docs/data/probes.data.ts")
+    const { createBuildMetadata } = await import("./build-metadata.ts")
+    const computed = loadClientProbes()
+    expect(computed).not.toHaveProperty("selected")
+    mkdirSync(join(directory, "content"))
+    writeFileSync(
+      join(directory, "content", "probes.json"),
+      JSON.stringify({
+        sourceCommit: createBuildMetadata(root).sourceCommit,
+        workingRunId: null,
+        data: computed,
+      }),
+    )
+    expect(loader.load()).toEqual(computed)
+  } finally {
+    vi.unstubAllEnvs()
+    // raw-delete-allow: only this test's own mkdtemp fixture; standalone CI has no removely dependency.
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

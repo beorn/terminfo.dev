@@ -4,7 +4,8 @@
  *
  * Reads measured probe results + curated editorial content,
  * cross-validates everything, computes stats, generates analysis text,
- * and writes derived content/analysis.json (gitignored; bun run build writes it).
+ * and writes derived analysis and client probe snapshots (gitignored).
+ * Dev snapshots at startup; rerun `bun analysis` after editing corpus data.
  *
  * Usage:
  *   bun scripts/generate-analysis.ts              # Generate analysis.json
@@ -32,7 +33,9 @@ import {
   loadTerminals as loadTerminalCatalog,
   subjectLabel,
 } from "@terminfo/catalog"
-import { siteAnalysisPath } from "./site-out.ts"
+import { siteAnalysisPath, siteProbesPath } from "./site-out.ts"
+import { createBuildMetadata } from "./build-metadata.ts"
+import { selectedSiteWorkingRun } from "../docs/data/working-runs.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -1495,6 +1498,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
     // Write output
     mkdirSync(dirname(outputPath), { recursive: true })
+    const { loadClientProbes } = await import("../docs/data/probes.data.ts")
+    const probesPath = siteProbesPath(root)
+    const probes = {
+      sourceCommit: createBuildMetadata(root).sourceCommit,
+      workingRunId: selectedSiteWorkingRun()?.id ?? null,
+      data: loadClientProbes(),
+    }
+    writeFileSync(probesPath, JSON.stringify(probes) + "\n")
+    console.log(`Generated ${probesPath}`)
     writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
     console.log(`Generated ${outputPath}`)
     console.log(

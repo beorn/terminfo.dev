@@ -45,6 +45,7 @@ it("the client loader reads only its own landing's prepared probe data", async (
   const first = join(directory, "first")
   const second = join(directory, "second")
   const sourceCommit = "a".repeat(40)
+  let workingRunId: string | null = null
   vi.doMock("../docs/data/current-results.ts", async (original) => ({
     ...(await original<typeof import("../docs/data/current-results.ts")>()),
     loadCurrentResults() {
@@ -52,6 +53,10 @@ it("the client loader reads only its own landing's prepared probe data", async (
     },
   }))
   vi.doMock("./build-metadata.ts", () => ({ createBuildMetadata: () => ({ sourceCommit }) }))
+  vi.doMock("../docs/data/working-runs.ts", async (original) => ({
+    ...(await original<typeof import("../docs/data/working-runs.ts")>()),
+    selectedSiteWorkingRun: () => (workingRunId === null ? null : { id: workingRunId }),
+  }))
   vi.resetModules()
   try {
     for (const [root, generated] of [
@@ -69,6 +74,11 @@ it("the client loader reads only its own landing's prepared probe data", async (
     const path = join(second, "content", "probes.json")
     writeFileSync(path, JSON.stringify({ sourceCommit: "b".repeat(40), data: { generated: "stale" } }))
     expect(() => loader.load()).toThrow(/probes\.json/)
+    workingRunId = "new working run"
+    writeFileSync(path, JSON.stringify({ sourceCommit, workingRunId: null, data: { generated: "old run" } }))
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    writeFileSync(path, JSON.stringify({ sourceCommit, workingRunId, data: { generated: "new run" } }))
+    expect(loader.load()).toEqual({ generated: "new run" })
     writeFileSync(path, "{")
     expect(() => loader.load()).toThrow(/probes\.json/)
     rmSync(path)
@@ -77,6 +87,7 @@ it("the client loader reads only its own landing's prepared probe data", async (
     vi.unstubAllEnvs()
     vi.doUnmock("../docs/data/current-results.ts")
     vi.doUnmock("./build-metadata.ts")
+    vi.doUnmock("../docs/data/working-runs.ts")
     vi.resetModules()
     // raw-delete-allow: only this test's own mkdtemp fixture; standalone CI has no removely dependency.
     rmSync(directory, { recursive: true, force: true })
@@ -92,7 +103,9 @@ it("analysis generation writes under the override and leaves the source tree alo
     mkdirSync(join(out, "scripts"))
     mkdirSync(join(out, "content"))
     for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+    mkdirSync(join(out, "docs"))
+    cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+    for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
     for (const name of [
       "features",
       "terminals",
@@ -102,13 +115,23 @@ it("analysis generation writes under the override and leaves the source tree alo
       "frameworks",
       "glossary",
       "annotations",
+      "platforms",
+      "released-v1-keys",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
     cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
-    for (const name of ["generate-analysis.ts", "site-out.ts"]) {
+    for (const name of ["generate-analysis.ts", "site-out.ts", "build-metadata.ts"]) {
       cpSync(join(sourceRoot, "scripts", name), join(out, "scripts", name))
+    }
+    for (const args of [
+      ["init", "--quiet"],
+      ["add", "scripts", "content"],
+      ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"],
+    ]) {
+      const initialized = spawnSync("git", args, { cwd: out, encoding: "utf8" })
+      expect(initialized.status, initialized.stderr).toBe(0)
     }
     const result = spawnSync(process.execPath, [join(out, "scripts", "generate-analysis.ts")], {
       cwd: out,
@@ -122,6 +145,11 @@ it("analysis generation writes under the override and leaves the source tree alo
     expect(existsSync(redirected)).toBe(true)
     expect(existsSync(join(out, "content", "analysis.json"))).toBe(false)
     expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
+    const probes = JSON.parse(readFileSync(join(writeRoot, "content", "probes.json"), "utf8"))
+    expect(probes.sourceCommit).toMatch(/^[a-f0-9]{40}$/)
+    expect(probes.data).toHaveProperty("features")
+    expect(probes.data).not.toHaveProperty("selected")
+    expect(existsSync(join(out, "content", "probes.json"))).toBe(false)
   } finally {
     // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
     // unavailable; `out` is this test's own mkdtemp scratch root

@@ -21,7 +21,9 @@ import {
   type PublicRunMetadata,
 } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
+import { selectedSiteWorkingRun, siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
+import { createBuildMetadata } from "../../scripts/build-metadata.ts"
+import { siteProbesPath } from "../../scripts/site-out.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
@@ -394,23 +396,43 @@ export function loadFullProbes(): ProbeData {
   return result
 }
 
+/** #30759: the full projection stays behind at build time; the client payload omits it. */
+export function loadClientProbes(): ClientProbeData {
+  const { selected, ...client } = loadFullProbes()
+  const workingHistory = siteWorkingHistory(contentDir)
+  if (!workingHistory) return client
+  // Reuse the projection already built once; never reread the corpus or carry full evidence per feature.
+  const workingOriginals = Object.fromEntries(
+    Object.entries(selected.history).map(([key, originals]) => [
+      key,
+      originals.map(({ results, ...original }) => ({
+        ...original,
+        states: Object.fromEntries(results.map((result) => [result.featureId, result.status])),
+      })),
+    ]),
+  )
+  return { ...client, ...shareStates(workingHistory), workingOriginals }
+}
+
 export default {
-  /** #30759: the full projection stays behind at build time; the client payload omits it. */
   load(): ClientProbeData {
-    const { selected, ...client } = loadFullProbes()
-    const workingHistory = siteWorkingHistory(contentDir)
-    if (!workingHistory) return client
-    // Reuse the projection already built once; never reread the corpus or carry full evidence per feature.
-    const workingOriginals = Object.fromEntries(
-      Object.entries(selected.history).map(([key, originals]) => [
-        key,
-        originals.map(({ results, ...original }) => ({
-          ...original,
-          states: Object.fromEntries(results.map((result) => [result.featureId, result.status])),
-        })),
-      ]),
-    )
-    return { ...client, ...shareStates(workingHistory), workingOriginals }
+    const root = join(contentDir, "..")
+    const path = siteProbesPath(root)
+    const snapshot = parseJsonStrict(path, readFileSync(path, "utf8")) as {
+      sourceCommit: string
+      workingRunId: string | null
+      data: ClientProbeData
+    } | null
+    if (
+      snapshot?.sourceCommit !== createBuildMetadata(root).sourceCommit ||
+      (snapshot.workingRunId ?? null) !== (selectedSiteWorkingRun()?.id ?? null)
+    ) {
+      throw new Error(`${path}: probe snapshot inputs differ from this build; run bun analysis`)
+    }
+    if (!snapshot.data || typeof snapshot.data !== "object" || Array.isArray(snapshot.data)) {
+      throw new Error(`${path}: invalid client probe data; run bun analysis`)
+    }
+    return snapshot.data
   },
 }
 
