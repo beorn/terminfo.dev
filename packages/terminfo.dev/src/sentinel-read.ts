@@ -472,7 +472,7 @@ export async function readThroughSentinel<T>(input: {
   }
   const save = restoreAfterPaint === undefined ? "\x1b7" : ""
   const restore = restoreAfterPaint ?? "\x1b8"
-  const paintCells = () => input.source.write(`${save}${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m${restore}`)
+  const paintCells = () => input.source.write(`${save}${atA()}\x1b[0m${paint}${atB()}${paint}\x1b[0m${restore}`)
   const clearCells = () => input.source.write(`${save}${atA()}\x1b[0m ${atB()} \x1b[0m${restore}`)
   let failed = false
   let failure: unknown

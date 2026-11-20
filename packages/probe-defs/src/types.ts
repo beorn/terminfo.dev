@@ -859,7 +859,7 @@ export interface CaptureLayoutGuard {
 
 /** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */
 export interface CalibrationSentinel {
-  form: "basic" | "reverse"
+  form: "basic" | "reverse" | "block"
   rgb: readonly [number, number, number]
 }
 

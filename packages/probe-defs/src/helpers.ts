@@ -2040,7 +2040,7 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
   }
   const cell = { row: 1, col: cols }
   const at = `\x1b[${cell.row};${cell.col}H`
-  const paint = `\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`
+  const paint = `\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]}\x1b[0m\x1b8`
   const blank = `\x1b7${at}\x1b[0m \x1b8`
   const start = sourceNow(ctx)
   const elapsed = () => sourceNow(ctx) - start
