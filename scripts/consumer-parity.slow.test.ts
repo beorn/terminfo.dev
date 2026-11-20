@@ -622,31 +622,50 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
   }
 }, 610_000)
 
+// Keep the producer rooted in its fixture, including the client snapshot and source identity.
+function prepareAnalysisFixture(out: string): string {
+  const sourceRoot = join(import.meta.dirname, "..")
+  mkdirSync(join(out, "scripts"))
+  mkdirSync(join(out, "content"))
+  for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
+  mkdirSync(join(out, "docs"))
+  cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+  for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+  const script = join(out, "scripts", "generate-analysis.ts")
+  cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+  cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
+  cpSync(join(import.meta.dirname, "build-metadata.ts"), join(out, "scripts", "build-metadata.ts"))
+  for (const name of [
+    "features",
+    "terminals",
+    "categories",
+    "standards",
+    "baselines",
+    "frameworks",
+    "glossary",
+    "annotations",
+    "platforms",
+    "released-v1-keys",
+  ]) {
+    cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
+  }
+  cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
+  cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+  for (const args of [
+    ["init", "--quiet"],
+    ["add", "scripts", "content"],
+    ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"],
+  ]) {
+    const initialized = spawnSync("git", args, { cwd: out, encoding: "utf8" })
+    expect(initialized.status, initialized.stderr).toBe(0)
+  }
+  return script
+}
+
 it("analysis rejects malformed required catalogs before replacing its output", () => {
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))
   try {
-    const sourceRoot = join(import.meta.dirname, "..")
-    mkdirSync(join(out, "scripts"))
-    mkdirSync(join(out, "content"))
-    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
-    const script = join(out, "scripts", "generate-analysis.ts")
-    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
-    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
-    for (const name of [
-      "features",
-      "terminals",
-      "categories",
-      "standards",
-      "baselines",
-      "frameworks",
-      "glossary",
-      "annotations",
-    ]) {
-      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
-    }
-    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
-    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+    const script = prepareAnalysisFixture(out)
     const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
     expect(control.error).toBeUndefined()
     expect(control.status, control.stderr).toBe(0)
@@ -681,28 +700,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
   // --validate must prove current values, not merely presence; existing catalog-refusal coverage cannot detect this.
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-validation-"))
   try {
-    const sourceRoot = join(import.meta.dirname, "..")
-    mkdirSync(join(out, "scripts"))
-    mkdirSync(join(out, "content"))
-    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
-    const script = join(out, "scripts", "generate-analysis.ts")
-    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
-    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
-    for (const name of [
-      "features",
-      "terminals",
-      "categories",
-      "standards",
-      "baselines",
-      "frameworks",
-      "glossary",
-      "annotations",
-    ]) {
-      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
-    }
-    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
-    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+    const script = prepareAnalysisFixture(out)
     const run = (args: string[]) =>
       spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
     const generated = run([])
