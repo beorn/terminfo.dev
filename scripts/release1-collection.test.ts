@@ -2248,6 +2248,7 @@ it.each([
   const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
   const measuredTarget = specimen.subject
   const measuredAt = specimen.measuredAt
+  let decidedIds: string[] = []
   const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args) => {
     if (
       fault === "linux-receipt" &&
@@ -2304,6 +2305,8 @@ it.each([
       const draft = JSON.parse(
         readFileSync(join(dirname(dirname(output)), "first-pass", "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
       ) as RunDraft
+      decidedIds = String(args[args.indexOf("--ids") + 1]).split(",")
+      const attempt = { scope: "probe" as const, startedAt: measuredAt }
       const muxRun = {
         ...structuredClone(draft),
         subject: {
@@ -2320,6 +2323,28 @@ it.each([
         identity: "unverified",
         origin: { kind: "collector" },
         measuredAt: specimen.measuredAt,
+        rawReplies: { ...draft.rawReplies, ...Object.fromEntries(decidedIds.map((id) => [id, '{"value":true}'])) },
+        assertions: decidedIds.map((featureId) => ({
+          featureId,
+          kind: "positive",
+          assertionType: "buffer_state",
+          rawReplyRef: featureId,
+          expected: "value=true",
+          observed: '{"value":true}',
+        })),
+        results: draft.results.map((result) => {
+          const index = decidedIds.indexOf(result.featureId)
+          return index < 0
+            ? result
+            : {
+                featureId: result.featureId,
+                status: "supported",
+                assertionType: "buffer_state",
+                rawReplyRef: result.featureId,
+                attempt,
+                tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [index] }],
+              }
+        }),
       }
       const rawDir = join(output, "fixture-run", "raw")
       mkdirSync(rawDir, { recursive: true })
@@ -2571,6 +2596,21 @@ it.each([
         const supplement = screen.supplements?.[0]
         expect(supplement?.status, supplement?.error).toBe("classified")
         expect(supplement).not.toHaveProperty("permissions")
+        // 34580: read the published pass, then its producer output; the retained forensic seed must not win.
+        const published = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8")) as typeof pass
+        const saved = published.contexts.find((entry) => entry.context.id === "screen")!.supplements![0]!
+        const producer = JSON.parse(readFileSync(saved.rawRun!, "utf8")) as RunDraft
+        expect([...saved.featureIds].sort()).toEqual([...decidedIds].sort())
+        for (const featureId of saved.featureIds) {
+          const result = producer.results.find((entry) => entry.featureId === featureId)
+          expect(result, featureId).toMatchObject({
+            status: "supported",
+            attempt: { scope: "probe" },
+            tests: [{ status: "supported", attempt: { scope: "probe" } }],
+          })
+          expect(saved.classification?.states[featureId], featureId).toBe("supported")
+        }
+        expect(existsSync(join(pass.directory, "mux-screen-linux.truecolor-on.draft.json"))).toBe(false)
       }
       if (fault === "source-negative-pending") {
         // #32038 (@cto a6dbdad3): pre-resolution headless drafts live under first-pass/<engine>.draft.json,
