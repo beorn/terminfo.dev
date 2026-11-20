@@ -375,7 +375,7 @@ function analysisSources(context: SelectedContextSummary) {
   }))
 }
 
-import probesLoader from "../docs/data/probes.data.ts"
+import { loadClientProbes } from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
 import * as probeData from "../docs/data/load-probes.ts"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
@@ -408,7 +408,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import { join } from "node:path";
       import { loadCurrentResults, compatibilitySubjects } from ${entry("docs/data/current-results.ts")};
       import { loadFullProbes } from ${entry("docs/data/probes.data.ts")};
-      import probesLoader from ${entry("docs/data/probes.data.ts")};
+      import { loadClientProbes } from ${entry("docs/data/probes.data.ts")};
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
       import { generateApi, storedDocument } from ${entry("scripts/generate-api.ts")};
       import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
@@ -422,7 +422,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       Bun.gc(true);
       const compatibility = compatibilitySubjects(projection, content);
       const site = loadFullProbes();
-      const matrix = probesLoader.load();
+      const matrix = loadClientProbes();
       const pages = terminalPaths.paths();
       const analyses = generateAnalysis();
       generateApi(out);
@@ -945,7 +945,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("ships current cells without the build-time selection payload", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     expect(Object.hasOwn(site, "selected")).toBe(false)
     // #30759 AC3: the projection no longer carries a historical reader at all, so there is no
     // second, legacy selection payload that could ride along with the site's current rows.
@@ -956,7 +956,7 @@ describe("selected-run consumer parity", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
     try {
-      const site = probesLoader.load()
+      const site = loadClientProbes()
       generateApi(out)
       const v3 = readFileSync(join(out, "api", "v3", "data.json"), "utf8")
       for (const serialized of [JSON.stringify(site), v3]) {
@@ -1131,7 +1131,7 @@ describe("selected-run consumer parity", () => {
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-parity-"))
     try {
-      const site = probesLoader.load()
+      const site = loadClientProbes()
       const terminal = terminalPaths.paths().find((page) => page.params.id === "kitty")
       const analyses = generateAnalysis()
       const analysis = analyses["terminals/kitty"]
@@ -1253,7 +1253,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("keeps a mixed-suite subject visible with one retained original cell", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
@@ -1414,7 +1414,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("scores baseline support over the full catalog and exposes test failures", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
     // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
@@ -1443,7 +1443,7 @@ describe("selected-run consumer parity", () => {
     try {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
-      expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
+      expect(loadClientProbes().baselineStats.screen?.core).toMatchObject({
         counts: { "probe-invalid": 1, "probe-todo": graded - 1 },
         score: { all: graded, supported: 0 },
       })

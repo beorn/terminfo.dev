@@ -50,7 +50,7 @@ import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import * as rawCaptureReader from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
-import clientProbes, { loadFullProbes } from "../docs/data/probes.data.ts"
+import { loadClientProbes, loadFullProbes } from "../docs/data/probes.data.ts"
 import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 
 /**
@@ -711,7 +711,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       )
     const accepted = acceptedCounts()
     const page = loadFullProjectData()
-    const history = clientProbes.load().workingHistory
+    const history = loadClientProbes().workingHistory
     expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
     expect(page.working?.run.id).toBe(PARTIAL)
     // Full preview carries receipts/counts; detail pages receive their own probe rows.
@@ -726,7 +726,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
     // A new collection completing mid-build belongs to the next build, not only some pages.
     collection(older.parent, WRITING)
-    const sameBuild = clientProbes.load()
+    const sameBuild = loadClientProbes()
     expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
   })
 
@@ -738,7 +738,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(parent, PARTIAL)
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
     const server = siteWorkingHistory(liveContentRoot())!
-    const client = clientProbes.load()
+    const client = loadClientProbes()
     const refs = client.workingHistory!.flatMap((view) => view.contexts.map((context) => context.statesRef))
     expect(refs.length).toBeGreaterThan(1)
     expect(new Set(refs)).toEqual(new Set([0]))
@@ -824,7 +824,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     () => {
       const bounded = liveContentRoot()
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
-      const publicPage = clientProbes.load()
+      const publicPage = loadClientProbes()
       expect(publicPage).not.toHaveProperty("workingOriginals")
       const expected = loadFullProbes().selected.history
       expect(
@@ -835,7 +835,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
       const retained = collection()
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", retained.parent)
-      const page = clientProbes.load()
+      const page = loadClientProbes()
       expect(Object.keys(page.workingOriginals ?? {})).toEqual(Object.keys(expected))
       for (const [key, originals] of Object.entries(expected)) {
         const actual = page.workingOriginals?.[key]
@@ -859,7 +859,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
         }
       }
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", undefined)
-      expect(clientProbes.load()).toEqual(publicPage)
+      expect(loadClientProbes()).toEqual(publicPage)
     },
   )
 
@@ -974,7 +974,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const fixture = collection()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
     const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
-    const client = clientProbes.load()
+    const client = loadClientProbes()
     const context = client.workingHistory?.[0]?.contexts[0]
     expect(client.workingStates?.[context?.statesRef ?? -1]).toEqual(
       Object.fromEntries(original.results!.map((result) => [result.featureId, result.status])),
@@ -1011,7 +1011,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       collection(parent, PARTIAL)
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
       const page = loadFullProjectData()
-      const history = clientProbes.load().workingHistory
+      const history = loadClientProbes().workingHistory
       expect(page.working?.run.id).toBe(PARTIAL)
       expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
       expect(history?.[0]?.unreadable?.reason).toContain(
