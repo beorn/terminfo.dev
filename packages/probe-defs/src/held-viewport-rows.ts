@@ -128,21 +128,35 @@ function decided(
 ): ProbeCallbackResult {
   // Two brackets at the same point share one painted reference, and an already-held read's b0 is the reference
   // it bound to: each frame is cited once.
-  const byRef = new Map<string, ObservationFrame>()
-  for (const { candidate, reference } of evidence) {
-    for (const frame of [candidate.b0, ...candidate.held, candidate.b1, reference]) byRef.set(frame.ref, frame.recorded)
-  }
-  const frames = [...byRef.values()].sort((a, b) => a.capturedAt - b.capturedAt)
   const target = evidence.at(-1)?.candidate.held[0]
+  return decidedFrames(
+    outcome,
+    note,
+    expected,
+    evidence.flatMap(({ candidate, reference }) =>
+      [candidate.b0, ...candidate.held, candidate.b1, reference].map((frame) => frame.recorded),
+    ),
+    target?.recorded,
+    { ...state, held: target?.ref, reference: evidence.at(-1)?.reference.ref },
+  )
+}
+
+/** One assertion/citation path for both a qualified held candidate and an observed snap to the bottom. */
+function decidedFrames(
+  outcome: "supported" | "unsupported",
+  note: string,
+  expected: string,
+  observedFrames: readonly ObservationFrame[],
+  target: ObservationFrame | undefined,
+  state: object,
+): ProbeCallbackResult {
+  const byRef = new Map(observedFrames.map((frame) => [frame.ref, frame]))
+  const frames = [...byRef.values()].sort((a, b) => a.capturedAt - b.capturedAt)
   // #34632: a decided screenshot has to cite the frame digests it decided on (run-parser's
   // requireCitedFrameDigests). The held crop and the observed reference it was compared against are exactly the two
   // frames this grade rests on, so they travel in the assertion's own evidence; the plain state alone left a
   // decided held row unreadable, and the whole run with it.
-  const response = JSON.stringify({
-    ...state,
-    held: target?.ref,
-    reference: evidence.at(-1)?.reference.ref,
-  })
+  const response = JSON.stringify(state)
   return {
     pass: outcome === "supported",
     note,

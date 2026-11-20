@@ -50,6 +50,7 @@ interface Behaviour {
   readonly rows?: number
   /** A held viewport preserves its content, snaps, or keeps its distance from the bottom when output scrolls. */
   readonly holdOutput?: "preserve" | "snap" | "follow"
+  readonly synchronizedHoldOutput?: "preserve" | "snap" | "follow"
   /** A missing in-order status reply cannot prove that the output was parsed. */
   readonly witnessReply?: boolean
 }
@@ -72,14 +73,16 @@ function terminal(behaviour: Behaviour = {}) {
   let cursor = 0
   let offset = 0
   let refs = 0
+  let synchronized = false
   const trace = { started: 0, unsettled: 0, abandoned: false }
   const scroll = () => {
     const [top = "", ...rest] = screen
     history.push(top)
     if (history.length > keep) history = history.slice(history.length - keep)
     screen = [...rest, ""]
-    if (offset > 0 && behaviour.holdOutput === "preserve") offset = Math.min(history.length, offset + 1)
-    if (offset > 0 && behaviour.holdOutput === "snap") offset = 0
+    const output = synchronized ? (behaviour.synchronizedHoldOutput ?? behaviour.holdOutput) : behaviour.holdOutput
+    if (offset > 0 && output === "preserve") offset = Math.min(history.length, offset + 1)
+    if (offset > 0 && output === "snap") offset = 0
   }
   const write = (text: string) => {
     trace.started++
@@ -101,6 +104,10 @@ function terminal(behaviour: Behaviour = {}) {
         screen = screen.map(() => "")
       } else if (token === "\x1b[H") {
         cursor = 0
+      } else if (token === "\x1b[?2026h") {
+        synchronized = true
+      } else if (token === "\x1b[?2026l") {
+        synchronized = false
       } else if (row !== undefined) {
         cursor = Number(row) - 1
       } else if (token === "\x1b]720\x07") {
@@ -195,7 +202,8 @@ async function grade(id: string, behaviour: Behaviour = {}): Promise<ProbeCallba
   return result
 }
 
-const status = (result: ProbeCallbackResult) => result.tests?.[0]?.status
+const status = (result: ProbeCallbackResult) =>
+  result.tests?.[0]?.status ?? (result.notTested ? "probe-todo" : undefined)
 
 describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("viewport hold on %s", (route) => {
   it.each([
@@ -216,7 +224,18 @@ describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("
       witnessReply: false,
     })
     expect(status(result)).toBe("probe-todo")
-    expect(result.tests?.[0]?.reason).toMatch(/processed|witness|status.*reply/i)
+    expect(result.tests?.[0]?.reason ?? result.note).toMatch(/processed|witness|status.*reply/i)
+  })
+
+  it("also measures synchronized output after ordinary output preserves the held view", async () => {
+    const result = await grade("scrollback.viewport-hold-output", {
+      route,
+      holdOutput: "preserve",
+      synchronizedHoldOutput: "snap",
+    })
+    expect(status(result)).toBe("unsupported")
+    expect(result.note).toMatch(/synchronized/i)
+    citesItsFrames(result)
   })
 })
 
