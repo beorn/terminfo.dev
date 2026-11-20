@@ -2225,8 +2225,8 @@ describe("private finite daemon startup", () => {
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
       let reportedCellSize = null, frames = 0, calibrationFailure
-      const rawTimings = { censusMs: 11, imageMs: 17, restoreMs: 23, convertMs: 29 }
-      const styledTimings = { censusMs: 31, imageMs: 37, restoreMs: 41, convertMs: 43 }
+      const rawTimings = { censusMs: 11, censusInnerMs: 3, imageMs: 17, restoreMs: 23, restoreInnerMs: 5, convertMs: 29 }
+      const styledTimings = { censusMs: 31, censusInnerMs: 7, imageMs: 37, restoreMs: 41, restoreInnerMs: 9, convertMs: 43 }
       const sentinelRead = await import("./packages/terminfo.dev/src/sentinel-read.ts")
       // This collector fixture checks trace custody, not the sentinel's pixel oracle (whose
       // own suite uses real changed frames). Execute both callbacks through the served route.

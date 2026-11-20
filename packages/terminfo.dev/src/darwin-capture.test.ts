@@ -74,7 +74,9 @@ test("the real Darwin census script projects unrelated identities without readin
       return { js: value }
     },
   }))
+  let jxaClock = 1000
   const jxa = {
+    Date: { now: () => (jxaClock += 7) },
     ObjC: { import: () => {}, castRefToObject: (value: unknown) => value },
     $: {
       CGWindowListCopyWindowInfo: () => raw,
@@ -88,6 +90,8 @@ test("the real Darwin census script projects unrelated identities without readin
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args) => {
     if (file !== "/usr/bin/osascript") throw new Error(`Unexpected command ${file}`)
     const result = runInNewContext(args[3]!, { ...jxa })
+    expect(JSON.parse(result).innerMs).toBe(7)
+    expect(JSON.parse(result).rows).toHaveLength(windows.length)
     return Buffer.from(result)
   })
   try {
@@ -304,7 +308,7 @@ test("Darwin title reads use fresh owned-window names without capturing pixels",
   vi.spyOn(captureCore, "command").mockImplementation(async (file) => {
     expect(file).toBe("/usr/bin/osascript")
     censuses++
-    return Buffer.from(JSON.stringify([window]))
+    return Buffer.from(JSON.stringify({ rows: [window], innerMs: 3 }))
   })
   try {
     const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
@@ -351,7 +355,7 @@ test("Darwin capture falls back to a region capture of the window bounds when th
     .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
       if (file === "/usr/bin/osascript") {
         elapsed += 11
-        return Buffer.from(JSON.stringify([own]))
+        return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
       }
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       calls.push(args)
@@ -426,7 +430,14 @@ test("Darwin capture falls back to a region capture of the window bounds when th
     ])
     // #35145: installation is excluded; both image attempts belong to this acquisition,
     // and the fresh restore census and conversion each retain their own elapsed time.
-    expect(result.trace).toMatchObject({ censusMs: 11, imageMs: 30, restoreMs: 11, convertMs: 19 })
+    expect(result.trace).toMatchObject({
+      censusMs: 11,
+      censusInnerMs: 3,
+      imageMs: 30,
+      restoreMs: 11,
+      restoreInnerMs: 3,
+      convertMs: 19,
+    })
   } finally {
     decoder.mockRestore()
     runner.mockRestore()
@@ -457,7 +468,7 @@ test("the window census and restore confirmation own their budget while the wind
     .spyOn(captureCore, "command")
     .mockImplementation(async (file, args, _input, deadline, _onStderr, _environment, step) => {
       calls.push({ file, deadline, step })
-      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
@@ -513,7 +524,7 @@ test("a census that outlives the paint deadline still leaves the window image a 
         // The census answers late enough to spend the caller's paint deadline, as a cold window
         // enumeration on a six-window app did in the live failure.
         await new Promise((resolve) => setTimeout(resolve, 60))
-        return Buffer.from(JSON.stringify([own]))
+        return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
       }
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       expect(step?.step).toBe("window image")
@@ -553,7 +564,7 @@ test("Darwin capture on an owned host refuses a refused window image instead of 
   const runner = vi
     .spyOn(captureCore, "command")
     .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
-      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       calls.push(args)
       if (args[0] === "-l") {
@@ -600,7 +611,7 @@ test("Darwin capture crops target and same-shot control from one acquired screen
     .mockImplementation(async (file, args, _input, _deadline, _onStderr) => {
       if (file === "/usr/bin/osascript") {
         elapsed += 23
-        return Buffer.from(JSON.stringify([own]))
+        return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
       }
       if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
       elapsed += 29
@@ -626,11 +637,25 @@ test("Darwin capture crops target and same-shot control from one acquired screen
     expect(frame.controlRegionRectangle).toEqual({ x: 10, y: 0, width: 30, height: 10 })
     expect(frame.regionDigest).toMatch(/^sha256:/)
     expect(frame.controlRegionDigest).toMatch(/^sha256:/)
-    expect(trace).toMatchObject({ censusMs: 23, imageMs: 29, restoreMs: 23, convertMs: 0 })
+    expect(trace).toMatchObject({
+      censusMs: 23,
+      censusInnerMs: 3,
+      imageMs: 29,
+      restoreMs: 23,
+      restoreInnerMs: 3,
+      convertMs: 0,
+    })
     // Raw pre-paint and styled captures retain separate per-acquisition buckets, never totals
     // accumulated since installation or the preceding frame.
     const raw = await adapter.captureRaw({ featureId: "sgr.blink", role: "control", label: "pre-paint" })
-    expect(raw.result.trace).toMatchObject({ censusMs: 23, imageMs: 29, restoreMs: 23, convertMs: 0 })
+    expect(raw.result.trace).toMatchObject({
+      censusMs: 23,
+      censusInnerMs: 3,
+      imageMs: 29,
+      restoreMs: 23,
+      restoreInnerMs: 3,
+      convertMs: 0,
+    })
   } finally {
     decoder.mockRestore()
     runner.mockRestore()
@@ -655,7 +680,7 @@ test.each(["command failure", "missing output"])(
       .spyOn(captureCore, "command")
       .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
         if (file === "/usr/bin/osascript") {
-          return Buffer.from(JSON.stringify([censuses++ === 0 ? selected : preCapture]))
+          return Buffer.from(JSON.stringify({ rows: [censuses++ === 0 ? selected : preCapture], innerMs: 3 }))
         }
         if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected diagnostic command ${file}`)
         calls.push(args)
@@ -760,7 +785,7 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
   const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
   const decoder = convertsTo(own.bounds.width, own.bounds.height)
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args) => {
-    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
     if (file === "/usr/sbin/screencapture") {
       writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
@@ -802,7 +827,7 @@ test("Darwin capture still refuses a converted frame at another scale (34549)", 
   const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
   const decoder = convertsTo(160, 126)
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args) => {
-    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [own], innerMs: 3 }))
     if (file === "/usr/sbin/screencapture") {
       writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
@@ -900,7 +925,7 @@ test("Darwin capture resolves a window tie through the ownership adapter's windo
   const launched = { id: 34, ownerPid: 41, layer: 0, bounds, alpha: 1, onscreen: true }
   const startup = { ...launched, id: 29 }
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file) => {
-    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([startup, launched]))
+    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [startup, launched], innerMs: 3 }))
     throw new Error(`Unexpected command ${file}`)
   })
   try {
@@ -925,7 +950,7 @@ test("Darwin capture resolves a window tie through the ownership adapter's windo
     // Every other app arm keeps selecting by size and needs no receipt at all.
     const sized = { ...launched, alpha: 1, onscreen: true, bounds: { x: 0, y: 0, width: 1000, height: 677 } }
     runner.mockImplementation(async (file) => {
-      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([startup, sized]))
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify({ rows: [startup, sized], innerMs: 3 }))
       throw new Error(`Unexpected command ${file}`)
     })
     const otherAdapter = await createDarwinCapture(captureDirectory, {

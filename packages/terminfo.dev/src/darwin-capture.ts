@@ -245,7 +245,8 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
  * Capture supplies scope as JSON; discovery callers omit it to read the full census as before.
  * Owned offscreen/transparent/layered rivals remain full rows for the existing selector and refusals.
  */
-export const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+export const CENSUS = `var censusStartedAt = Date.now();
+ObjC.import('CoreGraphics'); ObjC.import('Foundation');
 var scope = typeof scope === 'undefined' ? null : scope;
 function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
 function bounds(dict) {
@@ -268,7 +269,7 @@ for (var i = 0; i < count; i++) {
   var nameRef = w.objectForKey('kCGWindowName');
   rows.push({ id: id, ownerPid: ownerPid, layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), alpha: value(w, 'kCGWindowAlpha'), onscreen: onscreen(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage'), namePresent: nameRef ? true : false, name: nameRef ? nameRef.js : null });
 }
-JSON.stringify(rows);`
+JSON.stringify(scope === null ? rows : { rows: rows, innerMs: Date.now() - censusStartedAt });`
 
 interface ScreencaptureAttempt {
   file: string
@@ -313,7 +314,7 @@ export async function createDarwinCapture(
     step: "window census" | "restore confirmation",
     windowId: number | undefined = targetWindowId,
   ) => {
-    const rows: unknown = JSON.parse(
+    const measured: { rows: unknown; innerMs: unknown } = JSON.parse(
       (
         await command(
           "/usr/bin/osascript",
@@ -331,11 +332,15 @@ export async function createDarwinCapture(
         )
       ).toString(),
     )
-    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, windowId, windowSelection)
+    if (typeof measured?.innerMs !== "number" || !Number.isFinite(measured.innerMs) || measured.innerMs < 0) {
+      throw new Error("Darwin census returned invalid inner elapsed time")
+    }
+    const { selected, ownedWindows } = censusDarwinWindows(measured.rows, appPid, windowId, windowSelection)
     const { window, alpha, onscreen, sharingState, memoryUsage, name } = selected
     return {
       window,
       name,
+      innerMs: measured.innerMs,
       // Observations may change without changing window identity; null means the census did not return a value.
       observations: { sharingState, memoryUsage, alpha, onscreen },
       // Every owned layer-0 window and why only one was the target: the proof the frame shows the terminal (30685).
@@ -343,7 +348,7 @@ export async function createDarwinCapture(
     }
   }
   const installed = await census("window census")
-  const { name: _installedName, ...installedCensus } = installed
+  const { name: _installedName, innerMs: _installedInnerMs, ...installedCensus } = installed
   const installCensus: DarwinInstallCensus = {
     ...installedCensus,
     takenAt: new Date().toISOString(),
@@ -462,7 +467,7 @@ export async function createDarwinCapture(
     const imageMs = Math.round(performance.now() - imageStart)
     const capturedAt = Date.now()
     const restoreStart = performance.now()
-    await assertOwned("restore confirmation")
+    const postCapture = await assertOwned("restore confirmation")
     const restoreMs = Math.round(performance.now() - restoreStart)
     // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
     // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
@@ -486,8 +491,12 @@ export async function createDarwinCapture(
       // Disjoint elapsed acquisition steps for this frame; image includes both attempts
       // when the existing region fallback runs. Installation and conversion are separate.
       censusMs,
+      // Inner JXA includes imports, CG enumeration and projection; the outer residual also
+      // contains process/transport/serialization work and is not an isolated startup measurement.
+      censusInnerMs: preCapture.innerMs,
       imageMs,
       restoreMs,
+      restoreInnerMs: postCapture.innerMs,
       // The converter's wall time for this frame: extent query plus decode (#34549).
       convertMs,
       captureCommand: [producing.file, ...producing.args.slice(0, -1)],
