@@ -88,8 +88,15 @@ describe("the iTerm2 preflight before the shared CLI launch", () => {
 })
 
 describe("resolving the owned window after the daemon registers", () => {
-  test("adopts the one post-preflight process and its one new layer-0 window", () => {
-    fakeHost({ processes: [{ pid: 900, second: 1 }], windows: [window(10, 50), window(41, 900)] })
+  test("adopts the one new onscreen window despite the owner's offscreen layer-0 auxiliaries", () => {
+    // The native census retained four offscreen strips and one offscreen square (33845).
+    const auxiliaries = [
+      ...[804, 805, 806, 807].map((id) =>
+        window(id, 900, { onscreen: false, bounds: { x: 0, y: 0, width: 1920, height: 30 } }),
+      ),
+      window(809, 900, { onscreen: false, bounds: { x: 0, y: 580, width: 500, height: 500 } }),
+    ]
+    fakeHost({ processes: [{ pid: 900, second: 1 }], windows: [window(10, 50), window(41, 900), ...auxiliaries] })
     expect(resolveIterm2Window(launched, "/dev/ttys007\n")).toEqual({
       provider: "iterm2",
       windowId: 41,
@@ -130,8 +137,13 @@ describe("resolving the owned window after the daemon registers", () => {
   test.each([
     ["zero", [window(10, 50)], /found 0/],
     [
-      "two (session restore)",
+      "two (extra terminal window)",
       [window(41, 900), window(42, 900, { bounds: { x: 0, y: 0, width: 400, height: 300 } })],
+      /found 2/,
+    ],
+    [
+      "two (terminal window and warning sheet)",
+      [window(41, 900), window(814, 900, { bounds: { x: 805, y: 448, width: 260, height: 202 } })],
       /found 2/,
     ],
   ])("refuses %s new windows for the owner pid", (_name, windows, refusal) => {

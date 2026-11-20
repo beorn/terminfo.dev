@@ -376,9 +376,8 @@ test("an omitted selection sends no ids to the daemon", async () => {
   )
 })
 
-// The retained codimac run restored six windows despite a fresh process and private suite. Existing
-// sole-window checks correctly reject that state, but do not prevent restoration at launch.
-test("an isolated iTerm2 CLI launch suppresses restoration and keeps its exact-window proof and recorded-pid cleanup", async () => {
+// The codimac census found a fresh untitled login window beside the daemon window.
+test("an isolated iTerm2 CLI launch disables the initial untitled window in its private suite", async () => {
   const launch = {
     executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     preflightAtEpochSeconds: 1794489720,
@@ -396,6 +395,16 @@ test("an isolated iTerm2 CLI launch suppresses restoration and keeps its exact-w
   vi.mocked(resolveIterm2Window).mockReturnValue(owned)
   vi.mocked(closeOwnedTerminalWindow).mockReturnValue(undefined)
   await handleApp("iterm2", {})
+  expect(
+    vi
+      .mocked(execFileSync)
+      .mock.calls.filter(([path]) => path === "/usr/bin/defaults")
+      .map(([, args]) => args),
+  ).toEqual([["write", "dev.terminfo.iterm2.private-run", "OpenNoWindowsAtStartup", "-bool", "YES"]])
+  const preferenceWrite = vi.mocked(execFileSync).mock.calls.findIndex(([path]) => path === "/usr/bin/defaults")
+  expect(vi.mocked(execFileSync).mock.invocationCallOrder[preferenceWrite]).toBeLessThan(
+    vi.mocked(spawn).mock.invocationCallOrder[0]!,
+  )
   // Project only the launch contract: a failing argv assertion must not dump the inherited environment.
   expect(
     vi.mocked(spawn).mock.calls.map(([command, args, options]) => [
@@ -409,15 +418,7 @@ test("an isolated iTerm2 CLI launch suppresses restoration and keeps its exact-w
   ).toEqual([
     [
       launch.executablePath,
-      [
-        "-suite",
-        "dev.terminfo.iterm2.private-run",
-        "-ApplePersistenceIgnoreState",
-        "YES",
-        "-NSQuitAlwaysKeepsWindows",
-        "NO",
-        "--command=/private/run/serve.sh",
-      ],
+      ["-suite", "dev.terminfo.iterm2.private-run", "--command=/private/run/serve.sh"],
       { detached: true, stdio: "ignore" },
     ],
   ])
