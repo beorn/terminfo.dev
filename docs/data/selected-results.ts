@@ -44,6 +44,7 @@ import {
   type HarnessOutcome,
 } from "@terminfo/probe-defs"
 import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
+import { DECIDED_STATUSES } from "./app-cells.ts"
 import {
   currentIdentityRuleCheck,
   identityRuleRevision,
@@ -919,7 +920,7 @@ function composeContextSummaries(
         probes: Map<ProbeMethod | null, { run: ProjectionRun; result: ProbeResult }>
       }
     >()
-    const decided = new Set<FeatureResultStatus>(["supported", "unsupported", "untestable"])
+    const decided = DECIDED_STATUSES
     const keptStreak = new Map<string, number>()
     let keptCount = 0
     const keptDecidedCell = (run: ProjectionRun, result: ProbeResult): boolean => {

@@ -163,6 +163,24 @@ program
     await handleReport(opts)
   })
 
+// ── place ──
+
+program
+  .command("place")
+  .description(
+    "Place a retained collected run into this checkout's corpus, stage exactly what it wrote and print the commit command",
+  )
+  .argument("<run>", "The retained run JSON, with its artifacts/ directory beside it")
+  .option(
+    "--accept-downgrades <count>",
+    "Place a run that turns this exact number of served decided cells undecided (the refusal prints the number)",
+  )
+  .option("--reason <text>", "Why the downgrades are accepted; recorded in the commit message")
+  .action(async (run: string, opts: { acceptDowngrades?: string; reason?: string }) => {
+    const { handlePlace } = await import("./place.ts")
+    handlePlace(run, opts)
+  })
+
 // ── submit ──
 
 program
