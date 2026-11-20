@@ -376,7 +376,9 @@ test("an omitted selection sends no ids to the daemon", async () => {
   )
 })
 
-test("an isolated iTerm2 CLI launch keeps its exact-window sole-instance proof and recorded-pid cleanup", async () => {
+// The retained codimac run restored six windows despite a fresh process and private suite. Existing
+// sole-window checks correctly reject that state, but do not prevent restoration at launch.
+test("an isolated iTerm2 CLI launch suppresses restoration and keeps its exact-window proof and recorded-pid cleanup", async () => {
   const launch = {
     executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     preflightAtEpochSeconds: 1794489720,
@@ -396,7 +398,15 @@ test("an isolated iTerm2 CLI launch keeps its exact-window sole-instance proof a
   await handleApp("iterm2", {})
   expect(spawn).toHaveBeenCalledWith(
     launch.executablePath,
-    ["-suite", "dev.terminfo.iterm2.private-run", "--command=/private/run/serve.sh"],
+    [
+      "-suite",
+      "dev.terminfo.iterm2.private-run",
+      "-ApplePersistenceIgnoreState",
+      "YES",
+      "-NSQuitAlwaysKeepsWindows",
+      "NO",
+      "--command=/private/run/serve.sh",
+    ],
     expect.objectContaining({ detached: true, stdio: "ignore" }),
   )
   expect(vi.mocked(prepareIterm2Launch).mock.invocationCallOrder[0]).toBeLessThan(
