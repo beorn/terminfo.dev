@@ -2104,9 +2104,13 @@ test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac fron
   const osc133 = ["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"] as const
   for (const id of osc633) {
     expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
-    // The shared-parser proof: the app's termio drives the core parser, which has no OS branch.
+    // The Mac frontend -> embedded apprt -> shared-core parser proof, plus exact v1.4.0 macos/Sources paths (#37197, #37199).
+    expect(mac[id]).toContain("macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift:389")
+    expect(mac[id]).toContain("src/apprt/embedded.zig:617,1842")
     expect(mac[id]).toContain("src/termio/Termio.zig:14,66")
     expect(mac[id]).toContain("osc.zig:455-505")
+    expect(mac[id]).toContain("macos/Sources/Ghostty/Ghostty.App.swift:527-536,813-888")
+    expect(mac[id]).toContain("macos/Sources/Features/Terminal/BaseTerminalController.swift:1622")
   }
   for (const id of osc133) {
     expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS parses OSC 133/)
@@ -2128,6 +2132,11 @@ test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac fron
   const other = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.3.1", os: "macos" })
   for (const id of [...osc633, ...osc133]) expect(other[id]).toBeUndefined()
   const linux = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
+  for (const id of osc633) {
+    expect(linux[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 has no OSC 633 parser/)
+    expect(linux[id]).not.toContain("macos/Sources")
+    expect(linux[id]).not.toBe(mac[id])
+  }
   for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
 })
 
