@@ -166,12 +166,16 @@ export function supplementOf(subject: {
  * selection joins a supplement to its default with it, and placement refuses a supplement without one (33550).
  */
 export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
+  // Historical and focus-enabled runs are different contexts. A supplement keeps its recorded regime.
+  const defaultConfig =
+    supplement.id === "tmux" &&
+    (supplement.config === "tmux: focus-events on" || supplement.config === TMUX_SET_TITLES_CONFIG)
+      ? "tmux: focus-events on"
+      : MUX_DEFAULT_CONFIG
   return (
     candidate.permissions === null &&
     supplementOf(candidate) === undefined &&
-    (candidate.kind !== "mux" ||
-      candidate.config === MUX_DEFAULT_CONFIG ||
-      (candidate.id === "tmux" && candidate.config === "tmux: focus-events on")) &&
+    (candidate.kind !== "mux" || candidate.config === defaultConfig) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&

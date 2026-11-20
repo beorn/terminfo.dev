@@ -378,54 +378,58 @@ describe("truecolor-on supplement (33151)", () => {
 describe.each([
   [TMUX_SET_TITLES_CONFIG, "tmux: focus-events on", MUX_DEFAULT_CONFIG],
   ['tmux: set-titles on; set-titles-string "#T"', MUX_DEFAULT_CONFIG, "tmux: focus-events on"],
-])(
-  "set-titles-on supplement (32593), %s",
-  (config, defaultConfig, otherConfig) => {
-    const OSC = "extensions.osc22-pointer"
-    const muxCatalog = { ids: [OSC, "sgr.bold"], suite: { ...suite, catalogIds: [OSC, "sgr.bold"] } }
-    const base = run(
+])("set-titles-on supplement (32593), %s", (config, defaultConfig, otherConfig) => {
+  const OSC = "extensions.osc22-pointer"
+  const muxCatalog = { ids: [OSC, "sgr.bold"], suite: { ...suite, catalogIds: [OSC, "sgr.bold"] } }
+  const base = run(
+    "tmux",
+    "tmux-default",
+    { [OSC]: "declared-untestable", "sgr.bold": "supported" },
+    null,
+    at,
+    { config: defaultConfig! },
+    muxCatalog,
+  )
+  const supplement = run("tmux", "tmux-set-titles", { [OSC]: "unsupported" }, null, at, { config }, muxCatalog)
+
+  it("joins only its recorded default when legacy and focus-enabled defaults coexist", () => {
+    const other = run(
       "tmux",
-      "tmux-default",
-      { [OSC]: "declared-untestable", "sgr.bold": "supported" },
+      "tmux-other-default",
+      { [OSC]: "declared-untestable" },
       null,
       at,
-      { config: defaultConfig! },
+      { config: otherConfig! },
       muxCatalog,
     )
-    const supplement = run("tmux", "tmux-set-titles", { [OSC]: "unsupported" }, null, at, { config }, muxCatalog)
+    const contexts = Object.values(projectWith([base, other, supplement], muxCatalog.ids).contexts)
+    expect(contexts).toHaveLength(2)
+    expect(contexts.find((entry) => entry.subject?.config === defaultConfig)?.cells[OSC]?.origin.runId).toBe(
+      "tmux-set-titles",
+    )
+    expect(contexts.find((entry) => entry.subject?.config === otherConfig)?.cells[OSC]?.origin.runId).toBe(
+      "tmux-other-default",
+    )
+  })
 
-    it("joins only its recorded default when legacy and focus-enabled defaults coexist", () => {
-      const other = run(
-        "tmux", "tmux-other-default", { [OSC]: "declared-untestable" }, null, at,
-        { config: otherConfig! }, muxCatalog,
-      )
-      const contexts = Object.values(projectWith([base, other, supplement], muxCatalog.ids).contexts)
-      expect(contexts).toHaveLength(2)
-      expect(contexts.find((entry) => entry.subject?.config === defaultConfig)?.cells[OSC]?.origin.runId)
-        .toBe("tmux-set-titles")
-      expect(contexts.find((entry) => entry.subject?.config === otherConfig)?.cells[OSC]?.origin.runId)
-        .toBe("tmux-other-default")
-    })
+  it("declares exactly one row, and only the set-titles config is its run", () => {
+    expect(SET_TITLES_ON.featureIds).toEqual([OSC])
+    expect(SET_TITLES_ON.notesDecided).toBe(true)
+    expect(supplementOf(base.subject)).toBeUndefined()
+    expect(supplementOf(supplement.subject)).toBe(SET_TITLES_ON)
+  })
 
-    it("declares exactly one row, and only the set-titles config is its run", () => {
-      expect(SET_TITLES_ON.featureIds).toEqual([OSC])
-      expect(SET_TITLES_ON.notesDecided).toBe(true)
-      expect(supplementOf(base.subject)).toBeUndefined()
-      expect(supplementOf(supplement.subject)).toBe(SET_TITLES_ON)
-    })
-
-    it("fills the decided untestable cell from the supplement's own run, and no other decided cell", () => {
-      const key = Object.keys(projectWith([base], muxCatalog.ids).contexts)[0]!
-      const before = projectWith([base], muxCatalog.ids).contexts[key]!
-      expect(before.cells[OSC]?.result.status).toBe("untestable")
-      const after = projectWith([base, supplement], muxCatalog.ids).contexts[key]!
-      expect(after.cells[OSC]?.origin.runId).toBe("tmux-set-titles")
-      expect(after.cells[OSC]?.result.status).toBe("unsupported")
-      expect(after.cells[OSC]?.supplement).toMatchObject({ name: "set-titles-on", filled: true })
-      // sgr.bold is decided in the base run and is not one of the supplement's ids: status, origin and marker hold.
-      expect(after.cells["sgr.bold"]?.result).toEqual(before.cells["sgr.bold"]?.result)
-      expect(after.cells["sgr.bold"]?.origin.runId).toBe("tmux-default")
-      expect(after.cells["sgr.bold"]?.supplement).toBeUndefined()
-    })
-  },
-)
+  it("fills the decided untestable cell from the supplement's own run, and no other decided cell", () => {
+    const key = Object.keys(projectWith([base], muxCatalog.ids).contexts)[0]!
+    const before = projectWith([base], muxCatalog.ids).contexts[key]!
+    expect(before.cells[OSC]?.result.status).toBe("untestable")
+    const after = projectWith([base, supplement], muxCatalog.ids).contexts[key]!
+    expect(after.cells[OSC]?.origin.runId).toBe("tmux-set-titles")
+    expect(after.cells[OSC]?.result.status).toBe("unsupported")
+    expect(after.cells[OSC]?.supplement).toMatchObject({ name: "set-titles-on", filled: true })
+    // sgr.bold is decided in the base run and is not one of the supplement's ids: status, origin and marker hold.
+    expect(after.cells["sgr.bold"]?.result).toEqual(before.cells["sgr.bold"]?.result)
+    expect(after.cells["sgr.bold"]?.origin.runId).toBe("tmux-default")
+    expect(after.cells["sgr.bold"]?.supplement).toBeUndefined()
+  })
+})
