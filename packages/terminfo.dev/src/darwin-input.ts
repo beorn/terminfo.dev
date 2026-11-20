@@ -16,6 +16,7 @@ import {
   unlinkSync,
 } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
+import { homedir } from "node:os"
 
 import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
 import { command } from "./capture-core.ts"
@@ -26,12 +27,70 @@ import { currentTTYTraceMark } from "./tty.ts"
 export const DARWIN_INPUT_HELPER_ENV = "TERMINFO_DARWIN_INPUT_HELPER"
 export const DARWIN_INPUT_SIGNING_IDENTITY_ENV = "TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY"
 const DARWIN_INPUT_IDENTIFIER = "dev.terminfo.owned-input-helper"
+const DARWIN_INPUT_SIGNING_KEYCHAIN = join(homedir(), "Library", "Keychains", "terminfo-helper.keychain-db")
 
 interface OwnedHelperPublication {
   directory: string
   /** Approved certificate SHA-1 fingerprint, not an ambiguous keychain display name. Never a private key. */
   identity: string | undefined
   report?: (evidence: Record<string, unknown>) => void
+}
+
+/** Point-in-time prerequisite only: signing still has to prove access to the private key. */
+function requireSigningKeychain(helper: string): { keychain: string; rawStatus: number; unlocked: boolean } {
+  const keychain = DARWIN_INPUT_SIGNING_KEYCHAIN
+  let observed: { keychain: string; rawStatus: number; unlocked: boolean }
+  try {
+    const stat = lstatSync(keychain)
+    if (
+      !isAbsolute(keychain) ||
+      resolve(keychain) !== keychain ||
+      realpathSync(keychain) !== keychain ||
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.uid !== process.getuid?.() ||
+      (stat.mode & 0o022) !== 0
+    ) {
+      throw new Error("required dedicated keychain is not this user's canonical controlled regular file")
+    }
+    const payload = JSON.parse(
+      String(
+        execFileSync(helper, ["signing-keychain-status", keychain], {
+          timeout: 10_000,
+          maxBuffer: 65_536,
+          stdio: ["ignore", "pipe", "pipe"],
+        }),
+      ),
+    ) as Record<string, unknown> | null
+    const rawStatus = payload?.rawStatus
+    if (
+      !payload ||
+      Array.isArray(payload) ||
+      payload.operation !== "signing-keychain-status" ||
+      payload.keychain !== keychain ||
+      payload.openStatus !== 0 ||
+      payload.statusResult !== 0 ||
+      typeof rawStatus !== "number" ||
+      !Number.isInteger(rawStatus) ||
+      rawStatus < 0 ||
+      rawStatus > 0xffff_ffff ||
+      typeof payload.unlocked !== "boolean" ||
+      payload.unlocked !== ((rawStatus & 1) !== 0)
+    ) {
+      throw new Error("status command returned unavailable, malformed, or inconsistent Security status")
+    }
+    observed = { keychain, rawStatus, unlocked: payload.unlocked }
+  } catch (error) {
+    throw new Error(
+      `${keychain}: signing prerequisite UNKNOWN: ${String(error)}; the credential custodian must restore readable keychain status before another build`,
+    )
+  }
+  if (!observed.unlocked) {
+    throw new Error(
+      `${keychain}: signing prerequisite LOCKED (rawStatus=${observed.rawStatus}); the credential custodian must unlock it before another build`,
+    )
+  }
+  return observed
 }
 
 function helperHash(path: string): string {
@@ -144,6 +203,8 @@ export function buildDarwinInputHelper(
     ).trim()
     if (!compilerVersion) throw new Error("macOS input helper compiler returned no version")
     const expectedRequirement = `identifier "${DARWIN_INPUT_IDENTIFIER}" and certificate leaf = H"${identity}"`
+    step = "signing keychain prerequisite"
+    const signingKeychain = requireSigningKeychain(helper)
     step = "signing"
     execFileSync(
       "/usr/bin/codesign",
@@ -200,6 +261,7 @@ export function buildDarwinInputHelper(
       identity,
       expectedRequirement,
       actualRequirement,
+      signingKeychain,
       executedPath,
       installedBytesEqual: true,
     })

@@ -29,6 +29,7 @@ import Darwin
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import Security
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -598,10 +599,41 @@ func windowId(_ raw: String, _ verb: String) -> Int {
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
-    fail("usage: darwin-input-helper <trust|front|windows|key|mouse> ...")
+    fail("usage: darwin-input-helper <signing-keychain-status|trust|front|windows|key|mouse> ...")
 }
 
 switch arguments[1] {
+case "signing-keychain-status":
+    guard arguments.count == 3, (arguments[2] as NSString).isAbsolutePath else {
+        fail("usage: darwin-input-helper signing-keychain-status <absolute-keychain-path>")
+    }
+    let path = arguments[2]
+    var keychain: SecKeychain?
+    let opened = path.withCString { SecKeychainOpen($0, &keychain) }
+    var payload: [String: Any] = [
+        "operation": "signing-keychain-status", "keychain": path, "openStatus": Int(opened),
+        "statusResult": NSNull(), "rawStatus": NSNull(), "unlocked": NSNull(),
+    ]
+    var result = opened
+    if opened == errSecSuccess, let keychain {
+        var status: SecKeychainStatus = 0
+        result = SecKeychainGetStatus(keychain, &status)
+        payload["statusResult"] = Int(result)
+        if result == errSecSuccess {
+            payload["rawStatus"] = status
+            payload["unlocked"] = (status & SecKeychainStatus(kSecUnlockStateStatus)) != 0
+        }
+    }
+    do {
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        FileHandle.standardOutput.write(data)
+        FileHandle.standardOutput.write(Data("\n".utf8))
+    } catch {
+        fail("\(path): signing-keychain-status JSON serialization failed: \(error)")
+    }
+    if result != errSecSuccess || keychain == nil {
+        fail("\(path): signing-keychain-status Security read failed, OSStatus=\(result)")
+    }
 case "trust":
     out("trusted=\(trusted())")
 case "selftest":
