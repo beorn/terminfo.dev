@@ -151,6 +151,9 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
         assert.equal(await owner.readTitle(), nativeTitle)
         nativeTitle = "owned terminal sequence two"
         assert.equal(await owner.readTitle(), nativeTitle)
+        // The readTitle contract includes the empty title used by the OSC 7 controls.
+        nativeTitle = ""
+        assert.equal(await owner.readTitle(), "")
         assert.equal(titleReads, 0, "editor title must never consult the CG window caption")
       } finally { clearInterval(producer) }
     } else if (app === "iterm2") {

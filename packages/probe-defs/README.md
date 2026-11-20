@@ -1299,6 +1299,11 @@ a screenshot substitute. Existing text qualification retains its separate frames
 causes. Routing alone grades no feature and does not authorize a native run.
 
 The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
+Native Cursor and VS Code use the exact Terminal held by the generated fixture,
+through the same activation-bound native exchange as semantic observations.
+The disposable fixture selects the sequence-responsive tab label and supplies no fixed launch name.
+Its fresh `Terminal.name`, including an empty string, feeds the existing title reader;
+this wiring alone qualifies no native feature result.
 The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
 or the attached mux's own title query; mux rows never substitute the outer window.
 An empty string is an observed title; configured read errors keep their cause.

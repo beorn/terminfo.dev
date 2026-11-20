@@ -2657,7 +2657,7 @@ async function createNativeEditorExchange(input: {
       reply.evaluatedAt > request.deadline ||
       !["interval", "watcher", "startup", "shell-integration"].includes(reply.delivery) ||
       typeof reply.terminal?.name !== "string" ||
-      reply.terminal.name === ""
+      (input.featureId !== "collector.owned-editor-title" && reply.terminal.name === "")
     ) {
       throw new Error("Native editor reply has stale or mismatched activation/request/process binding")
     }
