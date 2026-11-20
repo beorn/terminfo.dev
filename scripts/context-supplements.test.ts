@@ -365,7 +365,7 @@ describe("set-titles-on supplement (32593)", () => {
     { [OSC]: "declared-untestable", "sgr.bold": "supported" },
     null,
     at,
-    { config: MUX_DEFAULT_CONFIG },
+    { config: "tmux: focus-events on" },
     muxCatalog,
   )
   const supplement = run(

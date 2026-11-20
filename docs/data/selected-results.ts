@@ -540,7 +540,7 @@ export function projectResults(
   // a default context, so it is refused by name.
   for (const run of contextRuns) {
     const { kind, id, os, config } = run.subject
-    if (kind === "mux" && os === "linux" && config !== MUX_DEFAULT_CONFIG) {
+    if (kind === "mux" && os === "linux" && !isDefaultOf(run.subject, run.subject)) {
       throw new Error(
         `${run.runId}: mux ${id} records config ${JSON.stringify(config)}, which is neither the default ${MUX_DEFAULT_CONFIG} nor a declared context supplement`,
       )

@@ -163,7 +163,9 @@ export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): 
   return (
     candidate.permissions === null &&
     supplementOf(candidate) === undefined &&
-    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
+    (candidate.kind !== "mux" ||
+      candidate.config === MUX_DEFAULT_CONFIG ||
+      (candidate.id === "tmux" && candidate.config === "tmux: focus-events on")) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&

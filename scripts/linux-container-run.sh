@@ -455,7 +455,10 @@ await_owned_daemon() {
 mux_profile_config() {
   local mux=$1 profile=$2
   case "$profile" in
-    default) printf '%s\n' /out/mux-empty.conf ;;
+    default)
+      if [[ "$mux" == tmux ]]; then printf '%s\n' 'tmux: focus-events on'
+      else printf '%s\n' /out/mux-empty.conf; fi
+      ;;
     truecolor)
       if [[ "$mux" != screen ]]; then
         echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
@@ -468,7 +471,7 @@ mux_profile_config() {
         echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
         return 2
       fi
-      printf '%s\n' 'tmux: set-titles on; set-titles-string "#T"'
+      printf '%s\n' 'tmux: focus-events on; set-titles on; set-titles-string "#T"'
       ;;
     *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
   esac
@@ -491,7 +494,7 @@ screen_config_content() {
 # The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
 # accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
 tmux_config_content() {
-  printf 'set -g status-right ""\n'
+  printf 'set -g status-right ""\nset -g focus-events on\n'
   if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
