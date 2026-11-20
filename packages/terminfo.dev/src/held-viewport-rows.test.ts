@@ -10,6 +10,7 @@
  */
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
+import { parseRun } from "@terminfo/run-parser"
 import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
   ALL_PROBES,
@@ -17,9 +18,11 @@ import {
   XTERM_411_VIEWPORT_ROUTE,
   type ObservationFrame,
   type ProbeCallbackResult,
+  type ProbeSuiteManifest,
   type TermProbeSource,
   type ViewportStep,
 } from "@terminfo/probe-defs"
+import { recordExecutedProbe } from "../../probe-defs/src/helpers.ts"
 import { createHeldViewportReader, type HeldViewportGeometry } from "./held-viewport.ts"
 import type { TTYTraceMark } from "./tty.ts"
 
@@ -53,6 +56,8 @@ interface Behaviour {
   readonly synchronizedHoldOutput?: "preserve" | "snap" | "follow"
   /** A missing in-order status reply cannot prove that the output was parsed. */
   readonly witnessReply?: boolean
+  readonly witnessError?: boolean
+  readonly restoreError?: boolean
 }
 
 /** A text terminal for the fixture's escapes, painted as pixels a reader crops: one colour per line text. */
@@ -164,6 +169,7 @@ function terminal(behaviour: Behaviour = {}) {
     },
     async returnToBottom() {
       if (!held) return "not-held" as const
+      if (behaviour.restoreError) throw new Error("owned viewport restoration failed")
       await route.press("bottom")
       return "bottom-pressed" as const
     },
@@ -175,14 +181,14 @@ function terminal(behaviour: Behaviour = {}) {
     captureRaw: async (label, _deadline, role = "control") => {
       events.push({ kind: "capture", value: label })
       refs++
-      const recorded = {
-        kind: "png",
+      const recorded: ObservationFrame = {
+        kind: "pixels",
         role,
         ref: `sha256:${createHash("sha256").update(`frame-${refs}`).digest("hex")}`,
         capturedAt: 1000 + refs,
         label,
       }
-      return { recorded: recorded as unknown as ObservationFrame, decoded: render() }
+      return { recorded, decoded: render() }
     },
     mark: (): TTYTraceMark => {
       events.push({ kind: "mark", value: "" })
@@ -200,6 +206,7 @@ function terminal(behaviour: Behaviour = {}) {
     queryCursorPosition: async () => {
       events.push({ kind: "query", value: "cursor status" })
       trace.started++
+      if (behaviour.witnessError) throw new Error("processed-output query failed")
       return behaviour.witnessReply === false ? null : { row: ROWS, col: 1 }
     },
   } as unknown as TermProbeSource
@@ -255,6 +262,7 @@ describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("
     const result = await grade("scrollback.viewport-hold-output", { route, holdOutput })
     expect(status(result)).toBe(expected)
     citesItsFrames(result)
+    expect(roundTripViewport(result).results?.[0]?.status).toBe(expected)
     if (holdOutput === "follow") expect(result.note).toMatch(/view followed output by 1 rows?/)
   })
 
@@ -278,6 +286,91 @@ describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("
     expect(result.note).toMatch(/synchronized/i)
     citesItsFrames(result)
   })
+
+  // The row's own finally must preserve a primary query error alongside a failed return, and must not let
+  // cleanup failure turn into an apparently valid TODO. Core reader tests cannot reach this pre-m0 exit.
+  it.each([false, true])(
+    "keeps restoration failure loud after a missing or failed witness (failed query: %s)",
+    async (witnessError) => {
+      const model = terminal({ route, holdOutput: "preserve", witnessReply: false, witnessError, restoreError: true })
+      const definition = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")!
+      const result = definition.term!(model.ctx)
+      if (witnessError) {
+        await expect(result).rejects.toMatchObject({
+          name: "AggregateError",
+          errors: [
+            expect.objectContaining({ message: "processed-output query failed" }),
+            expect.objectContaining({ message: "owned viewport restoration failed" }),
+          ],
+        })
+      } else await expect(result).rejects.toThrow("owned viewport restoration failed")
+    },
+  )
+})
+
+/** The production record/parser boundary, replacing the deleted wheel fixture's independent roundtrip model. */
+function roundTripViewport(result: ProbeCallbackResult) {
+  const featureId = "scrollback.viewport-hold-output"
+  const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId, rawReplyRef: featureId }))
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: "2026-11-20T21:00:00.000Z" },
+    rawReplyRef: featureId,
+    observation: result.observation ? { ...result.observation, featureId, rawReplyRef: featureId } : undefined,
+    assertions,
+    tests: result.tests,
+  })
+  const suite = "b".repeat(64)
+  const manifest: ProbeSuiteManifest = {
+    schemaVersion: 4,
+    probeHash: suite,
+    adapterVersion: "3.3.1",
+    generatedAt: "2026-11-20T21:00:00.000Z",
+    catalogIds: [featureId],
+    probes: { term: [featureId], lib: [], mux: [] },
+  }
+  const run = {
+    schemaVersion: 4,
+    source: { kind: "live" },
+    runId: "viewport-model",
+    suiteId: suite,
+    probeHash: suite,
+    sourceRevision: "4".repeat(40),
+    intendedSubject: { kind: "term", id: "alacritty" },
+    subject: {
+      kind: "term",
+      id: "alacritty",
+      version: "0.17.0",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-11-20T21:01:00.000Z",
+    origin: { kind: "collector" },
+    sealedAt: "2026-11-20T21:02:00.000Z",
+    rawReplies: {
+      [featureId]: JSON.stringify({ writes: [], queries: [], events: [] }),
+      ...(result.response ? { [`${featureId}.callbackResponse`]: result.response } : {}),
+    },
+    assertions,
+    screenshotRefs: [...new Set((recorded.frames ?? []).map((frame) => frame.ref))],
+    results: [recorded],
+  }
+  return parseRun("viewport-model.json", JSON.stringify(run), [featureId], new Map([[suite, manifest]]))
+}
+
+it.each(["tmux", "screen"] as const)("keeps %s viewport unmeasured before any write or capture", async (mux) => {
+  const model = terminal({ route: XTERM_411_VIEWPORT_ROUTE, holdOutput: "preserve" })
+  model.ctx.mux = mux
+  const definition = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")!
+  const result = await definition.term!(model.ctx)
+  expect(status(result)).toBe("probe-todo")
+  expect(result.notTested?.noObservable).toBe("multiplexer viewport hold retains the manual recipe")
+  expect(model.events).toEqual([])
 })
 
 /** The run-parser's pixel-frame rule: control and target frames, a target primary, targets strictly in order. */
