@@ -1384,6 +1384,8 @@ test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-f
       expect(result.pass).toBe(true)
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
       expect(result.note).toContain("tearing and scroll cadence unmeasured")
+      // #34961: run-parser requires the assertion itself to cite its deciding retained frame.
+      expect(result.assertions?.[0]?.observed).toContain(result.observation?.screenshotRef)
       const response = JSON.parse(result.response!) as {
         reads: { phase: string; located: unknown }[]
         afterRestore: number

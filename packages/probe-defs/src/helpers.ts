@@ -2042,7 +2042,13 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
   const elapsed = () => sourceNow(ctx) - start
   const frames: ObservationFrame[] = []
   const writes: { phase: string; atMs: number; bytes: string }[] = []
-  const reads: { phase: string; requestedMs: number; returnedMs: number; located: CaptureLocated | null }[] = []
+  const reads: {
+    phase: string
+    ref: string
+    requestedMs: number
+    returnedMs: number
+    located: CaptureLocated | null
+  }[] = []
   const evidence = { snapshot: 2, cell, rgb: sentinel.rgb, form: sentinel.form, writes, reads }
   type Read = { frame: ObservationFrame; requestedMs: number; returnedMs: number; located: CaptureLocated | null }
   const write = (phase: string, bytes: string) => {
@@ -2061,7 +2067,7 @@ async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallba
     const returnedMs = elapsed()
     if (frame.located === undefined) return `the capture arm returned no located field for the ${phase} frame`
     frames.push(frame)
-    reads.push({ phase, requestedMs, returnedMs, located: frame.located })
+    reads.push({ phase, ref: frame.ref, requestedMs, returnedMs, located: frame.located })
     return { frame, requestedMs, returnedMs, located: frame.located }
   }
   // Read until the colour is present (or absent), within SYNC_OUTPUT_PAINT_WAIT_MS of `since`.
