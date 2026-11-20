@@ -17,7 +17,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
 import {
   buildDarwinInputHelper,
   createDarwinInput,
@@ -38,7 +38,21 @@ import type { InputMechanism } from "./input-fixture.ts"
 
 const helperBuild = vi.hoisted(() => ({
   run: undefined as undefined | ((file: string, args: readonly string[], options?: unknown) => Buffer),
+  home: undefined as string | undefined,
+  restoreUid: undefined as undefined | (() => void),
+  calls: [] as { file: string; args: readonly string[]; options?: unknown }[],
 }))
+vi.mock("node:os", async (original) => {
+  const actual = await original<typeof import("node:os")>()
+  const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
+  const path = await vi.importActual<typeof import("node:path")>("node:path")
+  helperBuild.home = fs.realpathSync(fs.mkdtempSync(path.join(actual.tmpdir(), "terminfo-helper-home-")))
+  fs.mkdirSync(path.join(helperBuild.home, "Library", "Keychains"), { recursive: true, mode: 0o700 })
+  fs.writeFileSync(path.join(helperBuild.home, "Library", "Keychains", "terminfo-helper.keychain-db"), "fixture", {
+    mode: 0o600,
+  })
+  return { ...actual, homedir: () => helperBuild.home! }
+})
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>()
   return {
@@ -52,12 +66,61 @@ vi.mock("node:child_process", async (original) => {
 })
 afterEach(() => {
   helperBuild.run = undefined
+  helperBuild.restoreUid?.()
+  helperBuild.restoreUid = undefined
+})
+afterAll(() => {
+  if (helperBuild.home) rmSync(helperBuild.home, { recursive: true, force: true })
 })
 
+function keychainStatusFixture(fail: string | undefined, args: readonly string[]): Buffer {
+  if (fail === "keychain-command") throw new Error("keychain status command unavailable")
+  if (fail === "malformed-keychain") return Buffer.from("not JSON")
+  if (fail === "empty-keychain") return Buffer.alloc(0)
+  if (fail === "missing-keychain-fields") return Buffer.from('{"unlocked":true}')
+  return Buffer.from(
+    JSON.stringify({
+      operation: "signing-keychain-status",
+      keychain: fail === "wrong-keychain-path" ? join(helperBuild.home!, "login.keychain-db") : args[1],
+      openStatus: fail === "unknown-keychain" ? -25308 : 0,
+      statusResult: fail === "unknown-keychain" ? null : 0,
+      rawStatus:
+        fail === "unknown-keychain" ? null : fail === "locked-keychain" || fail === "inconsistent-keychain" ? 2 : 1,
+      unlocked:
+        fail === "unknown-keychain" ? null : fail === "string-keychain-flag" ? "true" : fail !== "locked-keychain",
+    }),
+  )
+}
+
 // 35130: compile/sign are process-boundary stubs, not native trust proof. Files and overlapping kernel locks are real.
-async function helperBuildFixture(fail?: "compile" | "sign" | "verify" | "metadata") {
+async function helperBuildFixture(
+  fail?:
+    | "compile"
+    | "sign"
+    | "verify"
+    | "metadata"
+    | "locked-keychain"
+    | "unknown-keychain"
+    | "malformed-keychain"
+    | "inconsistent-keychain"
+    | "keychain-command"
+    | "empty-keychain"
+    | "wrong-keychain-path"
+    | "string-keychain-flag"
+    | "missing-keychain-fields"
+    | "wrong-owned-keychain"
+    | "missing-keychain-resource",
+) {
+  helperBuild.restoreUid?.()
+  helperBuild.restoreUid = undefined
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process")
+  const keychain = join(helperBuild.home!, "Library", "Keychains", "terminfo-helper.keychain-db")
+  if (fail === "missing-keychain-resource") rmSync(keychain)
+  else writeFileSync(keychain, "fixture", { mode: 0o600 })
+  helperBuild.calls = []
   helperBuild.run = (file, args, options) => {
+    helperBuild.calls.push({ file, args, options })
+    if (args[0] === "signing-keychain-status") return keychainStatusFixture(fail, args)
     if (file === "/usr/bin/lockf") {
       if (process.platform === "darwin") {
         return actual.execFileSync(file, args, options as import("node:child_process").ExecFileSyncOptions) as Buffer
@@ -75,7 +138,16 @@ async function helperBuildFixture(fail?: "compile" | "sign" | "verify" | "metada
       }
     }
     if (file === "/usr/bin/swiftc") {
-      if (args[0] === "--version") return Buffer.from("fixture Swift toolchain")
+      if (args[0] === "--version") {
+        if (fail === "wrong-owned-keychain") {
+          // Model a keychain uid different from the reader after the real publication lease is acquired.
+          // No chown/sudo or forged filesystem metadata; only the reader's reported uid is injected.
+          const uid = process.getuid!()
+          const spy = vi.spyOn(process, "getuid").mockReturnValue(uid + 1)
+          helperBuild.restoreUid = () => spy.mockRestore()
+        }
+        return Buffer.from("fixture Swift toolchain")
+      }
       if (fail === "compile") throw new Error("compiler rejected staged source")
       writeFileSync(args[2]!, readFileSync(args[3]!))
       return Buffer.alloc(0)
@@ -113,6 +185,20 @@ describe("owned Mac helper publication", () => {
     try {
       writeFileSync(source, "first staged source")
       current = buildDarwinInputHelper(source, join(root, "run-a"), owned)
+      const readinessIndex = helperBuild.calls.findIndex((call) => call.args[0] === "signing-keychain-status")
+      const signIndex = helperBuild.calls.findIndex(
+        (call) => call.file === "/usr/bin/codesign" && call.args.includes("--sign"),
+      )
+      expect(readinessIndex).toBeGreaterThanOrEqual(0)
+      expect(readinessIndex).toBeLessThan(signIndex)
+      expect(helperBuild.calls[readinessIndex]).toMatchObject({
+        file: join(root, "run-a", "darwin-input-helper"),
+        args: [
+          "signing-keychain-status",
+          join(helperBuild.home!, "Library", "Keychains", "terminfo-helper.keychain-db"),
+        ],
+        options: { timeout: 10_000 },
+      })
       expect(typeof current === "string" ? current : current.path).toBe(join(owned.directory, "darwin-input-helper"))
       expect(readFileSync(current.path, "utf8")).toBe("first staged source-signed")
       expect(readFileSync(join(root, "run-a", "darwin-input-helper"), "utf8")).toBe("first staged source-signed")
@@ -132,7 +218,9 @@ describe("owned Mac helper publication", () => {
       })
       current.dispose()
       current = undefined
+      const statusCalls = helperBuild.calls.filter((call) => call.args[0] === "signing-keychain-status").length
       const hosted = buildDarwinInputHelper(source, join(root, "hosted"))
+      expect(helperBuild.calls.filter((call) => call.args[0] === "signing-keychain-status")).toHaveLength(statusCalls)
       expect(hosted.path).toBe(join(root, "hosted", "darwin-input-helper"))
       expect(readFileSync(hosted.path, "utf8")).toBe("second staged source")
       hosted.dispose()
@@ -142,30 +230,55 @@ describe("owned Mac helper publication", () => {
     }
   })
 
-  it.each(["compile", "sign", "verify", "metadata"] as const)(
-    "does not use prior installed bytes after a %s failure and releases the failed lease",
-    async (fail) => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-failure-")))
-      const source = join(root, "main.swift")
-      const owned = { directory: join(root, "installed"), identity: "ab".repeat(20) }
-      try {
-        await helperBuildFixture()
-        writeFileSync(source, "previous source")
-        const previous = buildDarwinInputHelper(source, join(root, "previous"), owned)
-        previous.dispose()
-        await helperBuildFixture(fail)
-        writeFileSync(source, "new source")
-        expect(() => buildDarwinInputHelper(source, join(root, "failed"), owned)).toThrow(/helper.*failed/)
-        expect(readFileSync(join(owned.directory, "darwin-input-helper"), "utf8")).toBe("previous source-signed")
-        await helperBuildFixture()
-        const next = buildDarwinInputHelper(source, join(root, "next"), owned)
-        expect(readFileSync(next.path, "utf8")).toBe("new source-signed")
-        next.dispose()
-      } finally {
-        rmSync(root, { recursive: true, force: true })
+  it.each([
+    "compile",
+    "sign",
+    "verify",
+    "metadata",
+    "locked-keychain",
+    "unknown-keychain",
+    "malformed-keychain",
+    "inconsistent-keychain",
+    "keychain-command",
+    "empty-keychain",
+    "wrong-keychain-path",
+    "string-keychain-flag",
+    "missing-keychain-fields",
+    "wrong-owned-keychain",
+    "missing-keychain-resource",
+  ] as const)("does not use prior installed bytes after a %s failure and releases the failed lease", async (fail) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "terminfo-helper-failure-")))
+    const source = join(root, "main.swift")
+    const owned = { directory: join(root, "installed"), identity: "ab".repeat(20) }
+    try {
+      await helperBuildFixture()
+      writeFileSync(source, "previous source")
+      const previous = buildDarwinInputHelper(source, join(root, "previous"), owned)
+      previous.dispose()
+      await helperBuildFixture(fail)
+      writeFileSync(source, "new source")
+      expect(() => buildDarwinInputHelper(source, join(root, "failed"), owned)).toThrow(
+        fail.includes("keychain")
+          ? fail === "locked-keychain"
+            ? /helper.*failed.*LOCKED/
+            : /helper.*failed.*UNKNOWN/
+          : /helper.*failed/,
+      )
+      if (fail.includes("keychain")) {
+        expect(helperBuild.calls.filter((call) => call.file === "/usr/bin/codesign")).toHaveLength(0)
       }
-    },
-  )
+      if (fail === "wrong-owned-keychain") {
+        expect(helperBuild.calls.filter((call) => call.args[0] === "signing-keychain-status")).toHaveLength(0)
+      }
+      expect(readFileSync(join(owned.directory, "darwin-input-helper"), "utf8")).toBe("previous source-signed")
+      await helperBuildFixture()
+      const next = buildDarwinInputHelper(source, join(root, "next"), owned)
+      expect(readFileSync(next.path, "utf8")).toBe("new source-signed")
+      next.dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 
   it.each([
     "missing signer",
@@ -197,6 +310,16 @@ describe("owned Mac helper publication", () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  // CTO428c2f50 explicitly requires dispatch isolation; real unsigned-arm qualification is separate.
+  it("dispatches the read-only keychain command without trust, window reads, or input calls", () => {
+    const source = readFileSync(new URL("../../../native/darwin-input/main.swift", import.meta.url), "utf8")
+    const arm = source.match(/case "signing-keychain-status":([\s\S]*?)\ncase "trust":/)?.[1]
+    expect(arm).toBeTypeOf("string")
+    expect(arm).toContain("SecKeychainOpen")
+    expect(arm).toContain("SecKeychainGetStatus")
+    expect(arm).not.toMatch(/\b(?:requireTrust|trusted|AX\w+|CG\w+|windowRows|requireKeyWindow|post\w*)\s*\(/)
   })
 })
 
