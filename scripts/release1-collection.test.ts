@@ -2248,6 +2248,7 @@ it.each([
   const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
   const measuredTarget = specimen.subject
   const measuredAt = specimen.measuredAt
+  let decidedIds: string[] = []
   const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args) => {
     if (
       fault === "linux-receipt" &&
@@ -2304,7 +2305,7 @@ it.each([
       const draft = JSON.parse(
         readFileSync(join(dirname(dirname(output)), "first-pass", "mux-screen-linux.truecolor-on.draft.json"), "utf8"),
       ) as RunDraft
-      const decidedIds = String(args[args.indexOf("--ids") + 1]).split(",")
+      decidedIds = String(args[args.indexOf("--ids") + 1]).split(",")
       const attempt = { scope: "probe" as const, startedAt: measuredAt }
       const muxRun = {
         ...structuredClone(draft),
@@ -2599,6 +2600,7 @@ it.each([
         const published = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8")) as typeof pass
         const saved = published.contexts.find((entry) => entry.context.id === "screen")!.supplements![0]!
         const producer = JSON.parse(readFileSync(saved.rawRun!, "utf8")) as RunDraft
+        expect([...saved.featureIds].sort()).toEqual([...decidedIds].sort())
         for (const featureId of saved.featureIds) {
           const result = producer.results.find((entry) => entry.featureId === featureId)
           expect(result, featureId).toMatchObject({
