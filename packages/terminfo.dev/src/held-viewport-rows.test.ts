@@ -57,6 +57,7 @@ interface Behaviour {
 
 /** A text terminal for the fixture's escapes, painted as pixels a reader crops: one colour per line text. */
 function terminal(behaviour: Behaviour = {}) {
+  const events: { kind: "write" | "press" | "capture" | "query" | "mark"; value: string }[] = []
   const ROWS = behaviour.rows ?? 14
   const geometry: HeldViewportGeometry = {
     origin: { x: 2, y: 2 },
@@ -85,6 +86,7 @@ function terminal(behaviour: Behaviour = {}) {
     if (offset > 0 && output === "snap") offset = 0
   }
   const write = (text: string) => {
+    events.push({ kind: "write", value: text })
     trace.started++
     const pattern =
       /\x1bc|\x1b\[3J|\x1b\[2J|\x1b\[0m|\x1b\[\?2026[lh]|\x1b\[\?25[lh]|\x1b\[(\d+);1H|\x1b\[H|\x1b\]720\x07|\r\n|[^\x1b\r]+/g
@@ -153,6 +155,7 @@ function terminal(behaviour: Behaviour = {}) {
   const route = {
     route: behaviour.route ?? ALACRITTY_0_17_VIEWPORT_ROUTE,
     async press(step: ViewportStep) {
+      events.push({ kind: "press", value: step })
       held = step !== "bottom"
       await press(step)
     },
@@ -170,11 +173,21 @@ function terminal(behaviour: Behaviour = {}) {
     route: () => route,
     geometry: () => geometry,
     captureRaw: async (label, _deadline, role = "control") => {
+      events.push({ kind: "capture", value: label })
       refs++
-      const recorded = { kind: "png", role, ref: `sha256:frame-${refs}`, capturedAt: 1000 + refs, label }
+      const recorded = {
+        kind: "png",
+        role,
+        ref: `sha256:${createHash("sha256").update(`frame-${refs}`).digest("hex")}`,
+        capturedAt: 1000 + refs,
+        label,
+      }
       return { recorded: recorded as unknown as ObservationFrame, decoded: render() }
     },
-    mark: (): TTYTraceMark => ({ mode: "record", ...trace }),
+    mark: (): TTYTraceMark => {
+      events.push({ kind: "mark", value: "" })
+      return { mode: "record", ...trace }
+    },
     timeoutMs: 60_000,
   })
   const ctx = {
@@ -185,11 +198,12 @@ function terminal(behaviour: Behaviour = {}) {
     readHeldViewport: reader.read,
     readViewportReference: reader.reference,
     queryCursorPosition: async () => {
+      events.push({ kind: "query", value: "cursor status" })
       trace.started++
       return behaviour.witnessReply === false ? null : { row: ROWS, col: 1 }
     },
   } as unknown as TermProbeSource
-  return { ctx, view: () => ({ offset, history: history.length }) }
+  return { ctx, events, view: () => ({ offset, history: history.length }) }
 }
 
 async function grade(id: string, behaviour: Behaviour = {}): Promise<ProbeCallbackResult> {
@@ -206,6 +220,33 @@ const status = (result: ProbeCallbackResult) =>
   result.tests?.[0]?.status ?? (result.notTested ? "probe-todo" : undefined)
 
 describe.each([LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, XTERM_411_VIEWPORT_ROUTE])("viewport hold on %s", (route) => {
+  // The accepted P2 contract requires one stimulus and its parsed-output witness before m0. Outcome-only
+  // cases would also pass if extra writes entered the bracket or the witness happened before the stimulus.
+  it("accounts for one stimulus and a processed witness before each zero-I/O bracket", async () => {
+    const model = terminal({ route, holdOutput: "preserve" })
+    const definition = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")!
+    const result = await definition.term!(model.ctx)
+    expect(status(result)).toBe("supported")
+    for (const phase of ["ordinary", "synchronized"]) {
+      const first = model.events.findIndex(
+        (event) => event.kind === "capture" && event.value.includes(`${phase}: held after output: held crop 1`),
+      )
+      expect(first).toBeGreaterThan(0)
+      const open = model.events.findLastIndex((event, index) => index < first && event.kind === "mark")
+      const close = model.events.findIndex((event, index) => index > first && event.kind === "mark")
+      const hold = model.events.findLastIndex(
+        (event, index) => index < open && event.kind === "press" && event.value === "pageUp",
+      )
+      const before = model.events.slice(hold + 1, open)
+      const writes = before.filter((event) => event.kind === "write")
+      expect(writes).toHaveLength(1)
+      expect(writes[0]!.value.startsWith("\x1b[?2026h")).toBe(phase === "synchronized")
+      expect(
+        before.filter((event) => event.kind === "write" || event.kind === "query").map((event) => event.kind),
+      ).toEqual(["write", "query"])
+      expect(model.events.slice(open + 1, close).map((event) => event.kind)).toEqual(["capture", "capture"])
+    }
+  })
   it.each([
     ["preserve", "supported"],
     ["snap", "unsupported"],

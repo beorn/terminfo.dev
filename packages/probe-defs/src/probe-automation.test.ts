@@ -3568,7 +3568,7 @@ describe("Kitty protocol detection", () => {
       },
     })
     const result = await p.term(source)
-    expect(result.notTested?.noObservable).toBe("viewport input and pixel capture unavailable")
+    expect(result.notTested?.noObservable).toBe("viewport output hold has no qualified owned viewport reader")
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
   })

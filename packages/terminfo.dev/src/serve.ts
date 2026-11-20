@@ -1108,7 +1108,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             }
             captureCalibration = installedCalibration
             installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }
-            // 34645: the held-viewport reader, only beside the owner's viewport route on the Darwin window
+            // 34645: the held-viewport reader, only beside the owner's viewport route on the owned window
             // this install selected. It crops the grid this calibration settled, read at each call so a
             // renewal moves it too, and takes its frames through the same recorded raw route.
             const heldWindow = captureWindow
@@ -1128,7 +1128,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                       cell: { width: cellWidth, height: cellHeight },
                       cols,
                       rows,
-                      window: `darwin window ${heldWindow}`,
+                      window: `${process.platform === "linux" ? "linux" : "darwin"} window ${heldWindow}`,
                     }
                   },
                   captureRaw: async (label, deadline, role = "control") => {

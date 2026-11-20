@@ -39,7 +39,7 @@ describe("environment-group partition (D132 B)", () => {
   it("keeps partially measured viewport hold out of the environment group", () => {
     expect(features["scrollback.viewport-hold-output"]?.probeStatus).toBe("partial")
     expect(features["scrollback.viewport-hold-output"]?.probeStatusReason).toBe(
-      "partial: library arm measured by scrollback.viewport-hold-output on ordinary and synchronized output; owned Linux app contexts with XTEST and pixel capture use a same-run measured wheel bound and constructed-tail restoration; tmux, Screen and other app contexts keep the manual UI recipe and named PROBE TODO",
+      "partial: library arm unchanged; qualified owned Linux Alacritty 0.17.0 and xterm 411/412 routes reuse the held-viewport reader with processed-output witness and observed references; other app routes retain named PROBE TODO",
     )
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })

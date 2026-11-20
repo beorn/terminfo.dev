@@ -1,11 +1,15 @@
-import { HELD_VIEWPORT_WALL_MS, heldAccumulate, heldTotalLines, heldViewportReader } from "./held-viewport-rows.ts"
 import {
-  frameDigests,
+  HELD_VIEWPORT_WALL_MS,
+  heldAccumulate,
+  heldTotalLines,
+  heldViewportReader,
+  heldViewportHoldOutput,
+} from "./held-viewport-rows.ts"
+import {
   type ProbeDefinition,
   type ProbeCallbackResult,
   type LibProbeSource,
   type TermProbeSource,
-  type ObservationFrame,
   type NotTestedCoverageResult,
 } from "./types.ts"
 import {
@@ -391,272 +395,14 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
   }
 }
 
-/** Linux App viewport-hold-output: in-run wheel displacement calibration and constructed-tail restoration. */
+/** Qualified Linux viewport output measurement, using the existing held-viewport reader. */
 async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (ctx.mux === "tmux" || ctx.mux === "screen") {
     return notTestedResult("multiplexer viewport hold retains the manual recipe", { mux: ctx.mux })
   }
-  const capture = ctx.capture
-  const input = ctx.input
-  const readInput = ctx.readInput
-  if (!capture || !input || !readInput) {
-    return notTestedResult("viewport input and pixel capture unavailable", {
-      capture: Boolean(capture),
-      input: Boolean(input),
-      readInput: Boolean(readInput),
-    })
-  }
-  const geometry = tooSmall(ctx, 5, 8, "Viewport hold fixture")
-  if (geometry) return geometry
-  const maxCandidate = Math.min(ctx.rows, 12)
-  const calLines = ctx.rows + maxCandidate + 1
-  const maxAnchors = 3 * ctx.rows
-  const down = 4 * ctx.rows + 2
-  if (!Number.isSafeInteger(maxAnchors) || !Number.isSafeInteger(down) || !Number.isSafeInteger(calLines)) {
-    return notTestedResult("wheel placement bound not established", { rows: ctx.rows })
-  }
-  const labelWidth = Math.max(
-    `vh-cal-${calLines - 1}`.length,
-    `vh-tail-${ctx.rows - 1}`.length,
-    `vh-s-${maxAnchors - 1}`.length,
-    "vh-s-out".length,
-  )
-  const width = tooSmall(ctx, 5, labelWidth, "Viewport hold fixture")
-  if (width) return width
-  const frames: ObservationFrame[] = []
-  const calibration = {} as Record<string, unknown>
-  const evidence = {
-    calibration,
-    notches: { up: 1, down },
-    frames,
-    Bref: undefined as ObservationFrame | undefined,
-    ordinary: {} as Record<string, unknown>,
-    synchronized: {} as Record<string, unknown>,
-  }
-  const todo = (reason: string) => notTestedResult(reason, evidence)
-  const labelCells = { top: 1, left: 1, bottom: ctx.rows, right: labelWidth }
-  const calGeometry = ctx.captureGeometry?.geometry
-  const frame = async (label: string, role: "control" | "target" = "control") => {
-    const result = await capture({
-      role,
-      label,
-      // 34163: a frame taken while the viewport is held up declares the hold, so the read crops at
-      // the settled origin and records where the hold put the pair instead of cropping there.
-      ...(scrolled ? { scroll: { direction: "up" as const, notches: heldNotches, maxRows: ctx.rows } } : {}),
-      ...(calGeometry ? { cells: labelCells, pixelGeometry: calGeometry } : {}),
-    })
-    const cellDigest = frameDigests(result).cells
-    if (result.kind === "text-cells" || !result.pixelsDigest?.trim() || (calGeometry && !cellDigest?.trim())) {
-      throw new Error(`Viewport capture ${label} has no complete pixel digest`)
-    }
-    frames.push(result)
-    return result
-  }
-  const measuredDigest = (captured: ObservationFrame) =>
-    calGeometry ? frameDigests(captured).cells : frameDigests(captured).whole
-  const sameCells = (a: ObservationFrame, b: ObservationFrame) => {
-    const da = measuredDigest(a)
-    const db = measuredDigest(b)
-    return Boolean(da && db && da === db)
-  }
-  let failed = false
-  let primary: unknown
-  let scrolled = false
-  /** Notches injected since the last return to the bottom; the declared bound of a hold (34163). */
-  let heldNotches = 0
-  /**
-   * One wheel notch up, counted. Declaring the hold on every frame taken under it is what lets the
-   * capture route crop at its settled origin instead of the pair's held position (34163): a hold
-   * can never exceed one screen, so `ctx.rows` is the bound.
-   */
-  const notchUp = async () => {
-    scrolled = true
-    heldNotches += 1
-    await input.injectClick(4)
-  }
-  const moveDown = async () => {
-    scrolled = false
-    heldNotches = 0
-    for (let notch = 0; notch < down; notch++) await input.injectClick(5)
-  }
-  const tail = Array.from({ length: ctx.rows }, (_, row) => `vh-tail-${row}`).join("\r\n")
-  try {
-    ctx.write("\x1b[?25l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[2J\x1b[3J\x1b[H")
-    ctx.write(Array.from({ length: calLines }, (_, row) => `vh-cal-${row}`).join("\r\n"))
-    if (!(await ctx.queryCursorPosition())) {
-      return todo("no cursor-position reply after painting calibration seed")
-    }
-    calibration.maxCandidate = maxCandidate
-    const calBottom = await frame("Viewport calibration bottom")
-    calibration.calBottom = calBottom
-    const calDelivery = await readInput(/^a/, 1000, () => input.injectKey("a"))
-    calibration.delivery = calDelivery
-    if (!calDelivery) return todo("viewport input delivery not observed")
-    await notchUp()
-    const calScrolled = await frame("Viewport calibration scrolled")
-    calibration.calScrolled = calScrolled
-    for (let notch = 0; notch < maxCandidate; notch++) await notchUp()
-    const calTop = await frame("Viewport calibration top")
-    calibration.calTop = calTop
-    await moveDown()
-    const calRestored = await frame("Viewport calibration restored")
-    calibration.calRestored = calRestored
-    if (!sameCells(calRestored, calBottom)) return todo("restoration to bottom not proven")
-    const boundEstablished = !sameCells(calScrolled, calBottom) && !sameCells(calScrolled, calTop)
-    calibration.boundEstablished = boundEstablished
-    calibration.scrolledDigest = measuredDigest(calScrolled)
-    calibration.topDigest = measuredDigest(calTop)
-    if (!boundEstablished) {
-      return todo("wheel placement bound not established")
-    }
-    const anchors = maxAnchors
-
-    ctx.write("\x1b[2J\x1b[3J\x1b[H")
-    ctx.write(tail)
-    if (!(await ctx.queryCursorPosition())) {
-      return todo("no cursor-position reply after painting constructed tail")
-    }
-    const reference = await frame("Viewport constructed bottom reference")
-    evidence.Bref = reference
-    let screenshot = reference
-    let held = true
-    for (const phase of ["ordinary", "synchronized"] as const) {
-      const state = evidence[phase]
-      const prefix = phase === "ordinary" ? "o" : "s"
-      ctx.write("\r\n" + Array.from({ length: anchors }, (_, row) => `vh-${prefix}-${row}`).join("\r\n"))
-      const bottom = await frame(`${phase} B0`)
-      state.B0 = bottom
-      if (sameCells(bottom, reference)) return todo("viewport seed not observed")
-      const control = await readInput(/^a/, 1000, () => input.injectKey("a"))
-      state.delivery = control
-      if (!control) return todo("viewport input delivery not observed")
-      await notchUp()
-      const anchor = await frame(`${phase} U`)
-      state.U = anchor
-      if (sameCells(anchor, bottom) || sameCells(anchor, reference)) {
-        return todo("viewport anchor placement not established")
-      }
-      state.anchorParse = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
-      const unchanged = await frame(`${phase} U prime`, "target")
-      state.UPrime = unchanged
-      if (!sameCells(unchanged, anchor)) {
-        if (sameCells(unchanged, bottom)) {
-          state.outcome = "witness-snapped"
-          state.targetDigest = measuredDigest(unchanged)
-          state.matchedReferenceDigest = measuredDigest(bottom)
-          const reason = "a non-printing parse-witness query returned the scrolled viewport to the bottom"
-          const response = JSON.stringify(evidence)
-          return {
-            pass: false,
-            note: reason,
-            response,
-            observation: {
-              outcome: "unsupported",
-              assertionType: "screenshot",
-              note: reason,
-              frames,
-              screenshotRef: unchanged.ref,
-            },
-            assertions: [
-              {
-                assertionType: "screenshot",
-                kind: "negative",
-                expected: "Both qualified viewport phases retain their earlier history anchor after output",
-                observed: response,
-                action: "scrollback.viewport-hold-output",
-              },
-            ],
-          }
-        }
-        return todo("parse witness moved the viewport")
-      }
-      const output = `\r\nvh-${prefix}-out\r\n${tail}`
-      ctx.write(phase === "ordinary" ? output : `\x1b[?2026h${output}\x1b[?2026l`)
-      const parsed = await ctx.queryWithSentinelOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 1000)
-      state.outputParse = parsed
-      if (!parsed.match) return todo("output parse not witnessed before the output frame")
-      const after = await frame(`${phase} A`, "target")
-      state.A = after
-      const confirmed = await frame(`${phase} A confirmation`, "target")
-      state.AConfirmed = confirmed
-      if (!sameCells(after, confirmed)) return todo("output frame still changing")
-      await moveDown()
-      const arrived = await frame(`${phase} B1`)
-      state.B1 = arrived
-      if (!sameCells(arrived, reference)) return todo("restoration to bottom not proven")
-      await notchUp()
-      const relative = await frame(`${phase} R`)
-      state.R = relative
-      const candidates = { held: anchor, snapped: arrived, "bottom-relative": relative }
-      const matches = Object.entries(candidates)
-        .filter(([, candidate]) => sameCells(after, candidate))
-        .map(([name]) => name)
-      state.matches = matches
-      // R moved away from bottom: a second witnessed restore precedes every subsequent seed.
-      await moveDown()
-      const restored = await frame(`${phase} final restoration`)
-      state.restored = restored
-      if (!sameCells(restored, reference)) return todo("restoration to bottom not proven")
-      const matchedOutcome = matches[0] as keyof typeof candidates | undefined
-      if (matches.length !== 1 || !matchedOutcome) return todo("ambiguous frame")
-      const matchedCandidate = candidates[matchedOutcome]
-      state.outcome = matchedOutcome
-      state.targetDigest = measuredDigest(after)
-      state.matchedReferenceDigest = measuredDigest(matchedCandidate)
-      if (held || matchedOutcome !== "held") screenshot = after
-      held &&= matchedOutcome === "held"
-    }
-    const response = JSON.stringify(evidence)
-    return {
-      pass: held,
-      response,
-      observation: {
-        outcome: held ? "supported" : "unsupported",
-        assertionType: "screenshot",
-        frames,
-        screenshotRef: screenshot.ref,
-      },
-      assertions: [
-        {
-          assertionType: "screenshot",
-          kind: held ? "positive" : "negative",
-          expected: "Both qualified viewport phases retain their earlier history anchor after output",
-          observed: response,
-          action: "scrollback.viewport-hold-output",
-        },
-      ],
-    }
-  } catch (error) {
-    // A hold whose frames carry no measured witness has no origin this read may crop at (34163).
-    // That is a coverage gap with a reason, not a verdict about the terminal: record it and leave the
-    // cell todo, exactly as a missing fixture does.
-    if (error instanceof Error && error.name === "CaptureHoldUnresolved") {
-      return todo(`viewport hold cannot be read: ${error.message}`)
-    }
-    failed = true
-    primary = error
-    throw error
-  } finally {
-    const failures = failed ? [{ operation: "primary error", error: primary }] : []
-    try {
-      if (scrolled) await moveDown()
-    } catch (cleanup) {
-      failures.push({ operation: "wheel return", error: cleanup })
-    }
-    try {
-      ctx.write("\x1b[?2026l\x1b[?25h")
-    } catch (cleanup) {
-      failures.push({ operation: "cursor restore", error: cleanup })
-    }
-    if (failures.length > 1) {
-      throw new AggregateError(
-        failures.map(({ error }) => error),
-        `Viewport hold failed: ${failures.map(({ operation }) => operation).join(", ")}`,
-      )
-    }
-    const failure = failures[0]
-    if (failure) throw failure.error
-  }
+  const reader = heldViewportReader(ctx)
+  if (!reader) return notTestedResult("viewport output hold has no qualified owned viewport reader", {})
+  return heldViewportHoldOutput(ctx, reader)
 }
 
 /**

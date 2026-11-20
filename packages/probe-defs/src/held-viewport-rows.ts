@@ -69,6 +69,7 @@ class Fixture {
 
   /** RIS, ED3, cursor hidden for every frame, then one full screen of unique lines and no scroll. */
   prepare() {
+    this.lines.length = 0
     this.ctx.write("\x1bc\x1b[3J\x1b[?25l\x1b[H")
     this.historyStart = 0
     for (let row = 0; row < this.ctx.rows; row++) this.ctx.write(`${row === 0 ? "" : "\r\n"}${this.line("s")}`)
@@ -77,6 +78,21 @@ class Fixture {
   /** One more line at the bottom: the top screen line moves into history. */
   displace(tag: string) {
     this.ctx.write(`\r\n${this.line(tag)}`)
+  }
+
+  /** Reconstruct a previously observed fixture, including its history, before triggering a hold. */
+  rebuild(lines: readonly string[]) {
+    this.lines.length = 0
+    this.lines.push(...lines)
+    this.historyStart = 0
+    this.ctx.write("\x1bc\x1b[3J\x1b[?25l\x1b[H")
+    lines.forEach((text, index) => this.ctx.write(`${index === 0 ? "" : "\r\n"}${text}`))
+  }
+
+  /** Replay the one output line whose bottom view was observed before the hold, in exactly one write. */
+  output(text: string, synchronized: boolean) {
+    this.lines.push(text)
+    this.ctx.write(`${synchronized ? "\x1b[?2026h" : ""}\r\n${text}${synchronized ? "\x1b[?2026l" : ""}`)
   }
 
   /** ED3: the model forgets every line above the screen. */
@@ -192,6 +208,7 @@ async function heldRow(
   run: (
     fixture: Fixture,
     bracket: (name: string, hold: Hold, bottom?: HeldViewportFrame) => Promise<Bracket>,
+    qualify: (bracket: Bracket) => Promise<Qualified | string>,
   ) => Promise<(qualify: (bracket: Bracket) => Promise<Qualified | string>) => Promise<ProbeCallbackResult>>,
 ): Promise<ProbeCallbackResult> {
   if (!Number.isSafeInteger(ctx.rows) || ctx.rows < HELD_ROWS_MIN || !Number.isSafeInteger(ctx.cols) || ctx.cols < 12) {
@@ -205,7 +222,6 @@ async function heldRow(
       length: fixture.lines.length,
       history: fixture.history,
     })
-    const grade = await run(fixture, bracket)
     const painted = new Map<string, HeldViewportFrame | string>()
     /** Paint the model's view for this bracket at the bottom, read it, and compare the held crop to it. */
     const qualify = async (seen: Bracket): Promise<Qualified | string> => {
@@ -219,10 +235,10 @@ async function heldRow(
       if (candidate.shift > above) {
         return `${seen.name}: the view moved ${candidate.shift} lines up, past the ${above} this row wrote above the screen`
       }
-      const key = `${seen.length}:${candidate.shift}`
+      const view = fixture.view(seen.length, candidate.shift)
+      const key = JSON.stringify(view)
       let reference = painted.get(key)
       if (reference === undefined) {
-        const view = fixture.view(seen.length, candidate.shift)
         ctx.write("\x1b[H\x1b[2J")
         view.forEach((text, row) => ctx.write(`\x1b[${row + 1};1H${text}`))
         const read = await reader.reference(`${label}: reference for ${seen.name} at ${candidate.shift}`)
@@ -238,6 +254,7 @@ async function heldRow(
       }
       return { candidate, reference }
     }
+    const grade = await run(fixture, bracket, qualify)
     return await grade(qualify)
   } finally {
     ctx.write("\x1b[?25h")
@@ -301,6 +318,154 @@ export function heldAccumulate(ctx: TermProbeSource, reader: Reader): Promise<Pr
         [seen],
         { shift: seen.candidate.shift, route: reader.route },
       )
+    }
+  })
+}
+
+/** The qualified Linux output row reuses the same held reader and observed-model qualification. */
+export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Promise<ProbeCallbackResult> {
+  if (reader.route !== LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE && reader.route !== XTERM_411_VIEWPORT_ROUTE) {
+    return Promise.resolve(todo(`viewport output hold has no qualified Linux route: ${reader.route}`, {}))
+  }
+  const route = ctx.viewportScroll
+  if (!route?.returnToBottom || !route.adoptHold) {
+    return Promise.resolve(todo("viewport output hold needs recorded dispatch and owned restoration", {}))
+  }
+  const restore = route.returnToBottom.bind(route)
+  return heldRow(ctx, reader, "scrollback.viewport-hold-output", async (fixture, bracket, qualify) => {
+    const frames: ObservationFrame[] = []
+    const phases: object[] = []
+    const finish = (result: ProbeCallbackResult) => async () => result
+    const missing = (reason: string) => finish(todo(reason, { route: reader.route, phases }))
+    const remember = (...observed: HeldViewportFrame[]) => frames.push(...observed.map((frame) => frame.recorded))
+    const sameView = (a: HeldViewportFrame, b: HeldViewportFrame) =>
+      a.regionDigest === b.regionDigest && JSON.stringify(a.regionRectangle) === JSON.stringify(b.regionRectangle)
+    const expected = "ordinary and synchronized output preserve the held view; snapping or following output does not"
+    let failed = false
+    let primary: unknown
+    try {
+      for (const synchronized of [false, true]) {
+        const phase = synchronized ? "synchronized" : "ordinary"
+        fixture.prepare()
+        for (let index = 0; index < GROWTH; index++) fixture.displace("g")
+        const seed = [...fixture.lines]
+        fixture.displace("o")
+        const output = fixture.lines.at(-1)!
+        const future = await reader.reference(`${phase}: observed post-output bottom before trigger`)
+        if (future.status !== "reference") return missing(`${phase}: future bottom ${future.reason}: ${future.detail}`)
+        remember(future.frame)
+
+        fixture.rebuild(seed)
+        const control = await bracket(`${phase}: positive pageUp control`, "pageUp")
+        const positive = await qualify(control)
+        if (typeof positive === "string") return missing(positive)
+        remember(positive.candidate.b0, ...positive.candidate.held, positive.candidate.b1, positive.reference)
+        if (sameView(positive.candidate.b0, future.frame)) return missing(`${phase}: output did not change the bottom`)
+
+        // Qualification paints a reference: rebuild the exact seed before the actual trigger.
+        fixture.rebuild(seed)
+        await route.press("pageUp")
+        const before = await reader.reference(`${phase}: actual held view before output`)
+        if (before.status !== "reference")
+          return missing(`${phase}: pre-output hold ${before.reason}: ${before.detail}`)
+        remember(before.frame)
+        if (!sameView(before.frame, positive.candidate.held[0]) || sameView(before.frame, future.frame)) {
+          return missing(`${phase}: the actual pre-output hold did not reproduce its positive control`)
+        }
+
+        fixture.output(output, synchronized)
+        // DSR is an in-order parsed-output witness, before the reader's m0. No TTY I/O occurs inside m0/m1.
+        const witness = await ctx.queryCursorPosition()
+        if (!witness) return missing(`${phase}: no processed-output status reply before the held bracket`)
+        const target = await bracket(`${phase}: held after output`, "already-held", future.frame)
+        const restored = await reader.reference(`${phase}: fresh bottom after restoration`)
+        if (restored.status !== "reference")
+          return missing(`${phase}: restored bottom ${restored.reason}: ${restored.detail}`)
+        remember(restored.frame)
+        if (!sameView(restored.frame, future.frame))
+          return missing(`${phase}: restored bottom differs from the observed output bottom`)
+
+        const state = {
+          phase,
+          witness,
+          controlShift: positive.candidate.shift,
+          before: before.frame.ref,
+          bottom: future.frame.ref,
+          restored: restored.frame.ref,
+        }
+        if (target.reading.status === "unavailable") {
+          const reading = target.reading
+          remember(...reading.frames)
+          const held = reading.frames.filter((frame) => frame.recorded.role === "target")
+          // no-unique-shift occurs only after the unchanged trace marks closed. A snap needs the two actual
+          // stable target crops AND the independent restored bottom, never an error-message interpretation.
+          if (
+            reading.reason === "no-unique-shift" &&
+            reading.restored === "bottom-pressed" &&
+            held.length === 2 &&
+            held.every((frame) => sameView(frame, future.frame))
+          ) {
+            phases.push({ ...state, outcome: "snapped", held: held.map((frame) => frame.ref) })
+            return finish(
+              decidedFrames(
+                "unsupported",
+                `${phase} output snapped the held view to the bottom`,
+                expected,
+                frames,
+                held[0]!.recorded,
+                { route: reader.route, phases },
+              ),
+            )
+          }
+          return missing(`${phase}: ${reading.reason} (${reading.detail}; restored ${reading.restored})`)
+        }
+        const seen = await qualify(target)
+        if (typeof seen === "string") return missing(seen)
+        remember(seen.candidate.b0, ...seen.candidate.held, seen.candidate.b1, seen.reference)
+        phases.push({
+          ...state,
+          shift: seen.candidate.shift,
+          held: seen.candidate.held[0].ref,
+          reference: seen.reference.ref,
+        })
+        if (seen.candidate.shift === positive.candidate.shift) {
+          return finish(
+            decidedFrames(
+              "unsupported",
+              `${phase}: view followed output by 1 row`,
+              expected,
+              frames,
+              seen.candidate.held[0].recorded,
+              { route: reader.route, phases },
+            ),
+          )
+        }
+        if (seen.candidate.shift !== positive.candidate.shift + 1 || !sameView(seen.candidate.held[0], before.frame)) {
+          return missing(`${phase}: output produced an unqualified displacement from the pre-output held view`)
+        }
+      }
+      const target = frames.findLast((frame) => frame.role === "target")
+      return finish(
+        decidedFrames(
+          "supported",
+          "Ordinary and synchronized output preserved the held view",
+          expected,
+          frames,
+          target,
+          { route: reader.route, phases },
+        ),
+      )
+    } catch (error) {
+      failed = true
+      primary = error
+      throw error
+    } finally {
+      try {
+        await restore()
+      } catch (cleanup) {
+        if (failed) throw new AggregateError([primary, cleanup], "Viewport output measurement and restoration failed")
+        throw cleanup
+      }
     }
   })
 }
