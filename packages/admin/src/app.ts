@@ -377,13 +377,23 @@ const APPS: AppDef[] = [
     appPath: "/Applications/iTerm.app",
     binaryPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
     bundleId: APP_BUNDLE_IDS.iterm2,
-    // The suite isolates startup state; the iTerm-specific arm still proves the exact CG window.
+    // Keep saved windows out of this owned launch: AppKit persistence and iTerm's standing keep-windows
+    // preference are separate restoration inputs. Argument-domain overrides last only for this process.
+    // The private suite remains the owner marker; the iTerm-specific arm proves the one exact CG window.
     cliLaunch: {
       spawnPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
       executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
       markerFlag: "-suite",
       markerValue: (run) => `dev.terminfo.iterm2.${run.id}`,
-      args: (script, markerValue) => ["-suite", markerValue, `--command=${script}`],
+      args: (script, markerValue) => [
+        "-suite",
+        markerValue,
+        "-ApplePersistenceIgnoreState",
+        "YES",
+        "-NSQuitAlwaysKeepsWindows",
+        "NO",
+        `--command=${script}`,
+      ],
     },
   },
   {

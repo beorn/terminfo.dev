@@ -396,19 +396,31 @@ test("an isolated iTerm2 CLI launch suppresses restoration and keeps its exact-w
   vi.mocked(resolveIterm2Window).mockReturnValue(owned)
   vi.mocked(closeOwnedTerminalWindow).mockReturnValue(undefined)
   await handleApp("iterm2", {})
-  expect(spawn).toHaveBeenCalledWith(
-    launch.executablePath,
+  // Project only the launch contract: a failing argv assertion must not dump the inherited environment.
+  expect(
+    vi.mocked(spawn).mock.calls.map(([command, args, options]) => [
+      command,
+      args,
+      {
+        detached: options?.detached,
+        stdio: options?.stdio,
+      },
+    ]),
+  ).toEqual([
     [
-      "-suite",
-      "dev.terminfo.iterm2.private-run",
-      "-ApplePersistenceIgnoreState",
-      "YES",
-      "-NSQuitAlwaysKeepsWindows",
-      "NO",
-      "--command=/private/run/serve.sh",
+      launch.executablePath,
+      [
+        "-suite",
+        "dev.terminfo.iterm2.private-run",
+        "-ApplePersistenceIgnoreState",
+        "YES",
+        "-NSQuitAlwaysKeepsWindows",
+        "NO",
+        "--command=/private/run/serve.sh",
+      ],
+      { detached: true, stdio: "ignore" },
     ],
-    expect.objectContaining({ detached: true, stdio: "ignore" }),
-  )
+  ])
   expect(vi.mocked(prepareIterm2Launch).mock.invocationCallOrder[0]).toBeLessThan(
     vi.mocked(spawn).mock.invocationCallOrder[0]!,
   )
