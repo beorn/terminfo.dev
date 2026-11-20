@@ -607,6 +607,7 @@ export function renderedAxes(axes: CaptureRenderingAxes): CaptureRenderingAxes {
     contrast: axes.contrast,
   }
   if (axes.coverage) Object.defineProperty(rendering, "coverage", { value: axes.coverage, enumerable: false })
+  if (axes.rgb) Object.defineProperty(rendering, "rgb", { value: axes.rgb, enumerable: false })
   return rendering
 }
 
@@ -653,6 +654,12 @@ export function renderingAxes(cropped: Buffer): CaptureRenderingAxes {
     )
   const contrast = distance(ink)
   const coverage = new Uint8Array(pixels)
+  const rgb = new Uint8Array(pixels * 3)
+  for (let index = 0; index < pixels; index++) {
+    rgb[index * 3] = cropped[index * 4] ?? 0
+    rgb[index * 3 + 1] = cropped[index * 4 + 1] ?? 0
+    rgb[index * 3 + 2] = cropped[index * 4 + 2] ?? 0
+  }
   if (contrast > 0) {
     for (let index = 0; index < pixels; index++) {
       const offset = index * 4
@@ -667,6 +674,7 @@ export function renderingAxes(cropped: Buffer): CaptureRenderingAxes {
     inkCount,
     contrast,
     coverage,
+    rgb,
   }
 }
 

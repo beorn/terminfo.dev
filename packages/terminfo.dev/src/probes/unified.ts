@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   colourSiblingSeparation,
   colourOnlyAttempts,
+  underlineBandAttempts,
   type OuterColourControl,
   finalizeProbeResult,
   finalizeVisualResult,
@@ -2123,7 +2124,12 @@ async function runProbeBatchInRun(
                 probe.id,
                 captures.map(({ frame }) => frame),
               )
-            : undefined
+            : criterionBranch === "underline-band"
+              ? underlineBandAttempts(
+                  probe.id,
+                  captures.map(({ frame }) => frame),
+                )
+              : undefined
         const colourNote = colourAttempts && "note" in colourAttempts ? colourAttempts.note : undefined
         const colourDisagreement =
           colourAttempts && "disagreement" in colourAttempts ? colourAttempts.disagreement : undefined

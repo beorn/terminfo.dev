@@ -291,7 +291,9 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
     return "live callback-error arm"
   }
   if (validated.rawReplies[id + ".outerCommands"] !== undefined) return "outer command read"
-  if (stored.criterionBranch === "colour-only-mismatch") return "live colour attempt policy"
+  if (stored.criterionBranch === "colour-only-mismatch" || stored.criterionBranch === "underline-band") {
+    return "live colour attempt policy"
+  }
   const geometry = rowGeometryChange(validated.rawReplies, id)
   if (geometry) return geometry
   const raw = validated.rawReplies[id + ".callLog"]
