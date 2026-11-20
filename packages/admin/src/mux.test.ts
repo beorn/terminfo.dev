@@ -27,7 +27,7 @@ import {
   requestDaemonProbe,
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
-import { placeCollectedRun } from "../corpus-placement.ts"
+import { placeCheckedRun } from "../placement-checks.ts"
 
 const fixtures = vi.hoisted(() => ({
   receipt: undefined as { manifest: ProbeSuiteManifest; collectorRevision: string } | undefined,
@@ -35,7 +35,7 @@ const fixtures = vi.hoisted(() => ({
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({
   getTrustedSuiteReceipt: () => fixtures.receipt,
 }))
-vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
+vi.mock("../placement-checks.ts", () => ({ placeCheckedRun: vi.fn(), stagePlacement: vi.fn() }))
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "fixture", TERMINFO_SOURCE_REVISION: "fixture" }),
 }))
@@ -143,7 +143,7 @@ it.each([
     path: original,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   })
-  vi.mocked(placeCollectedRun).mockImplementation(() => {
+  vi.mocked(placeCheckedRun).mockImplementation(() => {
     throw new Error("development entered placement")
   })
   try {
@@ -156,7 +156,7 @@ it.each([
     } else {
       await handleMux("tmux", { output })
     }
-    expect(placeCollectedRun).not.toHaveBeenCalled()
+    expect(placeCheckedRun).not.toHaveBeenCalled()
     if (mode === "private") {
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
       expect(log).toHaveBeenCalledWith(

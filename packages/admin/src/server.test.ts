@@ -20,7 +20,7 @@ import {
 } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import * as collector from "../../terminfo.dev/src/serve.ts"
-import * as placement from "../corpus-placement.ts"
+import * as placement from "../placement-checks.ts"
 import * as collection from "./collected-run.ts"
 import * as sourceEnvironment from "../versions.ts"
 import { handleServer } from "./server.ts"
@@ -374,13 +374,13 @@ it.each([
         vi.stubEnv("GIT_DIR", join(checkout, ".git"))
         vi.stubEnv("GIT_WORK_TREE", checkout)
         vi.mocked(collection.writeCollectedRun).mockRestore()
-        const place = vi.spyOn(placement, "placeCollectedRun").mockImplementation(() => {
+        const place = vi.spyOn(placement, "placeCheckedRun").mockImplementation(() => {
           throw new Error("placement reached")
         })
         expect(() => collection.writeCollectedRun(run, response)).toThrow("placement reached")
         const saved = place.mock.calls[0]![0]
         expect(JSON.parse(readFileSync(saved, "utf8"))).not.toHaveProperty("sealedAt")
-        expect(place).toHaveBeenCalledWith(saved, manifest)
+        expect(place).toHaveBeenCalledWith(saved, manifest, undefined, undefined)
       }
       return
     }

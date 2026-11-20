@@ -39,10 +39,10 @@ import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
 import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./cursor-onboarding.ts"
 import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
-import { placeCollectedRun } from "../corpus-placement.ts"
+import { placeCheckedRun, stagePlacement } from "../placement-checks.ts"
 import * as collectedRun from "./collected-run.ts"
 
-vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
+vi.mock("../placement-checks.ts", () => ({ placeCheckedRun: vi.fn(), stagePlacement: vi.fn() }))
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () => ({ manifest: {} }) }))
 
 vi.mock("node:fs", () => ({
@@ -201,7 +201,11 @@ beforeEach(() => {
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
-  vi.mocked(placeCollectedRun).mockReturnValue("/corpus/terminal-app.json")
+  vi.mocked(placeCheckedRun).mockReturnValue({
+    written: { destination: "/corpus/terminal-app.json", paths: [] },
+    report: { flips: [] },
+  } as unknown as ReturnType<typeof placeCheckedRun>)
+  vi.mocked(stagePlacement).mockReturnValue({ messageFile: "/msg", command: "git commit -F /msg" })
   // #30932 S2: the shadow's own behaviour is pinned in unified.test.ts; here only that it reads the retained run.
   vi.spyOn(collectedRun, "shadowCollectedRun").mockResolvedValue(undefined)
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
@@ -513,7 +517,7 @@ describe("WezTerm cli-process arm", () => {
       expect(requestDaemonProbe).not.toHaveBeenCalled()
       expect(retain).not.toHaveBeenCalled()
       expect(readRetainedDaemonProbeResponse).not.toHaveBeenCalled()
-      expect(placeCollectedRun).not.toHaveBeenCalled()
+      expect(placeCheckedRun).not.toHaveBeenCalled()
       const reads = vi.mocked(spawnSync).mock.calls.filter((call) => call[1]?.includes("list"))
       expect(reads).toHaveLength(1)
       expect(reads[0]?.[0]).toBe("/private/VerifiedWezTerm.app/Contents/MacOS/wezterm")
@@ -634,7 +638,7 @@ describe("WezTerm cli-process arm", () => {
     try {
       await expect(handleApp("wezterm", { handRead: true, output: "/private/hand" })).rejects.toThrow(fault.message)
       expect(requestDaemonProbe).not.toHaveBeenCalled()
-      expect(placeCollectedRun).not.toHaveBeenCalled()
+      expect(placeCheckedRun).not.toHaveBeenCalled()
       expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
       expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(fault.ownerFailure ? 0 : 1)
       const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
@@ -1240,7 +1244,7 @@ describe("Terminal.app app collection", () => {
     )
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
-    expect(placeCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json", {})
+    expect(placeCheckedRun).toHaveBeenCalledWith("/raw/terminal-app.json", {}, undefined, undefined)
     expect(collectedRun.shadowCollectedRun).toHaveBeenCalledOnce()
     expect(collectedRun.shadowCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json")
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
@@ -1342,7 +1346,7 @@ describe("Terminal.app app collection", () => {
       ok: false,
       reason: "measured reply differs",
     })
-    vi.mocked(placeCollectedRun).mockImplementationOnce(() => {
+    vi.mocked(placeCheckedRun).mockImplementationOnce(() => {
       throw new Error("/raw/terminal-app.json: identity-replies-mismatch")
     })
     await expect(handleApp("terminal-app", {})).rejects.toThrow(/identity-replies-mismatch/)

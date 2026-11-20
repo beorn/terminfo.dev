@@ -5,7 +5,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import { getTrustedSuiteReceipt } from "../../terminfo.dev/src/serve.ts"
-import { placeCollectedRun } from "../corpus-placement.ts"
+import { placeCheckedRun, stagePlacement, type AcceptDowngrades } from "../placement-checks.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { transferRetained } from "../../terminfo.dev/src/capture-core.ts"
 import {
@@ -14,6 +14,26 @@ import {
   shadowStoredRun,
   type ShadowReport,
 } from "../../probes/stored-run-shadow.ts"
+
+/** The terminfo checkout this module belongs to: the one a corpus write lands in. */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
+
+/**
+ * Place a retained run into this checkout's corpus and stage exactly what it wrote (#37245): the downgrade check, the
+ * write, `git add --` on the written paths, and the index check. Prints the one commit command (no pathspec).
+ */
+export function placeAndStage(source: string, accept?: AcceptDowngrades): { destination: string; command: string } {
+  assertAuthoringCheckout(REPO_ROOT)
+  const placement = placeCheckedRun(source, getTrustedSuiteReceipt().manifest, undefined, accept)
+  if (placement.report.flips.length > 0) {
+    console.log(
+      `  ${placement.report.flips.length} decided value(s) change (listed in the commit message, not refused)`,
+    )
+  }
+  const { command } = stagePlacement(REPO_ROOT, placement)
+  console.log(`  Staged ${placement.written.paths.length} path(s); commit with: ${command}  (no pathspec)`)
+  return { destination: placement.written.destination, command }
+}
 
 /** A default corpus write must belong to an authoring branch. */
 function assertAuthoringCheckout(cwd: string): void {
@@ -128,9 +148,10 @@ export function writeCollectedRun(
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
   sourceRoot?: string,
 ): { retained: string; placed: string } {
-  assertAuthoringCheckout(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."))
+  assertAuthoringCheckout(REPO_ROOT)
   const source = retainCollectedRun(run, retainedResponsePath, intended, undefined, sourceRoot)
-  const destination = placeCollectedRun(source, getTrustedSuiteReceipt().manifest)
+  // #37245: a downgrade refuses here with the retained run kept; `terminfo place <run> --accept-downgrades` places it.
+  const destination = placeAndStage(source).destination
   console.log(`  Written collected run ${destination}`)
   // #30932 S2: the shadow reads the private retained run, never the placed corpus copy.
   return { retained: source, placed: destination }

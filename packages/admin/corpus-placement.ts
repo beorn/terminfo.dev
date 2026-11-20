@@ -603,6 +603,35 @@ export function placeCollectedRun(
   trustedSuite: ProbeSuiteManifest,
   contentDir: string = CONTENT_DIR,
 ): string {
+  return writePreparedRun(prepareCollectedRun(source, trustedSuite, contentDir)).destination
+}
+
+/** A collected run that passed every factual check and is ready to write; nothing is written yet. */
+export interface PreparedRun {
+  source: string
+  contentDir: string
+  loaded: LoadedRun
+  text: string
+  destination: string
+  manifestFile: { path: string; bytes: Buffer }
+  artifacts: Array<{ destination: string; bytes: Buffer }>
+}
+
+/** What a placement wrote, absolute paths: the run, the suite manifest and every cited artifact. */
+export interface WrittenRun {
+  destination: string
+  paths: string[]
+}
+
+/**
+ * Every factual check placement makes, with nothing written: the caller may refuse on its own grounds (#37245's
+ * downgrade check, packages/admin/placement-checks.ts) between this and writePreparedRun.
+ */
+export function prepareCollectedRun(
+  source: string,
+  trustedSuite: ProbeSuiteManifest,
+  contentDir: string = CONTENT_DIR,
+): PreparedRun {
   const bytes = readFileSync(source)
   const text = decodeExactUtf8(bytes, source)
   const parsed: unknown = parseJsonStrict(source, text)
@@ -647,17 +676,21 @@ export function placeCollectedRun(
     join(dirname(source), RECEIPT_BESIDE_RUN),
   )
   preflightLinuxCompletionReceipt(source, loaded)
-  const artifacts = [
-    ...preflightArtifacts(source, loaded.screenshotRefs, contentDir, "screenshot"),
-    ...preflightArtifacts(source, loaded.textSnapshotRefs, contentDir, "text-snapshot"),
-  ]
+  const artifacts = preflightArtifacts(source, citedArtifacts(loaded), contentDir)
   const destination = join(contentDir, RUN_DIRS[kind], `${id}-${version}-${os}-${loaded.runId}.json`)
   preflightDestination(manifestFile.path, manifestFile.bytes, "collection suite manifest")
   preflightDestination(destination, bytes, "collected run")
+  return { source, contentDir, loaded, text, destination, manifestFile, artifacts }
+}
+
+/** Write a prepared run: the suite manifest, every cited artifact, then the run itself. */
+export function writePreparedRun(prepared: PreparedRun): WrittenRun {
+  const { manifestFile, artifacts, destination, text } = prepared
   placeExclusive(manifestFile.path, manifestFile.bytes, "collection suite manifest")
   for (const artifact of artifacts) placeExclusive(artifact.destination, artifact.bytes, "collected artifact")
   placeRun(destination, text)
-  return destination
+  // An artifact whose identical bytes were already on disk is listed too: present is not committed (#37245 case 5).
+  return { destination, paths: [manifestFile.path, ...artifacts.map((artifact) => artifact.destination), destination] }
 }
 
 /**
@@ -737,27 +770,42 @@ export function verifyRetainedArtifact(kind: RetainedArtifactKind, bytes: Buffer
   }
 }
 
+/**
+ * Every artifact a run cites, with the file name it has in a corpus's `artifacts/` directory: its screenshots and its
+ * text snapshots, the published set. The ONE walker: placement's preflight and its index check (#37245,
+ * placement-checks.ts) both read it. Trace-manifest blobs (.xwd frames) are retained-capture evidence, never
+ * published, so they are not cited here (@cto 3aee80d8).
+ */
+export function citedArtifacts(
+  run: Pick<LoadedRun, "screenshotRefs" | "textSnapshotRefs">,
+): Array<{ kind: RetainedArtifactKind; ref: string; name: string }> {
+  const cite = (kind: RetainedArtifactKind, refs: readonly string[]) =>
+    refs.map((ref) => {
+      const rules = RETAINED_ARTIFACT_KINDS[kind]
+      if (!/^sha256:[a-f0-9]{64}$/.test(ref)) {
+        throw new Error(`Run cites ${rules.noun.toLowerCase()} ${ref}, but that is not a sha256 digest`)
+      }
+      return { kind, ref, name: `${ref.slice("sha256:".length)}.${rules.extension}` }
+    })
+  return [...cite("screenshot", run.screenshotRefs), ...cite("text-snapshot", run.textSnapshotRefs)]
+}
+
 function preflightArtifacts(
   source: string,
-  refs: readonly string[],
+  cited: ReturnType<typeof citedArtifacts>,
   contentDir: string = CONTENT_DIR,
-  kind: RetainedArtifactKind = "screenshot",
 ): Array<{ destination: string; bytes: Buffer }> {
-  const rules = RETAINED_ARTIFACT_KINDS[kind]
   const directory = join(dirname(source), "artifacts")
   const artifacts: Array<{ destination: string; bytes: Buffer }> = []
-  for (const ref of refs) {
-    if (!/^sha256:[a-f0-9]{64}$/.test(ref)) {
-      throw new Error(`Run cites ${rules.noun.toLowerCase()} ${ref}, but that is not a sha256 digest`)
-    }
-    const digest = ref.slice("sha256:".length)
-    const origin = join(directory, `${digest}.${rules.extension}`)
+  for (const { kind, ref, name } of cited) {
+    const origin = join(directory, name)
     if (!existsSync(origin)) {
-      throw new Error(`Run cites ${rules.noun.toLowerCase()} ${ref}, but ${origin} does not exist beside the run`)
+      const noun = RETAINED_ARTIFACT_KINDS[kind].noun.toLowerCase()
+      throw new Error(`Run cites ${noun} ${ref}, but ${origin} does not exist beside the run`)
     }
     const bytes = readFileSync(origin)
     verifyRetainedArtifact(kind, bytes, ref, origin)
-    const destination = join(contentDir, "artifacts", `${digest}.${rules.extension}`)
+    const destination = join(contentDir, "artifacts", name)
     preflightDestination(destination, bytes, kind)
     artifacts.push({ destination, bytes })
   }

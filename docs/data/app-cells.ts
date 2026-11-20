@@ -47,7 +47,16 @@ export const APP_CELL_STATUSES: readonly AppCellStatus[] = [
 
 const COUNTED_MISSING = "Counted feature is absent from the joined catalogue: "
 
-const DECIDED: ReadonlySet<string> = new Set<FeatureResultStatus>(["supported", "unsupported", "untestable"])
+/**
+ * The statuses that DECIDE a cell. The one definition: the projection (selected-results.ts), this join and placement's
+ * downgrade check (packages/admin/placement-checks.ts, #37245) all read it.
+ */
+export const DECIDED_STATUSES: ReadonlySet<string> = new Set<FeatureResultStatus>([
+  "supported",
+  "unsupported",
+  "untestable",
+])
+const DECIDED = DECIDED_STATUSES
 
 /** What one context recorded for one probe, reduced to the facts the join compares and names. */
 export interface ContextCellFacts {
