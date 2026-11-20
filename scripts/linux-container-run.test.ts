@@ -2128,7 +2128,7 @@ function muxProfileConfig(mux: string, profile: string): { status: number | null
 describe("mux profile configs", () => {
   it("records the default config and Screen's truecolor config exactly as the selection keys them", () => {
     expect(muxProfileConfig("screen", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
-    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: "tmux: focus-events on" })
     expect(muxProfileConfig("screen", "truecolor")).toMatchObject({ status: 0, stdout: SCREEN_TRUECOLOR_CONFIG })
     expect(TRUECOLOR_ON.config).toEqual({ screen: SCREEN_TRUECOLOR_CONFIG })
   })
@@ -2200,8 +2200,8 @@ describe("mux profile configs", () => {
   // A host without tmux reports the case as skipped, never as a pass: the point of the case is the server's own
   // answer, so an unasked question must stay visible in the report.
   it.skipIf(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status !== 0)(
-    "starts tmux with stable status pixels and profile title forwarding",
-    () => {
+    "starts tmux with stable status pixels, profile title forwarding and delivered focus reports",
+    async () => {
       const scratch = mkdtempSync(join(tmpdir(), "set-titles-profile-"))
       const config = join(scratch, "tmux.conf")
       const socket = join(scratch, "server.sock")
@@ -2238,13 +2238,73 @@ describe("mux profile configs", () => {
           expect(shown.status).toBe(0)
           expect(shown.stderr).toBe("")
           expect(shown.stdout.split("\n")).toEqual(["", "on", profile === "set-titles" ? "on" : "off", ""])
-          spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
+          // #35126: X focus movement alone does not qualify forwarding through tmux. Send the outer
+          // terminal's reports to its attached client, then inspect bytes received by the raw inner pane.
+          // Never inject these bytes into the pane with send-keys: that would supply the answer.
+          const ready = join(scratch, `${profile}-ready`)
+          const received = join(scratch, `${profile}-received`)
+          const reader = `const fs = require("node:fs");
+            process.stdin.setRawMode(true);
+            process.stdin.on("data", data => fs.appendFileSync(${JSON.stringify(received)}, data));
+            process.stdout.write("\\x1b[?1004h");
+            fs.writeFileSync(${JSON.stringify(ready)}, "ready");`
+          let outerOutput = ""
+          const client = Bun.spawn(
+            [
+              "tmux",
+              "-T",
+              "focus",
+              "-S",
+              socket,
+              "-f",
+              config,
+              "new-session",
+              "-s",
+              "focus",
+              process.execPath,
+              "-e",
+              reader,
+            ],
+            {
+              env: { ...process.env, TERM: "xterm-256color", TMUX: "" },
+              terminal: {
+                cols: 80,
+                rows: 24,
+                data(_terminal, data) {
+                  outerOutput += Buffer.from(data).toString()
+                },
+              },
+            },
+          )
+          try {
+            await expect.poll(() => existsSync(ready), { timeout: 5000 }).toBe(true)
+            // The ready file follows the pane write; allow the server to consume its mode change.
+            await Bun.sleep(100)
+            // Like a terminal, emit reports only when the attached client requested mode 1004.
+            // tmux accepts unsolicited reports even with focus-events off; always injecting masks the bug.
+            await expect
+              .poll(() => [...outerOutput.matchAll(/\x1b\[\?1004([hl])/g)].at(-1)?.[1], { timeout: 5000 })
+              .toBe("h")
+            client.terminal!.write("\x1b[O")
+            await Bun.sleep(100)
+            client.terminal!.write("\x1b[I")
+            await expect
+              .poll(() => (existsSync(received) ? readFileSync(received, "utf8") : ""), { timeout: 2000 })
+              .toContain("\x1b[O\x1b[I")
+          } finally {
+            spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
+            client.kill()
+            await client.exited
+            client.terminal?.close()
+          }
         }
       } finally {
         spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
         rmSync(scratch, { recursive: true, force: true })
       }
     },
+    // The standalone config defaults to 5s; two real client handshakes need the vendor project's 30s budget.
+    30_000,
   )
 })
 
