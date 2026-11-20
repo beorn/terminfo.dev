@@ -90,8 +90,8 @@ test("the real Darwin census script projects unrelated identities without readin
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args) => {
     if (file !== "/usr/bin/osascript") throw new Error(`Unexpected command ${file}`)
     const result = runInNewContext(args[3]!, { ...jxa })
-    expect(JSON.parse(result).innerMs).toBe(7)
-    expect(JSON.parse(result).rows).toHaveLength(windows.length)
+    expect(JSON.parse(result)).toHaveProperty("innerMs", 7)
+    expect(JSON.parse(result)).toHaveProperty("rows.length", windows.length)
     return Buffer.from(result)
   })
   try {
@@ -305,14 +305,16 @@ test("Darwin title reads use fresh owned-window names without capturing pixels",
     name: "installed" as unknown,
   }
   let censuses = 0
+  let innerMs: unknown = 3
   vi.spyOn(captureCore, "command").mockImplementation(async (file) => {
     expect(file).toBe("/usr/bin/osascript")
     censuses++
-    return Buffer.from(JSON.stringify({ rows: [window], innerMs: 3 }))
+    return Buffer.from(JSON.stringify({ rows: [window], innerMs }))
   })
   try {
     const adapter = await createDarwinCapture(directory, { appPid: 41, onRetained: () => {} })
     expect(censuses).toBe(1)
+    expect(adapter.installCensus).not.toHaveProperty("innerMs")
     for (const name of ["control", "target", ""]) {
       window = { ...window, name }
       await expect(adapter.readTitle()).resolves.toBe(name)
@@ -324,6 +326,10 @@ test("Darwin title reads use fresh owned-window names without capturing pixels",
     await expect(adapter.readTitle()).rejects.toThrow(/window name is not a string/)
     window = { ...window, name: "foreign", id: 8 }
     await expect(adapter.readTitle()).rejects.toThrow(/window.*changed|window.*7|ownership/i)
+    window = { ...window, id: 7, name: "valid" }
+    for (innerMs of [undefined, null, -1, "3"]) {
+      await expect(adapter.readTitle()).rejects.toThrow("Darwin census returned invalid inner elapsed time")
+    }
     expect(readdirSync(directory)).toEqual([])
   } finally {
     rmSync(directory, { recursive: true, force: true })

@@ -242,7 +242,8 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
 
 /**
  * Enumerate every window, retaining full fields for the measured app and the claimed window.
- * Capture supplies scope as JSON; discovery callers omit it to read the full census as before.
+ * Capture supplies scope as JSON and receives rows plus inner elapsed time; unscoped discovery
+ * keeps the full row-array result.
  * Owned offscreen/transparent/layered rivals remain full rows for the existing selector and refusals.
  */
 export const CENSUS = `var censusStartedAt = Date.now();
@@ -314,7 +315,7 @@ export async function createDarwinCapture(
     step: "window census" | "restore confirmation",
     windowId: number | undefined = targetWindowId,
   ) => {
-    const measured: { rows: unknown; innerMs: unknown } = JSON.parse(
+    const measured: unknown = JSON.parse(
       (
         await command(
           "/usr/bin/osascript",
@@ -332,7 +333,15 @@ export async function createDarwinCapture(
         )
       ).toString(),
     )
-    if (typeof measured?.innerMs !== "number" || !Number.isFinite(measured.innerMs) || measured.innerMs < 0) {
+    if (
+      typeof measured !== "object" ||
+      measured === null ||
+      !("rows" in measured) ||
+      !("innerMs" in measured) ||
+      typeof measured.innerMs !== "number" ||
+      !Number.isFinite(measured.innerMs) ||
+      measured.innerMs < 0
+    ) {
       throw new Error("Darwin census returned invalid inner elapsed time")
     }
     const { selected, ownedWindows } = censusDarwinWindows(measured.rows, appPid, windowId, windowSelection)
