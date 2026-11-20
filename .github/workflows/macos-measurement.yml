@@ -471,11 +471,12 @@ jobs:
           SCRIPT
           chmod +x "$COMMAND_PATH"
           # 32555 (@cto c8b7704b): the TERM_FEATURES clean-launch marker, one helper for every direct-binary arm
-          # (Ghostty, WezTerm, Warp). This job's receipt run id, read from the job-start sample and refused when
+          # (Ghostty, WezTerm, Alacritty, Warp). This job's receipt run id, read from the job-start sample and refused when
           # absent, goes into the app's own launch environment with TERM_FEATURES removed; an app already running
           # from this bundle is refused, because a reused process cannot carry this run's marker. The child reader
           # (terminal-child-environment.ts) measures only when both variables equal the run id. Terminal.app and
-          # iTerm2 open windows inside an existing app process and keep their named PROBE TODO.
+          # iTerm2 open windows inside an existing app process and keep their named PROBE TODO; cmux starts through
+          # `open -a`, whose LaunchServices launch does not carry this shell's environment, so it keeps one too.
           term_features_launch_env() {
             local run_id
             run_id="$(node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" run-id "$OUT/job-start.json")" || {
@@ -611,7 +612,8 @@ jobs:
               # retained cols x rows, corner <=8 px and no stray edge pixels; no tolerance changes here.
               APP_ARGV=("$APP_BUNDLE/Contents/MacOS/alacritty" -o window.padding.x=1 -o window.padding.y=1 -e /bin/bash "$COMMAND_PATH")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
-              "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
+              term_features_launch_env || exit 1
+              "${TERM_FEATURES_LAUNCH_ENV[@]}" "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
               ;;
             warp)
               # Warp's stable binary inherits this bun process's environment (spawn without env); whether Warp
