@@ -162,7 +162,7 @@ export function supplementOf(subject: {
 
 /**
  * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
- * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051). The one matcher: the
+ * declared supplement, and for a mux the default config of its recorded regime (#33151, @cto 4a546051). The one matcher: the
  * selection joins a supplement to its default with it, and placement refuses a supplement without one (33550).
  */
 export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
