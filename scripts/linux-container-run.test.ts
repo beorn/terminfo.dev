@@ -2297,13 +2297,14 @@ describe("mux profile configs", () => {
             await client.exited
             client.terminal?.close()
           }
-          spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
         }
       } finally {
         spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
         rmSync(scratch, { recursive: true, force: true })
       }
     },
+    // The standalone config defaults to 5s; two real client handshakes need the vendor project's 30s budget.
+    30_000,
   )
 })
 
