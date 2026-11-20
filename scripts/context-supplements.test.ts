@@ -375,9 +375,12 @@ describe("truecolor-on supplement (33151)", () => {
  * property of the whole supplement, so this also proves the flag cannot reach any other row: the supplement
  * declares one id, and a decided row outside it keeps its status and gains no marker.
  */
-describe.each([TMUX_SET_TITLES_CONFIG, 'tmux: set-titles on; set-titles-string "#T"'])(
+describe.each([
+  [TMUX_SET_TITLES_CONFIG, "tmux: focus-events on", MUX_DEFAULT_CONFIG],
+  ['tmux: set-titles on; set-titles-string "#T"', MUX_DEFAULT_CONFIG, "tmux: focus-events on"],
+])(
   "set-titles-on supplement (32593), %s",
-  (config) => {
+  (config, defaultConfig, otherConfig) => {
     const OSC = "extensions.osc22-pointer"
     const muxCatalog = { ids: [OSC, "sgr.bold"], suite: { ...suite, catalogIds: [OSC, "sgr.bold"] } }
     const base = run(
@@ -386,10 +389,23 @@ describe.each([TMUX_SET_TITLES_CONFIG, 'tmux: set-titles on; set-titles-string "
       { [OSC]: "declared-untestable", "sgr.bold": "supported" },
       null,
       at,
-      { config: "tmux: focus-events on" },
+      { config: defaultConfig! },
       muxCatalog,
     )
     const supplement = run("tmux", "tmux-set-titles", { [OSC]: "unsupported" }, null, at, { config }, muxCatalog)
+
+    it("joins only its recorded default when legacy and focus-enabled defaults coexist", () => {
+      const other = run(
+        "tmux", "tmux-other-default", { [OSC]: "declared-untestable" }, null, at,
+        { config: otherConfig! }, muxCatalog,
+      )
+      const contexts = Object.values(projectWith([base, other, supplement], muxCatalog.ids).contexts)
+      expect(contexts).toHaveLength(2)
+      expect(contexts.find((entry) => entry.subject?.config === defaultConfig)?.cells[OSC]?.origin.runId)
+        .toBe("tmux-set-titles")
+      expect(contexts.find((entry) => entry.subject?.config === otherConfig)?.cells[OSC]?.origin.runId)
+        .toBe("tmux-other-default")
+    })
 
     it("declares exactly one row, and only the set-titles config is its run", () => {
       expect(SET_TITLES_ON.featureIds).toEqual([OSC])
