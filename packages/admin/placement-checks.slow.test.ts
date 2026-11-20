@@ -71,7 +71,9 @@ test("a hosted Warp run that would turn 79 served decided cells undecided is ref
   // The candidate descends from the placed reading's revision, so the projection's lineage pick takes it:
   // without this the test would not exercise the pick at all (@dev/luna3 case 1).
   expect(run.sourceRevision).toBe("92abecb3fccfc624ef1d35a7040612b879d75aa7")
-  execFileSync("git", ["merge-base", "--is-ancestor", "c4b53b5f", "92abecb3fccfc624ef1d35a7040612b879d75aa7"], { cwd: ROOT })
+  execFileSync("git", ["merge-base", "--is-ancestor", "c4b53b5f", "92abecb3fccfc624ef1d35a7040612b879d75aa7"], {
+    cwd: ROOT,
+  })
 
   // The projection names, on stderr, a placed harness row it keeps over a changed probe; that note is not this test's.
   const notes = vi.spyOn(console, "error").mockImplementation(() => {})
