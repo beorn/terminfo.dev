@@ -4,24 +4,46 @@
  * @level l2
  * @consumer The owned collector's shared exact-App table and semantic reader.
  * @testonly none
+ * @reach fs-walk <fixture-only: lists only a mkdtemp scratch dir it created, for leftover osc7- files>
  */
 import { afterEach, expect, test, vi } from "vitest"
 import { execFileSync } from "node:child_process"
-import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import nativeScreen from "./fixtures/screen-sgr-backspace.json"
 import { extensionsProbes, type AppSemanticReading } from "@terminfo/probe-defs"
 import { replayTermProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
+import { gradeAppSemanticState } from "../../probe-defs/src/app-semantic-state.ts"
 import { TMUX_SET_TITLES_CONFIG } from "./disposable-receipt.ts"
+import { readOwnedWezTermPane } from "./wezterm-owned-history.ts"
+import { kittyAncestor } from "./linux-capture.ts"
 import {
   appSemanticDeclarations,
+  declarationDrift,
   beginMuxSgrCommandRead,
   openAppCommandLog,
   readAppSemanticState,
+  readWezTermCwd,
 } from "./app-semantic-state.ts"
 
 const weztermCli = vi.hoisted(() => vi.fn())
+const editorNonce = vi.hoisted(() => vi.fn<() => string | undefined>())
+vi.mock("node:crypto", async (original) => {
+  const actual = await original<typeof import("node:crypto")>()
+  return { ...actual, randomUUID: () => editorNonce() ?? actual.randomUUID() }
+})
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), spawnSync: weztermCli }))
 vi.mock("./linux-capture.ts", async (original) => ({
   ...(await original<typeof import("./linux-capture.ts")>()),
@@ -29,9 +51,575 @@ vi.mock("./linux-capture.ts", async (original) => ({
 }))
 
 afterEach(() => {
+  editorNonce.mockReset()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
+
+// Existing launch and file-owner tests cannot catch a collector that leaves editors unavailable
+// or accepts another activation's data. This drives the existing collector entry and real files.
+test.each([
+  "native",
+  "shell-ancestor",
+  "pre-planted",
+  "activation-missing",
+  "owned-target-no-env",
+  "owned-target-conflicting-env",
+  "wrong-activation",
+  "stale-sequence",
+  "api-absent",
+  "pid-absent",
+  "unchanged-target",
+  "capture-failed",
+  "restoration-failed",
+  "reply-timeout",
+])(
+  "editor CWD collector qualifies native replies and captures before restoration (%s)",
+  async (mode) => {
+    const { randomUUID } = await import("node:crypto")
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-reader-"))
+    // Hosted output is outside the private editor launch directory.
+    const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-output-"))
+    const capture = join(captureRoot, "artifacts")
+    const replyDirectory = join(directory, "editor-replies-activation")
+    mkdirSync(capture)
+    mkdirSync(replyDirectory)
+    const runId = "c".repeat(32)
+    const activationNonce = randomUUID()
+    const requestPath = join(directory, "editor-request.json")
+    const extensionPid = process.pid + 123
+    const app = { name: "Visual Studio Code", version: "native-api-version" }
+    const original = "file:///original-native"
+    let nativeCwd = original
+    let sequence = 0
+    const answered = new Set<string>()
+    const captures: Array<{ featureId: string; phase: string; cwd: string }> = []
+    const writes: string[] = []
+    writeFileSync(
+      join(directory, "editor-activation.json"),
+      JSON.stringify({
+        runId,
+        activationNonce,
+        extensionPid,
+        app,
+        activatedAt: Date.now(),
+        requestPath,
+        replyDirectory,
+        evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
+      }),
+    )
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_TARGET_ID", "com.microsoft.VSCode")
+    // The Darwin receipt is the authority; the launcher variable is not a second selector.
+    if (mode === "owned-target-no-env") vi.stubEnv("TERMINFO_TARGET_ID", undefined)
+    if (mode === "owned-target-conflicting-env") vi.stubEnv("TERMINFO_TARGET_ID", "cursor")
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    // CTO condition: an existing reply cannot satisfy even a correctly correlated request.
+    const plantedNonce = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+    const plantedPath = join(replyDirectory, plantedNonce + ".json")
+    if (mode === "pre-planted") {
+      writeFileSync(plantedPath, "pre-existing reply sentinel", { flag: "wx" })
+      editorNonce.mockReturnValueOnce(plantedNonce)
+    }
+    if (mode === "activation-missing") rmSync(join(directory, "editor-activation.json"))
+    // The extension's own error record names private paths; it must stay out of the public reading.
+    const privateErrorSentinel = `{"reason":"private error sentinel ${directory}/x"}\n`
+    if (mode === "reply-timeout") writeFileSync(join(directory, "editor-reader-errors.jsonl"), privateErrorSentinel)
+    // Only the external-API fixture writes replies; production must write only requests.
+    const producer = setInterval(() => {
+      if (!existsSync(requestPath)) return
+      const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
+        nonce: string
+        expectedCwd?: string
+        [key: string]: unknown
+      }
+      if (
+        mode === "reply-timeout" ||
+        answered.has(request.nonce) ||
+        (mode !== "unchanged-target" && request.expectedCwd !== undefined && request.expectedCwd !== nativeCwd)
+      ) {
+        return
+      }
+      answered.add(request.nonce)
+      writeFileSync(
+        join(replyDirectory, `${request.nonce}.json`),
+        JSON.stringify({
+          ...request,
+          activationNonce: mode === "wrong-activation" ? "another-activation" : activationNonce,
+          extensionPid,
+          app,
+          evaluatedAt: Date.now(),
+          sequence: mode === "stale-sequence" ? 1 : ++sequence,
+          delivery: "interval",
+          status: "observed",
+          terminal: {
+            name: `terminfo-${runId}`,
+            processId:
+              mode === "pid-absent"
+                ? { present: false, reason: "Native terminal.processId is undefined" }
+                : { present: true, value: mode === "shell-ancestor" ? process.ppid : process.pid },
+            shellIntegrationCwd:
+              mode === "api-absent"
+                ? { present: false, reason: "Native terminal.shellIntegration is undefined" }
+                : { present: true, value: nativeCwd },
+          },
+        }),
+        { flag: "wx" },
+      )
+    }, 5)
+    try {
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc633-p",
+        runId,
+        editor: {
+          appId: "com.microsoft.VSCode",
+          assertProcess: async (pid: number, collectorAncestor?: boolean) => {
+            if (pid === process.ppid && mode === "shell-ancestor") {
+              expect(collectorAncestor).toBe(true)
+              return
+            }
+            if (pid !== extensionPid && pid !== process.pid) {
+              throw new Error("Native reply process is outside the owned App")
+            }
+          },
+          capture: async (featureId: string, phase: string) => {
+            captures.push({ featureId, phase, cwd: nativeCwd })
+            // The error names both private directories, as a real capture or write failure can (34699, @cto 1546).
+            if (mode === "capture-failed") throw new Error(`Fixture capture failed at ${capture} for ${directory}`)
+            return { retained: `fixture-${phase}` }
+          },
+        },
+        write(bytes: string) {
+          if (mode === "restoration-failed" && bytes.includes(`Cwd=${new URL(original).pathname}`)) {
+            throw new Error(`Fixture restoration write failed in ${directory} with evidence at ${capture}`)
+          }
+          writes.push(bytes)
+          const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(bytes)?.[1]
+          if (cwd !== undefined && !(mode === "unchanged-target" && cwd.includes("/terminfo-target-"))) {
+            nativeCwd = cwd.startsWith("file:") ? cwd : `file://${cwd}`
+          }
+        },
+      })
+      // The serialized reading is what reaches the committed probes-apps record (34666, @cto 190b1552): no private
+      // directory, terminal name, process id or raw reply, on success and on every failure path.
+      const serialized = JSON.stringify(reading)
+      for (const secret of [directory, captureRoot, `terminfo-${runId}`, "private error sentinel"]) {
+        expect(serialized).not.toContain(secret)
+      }
+      for (const key of ["extensionPid", "processId", "requestPath", "replyDirectory", "shellIntegrationCwd", "raw"]) {
+        expect(serialized).not.toContain(`"${key}"`)
+      }
+      if (mode === "reply-timeout") {
+        expect(reading).toMatchObject({ status: "unavailable" })
+        const failure = (reading.detail as { nativeFailure: { privateEvidence: string; sha256: string } }).nativeFailure
+        const retained = readFileSync(join(capture, failure.privateEvidence))
+        expect(retained.toString("utf8")).toBe(privateErrorSentinel)
+        expect(createHash("sha256").update(retained).digest("hex")).toBe(failure.sha256)
+        return
+      }
+      if (mode === "activation-missing") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("editor-activation.json") })
+        expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+        expect(writes).toEqual([])
+        return
+      }
+      if (mode === "pre-planted") {
+        expect(reading).toMatchObject({
+          status: "invalid",
+          reason: "Native editor reply was present before its request",
+        })
+        expect(existsSync(requestPath)).toBe(false)
+        expect(readFileSync(plantedPath, "utf8")).toBe("pre-existing reply sentinel")
+        expect(writes).toEqual([])
+        expect(captures.map((capture) => capture.phase)).toEqual(["failed-read"])
+        return
+      }
+      if (mode !== "native" && mode !== "shell-ancestor" && !mode.startsWith("owned-target-")) {
+        expect(reading.status).toBe(
+          mode === "api-absent" || mode === "pid-absent" || mode === "unchanged-target" ? "unavailable" : "invalid",
+        )
+        const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
+        const result = gradeAppSemanticState(reading)
+        expect(result.observation).toBeUndefined()
+        const detail = reading.detail as {
+          nativeObservations: Array<{ artifact: string; sha256: string; bytes: number }>
+        }
+        expect(detail.nativeObservations.length).toBeGreaterThan(0)
+        // The public record carries a digest of each native reply; the bytes stay in the private artifact (34666).
+        for (const observation of detail.nativeObservations) {
+          expect(observation).not.toHaveProperty("raw")
+          const bytes = readFileSync(join(capture, observation.artifact))
+          expect(createHash("sha256").update(bytes).digest("hex")).toBe(observation.sha256)
+          expect(bytes.length).toBe(observation.bytes)
+        }
+        expect(JSON.parse(result.response ?? "{}")).toMatchObject({ status: reading.status })
+        if (mode === "capture-failed") {
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor evidence capture failed") })
+        }
+        if (mode === "restoration-failed") {
+          expect(reading).toMatchObject({ reason: expect.stringContaining("Native editor fixture restoration failed") })
+          expect(nativeCwd).not.toBe(original)
+        } else if (mode !== "api-absent") expect(nativeCwd).toBe(original)
+        return
+      }
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state") {
+        throw new Error("Native CWD row was not measured")
+      }
+      expect(reading.unknown.after).toBe(reading.unknown.before)
+      expect(reading.handled.after).toBe(reading.handled.expected)
+      expect(reading.handled.before).not.toBe(reading.handled.expected)
+      expect(reading.target.after).toBe(reading.target.expected)
+      const { gradeAppSemanticState } = await import("../../probe-defs/src/app-semantic-state.ts")
+      expect(gradeAppSemanticState(reading).observation?.outcome).toBe("supported")
+      expect(captures).toContainEqual({
+        featureId: "extensions.osc633-p",
+        phase: "target",
+        cwd: reading.target.expected,
+      })
+      expect(nativeCwd).toBe(original)
+      expect(writes.some((bytes) => bytes.includes("633;P;Cwd="))).toBe(true)
+      const detail = reading.detail as {
+        nativeObservations: Array<{ phase: string; artifact: string; sha256: string; bytes: number }>
+      }
+      expect(detail.nativeObservations.length).toBeGreaterThanOrEqual(7)
+      const nonces = detail.nativeObservations.map((observation) => {
+        expect(observation).not.toHaveProperty("raw")
+        const raw = readFileSync(join(capture, observation.artifact), "utf8")
+        expect(createHash("sha256").update(raw).digest("hex")).toBe(observation.sha256)
+        const reply = JSON.parse(raw) as { nonce: string; activationNonce: string; runId: string }
+        expect(reply.activationNonce).toBe(activationNonce)
+        expect(reply.runId).toBe(runId)
+        return reply.nonce
+      })
+      expect(new Set(nonces).size).toBe(nonces.length)
+    } finally {
+      clearInterval(producer)
+      rmSync(directory, { recursive: true })
+      rmSync(captureRoot, { recursive: true })
+    }
+  },
+  15_000,
+)
+
+// Requirement (34685, @cto 34685-execution-scope-ruling-1435): the native editor reader qualifies OSC 133/633 C, D
+// and 633 E from execution events that the collector's own written bytes cause. Each selector trial is read after
+// A/B, after C before D, and after D, joined by execution identity; controls are the opposite selector (C/D) or a
+// known E payload (E), with an OSC 9999 / unknown-E negative. The osc633-p test above has no execution events, so
+// it cannot see causation, joins, controls or extra facts. This fake native source behaves on its own: it parses
+// the bytes the reader writes and only then emits events, so a reader that grades without writing gets nothing.
+test.each([
+  ...(
+    [
+      "extensions.osc633-c",
+      "extensions.osc133-c",
+      "extensions.osc633-d",
+      "extensions.osc133-d",
+      "extensions.osc633-e",
+    ] as const
+  ).map((featureId) => ({ featureId, source: "faithful", outcome: "supported" })),
+  { featureId: "extensions.osc633-e", source: "vscode-nonce-gated", outcome: "supported" },
+  { featureId: "extensions.osc633-c", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc633-d", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc133-c", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-e", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-d", source: "leaky-unknown", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-e", source: "leaky-unknown", outcome: "controls-failed" },
+  { featureId: "extensions.osc633-c", source: "stray-execution", outcome: "invalid" },
+  { featureId: "extensions.osc633-d", source: "unpaired-end", outcome: "invalid" },
+  // 34861 (@cto 34861-editor-criterion-r2): A, B and P decide only a qualified negative; a qualified positive is
+  // PROBE TODO because no position or history is shown. Each failing source removes one deciding observation.
+  ...(["extensions.osc133-a", "extensions.osc633-a", "extensions.osc133-b", "extensions.osc633-b"] as const).map(
+    (featureId) => ({ featureId, source: "faithful", outcome: "positive-todo" }),
+  ),
+  { featureId: "extensions.osc133-a", source: "drops-133-a", outcome: "unsupported" },
+  { featureId: "extensions.osc633-a", source: "drops-633-a", outcome: "unsupported" },
+  { featureId: "extensions.osc133-a", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-a", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-a", source: "high-without-e", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-b", source: "drops-133-b", outcome: "unsupported" },
+  { featureId: "extensions.osc633-b", source: "drops-633-b", outcome: "unsupported" },
+  { featureId: "extensions.osc133-b", source: "start-without-b", outcome: "controls-failed" },
+  // The osc633-b controls are OSC 133, so an editor deaf to 633 qualifies them and reads the target empty.
+  { featureId: "extensions.osc633-b", source: "ignores-633", outcome: "unsupported" },
+  { featureId: "extensions.osc133-p", source: "faithful", outcome: "unsupported" },
+  { featureId: "extensions.osc133-p", source: "p-as-a", outcome: "positive-todo" },
+  { featureId: "extensions.osc133-p", source: "ignores-633", outcome: "controls-failed" },
+  { featureId: "extensions.osc133-p", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "faithful", outcome: "supported" },
+  { featureId: "extensions.semantic-prompts", source: "drops-133-a", outcome: "todo" },
+  { featureId: "extensions.semantic-prompts", source: "medium-without-a", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "letter-as-c", outcome: "controls-failed" },
+  { featureId: "extensions.semantic-prompts", source: "drops-133-b", outcome: "controls-failed" },
+  { featureId: "extensions.osc-633-vscode", source: "vscode-nonce-gated", outcome: "supported" },
+  { featureId: "extensions.osc-633-vscode", source: "faithful", outcome: "supported" },
+  { featureId: "extensions.osc-633-vscode", source: "high-without-e", outcome: "controls-failed" },
+  { featureId: "extensions.osc-633-vscode", source: "ignores-633", outcome: "controls-failed" },
+] as const)(
+  "editor execution row $featureId from a $source native source grades $outcome",
+  async ({ featureId, source, outcome }) => {
+    const { randomUUID } = await import("node:crypto")
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-exec-"))
+    const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-exec-output-"))
+    const capture = join(captureRoot, "artifacts")
+    const replyDirectory = join(directory, "editor-replies-activation")
+    mkdirSync(capture)
+    mkdirSync(replyDirectory)
+    const runId = "d".repeat(32)
+    const activationNonce = randomUUID()
+    const requestPath = join(directory, "editor-request.json")
+    const extensionPid = process.pid + 321
+    const app = { name: "Visual Studio Code", version: "native-api-version" }
+    writeFileSync(
+      join(directory, "editor-activation.json"),
+      JSON.stringify({
+        runId,
+        activationNonce,
+        extensionPid,
+        app,
+        activatedAt: Date.now(),
+        requestPath,
+        replyDirectory,
+        evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
+      }),
+    )
+    const editorNonce = randomUUID()
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    vi.stubEnv("VSCODE_NONCE", source === "vscode-nonce-gated" ? editorNonce : "")
+    // The native source: execution facts exist only because these bytes were written.
+    type Fact = Record<string, unknown> & { eventSequence: number; kind: "start" | "end"; execution: string }
+    const pending: Fact[] = []
+    let eventSequence = 0
+    let executions = 0
+    let current: string | undefined
+    let commandLine: { value: string; confidence: number; isTrusted: boolean } | undefined
+    const commands: string[] = []
+    const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+    const emit = (kind: "start" | "end", fields: Record<string, unknown>) => {
+      if (kind === "start") current = `execution-${++executions}`
+      const id = current ?? `execution-${++executions}`
+      pending.push({ eventSequence: ++eventSequence, kind, at: Date.now(), execution: id, ...fields })
+      if (kind === "end") current = undefined
+    }
+    // VS Code 1.142.0 command detection, in the order the bytes arrive (34861). A sets the prompt start; B the
+    // command start at the cursor column; C fires the start event only after a command start
+    // (UnixPtyHeuristics.handleCommandExecuted); D synthesizes a missing C, ends, and resets the command, except with
+    // no command start, where nothing fires and nothing resets. Confidence: High after E, Medium with a prompt
+    // start, a command start past column 0 and a one-line command, else Low (commandDetectionCapability.ts:93-123).
+    let promptStart = false
+    let commandStart: number | undefined
+    let executed = false
+    let typed = ""
+    let column = 0
+    const start = (fields: Record<string, unknown> = {}) => {
+      const confidence =
+        source === "high-without-e" || commandLine !== undefined
+          ? 2
+          : (promptStart || source === "medium-without-a") &&
+              commandStart !== undefined &&
+              commandStart > 0 &&
+              !typed.trim().includes("\n")
+            ? 1
+            : 0
+      const value = commandLine?.value ?? typed.trim()
+      emit("start", {
+        commandLine: {
+          present: true,
+          valueSha256: digest(value),
+          valueLength: value.length,
+          confidence: { present: true, value: confidence },
+          isTrusted: { present: true, value: commandLine?.isTrusted ?? false },
+        },
+        ...fields,
+      })
+      executed = true
+    }
+    const reset = () => {
+      promptStart = false
+      commandStart = undefined
+      executed = false
+      commandLine = undefined
+      typed = ""
+    }
+    const parse = (bytes: string) => {
+      for (const match of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07|([^\x1b]+)/gu)) {
+        const [, selector, body = "", text] = match
+        if (text !== undefined) {
+          if (commandStart !== undefined && !executed) typed += text
+          for (const character of text) column = character === "\r" || character === "\n" ? 0 : column + 1
+          continue
+        }
+        const [letter = "", ...rest] = body.split(";")
+        const argument = rest.join(";")
+        const honoured = selector === "133" || selector === "633" || (source === "leaky-unknown" && selector === "9999")
+        if (!honoured || (source === "ignores-633" && selector === "633")) continue
+        const dropped = (mark: string) => source === `drops-${selector}-${mark}`
+        if ((letter === "A" || (letter === "P" && source === "p-as-a")) && !dropped("a")) promptStart = true
+        if (letter === "B" && !dropped("b")) {
+          commandStart = column
+          typed = ""
+        }
+        if (letter === "E" && selector !== "133") {
+          const [line = "", nonce] = argument.split(";")
+          const isTrusted = nonce !== undefined && nonce !== "" && nonce === editorNonce
+          // setConfidentCommandLine runs only when nonce === this._nonce; without it, C takes the buffer text.
+          commandLine = {
+            value: source === "vscode-nonce-gated" && !isTrusted ? typed.trim() : line,
+            confidence: 2,
+            isTrusted,
+          }
+        }
+        if (letter === "C" || (letter === "Y" && source === "letter-as-c")) {
+          if (source === "unpaired-end") {
+            commandLine = undefined
+            continue
+          }
+          if (commandStart === undefined && source !== "start-without-b") continue
+          start()
+          if (source === "stray-execution" && selector === "633") emit("start", {})
+        }
+        if (letter === "D") {
+          if (source !== "unpaired-end") {
+            if (commandStart === undefined && source !== "start-without-b") continue
+            if (!executed) start()
+          }
+          emit("end", {
+            startSeen: current !== undefined,
+            commandLine: { present: false, reason: "Native execution.commandLine is undefined" },
+            exitCode: { present: true, value: Number(argument) },
+          })
+          reset()
+        }
+      }
+    }
+    let sequence = 0
+    const answered = new Set<string>()
+    const producer = setInterval(() => {
+      if (!existsSync(requestPath)) return
+      const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
+        nonce: string
+        deadline: number
+        awaitEvent?: "start" | "end"
+        [key: string]: unknown
+      }
+      if (answered.has(request.nonce)) return
+      const met = request.awaitEvent === undefined || pending.some((fact) => fact.kind === request.awaitEvent)
+      if (!met && Date.now() < request.deadline - 300) return
+      answered.add(request.nonce)
+      const delivered = pending.splice(0)
+      writeFileSync(
+        join(replyDirectory, `${request.nonce}.json`),
+        JSON.stringify({
+          ...request,
+          activationNonce,
+          extensionPid,
+          app,
+          evaluatedAt: Date.now(),
+          sequence: ++sequence,
+          delivery: "interval",
+          status: "observed",
+          executionApi: { start: { present: true }, end: { present: true } },
+          executions: delivered,
+          ...(request.awaitEvent === undefined ? {} : { awaitedEvent: { kind: request.awaitEvent, met } }),
+          terminal: {
+            name: `terminfo-${runId}`,
+            processId: { present: true, value: process.pid },
+            shellIntegrationCwd: { present: true, value: "file:///native-cwd" },
+          },
+        }),
+        { flag: "wx" },
+      )
+    }, 5)
+    try {
+      const reading = await readAppSemanticState({
+        featureId,
+        runId,
+        editor: {
+          appId: "com.microsoft.VSCode",
+          assertProcess: async (pid: number) => {
+            if (pid !== extensionPid && pid !== process.pid) throw new Error("Native reply process is outside the App")
+          },
+          capture: async (_featureId: string, phase: string) => ({ retained: `fixture-${phase}` }),
+        },
+        write(bytes: string) {
+          commands.push(bytes)
+          parse(bytes)
+        },
+      })
+      const result = gradeAppSemanticState(reading)
+      const serialized = JSON.stringify(reading)
+      for (const secret of [
+        directory,
+        captureRoot,
+        `terminfo-${runId}`,
+        "terminfo-target-",
+        "terminfo-control-",
+        editorNonce,
+      ]) {
+        expect(serialized).not.toContain(secret)
+      }
+      if (outcome === "supported" || outcome === "unsupported") {
+        expect(reading).toMatchObject({ status: "measured", reader: "state" })
+        expect(result.observation?.outcome).toBe(outcome)
+      } else if (outcome === "controls-failed") {
+        expect(reading.status).toBe("measured")
+        expect(result.tests?.[0]?.status).toBe("probe-invalid")
+      } else if (outcome === "invalid") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringContaining("execution") })
+      } else if (outcome === "positive-todo") {
+        // A qualified positive keeps its measured states and says which facts the API cannot show.
+        expect(reading).toMatchObject({ status: "unavailable", reason: expect.stringContaining("earlier history") })
+        expect(result.observation).toBeUndefined()
+        expect(result.tests?.[0]?.status).toBe("probe-todo")
+        expect((reading.detail as { executionStates?: unknown }).executionStates).toBeDefined()
+      } else {
+        expect(reading.status).toBe("measured")
+        expect(result.observation).toBeUndefined()
+        expect(result.tests?.[0]?.status).toBe("probe-todo")
+      }
+      // Stages are written apart: setup (A/B), then C (with E), then D; never the whole sequence in one write.
+      if (reading.status !== "invalid") {
+        expect(commands.some((bytes) => /\]\d+;[AB]/u.test(bytes) && !/\]\d+;C/u.test(bytes))).toBe(true)
+        expect(commands.some((bytes) => /\]\d+;C/u.test(bytes) && !/\]\d+;D/u.test(bytes))).toBe(true)
+      }
+      if (featureId === "extensions.osc133-b" || featureId === "extensions.osc633-b") {
+        // The omission trial is the last one: no B, so VS Code fires nothing and nothing resets.
+        const trials = (reading.detail as { executionTrials: Array<{ phase: string; state: string }> }).executionTrials
+        expect(trials.at(-1)).toMatchObject({
+          phase: "omitted",
+          state: source === "start-without-b" ? "start" : "none",
+        })
+      }
+      expect(commands.join("")).not.toContain("executeCommand")
+      if (featureId === "extensions.osc633-d" && outcome === "supported") {
+        expect(commands.join("")).toContain("\x1b]633;D;17\x07")
+        expect(commands.join("")).toContain("\x1b]133;D;17\x07")
+      }
+      if (featureId === "extensions.osc633-e" && outcome === "supported") {
+        const trials = (reading.detail as { executionTrials: Array<{ phase: string; commandLine?: unknown }> })
+          .executionTrials
+        // Command-line confidence and trust stay separate from the digest match.
+        expect(trials.find((trial) => trial.phase === "target")).toMatchObject({
+          commandLine: {
+            present: true,
+            confidence: { present: true, value: 2 },
+            isTrusted: { present: true, value: source === "vscode-nonce-gated" },
+          },
+        })
+      }
+    } finally {
+      clearInterval(producer)
+      rmSync(directory, { recursive: true })
+      rmSync(captureRoot, { recursive: true })
+    }
+  },
+  60_000,
+)
 
 // Native callback binding tests cannot see the collector's independent controls.
 // Model only the three OSC effects and native reads; production builds the result.
@@ -43,57 +631,133 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     vi.stubEnv("TERMINFO_MUX_KIND", "")
     vi.stubEnv("TERMINFO_TARGET_ID", "xterm")
     const osc1 = featureId.includes("osc1")
-    for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
-      let title = "original title"
-      let icon: string | null = "original icon"
-      const writes: string[] = []
-      const input = {
-        featureId,
-        runId,
-        executable: { path: "/unused", sha256: "b".repeat(64) },
-        readTitle: async () => title,
-        withIconNameFixture: async (
-          _write: (s: string) => void,
-          work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
-        ) => work(async () => icon),
-        write(bytes: string) {
-          writes.push(bytes)
-          const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
-          if (!match) return
-          const code = match[1]
-          const payload = match[2]
-          if (!code || payload === undefined) throw Error("invalid OSC fixture")
-          if (code === "2") {
-            title = payload
-            return
-          }
-          if (mode === "unchanged" || mode === "absent") {
-            if (mode === "absent") icon = null
-            return
-          }
-          if (mode === "title-becomes-b") {
-            title = payload
+    // #34932 red (@dev/8, Nov 18): a mode whose title or icon never moves waits each read's whole settle budget, which
+    // is right for a live terminal and took 8 s over five readings here. The budget runs on fake time; the outcomes
+    // are the same.
+    vi.useFakeTimers()
+    try {
+      for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
+        let title = "original title"
+        let icon: string | null = "original icon"
+        const writes: string[] = []
+        const input = {
+          featureId,
+          runId,
+          executable: { path: "/unused", sha256: "b".repeat(64) },
+          readTitle: async () => title,
+          withIconNameFixture: async (
+            _write: (s: string) => void,
+            work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
+          ) => work(async () => icon),
+          write(bytes: string) {
+            writes.push(bytes)
+            const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+            if (!match) return
+            const code = match[1]
+            const payload = match[2]
+            if (!code || payload === undefined) throw Error("invalid OSC fixture")
+            if (code === "2") {
+              title = payload
+              return
+            }
+            if (mode === "unchanged" || mode === "absent") {
+              if (mode === "absent") icon = null
+              return
+            }
+            if (mode === "title-becomes-b") {
+              title = payload
+              icon = payload
+              return
+            }
+            if (mode === "mirrors-title") {
+              title = payload
+              icon = `${payload}-mirrored`
+              return
+            }
             icon = payload
-            return
-          }
-          if (mode === "mirrors-title") {
-            title = payload
-            icon = `${payload}-mirrored`
-            return
-          }
-          icon = payload
-        },
+          },
+        }
+        let settled = false
+        const running = readAppSemanticState(input).finally(() => {
+          settled = true
+        })
+        while (!settled) await vi.advanceTimersByTimeAsync(50)
+        const reading = await running
+        expect(reading.status).toBe("measured")
+        if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
+        const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
+        const result = gradeIconNameReading(featureId, reading)
+        const supported =
+          mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
+        expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
+        expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
+        expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
       }
-      const reading = await readAppSemanticState(input)
-      expect(reading.status).toBe("measured")
-      if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
-      const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
-      const result = gradeIconNameReading(featureId, reading)
-      const supported =
-        mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
-      expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
-      expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
-      expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+  5_000,
+)
+
+// #34932: WezTerm applies each title and icon name a few reads after the OSC that sets it. The icon reader read
+// the title once, straight after OSC 2, saw the previous title and graded "OSC 2 did not set title A" on every run
+// (13:06Z), so both icon rows stayed open whatever the terminal does. Each read now settles like the OSC 2 probe.
+test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
+  "%s settles title and icon reads that apply a few reads late (34932)",
+  async (featureId) => {
+    const runId = "a".repeat(32)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
+    const osc1 = featureId.includes("osc1")
+    vi.useFakeTimers()
+    try {
+      for (let repetition = 0; repetition < 6; repetition++) {
+        const late = 1 + (repetition % 3)
+        const shown = { title: "original title", icon: "original icon" as string | null }
+        const pending: { title?: { value: string; reads: number }; icon?: { value: string; reads: number } } = {}
+        const apply = (key: "title" | "icon") => {
+          const next = pending[key]
+          if (next && next.reads-- === 0) {
+            shown[key] = next.value
+            pending[key] = undefined
+          }
+          return shown[key]
+        }
+        const input = {
+          featureId,
+          runId,
+          executable: { path: "/unused", sha256: "b".repeat(64) },
+          readTitle: async () => apply("title") as string,
+          withIconNameFixture: async (
+            _write: (s: string) => void,
+            work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
+          ) => work(async () => apply("icon")),
+          write(bytes: string) {
+            const match = /^\x1b\](0|1|2);([^\x07]*)\x07$/.exec(bytes)
+            if (!match) return
+            const [, code, payload = ""] = match
+            if (code !== "1") pending.title = { value: payload, reads: late }
+            if (code !== "2") pending.icon = { value: payload, reads: late }
+          },
+        }
+        let settled = false
+        const running = readAppSemanticState(input).finally(() => {
+          settled = true
+        })
+        while (!settled) await vi.advanceTimersByTimeAsync(50)
+        const reading = await running
+        const label = `repetition ${repetition}`
+        expect(reading.status, label).toBe("measured")
+        if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
+        const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
+        expect(gradeIconNameReading(featureId, reading).observation, label).toMatchObject({ outcome: "supported" })
+        expect(reading.detail, label).toMatchObject({ icon: expect.stringMatching(/^icon-name-b-/) })
+        if (osc1) expect(reading.detail, label).toMatchObject({ title: expect.stringMatching(/^icon-title-a-/) })
+      }
+    } finally {
+      vi.useRealTimers()
     }
   },
 )
@@ -127,11 +791,11 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
   vi.stubEnv("TERMINFO_RUN_ID", runId)
   vi.stubEnv("TERMINFO_MUX_KIND", undefined)
   vi.stubEnv("TERMINFO_TARGET_ID", "wezterm")
-  vi.stubEnv("TERMINFO_TARGET_VERSION", "0-unstable-2026-10-10")
+  vi.stubEnv("TERMINFO_TARGET_VERSION", "0-unstable-2026-11-08")
   vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", "/owned/artifacts")
   vi.stubEnv("WEZTERM_PANE", "17")
   vi.stubEnv("WEZTERM_UNIX_SOCKET", "/owned/wezterm.sock")
-  vi.mocked(execFileSync).mockReturnValue("wezterm 0-unstable-2026-10-10\n")
+  vi.mocked(execFileSync).mockReturnValue("wezterm 0-unstable-2026-11-08\n")
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc8")!
   for (const mode of [
     "works",
@@ -209,21 +873,453 @@ test("owned WezTerm OSC8 reads exact hyperlink spans, loses support with the fea
     }
   }
   expect(
-    appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux" }),
+    appSemanticDeclarations({ kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "linux" }),
   ).not.toHaveProperty("extensions.osc8")
 })
 
-test("reader capability rows do not become declarations or lend their identity to another version", () => {
-  const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
-  expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
+// The existing tmux CWD fixtures and WezTerm OSC8 text fixture cannot see the owned pane JSON directory field.
+// The real platform-owner boundary is checked in its own fixture. Here the registered callback consumes
+// the shared parser's literal CWD, including escapes that must survive restoration without normalization.
+test("shared WezTerm OSC7 observes two fresh directory values and restores the literal public URI", async () => {
+  const runId = "a".repeat(32)
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-literal-"))
+  const initial = "file:///terminfo-original%2Fkeep%20case"
+  let cwd = initial
+  let text = ""
+  const feeds: string[] = []
+  weztermCli.mockImplementation((file, args) => {
+    expect(file).toBe("/owned/wezterm")
+    expect(args).toEqual(["cli", "--no-auto-start", "list", "--format", "json"])
+    return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
+  })
+  const source = replayTermProbeSource(new Map())
+  const privateWrite = (bytes: string) => {
+    text = bytes
+    for (const command of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
+      feeds.push(command[0])
+      if (command[1] === "7") cwd = command[2]!
+    }
+  }
+  source.readAppSemanticState = () =>
+    readWezTermCwd({
+      write: privateWrite,
+      onRetained: () => {},
+      runId,
+      captureDirectory: directory,
+      readText: async () => text,
+      async readPane() {
+        const read = readOwnedWezTermPane({ executable: "/owned/wezterm", socket: "/owned/wezterm.sock", pane: "17" })
+        if (read.status !== "listed" || read.matchingPanes !== 1 || typeof read.cwd !== "string") {
+          throw new Error("No unique owned CWD")
+        }
+        return read.cwd
+      },
+    })
+  try {
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(feeds.map((feed) => /^\x1b\](\d+);/.exec(feed)?.[1])).toEqual(["77", "7", "7", "7"])
+    expect(feeds[1]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-control-[0-9a-f]{8}\x07$/)
+    expect(feeds[2]).toMatch(/^\x1b\]7;file:\/\/\/terminfo-target-[0-9a-f]{8}\x07$/)
+    expect(cwd).toBe(initial)
+    expect(feeds.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test("WezTerm CWD keeps its initial home URI private while the registered callback decides support", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-private-"))
+  const initial = "file:///Users/private-person/secret-project"
+  let cwd = initial
+  let text = ""
+  let reading: AppSemanticReading | undefined
+  try {
+    const source = replayTermProbeSource(new Map())
+    source.readAppSemanticState = async () => {
+      reading = await readWezTermCwd({
+        onRetained: () => {},
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+          if (command) cwd = command[1]!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      return reading
+    }
+    const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc7-cwd")!
+    const result = await definition.term!(source)
+    expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
+    expect(JSON.stringify(result)).not.toContain(initial)
+    expect(JSON.stringify(result)).not.toContain("private-person")
+    expect(cwd).toBe(initial)
+    if (reading?.status !== "measured") throw new Error("No controlled CWD reading")
+    expect(reading.detail).toMatchObject({
+      restoredEqual: true,
+      initialSha256: expect.any(String),
+      restoredSha256: expect.any(String),
+    })
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// Failed first reads still publish a private evidence reference; its artifact must exist and name
+// the actual failure without exposing host paths in the public result or issuing any stimulus.
+test("WezTerm CWD retains an initial owned-read failure privately before any write", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-first-read-"))
+  const diagnostic = "owned pane missing cwd at file:///Users/private-person/secret-project"
+  try {
+    const reading = await readWezTermCwd({
+      onRetained: () => {},
+      runId: "a".repeat(32),
+      captureDirectory: directory,
+      write() {
+        throw new Error("stimulus before initial directory")
+      },
+      readPane: async () => {
+        throw new Error(diagnostic)
+      },
+      readText: async () => {
+        throw new Error("text read before initial directory")
+      },
+    })
+    expect(reading.status).toBe("invalid")
+    expect(JSON.stringify(reading)).not.toContain("private-person")
+    const detail = reading.detail as { privateEvidence: string }
+    expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(diagnostic)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// A positive callback cannot detect an inert command taking effect or an unqualified CWD read.
+// These controls must remain unresolved, including a terminal that ignores only the target.
+test.each(["disabled", "inert-applied", "target-unchanged", "target-unexpected", "serialized-control"])(
+  "WezTerm CWD rejects the %s control instead of deciding support",
+  async (mode) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-controls-"))
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    vi.useFakeTimers()
+    try {
+      const pending = readWezTermCwd({
+        onRetained: () => {},
+        runId: "a".repeat(32),
+        captureDirectory: directory,
+        write(bytes) {
+          text = bytes
+          const command = /\x1b\](7|77);([^\x07]*)\x07/.exec(bytes)
+          if (!command) throw new Error("No OSC CWD stimulus")
+          const [, code, uri] = command
+          if (code === "77") {
+            if (mode === "inert-applied") cwd = uri!
+            return
+          }
+          if (uri === initial) {
+            cwd = initial
+            return
+          }
+          if (mode === "disabled") return
+          if (uri!.includes("terminfo-target-")) {
+            if (mode === "target-unchanged") return
+            if (mode === "target-unexpected") {
+              cwd = "file:///unexpected-directory"
+              return
+            }
+          }
+          cwd = mode === "serialized-control" ? uri + "/" : uri!
+        },
+        readPane: async () => cwd,
+        readText: async () => text,
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const reading = await pending
+      expect(reading.status).toBe("invalid")
+      expect(JSON.stringify(reading)).not.toContain(initial)
+      expect(cwd).toBe(initial)
+    } finally {
+      vi.useRealTimers()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// #32955: existing declaration/log tests cannot exercise the owned Kitty RPC's prompt, output and exit-state
+// observations. Drive the existing collector entry, with the real run socket and independently supplied RPC data.
+test.each([
+  ["extensions.osc133-a", "true", "valid"],
+  ["extensions.osc133-c", "terminfo-output-32955fff", "valid"],
+  ["extensions.osc133-d", "17", "valid"],
+  ["extensions.semantic-prompts", '[true,false,17,"terminfo-output-32955fff"]', "valid"],
+  ["extensions.osc133-a", "", "foreign-socket"],
+  ["extensions.osc133-a", "", "foreign-window"],
+  ["extensions.osc133-a", "", "malformed-response"],
+  ["extensions.osc133-a", "true", "unknown-changes-output"],
+])(
+  "Kitty %s reads its own window with unknown, handled and target controls: expected %s, %s",
+  async (featureId, expected, mode) => {
+    const root = mkdtempSync(join(tmpdir(), "kitty-semantic-32955-"))
+    const capture = join(root, "artifacts")
+    mkdirSync(capture)
+    const runId = "a".repeat(32)
+    const socket = join(root, `kitty-${runId}.sock`)
+    const listener = Bun.listen({ unix: socket, socket: { data() {} } })
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", "123")
+    vi.stubEnv("KITTY_WINDOW_ID", "7")
+    vi.stubEnv("KITTY_LISTEN_ON", mode === "foreign-socket" ? "unix:/unowned/kitty.sock" : `unix:${socket}`)
+    editorNonce.mockReturnValue("32955fff-0000-4000-8000-000000000001")
+    let prompt = false
+    let exit = 0
+    let title = "owned Kitty title"
+    let screen = ""
+    let output = ""
+    let currentOutput = ""
+    let running = false
+    const writes: string[] = []
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
+      expect(file).toBe("/owned/kitten")
+      expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
+      expect(args).toContain("id:7")
+      if (args?.includes("ls")) {
+        if (mode === "malformed-response") return '[{"tabs":false}]'
+        return JSON.stringify([
+          {
+            tabs: [
+              {
+                windows: [
+                  {
+                    id: mode === "foreign-window" ? 8 : 7,
+                    pid: process.pid,
+                    at_prompt: prompt,
+                    last_cmd_exit_status: exit,
+                    title,
+                  },
+                ],
+              },
+            ],
+          },
+        ])
+      }
+      if (args?.includes("get-text")) return args.includes("last_cmd_output") ? output : screen
+      throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
+    })
+    try {
+      const reading = await readAppSemanticState({
+        featureId,
+        runId,
+        executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+        write(bytes) {
+          writes.push(bytes)
+          for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07|\x1b\[[0-9;?]*[A-Za-z]|([^\x1b]+)/g)) {
+            const body = part[1]
+            if (body === "133;A") prompt = true
+            else if (body === "133;C") {
+              prompt = false
+              running = true
+              currentOutput = ""
+            } else if (body?.startsWith("133;D;")) {
+              exit = Number(body.slice(6))
+              running = false
+              output = currentOutput
+            } else if (body === "133;Z" && mode === "unknown-changes-output") {
+              output = "output changed by the unknown command"
+            } else if (body?.startsWith("2;")) title = body.slice(2)
+            else if (part[2]) {
+              screen += part[2]
+              if (running) currentOutput += part[2]
+            }
+          }
+        },
+      })
+      if (["foreign-socket", "foreign-window", "malformed-response"].includes(mode)) {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/Kitty prompt/) })
+        expect(writes).toEqual([])
+        return
+      }
+      expect(reading.status).toBe("measured")
+      if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+      if (mode === "unknown-changes-output") {
+        expect(gradeAppSemanticState(reading)).toMatchObject({ tests: [{ id: "criterion", status: "probe-invalid" }] })
+        return
+      }
+      expect(reading.runId).toBe(runId)
+      expect(reading.unknown.after).toBe(reading.unknown.before)
+      expect(reading.handled.after).toBe("terminfo-control-32955fff")
+      expect(reading.target.after).toBe(expected)
+      expect(reading.target.before).not.toBe(expected)
+      expect(writes.join("")).toContain("\x1b]133;Z\x07")
+      expect(title).toBe("owned Kitty title")
+    } finally {
+      listener.stop(true)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+// 33628 (@cto 1957): the Kitty prompt rows cannot catch the OSC 7 folder reader, which reads through a background
+// launch with --cwd=last_reported. Drive the existing collector entry with a fake Kitty that starts that child in its
+// last reported path, or its window's process cwd when it has none, and writes what the child would.
+test.each(["valid", "ignored", "target-ignored", "inert-changes", "restore-fails", "torn-read"] as const)(
+  "Kitty OSC 7 reads two fresh folders through launch --cwd=last_reported and restores the public path: %s",
+  async (mode) => {
+    const root = mkdtempSync(join(tmpdir(), "kitty-cwd-33628-"))
+    const capture = join(root, "artifacts")
+    mkdirSync(capture)
+    const runId = "c".repeat(32)
+    const socket = join(root, `kitty-${runId}.sock`)
+    const listener = Bun.listen({ unix: socket, socket: { data() {} } })
+    vi.mocked(kittyAncestor).mockReturnValue(process.pid)
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_MUX_KIND", undefined)
+    vi.stubEnv("TERMINFO_TARGET_ID", "kitty")
+    vi.stubEnv("TERMINFO_TARGET_VERSION", "0.49.2")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("KITTY_PID", String(process.pid))
+    vi.stubEnv("KITTY_WINDOW_ID", "7")
+    vi.stubEnv("KITTY_LISTEN_ON", `unix:${socket}`)
+    editorNonce.mockReturnValue("33628fff-0000-4000-8000-000000000001")
+    let title = "owned Kitty title"
+    let reported: string | undefined
+    let osc7Count = 0
+    const launches: string[][] = []
+    vi.mocked(execFileSync).mockImplementation((file, args) => {
+      if (file === "/owned/kitty" && args?.[0] === "--version") return "kitty 0.49.2 created by Kovid Goyal\n"
+      expect(file).toBe("/owned/kitten")
+      expect(args?.slice(0, 3)).toEqual(["@", "--to", `unix:${socket}`])
+      if (args?.includes("ls")) {
+        expect(args).toContain("id:7")
+        return JSON.stringify([
+          { tabs: [{ windows: [{ id: 7, pid: process.pid, at_prompt: false, last_cmd_exit_status: 0, title }] }] },
+        ])
+      }
+      if (args?.[3] === "launch") {
+        const argv = [...(args as string[])]
+        launches.push(argv)
+        expect(argv.slice(4, 9)).toEqual(["--type=background", "--source-window", "id:7", "--cwd=last_reported", "--"])
+        const out = argv.at(-1)!
+        const cwd = reported ?? process.cwd()
+        writeFileSync(out, mode === "torn-read" ? `${cwd}\nextra\n` : `${cwd}\n`)
+        return ""
+      }
+      throw new Error(`Unexpected Kitty remote command: ${JSON.stringify(args)}`)
+    })
+    try {
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc7-cwd",
+        runId,
+        executable: { path: "/owned/kitty", sha256: "b".repeat(64) },
+        write(bytes) {
+          for (const part of bytes.matchAll(/\x1b\]([^\x07]*)\x07/g)) {
+            const body = part[1]!
+            if (body.startsWith("2;")) title = body.slice(2)
+            else if (body.startsWith("77;") && mode === "inert-changes") reported = body.slice(3 + "file://".length)
+            else if (body.startsWith("7;")) {
+              osc7Count++
+              const ignored =
+                mode === "ignored" ||
+                (mode === "target-ignored" && osc7Count === 2) ||
+                (mode === "restore-fails" && osc7Count === 3)
+              if (!ignored) reported = body.slice(2 + "file://".length)
+            }
+          }
+        },
+      })
+      // Every phase's background child ran in this run's private directory, and the reader cleaned up after it.
+      expect(readdirSync(root).filter((name) => name.startsWith("osc7-"))).toEqual([])
+      expect(title).toBe("owned Kitty title")
+      if (mode === "torn-read") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/not one line/) })
+        return
+      }
+      if (mode === "restore-fails") {
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/restoration/) })
+        return
+      }
+      if (mode === "target-ignored" || mode === "ignored") {
+        // Both phases at the fallback, or only the target unchanged: never Unsupported (@cto 1957 c).
+        expect(reading).toMatchObject({ status: "invalid", reason: expect.stringMatching(/Kitty OSC7 target/) })
+        return
+      }
+      if (reading.status !== "measured" || reading.reader !== "state") throw new Error(JSON.stringify(reading))
+      const graded = gradeAppSemanticState(reading)
+      if (mode === "inert-changes") {
+        // A changed inert control never decides support either way.
+        expect(graded).toMatchObject({ tests: [{ id: "criterion", status: "probe-invalid" }] })
+        return
+      }
+      const control = join(root, "osc7-control-33628fff")
+      const target = join(root, "osc7-target-33628fff")
+      expect(reading.unknown).toEqual({ before: process.cwd(), after: process.cwd() })
+      expect(reading.handled).toEqual({ before: process.cwd(), after: control, expected: control })
+      expect(reading.target).toEqual({ before: control, after: target, expected: target })
+      expect(graded.pass).toBe(true)
+      expect(reported).toBe(process.cwd())
+      expect(launches.length).toBe(5)
+    } finally {
+      vi.mocked(kittyAncestor).mockReturnValue(123)
+      listener.stop(true)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+// 34534: the Linux runner measured XTerm(412); rows still bound to 411 left the prompt-mark and OSC 8 cells probe-todo.
+// 34555: a measured version with no reviewed rows read as "No semantic reader for this App" on every cell (34534).
+test("a measured version with no reviewed declarations names the versions that have them", () => {
+  const xterm = { kind: "term" as const, id: "xterm", os: "linux" }
+  expect(declarationDrift({ ...xterm, version: "413" })).toEqual({ measured: "413", reviewed: ["412"] })
+  expect(declarationDrift({ ...xterm, version: "412" })).toBeUndefined()
+  expect(declarationDrift({ ...xterm, id: "no-such-app", version: "1" })).toBeUndefined()
+})
+
+test("xterm 412, the runner's measured version, selects the reviewed prompt-mark and OSC 8 declarations", () => {
+  const xterm = { kind: "term" as const, id: "xterm", version: "412", os: "linux" }
+  const declared = appSemanticDeclarations(xterm)
+  for (const featureId of [
     "extensions.osc133-a",
     "extensions.osc133-b",
     "extensions.osc133-c",
     "extensions.osc133-d",
     "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.osc-633-vscode",
+    "extensions.semantic-prompts",
+    "extensions.osc8",
+  ]) {
+    expect(declared[featureId], featureId).toMatch(
+      /^Untestable \(no way\): xterm 412 .*xterm-412\.tgz \(SHA256 b48bc780\)/,
+    )
+  }
+  expect(appSemanticDeclarations({ ...xterm, version: "411" })).toEqual({})
+})
+
+test("reader capability rows do not become declarations or lend their identity to another version", () => {
+  const kitty = { kind: "term" as const, id: "kitty", version: "0.49.2", os: "linux" }
+  expect(Object.keys(appSemanticDeclarations(kitty)).sort()).toEqual([
+    "extensions.osc133-b",
+    "extensions.osc133-p",
     "extensions.osc3008-context",
     "extensions.osc8",
-    "extensions.semantic-prompts",
   ])
   expect(appSemanticDeclarations({ ...kitty, version: "unreviewed" })).toEqual({})
   const tmux = { kind: "mux" as const, id: "tmux", version: "3.8", os: "linux" }
@@ -281,6 +1377,39 @@ test("reader capability rows do not become declarations or lend their identity t
     { ...alacritty, version: "0.18.0" },
     { ...alacritty, os: "darwin" },
     { ...alacritty, kind: "mux" as const },
+  ]) {
+    expect(appSemanticDeclarations(subject)).toEqual({})
+  }
+  const macAlacritty = { ...alacritty, os: "macos" }
+  for (const featureId of [
+    "extensions.osc-633-vscode",
+    "extensions.osc133-a",
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-d",
+    "extensions.osc133-p",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc3008-context",
+    "extensions.osc440-audio",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc8",
+  ]) {
+    expect(appSemanticDeclarations(macAlacritty)[featureId]).toMatch(
+      /^Untestable \(no way\):.*configuration, not the terminal's parsed feature state.*cannot grade the feature/,
+    )
+  }
+  for (const subject of [
+    { ...macAlacritty, version: "0.18.0" },
+    { ...macAlacritty, kind: "mux" as const },
   ]) {
     expect(appSemanticDeclarations(subject)).toEqual({})
   }
@@ -394,19 +1523,19 @@ test.each(
     [
       ["kitty", "0.49.2", "extensions.osc176-app-id", "176", "176;terminfo-test"],
       ["kitty", "0.49.2", "extensions.osc710-font-normal", "710", "710;monospace"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc555-flash", "555", "555"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc710-font-normal", "710", "710;fixed"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc176-app-id", "176", "176;terminfo-test"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc3008-context", "3008", "3008;type=test"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc440-audio", "440", "440;bell.wav"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc666-termprop", "666", "666;test-prop=value"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-a", "633", "633;A"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-b", "633", "633;B"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-c", "633", "633;C"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-d", "633", "633;D;0"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
-      ["wezterm", "0-unstable-2026-10-10", "extensions.osc-633-vscode", "633", "633;A"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc555-flash", "555", "555"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc710-font-normal", "710", "710;fixed"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc176-app-id", "176", "176;terminfo-test"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc3008-context", "3008", "3008;type=test"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc440-audio", "440", "440;bell.wav"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc666-termprop", "666", "666;test-prop=value"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-a", "633", "633;A"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-b", "633", "633;B"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-c", "633", "633;C"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-d", "633", "633;D;0"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
+      ["wezterm", "0-unstable-2026-11-08", "extensions.osc-633-vscode", "633", "633;A"],
     ] as const
   ).flatMap(([app, version, featureId, code, targetBody]) =>
     (code === "633"
@@ -631,6 +1760,29 @@ test("owned command phases retain fresh completed bytes and refuse changed file 
     renameSync(path, join(directory, "old.log"))
     writeFileSync(path, "replacement log\n")
     expect(() => log.mark()).toThrow(/rotated/)
+
+    // A native editor creates its reply only after the request; the shared file owner must wait
+    // for that exact path and must never substitute the existing daemon log.
+    const replyPath = join(directory, "editor-reply.json")
+    const replyLog = openAppCommandLog(capture, replyPath)
+    expect(replyLog.mark()).toBe(0)
+    const replyText = JSON.stringify({ nonce: "fresh-request", native: "fresh-native-value" }) + "\n"
+    const waiting = replyLog.read(0, "editor-reply-retained.json", (text) => {
+      if (!text.endsWith("\n")) return undefined
+      const value = JSON.parse(text) as { nonce: string }
+      return value.nonce === "fresh-request" ? text.length : undefined
+    })
+    writeFileSync(replyPath, replyText)
+    const reply = await waiting
+    expect(reply.complete).toBe(true)
+    expect(reply.text).toBe(replyText)
+    expect(readFileSync(reply.path, "utf8")).toBe(replyText)
+    renameSync(replyPath, join(directory, "old-editor-reply.json"))
+    writeFileSync(replyPath, JSON.stringify({ nonce: "replacement" }) + "\n")
+    expect(() => replyLog.mark()).toThrow(/rotated/)
+
+    renameSync(path, join(directory, "missing-default-log"))
+    expect(() => openAppCommandLog(capture)).toThrow(/ENOENT/)
   } finally {
     rmSync(directory, { recursive: true })
   }
@@ -828,6 +1980,16 @@ test("only the missing forwarding-control line marks the read as that failure", 
   }
 }, 20_000)
 
+// @cto b0de55c0: a measured result beats a declaration in probe code too. iTerm2's UTF-8 mouse mode read Supported
+// on macOS 26.6.2, so the pointer-route list no longer declares that one cell; its other pointer cells stay declared.
+test("the macOS pointer-route list leaves iTerm2's measured UTF-8 mouse mode to its probe", () => {
+  const iterm2 = appSemanticDeclarations({ kind: "term", id: "iterm2", version: "3.6.11", os: "macos" })
+  expect(iterm2).not.toHaveProperty("modes.utf8-mouse-1005")
+  expect(Object.keys(iterm2)).toEqual(expect.arrayContaining(["extensions.osc22-pointer", "input.kitty-click-events"]))
+  const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(ghostty["modes.utf8-mouse-1005"]).toContain("no permitted pointer route")
+})
+
 test("Ghostty 1.4.0 declares extensions.osc3008-context untestable with the audited source-and-binary reason", async () => {
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.osc3008-context")!
   const fallback = await definition.term!(
@@ -871,7 +2033,7 @@ test("Ghostty 1.4.0 declares osc133-d and semantic-prompts untestable from the s
   }
 })
 
-test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestable with source citations and routes not taken (#32947)", () => {
+test("remaining Linux App semantic-prompt declarations retain exact-version citations and routes not taken (#32947)", () => {
   const ghostty = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
   for (const id of [
     "extensions.osc633-a",
@@ -903,15 +2065,13 @@ test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestab
     "extensions.osc133-d",
     "extensions.semantic-prompts",
   ] as const) {
-    expect(kitty[id]).toMatch(/^Untestable \(no setup\): Kitty 0\.49\.2 parses OSC 133/)
-    expect(kitty[id]).toContain("kitten @")
-    expect(kitty[id]).toContain("#32955")
+    expect(kitty[id]).toBeUndefined()
   }
 
   const wezterm = appSemanticDeclarations({
     kind: "term",
     id: "wezterm",
-    version: "0-unstable-2026-10-10",
+    version: "0-unstable-2026-11-08",
     os: "linux",
   })
   for (const id of [
@@ -920,7 +2080,7 @@ test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestab
     "extensions.osc133-c",
     "extensions.osc133-p",
   ] as const) {
-    expect(wezterm[id]).toMatch(/^Untestable \(no way\): WezTerm 0-unstable-2026-10-10 parses OSC 133/)
+    expect(wezterm[id]).toMatch(/^Untestable \(no way\): WezTerm 0-unstable-2026-11-08 parses OSC 133/)
     expect(wezterm[id]).toContain("get_semantic_zones")
     expect(wezterm[id]).toContain("user-var-changed")
   }
@@ -928,4 +2088,233 @@ test("remaining 19 Linux App semantic-prompt rows declare exact-version Untestab
   const tmux = appSemanticDeclarations({ kind: "mux", id: "tmux", version: "3.8", os: "linux" })
   expect(tmux["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): tmux 3\.8 has no OSC 633 handler/)
   expect(tmux["extensions.osc633-e"]).toContain("input.c:2699-2777")
+})
+
+// 34574 (@cto 386684bc option A): the nine Ghostty 1.4.0 prompt-mark rows on macOS are their own exact os rows,
+// citing the macOS app's own surfaces; the Linux rows' X11 negative evidence never reaches a Mac row.
+test("Ghostty 1.4.0 on macOS declares the nine prompt-mark ids from the Mac frontend, and only at that exact subject", () => {
+  const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  const osc633 = [
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc-633-vscode",
+  ] as const
+  const osc133 = ["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"] as const
+  for (const id of osc633) {
+    expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
+    // The shared-parser proof: the app's termio drives the core parser, which has no OS branch.
+    expect(mac[id]).toContain("src/termio/Termio.zig:14,66")
+    expect(mac[id]).toContain("osc.zig:455-505")
+  }
+  for (const id of osc133) {
+    expect(mac[id]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS parses OSC 133/)
+    for (const surface of [
+      "ghostty_surface_read_text",
+      "GetTerminalDetailsIntent.swift:35-47",
+      "macos/Ghostty.sdef:89-100,162-166",
+      "src/inspector/widgets/page.zig:291",
+      "src/terminal/snapshot/grid.zig:259",
+    ]) {
+      expect(mac[id]).toContain(surface)
+    }
+  }
+  for (const id of [...osc633, ...osc133]) {
+    expect(mac[id]).toContain("SHA256 d692bb9b")
+    expect(mac[id]).not.toMatch(/X11/u)
+  }
+  // Exact subject only: the matcher binds no other version or OS from these rows.
+  const other = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.3.1", os: "macos" })
+  for (const id of [...osc633, ...osc133]) expect(other[id]).toBeUndefined()
+  const linux = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "linux" })
+  for (const id of osc133) expect(linux[id]).toContain("X11 primary selection")
+})
+
+// 34591/34586: on macOS no reader exists for these prompt ids, so each app declares the ids its own source shows no
+// way to observe, read at that app's tag. An id with an observable but no wired reader stays Probe TODO, undeclared.
+// Existing tests pin other subjects only; a typo in either subject would leave every Mac cell probe-todo silently.
+const PROMPT_FAMILY = [
+  "extensions.osc-633-vscode",
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc633-e",
+  "extensions.osc633-p",
+  "extensions.osc8",
+  "extensions.semantic-prompts",
+]
+test.each([
+  {
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    otherVersion: "0-unstable-2026-11-08",
+    // 34621 (@cto 17dda1f9): OSC 8 is not "no way" here. The pinned CLI's `get-text --escapes` serializes hyperlink
+    // attributes (get_text.rs -> codec extract_data -> lines_to_escapes -> terminfo.rs SetHyperlink), so the row stays
+    // Probe TODO until a Mac reader is wired.
+    undeclared: ["extensions.osc633-p", "extensions.osc8"],
+  },
+  {
+    id: "cmux",
+    version: "0.65.2",
+    otherVersion: "0.65.1",
+    // 34671 (@cto 34586-cmux-cwd-finding-1246): workspace.current returns the focused panel's reported directory, which
+    // OSC 7 moves, so OSC 633;P has an observable. Source predicts it unchanged; until a reader measures it, Probe TODO.
+    undeclared: ["extensions.osc633-p"],
+  },
+])("$id $version on macOS declares every prompt-family id the darwin reader cannot read", (app) => {
+  const subject = { kind: "term" as const, id: app.id, version: app.version, os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  const expected = PROMPT_FAMILY.filter((id) => !app.undeclared.includes(id))
+  for (const id of app.undeclared) expect(mac[id], id).toBeUndefined()
+  expect(
+    Object.keys(mac)
+      .filter((id) => PROMPT_FAMILY.includes(id))
+      .sort(),
+  ).toEqual(expected)
+  for (const id of expected) expect(mac[id], id).toMatch(/^Untestable \(no way\): (WezTerm|cmux) /)
+  const allText = expected.map((id) => mac[id]).join("\n")
+  if (app.id === "wezterm") {
+    // Trap 1: this tag's empty CommandStatus arm is :882-884; Linux's :904-906 is cited only as Linux's own.
+    expect(mac["extensions.osc133-d"]).toContain("performer.rs:882-884")
+    expect(allText).not.toMatch(/performer\.rs:904-906 is/)
+  } else {
+    // Trap 2: D's exit code is parsed and unread; the unread stream handler is never claimed to discard it.
+    expect(mac["extensions.osc133-d"]).toContain("semantic_prompt.zig:30")
+    expect(allText).not.toMatch(/discard/i)
+    // 34671: OSC 8's reason rests on the bytes, not on a missing result field: the fork's VT formatter emits cell
+    // hyperlinks only for HTML, and cmux-tui's vt-state serves its own PTY sessions, not the native app's surfaces.
+    expect(mac["extensions.osc8"]).toContain("formatter.zig:1361-1366")
+    expect(mac["extensions.osc8"]).not.toMatch(/no hyperlink field/)
+  }
+  const otherVersion = appSemanticDeclarations({ ...subject, version: app.otherVersion })
+  const linux = appSemanticDeclarations({ ...subject, os: "linux" })
+  for (const id of expected) {
+    expect(otherVersion[id], id).not.toBe(mac[id])
+    expect(linux[id], id).not.toBe(mac[id])
+  }
+})
+
+// 34596 (@cto 764d55f5: per-id source qualification, no predetermined result): four more Ghostty 1.4.0 macOS rows.
+// osc633-p stays undeclared because a public cwd reader exists (AppleScript / Get Terminal Details), and the two
+// command-finish rows are no setup, never no way: a user setting makes the finish observable as a banner.
+// 34841 (@cto REVISE 2): only the rows the exercised inventory settles are declared; the rows with an untried or
+// unqualified read (A, D, semantic-prompts, 633 P) stay open, and no other Terminal version inherits the rows.
+test("Terminal.app 2.15 on macOS declares exactly the six prompt-mark rows its exercised inventory settles", () => {
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  const declared = [
+    "extensions.osc133-b",
+    "extensions.osc133-c",
+    "extensions.osc133-p",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-e",
+  ] as const
+  for (const id of declared) {
+    expect(mac[id]).toMatch(
+      /^Untestable \(no way\): Terminal\.app 2\.15 on macOS exposes no observable in this version and setup/,
+    )
+    for (const surface of [
+      "CDHash arm64 113489a0",
+      "Select to Previous Mark",
+      "elements_complete true",
+      "no attributed-string, style or mark attribute",
+      "Terminal.sdef SHA256 efc515ec",
+    ]) {
+      expect(mac[id]).toContain(surface)
+    }
+    expect(mac[id]).toContain("not whether Terminal.app parses the sequence")
+  }
+  // @cto batch 1534: the P row names the criterion it declares (bare secondary-prompt start), never a prompt property.
+  expect(mac["extensions.osc133-p"]).toContain("secondary-prompt start")
+  expect(mac["extensions.osc133-p"]).not.toContain("k=i")
+  for (const id of [
+    "extensions.osc133-a",
+    "extensions.osc133-d",
+    "extensions.osc633-a",
+    "extensions.osc633-d",
+    "extensions.osc633-p",
+    "extensions.semantic-prompts",
+  ]) {
+    expect(mac).not.toHaveProperty(id)
+  }
+  for (const id of declared) expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
+})
+
+// @failure A Wayland app-id or systemd context row stays PROBE TODO on Terminal.app with no reachable read, or a row
+//          whose effect could still be read (osc440 audio device, osc710 cell pixels, osc666 a reply) is declared.
+// 34936 (@cpo/term b348b7a3; the 34871 rule: decide whether any readback exists before any declaration).
+test("Terminal.app 2.15 on macOS declares OSC 176 and OSC 3008 only, from the same exercised inventory", () => {
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  const mac = appSemanticDeclarations(subject)
+  for (const [id, effect] of [
+    ["extensions.osc176-app-id", "a Wayland app-id"],
+    ["extensions.osc3008-context", "an OSC 3008 systemd context"],
+  ] as const) {
+    expect(mac[id]).toMatch(
+      /^Untestable \(no way\): Terminal\.app 2\.15 on macOS exposes no observable in this version and setup/,
+    )
+    expect(mac[id]).toContain(effect)
+    expect(mac[id]).toContain("CDHash arm64 113489a0")
+    expect(mac[id]).toContain("not whether Terminal.app parses the sequence")
+    expect(appSemanticDeclarations({ ...subject, version: "2.14" })).not.toHaveProperty(id)
+    expect(appSemanticDeclarations({ ...subject, os: "linux" })).not.toHaveProperty(id)
+  }
+  for (const id of ["extensions.osc440-audio", "extensions.osc710-font-normal", "extensions.osc666-termprop"]) {
+    expect(mac).not.toHaveProperty(id)
+  }
+})
+
+// 34882 (@chief 48acc556): the five Mac OSC 8 rows @dev/11's reader inventory found no per-cell link read for.
+// Each names its own surface; none may cite iTerm2's static hyperlinks capability or a query reply as evidence.
+test("five macOS apps declare OSC 8 no way at their exact versions, each by its own read surface", () => {
+  const rows = [
+    ["iterm2", "3.6.11", "without assigning style.url"],
+    ["com.microsoft.VSCode", "1.142.0", "vscode.d.ts:7672-7683 at tag 1.142.0"],
+    ["cursor", "3.25.9", "VS Code 1.128.0 extension API"],
+    ["terminal-app", "2.15", "attribute census is 49 names"],
+    ["warp", "v0.2026.10.14.08.27.stable_01", "write-only launch configuration YAML"],
+  ] as const
+  for (const [id, version, surface] of rows) {
+    const subject = { kind: "term" as const, id, version, os: "macos" }
+    const reason = appSemanticDeclarations(subject)["extensions.osc8"]
+    expect(reason).toMatch(/^Untestable \(no way\): /)
+    expect(reason).toContain(surface)
+    expect(reason).toContain("OSC 8 has no query form")
+    expect(reason).not.toMatch(/hyperlinks capability|15414/)
+    expect(appSemanticDeclarations({ ...subject, version: `${version}-other` })).not.toHaveProperty("extensions.osc8")
+    expect(appSemanticDeclarations({ ...subject, os: "linux" })).not.toHaveProperty("extensions.osc8")
+  }
+})
+
+test("Ghostty 1.4.0 on macOS declares osc633-e, osc8, osc133-d and semantic-prompts by their own reasons, and not osc633-p", () => {
+  const mac = appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.4.0", os: "macos" })
+  expect(mac["extensions.osc633-e"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS has no OSC 633 parser/)
+  expect(mac["extensions.osc633-e"]).toContain("macos/Ghostty.sdef:89-100")
+  expect(mac["extensions.osc8"]).toMatch(/^Untestable \(no way\): Ghostty 1\.4\.0 on macOS stores OSC 8 hyperlinks/)
+  expect(mac["extensions.osc8"]).toContain("packages/probe-defs/src/extensions.ts:7395-7402")
+  for (const id of ["extensions.osc133-d", "extensions.semantic-prompts"] as const) {
+    expect(mac[id]).toMatch(/^Untestable \(no setup\): /)
+    expect(mac[id]).toContain("src/config/Config.zig:1214")
+    expect(mac[id]).toContain("Ghostty.App.swift:1642-1712")
+  }
+  expect(mac["extensions.osc633-p"]).toBeUndefined()
+  for (const id of [
+    "extensions.osc633-e",
+    "extensions.osc8",
+    "extensions.osc133-d",
+    "extensions.semantic-prompts",
+  ] as const) {
+    expect(mac[id]).toContain("SHA256 d692bb9b")
+    // Mac rows carry no Linux-only runtime path (the GTK apprt) or X11 evidence.
+    expect(mac[id]).not.toMatch(/X11|apprt\/gtk/u)
+    expect(appSemanticDeclarations({ kind: "term", id: "ghostty", version: "1.3.1", os: "macos" })[id]).toBeUndefined()
+  }
 })

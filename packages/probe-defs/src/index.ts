@@ -1,5 +1,20 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+export { SOURCE_CLOCK_MISSING, sourceNow } from "./source-clock.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
+export {
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
+} from "./held-viewport-rows.ts"
+export {
+  CAPTURE_BINDING_FORMAT,
+  CAPTURE_BINDING_SUFFIX,
+  CAPTURE_BINDING_VERSION,
+  CaptureBindingMalformed,
+  captureBinding,
+  parseCaptureBinding,
+  type CaptureBinding,
+} from "./capture-binding.ts"
 export type { SourceAnswerSubject } from "./source-answers.ts"
 export type {
   HostInputName,
@@ -9,6 +24,7 @@ export type {
   RetainedHostRecipeCause,
   ProbeDefinition,
   ProbeCallbackResult,
+  PixelCellCrop,
   MeasuredProbeCallbackResult,
   ExecutionOnlyProbeCallbackResult,
   ProbeSourceKind,
@@ -32,7 +48,21 @@ export type {
   CaptureCells,
   CapturePixelGeometry,
   CaptureRectangle,
+  CaptureRenderingAxes,
   CaptureRequest,
+  DeclaredViewportHold,
+  ViewportScroll,
+  ViewportStep,
+  HeldViewportBracket,
+  HeldViewportCandidate,
+  HeldViewportFrame,
+  HeldViewportReading,
+  HeldViewportUnavailable,
+  ReadHeldViewport,
+  ReadViewportReference,
+  HeldViewportReferenceReading,
+  CaptureLayoutGuard,
+  CaptureLayoutGuardRequest,
   CaptureLocated,
   CalibrationSentinel,
 } from "./types.ts"
@@ -106,6 +136,8 @@ export {
   decrpmReading,
   decrpmReplyPattern,
   decrpmResult,
+  DECRQSS_SGR_QUERY,
+  DECRQSS_SGR_REPLY,
   decrpmStatus,
   headlessDecrpmArm,
   queryDecrpm,
@@ -127,15 +159,28 @@ export {
   beginCaptureLifecycle,
   endCaptureLifecycle,
   captureRegionReadbackDecision,
+  colourOnlyAttempts,
+  colourOnlyMismatch,
   captureRegionCallbackResult,
   collectorRegionRead,
   queryPixelGeometry,
   DEFAULT_TIMEOUT_MS,
   originFromSentinel,
-  witnessCellFor,
-  witnessCellsFor,
+  sentinelCellsInFrame,
   sentinelBlockRefusal,
+  cropPositionRefusal,
+  frameBackground,
+  frameCellBlank,
+  gridMoveExemption,
+  originFollowsFromBoxA,
+  witnessProvesPitch,
+  pairMeasuredNoRowHeight,
   CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
+  sentinelBoxDeficit,
+  sentinelFillClause,
+  type GridMove,
+  type ComparedCrop,
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,
@@ -172,6 +217,15 @@ import { editingProbes } from "./editing.ts"
 import { modesProbes } from "./modes.ts"
 import { deviceProbes } from "./device.ts"
 import { extensionsProbes, withD2LibraryObservation } from "./extensions.ts"
+import { termFootprintFor } from "./term-footprints.ts"
+export {
+  basisScopeAdmits,
+  basisScopeRefusal,
+  termFootprintFor,
+  TERM_FOOTPRINTS,
+  TERM_FOOTPRINT_NOTES,
+} from "./term-footprints.ts"
+export type { OwnerBasisScope, TermFootprint } from "./term-footprints.ts"
 import { inputProbes } from "./input.ts"
 import { resetProbes } from "./reset.ts"
 import { scrollbackProbes } from "./scrollback.ts"
@@ -196,7 +250,17 @@ export const ALL_PROBES = [
   ...charsetsProbes,
   ...unicodeProbes,
   ...clipboardProbes,
-].map(withD2LibraryObservation)
+]
+  .map(withTermFootprint)
+  .map(withD2LibraryObservation)
+
+/** Carry each probe's declared mutation footprint onto the definition (#34148).
+ * The declaration itself lives in `term-footprints.ts` so the 27 cells stay one reviewable table;
+ * an id absent from it keeps no `termFootprint`, and admission refuses it as undeclared. */
+function withTermFootprint(probe: import("./types.ts").ProbeDefinition): import("./types.ts").ProbeDefinition {
+  const termFootprint = termFootprintFor(probe.id)
+  return termFootprint === undefined ? probe : { ...probe, termFootprint }
+}
 
 /** Resolve execution inputs without changing the full catalogue or suite membership. */
 export function resolveProbeIds(
@@ -250,12 +314,17 @@ export {
   MUX_OUTER_NO_RECORD,
   MUX_OUTER_ROWS,
   MUX_OUTER_ROW_CONTROL_WRITE,
+  MUX_TITLE_CONTROL_WRITE,
+  muxOuterNoControlDefault,
   muxOuterRowGrade,
+  muxTitleControlNonce,
+  muxTitleControlWrite,
   withMuxOuterRows,
   withMuxOuterUnreadableRow,
   type MuxOuterRow,
 } from "./mux-outer-rows.ts"
 
+export { OSC22_CURRENT_QUERY, OSC22_SHAPE_REPLY, settledTitle } from "./extensions.ts"
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"

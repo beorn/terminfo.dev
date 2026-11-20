@@ -201,16 +201,15 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
   },
 )
 
-test("nine fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
+test("seven fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
   const job = workflow.jobs["measure-macos"]
   const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
     include: Array<{ id: string }>
   }
+  // Terminal.app (0f93453ec) and iTerm2 (6f2bb1072) run on owned routes, never a hosted job.
   expect(matrix.include.map((row: { id: string }) => row.id)).toEqual([
-    "terminal-app",
-    "iterm2",
     "ghostty",
     "alacritty",
     "wezterm",
@@ -264,6 +263,8 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
         PATH: `${dir}:${process.env.PATH}`,
         FIXTURE_ROOT: root,
         RUNNER_TEMP: dir,
+        // The step's first line records the job clock into the runner's env file (34567, 34613).
+        GITHUB_ENV: join(dir, "github-env"),
         // The job pins the measured tree in MEASURED_SHA (inputs.sha || github.sha); a different GITHUB_SHA
         // proves the bootstrap fetches by the pin, never by the dispatched ref (33124).
         MEASURED_SHA: sha,
@@ -296,6 +297,7 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
       // the launch receipt with exactly the same code (28216).
       { path: "packages/run-parser/src/app-launch.ts", sha },
     ])
+    expect(await readFile(join(dir, "github-env"), "utf8")).toMatch(/^JOB_START_EPOCH=\d+$/mu)
     const sampled = JSON.parse(await readFile(join(dir, "measurement-artifacts", "job-start.json"), "utf8")) as {
       job: { jobId: string }
       phase: string
@@ -399,6 +401,8 @@ test("iTerm startup records window and transfer consent policies before launch a
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
+      { status: 0, stdout: "" },
     ]
     const spawnSync = vi.fn((_file, _args, _options) => ({
       stderr: "",
@@ -428,10 +432,20 @@ test("iTerm startup records window and transfer consent policies before launch a
       "/usr/bin/defaults",
       ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
     ],
+    // 34664: removes the "clear scrollback history?" strip without changing whether CSI 3 J clears.
+    [
+      "/usr/bin/defaults",
+      ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
+    ],
+    // 34664: the dynamic profile with the offscreen command line off becomes the default profile.
+    [
+      "/usr/bin/defaults",
+      ["write", "com.googlecode.iterm2", "Default Bookmark Guid", "-string", "terminfo-measure-0001"],
+    ],
     ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
   // The retained launch log must disclose the configured permission state.
-  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 8)
+  const policies = success.stdout.write.mock.calls.map(([line]) => JSON.parse(line)).slice(6, 10)
   expect(policies).toMatchObject([
     {
       name: "transfer consent policy",
@@ -443,9 +457,19 @@ test("iTerm startup records window and transfer consent policies before launch a
       args: ["write", "com.googlecode.iterm2", "NoSyncSuppressDownloadConfirmation_selection", "-int", "0"],
       status: 0,
     },
+    {
+      name: "scrollback clear policy",
+      args: ["write", "com.googlecode.iterm2", "PreventEscapeSequenceFromClearingHistory", "-bool", "true"],
+      status: 0,
+    },
+    {
+      name: "default profile",
+      args: ["write", "com.googlecode.iterm2", "Default Bookmark Guid", "-string", "terminfo-measure-0001"],
+      status: 0,
+    },
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 8 }, () =>
+    ...Array.from({ length: 10 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -468,8 +492,12 @@ test("iTerm startup records window and transfer consent policies before launch a
     [6, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent policy"],
     [7, { status: 1 }, "transfer consent selection"],
     [7, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "transfer consent selection"],
-    [8, { status: 1 }, "open"],
-    [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [8, { status: 1 }, "scrollback clear policy"],
+    [8, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "scrollback clear policy"],
+    [9, { status: 1 }, "default profile"],
+    [9, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "default profile"],
+    [10, { status: 1 }, "open"],
+    [10, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)

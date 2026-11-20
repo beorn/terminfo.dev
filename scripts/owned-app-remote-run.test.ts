@@ -33,6 +33,8 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
+import { parseRsyncStats } from "./owned-app-remote-run.ts"
+
 const driver = fileURLToPath(new URL("./owned-app-remote-run.ts", import.meta.url))
 const identityScript = fileURLToPath(new URL("./owned-host-identity.ts", import.meta.url))
 
@@ -178,6 +180,9 @@ function fixture(): void {
       "fi",
       '[ "$verbose" = 1 ] && [ "${SHIM_SSH_TWO_KEYS:-}" = 1 ] && echo \'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost\' >&2',
       "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureNegotiated' >&2",
+      // #34834: a real ssh death leaves the remote command running. Here the shim dies with its ssh
+      // but the command it started does not, so a re-attach is proven against a probe still running.
+      'if [ "${SHIM_SSH_LEAVE_REMOTE:-}" = 1 ]; then case "$command" in *probe*) /bin/sh -c "$command" & wait $!; exit $? ;; esac; fi',
       'HOME="${SHIM_SSH_HOME:-$HOME}" exec /bin/sh -c "$command"',
     ].join("\n"),
   )
@@ -222,6 +227,7 @@ function fixture(): void {
       'case "$*" in',
       '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
+      '     [ -n "${SHIM_PROBE_SLEEP:-}" ] && sleep "$SHIM_PROBE_SLEEP"',
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
       '     [ "${SHIM_PROBE_CLOBBER_MARKER:-}" = 1 ] && printf \'not ours\\n\' > "$out/../../.owned-app-transport-stage"',
@@ -239,12 +245,16 @@ function fixture(): void {
   executable(join(shims, "kitty"), "#!/bin/sh\necho 'kitty 0.0.0-decoy'\n")
 }
 
+/** #34018: the composer hands the run identity down; the driver never mints one. */
+const RUN_ID = "0123456789abcdef0123456789abcdef"
+
 function run(
   extraEnv: Record<string, string> = {},
   extraArgs: string[] = [],
   argv: string[] = ["bun", "packages/admin/src/index.ts", "probe", "app", "kitty"],
   context = "kitty",
   stageArgument: string | null = stage,
+  runId = RUN_ID,
 ) {
   const env = {
     ...process.env,
@@ -272,6 +282,8 @@ function run(
       revision,
       "--context",
       context,
+      "--run-id",
+      runId,
       "--known-hosts",
       knownHosts,
       ...extraArgs,
@@ -323,6 +335,56 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  // #34018: the run identity belongs to the composer. The driver must carry it, never mint one —
+  // a fresh mint on the host is exactly what made the composed pass refuse the run it collected.
+  it("requires the composer's run id and refuses by name when it is absent or malformed", () => {
+    const absent = spawnSync(
+      process.execPath,
+      [
+        driver,
+        "--transport",
+        "ssh:fixture@fixture.invalid",
+        "--output",
+        output,
+        "--source-revision",
+        revision,
+        "--context",
+        "kitty",
+        "--known-hosts",
+        knownHosts,
+        "--",
+        "bun",
+        "packages/admin/src/index.ts",
+        "probe",
+        "app",
+        "kitty",
+      ],
+      { encoding: "utf8" },
+    )
+    expect(absent.status).toBe(2)
+    expect(absent.stderr).toMatch(/--run-id/)
+
+    const malformed = run({}, ["--run-id", "NOT-HEX"])
+    expect(malformed.status).not.toBe(0)
+    expect(malformed.stderr).toMatch(/invalid run id: run id "NOT-HEX" is not 32 lowercase hex characters/)
+  })
+
+  it("carries the handed run id in the explicit remote command, before the output directory", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const lines = readFileSync(sshLog, "utf8").split("\n")
+    const probe = lines.find((line) => line.includes("--run-id"))
+    expect(probe).toBeDefined()
+    // It travels as argv on the shell line the driver names, never through ssh environment forwarding:
+    // no ssh option forwards an environment variable, so the only way it can be here is as text.
+    // The driver shell-quotes every argv token, so the id carries its quotes on the remote line.
+    const flag = "--run-id '" + RUN_ID + "'"
+    expect(probe).toContain(flag)
+    expect(probe!.indexOf("--run-id")).toBeLessThan(probe!.indexOf("--output"))
+    expect(probe).toContain("probe")
+    expect(probe).toContain("app")
+  })
+
   // Real staging and receipt subprocesses exceeded the 5 s default under fleet load (7.04 s).
   it("stages portable resource modes without source-host privilege bits", () => {
     const resources = join(code, "node_modules", "portable-modes")
@@ -490,17 +552,30 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(stage, "source", "vendor", "terminfo.dev", "README.md"), "utf8")).toBe("second revision\n")
   }, 60_000)
 
-  it("refreshes a persistent stage at the same sha: every resource is sent again, so host drift is replaced or deleted", () => {
-    expect(run().status).toBe(0)
-    const staged = join(stage, "source", "vendor", "silvery")
-    writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
-    writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
-    const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
-    expect(again.status, again.stderr).toBe(0)
-    expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
-    expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
-    expect(existsSync(join(staged, "stray.ts"))).toBe(false)
-  }, 60_000)
+  it.each(["contents", "removed closure root"] as const)(
+    "refreshes a persistent stage at the same sha (%s), preserving earlier output",
+    (change) => {
+      expect(run().status).toBe(0)
+      const firstOutput = join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "kitty-1.0-macos-run1.json")
+      const firstBytes = readFileSync(firstOutput)
+      const staged = join(stage, "source", "vendor", "silvery")
+      if (change === "contents") {
+        writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
+        writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
+      } else {
+        // 33797: deleting inside current roots cannot retire a former link-closure root.
+        rmSync(join(code, "node_modules", "@terminfo", "extra"))
+      }
+      const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
+      expect(again.status, again.stderr).toBe(0)
+      expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
+      expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
+      expect(existsSync(join(staged, "stray.ts"))).toBe(false)
+      if (change === "removed closure root") expect(existsSync(join(stage, "source", "extra"))).toBe(false)
+      expect(readFileSync(firstOutput)).toEqual(firstBytes)
+    },
+    60_000,
+  )
 
   it("does not stage or witness mutable test caches", () => {
     // 33797: the witness must not spawn readlink once per staged link. Count actual tool calls
@@ -517,7 +592,8 @@ describe("owned-app ssh transport", () => {
     )
     writeFileSync(join(code, "node_modules", "resource with space.txt"), "same witnessed bytes\n")
     symlinkSync("resource with space.txt", join(code, "node_modules", "link with space"))
-    const caches = [".vitest", ".cache", ".vitest-cache"]
+    // .vite and .vite-temp are the same class: vite writes them into node_modules during dev/build.
+    const caches = [".vitest", ".cache", ".vitest-cache", ".vite", ".vite-temp"]
     for (const cache of caches) {
       const directory = join(code, "node_modules", cache)
       mkdirSync(directory, { recursive: true })
@@ -737,7 +813,7 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("refuses to overwrite a remote output directory from an earlier run", () => {
-    mkdirSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty`), { recursive: true })
+    mkdirSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`), { recursive: true })
     writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
     const result = run()
     expect(result.status).toBe(1)
@@ -760,6 +836,8 @@ describe("owned-app ssh transport", () => {
         revision,
         "--context",
         "kitty",
+        "--run-id",
+        RUN_ID,
         "--known-hosts",
         knownHosts,
         "--",
@@ -782,7 +860,7 @@ describe("owned-app ssh transport", () => {
     )
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("output collision")
-    expect(existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty`))).toBe(true)
+    expect(existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`))).toBe(true)
   }, 60_000)
 
   it("refuses a copy-back that did not arrive", () => {
@@ -951,6 +1029,48 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(stage, ".owned-app-transport-stage"), "utf8")).toBe("owned-app-transport stage v1\n")
   }, 30_000)
 
+  // #34834: killing the local ssh does not stop the remote probe, so its record is still collectable.
+  // Before this change the driver made the same noise and gave up, and the probe's record was lost.
+  it("re-attaches a probe that outlives the ssh wall and lands its record instead of abandoning it (34834)", () => {
+    const result = run({ SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "6" }, [
+      "--ssh-timeout-ms",
+      "3000",
+      "--reattach-timeout-ms",
+      "60000",
+    ])
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain("re-attaching rather than abandoning it")
+    expect(result.stderr).toContain("re-attach complete")
+    const proof = JSON.parse(result.stdout) as { remoteOutput: string; receiptSha256: string }
+    expect(proof.remoteOutput).toMatch(/\/runs\/[a-f0-9]{12}-kitty-[a-f0-9]{32}$/)
+    expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
+  }, 120_000)
+
+  it("refuses by name with the remote pid, the stage and the fetch command when the re-attach wall also expires (34834)", () => {
+    const result = run({ SHIM_SSH_LEAVE_REMOTE: "1", SHIM_PROBE_SLEEP: "20" }, [
+      "--ssh-timeout-ms",
+      "3000",
+      "--reattach-timeout-ms",
+      "3000",
+    ])
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stderr).toContain("probe abandoned")
+    expect(result.stderr).toMatch(/remote probe pid \d+ was still running after 0\.05 min of re-attach/)
+    expect(result.stderr).toContain(`the stage ${stage} is kept`)
+    expect(result.stderr).toContain("Fetch its record by hand: rsync -az fixture@fixture.invalid:")
+    // The pid file the re-attach read is the probe's own, written before it started.
+    expect(readFileSync(join(stage, ".owned-app-probe.pid"), "utf8").trim()).toMatch(/^\d+$/)
+  }, 60_000)
+
+  it("refuses an ssh wall below the cohort's own per-probe bound rather than abandoning the probe (34834)", () => {
+    const result = run({}, ["--ssh-timeout-ms", "3000", "--probe-budget-ms", "60000"])
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stderr).toContain("ssh wall under the cohort bound")
+    expect(result.stderr).toContain(
+      "--ssh-timeout-ms 3000 is below the cohort's own per-probe bound --probe-budget-ms 60000",
+    )
+  }, 30_000)
+
   it("removes an owned stage after a failed run when asked, renaming it aside before deleting", () => {
     const result = run({ SHIM_RSYNC_TAMPER: "1" }, ["--remove-stage"])
     expect(result.status).toBe(1)
@@ -1058,6 +1178,8 @@ describe("default stage", () => {
   // Requirement: an uncounted run must not pay for hashing and re-sending a node_modules tree an
   // earlier full run already hashed, and its receipt must say so; a changed lock must restage it.
   it("reuses a stage a full run hashed, re-sending no node_modules, and names the light check", () => {
+    // A light scan must discover this closure even though it does not scan node_modules.
+    symlinkSync(join("..", "..", "extra", "pkg"), join(code, "vendor", "silvery", "extra"))
     const first = run()
     expect(first.status, first.stderr).toBe(0)
     expect(proof(first).check).toBe("full")
@@ -1090,6 +1212,12 @@ describe("default stage", () => {
     expect(typeof receipt.lightManifestSha256).toBe("string")
     // The marker is not rewritten by a run that did not hash the trees it stands for.
     expect(readFileSync(markerPath, "utf8")).toBe(JSON.stringify(marker, null, 2) + "\n")
+    // Keep the altered bytes through transfer so the witness, rather than rsync, must detect them.
+    writeFileSync(join(stage, "source", "extra", "pkg", "index.ts"), "tampered closure\n")
+    const altered = run({ SHIM_RSYNC_SKIP_EXTRA: "1" }, ["--check", "light"], undefined, "kitty-light-altered")
+    expect(altered.status).not.toBe(0)
+    expect(altered.stderr).toContain("resource manifest mismatch")
+    expect(altered.stderr).toContain("extra/pkg/index.ts")
   }, 60_000)
 
   it("restages fully when the lock is not the one the stage was hashed against", () => {
@@ -1180,5 +1308,135 @@ describe("default stage", () => {
     expect(second.stderr).toContain("not a JSON object")
     expect(second.stderr).toContain("restaging fully")
     expect(proof(second).check).toBe("full")
+  }, 60_000)
+})
+
+/**
+ * @failure #33797 (@cto 16:10Z): two counted runs at one revision and context shared one remote output
+ *          directory, so the second refused (window 22 moved run 1's output aside by hand) and neither
+ *          receipt could say whose bytes survived; the stage rsync discarded its counters, so "zero
+ *          bytes transferred" was unmeasured; and no interval inside the transport existed.
+ * @level    l1 — the real driver with real rsync behind the PATH shims, plus the stats parser alone.
+ */
+describe("run identity on the output path, per-call rsync counters, phase intervals (#33797)", () => {
+  const OTHER_RUN = "fedcba9876543210fedcba9876543210"
+
+  it("distinct runs at one revision and context keep distinct directories, and both survive", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const second = run({}, [], undefined, "kitty", stage, OTHER_RUN)
+    expect(second.status, second.stderr).toBe(0)
+    const prefix = `${revision.slice(0, 12)}-kitty`
+    expect(proof(first).remoteOutput).toBe(join(stage, "runs", `${prefix}-${RUN_ID}`))
+    expect(proof(second).remoteOutput).toBe(join(stage, "runs", `${prefix}-${OTHER_RUN}`))
+    for (const id of [RUN_ID, OTHER_RUN]) {
+      expect(existsSync(join(stage, "runs", `${prefix}-${id}`, "transport-receipt.json")), id).toBe(true)
+    }
+  }, 120_000)
+
+  it("a replay of the same run still refuses, and the first run's output is left as it was", () => {
+    expect(run().status).toBe(0)
+    const kept = join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "transport-receipt.json")
+    const before = readFileSync(kept)
+    const replay = run()
+    expect(replay.status).toBe(1)
+    expect(replay.stderr).toContain("output collision")
+    expect(readFileSync(kept)).toEqual(before)
+  }, 120_000)
+
+  it("seals each stage rsync's own counters into the receipt and keeps copy-back's at the driver's output", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      transfers: Array<Record<string, unknown>>
+    }
+    const labels = receipt.transfers.map((transfer) => transfer.label)
+    expect(labels).toContain("bundle transfer")
+    expect(labels).toContain("resource transfer node_modules")
+    expect(labels).not.toContain("copy-back")
+    for (const transfer of receipt.transfers) {
+      expect(transfer.direction).toBe("stage")
+      // The fixture's rsync prints a full --stats block, so every counter is a measured count.
+      for (const field of [
+        "files",
+        "logicalTransferredFileSizeBytes",
+        "literalDataBytes",
+        "matchedDataBytes",
+        "sentBytes",
+        "receivedBytes",
+      ]) {
+        expect(typeof transfer[field], `${String(transfer.label)} ${field}`).toBe("number")
+      }
+      expect(existsSync(String(transfer.statsLog))).toBe(true)
+    }
+    const afterSeal = proof(result).afterSeal as { transfers: Array<Record<string, unknown>> }
+    expect(afterSeal.transfers.map((transfer) => [transfer.label, transfer.direction])).toEqual([
+      ["copy-back", "copy-back"],
+    ])
+  }, 60_000)
+
+  it("reads missing or scaled stats as unmeasured, never as zero", () => {
+    const full = [
+      "Number of files: 1,204 (reg: 1,000, dir: 204)",
+      "Number of regular files transferred: 0",
+      "Total file size: 4,700,000 bytes",
+      "Total transferred file size: 0 bytes",
+      "Literal data: 0 bytes",
+      "Matched data: 0 bytes",
+      "Total bytes sent: 9,876",
+      "Total bytes received: 54",
+    ].join("\n")
+    const measured = parseRsyncStats(full, "resource transfer node_modules", "stage", "/x/stats.log")
+    expect(measured).toMatchObject({
+      files: 1204,
+      regularFilesTransferred: 0,
+      totalFileSizeBytes: 4_700_000,
+      logicalTransferredFileSizeBytes: 0,
+      sentBytes: 9876,
+      receivedBytes: 54,
+    })
+    expect(measured.unmeasured).toBeUndefined()
+    const none = parseRsyncStats("", "copy-back", "copy-back", "/x/stats.log")
+    expect(none.logicalTransferredFileSizeBytes).toBe("unmeasured")
+    expect(none.sentBytes).toBe("unmeasured")
+    expect(none.unmeasured).toBe("rsync printed no readable --stats block")
+    const scaled = parseRsyncStats(
+      "Total transferred file size: 1.20K bytes\nTotal bytes sent: 3,000",
+      "x",
+      "stage",
+      "/x",
+    )
+    expect(scaled.logicalTransferredFileSizeBytes).toBe("unmeasured")
+    expect(scaled.literalDataBytes).toBe("unmeasured")
+    expect(scaled.sentBytes).toBe(3000)
+  })
+
+  it("names each interval at the phase that produced it: transport phases sealed, copy-back after the seal", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      clock: string
+      phases: Array<{ name: string; within: string | null; startMs: number; durationMs: number }>
+    }
+    expect(receipt.clock).toContain("monotonic")
+    const within = Object.fromEntries(receipt.phases.map((phase) => [phase.name, phase.within]))
+    expect(within).toEqual({
+      "local manifest": "transport",
+      "bundle transfer": "stage",
+      "stage checkout": "stage",
+      "resource transfer": "stage",
+      stage: "transport",
+      "remote witness": "transport",
+      probe: "transport",
+      "output measure": "transport",
+      "host identity": "transport",
+      transport: null,
+    })
+    for (const phase of receipt.phases) {
+      expect(Number.isInteger(phase.startMs) && Number.isInteger(phase.durationMs), phase.name).toBe(true)
+      expect(phase.durationMs).toBeGreaterThanOrEqual(0)
+    }
+    const afterSeal = proof(result).afterSeal as { phases: Array<{ name: string; within: string | null }> }
+    expect(afterSeal.phases.map((phase) => [phase.name, phase.within])).toEqual([["copy-back", null]])
   }, 60_000)
 })

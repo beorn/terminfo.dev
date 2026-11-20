@@ -126,6 +126,20 @@ describe("feature results", () => {
     })
     expect(rollup.families.sgr).toMatchObject({ open: 1, decided: 1 })
   })
+
+  // @cto 91ec1211: an unavailable read method is open, not a reviewed "cannot be tested". The row a migrated
+  // site now writes must project into the open bucket, never into the decided one.
+  it("projects a read-method gap as an open row", () => {
+    const featureId = "extensions.osc0-icon-title"
+    const projected = computeFeatureResults(
+      [{ featureId, probeId: `${featureId}:unobserved`, method: null, status: "probe-todo" }],
+      [featureId],
+    )[featureId]
+    expect(projected).toMatchObject({ status: "probe-todo", strength: null })
+    const rollup = rollupTerminalStatuses({ [featureId]: projected!.status })
+    expect(rollup).toMatchObject({ counts: { "probe-todo": 1 }, open: 1, decided: 0 })
+    expect(rollup.counts.untestable ?? 0).toBe(0)
+  })
 })
 
 // CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
@@ -415,6 +429,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
 
     // A2: no compat aliases on TerminalStatusRollup.
     expect(Object.keys(rollup).sort()).toEqual([
+      "byReview",
       "completenessTier",
       "counts",
       "decided",
@@ -577,6 +592,9 @@ describe("probe method classification", () => {
         // A ruling's reopened cells (#33164) correct the live corpus and cite its runs as witnesses; this view pins
         // the method classification of 17 stored runs, so it reads no corrections (reopened-cells.test.ts owns them).
         if (entry.name === "reopened-cells.json") continue
+        // Declared-untestable rows name live-corpus cells too, and a row matching no cell throws; this view has 13 of
+        // the contexts, so it reads no declarations (declared-untestable.test.ts owns them).
+        if (entry.name === "declared-untestable.json") continue
         symlinkSync(
           join(contentDir, entry.name),
           join(historicalContentDir, entry.name),
@@ -703,10 +721,11 @@ describe("probe method classification", () => {
     }))
 
   // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133).
+  // The projection form holds one run at a time: loading the whole corpus as an array peaked at 3.3 GB RSS,
+  // past the 3 GiB vitest worker cap (34678).
   it("maps the growing live corpus without promoting a source answer", { timeout: 30_000 }, () => {
-    const runs = loadStoredRuns(contentDir, Object.keys(catalog).sort())
     let sourceMethods = 0
-    for (const run of runs) {
+    const walked = loadStoredRuns(contentDir, Object.keys(catalog).sort(), (run) => {
       for (const result of run.results ?? []) {
         if (!scoredFeatureIds([result.featureId]).length) continue
         const classified = classifyResultMethod(result, run.subject, run.assertions)
@@ -723,7 +742,10 @@ describe("probe method classification", () => {
         expect(classified.kind).not.toBe("unmapped")
         if (classified.kind === "method" && classified.method === "source") sourceMethods++
       }
-    }
+      return run.runId
+    })
+    // The live corpus holds more than the 17 historical runs, so an empty walk cannot pass here.
+    expect(walked.length).toBeGreaterThan(17)
     expect(sourceMethods).toBe(0)
   })
 

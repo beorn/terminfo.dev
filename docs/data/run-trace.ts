@@ -317,9 +317,25 @@ export interface TraceDocument<Cell> {
   runSha256: string
   measuredAt: string
   sourceRevision: string | null
-  /** The identity the run recorded for itself. */
-  identity: { recorded: string }
+  /** The identity the run recorded for itself, and this build's identity-rule check of a stored run (#34617). */
+  identity: { recorded: string; currentRuleCheck?: TraceIdentityRuleCheck }
   featureResults: Record<string, Cell>
+}
+
+/**
+ * At trace build, the run's retained identity evidence matched this build's identity rule (#34617, @cto
+ * 34617-current-rule-contract-go-1347). Present only on a stored run whose check matched; absent is no claim.
+ * It claims neither historical admission nor origin control.
+ */
+export interface TraceIdentityRuleCheck {
+  checkedAt: "build"
+  rule: string
+  /** 12-hex fingerprint of the identity rule's source closure (corpus-placement identityRuleRevision). */
+  ruleRevision: string
+  da1?: string
+  xtversion?: string
+  receipt?: { cfBundleShortVersionString: string }
+  executable?: { version: string; sha256: string }
 }
 export type CurrentTraceDocument = TraceDocument<CurrentTraceCell>
 
@@ -484,6 +500,7 @@ type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "i
   sourceRevision: string | null
   schemaVersion?: 1 | 2 | 3 | 4
   source?: CurrentSelectedVersion["source"]
+  identityRuleCheck?: TraceIdentityRuleCheck
 }
 
 function traceDocument<Cell>(
@@ -502,6 +519,7 @@ function traceDocument<Cell>(
     sourceRevision: version.sourceRevision,
     identity: {
       recorded: version.identity,
+      ...(apiVersion === 3 && version.identityRuleCheck && { currentRuleCheck: { ...version.identityRuleCheck } }),
     },
     featureResults,
   }

@@ -49,6 +49,7 @@ import type {
   CollectorAttempt,
 } from "@terminfo/probe-defs"
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
+import { createCallLog, withCallLog } from "viprobe"
 import { headlessRuntimeIdentity, readAdapterSources, type HeadlessProbeRuntime } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
@@ -170,6 +171,8 @@ type QueryFact = {
 type QueryPass = {
   control: boolean
   wait: boolean
+  /** #30932 S3: the first pass records each lib row's full-source call log; fresh-instance repeats do not. */
+  callLog?: true
   brackets?: readonly [readonly [number, number], readonly [number, number]]
 }
 
@@ -538,7 +541,7 @@ export function createLibProbeSource(
   }
 }
 
-interface Batch {
+export interface Batch {
   results: ProbeResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
@@ -613,7 +616,7 @@ function harnessIncompleteResult(
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
-function recordResult(
+export function recordResult(
   batch: Batch,
   probe: ProbeDefinition,
   result: ProbeCallbackResult,
@@ -754,6 +757,95 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
   })
 }
 
+/** The reply attempts `withReplyFailureEvidence` names for a headless row: its retained query captures. */
+export function replyFailureAttempts(
+  captures: readonly { query: string; response: string }[],
+): { sequence: string; received: string; timeoutMs: null }[] {
+  return captures.map((capture) => ({ sequence: capture.query, received: capture.response, timeoutMs: null }))
+}
+
+/** The grade a lib row's draft lists reach: its executed probe result, finalized as a lib subject. */
+export function sealLibRow(
+  batch: Pick<Batch, "rawReplies" | "observations" | "assertions" | "notTested" | "ungradedDiagnostics">,
+  featureId: string,
+  attempt: { scope: "probe"; startedAt: string },
+  tests: ProbeCallbackResult["tests"],
+  criterionBranch: string | undefined,
+): ProbeResult {
+  const recorded = recordExecutedProbe({
+    featureId,
+    attempt,
+    observation: batch.observations.find((entry) => entry.featureId === featureId),
+    diagnostic: batch.ungradedDiagnostics[featureId],
+    coverage: batch.notTested.find((entry) => entry.featureId === featureId),
+    assertions: batch.assertions,
+    tests,
+    ...(Object.hasOwn(batch.rawReplies, featureId) ? { rawReplyRef: featureId } : {}),
+    criterionBranch,
+  })
+  return finalizeVisualResult(recorded, { kind: "lib" }, [])
+}
+
+/**
+ * #30932 S3: the one headless lib grader, for a callback result the live collector did not touch further (no late
+ * reply, no host recipe, no unreproduced silence, no collector error: the stored-run shadow names each of those
+ * not-comparable before it grades). It is the live collector's own steps: reply-failure evidence from the row's
+ * retained captures, `recordResult`, then `sealLibRow`. A grading throw is the live collector's collector error.
+ */
+export function gradeLibRow(input: {
+  probe: ProbeDefinition
+  result: ProbeCallbackResult
+  declared: readonly AssertionType[] | null | undefined
+  attempt: { scope: "probe"; startedAt: string }
+  captures: readonly { query: string; response: string }[]
+}): ProbeResult {
+  const { probe } = input
+  const batch: Batch = {
+    results: [],
+    rawReplies: {},
+    observations: [],
+    assertions: [],
+    notTested: [],
+    ungradedDiagnostics: {},
+  }
+  let tests: ProbeCallbackResult["tests"]
+  let criterionBranch: string | undefined
+  try {
+    const callback = withReplyFailureEvidence(probe.id, input.result, {
+      producer: "headless",
+      attempts: replyFailureAttempts(input.captures),
+    })
+    tests = callback.tests
+    criterionBranch = callback.criterionBranch
+    recordResult(batch, probe, callback, input.declared)
+  } catch (error) {
+    batch.ungradedDiagnostics[probe.id] = {
+      kind: "collector-error",
+      name: error instanceof Error ? error.name : "Error",
+      message: errorMessage(error),
+    }
+  }
+  return sealLibRow(batch, probe.id, input.attempt, tests, criterionBranch)
+}
+
+/**
+ * The lib assertion types a definition declares for this source: a fixed list, null, undefined, or its `when`
+ * predicate's branch. The predicate reads the source, so a recorded source records the read.
+ */
+export function declaredLibAssertionTypes(
+  probe: ProbeDefinition,
+  source: LibProbeSource,
+): readonly AssertionType[] | null | undefined {
+  const declaration = probe.libAssertionType
+  if (declaration === null || declaration === undefined) return declaration
+  if (typeof declaration === "string") return [declaration]
+  const selected = declaration.when(source)
+  if (typeof selected !== "boolean") {
+    throw new Error(`Lib callback ${probe.id} declaration predicate must return a boolean`)
+  }
+  return selected ? declaration.then : declaration.otherwise
+}
+
 async function collectPass(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
@@ -805,6 +897,7 @@ async function collectPass(
     let hostRecord: { runId: string; captures: HostQueryCapture[]; causes: RetainedHostRecipeCause[] } | undefined
     const queryFacts: QueryFact[] = []
     let retainedCaptures: HostQueryCapture[] = []
+    let callLog: { log: ReturnType<typeof createCallLog>; finish: () => void } | undefined
     try {
       backend = await createBackend()
       backend.init(HEADLESS_TERMINAL)
@@ -887,26 +980,19 @@ async function collectPass(
           return outcome
         }
       }
-      const assertionDeclaration = probe.libAssertionType
-      let declaredAssertionTypes: readonly AssertionType[] | null | undefined
-      if (assertionDeclaration === null || assertionDeclaration === undefined) {
-        declaredAssertionTypes = assertionDeclaration
-      } else if (typeof assertionDeclaration === "string") {
-        declaredAssertionTypes = [assertionDeclaration]
-      } else {
-        const selected = assertionDeclaration.when(ctx)
-        if (typeof selected !== "boolean") {
-          throw new Error(`Lib callback ${probe.id} declaration predicate must return a boolean`)
-        }
-        declaredAssertionTypes = selected ? assertionDeclaration.then : assertionDeclaration.otherwise
+      // #30932 S3: the log holds what the declaration predicate and the callback saw, after the query wrapper,
+      // so a replay hands back these recorded returns and never rebuilds the wrapper or the backend.
+      let source: LibProbeSource = ctx
+      if (pass?.callLog) {
+        const log = createCallLog()
+        const session = withCallLog(ctx, { mode: "record", log })
+        callLog = { log, finish: () => session.finish() }
+        source = session.context
       }
-      const callback = withReplyFailureEvidence(probe.id, probe.lib(ctx), {
+      const declaredAssertionTypes = declaredLibAssertionTypes(probe, source)
+      const callback = withReplyFailureEvidence(probe.id, probe.lib(source), {
         producer: "headless",
-        attempts: replyCaptures.map((capture) => ({
-          sequence: capture.query,
-          received: capture.response,
-          timeoutMs: null,
-        })),
+        attempts: replyFailureAttempts(replyCaptures),
       })
       if (hostRecord) {
         const runId = hostRecord.runId
@@ -1009,21 +1095,20 @@ async function collectPass(
         captures: retainedCaptures,
       })
       if (hostRecord) batch.rawReplies[`collector.hostRecipes.${probe.id}`] = JSON.stringify(hostRecord)
-      const observation = batch.observations.find((entry) => entry.featureId === probe.id)
-      const diagnostic = batch.ungradedDiagnostics[probe.id]
-      const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
-      const recorded = recordExecutedProbe({
-        featureId: probe.id,
-        attempt,
-        observation,
-        diagnostic,
-        coverage,
-        assertions: batch.assertions,
-        tests: callbackTests,
-        ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
-        criterionBranch,
-      })
-      const result = finalizeVisualResult(recorded, { kind: "lib" }, [])
+      if (callLog) {
+        // Kept when the callback threw too: the log then ends at the throw, and a replay reproduces it. A log
+        // that cannot be completed is not stored; the shadow counts its row incomplete, and stderr names why.
+        try {
+          callLog.finish()
+          batch.rawReplies[`${probe.id}.callLog`] = JSON.stringify(callLog.log)
+        } catch (error) {
+          process.stderr.write(
+            `headless ${backendName} probe ${probe.id}: call log not kept (${error instanceof Error ? error.name : "Error"}: ${errorMessage(error)})
+`,
+          )
+        }
+      }
+      const result = sealLibRow(batch, probe.id, attempt, callbackTests, criterionBranch)
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
       batch.results[index] = result
@@ -1069,6 +1154,7 @@ export async function collectBatch(
   const first = await collectPass(createBackend, backendName, definitions, draft, onCheckpoint, runtime, {
     control,
     wait: true,
+    callLog: true,
   })
   first.rawReplies["collector.replyControl"] = JSON.stringify({ answered: control, captures })
   const facts = (batch: Batch, id: string): { queries: QueryFact[]; captures: HostQueryCapture[] } => {
@@ -1095,7 +1181,9 @@ export async function collectBatch(
     draft
       ? {
           runId: draft.runId,
-          rawReplies: { ...draft.rawReplies },
+          // First-pass call logs are first-pass evidence only (#30932 S3): copying them into each repeat pass
+          // stored every log three times, twice double-escaped inside collector.repeatPasses.
+          rawReplies: Object.fromEntries(Object.entries(draft.rawReplies).filter(([key]) => !key.endsWith(".callLog"))),
           results: selected.map((probe) => ({
             featureId: probe.id,
             status: "probe-todo" as const,

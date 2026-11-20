@@ -385,7 +385,10 @@ test.runIf(OWNED_LAYOUT)("real WezTerm R2 semantic-cell controls distinguish tar
 
 /** Feature payloads only; collector records use the reserved collector.* namespace. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
-  return Object.fromEntries(Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.")))
+  // Collector-owned keys: `collector.*` and each row's #30932 S3 first-pass call log.
+  return Object.fromEntries(
+    Object.entries(batch.rawReplies).filter(([key]) => !key.startsWith("collector.") && !key.endsWith(".callLog")),
+  )
 }
 
 async function backend() {
@@ -2785,7 +2788,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
 // 31770 @cto a60bc57e N2: the unit cases in extensions-osc0-observations.test.ts call the OSC 0 callback
 // directly, so the collector wrapping of its control and getter failures was never fault-injected.
 // Real xterm backend, audited identity, registered callback and collectBatch on one path: a failed control
-// or a throwing getter must leave PROBE INVALID with both labels restored and no support or negative claim.
+// leaves PROBE TODO; a throwing getter leaves PROBE INVALID. Both restore labels and make no support/negative claim.
 test.each([
   { fault: "none" },
   { fault: "icon-control" },
@@ -2868,7 +2871,7 @@ test.each([
     return
   }
   expect(effectFed).toBe(fault.endsWith("-readback"))
-  expect(result).toMatchObject({ status: "probe-invalid" })
+  expect(result).toMatchObject({ status: fault.endsWith("-control") ? "probe-todo" : "probe-invalid" })
   expect(observation?.outcome).not.toBe("supported")
   expect(observation?.outcome).not.toBe("unsupported")
   expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual([])
@@ -2876,7 +2879,7 @@ test.each([
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(result!.tests).toMatchObject([
       {
-        status: "probe-invalid",
+        status: "probe-todo",
         reason: expect.stringContaining("OSC 0 independent icon/title controls were not both read back"),
       },
     ])
@@ -6571,7 +6574,10 @@ test.runIf(OWNED_LAYOUT).each([
   )
   for (const result of batch.results) {
     if (negatives.includes(result.featureId)) {
-      expect(result.reason, result.featureId).toBe("library reported this sequence as unhandled")
+      // Colour-capture cells keep their declared fixture context ahead of the library reason (6253e6d36).
+      expect(result.reason, result.featureId).toMatch(
+        /^(Fixture .+ \(declared, not confirmed sent\); )?library reported this sequence as unhandled$/,
+      )
     } else {
       expect(result.tests, result.featureId).toEqual([
         expect.objectContaining({ id: "declared-untestable", status: "untestable" }),

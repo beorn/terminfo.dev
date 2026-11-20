@@ -26,29 +26,26 @@ export function readWindowsWezTermRows(
       reason: "WezTerm owned child has no explicit WEZTERM_UNIX_SOCKET and numeric WEZTERM_PANE",
     }
   }
-  const result = spawnSync(
-    options.executable,
-    [
-      "cli",
-      "--no-auto-start",
-      "get-text",
-      "--pane-id",
-      options.pane,
-      "--start-line",
-      String(options.startLine ?? 0),
-      "--end-line",
-      String(options.rows - 1),
-      ...(options.escapes ? ["--escapes"] : []),
-    ],
-    {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      timeout: 5000,
-      env: { ...process.env, WEZTERM_UNIX_SOCKET: options.socket, WEZTERM_PANE: options.pane },
-    },
-  )
+  const args = [
+    "cli",
+    "--no-auto-start",
+    "get-text",
+    "--pane-id",
+    options.pane,
+    ...(options.startLine === undefined ? [] : ["--start-line", String(options.startLine)]),
+    "--end-line",
+    String(options.rows - 1),
+    ...(options.escapes ? ["--escapes"] : []),
+  ]
+  const result = spawnSync(options.executable, args, {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    timeout: 5000,
+    env: { ...process.env, WEZTERM_UNIX_SOCKET: options.socket, WEZTERM_PANE: options.pane },
+  })
   const retained = JSON.stringify({
     executable: options.executable,
+    args,
     pane: options.pane,
     socket: options.socket,
     ...(options.escapes && { escapes: true }),
@@ -84,7 +81,7 @@ export function readWindowsWezTermRows(
 }
 
 export function readWindowsWezTermText(options: Omit<WezTermTextOptions, "startLine" | "escapes">): TerminalTextRead {
-  const read = readWindowsWezTermRows(options)
+  const read = readWindowsWezTermRows({ ...options, startLine: 0 })
   if (read.status === "refused") return read
   const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)
   if (typeof cells === "string") {

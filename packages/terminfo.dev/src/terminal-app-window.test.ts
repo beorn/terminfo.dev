@@ -10,6 +10,7 @@ import { realpathSync } from "node:fs"
 import { describe, expect, test, vi } from "vitest"
 import {
   assertOwnedTerminalWindow,
+  assertOwnedAppOwner,
   closeOwnedTerminalWindow,
   parseKittyIdentity,
   recordedOwnerTty,
@@ -151,7 +152,22 @@ describe("cli-process ownership", () => {
   const ownerPid = 6200
   const executablePath = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
   const marker = { flag: "--config-file", value: "/run/terminfo-abc9/app.toml" }
-  const owner: OwnedTerminalWindow = { provider: "cli-process", tty: "/dev/ttys009", ownerPid, executablePath, marker }
+  const ownerBirth = {
+    pid: ownerPid,
+    startedAtEpochSeconds: 1794674011,
+    rawLstart: "Sat Nov 14 16:33:31 2026\n",
+    observedAt: "2026-11-15T00:34:00.000Z",
+    observedByUid: 501,
+    observedOnHost: "owned-mac",
+  }
+  const owner: OwnedTerminalWindow = {
+    provider: "cli-process",
+    tty: "/dev/ttys009",
+    ownerPid,
+    executablePath,
+    marker,
+    ownerBirth,
+  }
   const argv = `${executablePath} start --always-new-process --config-file ${marker.value} -- /bin/bash run.sh`
 
   /** Every ps read the authority makes, answered from one table so a case names only what it varies. */
@@ -160,20 +176,23 @@ describe("cli-process ownership", () => {
     comm?: Record<number, string>
     ppid?: Record<number, number>
     tty?: Record<number, string>
+    lstart?: Record<number, string>
   }) {
     vi.mocked(spawnSync).mockImplementation(((_command: string, args: readonly string[]) => {
       const field = args[args.indexOf("-o") + 1]
       const pid = Number(args[args.indexOf("-p") + 1])
       const value =
-        field === "ppid="
-          ? table.ppid?.[pid]
-          : field === "comm="
-            ? table.comm?.[pid]
-            : field === "command="
-              ? table.command?.[pid]
-              : field === "tty="
-                ? table.tty?.[pid]
-                : undefined
+        field === "lstart="
+          ? (table.lstart?.[pid] ?? ownerBirth.rawLstart.trimEnd())
+          : field === "ppid="
+            ? table.ppid?.[pid]
+            : field === "comm="
+              ? table.comm?.[pid]
+              : field === "command="
+                ? table.command?.[pid]
+                : field === "tty="
+                  ? table.tty?.[pid]
+                  : undefined
       return (
         value === undefined ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: `${value}\n`, stderr: "" }
       ) as ReturnType<typeof spawnSync>
@@ -299,6 +318,99 @@ describe("cli-process ownership", () => {
     }
   })
 
+  test.each(
+    (["TERM", "KILL"] as const).flatMap((stage) =>
+      (["birth changed", "birth unreadable", "executable unreadable"] as const).map((fault) => [stage, fault] as const),
+    ),
+  )("%s refuses %s even with the same marker and executable", (stage, fault) => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const base = vi.mocked(spawnSync).getMockImplementation()!
+    let active = stage === "TERM"
+    let killed = false
+    vi.mocked(spawnSync).mockImplementation(((command: string, args: readonly string[]) => {
+      const field = args[args.indexOf("-o") + 1]
+      if (
+        active &&
+        ((field === "lstart=" && fault === "birth unreadable") ||
+          (field === "comm=" && fault === "executable unreadable"))
+      ) {
+        return {
+          status: null,
+          stdout: "",
+          stderr: "",
+          error: Object.assign(new Error("inspection timed out"), { code: "ETIMEDOUT" }),
+        }
+      }
+      if (active && field === "lstart=" && fault === "birth changed") {
+        return { status: 0, stdout: "Sat Nov 14 16:33:32 2026\n", stderr: "" }
+      }
+      return base(command, args)
+    }) as typeof spawnSync)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0 && killed) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+      if (signal === "SIGTERM") active = true
+      if (signal === "SIGKILL") killed = true
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner), fault).toThrow(/birth|executable.*(failed|unreadable)/i)
+      expect(kill, fault).not.toHaveBeenCalledWith(ownerPid, stage === "TERM" ? "SIGTERM" : "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("a proved absent owner sends no signal", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({})
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("gone"), { code: "ESRCH" })
+    })
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).not.toThrow()
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGTERM")
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("permission failure during exit inspection leaves disposal unproved", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0) throw Object.assign(new Error("permission denied"), { code: "EPERM" })
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/permission denied/)
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test.each([
+    undefined,
+    { ...ownerBirth, pid: ownerPid + 1 },
+    { ...ownerBirth, startedAtEpochSeconds: ownerBirth.startedAtEpochSeconds + 1 },
+    { ...ownerBirth, rawLstart: "unknown" },
+    { ...ownerBirth, observedOnHost: "" },
+  ])("missing or inconsistent recorded birth never signals", (birth) => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw new Error("unexpected signal")
+    })
+    try {
+      expect(() => closeOwnedTerminalWindow({ ...owner, ownerBirth: birth } as OwnedTerminalWindow)).toThrow(/birth/i)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
   test("kitty's close now re-tests its instance-group marker before signalling", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const kitty: OwnedTerminalWindow = {
@@ -335,7 +447,11 @@ describe("owner resolution", () => {
         const rows = pids.map((pid) => `${pid} ${executable} ${marker.flag} ${marker.value} --new-window`)
         return { status: 0, stdout: `${rows.join("\n")}\n`, stderr: "" } as ReturnType<typeof spawnSync>
       }
-      return { status: 0, stdout: `${executable}\n`, stderr: "" } as ReturnType<typeof spawnSync>
+      return {
+        status: 0,
+        stdout: args.includes("lstart=") ? "Sat Nov 14 16:33:31 2026\n" : `${executable}\n`,
+        stderr: "",
+      } as ReturnType<typeof spawnSync>
     }) as unknown as typeof spawnSync)
   }
 
@@ -344,6 +460,14 @@ describe("owner resolution", () => {
     expect(resolveOwnedProcessByMarker({ executablePath, marker, tty: "/dev/ttys012" })).toEqual({
       provider: "cli-process",
       ownerPid: 5100,
+      ownerBirth: {
+        pid: 5100,
+        startedAtEpochSeconds: 1794674011,
+        rawLstart: "Sat Nov 14 16:33:31 2026\n",
+        observedAt: expect.any(String),
+        observedByUid: process.getuid!(),
+        observedOnHost: expect.any(String),
+      },
       executablePath,
       marker,
       tty: "/dev/ttys012",
@@ -543,5 +667,146 @@ describe("iTerm2 sole-instance ownership", () => {
     } finally {
       kill.mockRestore()
     }
+  })
+})
+
+describe("an owned-Mac app claim is re-proved live, never trusted", () => {
+  const runId = "0123456789abcdef0123456789abcdef"
+  const proof = {
+    bundleId: "example.app",
+    windowProof: "census-diff" as const,
+    ttyProof: { kind: "title-echo" as const },
+  }
+  const claim = (over: Record<string, unknown> = {}) => ({
+    asserter: "terminfo-admin" as const,
+    launchRunId: runId,
+    workerPid: process.pid,
+    appId: "ghostty",
+    ownerPid: 4242,
+    windowId: 77,
+    executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    marker: { flag: "--owned-mac-run", value: runId },
+    tty: "/dev/ttys004",
+    intendedVersion: "1.2.3",
+    ...over,
+  })
+  const censusRow = (id: number, ownerPid: number) => ({
+    id,
+    ownerPid,
+    layer: 0,
+    onscreen: true,
+    namePresent: true,
+    name: "a window",
+    bounds: { x: 0, y: 0, width: 100, height: 100 },
+    alpha: 1,
+  })
+  const probes = (pids: readonly number[], rows: readonly unknown[]) => ({
+    proofSpec: () => proof,
+    findOwnerPids: () => pids,
+    readWindowRows: () => rows,
+    readBundleId: () => proof.bundleId,
+    workerTty: () => "/dev/ttys004",
+  })
+
+  const withRunEnv = (body: () => void) => {
+    const previous = process.env.TERMINFO_RUN_ID
+    process.env.TERMINFO_RUN_ID = runId
+    try {
+      body()
+    } finally {
+      if (previous === undefined) delete process.env.TERMINFO_RUN_ID
+      else process.env.TERMINFO_RUN_ID = previous
+    }
+  }
+
+  test("passes only when exactly the recorded pid carries the marker and owns the recorded window", () => {
+    withRunEnv(() => {
+      assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 4242)]))
+    })
+  })
+
+  test("refuses an app with no required-proof entry before it reads anything live", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          proofSpec: () => {
+            throw new Error('no required-proof entry for the owned-Mac app "ghostty"')
+          },
+          findOwnerPids: () => {
+            throw new Error("the proof must refuse before any process is read")
+          },
+          readWindowRows: () => {
+            throw new Error("the proof must refuse before any census is read")
+          },
+          readBundleId: () => {
+            throw new Error("the proof must refuse before any bundle is read")
+          },
+          workerTty: () => {
+            throw new Error("the proof must refuse before any tty is read")
+          },
+        }),
+      ).toThrow(/no required-proof entry/)
+    })
+  })
+
+  test("refuses an executable whose live bundle is not the one its proof entry requires", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          ...probes([4242], [censusRow(77, 4242)]),
+          readBundleId: () => "com.example.other",
+        }),
+      ).toThrow(/is bundle "com.example.other", not the "example.app"/)
+    })
+  })
+
+  test("refuses a record whose tty is not this worker's controlling tty", () => {
+    withRunEnv(() => {
+      expect(() =>
+        assertOwnedAppOwner(claim(), runId, {
+          ...probes([4242], [censusRow(77, 4242)]),
+          workerTty: () => "/dev/ttys009",
+        }),
+      ).toThrow(/the record names TTY \/dev\/ttys004 but this worker's controlling TTY is \/dev\/ttys009/)
+    })
+  })
+
+  test("refuses a claim from another run, from another worker pid, or with no run in the environment", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim({ launchRunId: "f".repeat(32) }), runId, probes([4242], []))).toThrow(
+        /differs from this worker launch run or PID/,
+      )
+      expect(() => assertOwnedAppOwner(claim({ workerPid: process.pid + 1 }), runId, probes([4242], []))).toThrow(
+        /differs from this worker launch run or PID/,
+      )
+      const previous = process.env.TERMINFO_RUN_ID
+      delete process.env.TERMINFO_RUN_ID
+      try {
+        expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], []))).toThrow(
+          /differs from this worker launch run or PID/,
+        )
+      } finally {
+        process.env.TERMINFO_RUN_ID = previous
+      }
+    })
+  })
+
+  test("refuses when the launched pid is gone, ambiguous, or replaced by a different marker holder", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([], [censusRow(77, 4242)]))).toThrow(
+        /no live process runs .* carrying the launched marker/,
+      )
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242, 4243], []))).toThrow(
+        /2 live processes carry the launched marker/,
+      )
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([9999], []))).toThrow(/belongs to pid 9999/)
+    })
+  })
+
+  test("refuses when the census does not show that window owned by that pid", () => {
+    withRunEnv(() => {
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 8888)]))).toThrow()
+      expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(78, 4242)]))).toThrow()
+    })
   })
 })

@@ -13,7 +13,7 @@ import {
  * the full 128-probe set from the serve daemon.
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, isAbsolute, join } from "node:path"
@@ -31,12 +31,18 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
-import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
+import { readWindowsWezTermRows } from "../../terminfo.dev/src/windows-wezterm-text.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
+import {
+  assertPrivateCollectionOutput,
+  retainCollectedRun,
+  shadowCollectedRun,
+  writeCollectedRun,
+} from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
+import { APP_BUNDLE_IDS } from "../../terminfo.dev/src/app-bundles.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import { prepareIterm2Launch, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
 import {
@@ -45,6 +51,7 @@ import {
   kittyOwnedProcess,
   parseKittyIdentity,
   recordedOwnerTty,
+  readProcessBirth,
   resolveOwnedProcessByMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
@@ -83,10 +90,6 @@ interface AppDef {
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
     prepare?: (run: Run, markerValue: string) => void
-    /** The capture route this recipe is ruled for (#30518 D5). Declared only where a frame route is
-     * ruled — today Ghostty's owned process arm. It hands the collector
-     * TERMINFO_CAPTURE_DIRECTORY=<run>/artifacts; an app that declares nothing keeps no capture. */
-    capture?: "artifact-directory"
   }
 }
 
@@ -140,28 +143,201 @@ function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | 
     { flag: "wx", mode: 0o600 },
   )
   const terminal = {
-    name: `terminfo-${run.id}`,
     shellPath: "/bin/bash",
     shellArgs: ["-p", run.scriptPath],
     cwd: run.directory,
+    env: { TERMINFO_EDITOR_RUN_DIRECTORY: run.directory },
   }
   const terminalJson = JSON.stringify(terminal)
-  const extension =
-    prefix === "cursor"
-      ? `const vscode = require("vscode");
+  const extension = `const vscode = require("vscode");
+const fs = require("node:fs");
+const { join } = require("node:path");
+const { randomUUID, createHash } = require("node:crypto");
 exports.activate = async (context) => {
-  await vscode.commands.executeCommand("workbench.action.closePanel");
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
-  const terminal = vscode.window.createTerminal(${terminalJson});
+${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.action.closePanel");\n  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");' : ""}
+  const directory = ${JSON.stringify(run.directory)};
+  const runId = ${JSON.stringify(run.id)};
+  const activationNonce = randomUUID();
+  const requestPath = join(directory, "editor-request.json");
+  const replyDirectory = join(directory, "editor-replies-" + activationNonce);
+  const app = { name: vscode.env.appName, version: vscode.version };
+  if (typeof app.name !== "string" || !app.name || typeof app.version !== "string" || !app.version) {
+    throw new Error("Editor fixture has no native App name/version");
+  }
+  fs.mkdirSync(replyDirectory, { mode: 0o700 });
+  // Same-user files prove correlation with this activation, not which process wrote them.
+  const activation = { runId, activationNonce, extensionPid: process.pid,
+    activatedAt: Date.now(), app, requestPath, replyDirectory,
+    evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them" };
+  const publish = (path, value) => {
+    const temporary = path + "." + randomUUID() + ".tmp";
+    fs.writeFileSync(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 });
+    try { fs.linkSync(temporary, path); } finally { fs.unlinkSync(temporary); }
+  };
+  let terminal;
+  let closed = false;
+  let busy = false;
+  let sequence = 0;
+  let lastRequest;
+  let lastEvaluation;
+  const errors = join(directory, "editor-reader-errors.jsonl");
+  // Native execution events (34666): own terminal only, one identity per execution object, explicit absence, and
+  // each event delivered in exactly one reply: the window since the previous published reply. Never relabelled.
+  const executionIds = new WeakMap();
+  let executionCount = 0;
+  let eventSequence = 0;
+  let pendingExecutions = [];
+  let executionWindowSince = activation.activatedAt;
+  const executionApi = {};
+  const recordExecution = (kind, event) => {
+    if (closed || !terminal || !event || event.terminal !== terminal) return;
+    try {
+      const execution = event.execution;
+      let id = execution ? executionIds.get(execution) : undefined;
+      const firstSeen = id === undefined;
+      if (firstSeen) {
+        id = "execution-" + ++executionCount;
+        if (execution) executionIds.set(execution, id);
+      }
+      const line = execution ? execution.commandLine : undefined;
+      const field = (value, name) => value === undefined
+        ? { present: false, reason: "Native execution.commandLine." + name + " is undefined" } : { present: true, value };
+      const text = line && typeof line.value === "string" ? line.value : undefined;
+      // The reply is retained into the committed run record, so it carries the command text's digest and length
+      // only; the text itself stays in this run's private editor-executions.jsonl.
+      const fact = { eventSequence: ++eventSequence, kind, at: Date.now(), execution: id,
+        ...(kind === "end" ? { startSeen: !firstSeen } : {}),
+        commandLine: line === undefined || line === null
+          ? { present: false, reason: execution ? "Native execution.commandLine is undefined" : "Native event has no execution object" }
+          : text === undefined
+            ? { present: false, reason: "Native execution.commandLine.value is not a string",
+                confidence: field(line.confidence, "confidence"), isTrusted: field(line.isTrusted, "isTrusted") }
+            : { present: true, valueSha256: createHash("sha256").update(text).digest("hex"), valueLength: text.length,
+                confidence: field(line.confidence, "confidence"), isTrusted: field(line.isTrusted, "isTrusted") },
+        ...(kind === "end" ? { exitCode: event.exitCode === undefined
+          ? { present: false, reason: "Native end event exitCode is undefined" }
+          : { present: true, value: event.exitCode } } : {}) };
+      pendingExecutions.push(fact);
+      fs.appendFileSync(join(directory, "editor-executions.jsonl"),
+        JSON.stringify({ runId, activationNonce, ...fact, ...(text === undefined ? {} : { commandLineValue: text }) }) + "\\n",
+        { mode: 0o600 });
+    } catch (error) {
+      fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid, at: Date.now(),
+        delivery: "execution-" + kind, status: "failed", reason: error.message || String(error) }) + "\\n", { mode: 0o600 });
+    }
+  };
+  for (const [kind, name] of [["start", "onDidStartTerminalShellExecution"], ["end", "onDidEndTerminalShellExecution"]]) {
+    if (typeof vscode.window[name] !== "function") {
+      executionApi[kind] = { present: false, reason: "Native vscode.window." + name + " is absent in " + app.name + " " +
+        app.version + "; the fixture manifest declares engines ^1.74.0" };
+    } else {
+      executionApi[kind] = { present: true };
+      context.subscriptions.push(vscode.window[name]((event) => recordExecution(kind, event)));
+    }
+  }
+  activation.executionApi = executionApi;
+  const observe = async (delivery) => {
+    if (closed || busy || !terminal) return;
+    let request;
+    let timer;
+    try {
+      let text;
+      try { text = fs.readFileSync(requestPath, "utf8"); }
+      catch (error) { if (error.code === "ENOENT") return; throw error; }
+      if (text === lastRequest) return;
+      lastRequest = text;
+      request = JSON.parse(text);
+      if (request.runId !== runId || request.activationNonce !== activationNonce ||
+          typeof request.nonce !== "string" || !/^[a-f0-9-]{36}$/.test(request.nonce) ||
+          typeof request.featureId !== "string" || typeof request.phase !== "string" ||
+          (request.expectedCwd !== undefined && typeof request.expectedCwd !== "string") ||
+          (request.awaitEvent !== undefined && request.awaitEvent !== "start" && request.awaitEvent !== "end") ||
+          !Number.isFinite(request.requestedAt) || !Number.isFinite(request.deadline) ||
+          request.deadline <= request.requestedAt) {
+        throw new Error("Editor request has invalid activation/run/phase/nonce/deadline binding");
+      }
+      if (Date.now() > request.deadline) throw new Error("Editor request deadline expired before evaluation");
+      busy = true;
+      const pid = await Promise.race([
+        terminal.processId,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Editor processId deadline expired")),
+            Math.max(0, Math.min(5000, request.deadline - Date.now())));
+        }),
+      ]);
+      if (closed || Date.now() > request.deadline) throw new Error("Editor terminal closed or request deadline expired");
+      const integration = terminal.shellIntegration;
+      const cwd = integration && integration.cwd;
+      const evaluatedAt = Date.now();
+      const reply = {
+        runId, featureId: request.featureId, phase: request.phase, nonce: request.nonce,
+        requestedAt: request.requestedAt, deadline: request.deadline,
+        activationNonce, extensionPid: process.pid, app, evaluatedAt,
+        sequence: ++sequence, delivery, status: "observed",
+        executionApi, executions: pendingExecutions.slice(),
+        ...(request.awaitEvent === undefined ? {} : { awaitedEvent: { kind: request.awaitEvent,
+          met: pendingExecutions.some((fact) => fact.kind === request.awaitEvent) } }),
+        executionWindow: { since: executionWindowSince, until: evaluatedAt,
+          attribution: "window-only: events that arrived since the previous published reply; not attributed to this request's stimulus" },
+        terminal: {
+          name: terminal.name,
+          processId: pid === undefined ? { present: false, reason: "Native terminal.processId is undefined" }
+            : { present: true, value: pid },
+          shellIntegrationCwd: cwd === undefined
+            ? { present: false, reason: integration === undefined
+                ? "Native terminal.shellIntegration is undefined" : "Native terminal.shellIntegration.cwd is undefined" }
+            : { present: true, value: cwd.toString(), components: {
+                scheme: cwd.scheme, authority: cwd.authority, path: cwd.path, query: cwd.query, fragment: cwd.fragment } },
+        },
+      };
+      lastEvaluation = reply;
+      fs.appendFileSync(join(directory, "editor-evaluations.jsonl"), JSON.stringify(reply) + "\\n", { mode: 0o600 });
+      if (request.expectedCwd !== undefined &&
+          (!reply.terminal.shellIntegrationCwd.present || reply.terminal.shellIntegrationCwd.value !== request.expectedCwd)) {
+        // The existing deadline-bounded interval or API event will evaluate the native object again.
+        // An unchanged cached value must not complete a known-state phase.
+        lastRequest = undefined;
+        return;
+      }
+      if (reply.awaitedEvent && !reply.awaitedEvent.met && Date.now() < request.deadline - 300) {
+        // 34685: a phase awaiting a native execution event holds until it arrives or the deadline nears, then
+        // publishes what it has, so an empty answer is bounded by the deadline rather than read immediately.
+        lastRequest = undefined;
+        return;
+      }
+      const replyPath = join(replyDirectory, request.nonce + ".json");
+      try {
+        publish(replyPath, reply);
+      } finally {
+        // Delivered once the reply exists, even if the temporary file's cleanup threw: never in a later reply.
+        if (fs.existsSync(replyPath)) {
+          pendingExecutions = pendingExecutions.slice(reply.executions.length);
+          executionWindowSince = evaluatedAt;
+        }
+      }
+    } catch (error) {
+      fs.appendFileSync(errors, JSON.stringify({ runId, activationNonce, extensionPid: process.pid,
+        at: Date.now(), delivery, request, status: "failed", reason: error.message || String(error),
+        ...(lastEvaluation && lastEvaluation.nonce === request?.nonce ? { lastEvaluation } : {}) }) + "\\n",
+        { mode: 0o600 });
+    } finally {
+      clearTimeout(timer);
+      busy = false;
+    }
+  };
+  const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(directory, "editor-request.json"));
+  const interval = setInterval(() => observe("interval"), 25);
+  const stop = () => { closed = true; clearInterval(interval); };
+  context.subscriptions.push(watcher,
+    watcher.onDidCreate(() => observe("watcher")), watcher.onDidChange(() => observe("watcher")),
+    vscode.window.onDidCloseTerminal((value) => { if (value === terminal) stop(); }),
+    vscode.window.onDidChangeTerminalShellIntegration((event) => { if (event.terminal === terminal) observe("shell-integration"); }),
+    { dispose: stop });
+  publish(join(directory, "editor-activation.json"), activation);
+  terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
   terminal.show();
-};
-`
-      : `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
+  await observe("startup");
 };
 `
   writeFileSync(join(fixture, "extension.cjs"), extension, { flag: "wx", mode: 0o600 })
@@ -181,11 +357,10 @@ const APPS: AppDef[] = [
     id: "ghostty",
     appPath: "/Applications/Ghostty.app",
     binaryPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-    bundleId: "com.mitchellh.ghostty",
+    bundleId: APP_BUNDLE_IDS.ghostty,
     // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
     // owner is resolved from, never the spawned handle, which a running instance can absorb.
     cliLaunch: {
-      capture: "artifact-directory",
       spawnPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       markerFlag: "--config-file",
@@ -201,7 +376,7 @@ const APPS: AppDef[] = [
     id: "iterm2",
     appPath: "/Applications/iTerm.app",
     binaryPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
-    bundleId: "com.googlecode.iterm2",
+    bundleId: APP_BUNDLE_IDS.iterm2,
     // The suite isolates startup state; the iTerm-specific arm still proves the exact CG window.
     cliLaunch: {
       spawnPath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
@@ -216,21 +391,21 @@ const APPS: AppDef[] = [
     id: "terminal-app",
     appPath: "/System/Applications/Utilities/Terminal.app",
     binaryPath: "", // Terminal.app uses AppleScript (its own API)
-    bundleId: "com.apple.Terminal",
+    bundleId: APP_BUNDLE_IDS["terminal-app"],
   },
   {
     name: "kitty",
     id: "kitty",
     appPath: "/Applications/kitty.app",
     binaryPath: KITTY_BINARY_PATH,
-    bundleId: "net.kovidgoyal.kitty",
+    bundleId: APP_BUNDLE_IDS.kitty,
   },
   {
     name: "WezTerm",
     id: "wezterm",
     appPath: "/Applications/WezTerm.app",
     binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
-    bundleId: "com.github.wez.wezterm",
+    bundleId: APP_BUNDLE_IDS.wezterm,
     // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
     cliLaunch: {
       spawnPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
@@ -257,7 +432,7 @@ const APPS: AppDef[] = [
     id: "cursor",
     appPath: "/Applications/Cursor.app",
     binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
-    bundleId: "com.todesktop.230313mzl4w4u92",
+    bundleId: APP_BUNDLE_IDS.cursor,
     cliLaunch: {
       spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
       executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
@@ -275,6 +450,8 @@ const APPS: AppDef[] = [
           JSON.stringify({
             "update.mode": "none",
             "workbench.panel.opensMaximized": "always",
+            // Keep this disposable fixture's tab on the process's OSC title, not a fixed launch name.
+            "terminal.integrated.tabs.title": "${sequence}",
           }),
           { flag: "wx", mode: 0o600 },
         )
@@ -304,7 +481,7 @@ const APPS: AppDef[] = [
     id: "com.microsoft.VSCode",
     appPath: "/Applications/Visual Studio Code.app",
     binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
-    bundleId: "com.microsoft.VSCode",
+    bundleId: APP_BUNDLE_IDS["com.microsoft.VSCode"],
     cliLaunch: {
       spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
       executablePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
@@ -317,11 +494,13 @@ const APPS: AppDef[] = [
         writeFileSync(
           join(user, "settings.json"),
           JSON.stringify({
+            "update.mode": "none",
             // Documented since 1.104: https://code.visualstudio.com/docs/copilot/setup
             "chat.disableAIFeatures": true,
             "workbench.startupEditor": "none",
             "workbench.welcomePage.experimentalOnboarding": false,
             "workbench.panel.opensMaximized": "always",
+            "terminal.integrated.tabs.title": "${sequence}",
           }),
           { flag: "wx", mode: 0o600 },
         )
@@ -349,7 +528,7 @@ const APPS: AppDef[] = [
     id: "warp",
     appPath: "/Applications/Warp.app",
     binaryPath: "", // Warp doesn't support direct command launch
-    bundleId: "dev.warp.Warp-Stable",
+    bundleId: APP_BUNDLE_IDS.warp,
   },
 ]
 
@@ -443,6 +622,10 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
     TERMINFO_RUN_ID: run.id,
     TERMINFO_TERM_FEATURES_LAUNCH: run.id,
   }
+  if (app.id === "wezterm") {
+    env.TERMINFO_TARGET_ID = app.id
+    env.TERMINFO_TARGET_VERSION = getAppVersion(app)
+  }
   // Only an export added by this freshly launched terminal may answer the child probe.
   delete env.TERM_FEATURES
   return {
@@ -519,15 +702,11 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
   }
 }
 
-function launchWithServe(app: AppDef, run: Run): AppLaunch {
-  const captureDirectory =
-    app.id === "kitty" ||
-    app.id === "terminal-app" ||
-    app.id === "iterm2" ||
-    app.cliLaunch?.capture === "artifact-directory"
-      ? join(run.directory, "artifacts")
-      : undefined
-  const serveCmd = serveCommand(run, captureDirectory)
+function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "probe"): AppLaunch {
+  // Every owned Mac launch hands its collector the run's artifact directory (31743, @cto 0822). The
+  // directory alone captures nothing: the collector installs a capture only for the window the owner
+  // proof binds, and refuses a Darwin directory that arrives with no owner claim.
+  const serveCmd = serveCommand(run, join(run.directory, "artifacts"))
   const identityPath =
     app.id === "kitty"
       ? join(run.directory, "owner-identity.txt")
@@ -541,7 +720,12 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
         ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
         : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
   const retainedStderr = app.id === "terminal-app" ? ` 2> ${shellQuote(join(run.directory, "worker.stderr.log"))}` : ""
-  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${serveCmd}${retainedStderr}\n`, {
+  // Only these three non-secret values are retained from this freshly launched child.
+  const handBinding =
+    mode === "hand-read"
+      ? `printf '%s\\n' "\${TERMINFO_RUN_ID}" "\${WEZTERM_UNIX_SOCKET:-}" "\${WEZTERM_PANE:-}" > ${shellQuote(join(run.directory, "wezterm-hand-binding.txt"))}\n`
+      : ""
+  writeFileSync(run.scriptPath, `#!/bin/bash -p\n${identityWrite}${handBinding}${serveCmd}${retainedStderr}\n`, {
     flag: "wx",
     mode: 0o700,
   })
@@ -552,7 +736,7 @@ function launchWithServe(app: AppDef, run: Run): AppLaunch {
     // from it once the daemon has registered, never from this child handle.
     const prepared = prepareCliLaunch(app.id, run)
     const iterm2 = app.id === "iterm2" ? prepareIterm2Launch(run.scriptPath, prepared.executablePath) : undefined
-    const launched = launchPreparedCli(prepared)
+    const launched = launchPreparedCli(prepared, mode === "hand-read" ? run.directory : undefined)
     return iterm2 === undefined ? launched : { ...launched, iterm2 }
   }
 
@@ -725,18 +909,26 @@ async function probeDaemon(
   }
   await options.beforeSave?.(run)
   const mode = outputDirectory === undefined ? "written" : "retained"
+  let retainedRun: string
   if (outputDirectory !== undefined) {
-    const source = retainCollectedRun(
+    retainedRun = retainCollectedRun(
       run,
       retained.path,
       { kind: "term", id: appId, version },
       outputDirectory,
       options.captureBundleRoot,
     )
-    console.log(`  Retained private development run ${source}`)
+    console.log(`  Retained private development run ${retainedRun}`)
   } else {
-    writeCollectedRun(run, retained.path, { kind: "term", id: appId, version }, options.captureBundleRoot)
+    retainedRun = writeCollectedRun(
+      run,
+      retained.path,
+      { kind: "term", id: appId, version },
+      options.captureBundleRoot,
+    ).retained
   }
+  // #30932 S2: once, for either path, from the saved private run.
+  await shadowCollectedRun(retainedRun)
   const catalogIds = run.results.map((result) => result.featureId)
   const aggregate = aggregateCurrentResults(run.results, catalogIds)
   return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)}`, mode }
@@ -844,18 +1036,6 @@ function fileSha256(path: string, what: string): string {
   }
 }
 
-/** D3: the owner's birth is one C-locale UTC `ps -o lstart=` line, read from the process the marker resolved. */
-function processBirthSeconds(pid: number): number {
-  return parseLstart(
-    String(
-      execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-        encoding: "utf8",
-        env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
-      }),
-    ),
-  )
-}
-
 /** Ghostty's update-check setting, read once and never written (D4.6). An absent key is a value. */
 function ghosttyAutoUpdate(): {
   key: "SUEnableAutomaticChecks"
@@ -902,16 +1082,158 @@ function measureOuterLaunchRecord(run: Run, launch: AppLaunch, ownerPid: number)
     executablePath: launch.executablePath,
     marker: launch.marker,
     identityFile: { path: launch.identityPath, sha256: fileSha256(launch.identityPath, "owner identity record") },
-    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: processBirthSeconds(ownerPid) },
+    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: readProcessBirth(ownerPid).startedAtEpochSeconds },
     bootId: String(execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" })).trim(),
     runFileSha256: fileSha256(launch.marker.value, "run file"),
     autoUpdate: ghosttyAutoUpdate(),
   })
 }
 
+interface HandReadDiagnostic {
+  kind: "app-hand-read"
+  runId: string
+  app: string
+  version: string
+  runDirectory: string
+  owner?: OwnedTerminalWindow
+  binding?: { path: string; raw: string }
+  bundle?: { cliPath: string; cliSha256: string; guiPath: string; guiSha256: string }
+  read: {
+    command: string
+    argv: string[]
+    socket: string
+    paneId: number
+    startedAt: string
+    finishedAt: string | null
+    status: number | null
+    signal: string | null
+    stdout: string
+    stderr: string
+    pane: Record<string, unknown> | null
+    text: ReturnType<typeof readWindowsWezTermRows> | null
+  } | null
+  primaryFailure: string | null
+  cleanup: { daemon: string; window: string; errors: string[]; proof?: string }
+}
+
+/** One app-native read after the shared lifecycle has acquired this run's owner. No probe or result writer. */
+function readOwnedWeztermPane(
+  app: AppDef,
+  run: Run,
+  owner: OwnedTerminalWindow,
+  workerPid: number,
+  diagnostic: HandReadDiagnostic,
+): void {
+  if (owner.provider !== "cli-process") throw new Error("WezTerm hand read requires this run's cli-process owner")
+  const bindingPath = join(run.directory, "wezterm-hand-binding.txt")
+  const raw = readFileSync(bindingPath, "utf8")
+  diagnostic.binding = { path: bindingPath, raw }
+  const fields = raw.split(/\r?\n/u)
+  if (fields.at(-1) === "") fields.pop()
+  const [runId, socket, pane] = fields
+  if (
+    fields.length !== 3 ||
+    runId !== run.id ||
+    !socket ||
+    !isAbsolute(socket) ||
+    !pane ||
+    !/^\d+$/u.test(pane) ||
+    !Number.isSafeInteger(Number(pane))
+  ) {
+    throw new Error(
+      `WezTerm hand read requires this run's socket and pane in ${bindingPath}; missing or invalid launch binding`,
+    )
+  }
+  const cliPath = realpathSync(app.binaryPath)
+  const guiPath = realpathSync(owner.executablePath)
+  const bundlePath = realpathSync(app.appPath)
+  if (dirname(cliPath) !== dirname(guiPath) || !cliPath.startsWith(`${bundlePath}/Contents/MacOS/`)) {
+    throw new Error(`WezTerm CLI ${cliPath} is not inside the same bundle as owned GUI ${guiPath}`)
+  }
+  diagnostic.bundle = {
+    cliPath,
+    cliSha256: fileSha256(cliPath, "WezTerm bundle CLI"),
+    guiPath,
+    guiSha256: fileSha256(guiPath, "WezTerm owned GUI"),
+  }
+  assertOwnedTerminalWindow(owner, workerPid)
+  const argv = ["--config-file", owner.marker.value, "cli", "--no-auto-start", "list", "--format", "json"]
+  const read: NonNullable<HandReadDiagnostic["read"]> = {
+    command: cliPath,
+    argv,
+    socket,
+    paneId: Number(pane),
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: null,
+    signal: null,
+    stdout: "",
+    stderr: "",
+    pane: null,
+    text: null,
+  }
+  diagnostic.read = read
+  const result = spawnSync(cliPath, argv, {
+    encoding: "utf8",
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, WEZTERM_UNIX_SOCKET: socket, WEZTERM_PANE: pane },
+  })
+  read.finishedAt = new Date().toISOString()
+  read.status = result.status
+  read.signal = result.signal
+  read.stdout = result.stdout ?? ""
+  read.stderr = result.stderr ?? ""
+  writeFileSync(join(run.directory, "hand-read.stdout"), read.stdout, { flag: "wx", mode: 0o600 })
+  writeFileSync(join(run.directory, "hand-read.stderr"), read.stderr, { flag: "wx", mode: 0o600 })
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `WezTerm pane read failed: ${result.error?.message ?? `exit ${String(result.status)}`}; ${read.stderr}`,
+    )
+  }
+  let rows: unknown
+  try {
+    rows = JSON.parse(read.stdout)
+  } catch (cause) {
+    throw new Error(
+      `WezTerm pane read returned invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    )
+  }
+  if (!Array.isArray(rows)) throw new Error("WezTerm pane read did not return a JSON array")
+  const matches = rows.filter(
+    (row): row is Record<string, unknown> =>
+      typeof row === "object" && row !== null && "pane_id" in row && row.pane_id === Number(pane),
+  )
+  if (matches.length !== 1) {
+    throw new Error(`WezTerm pane read found ${matches.length} candidates for this run's pane ${pane}; expected one`)
+  }
+  const selected = matches[0]
+  if (selected === undefined) throw new Error(`WezTerm pane read lost this run's pane ${pane}`)
+  if (typeof selected.cwd !== "string" || selected.cwd.length === 0) {
+    throw new Error(`WezTerm pane ${pane} reported no cwd surface`)
+  }
+  assertOwnedTerminalWindow(owner, workerPid)
+  read.pane = selected
+  const size = selected.size
+  if (
+    typeof size !== "object" ||
+    size === null ||
+    !("rows" in size) ||
+    typeof size.rows !== "number" ||
+    !Number.isSafeInteger(size.rows) ||
+    size.rows <= 0
+  ) {
+    throw new Error(`WezTerm pane ${pane} reported no valid native row count`)
+  }
+  read.text = readWindowsWezTermRows({ executable: cliPath, socket, pane, rows: size.rows })
+  assertOwnedTerminalWindow(owner, workerPid)
+  if (read.text.status === "refused") throw new Error(read.text.reason)
+}
+
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean; output?: string; probeIds?: string[] },
+  opts: { force?: boolean; output?: string; probeIds?: string[]; runId?: string; mode?: "probe" | "hand-read" },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -919,17 +1241,41 @@ async function runApp(
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
 
-  const run = createProbeRun()
+  // #34018: a run identity handed in must be free before anything is launched. A daemon already
+  // registered under it is an earlier run of that name, and binding to it would grade one run's
+  // daemon as another's. Refuse by name and write nothing (single check, no wait: timeout 0).
+  if (opts.runId !== undefined && (await findOwnedDaemon(opts.runId, DAEMON_DIR, app.id, 0)) !== null) {
+    return {
+      success: false,
+      error: `run id ${opts.runId} is already registered by a live daemon; a handed identity names one run and is never reused`,
+    }
+  }
+  const run = createProbeRun(opts.runId)
+  const mode = opts.mode ?? "probe"
+  const progress = mode === "hand-read" ? console.error : console.log
+  const hand: HandReadDiagnostic | undefined =
+    mode === "hand-read"
+      ? {
+          kind: "app-hand-read",
+          runId: run.id,
+          app: app.id,
+          version,
+          runDirectory: run.directory,
+          read: null,
+          primaryFailure: null,
+          cleanup: { daemon: "not-created", window: "not-launched", errors: [] },
+        }
+      : undefined
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
   let daemonStopAttempted = false
   let windowCloseAttempted = false
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
-    console.log(`  Launching ${app.name} v${version}...`)
-    launch = launchWithServe(app, run)
+    progress(`  Launching ${app.name} v${version}...`)
+    launch = launchWithServe(app, run, mode)
     assertOwnedWindowAssertion(app, launch)
-    console.log(`  Waiting for owned daemon...`)
+    progress(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     const iterm2Launch = launch.iterm2
@@ -941,53 +1287,65 @@ async function runApp(
           : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
-    const outerLaunch =
-      app.cliLaunch?.capture === "artifact-directory"
-        ? measureOuterLaunchRecord(
-            run,
-            launch,
-            ownedWindow.provider === "cli-process" || ownedWindow.provider === "kitty"
-              ? ownedWindow.provider === "kitty"
-                ? ownedWindow.kittyPid
-                : ownedWindow.ownerPid
-              : (() => {
-                  throw new Error(`${app.name} declares a capture route but its owned window has no process owner`)
-                })(),
-          )
-        : undefined
-    console.log(`  Probing on port ${daemon.registration.port}...`)
-    const capturedDaemon = daemon
-    const capturedLaunch = launch
-    const result = await probeDaemon(daemon.registration, {
-      captureBundleRoot: run.directory,
-      appId: app.id,
-      version,
-      ownedWindow,
-      invocation: launch.invocation,
-      outputDirectory: opts.output,
-      ids: opts.probeIds,
-      launcherStderr: launch.launcherStderr,
-      outerLaunch,
-      ...(ownedWindow.provider === "terminal-app" && {
-        beforeSave: async (captured: Parameters<typeof writeCollectedRun>[0]) => {
-          daemonStopAttempted = true
-          await stopOwnedDaemon(capturedDaemon)
-          windowCloseAttempted = true
-          const proof = stopLaunchedApp(app, capturedLaunch)
-          if (proof === undefined) {
-            throw Object.assign(new Error("Terminal.app close returned no absence proof"), {
-              name: "CaptureRestoreFailed",
-            })
-          }
-          captured.rawReplies["collector.windowDisposal"] = proof
-          captured.rawReplies["collector.workerStderr"] = readFileSync(join(run.directory, "worker.stderr.log"), "utf8")
-        },
-      }),
-    })
-    console.log(`  ${result.summary} (${result.mode})`)
-    outcome = { success: true }
+    if (hand) {
+      hand.owner = ownedWindow
+      readOwnedWeztermPane(app, run, ownedWindow, daemon.registration.pid, hand)
+      outcome = { success: true }
+    } else {
+      const outerLaunch =
+        app.id === "ghostty"
+          ? measureOuterLaunchRecord(
+              run,
+              launch,
+              ownedWindow.provider === "cli-process" || ownedWindow.provider === "kitty"
+                ? ownedWindow.provider === "kitty"
+                  ? ownedWindow.kittyPid
+                  : ownedWindow.ownerPid
+                : (() => {
+                    throw new Error(
+                      `${app.name} needs an outer launch record but its owned window has no process owner`,
+                    )
+                  })(),
+            )
+          : undefined
+      console.log(`  Probing on port ${daemon.registration.port}...`)
+      const capturedDaemon = daemon
+      const capturedLaunch = launch
+      const result = await probeDaemon(daemon.registration, {
+        captureBundleRoot: run.directory,
+        appId: app.id,
+        version,
+        ownedWindow,
+        invocation: launch.invocation,
+        outputDirectory: opts.output,
+        ids: opts.probeIds,
+        launcherStderr: launch.launcherStderr,
+        outerLaunch,
+        ...(ownedWindow.provider === "terminal-app" && {
+          beforeSave: async (captured: Parameters<typeof writeCollectedRun>[0]) => {
+            daemonStopAttempted = true
+            await stopOwnedDaemon(capturedDaemon)
+            windowCloseAttempted = true
+            const proof = stopLaunchedApp(app, capturedLaunch)
+            if (proof === undefined) {
+              throw Object.assign(new Error("Terminal.app close returned no absence proof"), {
+                name: "CaptureRestoreFailed",
+              })
+            }
+            captured.rawReplies["collector.windowDisposal"] = proof
+            captured.rawReplies["collector.workerStderr"] = readFileSync(
+              join(run.directory, "worker.stderr.log"),
+              "utf8",
+            )
+          },
+        }),
+      })
+      console.log(`  ${result.summary} (${result.mode})`)
+      outcome = { success: true }
+    }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
+    if (hand) hand.primaryFailure = outcome.error ?? null
     if (app.id === "terminal-app") {
       writeFileSync(
         join(run.directory, "collection-error.json"),
@@ -1004,8 +1362,10 @@ async function runApp(
     if (daemon && !daemonStopAttempted) {
       try {
         await stopOwnedDaemon(daemon)
+        if (hand) hand.cleanup.daemon = "stop-requested"
       } catch (err) {
         cleanupErrors.push(`daemon: ${String(err)}`)
+        if (hand) hand.cleanup.daemon = "failed"
       }
     }
     if (launch) {
@@ -1028,18 +1388,28 @@ async function runApp(
         }
       }
       try {
-        if (!windowCloseAttempted) stopLaunchedApp(app, launch)
+        if (!windowCloseAttempted) {
+          const proof = stopLaunchedApp(app, launch)
+          if (hand) {
+            hand.cleanup.window = launch.terminalWindow === undefined ? "unresolved" : "closed"
+            if (typeof proof === "string") hand.cleanup.proof = proof
+            if (launch.terminalWindow === undefined) {
+              cleanupErrors.push("window: launched owner unresolved; no close was authorized")
+            }
+          }
+        }
       } catch (err) {
         cleanupErrors.push(`window: ${String(err)}`)
+        if (hand) hand.cleanup.window = "failed"
       }
     }
-    if (outcome.success && cleanupErrors.length === 0) {
+    if (outcome.success && cleanupErrors.length === 0 && !hand) {
       try {
         removeProbeRun(run)
       } catch (err) {
         cleanupErrors.push(`script: ${String(err)}`)
       }
-    } else {
+    } else if (!hand) {
       console.error(`  Retained private failed ${app.name} launch directory: ${run.directory}`)
     }
     if (cleanupErrors.length > 0) {
@@ -1047,6 +1417,14 @@ async function runApp(
         success: false,
         error: [outcome.success ? undefined : outcome.error, ...cleanupErrors].filter(Boolean).join("; "),
       }
+    }
+    if (hand) {
+      hand.cleanup.errors = cleanupErrors
+      if (opts.output === undefined) throw new Error("WezTerm hand read requires a private output directory")
+      writeFileSync(join(opts.output, "hand-read.json"), `${JSON.stringify(hand, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      })
     }
   }
   return outcome
@@ -1056,8 +1434,24 @@ async function runApp(
 
 export async function handleApp(
   terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[] },
+  opts: { all?: boolean; force?: boolean; output?: string; probeIds?: string[]; runId?: string; handRead?: boolean },
 ): Promise<void> {
+  if (opts.handRead) {
+    if (terminal?.toLowerCase() !== "wezterm" || opts.all || opts.probeIds !== undefined) {
+      throw new Error("--hand-read requires WezTerm only, without --all or --probe-ids")
+    }
+    if (!opts.output) throw new Error("WezTerm --hand-read requires an explicit private --output directory")
+    assertPrivateCollectionOutput(opts.output)
+    mkdirSync(opts.output, { recursive: true, mode: 0o700 })
+    const receipt = join(opts.output, "hand-read.json")
+    if (existsSync(receipt)) throw new Error(`WezTerm hand-read receipt already exists: ${receipt}`)
+    const app = APPS.find((candidate) => candidate.id === "wezterm")
+    if (app === undefined) throw new Error("WezTerm is missing from the configured app inventory")
+    const result = await runApp(app, { output: opts.output, runId: opts.runId, mode: "hand-read" })
+    console.log(JSON.stringify({ kind: "app-hand-read", receipt, error: result.error ?? null }))
+    if (!result.success) throw new Error(`WezTerm hand read failed: ${result.error}`)
+    return
+  }
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
     for (const app of APPS) {
@@ -1090,9 +1484,21 @@ export async function handleApp(
 
   const results: Array<{ app: AppDef; result: Awaited<ReturnType<typeof runApp>> }> = []
 
+  // One identity names one run and one run measures one app: a handed id with a multi-app selection
+  // would have to be reused, so it refuses by name before any launch (#34018).
+  if (opts.runId !== undefined && appsToRun.length > 1) {
+    throw new Error(
+      `--run-id names one run and ${appsToRun.length} apps would run; pass --run-id only with a single app selection`,
+    )
+  }
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force, output: opts.output, probeIds: opts.probeIds })
+    const result = await runApp(app, {
+      force: opts.force,
+      output: opts.output,
+      probeIds: opts.probeIds,
+      runId: opts.runId,
+    })
     results.push({ app, result })
 
     if (result.skipped) {

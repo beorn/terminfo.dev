@@ -1,18 +1,38 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  type BigIntStats,
+} from "node:fs"
 import { isatty, WriteStream } from "node:tty"
+import { homedir } from "node:os"
 import { dirname, isAbsolute, join, win32 } from "node:path"
 import type {
   DarwinMuxAttachmentProof,
   MuxAttachmentProof,
+  OwnerBasisScope,
   OuterAppProof,
   ProbeSubject,
   TerminalScrollbackReading,
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
-import { readAppSemanticState } from "./app-semantic-state.ts"
+import {
+  ITERM_PROMPT_FEATURES,
+  createNativeEditorTitleReader,
+  readAppSemanticState,
+  readITermPromptMarks,
+  readWezTermCwd,
+  weztermHyperlinkText,
+  untilAppSemanticRead,
+} from "./app-semantic-state.ts"
 import { parseJsonStrict, measuredVersionTokens } from "@terminfo/run-parser"
 import { retain } from "./capture-core.ts"
 import type { CaptureChromeBand } from "./capture-calibration.ts"
@@ -32,12 +52,30 @@ import {
 import { createDarwinClipboardAdapter } from "./darwin-clipboard.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { readLinuxKittyScrollback } from "./linux-kitty-text.ts"
-import { wasCollectorOpenedControllingTTY } from "./tty.ts"
+import { ownedHistoryReceipt, ttyName } from "./owned-history-receipt.ts"
 import {
+  cmuxConfigPath,
+  cmuxHistoryIdentity,
+  createOwnedCmuxWorkspaceCwdReader,
+  observeCmuxConfig,
+  ownedCmuxHistoryExecutable,
+  parseCmuxCliShortVersion,
+  type CmuxConfigObservation,
+  type CmuxHistoryIdentity,
+  type CmuxLastRead,
+  type CmuxReadFacts,
+  readOwnedCmuxHistory,
+} from "./cmux-owned-history.ts"
+import { assertWriteAllowed, wasCollectorOpenedControllingTTY } from "./tty.ts"
+import {
+  ALACRITTY_0_17_VIEWPORT_ROUTE,
+  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  XTERM_411_VIEWPORT_ROUTE,
   ScrollbackReadingUnavailable,
   TEXT_QUALIFICATION_OWNERSHIP_CELL,
   type TextQualificationOwnership,
   type TextQualificationRecipe,
+  type ViewportStep,
 } from "@terminfo/probe-defs"
 import { readWindowsConsoleGeometry, readWindowsConsoleIdentity, writeConsoleCellsRaw } from "./windows-console-ffi.ts"
 import {
@@ -61,7 +99,8 @@ import {
   type TerminalTextRead,
 } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
-import { readITermCells } from "./iterm2-protocol.ts"
+import { readITermCells, withITermPromptSession } from "./iterm2-protocol.ts"
+import { ghosttyOwnedCwd } from "./ghostty-applescript.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
   hostedWindowsAppFromExecutablePath,
@@ -72,13 +111,20 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
-import { assertOwnedTerminalWindow } from "./terminal-app-window.ts"
+import {
+  assertOwnedAppOwner,
+  assertOwnedTerminalWindow,
+  ownedAppProbes,
+  terminalAppOwnedCwd,
+} from "./terminal-app-window.ts"
 import {
   assertOwnedProcess,
   runScopedMarker,
   processCommand,
   argvCarriesMarker,
+  requireOwnWorker,
   type ProcessOwnerBasis,
+  type ProcessMarker,
 } from "./owned-process.ts"
 import {
   createLineRenditionTracker,
@@ -91,6 +137,7 @@ import {
   hostedWezTermOwnerProof,
   ownedWezTermHistoryExecutable,
   readOwnedWezTermHistory,
+  readOwnedWezTermPane,
   socketHeldByPid,
   wezTermHistoryIdentity,
 } from "./wezterm-owned-history.ts"
@@ -149,6 +196,31 @@ export interface ProcessOwnerAssertion {
   tty: string
   /** iTerm2 only, and required there: the CG window id. Refused on every other provider. */
   windowId?: number
+  intendedVersion: string
+}
+
+/**
+ * The admin's claim for an OWNED-MAC APP launch (#34012, @cto 9f889378): the app it launched, the pid it
+ * measured, the one window its before/after census diff proved new AND owned by that pid, the run's TTY,
+ * and the run-scoped argv marker. Same family as the two assertions above — the admin names the
+ * expectation and the worker re-proves every observable live — but the pid here is the app's own, spawned
+ * by the launcher, so the shared `assertOwnedProcess` is NOT used: it requires the owner to descend from
+ * the daemon, which a launch by another process does not satisfy (@dev/luna3 → @cto, 2026-11-13).
+ */
+export interface OwnedAppOwnerAssertion {
+  asserter: "terminfo-admin"
+  launchRunId: string
+  workerPid: number
+  /** The app identity the launcher opened; a window whose owner runs another app is not this run's. */
+  appId: string
+  ownerPid: number
+  /** The CG id of the one new layer-0 window the launcher's census diff attributed to this launch. */
+  windowId: number
+  /** The app's realpath executable, so a pid reused by another binary is a refusal. */
+  executablePath: string
+  /** The run-scoped argv token the launcher passed; the live pid must still carry it. */
+  marker: ProcessMarker
+  tty: string
   intendedVersion: string
 }
 
@@ -247,22 +319,6 @@ export function parseProcessOwnerAssertion(value: unknown): ProcessOwnerAssertio
   }
 }
 
-/** Both Darwin claim arms bind the assertion to THIS worker: the launch run id it was started with,
- * that same id in its environment, and its own pid. One check, so the two arms cannot drift. */
-function requireOwnWorker(
-  claim: { launchRunId: string; workerPid: number },
-  expectedLaunchRunId: string,
-  who: string,
-): void {
-  if (
-    claim.launchRunId !== expectedLaunchRunId ||
-    process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
-    claim.workerPid !== process.pid
-  ) {
-    throw new Error(`${who} owner assertion differs from this worker launch run or PID`)
-  }
-}
-
 /** The request is an admin assertion; the worker independently verifies every observable field. */
 export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion {
   const invalid = () => new Error("Invalid Terminal.app owner assertion")
@@ -297,6 +353,79 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
   }
 }
 
+/**
+ * The request is an admin assertion; the worker independently re-proves the pid, the marker and the
+ * window live. Structural only, like its two siblings: a well-formed claim is still a claim.
+ */
+export function parseOwnedAppOwnerAssertion(value: unknown): OwnedAppOwnerAssertion {
+  const invalid = () => new Error("Invalid owned-Mac app owner assertion")
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid()
+  const object = value as Record<string, unknown>
+  const keys = [
+    "asserter",
+    "launchRunId",
+    "workerPid",
+    "appId",
+    "ownerPid",
+    "windowId",
+    "executablePath",
+    "marker",
+    "tty",
+    "intendedVersion",
+  ]
+  if (!exactKeys(object, keys)) throw invalid()
+  const marker = object.marker
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) throw invalid()
+  const markerObject = marker as Record<string, unknown>
+  if (
+    !exactKeys(markerObject, ["flag", "value"]) ||
+    typeof markerObject.flag !== "string" ||
+    markerObject.flag.length === 0 ||
+    /\s/.test(markerObject.flag) ||
+    typeof markerObject.value !== "string" ||
+    markerObject.value.length === 0 ||
+    /\s/.test(markerObject.value)
+  ) {
+    throw invalid()
+  }
+  if (
+    object.asserter !== "terminfo-admin" ||
+    typeof object.launchRunId !== "string" ||
+    !/^[0-9a-f]{32}$/.test(object.launchRunId) ||
+    typeof object.workerPid !== "number" ||
+    !Number.isSafeInteger(object.workerPid) ||
+    object.workerPid < 1 ||
+    typeof object.appId !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(object.appId) ||
+    typeof object.ownerPid !== "number" ||
+    !Number.isSafeInteger(object.ownerPid) ||
+    object.ownerPid < 2 ||
+    typeof object.windowId !== "number" ||
+    !Number.isSafeInteger(object.windowId) ||
+    object.windowId < 1 ||
+    typeof object.executablePath !== "string" ||
+    !object.executablePath.startsWith("/") ||
+    typeof object.tty !== "string" ||
+    !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(object.tty) ||
+    typeof object.intendedVersion !== "string" ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}$/.test(object.intendedVersion)
+  ) {
+    throw invalid()
+  }
+  return {
+    asserter: object.asserter,
+    launchRunId: object.launchRunId,
+    workerPid: object.workerPid,
+    appId: object.appId,
+    ownerPid: object.ownerPid,
+    windowId: object.windowId,
+    executablePath: object.executablePath,
+    marker: { flag: markerObject.flag, value: markerObject.value },
+    tty: object.tty,
+    intendedVersion: object.intendedVersion,
+  }
+}
+
 /** One process's own environment and bus state; the environment itself never leaves the collector in a record. */
 export interface NotificationEnvironmentReading {
   readonly status: "measured" | "refused"
@@ -313,7 +442,18 @@ export interface OwnedTerminal {
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
-  readonly readAppSemanticState?: TermProbeSource["readAppSemanticState"]
+  /**
+   * `recordCapture` receives every window capture the reader keeps, including a capture kept only in a
+   * failed or invalid reading, so its file reference enters the run's typed screenshot list; a capture
+   * that skips it is a placed reference with no file (35009).
+   */
+  readonly readAppSemanticState?: (
+    featureId: string,
+    write: (text: string) => void,
+    recordCapture: (captured: unknown) => void,
+  ) => ReturnType<NonNullable<TermProbeSource["readAppSemanticState"]>>
+  /** When present, only these rows consume this owner's reader; other rows retain their term callbacks. */
+  readonly appSemanticStateFeatures?: ReadonlySet<string>
   /**
    * The terminal process's own session bus, read from /proc rather than assumed from the collector's
    * environment (#33333). A mux reads the outer terminal, which is the process that would emit a Notify.
@@ -326,11 +466,15 @@ export interface OwnedTerminal {
    * A hosted arm measures the receipt-named app in this collector's process ancestry; the owned-process
    * arm takes the owner that assertOwnedProcess proved. Absent on every other arm. */
   readonly appPid?: number
+  /** Window identity already proved by this arm's launch/owner evidence. */
+  readonly expectedWindowId?: number
+  /** Legacy hosted arms retain their census policy; new PID-only routes require a unique window. */
+  readonly captureWindowSelection?: "largest" | "unique"
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
   readonly captureChromeBand?: CaptureChromeBand
-  readonly clipboard?: LinuxClipboardAdapter
+  readonly clipboard?: LinuxClipboardAdapter | Awaited<ReturnType<typeof createDarwinClipboardAdapter>>
   /** One verified attachment carrier for both platforms; clipboard is only a Linux adapter. */
   readonly muxAttachmentProof?: MuxAttachmentProof
   /**
@@ -348,6 +492,23 @@ export interface OwnedTerminal {
   /** True when this arm's scrollback count comes from the terminal's own CLI, so no other binary's proof applies. */
   readonly historyReadsThroughCli?: true
   /**
+   * The cmux history arm as this run can prove it: the executable, the surface id acquired at grant, the
+   * grant's outcome, and the last read reduced to facts. `lastRead` is a getter, so a record built after the
+   * probes sees the latest read rather than the grant (@cto 81073ae1) — and it publishes no receipt text at
+   * all, because that receipt carries the pane transcript (@cto REVISE 2026-11-13). The receipt and the
+   * grant proof stay on this object, which no run record serializes.
+   */
+  readonly cmuxHistory?: {
+    readonly executable: string
+    readonly surface: string | null
+    /** Whether the surface was proved at grant. The proof itself stays on this object, out of any record. */
+    readonly grant: "proved" | "failed" | "not attempted"
+    /** The path-free refusal code, with its reason only when the reason names no path. Null when proved. */
+    readonly grantRefusal: string | null
+    readonly grantProof: string
+    readonly lastRead: CmuxLastRead | null
+  }
+  /**
    * This run's app was measured to expose no permitted read of its own pane (#31741, @cto 20b9ffed).
    * Carried on the record so the batch handoff in probes/unified.ts can put it on the probe source once,
    * where the history rows read it as their declared Untestable reason. Absent where the app has a read;
@@ -360,6 +521,13 @@ export interface OwnedTerminal {
    * falling back to a screenshot arm that cannot read retained history, and no grade follows from it.
    */
   readonly scrollbackProbeTodo?: string
+  /**
+   * The viewport keys of a subject whose screen and history are read only from pixels (34313, @cto
+   * cf1ffd6d). Present exactly when the viewport route applies to this qualified subject: hosted alacritty
+   * 0.17.0 on macOS, this run's own launch, no multiplexer. serve.ts installs keys-only input for it, and a
+   * failed install stays a named apparatus TODO on the route rather than removing the route.
+   */
+  readonly viewportKeys?: { readonly route: string; readonly keys: Readonly<Record<ViewportStep, string>> }
   /** Presence only, never the values: whether this run's pane published what an owned read needs (A0). */
   readonly wezTermPaneEnvironment?: { readonly socket: boolean; readonly paneId: boolean }
   readGeometry(): Promise<GeometryMeasurement>
@@ -388,6 +556,30 @@ export interface OwnedTerminal {
    * double-width or double-height line, which UI Automation returns unmarked. */
   observeWrite?(text: string): void
   dispose(): Promise<void>
+}
+
+function retainTextReply(
+  captureRunId: string,
+  tty: string,
+  geometry: Extract<GeometryMeasurement, { status: "measured" }>,
+  checkpoint: NonNullable<Parameters<NonNullable<OwnedTerminal["readCells"]>>[0]>,
+  bytes: Uint8Array,
+): void {
+  const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
+  retain(
+    checkpoint.directory,
+    Buffer.from(
+      JSON.stringify({
+        captureRunId,
+        checkpoint: checkpoint.label,
+        tty,
+        grid: { rows: geometry.rows, cols: geometry.cols },
+        reply,
+      }),
+    ),
+    "json",
+    checkpoint.onRetained,
+  )
 }
 
 type Device = { dev: string; rdev: string; ino: string }
@@ -438,7 +630,7 @@ export type HostedDarwinApp = {
   id: HostedDarwinAppId
   comm: string
   /** Window-title method for this subject. The Darwin reader follows this and names no app. */
-  titleRead: "system-events" | "none"
+  titleRead: "window" | "none"
   /**
    * The measured reason this app's title cannot be read on a hosted runner (33821). Set only where a run
    * measured the window server's name and the reading did not certify the run's own title — the name was
@@ -448,6 +640,7 @@ export type HostedDarwinApp = {
   titleUnavailable?: string
   /** Chrome strip the app repaints by itself; capture calibration excuses and counts changes there (33056). */
   captureChromeBand?: CaptureChromeBand
+  captureWindowSelection?: "largest" | "unique"
   /**
    * This app was measured and exposes no permitted read of its own pane (#31741, @cto 20b9ffed). The
    * history rows return it as their declared Untestable reason instead of falling back to a screenshot
@@ -459,14 +652,14 @@ export type HostedDarwinApp = {
 export type AncestryRow = {
   pid: number
   ppid: number
-  /** argv0 as the kernel prints it. Screen's backend shows `SCREEN` here; the executed path is below. */
+  /** argv0 as ps prints it, kept separate from measured kernel executable identity. */
   comm: string
   uid?: number
   startedAtEpochSeconds?: number
   ttyRdev?: number | null
   command?: string
-  /** The kernel's executed path for this pid, or null when neither reader answered (#30518 Screen arm).
-   * Absent off Darwin, where there is no such read; never guessed from `comm`. */
+  /** The kernel's executed path for a Darwin mux walk, or null when neither reader answered.
+   * Absent when the walk does not request kernel identity; never guessed from `comm`. */
   kernelExecutable?: string | null
   kernelExecutableReader?: "proc_pidpath" | "KERN_PROCARGS2" | null
   kernelExecutableError?: string | null
@@ -476,6 +669,109 @@ export type AncestryRow = {
 
 /** @cto 20b9ffed verbatim: the reason text these apps' history rows declare, so one string names the absence. */
 const NO_PANE_READ = "no pane read on this app"
+
+/**
+ * alacritty 0.17.0's default viewport bindings outside the alternate screen (alacritty/src/config/bindings.rs
+ * at v0.17.0: ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom). Source, not a delivery proof: the
+ * route's rows observe every step's effect before they trust it (34313).
+ */
+export const ALACRITTY_0_17_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "shift+Page_Up",
+  pageDown: "shift+Page_Down",
+  top: "shift+Home",
+  bottom: "shift+End",
+})
+
+/**
+ * xterm 411's viewport steps on this Linux arm (#34632). xterm binds shift+Prior and shift+Next outside the
+ * alternate screen but binds nothing to scroll-to-top/bottom, so the container script declares both through its
+ * own launch (`XTerm*VT100.Translations: #override Shift<Key>Home: scroll-back(9999,line); Shift<Key>End:
+ * scroll-forw(9999,line)`). Measured 2026-11-18 in terminfo-xterm-probe:default under a private Xvfb over 200
+ * rows: shift+Home reaches the top (a Prior after it moves nothing) and shift+End returns byte-exact to the bottom
+ * from both a page-up and the top. `scroll-forw` is this build's action name; `scroll-forward` is rejected
+ * silently. Source and measurement, not a delivery proof: the held reader presses bottom and refuses when the
+ * frame does not come back, so a launch without the translation names a mismatch instead of reading shifted rows.
+ */
+export const XTERM_411_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
+  pageUp: "shift+Prior",
+  pageDown: "shift+Next",
+  top: "shift+Home",
+  bottom: "shift+End",
+})
+
+/**
+ * The xterm versions this route's keys were MEASURED on. 411 in terminfo-xterm-probe:default and 412 in the image
+ * the flake builds today, both under a private Xvfb over 200 rows and with the same launch: shift+Home stops at the
+ * top (a Prior after it moves nothing), shift+End returns byte-exact to the bottom from a page-up and from the top,
+ * and Shift+Insert still pastes PRIMARY, so the #override merge left the default table in place. A new version
+ * does not qualify until its own measurement, so a bump surfaces as the row's probe-todo, never as keys nobody
+ * pressed.
+ */
+export const XTERM_VIEWPORT_KEY_VERSIONS: readonly string[] = Object.freeze(["411", "412"])
+
+/**
+ * Whether the viewport route applies to this qualified subject (34313): hosted alacritty at the reviewed 0.17.0 on
+ * macOS, this run's own launch, no multiplexer between the run and the app. Decided from the subject alone, before
+ * any input install, so an install failure can never remove the route.
+ */
+export function hostedViewportKeys(subject: {
+  readonly hostedAppId: string | undefined
+  readonly platform: string
+  readonly targetVersion: string | undefined
+  readonly runId: string | undefined
+  readonly expectedLaunchRunId: string
+  readonly multiplexed: boolean
+}): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
+  if (
+    subject.hostedAppId !== "alacritty" ||
+    subject.platform !== "darwin" ||
+    subject.targetVersion !== "0.17.0" ||
+    !subject.expectedLaunchRunId ||
+    subject.runId !== subject.expectedLaunchRunId ||
+    subject.multiplexed
+  ) {
+    return undefined
+  }
+  return {
+    viewportKeys: {
+      route: ALACRITTY_0_17_VIEWPORT_ROUTE,
+      keys: ALACRITTY_0_17_VIEWPORT_KEYS,
+    },
+  }
+}
+
+/**
+ * Whether the viewport route applies to this qualified Linux subject (#34632): this run's own container launch of
+ * xterm at the reviewed 411, no multiplexer between the run and the app. Decided from the subject alone, before any
+ * input install, so an install failure can never remove the route - the same shape as hostedViewportKeys below,
+ * for the arm whose keys the container script declares at launch.
+ */
+export function linuxViewportKeys(subject: {
+  readonly appId: string | undefined
+  readonly platform: string
+  readonly targetVersion: string | undefined
+  readonly runId: string | undefined
+  readonly expectedLaunchRunId: string
+  readonly multiplexed: boolean
+}): { viewportKeys: NonNullable<OwnedTerminal["viewportKeys"]> } | undefined {
+  if (
+    subject.platform !== "linux" ||
+    !subject.expectedLaunchRunId ||
+    subject.runId !== subject.expectedLaunchRunId ||
+    subject.multiplexed
+  ) {
+    return undefined
+  }
+  if (subject.appId === "xterm" && XTERM_VIEWPORT_KEY_VERSIONS.includes(subject.targetVersion ?? "")) {
+    return { viewportKeys: { route: XTERM_411_VIEWPORT_ROUTE, keys: XTERM_411_VIEWPORT_KEYS } }
+  }
+  // 34278 (@cto a6ed9b08): Alacritty 0.17.0's own default bindings through XTEST, its own route. The arm's
+  // "no pane read" declaration stays for every other subject; this route is checked before it, as on macOS.
+  if (subject.appId === "alacritty" && subject.targetVersion === "0.17.0") {
+    return { viewportKeys: { route: LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, keys: ALACRITTY_0_17_VIEWPORT_KEYS } }
+  }
+  return undefined
+}
 
 /**
  * The app this run's terminal is, resolved in ONE place (@cto 8c084f05). On the hosted Darwin arm the receipt
@@ -491,69 +787,102 @@ export function resolveOwnedAppId(input: {
   return input.platform === "darwin" && input.hostedAppId !== undefined ? input.hostedAppId : input.launcherAppId
 }
 
+/**
+ * History arm for a Linux app that has no installed reader (#34278).
+ * Alacritty matches the Darwin declaration (@cto 20b9ffed): the app exposes no pane read.
+ * Ghostty stays undeclared: its scrollback-file action is an accepted read (@cto a1663f9d) and this
+ * arm does not invoke it, so the row stays work. xterm has no reader among the installed ones
+ * (kitty, screen, tmux, wezterm), so that missing arm stays work too, not a measured absence.
+ * A reader already installed, or any non-Linux arm, returns nothing so this cannot replace it.
+ * The two checks live here so createOwnedTerminal's complexity does not grow.
+ */
+export function linuxScrollbackArm(
+  linux: object | undefined,
+  readScrollback: unknown,
+  appId: string | undefined,
+): {
+  readonly scrollbackUnavailable?: string
+  readonly scrollbackProbeTodo?: string
+} {
+  if (linux === undefined || readScrollback !== undefined) return {}
+  if (appId === "alacritty") return { scrollbackUnavailable: NO_PANE_READ }
+  if (appId === "ghostty") {
+    return { scrollbackProbeTodo: "this Linux arm does not invoke Ghostty's scrollback-file action" }
+  }
+  if (appId === "xterm") return { scrollbackProbeTodo: "this Linux arm has no history reader for xterm" }
+  return {}
+}
+
 /** Terminal.app's own row: one object, so the map and the pasteboard fixture cannot disagree. */
-const TERMINAL_APP_HOSTED: HostedDarwinApp = { id: "terminal-app", comm: "Terminal", titleRead: "system-events" }
+const TERMINAL_APP_HOSTED: HostedDarwinApp = {
+  id: "terminal-app",
+  comm: "Terminal",
+  titleRead: "window",
+  captureWindowSelection: "largest",
+}
 
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Terminal: TERMINAL_APP_HOSTED,
   // The System Events permission dialog hangs a hosted iTerm2 collector (#33017).
-  iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none" },
+  iTerm2: { id: "iterm2", comm: "iTerm2", titleRead: "none", captureWindowSelection: "largest" },
   // Ghostty's own scrollback-file action is an acceptable read under @cto a1663f9d's five conditions, so the
   // absence here is Alacritty/Code/Cursor only.
-  ghostty: { id: "ghostty", comm: "ghostty", titleRead: "system-events" },
+  ghostty: { id: "ghostty", comm: "ghostty", titleRead: "window" },
   alacritty: {
     id: "alacritty",
     comm: "alacritty",
-    titleRead: "system-events",
+    titleRead: "window",
     scrollbackUnavailable: NO_PANE_READ,
   },
   Alacritty: {
     id: "alacritty",
     comm: "alacritty",
-    titleRead: "system-events",
+    titleRead: "window",
     scrollbackUnavailable: NO_PANE_READ,
   },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
-  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "system-events" },
-  // 33821 run 43325922491: the run wrote its own marker title and the window server still reported
-  // "[Extension Development Host] Cursor" (other-title). The name is the app's window title, so this
-  // instrument cannot observe the run's title and says so.
+  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui", titleRead: "window" },
+  // On 33821 calibration run 43325922491 the run wrote its own marker title and the window server still
+  // reported "[Extension Development Host] Cursor" (other-title). That is the app's window title, so the
+  // read could not observe the run's title; the counted runs attempted no title-row read (titleRead none).
   Cursor: {
     id: "cursor",
     comm: "Cursor",
     titleRead: "none",
     scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
-      "Hosted Darwin title read unavailable for Cursor: the window server reports the app's own window title (\"[Extension Development Host] Cursor\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: other-title)",
+      "Hosted Darwin title read unavailable for Cursor: on 33821 calibration run 43325922491 the read saw the window server report the app's own window title (\"[Extension Development Host] Cursor\") rather than that run's title, so it could not observe the title and the row recorded other-title; the counted runs attempted no title-row read (titleRead none)",
   },
-  // 33821 run 43325922491: observed "[Extension Development Host] Visual Studio Code"; the final poll
-  // was killed at the 2 s census cap, so the row records read-failed with that name observed.
+  // On 33821 calibration run 43325922491 the last poll was killed at the 2 s census cap with
+  // "[Extension Development Host] Visual Studio Code" observed, so the row recorded read-failed with
+  // that name observed; the counted runs attempted no title-row read (titleRead none).
   Code: {
     id: "com.microsoft.VSCode",
     comm: "Code",
     titleRead: "none",
     scrollbackUnavailable: NO_PANE_READ,
     titleUnavailable:
-      "Hosted Darwin title read unavailable for com.microsoft.VSCode: the window server reports the app's own window title (\"[Extension Development Host] Visual Studio Code\"), not this run's title, so this instrument cannot observe it (33821 calibration run 43325922491: read-failed with that name observed)",
+      "Hosted Darwin title read unavailable for com.microsoft.VSCode: on 33821 calibration run 43325922491 the poll was killed at the 2 s census cap with its last observation the app's own window title (\"[Extension Development Host] Visual Studio Code\") rather than that run's title, so the row recorded read-failed with that name observed; the counted runs attempted no title-row read (titleRead none)",
   },
   // Warp's title bar shows an "Update Warp" pill ~3 s after launch (797 px at y 6-29 on run 42861023633; grid from
   // y 46), so calibration excuses y 0-39 there and records the count (33056, @cto f15dec92).
   stable: {
     id: "warp",
     comm: "stable",
-    titleRead: "system-events",
+    titleRead: "window",
     captureChromeBand: { y: 0, height: 40, reason: "Warp title bar: Update Warp pill" },
   },
-  // 33821 run 43327254711: the 2 s window-name measurement did not finish (osascript SIGKILL at 2003 ms) and
-  // its last observation was "Terminal", the pre-marker name. Every raster-capture census of the same window
-  // (id 36, pid 2751, /Applications/cmux.app) after the marker write did record this run's title, through
-  // 23:17:27.999Z — so the receipt shows a capped read, not an app that can never expose its title.
+  // On 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its
+  // last observation "Terminal", the pre-marker name. Every raster-capture census of the same cmux window
+  // (id 36, /Applications/cmux.app) after the marker write did record that run's title, through
+  // 23:17:27.999Z — so the receipt showed a capped read, not an app that can never expose its title; the
+  // counted runs attempted no title-row read (titleRead none).
   cmux: {
     id: "cmux",
     comm: "cmux",
     titleRead: "none",
     titleUnavailable:
-      'Hosted Darwin title read unavailable for cmux: the 2 s window-name measurement did not finish (osascript killed at 2003 ms) and its last observation was "Terminal", the pre-marker name; raster-capture censuses of the same cmux window (pid 2751) after the marker write did record this run\'s title, so the bounded read is what failed, not the app (33821 calibration run 43327254711: read-failed)',
+      'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
   },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
@@ -642,7 +971,7 @@ export function formatHostedDarwinAncestry(rows: AncestryRow[]): string {
     .join(" <- ")
 }
 
-function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] {
+function readProcessAncestry(startPid: number, stopPid?: number, kernelIdentity = false): AncestryRow[] {
   const rows: AncestryRow[] = []
   const seen = new Set<number>()
   let pid = startPid
@@ -687,9 +1016,9 @@ function readProcessAncestry(startPid: number, stopPid?: number): AncestryRow[] 
       throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
     }
     const row: AncestryRow = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
-    if (process.platform === "darwin") {
-      // #30518: the kernel path travels with every row, and an unanswered read stays a recorded
-      // fact — the Screen arm refuses by name instead of falling back to the argv0 in `comm`.
+    if (kernelIdentity && process.platform === "darwin") {
+      // Tmux attachment and hosted ancestry evidence both need kernel paths, never argv0 as a substitute.
+      // The measured mux walk keeps this read inside its existing birth check.
       const kernel = kernelExecPath(row.pid)
       row.kernelExecutable = kernel.path
       row.kernelExecutableReader = kernel.reader
@@ -745,10 +1074,10 @@ function readDarwinMuxAttachment(
 ): DarwinMuxAttachmentProof {
   const { subject, outerApp } = input
   const mux = subject.id
-  if (subject.kind !== "mux" || (mux !== "screen" && mux !== "tmux") || subject.mux !== mux || !subject.config) {
+  if (subject.kind !== "mux" || mux !== "tmux" || subject.mux !== mux || !subject.config) {
     throw new Error("Darwin mux target has no measured mux/configuration")
   }
-  const rows = readProcessAncestry(process.pid, assertion.ownerPid)
+  const rows = readProcessAncestry(process.pid, assertion.ownerPid, true)
   const chain = rows.map((row) => {
     if (row.uid === undefined || row.startedAtEpochSeconds === undefined || row.ttyRdev === undefined) {
       throw new Error(`Darwin pid ${row.pid} lacks measured birth, UID or TTY`)
@@ -769,111 +1098,94 @@ function readDarwinMuxAttachment(
   const collector = chain[0],
     shell = chain.at(-3),
     owner = chain.at(-1)
-  const server = chain[mux === "screen" ? 2 : 1]
+  const server = chain[1]
   if (!collector || !shell || !owner || !server?.kernelExecutable) {
     throw new Error("Darwin mux ancestry lacks named roles")
   }
   const binary = server.kernelExecutable
-  const run = (args: string[], screenRead = false) => {
+  const run = (args: string[]) => {
     const result = spawnSync(binary, args, {
       encoding: "utf8",
       timeout: 1000,
       maxBuffer: 4096,
       env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     })
-    if (result.error || result.signal || (result.status !== 0 && !(screenRead && result.status === 1))) {
+    if (result.error || result.signal || result.status !== 0) {
       throw new Error(`Darwin mux ${binary} ${args.join(" ")} failed: ${JSON.stringify(result)}`)
     }
     return { stdout: String(result.stdout), stderr: String(result.stderr) }
   }
-  let client: DarwinMuxAttachmentProof["chain"][number] | undefined = mux === "screen" ? chain[3] : undefined
-  const argv = rows[mux === "screen" ? 3 : 1]?.command?.split(/\s+/) ?? []
-  if (
-    /\s/.test(subject.config) ||
-    !argvCarriesMarker(argv, { flag: mux === "screen" ? "-c" : "-f", value: subject.config })
-  ) {
+  const argv = rows[1]?.command?.split(/\s+/) ?? []
+  if (/\s/.test(subject.config) || !argvCarriesMarker(argv, { flag: "-f", value: subject.config })) {
     throw new Error("Darwin mux live argv differs from its explicit configuration")
   }
   const named = argv.indexOf("-S")
   const selected = named >= 0 && argv.lastIndexOf("-S") === named ? argv[named + 1] : undefined
   if (!selected) throw new Error("Darwin mux live argv names no unique socket/session")
-  let socketPath: string, session: string
-  if (mux === "screen") {
-    session = selected
-    const listing = run(["-ls", session], true).stdout.replaceAll("\r", "")
-    const attached = listing.split("\n").filter((line) => line.trim() === `${server.pid}.${session}\t(Attached)`)
-    const directory = /^1 Socket in (\/[^\n]+)\.$/m.exec(listing)?.[1]
-    if (attached.length !== 1 || !directory || !client) {
-      throw new Error("Darwin Screen listing lacks its measured attached server/session")
-    }
-    socketPath = join(directory, `${server.pid}.${session}`)
-  } else {
-    socketPath = selected
-    if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
-    const listed = run([
-      "-S",
-      socketPath,
-      "list-clients",
-      "-F",
-      "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const fields = listed[0]?.split("\t")
-    if (listed.length !== 1 || !fields || fields.length !== 4) {
-      throw new Error("Darwin tmux has no unique measured attached client")
-    }
-    const [clientPid, clientTty, sessionId, sessionName] = fields
-    if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
-      throw new Error("Darwin tmux attached-client fields are missing or malformed")
-    }
-    const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid)
-    const row = clientRows[0]
-    if (
-      !row ||
-      row.uid === undefined ||
-      row.startedAtEpochSeconds === undefined ||
-      row.ttyRdev === undefined ||
-      clientRows[1]?.pid !== shell.pid ||
-      row.kernelExecutable !== binary
-    ) {
-      throw new Error("Darwin tmux client is not the measured outer shell child")
-    }
-    if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
-      throw new Error("Darwin tmux listed client TTY differs from the measured client")
-    }
-    client = {
-      ...row,
-      startedAtEpochSeconds: row.startedAtEpochSeconds,
-      ttyRdev: row.ttyRdev,
-      executablePath: row.comm,
-      uid: row.uid,
-    }
-    session = sessionName
-    const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
-    const panes = run([
-      "-S",
-      socketPath,
-      "list-panes",
-      "-a",
-      "-F",
-      "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
-    ])
-      .stdout.trim()
-      .split("\n")
-    const pane = panes
-      .map((line) => line.split("\t"))
-      .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
-    if (serverPid !== String(server.pid) || pane.length !== 1) {
-      throw new Error("Darwin tmux socket/session does not join the measured collector/server")
-    }
-    const paneTty = pane[0]?.[3]
-    if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
-      throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
-    }
+  const socketPath = selected
+  if (!isAbsolute(socketPath)) throw new Error("Darwin tmux socket is not an absolute measured path")
+  const listed = run([
+    "-S",
+    socketPath,
+    "list-clients",
+    "-F",
+    "#{client_pid}\t#{client_tty}\t#{session_id}\t#{client_session}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const fields = listed[0]?.split("\t")
+  if (listed.length !== 1 || !fields || fields.length !== 4) {
+    throw new Error("Darwin tmux has no unique measured attached client")
+  }
+  const [clientPid, clientTty, sessionId, sessionName] = fields
+  if (!clientPid || !clientTty || !sessionId || !sessionName || !/^[0-9]+$/.test(clientPid)) {
+    throw new Error("Darwin tmux attached-client fields are missing or malformed")
+  }
+  const clientRows = readProcessAncestry(Number(clientPid), assertion.ownerPid, true)
+  const row = clientRows[0]
+  if (
+    !row ||
+    row.uid === undefined ||
+    row.startedAtEpochSeconds === undefined ||
+    row.ttyRdev === undefined ||
+    clientRows[1]?.pid !== shell.pid ||
+    row.kernelExecutable !== binary
+  ) {
+    throw new Error("Darwin tmux client is not the measured outer shell child")
+  }
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(clientTty) || statSync(clientTty).rdev !== row.ttyRdev) {
+    throw new Error("Darwin tmux listed client TTY differs from the measured client")
+  }
+  const client = {
+    ...row,
+    startedAtEpochSeconds: row.startedAtEpochSeconds,
+    ttyRdev: row.ttyRdev,
+    executablePath: row.comm,
+    uid: row.uid,
+  }
+  const session = sessionName
+  const serverPid = run(["-S", socketPath, "display-message", "-p", "#{pid}"]).stdout.trim()
+  const panes = run([
+    "-S",
+    socketPath,
+    "list-panes",
+    "-a",
+    "-F",
+    "#{session_id}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}\t#{socket_path}",
+  ])
+    .stdout.trim()
+    .split("\n")
+  const pane = panes
+    .map((line) => line.split("\t"))
+    .filter((row) => row[0] === sessionId && row[2] === String(collector.pid) && row[4] === socketPath)
+  if (serverPid !== String(server.pid) || pane.length !== 1) {
+    throw new Error("Darwin tmux socket/session does not join the measured collector/server")
+  }
+  const paneTty = pane[0]?.[3]
+  if (!paneTty || !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(paneTty) || statSync(paneTty).rdev !== collector.ttyRdev) {
+    throw new Error("Darwin tmux listed pane TTY differs from the measured collector")
   }
   if (!statSync(socketPath).isSocket()) throw new Error(`Darwin mux socket ${socketPath} is not a socket`)
-  if (!client) throw new Error("Darwin mux has no measured attached client")
   const rawPreflight = outerApp.rawReplies["collector.preflightIdentity"]
   const launch = outerApp.rawReplies["collector.outerLaunch"]
   if (!rawPreflight || !launch) throw new Error("Darwin mux lacks retained preflight identity or outer launch bytes")
@@ -889,10 +1201,10 @@ function readDarwinMuxAttachment(
     timeout: 1000,
     maxBuffer: 256,
   }).trim()
-  const version = run([mux === "screen" ? "-v" : "-V"], mux === "screen")
+  const version = run(["-V"])
   const versionText = version.stdout + version.stderr
-  const tokens = mux === "tmux" ? measuredVersionTokens(versionText) : []
-  if (mux === "tmux" && tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
+  const tokens = measuredVersionTokens(versionText)
+  if (tokens.length !== 1) throw new Error("Darwin tmux version has no unique measured version")
   const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex")
   const proof = parseMuxAttachmentProof({
     platform: "darwin",
@@ -914,7 +1226,7 @@ function readDarwinMuxAttachment(
     executable: {
       path: binary,
       sha256: digest(readFileSync(binary)),
-      version: mux === "screen" ? versionText : tokens[0],
+      version: tokens[0],
     },
     config: { path: subject.config, sha256: digest(readFileSync(subject.config)) },
     socketPath,
@@ -1186,7 +1498,17 @@ async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>
 
 const verifiedTerminalOwners = new WeakMap<
   OwnedTerminal,
-  { captureRunId: string; out: NodeJS.WriteStream; processOwnerBasis?: string }
+  {
+    captureRunId: string
+    out: NodeJS.WriteStream
+    processOwnerBasis?: string
+    /**
+     * What the basis covers. The process arm covers the whole app instance ("process"); a window arm
+     * covers only the window it opened ("window"). A basis that names no scope covers nothing, and
+     * admission refuses it rather than guessing (#34148, @cto condition 1 as revised).
+     */
+    processOwnerBasisScope?: OwnerBasisScope
+  }
 >()
 
 export function ownedTerminalVerifiedFor(
@@ -1198,15 +1520,227 @@ export function ownedTerminalVerifiedFor(
   return grant !== undefined && grant.captureRunId === captureRunId && grant.out === out
 }
 
-/** The verified process arm's lifetime basis, bound to the same live capture grant. */
+/**
+ * A verified owner basis: the sentence a run carries AND what it covers, returned together so the two
+ * can never disagree. A basis without a scope does not exist by construction (#34148, @cto revise).
+ */
+export interface OwnedTerminalBasis {
+  readonly basis: string
+  readonly scope: OwnerBasisScope
+}
+
+/** The verified process arm's lifetime basis and scope, bound to the same live capture grant. */
 export function ownedTerminalProcessBasisFor(
   owner: OwnedTerminal | undefined,
   captureRunId: string,
   out: NodeJS.WriteStream,
-): string | undefined {
-  return owner && ownedTerminalVerifiedFor(owner, captureRunId, out)
-    ? verifiedTerminalOwners.get(owner)?.processOwnerBasis
-    : undefined
+): OwnedTerminalBasis | undefined {
+  if (!owner || !ownedTerminalVerifiedFor(owner, captureRunId, out)) return undefined
+  const grant = verifiedTerminalOwners.get(owner)
+  if (grant?.processOwnerBasis === undefined) return undefined
+  // The scope is recorded by whichever arm issued the basis. An arm that issued one without naming
+  // its scope is a defect, not a default: refuse loudly rather than guess a coverage.
+  if (grant.processOwnerBasisScope === undefined) {
+    throw new Error(`owner basis ${JSON.stringify(grant.processOwnerBasis)} was issued without a scope`)
+  }
+  return { basis: grant.processOwnerBasis, scope: grant.processOwnerBasisScope }
+}
+
+/**
+ * A read reduced to what a record may publish: which read it was, the receipt's hash and length so the
+ * receipt can be matched without being shown, and the counts it proved (@cto REVISE 2026-11-13).
+ */
+const cmuxReadRecord = (kind: "grant" | "read", receipt: string, facts: CmuxReadFacts): CmuxLastRead => ({
+  kind,
+  receiptSha256: createHash("sha256").update(receipt).digest("hex"),
+  receiptLength: receipt.length,
+  ...facts,
+})
+
+const pathSeparator = /[\\/]/u
+
+/**
+ * A refusal's code is always publishable; its reason is a diagnostic the CLI wrote and may name the path it
+ * failed on. A reason carrying a separator is withheld by name rather than published or silently dropped.
+ */
+const publishedRefusal = (failure: string): string => {
+  const split = failure.indexOf(": ")
+  const code = split === -1 ? failure : failure.slice(0, split)
+  const reason = split === -1 ? "" : failure.slice(split + 2)
+  if (reason === "") return code
+  return pathSeparator.test(reason) ? code + " (reason withheld: names a host path)" : failure
+}
+
+/**
+ * 34959: the hosted-cmux private writer (osc633-p) consulted only ownership, never the run's abort edge, so a
+ * run whose client had left could still paint a private URI onto a pane nobody reads. It now consults 34941's
+ * edge through `assertWriteAllowed`, then writes to the stream directly: the text carries a private URI and
+ * must NOT enter the recorded write log, which is why it is not routed through `writeTTY`.
+ * `check` keeps the ownership gate on both sides of the write.
+ */
+export function gatedPrivateWrite(
+  check: () => Promise<void>,
+  out: NodeJS.WriteStream,
+): (text: string) => Promise<void> {
+  return async (text: string) => {
+    await check()
+    assertWriteAllowed()
+    out.write(text)
+    await check()
+  }
+}
+
+async function readHostedCmuxSemanticCwd(input: {
+  readonly featureId: string
+  readonly write: (text: string) => void
+  readonly out: NodeJS.WriteStream
+  readonly expectedLaunchRunId: string
+  readonly muxAttachmentProof: MuxAttachmentProof | undefined
+  readonly hostedCmuxOwnerCheck: (() => Promise<void>) | undefined
+  readonly ownedCmuxCli: string | undefined
+  readonly ownedCmuxIdentity: CmuxHistoryIdentity | undefined
+  readonly hostedAppExecutablePath: string | undefined
+  readonly cmuxGrantFailure: string | undefined
+  readonly cmuxGrantReceipt: string | undefined
+  readonly cmuxSurface: string | undefined
+  readonly cmuxConfigAtLaunch: CmuxConfigObservation | undefined
+  readonly retainCmuxTranscript: (stdout: string) => string
+  readonly onRetained: Parameters<typeof retain>[3] | undefined
+  readonly isOwnerLive: () => boolean
+}) {
+  if (input.featureId !== "extensions.osc633-p") {
+    return {
+      status: "unavailable" as const,
+      reason: "No owned App semantic reader for this feature on macOS",
+    }
+  }
+  const reviewedVersion = "0.65.2"
+  const cliVersion = parseCmuxCliShortVersion(input.ownedCmuxIdentity?.historyExecutable?.version)
+  const launchValid =
+    cliVersion === reviewedVersion &&
+    process.env.TERMINFO_TARGET_VERSION === reviewedVersion &&
+    process.env.TERMINFO_RUN_ID === input.expectedLaunchRunId &&
+    input.muxAttachmentProof === undefined &&
+    !process.env.TERMINFO_MUX_KIND
+  if (!launchValid) {
+    return {
+      status: "invalid" as const,
+      reason: "cmux cwd has no reviewed CLI version bound to this App launch",
+    }
+  }
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+  const executableProof = input.ownedCmuxIdentity?.historyExecutable
+  if (
+    input.hostedCmuxOwnerCheck === undefined ||
+    input.ownedCmuxCli === undefined ||
+    executableProof === undefined ||
+    input.hostedAppExecutablePath === undefined ||
+    input.cmuxGrantFailure !== undefined ||
+    input.cmuxGrantReceipt === undefined ||
+    input.cmuxSurface === undefined ||
+    !captureDirectory ||
+    !isAbsolute(captureDirectory) ||
+    input.onRetained === undefined
+  ) {
+    return {
+      status: "invalid" as const,
+      reason: "cmux cwd needs an owned surface grant, measured CLI and private capture with its artifact observer",
+    }
+  }
+  try {
+    const guiRealpath = realpathSync(input.hostedAppExecutablePath)
+    const contentsDir = dirname(dirname(guiRealpath))
+    const cliRealpath = realpathSync(input.ownedCmuxCli)
+    const validBundleCli =
+      guiRealpath === join(contentsDir, "MacOS", "cmux") &&
+      (cliRealpath === join(contentsDir, "MacOS", "cmux") ||
+        cliRealpath === join(contentsDir, "Resources", "bin", "cmux"))
+    if (!validBundleCli) {
+      throw new Error("cmux CLI is outside the verified App bundle")
+    }
+    const ownerCheck = input.hostedCmuxOwnerCheck
+    const check = async () => {
+      if (!input.isOwnerLive()) throw new Error("cmux cwd ownership is no longer live")
+      await ownerCheck()
+    }
+    const readCwd = createOwnedCmuxWorkspaceCwdReader({
+      executable: input.ownedCmuxCli,
+      surface: input.cmuxSurface,
+      declaredWorkspaceId: process.env.CMUX_WORKSPACE_ID,
+      configAtLaunch: input.cmuxConfigAtLaunch,
+      observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+      retainTranscript: input.retainCmuxTranscript,
+      checkOwner: check,
+      noEventCompletionQualified: /^[a-f0-9]{64}$/u.test(executableProof.sha256),
+    })
+    return await readAppSemanticState({
+      appId: "cmux",
+      featureId: input.featureId,
+      onRetained: input.onRetained,
+      runId: input.expectedLaunchRunId,
+      executable: executableProof,
+      write: input.write,
+      privateWrite: gatedPrivateWrite(check, input.out),
+      readCwd,
+    })
+  } catch (error) {
+    return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function readHostedGhosttySemanticCwd(input: {
+  readonly featureId: string
+  readonly write: (text: string) => void
+  readonly tabTty: string
+  readonly expectedLaunchRunId: string
+  readonly muxAttachmentProof: MuxAttachmentProof | undefined
+  readonly hostedAppExecutablePath: string | undefined
+  readonly onRetained: Parameters<typeof retain>[3] | undefined
+  readonly isOwnerLive: () => boolean
+}) {
+  if (input.featureId !== "extensions.osc7-cwd" && input.featureId !== "extensions.osc633-p") {
+    return {
+      status: "unavailable" as const,
+      reason: "No owned App semantic reader for this feature on macOS",
+    }
+  }
+  const launchValid =
+    process.env.TERMINFO_TARGET_VERSION === "1.4.0" &&
+    process.env.TERMINFO_RUN_ID === input.expectedLaunchRunId &&
+    input.muxAttachmentProof === undefined &&
+    !process.env.TERMINFO_MUX_KIND
+  if (!launchValid) {
+    return {
+      status: "invalid" as const,
+      reason: "Ghostty cwd has no reviewed version bound to this App launch",
+    }
+  }
+  if (input.hostedAppExecutablePath === undefined || input.onRetained === undefined) {
+    return {
+      status: "invalid" as const,
+      reason: "Ghostty cwd needs the hosted App executable and its artifact observer",
+    }
+  }
+  try {
+    const sha256 = createHash("sha256").update(readFileSync(input.hostedAppExecutablePath)).digest("hex")
+    return await readAppSemanticState({
+      appId: "ghostty",
+      featureId: input.featureId,
+      onRetained: input.onRetained,
+      runId: input.expectedLaunchRunId,
+      executable: { path: input.hostedAppExecutablePath, sha256 },
+      write: input.write,
+      readCwd: ghosttyOwnedCwd({
+        tty: input.tabTty,
+        write: input.write,
+        check() {
+          if (!input.isOwnerLive()) throw new Error("Ghostty cwd ownership is no longer live")
+        },
+      }),
+    })
+  } catch (error) {
+    return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
@@ -1218,11 +1752,16 @@ export async function createOwnedTerminal(options: {
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
   process?: ProcessOwnerAssertion
+  ownedApp?: OwnedAppOwnerAssertion
   darwinMux?: DarwinMuxInput
   /** Retain this outer collector's identity before the launcher attaches a mux. */
   darwinPreflight?: boolean
   darwinHosted?: { receiptPath: string }
   windowsHosted?: { receiptPath: string }
+  /** The collector's already-owned window capture, called before native semantic fixture restoration. */
+  appSemanticCapture?: (featureId: string, phase: string) => Promise<unknown>
+  /** The collector's one installed Darwin capture owner, bound after this terminal is constructed. */
+  readDarwinTitle?: TermProbeSource["readTitle"]
 }): Promise<OwnedTerminal> {
   const {
     captureRunId,
@@ -1231,6 +1770,7 @@ export async function createOwnedTerminal(options: {
     linux,
     terminalApp,
     process: processOwner,
+    ownedApp,
     darwinMux,
     darwinPreflight,
     darwinHosted,
@@ -1238,7 +1778,7 @@ export async function createOwnedTerminal(options: {
   } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  const armCount = [linux, terminalApp, processOwner, darwinHosted, windowsHosted].filter(Boolean).length
+  const armCount = [linux, terminalApp, processOwner, ownedApp, darwinHosted, windowsHosted].filter(Boolean).length
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
@@ -1249,7 +1789,10 @@ export async function createOwnedTerminal(options: {
   let hostedAncestor: AncestryRow | undefined
   let processOwnerPid: number | undefined
   let terminalAppPid: number | undefined
+  let expectedWindowId: number | undefined
   let processOwnerBasis: string | undefined
+  /** The process arm issues a basis that covers its whole instance; a window arm would issue "window". */
+  let processOwnerBasisScope: OwnerBasisScope | undefined
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
   /** The owned-process arm's own proof, re-run before a later history read (31741). */
   let processOwnerRecheck: (() => void) | undefined
@@ -1270,6 +1813,7 @@ export async function createOwnedTerminal(options: {
   } else if (terminalApp) {
     if (process.platform !== "darwin") throw new Error("Terminal.app owner requires Darwin")
     const assertion = parseTerminalAppOwner(terminalApp)
+    expectedWindowId = assertion.windowId
     requireOwnWorker(assertion, expectedLaunchRunId, "Terminal.app")
     binding = darwinOutput(out, assertion.tabTty)
     // The app's pid, for macOS keys posted to that pid only (33587, @cto 60e39dfc b): the assertion
@@ -1324,13 +1868,39 @@ export async function createOwnedTerminal(options: {
     }
     const ownerDaemonPid = darwinAttachment ? darwinAttachment.attachedClient.pid : process.pid
     assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
+    if (assertion.provider === "iterm2") expectedWindowId = assertion.windowId
     // A history read that happens later re-runs this same proof rather than trusting the grant: the
     // pid may be reused and the marker may be gone, and a reading must not outlive the ownership it
     // claims (31741).
     processOwnerRecheck = () => assertOwnedProcess(ownedProcess, ownerDaemonPid, assertion.provider)
     processOwnerBasis = disposableBasis
+    // This arm started the terminal process and owns its whole instance, which is what the 8 colour
+    // resets and the pasteboard cell are admitted under today. Unchanged by #34148.
+    processOwnerBasisScope = "process"
     processOwnerPid = assertion.ownerPid
     binding = darwinAttachment ? darwinHostedOutput(out) : darwinOutput(out, assertion.tty)
+    if (darwinPreflight) {
+      const collector = readProcessAncestry(process.pid, process.pid)[0]
+      if (!collector || collector.startedAtEpochSeconds === undefined) {
+        throw new Error("Darwin outer collector birth could not be measured")
+      }
+      preflightIdentity = {
+        pid: collector.pid,
+        startedAtEpochSeconds: collector.startedAtEpochSeconds,
+        launchRunId: expectedLaunchRunId,
+      }
+    }
+  } else if (ownedApp) {
+    if (process.platform !== "darwin") throw new Error("Owned app launch requires Darwin")
+    const assertion = parseOwnedAppOwnerAssertion(ownedApp)
+    // The arm's whole proof: proof entry, this worker's run, live bundle, worker TTY, the one pid that
+    // carries the marker, and the census showing it owns the recorded window.
+    assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    // A read that happens later re-runs the same proof rather than trusting the grant: the app may quit
+    // and its pid be reused while the grant is alive.
+    processOwnerRecheck = () => assertOwnedAppOwner(assertion, expectedLaunchRunId, ownedAppProbes)
+    processOwnerPid = assertion.ownerPid
+    binding = darwinOutput(out, assertion.tty)
     if (darwinPreflight) {
       const collector = readProcessAncestry(process.pid, process.pid)[0]
       if (!collector || collector.startedAtEpochSeconds === undefined) {
@@ -1357,7 +1927,7 @@ export async function createOwnedTerminal(options: {
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
     hostedAppExecutablePath = executablePath
     binding = darwinHostedOutput(out)
-    const ancestry = readProcessAncestry(process.pid)
+    const ancestry = readProcessAncestry(process.pid, undefined, true)
     // Prints before the app check, so a refusal by requireHostedDarwinAppAncestor still leaves the
     // measured chain in the artifact; the binding itself runs earlier, on darwinHostedOutput.
     process.stderr.write(`Hosted Darwin measured process ancestry: ${formatHostedDarwinAncestry(ancestry)}\n`)
@@ -1418,7 +1988,7 @@ export async function createOwnedTerminal(options: {
     binding = windowsHostedOutput(out, windowsConsoleIdentity)
     hostedReceiptSha256 = receipt.sha256
   }
-  let clipboard: LinuxClipboardAdapter | undefined
+  let clipboard: OwnedTerminal["clipboard"]
   const kittyOwner =
     binding.platform === "darwin" && processOwner?.provider === "kitty"
       ? parseProcessOwnerAssertion(processOwner)
@@ -1460,8 +2030,6 @@ export async function createOwnedTerminal(options: {
       clipboard = await createDarwinClipboardAdapter({
         appComm: hostedApp.comm,
         appId: hostedApp.id,
-        titleRead: hostedApp.titleRead,
-        ...(hostedApp.titleUnavailable === undefined ? {} : { titleUnavailable: hostedApp.titleUnavailable }),
         disposableHost: { receiptKind: "github-hosted-runner" },
         assertOwned: () =>
           process.platform === "darwin"
@@ -1481,8 +2049,6 @@ export async function createOwnedTerminal(options: {
       clipboard = await createDarwinClipboardAdapter({
         appComm: TERMINAL_APP_HOSTED.comm,
         appId: TERMINAL_APP_HOSTED.id,
-        titleRead: "none",
-        titleUnavailable: "The owned Terminal.app tab reads its title through JXA, not this pasteboard",
         ownedHost: true,
         assertOwned: async () => {
           if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
@@ -1494,9 +2060,20 @@ export async function createOwnedTerminal(options: {
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
-    // An owned Terminal.app window reads its title through the tab's JXA reader, never through a
-    // pasteboard adapter: that adapter's title path spawns System Events, which is the 33821 bug.
-    const readTitle = terminalApp ? undefined : clipboard?.readTitle.bind(clipboard)
+    // Native Terminal.app's tab reader is not installed here; a window observation must not stand
+    // in for that separate tab boundary. A mux keeps its own pane reader rather than an outer title.
+    const darwinWindowTitle = binding.platform === "darwin" && !terminalApp && !muxAttachmentProof
+    const darwinTitleRefusal =
+      darwinWindowTitle && hostedApp?.titleRead === "none"
+        ? (hostedApp.titleUnavailable ?? "Hosted Darwin title read does not use System Events")
+        : undefined
+    const windowTitleReader = darwinWindowTitle
+      ? options.readDarwinTitle
+      : terminalApp
+        ? undefined
+        : clipboard && "readTitle" in clipboard
+          ? clipboard.readTitle.bind(clipboard)
+          : undefined
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.
@@ -1510,6 +2087,30 @@ export async function createOwnedTerminal(options: {
       hostedAppId: hostedApp?.id,
       launcherAppId,
     })
+    const nativeEditorId =
+      binding.platform === "darwin" &&
+      !muxAttachmentProof &&
+      (ownedAppId === "cursor" || ownedAppId === "com.microsoft.VSCode")
+        ? ownedAppId
+        : undefined
+    const assertNativeEditorProcess = (pid: number, collectorAncestor = false) => {
+      if (!hostedApp || !hostedAncestor) throw new Error("Native editor read has no measured hosted App ancestor")
+      const actual = requireHostedDarwinAppAncestor(
+        hostedApp.comm,
+        readProcessAncestry(pid),
+        hostedAppExecutablePath,
+      ).pid
+      if (actual !== hostedAncestor.pid) {
+        throw new Error(`Native editor ancestor is now pid ${actual}, not pid ${hostedAncestor.pid} measured at launch`)
+      }
+      if (collectorAncestor && !readProcessAncestry(process.pid).some((ancestor) => ancestor.pid === pid)) {
+        throw new Error(`Native terminal pid ${pid} is not an ancestor of this collector`)
+      }
+    }
+    const readTitle =
+      nativeEditorId === undefined
+        ? windowTitleReader
+        : createNativeEditorTitleReader({ runId: expectedLaunchRunId, assertProcess: assertNativeEditorProcess })
     // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the
     // launcher variable exactly as before: it is a Linux-arm ownership proof and never a Darwin one (8c084f05).
     const appClipboard =
@@ -1536,9 +2137,12 @@ export async function createOwnedTerminal(options: {
     // Terminal.app keeps its history on the owned tab: the same JXA read as its screen text (31741).
     let historyControl: TerminalHistoryControl | undefined
     let terminalAppHistory: (() => Promise<TerminalScrollbackReading>) | undefined
+    let lastHistoryReply: OsascriptReply | undefined
+    let retainHistoryFailure: ((reply: OsascriptReply) => void) | undefined
     const readTerminalAppHistoryReading =
       darwinTextApp === "terminal-app" && darwinTextTty !== undefined
         ? async () => {
+            lastHistoryReply = undefined
             if (!terminalAppHistory) {
               const geometry = await readBoundGeometry(binding, windowsKernel)
               if (geometry.status !== "measured") {
@@ -1546,8 +2150,28 @@ export async function createOwnedTerminal(options: {
                   `Terminal.app history needs a measured grid: ${geometry.diagnostic}`,
                 )
               }
+              const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
+              const onRetained = options.onRetained
+              if (directory && onRetained) {
+                retainHistoryFailure = (reply) =>
+                  retainTextReply(
+                    captureRunId,
+                    darwinTextTty,
+                    geometry,
+                    { label: "Terminal.app history snapshot", directory, onRetained },
+                    Buffer.from(reply.stdout),
+                  )
+              }
               terminalAppHistory = terminalAppHistoryReader({
-                read: () => readTerminalAppHistory({ tty: darwinTextTty, cols: geometry.cols, rows: geometry.rows }),
+                read: () =>
+                  readTerminalAppHistory({
+                    tty: darwinTextTty,
+                    cols: geometry.cols,
+                    rows: geometry.rows,
+                    onReply: (reply: OsascriptReply) => {
+                      lastHistoryReply = reply
+                    },
+                  }),
                 write: (text) => {
                   out.write(text)
                 },
@@ -1558,7 +2182,14 @@ export async function createOwnedTerminal(options: {
                 },
               })
             }
-            return terminalAppHistory()
+            try {
+              return await terminalAppHistory()
+            } catch (error) {
+              if (lastHistoryReply !== undefined) retainHistoryFailure?.(lastHistoryReply)
+              throw error
+            } finally {
+              lastHistoryReply = undefined
+            }
           }
         : undefined
     // An owned WezTerm pane answers history on the owned-process arm too: that arm has no pasteboard
@@ -1584,7 +2215,7 @@ export async function createOwnedTerminal(options: {
               readAncestorPid: () =>
                 requireHostedDarwinAppAncestor(
                   hostedApp.comm,
-                  readProcessAncestry(process.pid),
+                  readProcessAncestry(process.pid, undefined, true),
                   hostedAppExecutablePath,
                 ).pid,
               measuredPid: hostedAncestor?.pid,
@@ -1595,9 +2226,11 @@ export async function createOwnedTerminal(options: {
             return proof.status === "refused" ? Promise.reject(new Error(proof.reason)) : Promise.resolve()
           }
         : undefined
+    // The Darwin pasteboard adapter is not a WezTerm proof, even when the launcher hint names WezTerm.
+    // Process-owned arms retain their independent live process-owner check.
     const wezTermOwnerCheck =
       hostedWezTermOwnerCheck ??
-      (appClipboard !== undefined
+      (binding.platform !== "darwin" && appClipboard !== undefined
         ? () => appClipboard.assertOwned()
         : processOwnerCheck === undefined
           ? undefined
@@ -1641,18 +2274,134 @@ export async function createOwnedTerminal(options: {
                       rows: geometry.rows,
                       startLine: -2147483648,
                     })
-                    return rows.status === "refused"
-                      ? rows
-                      : {
-                          status: "read" as const,
-                          totalLines: rows.rows.length,
-                          screenLines: geometry.rows,
-                          receipt: rows.receipt,
-                        }
+                    if (rows.status === "refused") return rows
+                    // Windows has no pane list and no tty to compare, so the record names the pane and the
+                    // socket's presence and leaves the two tty fields absent rather than guessing one.
+                    const identity = ownedHistoryReceipt({
+                      surface: "wezterm",
+                      pane,
+                      socketPresent: socket !== undefined && socket.trim() !== "",
+                      executable: ownedWezTermCli,
+                    })
+                    if (identity.status === "refused") return { status: "refused" as const, reason: identity.reason }
+                    return {
+                      status: "read" as const,
+                      totalLines: rows.rows.length,
+                      screenLines: geometry.rows,
+                      receipt: identity.receipt,
+                    }
                   })()
             await wezTermOwnerCheck()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: read.receipt }
+          }
+        : undefined
+    // A cmux surface answers history through its own CLI, and the collector runs INSIDE that surface: the
+    // hosted launch writes the initial-command key and opens the app, which is the only caller cmuxOnly
+    // admits (@cto plan GO af8608c3, corrected in f6cc9bb8). Ownership is the receipt's app plus the nonce
+    // line the run writes into the surface it is running in: a read of any other surface cannot carry it.
+    const hostedCmuxOwnerCheck =
+      binding.platform === "darwin" && darwinHosted !== undefined && ownedAppId === "cmux"
+        ? (): Promise<void> => {
+            if (hostedApp === undefined) return Promise.reject(new Error("Hosted cmux read has no receipt app"))
+            const ancestorPid = requireHostedDarwinAppAncestor(
+              hostedApp.comm,
+              readProcessAncestry(process.pid),
+              hostedAppExecutablePath,
+            ).pid
+            return hostedAncestor?.pid !== undefined && ancestorPid !== hostedAncestor.pid
+              ? Promise.reject(
+                  new Error(
+                    "Hosted cmux ancestor is now pid " +
+                      ancestorPid +
+                      ", not pid " +
+                      hostedAncestor.pid +
+                      " measured at launch",
+                  ),
+                )
+              : Promise.resolve()
+          }
+        : undefined
+    const ownedCmuxCli = ownedCmuxHistoryExecutable({
+      platform: binding.platform,
+      ownsCmuxSurface: hostedCmuxOwnerCheck !== undefined,
+      ...(hostedAppExecutablePath === undefined ? {} : { declaredExecutable: hostedAppExecutablePath }),
+    })
+    const ownedCmuxIdentity = ownedCmuxCli === undefined ? undefined : cmuxHistoryIdentity(ownedCmuxCli)
+    const cmuxConfigAtLaunch = ownedCmuxCli === undefined ? undefined : observeCmuxConfig(cmuxConfigPath(homedir()))
+    // Ownership is proved ONCE here, before the probe writes anything: the nonce line goes into the surface
+    // this process is running in and a read that carries it exactly once is this run's own history. Every
+    // later read names that surface and writes nothing, so the instrument never moves what it measures
+    // (@cto REVISE F1 at 9ae6fad2459). A proof that never reads back leaves every read refusing by name.
+    let cmuxSurface: string | undefined
+    let cmuxGrantReceipt: string | undefined
+    let cmuxGrantFailure: string | undefined
+    let cmuxLastRead: CmuxLastRead | undefined
+    const retainCmuxTranscript = (stdout: string): string => {
+      const directory = process.env.TERMINFO_CAPTURE_DIRECTORY
+      if (!directory || !isAbsolute(directory) || options.onRetained === undefined) {
+        throw new Error("Owned cmux native evidence needs a private capture directory and its artifact observer")
+      }
+      return retain(directory, Buffer.from(stdout), "bin", options.onRetained)
+    }
+    if (hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined) {
+      const published = (process.env.CMUX_SURFACE_ID ?? "").trim()
+      if (published === "") {
+        // Without a published id every later read would have to let the CLI pick "whatever surface is
+        // current", which is the unnamed read this arm must never make: a second surface in the same
+        // instance could then answer for ours (@dev/1 peer read 2026-11-13). Refuse at grant instead.
+        cmuxGrantFailure =
+          "cmux-surface-not-owned: the app published no CMUX_SURFACE_ID, so no read can name the surface this run acquired"
+      } else {
+        cmuxSurface = published
+        out.write("\nCMUX-" + captureRunId + "-BEGIN\n")
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const proof = readOwnedCmuxHistory({
+            executable: ownedCmuxCli,
+            surface: published,
+            retainTranscript: retainCmuxTranscript,
+            ownership: { kind: "nonce", nonce: captureRunId },
+            configAtLaunch: cmuxConfigAtLaunch,
+            observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+          })
+          if (proof.status === "read" || proof.status === "owned-unreadable") {
+            // Ownership was proved independently of whether the paired responses yielded a usable count.
+            // Keep that grant even when the plain read failed or the two responses disagreed.
+            cmuxGrantReceipt = proof.receipt
+            cmuxLastRead = cmuxReadRecord("grant", proof.receipt, proof.facts)
+            break
+          }
+          if (proof.refusal !== "cmux-surface-not-owned") {
+            cmuxGrantFailure = `${proof.refusal}: ${proof.reason}`
+            break
+          }
+          // The sentinel may not have rendered yet; a bounded wait is the only thing the grant proof retries.
+          await new Promise((resolve) => {
+            setTimeout(resolve, 250)
+          })
+        }
+        if (cmuxGrantReceipt === undefined && cmuxGrantFailure === undefined) {
+          cmuxGrantFailure = "cmux-surface-not-owned: this run's nonce line never read back from its own surface"
+        }
+      }
+    }
+    const ownedCmuxHistory =
+      hostedCmuxOwnerCheck !== undefined && ownedCmuxCli !== undefined
+        ? async (): Promise<TerminalScrollbackReading> => {
+            await hostedCmuxOwnerCheck()
+            if (cmuxGrantFailure !== undefined) throw new ScrollbackReadingUnavailable(cmuxGrantFailure)
+            const read = readOwnedCmuxHistory({
+              executable: ownedCmuxCli,
+              ...(cmuxSurface === undefined ? {} : { surface: cmuxSurface }),
+              retainTranscript: retainCmuxTranscript,
+              ownership: { kind: "surface" },
+              configAtLaunch: cmuxConfigAtLaunch,
+              observeConfig: () => observeCmuxConfig(cmuxConfigPath(homedir())),
+            })
+            await hostedCmuxOwnerCheck()
+            if (read.status !== "read") throw new ScrollbackReadingUnavailable(read.refusal + ": " + read.reason)
+            cmuxLastRead = cmuxReadRecord("read", read.receipt, read.facts)
+            return read.reading
           }
         : undefined
     const readScrollback =
@@ -1663,17 +2412,22 @@ export async function createOwnedTerminal(options: {
             if (kittySocket === undefined || kittyWindow === undefined) {
               throw new Error("Owned Kitty history requires KITTY_LISTEN_ON and KITTY_WINDOW_ID from its child")
             }
-            const read = readLinuxKittyScrollback({
-              kitten: join(dirname(linux.executable.path), "kitten"),
-              socket: kittySocket,
-              window: kittyWindow,
-            })
+            const kitten = join(dirname(linux.executable.path), "kitten")
+            const read = readLinuxKittyScrollback({ kitten, socket: kittySocket, window: kittyWindow })
             await appClipboard.assertOwned()
             if (read.status === "refused") throw new Error(read.reason)
-            return { totalLines: read.totalLines, screenLines: read.screenLines }
+            const identity = ownedHistoryReceipt({
+              surface: "kitty",
+              pane: kittyWindow,
+              socketPresent: kittySocket.trim() !== "",
+              executable: kitten,
+            })
+            if (identity.status === "refused") throw new Error(identity.reason)
+            return { totalLines: read.totalLines, screenLines: read.screenLines, receipt: identity.receipt }
           }
         : undefined) ??
       ownedWezTermHistory ??
+      ownedCmuxHistory ??
       readTerminalAppHistoryReading
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
@@ -1730,6 +2484,10 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid ?? terminalAppPid
+    const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+    if (hostedApp === TERMINAL_APP_HOSTED && captureDirectory) {
+      expectedWindowId = readTerminalLaunchWindowId(dirname(captureDirectory))
+    }
     // WT uses UIA; WezTerm's candidate uses the owned pane CLI. Both must pass the shared writer's
     // mapping and host-ownership witnesses. Alacritty retains its explicitly unqualified host read.
     const windowsTerminalPid = hostedWindowsApp?.id === "windows-terminal" ? hostedAncestor?.pid : undefined
@@ -1745,8 +2503,42 @@ export async function createOwnedTerminal(options: {
                 pane: process.env.WEZTERM_PANE,
                 socket: process.env.WEZTERM_UNIX_SOCKET,
                 ...geometry,
+                startLine: 0,
               })
           : undefined
+    const readCurrentOutputBinding = () => {
+      const current = linux
+        ? linuxOutput(out)
+        : terminalApp
+          ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
+          : processOwner && !darwinAttachment
+            ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
+            : darwinHostedOutput(out)
+      if (
+        current.platform !== binding.platform ||
+        current.selectedFd !== binding.selectedFd ||
+        !sameDevice(current.outputDevice, binding.outputDevice) ||
+        (current.platform === "linux" &&
+          binding.platform === "linux" &&
+          current.controllingTtyNr !== binding.controllingTtyNr)
+      ) {
+        throw new Error("Owned geometry output binding changed")
+      }
+      return current
+    }
+    const assertDarwinTitleOwner = () => {
+      if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
+      if (processOwnerRecheck) processOwnerRecheck()
+      else if (darwinHosted && hostedApp && hostedAncestor) {
+        const actual = requireHostedDarwinAppAncestor(
+          hostedApp.comm,
+          readProcessAncestry(process.pid, undefined, true),
+          hostedAppExecutablePath,
+        )
+        if (actual.pid !== hostedAncestor.pid) throw new Error("Owned title read App ancestor changed")
+      } else throw new Error("Owned Darwin title read has no measured process owner")
+      readCurrentOutputBinding()
+    }
     const renditions = windowsTerminalPid === undefined ? undefined : createLineRenditionTracker()
     const readConsoleHostCells = async (): Promise<ConsoleCellRead> => {
       if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
@@ -1769,19 +2561,64 @@ export async function createOwnedTerminal(options: {
       geometrySource: source,
       summary,
       ...(appPid !== undefined && { appPid }),
+      ...(expectedWindowId !== undefined && { expectedWindowId }),
+      ...(binding.platform === "darwin" && { captureWindowSelection: hostedApp?.captureWindowSelection ?? "unique" }),
       ...(hostedAppId && { hostedAppId }),
       ...(hostedApp?.captureChromeBand && { captureChromeBand: hostedApp.captureChromeBand }),
       ...(hostedApp?.scrollbackUnavailable && { scrollbackUnavailable: hostedApp.scrollbackUnavailable }),
+      // 34313: chosen here, from the qualified subject, BEFORE any input install, so a failed install keeps the
+      // route (and its named TODO) instead of leaving the rows on the declaration above.
+      ...hostedViewportKeys({
+        hostedAppId: hostedApp?.id,
+        platform: binding.platform,
+        targetVersion: process.env.TERMINFO_TARGET_VERSION,
+        runId: process.env.TERMINFO_RUN_ID,
+        expectedLaunchRunId,
+        multiplexed: muxAttachmentProof !== undefined,
+      }),
+      // 34632: the same question for the Linux arm's own xterm launch, answered from the same subject shape.
+      ...linuxViewportKeys({
+        appId: ownedAppId,
+        platform: binding.platform,
+        targetVersion: process.env.TERMINFO_TARGET_VERSION,
+        runId: process.env.TERMINFO_RUN_ID,
+        expectedLaunchRunId,
+        multiplexed: muxAttachmentProof !== undefined,
+      }),
       ...(wezTermOwnedReadProbeTodo && { scrollbackProbeTodo: wezTermOwnedReadProbeTodo }),
+      // No installed reader: name the arm instead of leaving the history rows on the screenshot todo.
+      ...linuxScrollbackArm(linux, readScrollback, ownedAppId),
       ...(ownedAppId === "wezterm" && { wezTermPaneEnvironment }),
       ...(clipboard && { clipboard }),
       // This arm counts through the terminal's own CLI, so its evidence may name only that program: the
       // reader in serve.ts refuses to borrow another binary's proof for it (31741, @dev/18 peer read).
       ...(wezTermOwnerCheck === undefined ? undefined : ownedWezTermIdentity),
-      ...(readTitle && {
+      ...(hostedCmuxOwnerCheck === undefined ? undefined : ownedCmuxIdentity),
+      ...(ownedCmuxCli !== undefined && {
+        cmuxHistory: {
+          executable: ownedCmuxCli,
+          surface: cmuxSurface ?? null,
+          grant:
+            cmuxGrantReceipt !== undefined ? "proved" : cmuxGrantFailure !== undefined ? "failed" : "not attempted",
+          grantRefusal: cmuxGrantFailure === undefined ? null : publishedRefusal(cmuxGrantFailure),
+          grantProof: cmuxGrantReceipt ?? cmuxGrantFailure ?? "not attempted",
+          // A getter, not a captured value: this object is built once at owner creation, so a snapshot
+          // would pin the field to the grant receipt and never show a later read (@cto 81073ae1).
+          get lastRead(): CmuxLastRead | null {
+            return cmuxLastRead ?? null
+          },
+        },
+      }),
+      ...((readTitle || darwinTitleRefusal !== undefined) && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
-          return readTitle()
+          if (nativeEditorId === undefined && darwinTitleRefusal !== undefined) throw new Error(darwinTitleRefusal)
+          if (!readTitle) throw new Error("Owned title read has no installed reader")
+          if (!darwinWindowTitle) return readTitle()
+          assertDarwinTitleOwner()
+          const title = await readTitle()
+          assertDarwinTitleOwner()
+          return title
         },
       }),
       ...(readTerminalAppHistoryReading && { historyControl: () => historyControl }),
@@ -1812,6 +2649,37 @@ export async function createOwnedTerminal(options: {
           return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
         },
       }),
+      ...(nativeEditorId !== undefined && {
+        async readAppSemanticState(
+          featureId: string,
+          write: (text: string) => void,
+          recordCapture: (captured: unknown) => void,
+        ) {
+          if (!verifiedTerminalOwners.has(owner)) {
+            return { status: "invalid" as const, reason: "Native editor read has no live owned terminal" }
+          }
+          const windowCapture = options.appSemanticCapture
+          // 35009: every editor capture, target or failed-read, is recorded as it is kept.
+          const capture =
+            windowCapture &&
+            (async (captureFeatureId: string, phase: string) => {
+              const captured = await windowCapture(captureFeatureId, phase)
+              recordCapture(captured)
+              return captured
+            })
+          if (!capture) {
+            return { status: "unavailable" as const, reason: "Native editor read has no owned window capture" }
+          }
+          await owner.readGeometry()
+          assertNativeEditorProcess(process.pid)
+          return readAppSemanticState({
+            featureId,
+            write,
+            runId: expectedLaunchRunId,
+            editor: { appId: nativeEditorId, assertProcess: assertNativeEditorProcess, capture },
+          })
+        },
+      }),
       ...(linux && {
         readNotificationEnvironment(): NotificationEnvironmentReading {
           if (!verifiedTerminalOwners.has(owner)) {
@@ -1833,9 +2701,382 @@ export async function createOwnedTerminal(options: {
             return { status: "refused", reason: `Terminal process environment unreadable: ${(error as Error).message}` }
           }
         },
+      }),
+      // 34870 (@cto 34870-terminalapp-cwd-r1): the hosted Terminal.app 2.15 tab's OSC 633 P, read through its owned
+      // window's AXDocument (JXA Accessibility, never System Events). The owner re-proves itself around every read,
+      // and restoration goes through the private TTY writer so the session's directory stays out of the trace.
+      ...(darwinTextApp === "terminal-app" &&
+        darwinTextTty !== undefined &&
+        muxAttachmentProof === undefined && {
+          appSemanticStateFeatures: new Set(["extensions.osc633-p"]),
+          async readAppSemanticState(featureId: string, write: (text: string) => void) {
+            const check = () => {
+              if (!verifiedTerminalOwners.has(owner)) {
+                throw new Error("Terminal.app cwd read has no live owned terminal")
+              }
+            }
+            if (featureId !== "extensions.osc633-p") {
+              return {
+                status: "unavailable" as const,
+                reason: "No owned Terminal.app semantic reader for this feature",
+              }
+            }
+            const onRetained = options.onRetained
+            if (
+              process.env.TERMINFO_TARGET_VERSION !== "2.15" ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "Terminal.app cwd has no reviewed 2.15 version bound to this App launch",
+              }
+            }
+            if (hostedAppExecutablePath === undefined || onRetained === undefined) {
+              return {
+                status: "invalid" as const,
+                reason: "Terminal.app cwd needs the hosted App executable and its artifact observer",
+              }
+            }
+            try {
+              check()
+              const sha256 = createHash("sha256").update(readFileSync(hostedAppExecutablePath)).digest("hex")
+              return await readAppSemanticState({
+                featureId,
+                onRetained,
+                runId: expectedLaunchRunId,
+                executable: { path: hostedAppExecutablePath, sha256 },
+                write,
+                privateWrite(text) {
+                  check()
+                  out.write(text)
+                  check()
+                },
+                readCwd: terminalAppOwnedCwd({ tty: darwinTextTty, write, check }),
+              })
+            } catch (error) {
+              return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+            }
+          },
+        }),
+      // 34570: the hosted iTerm2 tab's own prompt marks, through the same API owner and TTY-matched
+      // session as its cell read. Only the prompt rows (OSC 133, and OSC 633 since 34866) take it; every
+      // other row keeps its own callback.
+      ...(darwinTextApp === "iterm2" &&
+        darwinTextTty !== undefined &&
+        muxAttachmentProof === undefined && {
+          appSemanticStateFeatures: ITERM_PROMPT_FEATURES,
+          async readAppSemanticState(featureId: string, write: (text: string) => void) {
+            const check = () => {
+              if (!verifiedTerminalOwners.has(owner)) throw new Error("iTerm2 prompt read has no live owned terminal")
+            }
+            const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+            const onRetained = options.onRetained
+            if (
+              process.env.TERMINFO_TARGET_VERSION !== "3.6.11" ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              !captureDirectory ||
+              !isAbsolute(captureDirectory) ||
+              onRetained === undefined
+            ) {
+              return {
+                status: "invalid" as const,
+                reason:
+                  "iTerm2 prompt read requires the reviewed 3.6.11 target, this run's launch id and a capture directory",
+              }
+            }
+            try {
+              check()
+              await owner.readGeometry()
+              return await readITermPromptMarks({
+                featureId,
+                runId: expectedLaunchRunId,
+                write,
+                // 34866: P's restoration feed carries the session's own directory, so it bypasses the trace.
+                privateWrite(text) {
+                  check()
+                  out.write(text)
+                  check()
+                },
+                withSession: (work) =>
+                  withITermPromptSession(
+                    {
+                      tty: darwinTextTty,
+                      deadlineMs: 45_000,
+                      // Raw server frames only, as the cell read keeps them; never auth headers.
+                      onReply: (bytes) => {
+                        retain(captureDirectory, Buffer.from(bytes), "bin", onRetained)
+                      },
+                    },
+                    async (session) => {
+                      const reading = await work({
+                        readPrompt: async (uniquePromptId) => {
+                          check()
+                          return session.readPrompt(uniquePromptId)
+                        },
+                        listPrompts: async () => {
+                          check()
+                          return session.listPrompts()
+                        },
+                        readUserVariable: async (name) => {
+                          check()
+                          return session.readUserVariable(name)
+                        },
+                      })
+                      check()
+                      return reading
+                    },
+                  ),
+              })
+            } catch (error) {
+              return {
+                status: "invalid" as const,
+                reason: `iTerm2 prompt read failed: ${error instanceof Error ? error.message : String(error)}`,
+              }
+            }
+          },
+        }),
+      ...(binding.platform === "darwin" &&
+        (ownedAppId === "wezterm" || ownedAppId === "ghostty" || ownedAppId === "cmux") && {
+          appSemanticStateFeatures: new Set(
+            ownedAppId === "cmux"
+              ? ["extensions.osc633-p"]
+              : [
+                  "extensions.osc7-cwd",
+                  "extensions.osc633-p",
+                  // 34646: WezTerm's bundle CLI get-text --escapes reads OSC 8 state, as on Linux.
+                  ...(ownedAppId === "wezterm" ? ["extensions.osc8"] : []),
+                ],
+          ),
+        }),
+      ...((linux ||
+        (ownedAppId === "wezterm" && (binding.platform === "linux" || binding.platform === "darwin")) ||
+        ((ownedAppId === "ghostty" || ownedAppId === "cmux") && binding.platform === "darwin")) && {
         async readAppSemanticState(featureId: string, write: (text: string) => void) {
           if (!verifiedTerminalOwners.has(owner)) {
             return { status: "invalid" as const, reason: "App semantic read has no live owned terminal" }
+          }
+          // 34905: cmux 0.65.2 on macOS reads cwd through its owned control-socket workspace.current current_directory.
+          if (binding.platform === "darwin" && ownedAppId === "cmux") {
+            return readHostedCmuxSemanticCwd({
+              featureId,
+              write,
+              out,
+              expectedLaunchRunId,
+              muxAttachmentProof,
+              hostedCmuxOwnerCheck,
+              ownedCmuxCli,
+              ownedCmuxIdentity,
+              hostedAppExecutablePath,
+              cmuxGrantFailure,
+              cmuxGrantReceipt,
+              cmuxSurface,
+              cmuxConfigAtLaunch,
+              retainCmuxTranscript,
+              onRetained: options.onRetained,
+              isOwnerLive: () => verifiedTerminalOwners.has(owner),
+            })
+          }
+          // 34601: Ghostty 1.4.0 on macOS reads cwd through its AppleScript terminal of the owned tab's TTY.
+          if (binding.platform === "darwin" && ownedAppId === "ghostty") {
+            return readHostedGhosttySemanticCwd({
+              featureId,
+              write,
+              tabTty: binding.tabTty,
+              expectedLaunchRunId,
+              muxAttachmentProof,
+              hostedAppExecutablePath,
+              onRetained: options.onRetained,
+              isOwnerLive: () => verifiedTerminalOwners.has(owner),
+            })
+          }
+          const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
+          const ownedOsc8 = binding.platform === "darwin" && featureId === "extensions.osc8"
+          if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd || ownedOsc8)) {
+            const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
+            const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
+            if (
+              cliVersion !== reviewedVersion ||
+              process.env.TERMINFO_TARGET_VERSION !== reviewedVersion ||
+              process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+              muxAttachmentProof !== undefined ||
+              Boolean(process.env.TERMINFO_MUX_KIND)
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "WezTerm OSC7 has no reviewed CLI version bound to this App launch",
+              }
+            }
+            const socket = process.env.WEZTERM_UNIX_SOCKET
+            const pane = process.env.WEZTERM_PANE
+            const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+            const onRetained = options.onRetained
+            if (
+              wezTermOwnerCheck === undefined ||
+              ownedWezTermCli === undefined ||
+              ownedWezTermIdentity?.historyExecutable === undefined ||
+              !socket ||
+              !pane ||
+              !/^\d+$/.test(pane) ||
+              !captureDirectory ||
+              !isAbsolute(captureDirectory) ||
+              onRetained === undefined
+            ) {
+              return {
+                status: "invalid" as const,
+                reason: "WezTerm OSC7 needs an owned pane, measured CLI and private capture with its artifact observer",
+              }
+            }
+            // Every command uses the current owner, including the private restoration write. In
+            // particular, never pass the callback's publishable writer a URI from the host's pane.
+            const check = async () => {
+              if (!verifiedTerminalOwners.has(owner)) throw new Error("WezTerm OSC7 ownership is no longer live")
+              await wezTermOwnerCheck()
+            }
+            let ownershipReceipt: string | undefined
+            const nativeReads: string[] = []
+            const retainNative = (transcript: string) => {
+              try {
+                nativeReads.push(retain(captureDirectory, Buffer.from(transcript), "json", onRetained))
+              } catch (error) {
+                throw new Error("WezTerm OSC7 native evidence retention failed", { cause: error })
+              }
+            }
+            const readPane = async () => {
+              await check()
+              const read = readOwnedWezTermPane({ executable: ownedWezTermCli, socket, pane })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.privateTranscript)
+              if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
+              if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
+                throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
+              }
+              if (
+                typeof read.cwd !== "string" ||
+                !read.cwd.startsWith("file://") ||
+                // eslint-disable-next-line no-control-regex -- raw OSC restoration data must contain no terminal controls
+                /[\x00-\x1f\x7f]/.test(read.cwd)
+              ) {
+                throw new Error("WezTerm OSC7 owned pane has no safe public directory URI")
+              }
+              const identity = ownedHistoryReceipt({
+                surface: "wezterm",
+                pane,
+                listedTty: read.tty,
+                measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+                socketPresent: true,
+                executable: ownedWezTermCli,
+              })
+              if (identity.status === "refused") throw new Error(identity.reason)
+              ownershipReceipt = identity.receipt
+              return read.cwd
+            }
+            const readText = async () => {
+              await check()
+              const geometry = await owner.readGeometry()
+              await check()
+              if (geometry.status !== "measured") throw new Error("WezTerm OSC7 text fence needs measured geometry")
+              const read = readWindowsWezTermRows({
+                executable: ownedWezTermCli,
+                socket,
+                pane,
+                rows: geometry.rows,
+                startLine: 0,
+              })
+              await check()
+              if (read.status === "refused") throw new Error(read.reason)
+              retainNative(read.receipt)
+              return read.rows.join("\n")
+            }
+            const bundleCli = () => {
+              const appExecutablePath =
+                ownedAppId === "wezterm" && processOwner?.provider === "cli-process"
+                  ? processOwner.executablePath
+                  : hostedAppExecutablePath
+              if (
+                appExecutablePath === undefined ||
+                realpathSync(ownedWezTermCli) !== join(dirname(realpathSync(appExecutablePath)), "wezterm")
+              ) {
+                throw new Error("WezTerm CLI is outside the verified App bundle")
+              }
+            }
+            if (ownedOsc8) {
+              try {
+                bundleCli()
+                return await readAppSemanticState({
+                  appId: "wezterm",
+                  featureId,
+                  onRetained,
+                  runId: expectedLaunchRunId,
+                  executable: ownedWezTermIdentity.historyExecutable,
+                  write,
+                  async readRows(escapes) {
+                    await check()
+                    const read = readWindowsWezTermRows({
+                      executable: ownedWezTermCli,
+                      socket,
+                      pane,
+                      rows: 3,
+                      startLine: 0,
+                      escapes,
+                    })
+                    await check()
+                    if (read.status === "refused") throw new Error(read.reason)
+                    retainNative(read.receipt)
+                    return weztermHyperlinkText(read.rows)
+                  },
+                })
+              } catch (error) {
+                return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+              }
+            }
+            if (ownedPromptCwd) {
+              try {
+                bundleCli()
+                return await readAppSemanticState({
+                  appId: "wezterm",
+                  featureId,
+                  onRetained,
+                  runId: expectedLaunchRunId,
+                  executable: ownedWezTermIdentity.historyExecutable,
+                  write,
+                  async readCwd(checkpoint) {
+                    if (checkpoint !== undefined) {
+                      await untilAppSemanticRead(
+                        readText,
+                        (text) => (text.split("\n")[checkpoint.row - 1] ?? "").includes(checkpoint.marker),
+                        "owned cwd checkpoint",
+                        [],
+                      )
+                    }
+                    const uri = await readPane()
+                    return { uri, detail: { ownershipReceipt, nativeReads } }
+                  },
+                })
+              } catch (error) {
+                return { status: "invalid" as const, reason: error instanceof Error ? error.message : String(error) }
+              }
+            }
+            const reading = await readWezTermCwd({
+              runId: expectedLaunchRunId,
+              captureDirectory,
+              onRetained,
+              async write(text) {
+                await check()
+                out.write(text)
+                await check()
+              },
+              readPane,
+              readText,
+            })
+            if (ownershipReceipt !== undefined && typeof reading.detail === "object" && reading.detail !== null) {
+              Object.assign(reading.detail, { ownershipReceipt, nativeReads })
+            }
+            return reading
+          }
+          if (!linux) {
+            return { status: "invalid" as const, reason: "No owned App semantic reader for this feature on macOS" }
           }
           await owner.readGeometry()
           return readAppSemanticState({
@@ -1871,24 +3112,7 @@ export async function createOwnedTerminal(options: {
           }
           return readBoundGeometry(binding, windowsKernel)
         }
-        const current = linux
-          ? linuxOutput(out)
-          : terminalApp
-            ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
-            : processOwner && !darwinAttachment
-              ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
-              : darwinHostedOutput(out)
-        if (
-          current.platform !== binding.platform ||
-          current.selectedFd !== binding.selectedFd ||
-          !sameDevice(current.outputDevice, binding.outputDevice) ||
-          (current.platform === "linux" &&
-            binding.platform === "linux" &&
-            current.controllingTtyNr !== binding.controllingTtyNr)
-        ) {
-          throw new Error("Owned geometry output binding changed")
-        }
-        return readBoundGeometry(current, windowsKernel)
+        return readBoundGeometry(readCurrentOutputBinding(), windowsKernel)
       },
       ...(hostedWindowsApp?.id === "alacritty" && { readCells: readConsoleHostCells }),
       ...(wezTermExecutable !== undefined && {
@@ -2022,23 +3246,7 @@ export async function createOwnedTerminal(options: {
             // Each app's raw reply is kept with its checkpoint, so a refused read keeps what the app returned.
             const retainReply =
               checkpoint &&
-              ((bytes: Uint8Array) => {
-                const reply = retain(checkpoint.directory, Buffer.from(bytes), "bin", checkpoint.onRetained)
-                retain(
-                  checkpoint.directory,
-                  Buffer.from(
-                    JSON.stringify({
-                      captureRunId,
-                      checkpoint: checkpoint.label,
-                      tty: darwinTextTty,
-                      grid: { rows: geometry.rows, cols: geometry.cols },
-                      reply,
-                    }),
-                  ),
-                  "json",
-                  checkpoint.onRetained,
-                )
-              })
+              ((bytes: Uint8Array) => retainTextReply(captureRunId, darwinTextTty, geometry, checkpoint, bytes))
             if (darwinTextApp === "iterm2") {
               return readITermCells({
                 tty: darwinTextTty,
@@ -2061,10 +3269,45 @@ export async function createOwnedTerminal(options: {
         await clipboard?.dispose()
       },
     }
-    verifiedTerminalOwners.set(owner, { captureRunId, out, ...(processOwnerBasis && { processOwnerBasis }) })
+    verifiedTerminalOwners.set(owner, {
+      captureRunId,
+      out,
+      ...(processOwnerBasis && { processOwnerBasis, processOwnerBasisScope: processOwnerBasisScope }),
+    })
     return owner
   } catch (error) {
     await clipboard?.dispose()
     throw error
   }
+}
+
+export function readTerminalLaunchWindowId(artifactDirectory: string): number {
+  const record = join(artifactDirectory, "terminal-launch.json")
+  if (!existsSync(record)) {
+    throw new Error(
+      `Terminal.app capture requires the launch receipt ${record} that names the owned window id; that record is absent`,
+    )
+  }
+  const raw = readFileSync(record, "utf8")
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (cause) {
+    // A malformed receipt is the operator's evidence to read, never a bare parser error.
+    throw new Error(
+      `Terminal.app launch receipt ${record} is not JSON: ${cause instanceof Error ? cause.message : String(cause)}: ${raw}`,
+    )
+  }
+  const row = parsed as { appId?: unknown; terminalWindow?: { provider?: unknown; windowId?: unknown } }
+  const windowId = row.terminalWindow?.windowId
+  if (
+    row.appId !== "terminal-app" ||
+    row.terminalWindow?.provider !== "terminal-app" ||
+    typeof windowId !== "number" ||
+    !Number.isSafeInteger(windowId) ||
+    windowId < 1
+  ) {
+    throw new Error(`Terminal.app launch receipt ${record} names no owned window id: ${raw}`)
+  }
+  return windowId
 }

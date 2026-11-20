@@ -372,6 +372,9 @@ export interface CollectionPass {
     classification?: ReturnType<typeof classifyDevelopmentRun>
     summary?: CurrentAggregate
     transport?: CollectionPass["transport"]
+    /** #33797 (@cto 16:10Z Q3): an owned-app context's intervals at this pass's own boundary, on this
+     * process's monotonic clock; the transport's inner phases live in its sealed receipt instead. */
+    phases?: { clock: string; intervals: Array<{ name: string; durationMs: number }> }
     error?: string
     reason?: string
     /**
@@ -497,6 +500,7 @@ export function ownedAppCommand(
   output: string,
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
+  runId: string,
   probeIds?: string[],
 ): { argv: string[]; label: string } {
   // An unknown id is refused here, against the catalogue already in this tree, before any host is
@@ -512,8 +516,13 @@ export function ownedAppCommand(
     context.id,
     ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]),
   ]
+  // #34018: the run identity is the composer's, on BOTH routes. The local route hands it to the same
+  // admin flag the transport sets on the host, so a pass compares one identity either way.
   if (transport.runner === "local") {
-    return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
+    return {
+      argv: [...probe, "--run-id", runId, "--output", output],
+      label: `${labelOf(context)} owned-app collection`,
+    }
   }
   if (!transport.knownHosts) {
     throw new Error(
@@ -533,6 +542,8 @@ export function ownedAppCommand(
       sourceRevision,
       "--context",
       context.id,
+      "--run-id",
+      runId,
       "--known-hosts",
       transport.knownHosts,
       ...(transport.removeStage ? ["--remove-stage"] : []),
@@ -542,6 +553,9 @@ export function ownedAppCommand(
     label: `${labelOf(context)} owned-app transport`,
   }
 }
+
+/** #33797: the clock an owned-app context's pass-level intervals are read on. */
+const OWNED_APP_PHASE_CLOCK = "the collecting host's monotonic clock (performance.now), milliseconds"
 
 /** Read the host-written transport receipt as the pass's own evidence shape. It grants nothing:
  * the receipt is a record of where a run started and what bytes it moved, never a permission.
@@ -735,23 +749,10 @@ export async function collectPass(
         os: context.kind === "lib" ? process.platform : context.os,
       },
     })
-    let path: string
-    if (context.kind === "lib") {
-      // #32038 (@cto a6dbdad3): the pre-resolution headless draft is an intermediate for forensics,
-      // written under <pass>/first-pass/<engine>.draft.json outside the pass output set.
-      const firstPass = join(directory, "first-pass")
-      mkdirSync(firstPass, { recursive: true })
-      const firstPassReadme = join(firstPass, "README.md")
-      if (!existsSync(firstPassReadme)) {
-        writeFileSync(
-          firstPassReadme,
-          "# Historical first-pass drafts\n\nPre-resolution intermediate drafts retained for collector forensics, not run outputs; `../pass.json` (`contexts[].rawRun`) is the sole authority for which draft was graded.\n",
-        )
-      }
-      path = join(firstPass, `${context.id}.draft.json`)
-    } else {
-      path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
-    }
+    const path = firstPassDraftPath(
+      directory,
+      context.kind === "lib" ? context.id : `${context.kind}-${context.id}-${context.os}`,
+    )
     recordCollectorSelection(draft, probeIds ?? snapshot.probes[context.kind])
     if (probeIds?.length === 0) {
       recordCollectorAttempt(draft, { ids: [], result: "empty" })
@@ -825,6 +826,8 @@ export async function collectPass(
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
+    // #33797: set once an owned-app child returns, so "collection" is timed from there to classification.
+    let collectionStart: number | undefined
     pass.contexts.push(row)
     const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
     if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
@@ -867,7 +870,8 @@ export async function collectPass(
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, probeIds)
+        const command = ownedAppCommand(context, output, ownedApp, sourceRevision, handed.draft.runId, probeIds)
+        const childStart = performance.now()
         runChild(
           command.argv,
           command.label,
@@ -877,6 +881,11 @@ export async function collectPass(
           },
           { TERMINFO_CAPTURE_RUN_ID: handed.draft.runId },
         )
+        collectionStart = performance.now()
+        row.phases = {
+          clock: OWNED_APP_PHASE_CLOCK,
+          intervals: [{ name: "owned-app child", durationMs: Math.round(collectionStart - childStart) }],
+        }
         // One home for the transport's artifacts: the driver writes the run JSON and the receipt
         // into <output>/transport, so the collector reads them from exactly there.
         const runsDirectory = ownedAppRunsDirectory(output, ownedApp.runner)
@@ -977,6 +986,9 @@ export async function collectPass(
       row.summary = aggregateCurrentResults(run.results, run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
+      if (collectionStart !== undefined && row.phases) {
+        row.phases.intervals.push({ name: "collection", durationMs: Math.round(performance.now() - collectionStart) })
+      }
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
       if ((context.route === "linux-container" || context.route === "hosted-workflow") && row.directory) {
@@ -1098,6 +1110,24 @@ export async function collectPass(
 }
 
 /**
+ * Where a pre-measure seed draft goes (#32038 @cto a6dbdad3; #34623 for App and supplement seeds): under
+ * <pass>/first-pass/<name>.draft.json, outside the pass output set, so a seed whose run later lands elsewhere is
+ * never read as that run. `../pass.json` rawRun stays the sole authority; on a failure it may name the seed here.
+ */
+function firstPassDraftPath(directory: string, name: string): string {
+  const firstPass = join(directory, "first-pass")
+  mkdirSync(firstPass, { recursive: true })
+  const firstPassReadme = join(firstPass, "README.md")
+  if (!existsSync(firstPassReadme)) {
+    writeFileSync(
+      firstPassReadme,
+      "# Historical first-pass drafts\n\nPre-resolution intermediate drafts retained for collector forensics, not run outputs; `../pass.json` (`contexts[].rawRun`, `contexts[].supplements[].rawRun`) is the sole authority for which draft was graded.\n",
+    )
+  }
+  return join(firstPass, `${name}.draft.json`)
+}
+
+/**
  * One supplement launch: its own draft and run id, only its declared ids (narrowed by the pass's selection), and its
  * classified run kept beside the default row. A failure stays on the supplement and never touches the default row.
  */
@@ -1134,7 +1164,10 @@ function runSupplement(
       intendedSubject: { kind: context.kind, id: context.id, os: context.os },
     })
     recordCollectorSelection(draft, ids)
-    const draftPath = join(pass.directory, `${context.kind}-${context.id}-${context.os}.${supplement.name}.draft.json`)
+    const draftPath = firstPassDraftPath(
+      pass.directory,
+      `${context.kind}-${context.id}-${context.os}.${supplement.name}`,
+    )
     writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
     row.rawRun = draftPath
     const output = join(pass.directory, "linux", `${context.id}.${supplement.name}`)

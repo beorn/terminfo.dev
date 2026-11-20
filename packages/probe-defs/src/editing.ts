@@ -1,4 +1,10 @@
-import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, ObservationFrame } from "./types.ts"
+import type {
+  ProbeDefinition,
+  ProbeCallbackResult,
+  LibProbeSource,
+  ObservationFrame,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { withMuxOuterUnreadableRow } from "./mux-outer-rows.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -11,6 +17,7 @@ import {
 } from "./region-readback.ts"
 import {
   activeScreenRow,
+  fencedSilenceResult,
   noSetupResult,
   parserStateResult,
   probe,
@@ -30,6 +37,70 @@ import {
 const DECRQCRA_SEED = "ABCDE"
 const DECRQCRA_EDIT = "\x1b[1;5HF"
 const DECRQCRA_REQUEST = "\x1b[1;1;1;1;1;5*y"
+const DA1_ALONE = "\x1b[c"
+const DA1_ALONE_REPLY = /\x1b\[\?[0-9;]+c/
+/** The same budget the pair's own query gets. */
+const DECRQCRA_DA1_ALONE_TIMEOUT_MS = 2000
+const DECRQCRA_REPLY_EXPECTED = "Complete four-digit checksum reply for request 1"
+
+/** A DA1 asked alone was answered by one DA1 reply and nothing else. */
+function loneDa1Answer(outcome: TerminalQueryOutcome): boolean {
+  const answer = outcome.match?.[0]
+  return answer !== undefined && outcome.raw.replace(answer, "").trim() === ""
+}
+
+/**
+ * The DA1 asked alone just before a graded request went unanswered: that control's own measured failure. When the
+ * DA1 written with the request did answer, the reason says so, so the line does not read as a silent terminal.
+ */
+function beforeControlFailure(request: number, response: string, requestDa1Answered = false): ProbeCallbackResult {
+  return {
+    response,
+    ...replyFailure(
+      `no usable checksum reply; the DA1 asked alone just before request ${String(request)} got no lone DA1 answer within ${String(DECRQCRA_DA1_ALONE_TIMEOUT_MS)} ms${requestDa1Answered ? "; the DA1 written with the request did answer" : ""}`,
+    ),
+  }
+}
+
+/**
+ * 34664 (@cto f5e2b27c): a checksum request drew no byte at all, not even the DA1 written beside it (iTerm2 3.6.11 in
+ * run 44178738960). The DA1 asked alone just before that request, and one asked alone just after it, decide what the
+ * silence shows. Both answered alone: the terminal answered on both sides and said nothing to the request, the fenced
+ * silence the recorder grades by the row's rule. Bytes other than a lone DA1 answer after it are unattributed, so the
+ * read stays inconclusive. A control that went unanswered is that control's measured failure, nothing more.
+ */
+export function silentChecksumRequest(
+  request: number,
+  before: TerminalQueryOutcome,
+  after: TerminalQueryOutcome,
+): ProbeCallbackResult {
+  const response = JSON.stringify({
+    request,
+    sent: `${DECRQCRA_REQUEST}\x1b[c`,
+    da1Before: before.raw,
+    da1After: after.raw,
+  })
+  const window = `${String(DECRQCRA_DA1_ALONE_TIMEOUT_MS)} ms`
+  if (!loneDa1Answer(before)) return beforeControlFailure(request, response)
+  if (!loneDa1Answer(after)) {
+    if (after.raw.trim() === "") {
+      return {
+        response,
+        ...replyFailure(
+          `no usable checksum reply; the DA1 asked alone just before request ${String(request)} answered, and the one asked after it got no answer within ${window}`,
+        ),
+      }
+    }
+    return {
+      pass: false,
+      response,
+      note: `request ${String(request)} drew no byte, then the DA1 asked alone after it came back with other bytes`,
+      observation: { outcome: "inconclusive", assertionType: "query_reply", reason: "invalid-reply" },
+    }
+  }
+  const observed = `request ${String(request)} drew no checksum reply and no answer to the DA1 written with it; a DA1 asked alone answered just before and just after it`
+  return fencedSilenceResult(response, observed, DECRQCRA_REPLY_EXPECTED, observed)
+}
 const DECRQCRA_EXPECTED =
   "the same 1x5 rectangle's 16-bit checksum changes by 1 in the convention the terminal reports: +1 with the positive-checksum extension, or 65535 when the DEC-compatible default negates the sum"
 
@@ -830,6 +901,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             compared: allFrames.map((frame) => ({
               role: frame.label,
               rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+              ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
             })),
           })
           if (cropRefusal) return cropRefusal
@@ -850,6 +922,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               screenshotRef: visibilityControl.ref,
               compared: [...allFrames, visibilityControl].map((frame) => ({
                 role: frame.label,
+                ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
                 rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
               })),
             })
@@ -964,6 +1037,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         const reads: { raw: string; frame: string }[] = []
         for (const sequence of [DECRQCRA_SEED, DECRQCRA_EDIT]) {
           if (reads.length === 1) ctx.write(`${sequence}\x1b[1;1H`)
+          // 34664 (@cto f5e2b27c): each graded request gets its own DA1 baseline, asked alone just before it.
+          const before = await ctx.queryOutcome(DA1_ALONE, DA1_ALONE_REPLY, DECRQCRA_DA1_ALONE_TIMEOUT_MS)
           const reply = await ctx.queryWithSentinelOutcome(DECRQCRA_REQUEST, /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
           if (reply.match) {
             // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the
@@ -984,7 +1059,21 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             reply.sentinel,
             "Complete four-digit checksum reply for request 1",
           )
-          if (silent) return silent
+          if (silent) {
+            // 34664 (@cto d0b31f18): the window decides only when the control asked just before it answered alone.
+            if (loneDa1Answer(before)) return silent
+            const response = JSON.stringify({
+              request: reads.length + 1,
+              sent: `${DECRQCRA_REQUEST}\x1b[c`,
+              da1Before: before.raw,
+              reply: reply.raw,
+            })
+            return beforeControlFailure(reads.length + 1, response, true)
+          }
+          if (reply.raw.length === 0) {
+            const after = await ctx.queryOutcome(DA1_ALONE, DA1_ALONE_REPLY, DECRQCRA_DA1_ALONE_TIMEOUT_MS)
+            return silentChecksumRequest(reads.length + 1, before, after)
+          }
           return {
             pass: false,
             response: reply.raw,

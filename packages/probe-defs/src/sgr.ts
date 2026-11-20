@@ -1,3 +1,4 @@
+import { sourceNow } from "./source-clock.ts"
 import type {
   CaptureCells,
   ObservationFrame,
@@ -31,6 +32,7 @@ import {
   declaredUntestableResult,
   withUnhandledSgrReport,
 } from "./helpers.ts"
+import { BLINK_CLASS_MAX_PERIOD_MS, BLINK_CLASS_MIN_PERIOD_MS, uncoveredBlinkPeriod } from "./blink-coverage.ts"
 import { kittyWait } from "./kitty-capture.ts"
 import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
@@ -44,6 +46,7 @@ import {
   underlineColourIndexedCaptureResult,
   underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
+import { raiseRefusedCapture, refusedCaptureError } from "./refused-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -52,19 +55,25 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
  * requested (#33117): one window shot per sample costs 265-493 ms on measured hosts, so a series
  * sampled slower than a blink period aliases a return into a one-way change. The negative gate
  * therefore speaks only about achieved frames: at least BLINK_MIN_FRAMES styled frames spanning
- * at least BLINK_MIN_SPAN_MS of their own capturedAt, with no interim gap above
- * BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1). The requested schedule asks for more than that
- * minimum — jittered offsets near 500 ms apart out to about 7500 ms — because exactly
- * BLINK_MIN_FRAMES frames cannot clear the gate together (their gaps sum to the span, so each
- * would have to equal the ceiling), and because the loop waits for each offset, so the achieved
- * span is never shorter than the requested one on any host. Earlier-return remains the first
- * positive route at any achieved rate. Focus-qualified fade also decides support.
+ * at least BLINK_MIN_SPAN_MS of their own capturedAt, whose times see a return of every blink in a
+ * declared class (#34549, @cto coverage criterion ruling): a 50%-duty blink with any period from
+ * 600 to 3000 ms at any phase, checked exactly in blink-coverage.ts. Coverage replaces the former
+ * 545 ms gap ceiling, which neither established it (samples phase-locked to a period read one state
+ * however close together) nor was needed for it (jittered runs with larger gaps cover the class).
+ * A negative rules out that class, not every blink rate or duty. The requested schedule — jittered
+ * offsets near 500 ms apart out to about 7500 ms — covers the class with margin, and the loop waits
+ * for each offset, so the achieved span is never shorter than the requested one on any host.
+ * Earlier-return remains the first positive route at any achieved rate. Focus-qualified fade also
+ * decides support.
  */
 const BLINK_MIN_FRAMES = 12
 const BLINK_MIN_SPAN_MS = 6000
-// Irregular requested gaps, every one under the gate ceiling, so the schedule cannot phase-lock
-// to a blink period the way a fixed interval can; they sum to the requested 7500 ms span.
-const BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515] as const
+// Irregular requested gaps, never a fixed interval, so the schedule cannot phase-lock to a blink
+// period the way a fixed interval can; they sum to the requested 7500 ms span. Every one is at most
+// 510 ms, keeping 35 ms of the gate ceiling free: the settle-0 study observed achieved gaps up to
+// 30 ms above their request, a gap delta that folds in capture lag and backlog rather than measuring
+// either, and the earlier 538 ms maximum left only 7.45 ms.
+const BLINK_GAPS_MS = [470, 510, 478, 510, 483, 509, 486, 510, 492, 508, 510, 509, 510, 507, 508] as const
 const BLINK_SAMPLE_OFFSETS_MS: number[] = [0]
 let blinkOffsetMs = 0
 for (const gap of BLINK_GAPS_MS) {
@@ -97,6 +106,8 @@ export interface BlinkWitness {
   gapMaxMs?: number
   transitions: number
   halfPeriodMs?: number
+  /** A 50%-duty period of the declared class these capture times leave unseen at some phase (blink-coverage.ts). */
+  uncoveredPeriodMs?: number
 }
 
 export type BlinkSeriesVerdict =
@@ -104,7 +115,7 @@ export type BlinkSeriesVerdict =
   | { kind: "negative-decidable"; witness: BlinkWitness }
   | {
       kind: "open"
-      reason: "control-moved" | "fade-focus" | "capture-too-slow" | "changed-without-return"
+      reason: "control-moved" | "fade-focus" | "capture-too-slow" | "phase-uncovered" | "changed-without-return"
       witness: BlinkWitness
     }
 
@@ -113,7 +124,8 @@ export type BlinkSeriesVerdict =
  * control vetoes; a styled digest returning after a different one decides Supported at any rate;
  * a focus-qualified fade decides Supported; only inside the achieved-frames gate may at most one
  * change followed by stillness speak as a negative at all, and below the gate the series stays
- * open as capture too slow to decide blink. Live qualifications that are not in the series
+ * open as capture too slow to decide blink. Inside the gate, capture times that would miss some
+ * blink of the declared class stay open as phase not covered. Live qualifications that are not in the series
  * (input age, handled repaint) remain the caller's, after a negative-decidable verdict.
  * Exported for the stored-series replay tests, which cannot re-run a live capture schedule.
  */
@@ -154,11 +166,19 @@ export function blinkSeriesDecision(input: {
   if (fade) {
     return focusQualified ? { kind: "supported", witness } : { kind: "open", reason: "fade-focus", witness }
   }
-  const gateMissed =
-    styled.length < BLINK_MIN_FRAMES ||
-    witness.spanMs < BLINK_MIN_SPAN_MS ||
-    (witness.gapMaxMs !== undefined && witness.gapMaxMs > BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1))
-  if (gateMissed) return { kind: "open", reason: "capture-too-slow", witness }
+  if (styled.length < BLINK_MIN_FRAMES || witness.spanMs < BLINK_MIN_SPAN_MS) {
+    return { kind: "open", reason: "capture-too-slow", witness }
+  }
+  // A bounded gap does not establish phase coverage: samples whose phases lock to a period see one state
+  // throughout (#34549). A negative needs every member of the declared class to show a return.
+  const uncovered = uncoveredBlinkPeriod(capturedAt)
+  if (uncovered !== undefined) {
+    return {
+      kind: "open",
+      reason: "phase-uncovered",
+      witness: { ...witness, uncoveredPeriodMs: Math.round(uncovered * 1000) / 1000 },
+    }
+  }
   if (transitionAt.length <= 1) return { kind: "negative-decidable", witness }
   return { kind: "open", reason: "changed-without-return", witness }
 }
@@ -175,11 +195,25 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const { sequence, sample, row, col } = fixture
   const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
   const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
+  const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
   const geometry = ctx.captureGeometry?.geometry
-  const shoot = (role: "control" | "target", label: string, cells: CaptureCells, controlCells?: CaptureCells) =>
+  const shoot = (
+    role: "control" | "target",
+    label: string,
+    cells: CaptureCells,
+    controlCells?: CaptureCells,
+    keepClear?: readonly CaptureCells[],
+  ) =>
     capture(
       geometry
-        ? { role, label, cells, ...(controlCells ? { controlCells } : {}), pixelGeometry: geometry }
+        ? {
+            role,
+            label,
+            cells,
+            ...(controlCells ? { controlCells } : {}),
+            ...(keepClear !== undefined && keepClear.length > 0 ? { keepClear } : {}),
+            pixelGeometry: geometry,
+          }
         : { role, label },
     )
   // The plain line beside the styled text, cropped from the SAME shot: one window capture per
@@ -200,7 +234,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const screen = (styled: string) =>
     `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${styled}\x1b[0m\x1b[2;1H`
   ctx.write(screen(sample))
-  const control = await shoot("control", "Unstyled text sample", styledCells, plainCells)
+  const control = await shoot("control", "Unstyled text sample", styledCells, plainCells, [paintCells])
   const controlPlain = geometry ? plainFrameOf(control, "Plain line, control") : undefined
   type Focus = Awaited<ReturnType<NonNullable<NonNullable<TermProbeSource["input"]>["focusRoundTrip"]>>>
   let focusBefore: Focus | undefined
@@ -222,7 +256,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       keyRead = (
         await ctx.readInput(/^a$/, 1000, async () => {
           await input.injectKey("a")
-          keyAt = Date.now()
+          keyAt = sourceNow(ctx)
         })
       )?.[0]
     } catch (error) {
@@ -230,25 +264,29 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     }
   }
   ctx.write(screen(sequence + sample))
-  const paintCells = { top: 2, left: col, bottom: 2, right: col + sample.length - 1 }
+  const textRows = [plainCells, styledCells]
   const paintBefore =
-    geometry && focusBefore ? await shoot("control", "Third-region repaint baseline", paintCells) : undefined
+    geometry && focusBefore
+      ? await shoot("control", "Third-region repaint baseline", paintCells, undefined, textRows)
+      : undefined
   const samples: Array<{
     offsetMs: number
     invokedMs: number
     styled: ObservationFrame
     plain?: ObservationFrame
   }> = []
-  const start = Date.now()
+  // #30932 S2: the schedule reads the source's clock, so the recorder keeps it and a replay asks for the same samples.
+  const start = sourceNow(ctx)
   for (const offsetMs of BLINK_SAMPLE_OFFSETS_MS) {
-    const wait = start + offsetMs - Date.now()
+    const wait = start + offsetMs - sourceNow(ctx)
     if (wait > 0) await kittyWait(wait)
-    const invokedMs = Date.now() - start
+    const invokedMs = sourceNow(ctx) - start
     const styled = await shoot(
       "target",
       `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
       styledCells,
       plainCells,
+      [paintCells],
     )
     const plain = geometry ? plainFrameOf(styled, `Plain line, sample requested at +${String(offsetMs)} ms`) : undefined
     samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
@@ -372,6 +410,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       compared: set.map((frame) => ({
         role: frame.label,
         rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+        ...(frame.kind === "text-cells" || frame.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
       })),
       response: observed,
       frames,
@@ -433,7 +472,13 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   }
   if (decision.kind === "open" && decision.reason === "capture-too-slow") {
     return inconclusive(
-      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames, ${String(BLINK_MIN_SPAN_MS)} ms span and no gap above ${String(Math.floor(BLINK_MIN_SPAN_MS / (BLINK_MIN_FRAMES - 1)))} ms; at this achieved rate a blink and a one-way paint settle look the same`,
+      `capture too slow to decide blink: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) against a negative bound of ${String(BLINK_MIN_FRAMES)} frames spanning ${String(BLINK_MIN_SPAN_MS)} ms; with fewer frames or a shorter span a blink and a one-way paint settle look the same`,
+      witnessed,
+    )
+  }
+  if (decision.kind === "open" && decision.reason === "phase-uncovered") {
+    return inconclusive(
+      `blink phase not covered: ${String(witness.frames)} styled frames spanning ${String(witness.spanMs)} ms (${gapsWording}) would miss a 50%-duty blink of period ${String(witness.uncoveredPeriodMs)} ms at some phase; a negative needs these capture times to see a return of every 50%-duty blink with a period from ${String(BLINK_CLASS_MIN_PERIOD_MS)} to ${String(BLINK_CLASS_MAX_PERIOD_MS)} ms at every phase`,
       witnessed,
     )
   }
@@ -465,7 +510,13 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     )
   }
   ctx.write(`\x1b[0m\x1b[2;${String(col)}H${sample}\x1b[2;1H`)
-  const paintAfter = await shoot("target", "Third-region handled repaint after blink samples", paintCells)
+  const paintAfter = await shoot(
+    "target",
+    "Third-region handled repaint after blink samples",
+    paintCells,
+    undefined,
+    textRows,
+  )
   frames.push(paintAfter)
   const paintObserved = JSON.stringify({
     samples: JSON.parse(witnessed),
@@ -478,6 +529,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     compared: [paintBefore, paintAfter].map((frame) => ({
       role: frame?.label ?? "missing repaint baseline",
       rectangle: frame?.kind === "text-cells" ? undefined : frame?.regionRectangle,
+      ...(frame?.kind === "text-cells" || frame?.cellCrop === undefined ? {} : { crop: frame.cellCrop }),
     })),
     response: paintObserved,
     frames,
@@ -771,6 +823,7 @@ async function consumedSgr(
         `${encoding ? `${encoding}; ` : ""}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
+    if (pos.row === 1 && pos.col === 2) raiseRefusedCapture(ctx, note)
     return {
       pass: false,
       note,
@@ -834,6 +887,7 @@ async function consumedSgrReset(
         `${prefix}no parsable cursor position reply; the public projection returned null and retained no bytes`,
       )
     }
+    if (pos.row === 1 && pos.col === 3) raiseRefusedCapture(ctx, note)
     return {
       pass: false,
       note,
@@ -995,6 +1049,8 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
+    // 34554: 32-33 s on xterm/linux under fleet load, still capturing at the 30 s default. 45 s holds that cadence.
+    wallMs: 45_000,
   }
 }
 
@@ -1099,6 +1155,7 @@ async function consumedResetSgr(
       )
     }
     const advanced = pos.row === 1 && pos.col === 3
+    if (advanced) raiseRefusedCapture(ctx, "Cursor advance does not verify SGR reset")
     return {
       pass: false,
       response: `${pos.row};${pos.col}`,
@@ -1500,75 +1557,109 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   }
 }
 
+// 34567: the hosted macOS image moved 20261102.0473.1 to 20261112.0504.1, raising measured per-capture cost from
+// 0.912 s to 1.158 s (cmux; Cursor 0.851 to 1.067) with frame counts unchanged. The attribute rows below sat at 78 to
+// 96 percent of the 30 s default before the bump, so they were cut mid-capture. Each wall is that row's need x 1.20
+// headroom, rounded up to the next 15 s, where the need is the greater of its capture count x 1.158 s and its old
+// elapsed time scaled by its app's per-frame rise (a row can spend time outside its captures). 24 to 32 captures need
+// 45 s, sgr.underline.double needs 60 s (old cmux elapsed 30.0 s scales to 38.0 s, above its 37.1 s of captures),
+// 132 need 195 s. /hh/var/@dev-brain/collector-slow-1117.md.
 export const sgrProbes: ProbeDefinition[] = [
   // ── Attributes ──
 
-  sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }),
+  { ...sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }), wallMs: 45_000 },
 
-  sgrProbe(
-    "sgr.faint",
-    "\x1b[2m",
-    (cell) => (cell.dim == null ? null : cell.dim),
-    undefined,
-    { require: [2] },
-    "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.faint",
+      "\x1b[2m",
+      (cell) => (cell.dim == null ? null : cell.dim),
+      undefined,
+      { require: [2] },
+      "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.italic",
-    "\x1b[3m",
-    (cell) => (cell.italic == null ? null : cell.italic),
-    undefined,
-    { require: [3] },
-    "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.italic",
+      "\x1b[3m",
+      (cell) => (cell.italic == null ? null : cell.italic),
+      undefined,
+      { require: [3] },
+      "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
+    ),
+    wallMs: 45_000,
+  },
 
-  sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
+  {
+    ...sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.double",
-    "\x1b[21m",
-    (cell) => cell.underline === "double",
-    undefined,
-    { require: [21] },
-    "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.double",
+      "\x1b[21m",
+      (cell) => cell.underline === "double",
+      undefined,
+      { require: [21] },
+      "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
+    ),
+    // 60, not 45: the old cmux elapsed (30.0 s) scales to 38.0 s on the new image, more than this row's 32 captures
+    // x 1.158 s, and 38.0 x 1.20 rounds up past 45.
+    wallMs: 60_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.curly",
-    "\x1b[4:3m",
-    (cell) => cell.underline === "curly",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:3"],
-    },
-    "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.curly",
+      "\x1b[4:3m",
+      (cell) => cell.underline === "curly",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:3"],
+      },
+      "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
+    ),
+    // 34694 second fold: 32 captures, worst arm 44.7 s (VS Code) = 99 percent of the wall.
+    // 44.7 x 1.20 = 53.7 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.dotted",
-    "\x1b[4:4m",
-    (cell) => cell.underline === "dotted",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:4"],
-    },
-    "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.dotted",
+      "\x1b[4:4m",
+      (cell) => cell.underline === "dotted",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:4"],
+      },
+      "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
+    ),
+    // 34694 second fold: 32 captures, worst arm 39.8 s (Cursor); 39.8 x 1.20 = 47.8 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
-  sgrProbe(
-    "sgr.underline.dashed",
-    "\x1b[4:5m",
-    (cell) => cell.underline === "dashed",
-    undefined,
-    {
-      require: [4],
-      requireTokens: ["4:5"],
-    },
-    "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.underline.dashed",
+      "\x1b[4:5m",
+      (cell) => cell.underline === "dashed",
+      undefined,
+      {
+        require: [4],
+        requireTokens: ["4:5"],
+      },
+      "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
+    ),
+    // 34694 second fold: 32 captures, worst arm 40.8 s (Cursor); 40.8 x 1.20 = 48.9 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
   sgrProbe(
     "sgr.blink",
@@ -1580,39 +1671,54 @@ export const sgrProbes: ProbeDefinition[] = [
     blinkCapture,
   ),
 
-  sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
+  {
+    ...sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
+    wallMs: 45_000,
+  },
 
-  sgrProbe(
-    "sgr.hidden",
-    "\x1b[8m",
-    (cell) => (cell.hidden == null ? null : cell.hidden === true),
-    (cell) =>
-      cell.hidden == null
-        ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
-        : null,
-    { require: [8] },
-    "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.hidden",
+      "\x1b[8m",
+      (cell) => (cell.hidden == null ? null : cell.hidden === true),
+      (cell) =>
+        cell.hidden == null
+          ? "Open: our adapter for this library does not read hidden text from its screen cells yet, so our test cannot see hidden text."
+          : null,
+      { require: [8] },
+      "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
+    ),
+    // 34694 second fold: 32 captures, worst arm 41.0 s (Cursor); 41.0 x 1.20 = 49.2 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
-  sgrProbe(
-    "sgr.strikethrough",
-    "\x1b[9m",
-    (cell) => (cell.strikethrough == null ? null : cell.strikethrough),
-    undefined,
-    { require: [9] },
-    "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
-  ),
+  {
+    ...sgrProbe(
+      "sgr.strikethrough",
+      "\x1b[9m",
+      (cell) => (cell.strikethrough == null ? null : cell.strikethrough),
+      undefined,
+      { require: [9] },
+      "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
+    ),
+    // 34694 second fold: 32 captures, worst arm 39.5 s (Cursor); 39.5 x 1.20 = 47.4 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
-  sgrProbe(
-    "sgr.overline",
-    "\x1b[53m",
-    (cell) => (cell.overline == null ? null : cell.overline === true),
-    (cell) =>
-      cell.overline == null
-        ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
-        : null,
-    { require: [53] },
-  ),
+  {
+    ...sgrProbe(
+      "sgr.overline",
+      "\x1b[53m",
+      (cell) => (cell.overline == null ? null : cell.overline === true),
+      (cell) =>
+        cell.overline == null
+          ? "Open: our adapter for this library does not read overline from its screen cells yet, so our test cannot see overline."
+          : null,
+      { require: [53] },
+    ),
+    // 34694 second fold: 32 captures, worst arm 38.1 s (Cursor); 38.1 x 1.20 = 45.7 rounds up to 60 s.
+    wallMs: 60_000,
+  },
 
   // ── Underline color ──
 
@@ -1737,6 +1843,8 @@ export const sgrProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
+    // 34694 second fold: 32 captures, worst arm 37.7 s (Cursor); 37.7 x 1.20 = 45.3 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   rgbUnderlineProbe("sgr.underline-color-rgb"),
@@ -1850,6 +1958,8 @@ export const sgrProbes: ProbeDefinition[] = [
       ),
       null,
     ),
+    // 35128: 22 region captures at1.936 s plus20% need51.1 s.
+    wallMs: 60_000,
     termNeedsGeometry: true,
     libAssertionType: "buffer_state",
   },
@@ -1876,21 +1986,23 @@ export const sgrProbes: ProbeDefinition[] = [
       preserve: ["italic", "underline"],
       preserveMode: "any",
     }),
-    wallMs: 120_000,
+    // 35128: 132 captures at the observed1.936 s cadence plus20% need306.7 s.
+    wallMs: 315_000,
   },
 
-  resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]), wallMs: 60_000 },
 
-  resetProbe("sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", ["italic"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", ["italic"], ["bold"]), wallMs: 60_000 },
 
-  resetProbe("sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", ["inverse"], ["bold"]),
+  { ...resetProbe("sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", ["inverse"], ["bold"]), wallMs: 60_000 },
 
   // ── Full SGR reset ──
 
   // Run 42853381528: 72 captures at about 400ms, so the 30s wall cuts the probe mid-capture.
   {
     ...resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
-    wallMs: 120_000,
+    // 35128: same132-capture path and measured1.936 s cadence as reset.sgr.
+    wallMs: 315_000,
   },
 ]
 
@@ -1955,6 +2067,12 @@ export function finalizeVisualResult(
   recorded: ProbeResult,
   target: Pick<ProbeSubject, "kind"> & Partial<Pick<ProbeSubject, "outerTerminal">>,
   captures: readonly ObservationFrame[],
+  /**
+   * 34675 (@cto go-r2-1341): the row's recorded capture-geometry refusal, passed only by a pixel run's collector.
+   * When set, a paint row left without rendered evidence raises the named FrameUnavailable diagnostic for the
+   * caller to record, instead of an ordinary open result. Absent, nothing is inferred from a missing screenshot.
+   */
+  captureRefusal?: string,
 ): ProbeResult {
   const encoding = sgrColourEncoding(
     COLOUR_CAPTURE[recorded.featureId]?.edit ??
@@ -2066,6 +2184,7 @@ export function finalizeVisualResult(
     ? recorded.reason
     : `Selected ${encoding}${recorded.reason ? `; ${recorded.reason}` : ""}`
   const reason = encoding ? `${prior}; ${diagnostic}` : diagnostic
+  if (captureRefusal) throw refusedCaptureError(reason, captureRefusal)
   return finalizeProbeResult({
     ...recorded,
     reason,

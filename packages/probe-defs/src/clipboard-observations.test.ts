@@ -650,7 +650,7 @@ test.each([null, 0] as const)("App bracketed paste uses controlled effects after
   for (const [paste, expected] of [
     ["controlled", "supported"],
     ["raw", "unsupported"],
-    ["bracketed", "probe-invalid"],
+    ["bracketed", "probe-todo"],
   ] as const) {
     const { ctx } = pasteAndRead({ paste })
     const source = {
@@ -1405,5 +1405,253 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
         /^OSC 52 reply carried a value other than the independently written nonce \(length=12, sha256=[0-9a-f]{64}\)$/,
       ),
     })
+  })
+})
+
+// @cto 2026-11-13: a read's feature is the query, so the read leg carries a control. No control reply is a named
+// probe-todo (nothing measured the channel); a control reply with a silent query is unsupported (the feature is
+// absent in this configuration); and a profile reading names its profile and exact setting so it can never be read
+// as the default configuration a person gets when they open the app.
+describe("OSC 52 read leg control and profile naming", () => {
+  function readCallback() {
+    const found = ALL_PROBES.find((item) => item.id === "extensions.osc52-read")?.term
+    if (!found) throw new Error("OSC 52 read callback is missing")
+    return found
+  }
+
+  test("no control reply is probe-todo naming the control, never unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        queryCursorPosition: async () => null,
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "cursor-position control before the OSC 52 read",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("control answered and the query silent with a pinned deny default is unsupported, and names no profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "deny", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toBe(
+      "cursor-position control answered; OSC 52 c returned no reply; default deny: app docs, pinned version",
+    )
+  })
+
+  test("an ask default grades the same silence as probe-todo naming the unanswered prompt", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefault: { posture: "ask", source: "app docs, pinned version" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "default asks the user; the prompt was not answered",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("a read-granting profile grades silence unsupported even with no pinned default, and names the profile", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "allow", setting: "ghostty --clipboard-read=allow" },
+          }),
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(result.observation?.note).toContain("allow: ghostty --clipboard-read=allow")
+  })
+
+  test("an unpinned default grades the same silence as probe-todo naming the missing citation", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("default not established"),
+    })
+  })
+
+  test("a version refusal names both versions and never grades unsupported", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readDefaultRefusal: "default not established: this tree cites kitty 0.49.2, this run measured 0.49.1",
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: expect.stringContaining("this tree cites kitty 0.49.2, this run measured 0.49.1"),
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("a deny-read profile grades its own configured refusal, naming write-clipboard only", async () => {
+    const result = await readCallback()(
+      termSource({
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async () => {},
+            readProfile: { profile: "deny-read", setting: "kitty -o clipboard_control=write-clipboard" },
+          }),
+      }),
+    )
+    expect(result.tests?.[0]).toMatchObject({
+      status: "probe-todo",
+      reason: "deny-read profile: refusal configured by this run; grades nothing about the default",
+    })
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  })
+
+  test("an answered query passes and its note carries the profile and exact setting", async () => {
+    let seeded = ""
+    const result = await readCallback()(
+      termSource({
+        queryOutcome: async () => {
+          const raw = `\x1b]52;c;${btoa(seeded)}\x07`
+          return { match: [raw, btoa(seeded)], reason: "reply" as const, raw, rawBase64: "" }
+        },
+        withClipboardFixture: async (work) =>
+          work({
+            baseline: "baseline",
+            readText: async () => "baseline",
+            writeText: async (text) => {
+              seeded = text
+            },
+            readProfile: { profile: "allow", setting: "kitty clipboard_control=write-clipboard read-clipboard" },
+          }),
+      }),
+    )
+    expect(result.pass).toBe(true)
+    expect(result.observation?.note).toContain("allow: kitty clipboard_control=write-clipboard read-clipboard")
+  })
+})
+
+// #34932 (@cto scope ruling Nov 18): a cited "absent" default (WezTerm, no read setting) lets this run's own silence
+// decide, with the control and the exact-version qualification both required. The combined row reaches the same
+// decision only after its OSC 52 write was observed on the independent clipboard.
+describe("OSC 52 silence under a cited absent default, read row and combined row", () => {
+  const absent = { posture: "absent", source: "wezterm 458a100c1bf4 performer.rs:792" } as const
+  const callback = (id: "extensions.osc52-read" | "extensions.osc52-clipboard") => {
+    const found = ALL_PROBES.find((item) => item.id === id)?.term
+    if (!found) throw new Error(`${id} callback is missing`)
+    return found
+  }
+  // The terminal applies its own OSC 52 write to the clipboard when `writes` is true, answers CPR unless `control` is
+  // false for the read's control, and never answers the OSC 52 query.
+  function silentSource(options: {
+    writes?: boolean
+    control?: boolean
+    qualification?: Partial<ClipboardFixture>
+  }): TermProbeSource {
+    let clipboard = "baseline"
+    let own = ""
+    let cprs = 0
+    return termSource({
+      write(sequence) {
+        if (sequence.startsWith("\x1b]52;c;") && !sequence.includes(";?")) own = writtenNonce(sequence)
+      },
+      queryCursorPosition: async () => {
+        cprs += 1
+        if (options.writes && own) clipboard = own
+        // The combined row's first CPR is its write checkpoint; the read's control is the next one.
+        const isReadControl = own ? cprs > 1 : true
+        return isReadControl && options.control === false ? null : { row: 1, col: 1 }
+      },
+      withClipboardFixture: async (work) =>
+        work({
+          baseline: "baseline",
+          writeDeadlineMs: 30,
+          writePollMs: 5,
+          readText: async () => clipboard,
+          writeText: async (text) => {
+            clipboard = text
+          },
+          ...(options.qualification ?? { readDefault: absent }),
+        }),
+    })
+  }
+
+  test.each([
+    ["extensions.osc52-read", ""],
+    ["extensions.osc52-clipboard", "OSC 52 write observed on the independent clipboard; "],
+  ] as const)(
+    "%s: control answered, query silent, absent default cited: unsupported naming the citation",
+    async (id, lead) => {
+      const result = await callback(id)(silentSource({ writes: true }))
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      expect(result.observation?.note).toBe(
+        `${lead}cursor-position control answered; OSC 52 c returned no reply; default absent: ${absent.source}`,
+      )
+      expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    },
+  )
+
+  test.each(["extensions.osc52-read", "extensions.osc52-clipboard"] as const)(
+    "%s: the same silence without the read's control is probe-todo naming the control",
+    async (id) => {
+      const result = await callback(id)(silentSource({ writes: true, control: false }))
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests?.[0]).toMatchObject({ status: "probe-todo" })
+      expect(result.tests?.[0]?.reason).toContain("cursor-position control before the OSC 52 read")
+    },
+  )
+
+  test.each([
+    ["no citation", {}],
+    [
+      "another version's citation",
+      { readDefaultRefusal: "default not established: this tree cites wezterm A, this run measured B" },
+    ],
+  ] as const)("the same silence with %s decides neither row", async (_label, qualification) => {
+    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"] as const) {
+      const result = await callback(id)(silentSource({ writes: true, qualification }))
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests?.[0]).toMatchObject({ status: "probe-todo" })
+      expect(result.tests?.[0]?.reason).toContain("default not established")
+    }
+  })
+
+  test("a combined row whose write was never observed takes no read-negative shortcut", async () => {
+    const result = await callback("extensions.osc52-clipboard")(silentSource({ writes: false }))
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.observation?.assertionType).toBe("clipboard")
   })
 })

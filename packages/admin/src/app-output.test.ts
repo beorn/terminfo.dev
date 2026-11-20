@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { ENVIRONMENT_GROUP_IDS, type AppLaunchReceipt, type ProbeResult } from "@terminfo/probe-defs"
 import { handleApp } from "./app.ts"
-import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
+import { writeCollectedRun, retainCollectedRun, shadowCollectedRun } from "./collected-run.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import {
   createProbeRun,
@@ -65,8 +65,12 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   parseKittyIdentity: vi.fn(),
 }))
 vi.mock("./collected-run.ts", () => ({
-  writeCollectedRun: vi.fn(() => "/private/content/terminal-app.json"),
+  writeCollectedRun: vi.fn(() => ({
+    retained: "/private/http-responses/terminal-app.json",
+    placed: "/private/content/terminal-app.json",
+  })),
   retainCollectedRun: vi.fn(() => "/private/out/terminal-app.json"),
+  shadowCollectedRun: vi.fn(async () => {}),
 }))
 
 const window = { provider: "terminal-app" as const, windowId: 14, tty: "/dev/ttys003" }
@@ -180,6 +184,12 @@ describe("probe app --output", () => {
       expect(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(retainCollectedRun).mock.invocationCallOrder[0]!,
       )
+      // #30932 S2: the shadow replays the retained private run once, after the run is saved.
+      expect(shadowCollectedRun).toHaveBeenCalledOnce()
+      expect(shadowCollectedRun).toHaveBeenCalledWith("/private/out/terminal-app.json")
+      expect(vi.mocked(retainCollectedRun).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(shadowCollectedRun).mock.invocationCallOrder[0]!,
+      )
       const lines = log.mock.calls.map((call) => String(call[0]))
       log.mockRestore()
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
@@ -195,6 +205,9 @@ describe("probe app --output", () => {
     await handleApp("terminal-app", {})
     expect(writeCollectedRun).toHaveBeenCalledOnce()
     expect(retainCollectedRun).not.toHaveBeenCalled()
+    // The placed corpus copy is never the shadow's input: it reads the retained private run.
+    expect(shadowCollectedRun).toHaveBeenCalledOnce()
+    expect(shadowCollectedRun).toHaveBeenCalledWith("/private/http-responses/terminal-app.json")
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain(

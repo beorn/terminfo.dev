@@ -679,6 +679,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   const queries: string[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 37,
     cols: 61,
     write: (s) => writes.push(s),
@@ -702,6 +703,7 @@ function silentAppSource(rows: number, cols: number): { context: TermProbeSource
   const writes: string[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -828,6 +830,7 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     const writes: string[] = []
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 1,
       cols: 1,
       capture: async () => {
@@ -1186,6 +1189,7 @@ function captureApp(rows: number, cols: number) {
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -1418,6 +1422,7 @@ function regionReadbackApp(
   }
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => {
@@ -1629,6 +1634,8 @@ function viewportApplication(
     calAmbiguous?: boolean
     digest?: "missing" | "empty" | "missing-region"
     captureError?: boolean | "after-up"
+    /** A declared hold whose frames carry no measured witness (34163, @cto 2b). */
+    unresolvedHold?: boolean
     inputError?: boolean
     upError?: boolean
     wheelReturnError?: boolean
@@ -1781,6 +1788,14 @@ function viewportApplication(
   context.capture = async (request) => {
     if (options.captureError === true || (options.captureError === "after-up" && ups > 0)) {
       throw new Error("viewport capture failed")
+    }
+    if (options.unresolvedHold && request.scroll !== undefined) {
+      throw Object.assign(
+        new Error('no measured witness relates the base frame "constructed bottom reference" to this read'),
+        {
+          name: "CaptureHoldUnresolved",
+        },
+      )
     }
     assertCalibratedCaptureGeometry(context.captureGeometry, request)
     const inHoldPhase = hasTailSeed()
@@ -2046,6 +2061,18 @@ test.each([
   const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
   expectViewportTodo(result)
   expect(result.notTested?.noObservable).toContain("ambiguous frame")
+})
+
+// A hold with no measured witness has no origin to crop at, so the row records a reason and leaves
+// the cell todo rather than grading the terminal (34163, @cto 2b).
+test("app viewport records a named todo when a declared hold has no measured witness", async () => {
+  const app = viewportApplication(undefined, { unresolvedHold: true })
+  const result = await findScrollback("scrollback.viewport-hold-output").term!(app.context)
+  expect(result).toMatchObject({ pass: false })
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.notTested?.noObservable).toContain("viewport hold cannot be read")
+  expect(result.notTested?.noObservable).toContain("no measured witness")
+  expect(result.observation).toBeUndefined()
 })
 
 // Accepted prerequisite and calibration contract: mux contexts, missing I/O, or uncalibrated wheel motion withhold before target output.
@@ -2341,4 +2368,60 @@ test("app viewport returns to bottom when its first upward click moves then thro
   )
   expect(app.activity().downs).toBeGreaterThan(0)
   expect(app.activity().top).toBe(app.activity().bottom)
+})
+
+/**
+ * @failure The two owned-history scrollback rows read a count through the owned reader and drop its identity
+ *   receipt, so the row shows which program ran but not which pane was read (@cto 41fcd747).
+ * @level l1
+ * @consumer scrollback.accumulate and scrollback.total-lines through the public asynchronous source.
+ * @testonly none
+ */
+test("both owned-history scrollback rows carry the reader's pane receipt into their evidence", async () => {
+  const identity = JSON.stringify({
+    surface: "wezterm",
+    pane: "17",
+    listedTty: "ttys004",
+    measuredTty: "ttys004",
+    ttyMatch: true,
+    socketPresent: true,
+    executable: "wezterm",
+  })
+  for (const id of ["scrollback.accumulate", "scrollback.total-lines"] as const) {
+    const probe = scrollbackProbes.find((item) => item.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+    let reads = 0
+    const totals = [24, 24, 44]
+    const source: TermProbeSource = {
+      kind: "live",
+      now: () => Date.now(),
+      rows: 24,
+      cols: 80,
+      write() {},
+      queryCursorPosition: async () => ({ row: 24, col: 1 }),
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+      getScrollback: async () => {
+        const totalLines = totals[Math.min(reads, totals.length - 1)] ?? 24
+        reads += 1
+        return { viewportOffset: 0, totalLines, screenLines: 24, receipt: identity }
+      },
+    }
+    const result = (await probe.term(source)) as ProbeCallbackResult
+    expect(result.observation?.outcome, id).toBe("supported")
+    expect(reads, id).toBe(3)
+    // Baseline, control and the overflow read each carry it, so the row names the pane for every count.
+    const observed = JSON.parse(String(result.assertions?.[0]?.observed ?? "{}")) as {
+      baseline?: { receipt?: string }
+      control?: { receipt?: string }
+      scroll?: { receipt?: string }
+    }
+    expect(observed.baseline?.receipt, id).toBe(identity)
+    expect(observed.control?.receipt, id).toBe(identity)
+    expect(observed.scroll?.receipt, id).toBe(identity)
+  }
 })

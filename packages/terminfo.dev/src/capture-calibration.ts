@@ -7,7 +7,7 @@ import {
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { clearLine, cursorHome, cursorTo } from "@silvery/ansi"
-import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
+import { CAPTURE_COMMAND_DEADLINE, type CapturedFrame, type NamedTextOrigin } from "./capture-core.ts"
 
 function refusal(message: string, cause?: unknown): Error {
   const error = new Error(message, { cause })
@@ -19,6 +19,15 @@ function paintTimeout(message: string): Error {
   const error = new Error(message)
   error.name = "CapturePaintTimeout"
   return error
+}
+
+/**
+ * Whether a reverse witness stage ran out of time (#35058). The stage deadline is also the one each capture's
+ * own command steps receive, so it can expire inside a capture as well as between captures; either way the
+ * paint was not seen in time.
+ */
+function reverseStageTimedOut(cause: unknown): boolean {
+  return cause instanceof Error && (cause.name === "CapturePaintTimeout" || cause.name === CAPTURE_COMMAND_DEADLINE)
 }
 
 function validateFrame(frame: CapturedFrame): void {
@@ -229,6 +238,8 @@ function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, af
   const pixels = new Set<number>()
   for (let position = 0; position < length; position++) {
     const { line, paint } = positions(position)
+    let informative = false
+    let fractional = false
     for (let channel = 0; channel < 3; channel++) {
       const from = before.rgba[line + channel]
       const to = after.rgba[line + channel]
@@ -240,15 +251,35 @@ function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, af
         if (to !== from) return null
         continue
       }
+      informative = true
       const candidate = (to - from) / (paintChannel - from)
-      if (!(candidate > 0 && candidate < 1)) return null
-      if (alpha === undefined) alpha = candidate
-      else if (Math.abs(candidate - alpha) > 0.01) return null
-      if (Math.abs(to - (from + alpha * (paintChannel - from))) > 1) return null
+      if (candidate > 0 && candidate < 1) {
+        fractional = true
+        alpha ??= candidate
+      }
     }
+    // Rounding may put one component at an endpoint, but each changed pixel
+    // must itself witness fractional coverage; another pixel cannot supply it.
+    if (informative && !fractional) return null
     pixels.add((line / 4) | 0)
   }
   if (alpha === undefined) return null
+  // Infer first so an endpoint in an earlier RGB component is checked against
+  // the same actual fractional witness as every later component on the edge.
+  for (let position = 0; position < length; position++) {
+    const { line, paint } = positions(position)
+    for (let channel = 0; channel < 3; channel++) {
+      const from = before.rgba[line + channel]
+      const to = after.rgba[line + channel]
+      const paintChannel = after.rgba[paint + channel]
+      if (from === undefined || to === undefined || paintChannel === undefined) {
+        throw new Error(`Capture calibration frame is missing byte ${line + channel}`)
+      }
+      if (paintChannel === from) continue // Exact equality was checked before inference.
+      if (Math.abs((to - from) / (paintChannel - from) - alpha) > 0.01) return null
+      if (Math.abs(to - (from + alpha * (paintChannel - from))) > 1) return null
+    }
+  }
   return { edge, coordinate, alpha, pixels }
 }
 
@@ -313,8 +344,102 @@ function rectangle(frame: CapturedFrame, selected: (offset: number) => boolean):
   return { grid, fillets }
 }
 
-function rgbAt(frame: CapturedFrame, offset: number, rgb: readonly number[]): boolean {
-  return frame.rgba[offset] === rgb[0] && frame.rgba[offset + 1] === rgb[1] && frame.rgba[offset + 2] === rgb[2]
+const CLASS_RADIUS_MAX = 1
+const CLASS_SEPARATION_MIN = 16
+
+type RgbTriple = readonly [number, number, number]
+
+interface PaintColorClass {
+  readonly anchor: RgbTriple
+  readonly members: ReadonlySet<number>
+  readonly triples: readonly RgbTriple[]
+}
+
+export interface CalibratedPaintClass {
+  readonly anchor: RgbTriple
+  readonly members: ReadonlySet<number>
+}
+
+export interface CalibratedPaintClasses {
+  readonly background: CalibratedPaintClass
+  readonly sentinel: CalibratedPaintClass
+}
+
+/**
+ * The background and sentinel paint witnessed on calibration's own blank canvas while the reverse screen
+ * mode (DECSCNM) was set, or why no usable witness exists (#34932, @cto 34932-reverse-seam-ruling-2325 item 2). Collector-local,
+ * like the normal classes: it selects paint for a read and is never a frame or run fact.
+ */
+export type ReverseScreenWitness =
+  | {
+      readonly status: "witnessed"
+      readonly sentinel: CalibrationSentinel
+      readonly paintClasses: CalibratedPaintClasses
+    }
+  | { readonly status: "unavailable"; readonly reason: string }
+
+function packRgb(red: number, green: number, blue: number): number {
+  return (red << 16) | (green << 8) | blue
+}
+
+function unpackRgb(packed: number): RgbTriple {
+  return [(packed >> 16) & 255, (packed >> 8) & 255, packed & 255]
+}
+
+function chebyshevRgb(left: RgbTriple, right: RgbTriple): number {
+  return Math.max(Math.abs(left[0] - right[0]), Math.abs(left[1] - right[1]), Math.abs(left[2] - right[2]))
+}
+
+/**
+ * Paint is an opaque pixel whose RGB is a class member. A window's rounded corner can be drawn as alpha rather than
+ * as an opaque mask: hosted iTerm2 3.6.11 (run 44161536804) draws its bottom-left rim at alpha 0, 4, 70, 207 while the
+ * RGB stays the paint's, so an RGB-only test counted the alpha-4 pixel as paint and split the corner cut (34664).
+ * A pixel the window does not cover opaquely is outside its shape, so it joins the fillet instead. Linux frames carry
+ * no alpha channel and decode opaque.
+ */
+function inColorClass(frame: CapturedFrame, offset: number, colorClass: PaintColorClass): boolean {
+  if (frame.rgba[offset + 3] !== 255) return false
+  const red = frame.rgba[offset]
+  const green = frame.rgba[offset + 1]
+  const blue = frame.rgba[offset + 2]
+  if (red === undefined || green === undefined || blue === undefined) return false
+  return colorClass.members.has(packRgb(red, green, blue))
+}
+
+/**
+ * Occupied-member colour class anchored at `anchor` within Chebyshev radius R=1 (34480, @cto 34480-fresh-owner-contract-go-2141):
+ * only RGB triples actually present in `occupiedCounts` within one code per channel of `anchor` are admitted.
+ */
+function buildPaintColorClass(occupiedCounts: ReadonlyMap<number, number>, anchor: RgbTriple): PaintColorClass {
+  const members = new Set<number>([packRgb(anchor[0], anchor[1], anchor[2])])
+  for (const packed of occupiedCounts.keys()) {
+    if (chebyshevRgb(unpackRgb(packed), anchor) <= CLASS_RADIUS_MAX) members.add(packed)
+  }
+  return { anchor, members, triples: [...members].map(unpackRgb) }
+}
+
+function minClassDistance(left: PaintColorClass, right: PaintColorClass): number {
+  let min = Number.POSITIVE_INFINITY
+  for (const u of left.triples) {
+    for (const v of right.triples) {
+      const distance = chebyshevRgb(u, v)
+      if (distance < min) min = distance
+    }
+  }
+  return min
+}
+
+function localAnchor(occupiedCounts: ReadonlyMap<number, number>, seed: RgbTriple): RgbTriple {
+  let best = seed
+  let bestCount = -1
+  for (const [packed, count] of occupiedCounts.entries()) {
+    const rgb = unpackRgb(packed)
+    if (chebyshevRgb(rgb, seed) <= CLASS_RADIUS_MAX && count > bestCount) {
+      best = rgb
+      bestCount = count
+    }
+  }
+  return best
 }
 
 interface AxisScan {
@@ -355,7 +480,7 @@ function scanlineSizes(
   axis: "columns" | "rows",
   line: number,
   count: number,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): number[] {
   const edges = [0]
   let previous: boolean | undefined
@@ -363,8 +488,8 @@ function scanlineSizes(
     const x = grid.x + (scan.horizontal ? position : line)
     const y = grid.y + (scan.horizontal ? line : position)
     const offset = (y * frame.width + x) * 4
-    const red = rgbAt(frame, offset, colors[0])
-    if (!red && !rgbAt(frame, offset, colors[1])) {
+    const red = inColorClass(frame, offset, classes[0])
+    if (!red && !inColorClass(frame, offset, classes[1])) {
       throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
     }
     if (position === 0 && !red) {
@@ -426,7 +551,7 @@ function validatePaint(
   pitch: number,
   mask: ReadonlySet<number>,
   lead: 0 | 1,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): void {
   for (let line = 0; line < scan.across; line++) {
     for (let position = 0; position < scan.length; position++) {
@@ -439,8 +564,8 @@ function validatePaint(
       // boundary is offset by its one pixel.
       const cell = Math.min(count - 1, Math.floor((position + lead) / pitch))
       const expectsCalibration = cell % 2 === 0
-      const calibration = rgbAt(frame, offset, colors[0])
-      const blank = rgbAt(frame, offset, colors[1])
+      const calibration = inColorClass(frame, offset, classes[0])
+      const blank = inColorClass(frame, offset, classes[1])
       if (calibration === expectsCalibration && (calibration || blank)) continue
       const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
       throw refusal(
@@ -463,7 +588,7 @@ function stripeSize(
   count: number,
   filletMask: ReadonlySet<number>,
   lead: 0 | 1,
-  colors: readonly [readonly number[], readonly number[]],
+  classes: readonly [PaintColorClass, PaintColorClass],
 ): { pitch: number; clip: number } {
   validateFrame(frame)
   validateFrame(baseline)
@@ -474,7 +599,7 @@ function stripeSize(
   let reference: number[] | undefined
   for (let line = 0; line < scan.across; line++) {
     if (scanlineHasMask(grid, scan, line, filletMask, frame.width)) continue
-    const sizes = scanlineSizes(frame, grid, scan, axis, line, count, colors)
+    const sizes = scanlineSizes(frame, grid, scan, axis, line, count, classes)
     if (!reference) {
       reference = sizes
       continue
@@ -496,8 +621,180 @@ function stripeSize(
   // a line beside an already-full first stripe still refuses as a fractional pitch.
   const sizes = reference.map((size, index) => (index === 0 ? size + lead : size))
   const { pitch, clip } = acceptPitch(sizes, axis)
-  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead, colors)
+  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead, classes)
   return { pitch, clip }
+}
+
+const findSolidWitnessClass = (
+  before: CapturedFrame,
+  solid: CapturedFrame,
+): { witness: RgbTriple; witnessClass: PaintColorClass } => {
+  // The most frequent changed RGB anchors an R=1 occupied-member paint class (34480); the existing
+  // complete rectangle, outside-grid and stripe checks still prove its geometry or refuse it.
+  const colorsByCount = new Map<number, number>()
+  for (let offset = 0; offset < solid.rgba.length; offset += 4) {
+    if (
+      solid.rgba[offset] === before.rgba[offset] &&
+      solid.rgba[offset + 1] === before.rgba[offset + 1] &&
+      solid.rgba[offset + 2] === before.rgba[offset + 2]
+    ) {
+      continue
+    }
+    const r = solid.rgba[offset]
+    const g = solid.rgba[offset + 1]
+    const b = solid.rgba[offset + 2]
+    if (r === undefined || g === undefined || b === undefined) {
+      throw new Error(`Capture calibration solid frame is missing RGB bytes at ${offset}`)
+    }
+    const packed = packRgb(r, g, b)
+    colorsByCount.set(packed, (colorsByCount.get(packed) ?? 0) + 1)
+  }
+  const witnessPacked = [...colorsByCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (witnessPacked === undefined) throw refusal("Capture calibration solid grid: no changed pixels")
+  const witness = unpackRgb(witnessPacked)
+  const witnessClass = buildPaintColorClass(colorsByCount, witness)
+  for (let offset = 0; offset < before.rgba.length; offset += 4) {
+    if (inColorClass(before, offset, witnessClass)) {
+      throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
+    }
+  }
+  return { witness, witnessClass }
+}
+
+const shrinkEdgeBlendPerimeter = (
+  solidFrame: CapturedFrame,
+  before: CapturedFrame,
+  initial: { grid: CaptureRectangle; fillets: CornerFillet[] },
+  witness: RgbTriple,
+  witnessClass: PaintColorClass,
+): { grid: CaptureRectangle; fillets: CornerFillet[] } => {
+  let { grid, fillets } = initial
+  // A 1-pixel edge-blend line whose alpha rounds within 1 code of the paint (e.g. 240/241 of 241) falls inside R=1
+  // yet carries zero pixels of the exact anchor and satisfies `edgeBlend` against the adjacent interior line.
+  for (const edge of EDGES) {
+    const horizontal = edge === "top" || edge === "bottom"
+    if ((horizontal ? grid.height : grid.width) <= 1) continue
+    const fixed =
+      edge === "top"
+        ? grid.y
+        : edge === "bottom"
+          ? grid.y + grid.height - 1
+          : edge === "left"
+            ? grid.x
+            : grid.x + grid.width - 1
+    const length = horizontal ? grid.width : grid.height
+    let hasAnchor = false
+    for (let pos = 0; pos < length; pos++) {
+      const x = horizontal ? grid.x + pos : fixed
+      const y = horizontal ? fixed : grid.y + pos
+      const off = (y * solidFrame.width + x) * 4
+      if (
+        solidFrame.rgba[off] === witness[0] &&
+        solidFrame.rgba[off + 1] === witness[1] &&
+        solidFrame.rgba[off + 2] === witness[2]
+      ) {
+        hasAnchor = true
+        break
+      }
+    }
+    if (hasAnchor) continue
+    const shrunk: CaptureRectangle =
+      edge === "top"
+        ? { x: grid.x, y: grid.y + 1, width: grid.width, height: grid.height - 1 }
+        : edge === "bottom"
+          ? { x: grid.x, y: grid.y, width: grid.width, height: grid.height - 1 }
+          : edge === "left"
+            ? { x: grid.x + 1, y: grid.y, width: grid.width - 1, height: grid.height }
+            : { x: grid.x, y: grid.y, width: grid.width - 1, height: grid.height }
+    if (edgeBlend(edge, shrunk, before, solidFrame) !== null) {
+      ;({ grid, fillets } = rectangle(solidFrame, (offset) => {
+        const pixel = offset / 4
+        const x = pixel % solidFrame.width
+        const y = (pixel - x) / solidFrame.width
+        if (x < shrunk.x || x >= shrunk.x + shrunk.width || y < shrunk.y || y >= shrunk.y + shrunk.height) {
+          return false
+        }
+        return inColorClass(solidFrame, offset, witnessClass)
+      }))
+    }
+  }
+  return { grid, fillets }
+}
+
+const unmaskedOccupied = (
+  frame: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+): Map<number, number> => {
+  const occupied = new Map<number, number>()
+  for (let y = grid.y; y < grid.y + grid.height; y++) {
+    for (let x = grid.x; x < grid.x + grid.width; x++) {
+      const key = y * frame.width + x
+      if (filletMask.has(key)) continue
+      const offset = key * 4
+      const r = frame.rgba[offset]
+      const g = frame.rgba[offset + 1]
+      const b = frame.rgba[offset + 2]
+      if (r === undefined || g === undefined || b === undefined) {
+        throw new Error(`Capture calibration frame is missing RGB bytes at ${offset}`)
+      }
+      const packed = packRgb(r, g, b)
+      occupied.set(packed, (occupied.get(packed) ?? 0) + 1)
+    }
+  }
+  return occupied
+}
+
+const findColumnStripeClasses = (
+  columns: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+  columnOccupied: Map<number, number>,
+): [PaintColorClass, PaintColorClass] => {
+  for (let y = grid.y; y < grid.y + grid.height; y++) {
+    if (scanlineHasMask(grid, axisScan(grid, "columns"), y - grid.y, filletMask, columns.width)) continue
+    const first = (y * columns.width + grid.x) * 4
+    const firstSeed: RgbTriple = [columns.rgba[first] ?? 0, columns.rgba[first + 1] ?? 0, columns.rgba[first + 2] ?? 0]
+    const calClass = buildPaintColorClass(columnOccupied, localAnchor(columnOccupied, firstSeed))
+    for (let x = grid.x + 1; x < grid.x + grid.width; x++) {
+      const offset = (y * columns.width + x) * 4
+      if (!inColorClass(columns, offset, calClass)) {
+        const secondSeed: RgbTriple = [
+          columns.rgba[offset] ?? 0,
+          columns.rgba[offset + 1] ?? 0,
+          columns.rgba[offset + 2] ?? 0,
+        ]
+        const blankClass = buildPaintColorClass(columnOccupied, localAnchor(columnOccupied, secondSeed))
+        const separation = minClassDistance(calClass, blankClass)
+        if (separation < CLASS_SEPARATION_MIN) {
+          throw refusal(
+            `Capture calibration columns: stripe classes (${calClass.anchor.join(",")}) and (${blankClass.anchor.join(",")}) are separated by ${separation} < ${CLASS_SEPARATION_MIN} codes`,
+          )
+        }
+        return [calClass, blankClass]
+      }
+    }
+  }
+  throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
+}
+
+const findBackgroundPaintClass = (
+  before: CapturedFrame,
+  grid: CaptureRectangle,
+  filletMask: Set<number>,
+  witnessClass: PaintColorClass,
+): PaintColorClass => {
+  const beforeOccupied = unmaskedOccupied(before, grid, filletMask)
+  const backgroundPacked = [...beforeOccupied.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0]
+  if (backgroundPacked === undefined) throw refusal("Capture calibration before grid: no unmasked pixels")
+  const backgroundClass = buildPaintColorClass(beforeOccupied, unpackRgb(backgroundPacked))
+  const separation = minClassDistance(backgroundClass, witnessClass)
+  if (separation < CLASS_SEPARATION_MIN) {
+    throw refusal(
+      `Capture calibration solid: background class (${backgroundClass.anchor.join(",")}) and witness class (${witnessClass.anchor.join(",")}) are separated by ${separation} < ${CLASS_SEPARATION_MIN} codes`,
+    )
+  }
+  return backgroundClass
 }
 
 /** Same owned run, complete raster edges, exact integer geometry, witnessed identical restore. */
@@ -508,6 +805,7 @@ export async function calibrateCaptureOrigin({
   captureRaw,
   collectorLaunched = false,
   chromeBand,
+  screenMode,
 }: {
   ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
@@ -517,7 +815,16 @@ export async function calibrateCaptureOrigin({
   collectorLaunched?: boolean
   /** The terminal's declared self-repainting chrome strip; absent keeps the whole-window rule. */
   chromeBand?: CaptureChromeBand
-}): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }> {
+  /** Also witness the paint under this screen mode, on the same canvas and lifetime (@cto 34932-reverse-seam-ruling-2325). */
+  screenMode?: "reverse"
+}): Promise<
+  NamedTextOrigin & {
+    pixelGeometry: CapturePixelGeometry
+    sentinel: CalibrationSentinel
+    paintClasses?: CalibratedPaintClasses
+    reverseScreen?: ReverseScreenWitness
+  }
+> {
   if (
     chromeBand &&
     (!Number.isSafeInteger(chromeBand.y) ||
@@ -585,6 +892,8 @@ export async function calibrateCaptureOrigin({
   let failure: unknown
   // The band excuses nothing until it is proven clear of the witnessed grid; the restore match stays strict before that.
   let bandClearOfGrid = false
+  // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
+  let reverseSet = false
   const inBand = (y: number) => chromeBand !== undefined && y >= chromeBand.y && y < chromeBand.y + chromeBand.height
   /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
   const bandDifference = (
@@ -605,7 +914,14 @@ export async function calibrateCaptureOrigin({
     return { equalOutside: true, changed }
   }
   const excused: Array<{ stage: string; changed: number }> = []
-  let result: (NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; sentinel: CalibrationSentinel }) | undefined
+  let result:
+    | (NamedTextOrigin & {
+        pixelGeometry: CapturePixelGeometry
+        sentinel: CalibrationSentinel
+        paintClasses?: CalibratedPaintClasses
+        reverseScreen?: ReverseScreenWitness
+      })
+    | undefined
   const eraseVisibleGrid = collectorLaunched
     ? Array.from({ length: ctx.rows }, (_unused, row) => cursorTo(row, 0) + clearLine()).join("") + cursorHome()
     : "\x1b[2J\x1b[H"
@@ -635,35 +951,18 @@ export async function calibrateCaptureOrigin({
       }
     }
     if (!solid) throw refusal(`Capture calibration paint not observed: ${attempts.join("; ")}`, lastTimeout)
-    // The most frequent changed RGB is a candidate only; the existing complete rectangle,
-    // outside-grid and stripe checks still prove its geometry or refuse it.
-    const colorsByCount = new Map<string, number>()
-    for (let offset = 0; offset < solid.rgba.length; offset += 4) {
-      if (
-        solid.rgba[offset] === before.rgba[offset] &&
-        solid.rgba[offset + 1] === before.rgba[offset + 1] &&
-        solid.rgba[offset + 2] === before.rgba[offset + 2]
-      ) {
-        continue
-      }
-      const key = `${solid.rgba[offset]},${solid.rgba[offset + 1]},${solid.rgba[offset + 2]}`
-      colorsByCount.set(key, (colorsByCount.get(key) ?? 0) + 1)
-    }
-    const witnessKey = [...colorsByCount].sort((a, b) => b[1] - a[1])[0]?.[0]
-    if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
-    const witness = witnessKey.split(",").map(Number)
+    const { witness, witnessClass } = findSolidWitnessClass(before, solid)
     const [red, green, blue] = witness
-    if (red === undefined || green === undefined || blue === undefined) {
-      throw new Error(`Capture calibration solid grid colour ${witnessKey} is not one RGB colour`)
-    }
-    for (let offset = 0; offset < before.rgba.length; offset += 4) {
-      if (rgbAt(before, offset, witness)) {
-        throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
-      }
-    }
     const solidFrame = solid
-    const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
+    const { grid, fillets } = shrinkEdgeBlendPerimeter(
+      solidFrame,
+      before,
+      rectangle(solidFrame, (offset) => inColorClass(solidFrame, offset, witnessClass)),
+      witness,
+      witnessClass,
+    )
     const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
+    const backgroundClass = findBackgroundPaintClass(before, grid, filletMask, witnessClass)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
     if (chromeBand && chromeBand.y < grid.y + grid.height + 1 && chromeBand.y + chromeBand.height > grid.y - 1) {
       throw refusal(
@@ -715,22 +1014,8 @@ export async function calibrateCaptureOrigin({
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
     const columns = await confirmedFrame("column edge paint", () => true, solid)
-    // Determine both stripe colors from an unmasked complete scanline; the existing
-    // full-frame validation below rejects any extra or misplaced colors.
-    let colors: [number[], number[]] | undefined
-    for (let y = grid.y; y < grid.y + grid.height && !colors; y++) {
-      if (scanlineHasMask(grid, axisScan(grid, "columns"), y - grid.y, filletMask, columns.width)) continue
-      const first = (y * columns.width + grid.x) * 4
-      const paint = Array.from(columns.rgba.slice(first, first + 3))
-      for (let x = grid.x + 1; x < grid.x + grid.width; x++) {
-        const offset = (y * columns.width + x) * 4
-        if (!rgbAt(columns, offset, paint)) {
-          colors = [paint, Array.from(columns.rgba.slice(offset, offset + 3))]
-          break
-        }
-      }
-    }
-    if (!colors) throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
+    const columnOccupied = unmaskedOccupied(columns, grid, filletMask)
+    const columnClasses = findColumnStripeClasses(columns, grid, filletMask, columnOccupied)
     const columnBlends = outsideUnchanged(columns, "columns")
     const columnLine = leadingLine("columns", columnBlends)
     const columnLead: 0 | 1 = columnLine === null ? 0 : 1
@@ -742,10 +1027,22 @@ export async function calibrateCaptureOrigin({
       ctx.cols,
       filletMask,
       columnLead,
-      colors,
+      columnClasses,
     )
     paintGrid("rows", form)
     const rows = await confirmedFrame("row edge paint", () => true, columns)
+    // Rows inherit the columns' anchors while admitting their own observed dither phases (@cto 34480-fresh-owner-contract-go-2141).
+    const rowOccupied = unmaskedOccupied(rows, grid, filletMask)
+    const rowClasses: [PaintColorClass, PaintColorClass] = [
+      buildPaintColorClass(rowOccupied, columnClasses[0].anchor),
+      buildPaintColorClass(rowOccupied, columnClasses[1].anchor),
+    ]
+    const rowSeparation = minClassDistance(rowClasses[0], rowClasses[1])
+    if (rowSeparation < CLASS_SEPARATION_MIN) {
+      throw refusal(
+        `Capture calibration rows: stripe classes (${rowClasses[0].anchor.join(",")}) and (${rowClasses[1].anchor.join(",")}) are separated by ${rowSeparation} < ${CLASS_SEPARATION_MIN} codes`,
+      )
+    }
     const rowBlends = outsideUnchanged(rows, "rows")
     const rowLine = leadingLine("rows", rowBlends)
     const rowLead: 0 | 1 = rowLine === null ? 0 : 1
@@ -757,7 +1054,7 @@ export async function calibrateCaptureOrigin({
       ctx.rows,
       filletMask,
       rowLead,
-      colors,
+      rowClasses,
     )
     // The reported text area is the pitch times the count, not the visible length: a clipped last
     // stripe is shorter than a cell on screen but still occupies a whole cell of the text area.
@@ -769,6 +1066,114 @@ export async function calibrateCaptureOrigin({
       throw refusal(
         `Capture calibration reported geometry ${JSON.stringify(pixelGeometry)} disagrees with witnessed grid ${JSON.stringify(measured)}`,
       )
+    }
+    // #34932 (@cto 34932-reverse-seam-ruling-2325 items 2-3): on this same blank canvas and lifetime, normal -> reverse -> normal.
+    // The witness is the paint the sentinel path really uses under the mode, never an inverted RGB, and it is
+    // always the witnessed reverse pair (equal to the normal one when the mode leaves that paint unchanged).
+    // Paint the mode leaves equal is witnessed too (@cto 34932-equal-paint-amendment-0443, amending item 2): a
+    // blank confirmed equal to the normal blank and a freshly painted, confirmed sentinel, both measured under the
+    // mode, whose classes match the normal pair. It is never copied, and says nothing about feature support; the
+    // probe still decides that. An unconfirmed blank or paint, a sentinel that differs from the normal pair on an
+    // equal blank, or an ambiguous witness is a named unavailable outcome; a failed return to the normal paint
+    // invalidates the whole calibration.
+    let reverseScreen: ReverseScreenWitness | undefined
+    let reversePaintEqual = false
+    if (screenMode === "reverse") {
+      const rowsFrame = rows
+      reverseSet = true
+      ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5h`)
+      reverseScreen = await (async (): Promise<ReverseScreenWitness> => {
+        let reverseBlank: CapturedFrame
+        try {
+          reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame))
+        } catch (cause) {
+          if (!reverseStageTimedOut(cause)) throw cause
+          return {
+            status: "unavailable",
+            reason: "reverse screen blank canvas was not confirmed after DECSCNM was set",
+          }
+        }
+        const canvasUnchanged = equal(reverseBlank, before)
+        paintGrid("solid", form)
+        let reverseSolid: CapturedFrame
+        try {
+          reverseSolid = await confirmedFrame("reverse screen solid paint", () => true, reverseBlank)
+        } catch (cause) {
+          if (!reverseStageTimedOut(cause)) throw cause
+          return {
+            status: "unavailable",
+            reason: `reverse screen sentinel paint (${form}) was not observed on the reversed blank canvas`,
+          }
+        }
+        try {
+          const reversed = findSolidWitnessClass(reverseBlank, reverseSolid)
+          const painted = reverseSolid
+          const shrunk = shrinkEdgeBlendPerimeter(
+            painted,
+            reverseBlank,
+            rectangle(painted, (offset) => inColorClass(painted, offset, reversed.witnessClass)),
+            reversed.witness,
+            reversed.witnessClass,
+          )
+          const at = (rectangle: CaptureRectangle) =>
+            `${rectangle.width}x${rectangle.height} at ${rectangle.x},${rectangle.y}`
+          if (
+            shrunk.grid.x !== grid.x ||
+            shrunk.grid.y !== grid.y ||
+            shrunk.grid.width !== grid.width ||
+            shrunk.grid.height !== grid.height
+          ) {
+            return {
+              status: "unavailable",
+              reason: `reverse screen sentinel paint covers ${at(shrunk.grid)}, not the normal grid ${at(grid)}`,
+            }
+          }
+          const reverseFillets = dilateFilletMask(shrunk.fillets, shrunk.grid, painted.width)
+          // The existing within-pair separation rule; no rule between the normal and the reverse pair.
+          const background = findBackgroundPaintClass(reverseBlank, shrunk.grid, reverseFillets, reversed.witnessClass)
+          const [r, g, b] = reversed.witness
+          if (canvasUnchanged) {
+            const sameClass = (left: PaintColorClass, right: PaintColorClass) =>
+              packRgb(...left.anchor) === packRgb(...right.anchor) &&
+              left.members.size === right.members.size &&
+              [...left.members].every((member) => right.members.has(member))
+            if (!sameClass(background, backgroundClass) || !sameClass(reversed.witnessClass, witnessClass)) {
+              return {
+                status: "unavailable",
+                reason:
+                  "reverse screen blank stayed equal to the normal blank, but its measured sentinel paint classes differ from the normal pair",
+              }
+            }
+            reversePaintEqual = true
+          }
+          return {
+            status: "witnessed",
+            sentinel: { form, rgb: [r, g, b] },
+            paintClasses: {
+              background: { anchor: background.anchor, members: background.members },
+              sentinel: { anchor: reversed.witnessClass.anchor, members: reversed.witnessClass.members },
+            },
+          }
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "CaptureCalibrationRefused") throw cause
+          return { status: "unavailable", reason: `reverse screen witness ambiguous: ${cause.message}` }
+        }
+      })()
+      // Item 3: reset the mode and prove the NORMAL sentinel paint returns before anything installs.
+      ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5l`)
+      paintGrid("solid", form)
+      const normalSolid = solidFrame
+      try {
+        await confirmedFrame("reverse screen return", (frame) =>
+          bandClearOfGrid ? bandDifference(frame, normalSolid).equalOutside : equal(frame, normalSolid),
+        )
+      } catch (cause) {
+        if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+        throw refusal(
+          "Capture calibration reverse screen: the normal sentinel paint did not return after DECSCNM was reset, so this calibration is invalid",
+          cause,
+        )
+      }
     }
     const filletTrace =
       fillets.length === 0
@@ -808,6 +1213,7 @@ export async function calibrateCaptureOrigin({
                 `${stage} ${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
             )
             .join(", ")}`
+    const classTrace = `; paint classes R<=${CLASS_RADIUS_MAX} G>=${CLASS_SEPARATION_MIN} (solid ${witnessClass.members.size}, columns ${columnClasses[0].members.size}/${columnClasses[1].members.size}, rows ${rowClasses[0].members.size}/${rowClasses[1].members.size} occupied triples)`
     const restoreTrace = chromeBand ? "restore identical outside the declared chrome band" : "identical restore"
     // Last, so the restore stage's own excused count (added after the restore is confirmed) reads in sequence.
     const bandTrace = chromeBand
@@ -815,10 +1221,19 @@ export async function calibrateCaptureOrigin({
       : ""
     result = {
       origin: { x: authored.x, y: authored.y },
+      // 33982: the settled name of this measurement, beside the prose below. A frame whose origin
+      // came from calibration and one whose origin came from a located sentinel are different
+      // measurements; comparing them as one would count one measurement twice.
+      basisKind: "calibration witnessed raster",
       pixelGeometry: measured,
       sentinel: { form, rgb: [red, green, blue] },
+      paintClasses: {
+        background: { anchor: backgroundClass.anchor, members: backgroundClass.members },
+        sentinel: { anchor: witnessClass.anchor, members: witnessClass.members },
+      },
+      ...(reverseScreen === undefined ? {} : { reverseScreen }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {
@@ -828,7 +1243,7 @@ export async function calibrateCaptureOrigin({
     try {
       let surfaceFailure: unknown
       try {
-        ctx.write(`\x1b[0m${eraseVisibleGrid}`)
+        ctx.write(`\x1b[0m${reverseSet ? "\x1b[?5l" : ""}${eraseVisibleGrid}`)
         if (!baseline) {
           throw new Error(
             failure === undefined

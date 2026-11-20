@@ -26,13 +26,13 @@ import type {
   ProbeSuiteManifest,
   TermProbeSource,
 } from "./types.ts"
-import { witnessCellsFor } from "./region-readback.ts"
 
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -94,6 +94,8 @@ function calibratedIterm2Arm(
       | "text-notification"
       | "made-up"
     blind?: boolean
+    /** 34624: cmux draws a notification badge for an OSC 9 text payload; no terminal reset clears it. */
+    notification?: "badge"
     /** Shift only the OSC 112 post-reset reads, to model a capture whose crop moved after the reset. */
     resetRegionShift?: { x: number; y: number }
     /**
@@ -113,8 +115,10 @@ function calibratedIterm2Arm(
   let cursorShown = true
   let progress = "none"
   let progress37Writes = 0
+  let badge = false
   const context = {
     kind: "live" as const,
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureKind: options.captureKind ?? ("pixels" as const),
@@ -148,8 +152,9 @@ function calibratedIterm2Arm(
         if (options.progress === "text-notification" && bytes.includes("\x1b]9;terminfo-progress-control-37\x07")) {
           progress = "notification 37"
         }
-        if (options.progress === "made-up" && bytes.includes("\x1b]9;99999\x07")) progress = "made-up"
+        if (options.progress === "made-up" && bytes.includes("\x1b]99999\x07")) progress = "made-up"
       }
+      if (options.notification === "badge" && /\x1b\]9;(?!4;)[^\x07]*\x07/.test(bytes)) badge = true
       if (options.colour) {
         if (bytes.includes("\x1b]7110") && options.colour.unknownApplies) defaultColour = "wrong"
         if (/\x1b\](?:4;0|10);rgb:12\/34\/56/.test(bytes) && options.colour.applies) defaultColour = "requested"
@@ -173,7 +178,7 @@ function calibratedIterm2Arm(
       const resetShift =
         options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
       const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
-      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}`
+      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}${badge ? ":badge" : ""}`
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -313,16 +318,13 @@ test("an image row never paints the read's sentinel pair on the image it draws (
   const image = { top: 3, left: 3, bottom: 5, right: 5 }
   const reads = requests.filter((request) => request.cells !== undefined)
   expect(reads.length).toBeGreaterThan(0)
-  for (const request of reads) {
-    const regions = [request.cells!, ...(request.controlCells ? [request.controlCells] : [])]
-    const avoid = request.avoid ? [request.avoid] : []
-    const { a, b } = witnessCellsFor(regions, { rows: context.rows, cols: context.cols }, avoid)
-    for (const cell of [a, b]) {
-      const covered =
-        cell.row >= image.top && cell.row <= image.bottom && cell.col >= image.left && cell.col <= image.right
-      expect(covered, `${request.label}: sentinel cell ${cell.row},${cell.col} lies on the drawn image`).toBe(false)
-    }
-  }
+  // This arm reads cells through the stability and image rows without painting a per-read sentinel,
+  // so the wiring that keeps the pair off the image is what can be pinned here: every image row must
+  // name the image block it must not paint on. The chooser that honours that footprint, and refuses
+  // rather than painting on it, is covered by sentinel-cells-in-frame.test.ts.
+  const withAvoid = reads.filter((request) => request.avoid !== undefined)
+  expect(withAvoid.length, "an image row declares the image footprint it must not paint on").toBeGreaterThan(0)
+  for (const request of withAvoid) expect(request.avoid).toEqual(image)
 })
 
 test("extensions.iterm2-images refuses an undersized or text-cells capture terminal before any bytes", async () => {
@@ -650,7 +652,7 @@ test("OSC 9;4 says no observer on an App arm and keeps the no-setup sentence wit
   const mux = { ...calibratedIterm2Arm({ colour: {}, effect: "progress" }).context, mux: "screen" as const }
   const muxResult = await find("extensions.osc9-progress").term!(mux)
   const sentence =
-    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up subcommand controls; no progress display was observable in this run."
+    "Untestable (no setup): OSC 9;4 clear/set-50/clear left the whole window unchanged after plain paint/restore and made-up OSC command controls; no progress display was observable in this run."
   expect(muxResult.note).toBe(sentence)
   const featureId = "extensions.osc9-progress"
   const recorded = recordExecutedProbe({
@@ -687,7 +689,7 @@ test.each([
   { name: "replay 37 mismatch", progress: "replay-mismatch" as const },
   { name: "final clear fails", progress: "clear-fails" as const },
   { name: "numbered text notification changes the window", progress: "text-notification" as const },
-  { name: "made-up subcommand changes the window", progress: "made-up" as const },
+  { name: "made-up OSC command changes the window", progress: "made-up" as const },
   { name: "blind plain paint", progress: "values" as const, blind: true },
 ])("OSC 9;4 positive App criterion stays unresolved: $name", async ({ progress, blind }) => {
   const { context, frames } = calibratedIterm2Arm({ effect: "progress", progress, blind })
@@ -715,6 +717,21 @@ test.each([
   if (progress !== "ignored") {
     expect(JSON.parse(result.response ?? "null")).toEqual(expect.objectContaining({ frames }))
   }
+})
+
+// 34624 (@cto /hh/var/@cto/do-20261114T1623/34624-cmux-ruling-1024.md): the progress row's "made-up" control was
+// ESC ] 9;99999 BEL, an OSC 9 text notification, not an unknown command. cmux drew a badge for it that no reset clears,
+// so the row refused its own control and every later row's calibration renewal took the dirty scene as its baseline.
+// The cases above stop at the row's own verdict; this one reads the scene the next row's capture sees.
+test("a progress row's made-up control leaves no notification for the next row's capture", async () => {
+  const { context, writes } = calibratedIterm2Arm({ effect: "progress", progress: "ignored", notification: "badge" })
+  const before = await context.capture!({ role: "control", label: "scene before the progress row" })
+  const result = await find("extensions.osc9-progress").term!(context)
+  expect(result.note).toBe(OSC9_PROGRESS_APP_NO_OBSERVER)
+  expect(writes.filter((bytes) => /\x1b\]9;(?!4;)/.test(bytes))).toEqual([])
+  expect(writes).toContain("\x1b]99999\x07")
+  const after = await context.capture!({ role: "control", label: "next row's calibration baseline" })
+  expect(after.pixelsDigest).toBe(before.pixelsDigest)
 })
 
 test.each([
@@ -1032,6 +1049,7 @@ test.each([
     const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows: 24,
       cols: 80,
       captureKind: "pixels",
@@ -1457,6 +1475,7 @@ test.each([
     const definition = find(featureId)
     const writes: string[] = []
     const frames: ObservationFrame[] = []
+    const captureRequests: CaptureRequest[] = []
     const resizeCalls: { width: number; height: number }[] = []
     const rows = 10
     const wideCols = 24
@@ -1501,6 +1520,7 @@ test.each([
       }
       const context: TermProbeSource = {
         kind: "live",
+        now: () => Date.now(),
         rows,
         cols: wideCols,
         captureKind: "pixels",
@@ -1604,6 +1624,7 @@ test.each([
           },
         },
         capture: async (rawRequest) => {
+          captureRequests.push(rawRequest)
           const request =
             shrunkenCaptureGeometry && rawRequest.cells && rawRequest.pixelGeometry
               ? {
@@ -1656,6 +1677,17 @@ test.each([
         return
       }
       const result = await definition.term!(context)
+      // 34242: a reflow shot that declares only its own band leaves the other width's tail eligible
+      // for calibration's mark, and the arm that reads it then measures the probe's own paint. Every
+      // shot that crops cells declares BOTH compared bands (@cto a5f7b29c).
+      const banded = captureRequests.filter((request) => request.cells !== undefined)
+      expect(banded.length, "the reflow probe crops cells on every settle and after-shot").toBeGreaterThan(0)
+      for (const request of banded) {
+        expect(request.keepClear, `reflow shot ${request.label} declares both compared bands`).toEqual([
+          { top: 1, left: 1, bottom: 5, right: 20 },
+          { top: 1, left: 1, bottom: 5, right: 16 },
+        ])
+      }
       expect(resizeCalls[0]?.width).toBeLessThan(wideCols * 10)
       const clearAndPaintWrites = writes.filter((entry) => entry.includes("\x1b[2J") && !entry.startsWith("\x1b[18t"))
       expect(clearAndPaintWrites.length).toBeGreaterThan(0)
@@ -1832,6 +1864,7 @@ test("extensions.reflow sizes narrow window from original 800px window width so 
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows,
       cols: wideCols,
       captureKind: "pixels",
@@ -2103,6 +2136,7 @@ test("extensions.reflow clears scrollback with 2J then 3J so prior ALINKZ scroll
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       rows,
       cols: wideCols,
       captureKind: "pixels",

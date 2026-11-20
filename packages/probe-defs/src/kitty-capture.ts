@@ -15,6 +15,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import type { CaptureLayoutGuard } from "./types.ts"
 
 /** The image block: two cells square, placed away from the cursor column. */
 export const KITTY_BLOCK_ROWS = 2
@@ -68,9 +69,6 @@ export const KITTY_GAP_MS = 250
 
 /** Playback is read after at least this multiple of the gap (the spec's own settle advice). */
 export const KITTY_WAIT_FACTOR = 1.5
-
-/** A first equal pair is retried at this multiple of the gap before any negative. */
-export const KITTY_RETRY_FACTOR = 2
 
 /**
  * Loop count, always explicit: `v=1` loops forever, `v=0` is ignored by the protocol, and the table's
@@ -226,6 +224,11 @@ export function kittyDeleteImage(imageId: number): string {
   return `\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`
 }
 
+/** Remove this image's placements and keep its data, so the same allocation can be placed again. */
+export function kittyDeletePlacements(imageId: number): string {
+  return `\x1b_Ga=d,d=i,i=${imageId},q=2\x1b\\`
+}
+
 /**
  * The placeholder code point and the diacritics the protocol's own example pins: U+0305 is 0,
  * U+030D is 1 and U+030E is 2. A 2x2 grid needs only 0 and 1.
@@ -307,7 +310,7 @@ export type KittyDigestPair = readonly [string | undefined, string | undefined]
 export interface KittyAnimationEvidence {
   /** Arm 1, terminal-driven playback: the two frames with no write between them. */
   readonly playback: KittyDigestPair
-  /** Arm 1's retry at twice the gap, only taken when the first pair was equal. */
+  /** Arm 1's later samples (sampleKittyPlayback), only taken when the first pair was equal: the second and the last. */
   readonly retry: KittyDigestPair | null
   /** Client-driven frame selection: must differ for a positive animation result. */
   readonly clientFrame: KittyDigestPair
@@ -334,6 +337,76 @@ export interface KittyCaptureDecision {
   readonly decidedBy: string
 }
 
+/** The most playback captures one read takes, the first included (34792). */
+export const KITTY_PLAYBACK_SAMPLES = 5
+
+/** One playback capture: its region digest, when it completed, and how long the capture itself took. */
+export interface KittyPlaybackSample<F> {
+  readonly frame: F
+  readonly digest: string | undefined
+  readonly completedAtMs: number
+  readonly captureMs: number
+}
+
+/** A playback read: every sample, and the pair and retry the decision table compares. */
+export interface KittyPlaybackRead<F> {
+  readonly samples: readonly KittyPlaybackSample<F>[]
+  /** The last sample taken: the first that differed, the one with no digest, or the final one. */
+  readonly last: KittyPlaybackSample<F>
+  /** The first two samples. */
+  readonly playback: KittyDigestPair
+  /** Taken only when the first two were equal: the second sample and the last one taken. */
+  readonly retry: KittyDigestPair | null
+  /** Milliseconds between the first two captures' completions. */
+  readonly elapsedMs: number
+}
+
+/**
+ * The wait after a playback capture (34792). A capture takes 400-600 ms, more than a whole frame, so the capture's
+ * own duration, not a fixed wait, decides which frame the next one lands on. The wait is chosen so that if the next
+ * capture takes as long as this one did, it completes an odd number of frame gaps later, on the other frame. A
+ * capture that runs longer or shorter by e lands on the other frame unless the phase sits within e of a frame
+ * boundary, so several samples, each re-measured, make an equal set the result of repeated jitter, not of phase.
+ */
+export function kittyPlaybackWait(captureMs: number): number {
+  const period = 2 * KITTY_GAP_MS
+  return (((KITTY_GAP_MS - Math.round(captureMs)) % period) + period) % period
+}
+
+/**
+ * Sample terminal-driven playback (34792): capture, wait (kittyPlaybackWait, measured from this capture's
+ * completion), capture again, until a digest differs from the first, a capture has no region digest, or
+ * KITTY_PLAYBACK_SAMPLES captures were taken. Every sample keeps its completion time and capture duration.
+ */
+export async function sampleKittyPlayback<F extends { readonly regionDigest?: string | undefined }>(io: {
+  readonly shoot: (index: number) => Promise<F>
+  readonly wait: (ms: number) => Promise<void>
+  readonly now: () => number
+}): Promise<KittyPlaybackRead<F>> {
+  const take = async (index: number): Promise<KittyPlaybackSample<F>> => {
+    const started = io.now()
+    const frame = await io.shoot(index)
+    const completedAtMs = io.now()
+    return { frame, digest: frame.regionDigest, completedAtMs, captureMs: completedAtMs - started }
+  }
+  const first = await take(0)
+  const samples: KittyPlaybackSample<F>[] = [first]
+  let last = first
+  while (samples.length < KITTY_PLAYBACK_SAMPLES && last.digest !== undefined && last.digest === first.digest) {
+    await io.wait(kittyPlaybackWait(last.captureMs))
+    last = await take(samples.length)
+    samples.push(last)
+  }
+  const second = samples[1]
+  return {
+    samples,
+    last,
+    playback: [first.digest, second?.digest],
+    retry: second !== undefined && samples.length > 2 ? [second.digest, last.digest] : null,
+    elapsedMs: second ? second.completedAtMs - first.completedAtMs : 0,
+  }
+}
+
 function pairNames(pair: KittyDigestPair): string {
   return `${pair[0] ?? "none"}/${pair[1] ?? "none"}`
 }
@@ -341,7 +414,7 @@ function pairNames(pair: KittyDigestPair): string {
 /**
  * The animation decision table, one branch per control so a failed control names itself. Two frames
  * that agree are never a negative until the pipeline and the surface are both shown alive and the
- * pair is retried at twice the gap, with a refusal of the tested animation command.
+ * pair is sampled again (sampleKittyPlayback), with a refusal of the tested animation command.
  */
 export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCaptureDecision {
   const missing = (
@@ -407,14 +480,14 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
   if (evidence.retry === null) {
     return {
       outcome: "inconclusive",
-      note: `Kitty animation: the playback pair was equal (${pairNames(evidence.playback)}) and the retry at twice the gap was not performed`,
+      note: `Kitty animation: the playback pair was equal (${pairNames(evidence.playback)}) and no later sample was taken`,
       decidedBy: "a missing retry",
     }
   }
   if (retryChanged) {
     return {
       outcome: "supported",
-      note: `Kitty animation: terminal-driven playback advanced on the retry at twice the gap (${pairNames(evidence.retry)}), so the first pair was timing, not absence`,
+      note: `Kitty animation: terminal-driven playback advanced on a later sample (${pairNames(evidence.retry)}), so the first pair was timing, not absence`,
       decidedBy: "two target frames of one run on the retried interval",
     }
   }
@@ -465,7 +538,7 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyCap
   }
   return {
     outcome: "unsupported",
-    note: `Kitty animation: the playback image matches the verified one-frame image and two captures at twice the gap were equal (${pairNames(evidence.retry)}); hand selection ${evidence.clientFrame[0] === evidence.clientFrame[1] ? "did not change" : "changed"} the rectangle, and the terminal refused the tested animation command: ${evidence.refusal}`,
+    note: `Kitty animation: the playback image matches the verified one-frame image and every later sample was equal (${pairNames(evidence.retry)}); hand selection ${evidence.clientFrame[0] === evidence.clientFrame[1] ? "did not change" : "changed"} the rectangle, and the terminal refused the tested animation command: ${evidence.refusal}`,
     decidedBy: "the animation-command refusal, with an equal retry and static image setup qualified",
   }
 }
@@ -482,6 +555,12 @@ export interface KittyPlaceholderEvidence {
    * reflows when the image arrives fails it by name instead of being graded on a moved rectangle.
    */
   readonly guard: KittyDigestPair
+  /**
+   * The collector's bounded comparison of the two guard crops (#34932, @cto 34932-five-criteria-ruling-2216
+   * item 5): each RGB channel within 1, exact alpha, identical witnessed background/ink mask. Consulted only
+   * when the raw guard digests differ; both raw digests are kept either way.
+   */
+  readonly guardComparison?: CaptureLayoutGuard
   /** A captured blank rectangle, before the ordinary placement paints it. */
   readonly blank: string | undefined
   /** The ordinary `a=p` placement of the same pixels in the same rectangle. */
@@ -545,13 +624,23 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "the cell readback veto",
     }
   }
-  if (guardWith !== guardWithout) {
+  const guardComparison = evidence.guardComparison
+  if (guardWith !== guardWithout && guardComparison?.holds !== true) {
     return {
       outcome: "inconclusive",
-      note: `Kitty unicode placeholders: layout changed between states (${guardWith} against ${guardWithout} beside the placeholder grid and on the row below it), so the rectangles compared two different screens and no verdict follows`,
+      note: `Kitty unicode placeholders: layout changed between states (${guardWith} against ${guardWithout} beside the placeholder grid and on the row below it; ${
+        guardComparison === undefined
+          ? "no bounded guard comparison was supplied"
+          : `the bounded guard comparison does not hold: ${guardComparison.reason ?? "no reason recorded"}`
+      }), so the rectangles compared two different screens and no verdict follows`,
       decidedBy: "the layout guard control",
     }
   }
+  // Which rule held the guard, said in every verdict: equal digests, or the bounded comparison (#34932).
+  const guardHeld =
+    guardWith === guardWithout
+      ? "layout guard equal"
+      : "layout guard within its bounded comparison (each RGB channel within 1, background/ink mask identical)"
   if (withFirst !== withSecond) {
     return {
       outcome: "inconclusive",
@@ -577,8 +666,7 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
     return {
       outcome: "supported",
       note: `Kitty unicode placeholders: the placeholder rectangle painted with the image composited over it (${withSecond} against ${evidence.withoutImage}) and matched the ordinary placement of the same pixels exactly, while the layout guard held still and that placement painted against the captured blank`,
-      decidedBy:
-        "the with-image and without-image pair, with the ordinary placement identical and the layout guard equal",
+      decidedBy: `the with-image and without-image pair, with the ordinary placement identical and the ${guardHeld}`,
     }
   }
   if (!evidence.refusal) {
@@ -591,7 +679,68 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
   return {
     outcome: "unsupported",
     note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still; the terminal refused the tested virtual placement: ${evidence.refusal}`,
-    decidedBy:
-      "the virtual-placement refusal, with an equal pixel pair, layout guard equal and qualified ordinary placement",
+    decidedBy: `the virtual-placement refusal, with an equal pixel pair, ${guardHeld} and qualified ordinary placement`,
+  }
+}
+
+/** Region digests of the display row's pixel arm (#34932, @cto 34932-five-criteria-ruling-2216 item 2). */
+export interface KittyDisplayPixelEvidence {
+  /** The block rectangle captured before the placement. */
+  readonly blank: string | undefined
+  /** The allocated image placed over the block, captured twice with a delay and no write between. */
+  readonly target: KittyDigestPair
+  /** Independent SGR background painting of the image's colour in the same rectangle, after the target. */
+  readonly reference: string | undefined
+  /** An error the terminal returned for the block placement itself; never paired with a pixel positive. */
+  readonly placementError?: string
+}
+
+/**
+ * The display row's pixel arm, used only after a controlled-silent placement. It can only establish
+ * Supported: a stable target equal to a qualified independent reference. Every other reading stays open,
+ * and silence never becomes a negative here. Equality to a reference painted after the target stands in
+ * for a layout guard: a screen that moved or reflowed between them cannot equal it.
+ */
+export function decideKittyDisplayPixels(evidence: KittyDisplayPixelEvidence): KittyCaptureDecision {
+  const [first, second] = evidence.target
+  if (first === undefined || second === undefined || evidence.blank === undefined || evidence.reference === undefined) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty image display: this arm supplied no cell-aligned region for every capture, so nothing could be compared",
+      decidedBy: "a missing region digest",
+    }
+  }
+  if (evidence.placementError !== undefined) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the terminal returned ${evidence.placementError} for the block placement, which contradicts any pixel reading, so the row stays open`,
+      decidedBy: "a refused block placement",
+    }
+  }
+  if (evidence.reference === evidence.blank) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the SGR reference is identical to blank (${evidence.reference}), so the reference is not qualified`,
+      decidedBy: "an unqualified SGR reference",
+    }
+  }
+  if (first !== second) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the two captures of the placed image differ (${first} against ${second}), so the target is unstable`,
+      decidedBy: "an unstable target pair",
+    }
+  }
+  if (second !== evidence.reference) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty image display: the placed image (${second}) does not match the independent SGR reference (${evidence.reference}); a mismatch is not a negative`,
+      decidedBy: "a target that does not match the reference",
+    }
+  }
+  return {
+    outcome: "supported",
+    note: `Kitty image display: the placed image is pixel-identical, twice, to the independent SGR reference (${second}), which differs from blank (${evidence.blank})`,
+    decidedBy: "a stable placement equal to the qualified SGR reference",
   }
 }

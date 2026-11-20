@@ -15,7 +15,11 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { expect, test } from "vitest"
-import { MAC_ALACRITTY_LAUNCH_DEVIATION, MAC_WARP_LAUNCH_DEVIATION } from "../packages/run-parser/src/app-launch.ts"
+import {
+  MAC_ALACRITTY_LAUNCH_DEVIATION,
+  MAC_WARP_LAUNCH_DEVIATION,
+  MAC_WARP_STOCK_HEADER_DEVIATION,
+} from "../packages/run-parser/src/app-launch.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 test("the actual hosted producer self-parses measured bytes and refuses incomplete or changed handoffs", async () => {
@@ -290,6 +294,80 @@ console.log(value);
         await writeFile(setupPath, record("true\n"))
         await expect(run("emit", start, join(dir, "warp-header-on.json"))).rejects.toThrow(
           /does not show SnackbarEnabled read back as false/,
+        )
+        // #34899: a stock-mode record names the untouched header, and the receipt carries its own deviation.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-before", status: 0, stdout: "true\n" }],
+            snackbar: { mode: "stock", written: false },
+          }),
+        )
+        const stockReceipt = join(dir, "warp-stock-chrome.json")
+        await run("emit", start, stockReceipt)
+        const stockLaunch = parseDisposableReceipt(await readFile(stockReceipt, "utf8")).appLaunch
+        expect(stockLaunch && "launchDeviation" in stockLaunch ? stockLaunch.launchDeviation : undefined).toBe(
+          MAC_WARP_STOCK_HEADER_DEVIATION,
+        )
+        // A stock record that claims a write, or never read the prior value, refuses by name.
+        await writeFile(
+          setupPath,
+          JSON.stringify({ prepared: true, commands: [], snackbar: { mode: "stock", written: true } }),
+        )
+        await expect(run("emit", start, join(dir, "warp-stock-written.json"))).rejects.toThrow(/unknown snackbar mode/)
+        await writeFile(
+          setupPath,
+          JSON.stringify({ prepared: true, commands: [], snackbar: { mode: "stock", written: false } }),
+        )
+        await expect(run("emit", start, join(dir, "warp-stock-unread.json"))).rejects.toThrow(
+          /does not read SnackbarEnabled before the launch/,
+        )
+        // #34899: the header-off record names its own mode and must confirm the write it claims.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "false\n" }],
+            snackbar: { mode: "hidden", written: true, absent: true },
+          }),
+        )
+        const hiddenReceipt = join(dir, "warp-hidden-chrome.json")
+        await run("emit", start, hiddenReceipt)
+        const hiddenLaunch = parseDisposableReceipt(await readFile(hiddenReceipt, "utf8")).appLaunch
+        expect(hiddenLaunch && "launchDeviation" in hiddenLaunch ? hiddenLaunch.launchDeviation : undefined).toBe(
+          MAC_WARP_LAUNCH_DEVIATION,
+        )
+        await writeFile(
+          setupPath,
+          JSON.stringify({ prepared: true, commands: [], snackbar: { mode: "hidden", written: false } }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-unwritten.json"))).rejects.toThrow(
+          /says the sticky header was hidden but confirms no write/,
+        )
+        // The guard hidden mode must still fall through to: a record that read back "true" is a header that was on.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "true\n" }],
+            snackbar: { mode: "hidden", written: true, absent: true },
+          }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-readback-true.json"))).rejects.toThrow(
+          /does not show SnackbarEnabled read back as false/,
+        )
+        // A hidden record that cannot say whether it overwrote a key is not a record of what the run changed.
+        await writeFile(
+          setupPath,
+          JSON.stringify({
+            prepared: true,
+            commands: [{ label: "snackbar-readback", status: 0, stdout: "false\n" }],
+            snackbar: { mode: "hidden", written: true },
+          }),
+        )
+        await expect(run("emit", start, join(dir, "warp-hidden-unknown-prior.json"))).rejects.toThrow(
+          /does not record whether SnackbarEnabled existed before/,
         )
         await writeFile(setupPath, record("false\n"))
       }

@@ -7,7 +7,9 @@ import type {
   PublicRunMetadata,
   PublicContextSummary,
   PublicFeatureResult,
+  PublicPriorDecision,
 } from "../../data/public-results"
+import { priorDecisionSentence } from "../../data/prior-decision"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -184,6 +186,14 @@ const stepTable = computed(() => (stepSource.value ? describeStepTable(stepSourc
 const sentBytes = computed(() => (stepSource.value ? describeSentBytes(stepSource.value) : undefined))
 const replyBytes = computed(() => (stepSource.value ? describeReplyBytes(stepSource.value) : undefined))
 /** The one sentence under the badge: what happened, or the stored reason when the verdict is held or absent. */
+// 34691: an older decision a newer suite's refusal replaced; shown under the current reading, never as the grade.
+const priorDecisionLine = computed(() => {
+  const prior =
+    props.cell && "priorDecision" in props.cell
+      ? (props.cell as { priorDecision?: PublicPriorDecision }).priorDecision
+      : undefined
+  return prior ? priorDecisionSentence(prior) : undefined
+})
 const plainResult = computed(() => {
   const reason = readerSafeExplanation(currentResult.value?.reason ?? currentResult.value?.hold)
   const table = stepTable.value
@@ -445,6 +455,7 @@ onBeforeUnmount(() => {
           }}<template v-if="sourceRun"> · {{ sourceRun.subject.version }} · {{ sourceRun.subject.os }}</template></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
+        <p v-if="priorDecisionLine" class="result-evidence__prior">{{ priorDecisionLine }}</p>
         <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
         <section v-if="stepTable" class="result-evidence__evidence">
           <h4>Evidence</h4>
@@ -519,7 +530,7 @@ onBeforeUnmount(() => {
             <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
             <template v-if="tracePaneCopy">
               <span>{{ tracePaneCopy.tested.sourceLine }}</span>
-              <span>{{ tracePaneCopy.tested.identityLine }}</span>
+              <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
               <span>{{ tracePaneCopy.tested.notKeptLine }}</span>
             </template>
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
@@ -546,6 +557,13 @@ onBeforeUnmount(() => {
   margin: 4px 0 0;
   font-size: 0.72rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.result-evidence__prior {
+  margin: 3px 0 0;
+  font-size: 0.66rem;
+  line-height: 1.4;
+  color: var(--vp-c-text-2);
   overflow-wrap: anywhere;
 }
 .result-evidence__evidence {

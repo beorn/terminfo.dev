@@ -165,7 +165,50 @@ test("a pane whose TTY is not the owned process's is refused, not read", () => {
   expect(read.status === "refused" ? read.reason : "").toMatch(
     /lists TTY "\/dev\/ttys009", not this run's measured "\/dev\/ttys004"/,
   )
+  // A listed pane that is not this run's tty is no reading on this host, said in those words (@cto 41fcd747).
+  expect(read.status === "refused" ? read.reason : "").toContain("the owned read method is unavailable here")
   expect(child.spawnSync).toHaveBeenCalledTimes(1)
+})
+
+/**
+ * @failure The receipt that reaches a published artifact carries the run's socket path, the host executable
+ *   path, or the pane's own transcript, so a corpus record leaks what the operator objected to (@cto 41fcd747).
+ * @level l1
+ * @consumer Every erase and scrollback reading taken through this owned reader.
+ * @testonly none
+ */
+test("the recorded receipt names the pane, both ttys and the socket's presence, and carries no path", () => {
+  child.spawnSync.mockImplementation((_file: string, args: readonly string[]) =>
+    args.includes("list")
+      ? panes([{ pane_id: 17, tty_name: "/dev/ttys004" }])
+      : { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24)), stderr: Buffer.alloc(0) },
+  )
+  const read = readOwnedWezTermHistory({ executable, socket, pane, tty: "/dev/ttys004", rows: 24 })
+  if (read.status !== "read") throw new Error(read.reason)
+  expect(JSON.parse(read.receipt)).toEqual({
+    surface: "wezterm",
+    pane: "17",
+    listedTty: "ttys004",
+    measuredTty: "ttys004",
+    ttyMatch: true,
+    socketPresent: true,
+    executable: "wezterm",
+  })
+  expect(read.receipt).not.toMatch(/[\\/]/u)
+  // The get-text transcript is a refusal diagnostic, never part of the identity record.
+  expect(read.receipt).not.toContain(Buffer.from("row").toString("base64"))
+  expect(read.receipt).not.toContain(Buffer.from("old").toString("base64"))
+
+  // A host that measured no tty cannot claim a match; the listed tty is still named.
+  child.spawnSync.mockReset()
+  child.spawnSync.mockImplementation((_file: string, args: readonly string[]) =>
+    args.includes("list")
+      ? panes([{ pane_id: 17, tty_name: "/dev/ttys004" }])
+      : { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24)), stderr: Buffer.alloc(0) },
+  )
+  const unmeasured = readOwnedWezTermHistory({ executable, socket, pane, rows: 24 })
+  if (unmeasured.status !== "read") throw new Error(unmeasured.reason)
+  expect(JSON.parse(unmeasured.receipt)).toMatchObject({ listedTty: "ttys004", measuredTty: null, ttyMatch: null })
 })
 
 test("the owned pane reads its history through --pane-id on this run's socket", () => {

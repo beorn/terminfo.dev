@@ -56,6 +56,9 @@ function launchArgs(app: string): string[] {
       "-c",
       [
         "set -euo pipefail",
+        // The arm is evaluated in the launcher's own environment: #34632's viewport override lives in one declared
+        // variable so the launch and the paste guard cannot drift, and a bare body could not see it.
+        `source ${JSON.stringify(launcher)}`,
         `target_id=${app}`,
         "target_version=1.4.0",
         body,
@@ -534,53 +537,217 @@ mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-
 
 // Registration can precede tmux's status rename (#32226). The existing receipt tests do
 // not exercise readiness; use the real poll with only the metadata provider doubled.
-it.each(["settles", "never-settles", "missing-receipt"])("owned tmux readiness: %s", (mode) => {
-  const daemons = join(dir, "daemons")
-  mkdirSync(daemons)
-  const runId = "a".repeat(32)
-  writeFileSync(join(daemons, "collector.json"), JSON.stringify({ pid: 96, runId, port: 1234, token: "fixture" }))
-  const socket = join(dir, "owned.sock")
-  if (mode !== "missing-receipt") writeFileSync(join(dir, "mux-socket.txt"), socket + "\n")
-  writeFileSync(join(dir, "count"), "0")
-  writeFileSync(join(dir, "queries"), "")
-  const result = spawnSync(
-    "bash",
-    [
-      "-c",
+it.each(["settles", "never-settles", "missing-receipt"])(
+  "owned tmux readiness: %s",
+  (mode) => {
+    const daemons = join(dir, "daemons")
+    mkdirSync(daemons)
+    const runId = "a".repeat(32)
+    writeFileSync(join(daemons, "collector.json"), JSON.stringify({ pid: 96, runId, port: 1234, token: "fixture" }))
+    const socket = join(dir, "owned.sock")
+    if (mode !== "missing-receipt") writeFileSync(join(dir, "mux-socket.txt"), socket + "\n")
+    writeFileSync(join(dir, "count"), "0")
+    writeFileSync(join(dir, "queries"), "")
+    const result = spawnSync(
+      "bash",
       [
-        'source "$1"',
-        "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "root=$2 mode=$3",
-        "sleep() { :; }",
-        "tmux() {",
-        '  printf "%s\\n" "$*" >> "$root/queries"',
-        '  local count; count=$(cat "$root/count"); count=$((count + 1))',
-        '  printf "%s" "$count" > "$root/count"',
-        '  if [[ "$mode" == settles && "$count" -ge 3 ]]; then printf "bun|bun\\n"',
-        '  elif [[ "$mode" == settles && "$count" == 2 ]]; then printf "bun|bash\\n"',
-        '  else printf "tmux|bun\\n"; fi',
-        "}",
-        'await_owned_daemon "$root/daemons" "$$" 95 "$root/mux-socket.txt"',
-      ].join("\n"),
-      "_",
-      launcher,
-      dir,
-      mode,
-    ],
-    { encoding: "utf8" },
-  )
-  expect(result.status, result.stderr).toBe(mode === "settles" ? 0 : 2)
-  const queries = readFileSync(join(dir, "queries"), "utf8").trim().split("\n").filter(Boolean)
-  expect(queries).toHaveLength(mode === "settles" ? 3 : mode === "never-settles" ? 150 : 0)
-  expect(
-    queries.every(
-      (query) =>
-        query ===
-        "-S " + socket + " display-message -p -t terminfo-" + runId + " #{window_name}|#{pane_current_command}",
-    ),
-  ).toBe(true)
-  if (mode === "settles") expect(result.stdout.trim()).toBe(join(daemons, "collector.json"))
-  else expect(result.stderr).toContain(mode === "missing-receipt" ? "socket receipt" : "bun|bun")
+        "-c",
+        [
+          'source "$1"',
+          "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "root=$2 mode=$3",
+          "sleep() { :; }",
+          "tmux() {",
+          '  printf "%s\\n" "$*" >> "$root/queries"',
+          '  local count; count=$(cat "$root/count"); count=$((count + 1))',
+          '  printf "%s" "$count" > "$root/count"',
+          '  if [[ "$mode" == settles && "$count" -ge 3 ]]; then printf "bun|bun\\n"',
+          '  elif [[ "$mode" == settles && "$count" == 2 ]]; then printf "bun|bash\\n"',
+          '  else printf "tmux|bun\\n"; fi',
+          "}",
+          'await_owned_daemon "$root/daemons" "$$" 95 "$root/mux-socket.txt"',
+        ].join("\n"),
+        "_",
+        launcher,
+        dir,
+        mode,
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(mode === "settles" ? 0 : 2)
+    const queries = readFileSync(join(dir, "queries"), "utf8").trim().split("\n").filter(Boolean)
+    expect(queries).toHaveLength(mode === "settles" ? 3 : mode === "never-settles" ? 150 : 0)
+    expect(
+      queries.every(
+        (query) =>
+          query ===
+          "-S " + socket + " display-message -p -t terminfo-" + runId + " #{window_name}|#{pane_current_command}",
+      ),
+    ).toBe(true)
+    if (mode === "settles") expect(result.stdout.trim()).toBe(join(daemons, "collector.json"))
+    else expect(result.stderr).toContain(mode === "missing-receipt" ? "socket receipt" : "bun|bun")
+    // The 150 real jq/tmux subprocess polls remain asserted above; allow host CPU contention.
+  },
+  15_000,
+)
+
+// @failure Retiring the preflight collector races the next registration read (#34153).
+// The production poll runs unchanged; only the filesystem transition at jq's read is controlled.
+it.each(["stable", "replacement", "gone", "malformed", "partial", "wrong-run"])(
+  "collector registration handoff: %s",
+  (mode) => {
+    const daemons = join(dir, "daemons")
+    mkdirSync(daemons)
+    const registration = join(daemons, "collector.json")
+    const next = join(daemons, "next.json")
+    const record = JSON.stringify({ pid: 96, port: 1234, token: "fixture", runId: "a".repeat(32) })
+    writeFileSync(join(dir, "valid.json"), record)
+    writeFileSync(
+      registration,
+      mode === "malformed" || mode === "partial"
+        ? "{"
+        : mode === "wrong-run"
+          ? record.replace("a".repeat(32), "b".repeat(32))
+          : mode === "replacement" || mode === "gone"
+            ? record.replace('"pid":96', '"pid":95')
+            : record,
+    )
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        [
+          'source "$1"',
+          "TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "root=$2 mode=$3",
+          'sleep() { printf "." >> "$root/sleeps"; }',
+          "jq() {",
+          '  if [[ "${@: -1}" == "$root/daemons/collector.json" ]]; then',
+          '    if [[ ! -e "$root/read-once" ]]; then',
+          '      : > "$root/read-once"',
+          '      if [[ "$mode" == replacement || "$mode" == gone ]]; then',
+          '        rm "$root/daemons/collector.json"',
+          '        if [[ "$mode" == replacement ]]; then cp "$root/valid.json" "$root/daemons/next.json"; fi',
+          "      fi",
+          '    elif [[ "$mode" == partial ]]; then',
+          '      cp "$root/valid.json" "$root/daemons/collector.json"',
+          "    fi",
+          "  fi",
+          '  command jq "$@"',
+          "}",
+          'await_owned_daemon "$root/daemons" "$$" 95',
+        ].join("\n"),
+        "_",
+        launcher,
+        dir,
+        mode,
+      ],
+      { encoding: "utf8" },
+    )
+    const succeeds = ["stable", "replacement", "partial"].includes(mode)
+    expect(result.status, result.stderr).toBe(succeeds ? 0 : 2)
+    if (succeeds) expect(result.stdout.trim()).toBe(mode === "replacement" ? next : registration)
+    if (mode === "gone") {
+      expect(result.stderr).toContain("95")
+      expect(result.stderr).toContain("vanished")
+      expect(result.stderr).toMatch(/waited \d+s/)
+    }
+    if (mode === "malformed") expect(result.stderr).toContain("malformed")
+    if (mode === "wrong-run") expect(result.stderr).toContain("wrong run ID")
+    if (mode === "malformed" || mode === "wrong-run") expect(existsSync(join(dir, "sleeps"))).toBe(false)
+  },
+)
+
+// Readiness can succeed immediately before its registration retires. The readiness tests above
+// cannot see either caller's subsequent copy; execute those real blocks without launching an App.
+it.each(["preflight", "mux"])("registration copy names its failed read: %s", (stage) => {
+  const source = readFileSync(launcher, "utf8")
+  const destination = stage === "preflight" ? "daemon-registration.json" : "mux-daemon-registration.json"
+  const start = source.indexOf(`jq 'del(.token)' "$daemon_file" > /out/${destination}`)
+  const next = stage === "preflight" ? "\n  port=$(" : "\n    collector_pid=$("
+  const end = source.indexOf(next, start)
+  if (start < 0 || end < 0) throw new Error(`The ${stage} registration copy block is missing`)
+  const block = source.slice(start, end).replaceAll(`/out/${destination}`, '"$output"')
+  const registration = join(dir, "collector.json")
+  const output = join(dir, destination)
+  for (const mode of ["valid", "missing", "malformed"]) {
+    const file = mode === "missing" ? join(dir, "retired.json") : registration
+    if (mode !== "missing") {
+      writeFileSync(file, mode === "valid" ? JSON.stringify({ pid: 171, token: "private-fixture", port: 1234 }) : "{")
+    }
+    // The real jq supplies the independent expected read status, including its platform's parse status.
+    const directRead = spawnSync("jq", ["del(.token)", file], { encoding: "utf8" })
+    const result = spawnSync(
+      "bash",
+      ["-c", "set -euo pipefail\ndaemon_file=$1 output=$2 preflight_pid=170\n" + block, "_", file, output],
+      {
+        encoding: "utf8",
+      },
+    )
+    if (mode === "valid") {
+      expect(result.status, result.stderr).toBe(0)
+      expect(JSON.parse(readFileSync(output, "utf8"))).toEqual({ pid: 171, port: 1234 })
+    } else {
+      expect(directRead.status).not.toBe(0)
+      expect(result.status).toBe(2)
+      expect(result.stderr).toContain(`Owned ${stage} collector registration copy failed`)
+      expect(result.stderr).toContain(file)
+      expect(result.stderr).toContain(`jq exit ${directRead.status}`)
+      expect(result.stderr).toContain("expected")
+    }
+  }
+})
+
+// 35020: the daemon's keepalive is leading JSON whitespace and the client strips exactly that run at its
+// retention boundary. If the container hashes the unstripped body instead, container-receipt.json names a sha
+// the collector never retained, and placement refuses every Linux app run with "does not bind original capture
+// bytes". This drives the launcher's own function on owned files, so the two sides cannot drift again.
+describe("capture keepalive prefix", () => {
+  // The image declares coreutils but no awk (flake.nix runtimeTools), and the host has both, so a host run alone
+  // cannot see a tool the image lacks: the 2026-11-19T05:51Z ghostty run failed `awk: command not found` (exit
+  // 127) while these tests passed. Every case runs with PATH holding only the coreutils tools the function names.
+  const imageTools = ["head", "od", "tail", "mv"]
+  function strip(body: Buffer) {
+    const file = join(dir, "capture.json")
+    writeFileSync(file, body)
+    const bin = join(dir, "image-bin")
+    mkdirSync(bin, { recursive: true })
+    for (const tool of imageTools) {
+      const found = spawnSync("bash", ["-c", 'command -v "$1"', "_", tool], { encoding: "utf8" }).stdout.trim()
+      if (!found) throw new Error(`host has no ${tool} to stand in for the image's coreutils`)
+      if (!existsSync(join(bin, tool))) symlinkSync(found, join(bin, tool))
+    }
+    const bash = spawnSync("bash", ["-c", "command -v bash"], { encoding: "utf8" }).stdout.trim()
+    const result = spawnSync(bash, ["-c", 'source "$1"; strip_capture_keepalive_prefix "$2"', "_", launcher, file], {
+      encoding: "utf8",
+      env: { PATH: bin },
+    })
+    return { result, bytes: existsSync(file) ? readFileSync(file) : null }
+  }
+
+  it("strips exactly the leading keepalive run the client strips, so the receipt names the retained bytes", () => {
+    const payload = Buffer.from(`{"schemaVersion":4,"runId":"${"a".repeat(32)}"}\n`)
+    const keepalive = Buffer.from("\n\n \t\r\n".repeat(20))
+    const { result, bytes } = strip(Buffer.concat([keepalive, payload]))
+    expect(result.status).toBe(0)
+    expect(bytes?.equals(payload)).toBe(true)
+  })
+
+  it("leaves a body that opens on payload untouched, trailing newline included", () => {
+    const payload = Buffer.from(`{"schemaVersion":4,"runId":"${"a".repeat(32)}"}\n`)
+    const { result, bytes } = strip(payload)
+    expect(result.status).toBe(0)
+    expect(bytes?.equals(payload)).toBe(true)
+  })
+
+  it("refuses a body that is empty or nothing but keepalive whitespace, by name", () => {
+    const blank = strip(Buffer.from("\n\n\n"))
+    expect(blank.result.status).not.toBe(0)
+    expect(blank.result.stderr).toContain("refusing to strip it blind")
+    const empty = strip(Buffer.alloc(0))
+    expect(empty.result.status).not.toBe(0)
+    expect(empty.result.stderr).toContain("refusing to strip it blind")
+  })
 })
 
 describe("container run receipt composition", () => {
@@ -865,7 +1032,7 @@ describe("frame-less container run", () => {
   // 33334: the receipt block ran against the run's first target frame as if its source were always an
   // xwd, so a launch selecting only extensions.osc22-pointer (png-sourced, pointer-composited frames)
   // exited 2 after its probe result was written. Runs the launcher's own block on an owned /out copy.
-  function receiptFor(frame: { sourceKind: "xwd" | "png" | "none" }) {
+  function receiptFor(frame: { sourceKind: "xwd" | "xwd.zst" | "png" | "none"; corrupt?: boolean }) {
     const source = readFileSync(launcher, "utf8")
     const start = source.indexOf("  capture_frame=$(jq -c")
     const end = source.indexOf("\n  fi\n", start)
@@ -882,6 +1049,8 @@ describe("frame-less container run", () => {
       frame.sourceKind === "none"
         ? createHash("sha256").update("absent").digest("hex")
         : write(`source ${frame.sourceKind}`, frame.sourceKind)
+    // A stored file whose bytes no longer match the sha its name carries.
+    if (frame.corrupt) writeFileSync(join(out, "artifacts", `${sourceSha}.${frame.sourceKind}`), "changed bytes")
     writeFileSync(
       join(out, "v3-capture.json"),
       JSON.stringify({
@@ -929,11 +1098,29 @@ describe("frame-less container run", () => {
     ])
   })
 
+  it("receipts a compressed X window dump under the xwd shape, by its stored-byte sha (34127)", () => {
+    const { result, pngSha, sourceSha } = receiptFor({ sourceKind: "xwd.zst" })
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(result.stdout) as Record<string, string>
+    expect(Object.entries(receipt)).toEqual([
+      ["xwd", `artifacts/${sourceSha}.xwd.zst`],
+      ["xwdSha256", sourceSha],
+      ["png", `artifacts/${pngSha}.png`],
+      ["pngSha256", pngSha],
+    ])
+  })
+
+  it("refuses a compressed X window dump whose stored bytes differ from its name (34127)", () => {
+    const { result } = receiptFor({ sourceKind: "xwd.zst", corrupt: true })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback capture digest mismatch")
+  })
+
   it("refuses by name when the target frame's source artifact is missing", () => {
     const { result, sourceSha } = receiptFor({ sourceKind: "none" })
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(`Callback capture artifacts are missing`)
-    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd or .png`)
+    expect(result.stderr).toContain(`artifacts/${sourceSha}.xwd.zst, .xwd or .png`)
   })
 
   it("composes a frame-less run, whose container receipt carries no capture", () => {
@@ -1279,6 +1466,17 @@ describe("xterm paste route launch arguments", () => {
     expect(allow).toEqual(["-xrm", "*disallowedWindowOps: GetChecksum,GetIconTitle,GetWinTitle,SetXprop"])
     expect(pasteRebinding(launch)).toBeNull()
     expect(pasteRebinding([...launch, ...allow])).toBeNull()
+    // #34632: the launcher's own viewport override passes, and only byte for byte. A near miss - the same text
+    // with one more binding appended, or the same binding as a plain (non-#override) resource - is refused like
+    // any other translation, so the paste route cannot be rebound under the exception's name.
+    const override = launch.find((argument) => /VT100\.Translations/.test(argument))
+    if (override === undefined) throw new Error("the xterm launch no longer declares the viewport override")
+    expect(pasteRebinding([override])).toBeNull()
+    const extended = override + " \n Shift<Key>Insert: string(x)"
+    expect(pasteRebinding([extended])).toBe(extended)
+    expect(
+      pasteRebinding([override.replace("#override ", "").replace("VT100.Translations", "VT100*translations")]),
+    ).not.toBeNull()
     expect(
       pasteRebinding([...launch, ...allow, "-xrm", "*VT100.translations: #override Shift<Key>Insert: string(x)"]),
     ).toBe("*VT100.translations: #override Shift<Key>Insert: string(x)")
@@ -1628,8 +1826,42 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
     // The pin must be RECORDED, not only applied: the run's context states it so an old run (which
     // carries no render key) is told apart from a new one. CTO O1: pin AND record.
     expect(xtermCase).toContain("target_render_pin=xft-antialias-off")
+    // #34632: the two viewport steps xterm 411 does not bind are declared by THIS launch, because the collector
+    // qualifies the viewport route on the container launch alone (owned-terminal.ts linuxViewportKeys). The pin
+    // records the declaration, so a run without it is told apart from one that measured the steps.
+    expect(xtermCase).toContain('-xrm "$xterm_viewport_override"')
+    expect(xtermCase).toContain("target_render_pin=xft-antialias-off,viewport-keys-shift-home-end")
+    // The declaration itself: two scroll steps, merged with #override, and no other binding - so the paste route
+    // the guard protects keeps the default Shift<Key>Insert.
+    expect(source).toContain(
+      `xterm_viewport_override='XTerm*VT100.Translations: #override \\n Shift<Key>Home: scroll-back(9999,line) ` +
+        `\\n Shift<Key>End: scroll-forw(9999,line)'`,
+    )
+    expect(source).not.toMatch(/xterm_viewport_override='[^']*Insert/)
     expect(source).toContain("--arg render ")
     expect(source).toMatch(/context:"linux-x86_64-xvfb-llvmpipe"[^\n]*render:\$render/)
+  })
+})
+
+/**
+ * @failure ghostty launched with its shipped antialias and padding: the rendering pin #28829 needs for a
+ *   byte-exact repaint is left open, and the run's observed.json says "terminal-default" so a capture
+ *   cannot tell which rendering it was taken under.
+ * @level l1 — reads the launcher's ghostty launch args, the production rendering context.
+ * @consumer scripts/linux-container-run.sh ghostty rendering pin (#31331)
+ */
+describe("ghostty rendering is pinned AND RECORDED: antialias off, padding explicit (#31331)", () => {
+  it("launches ghostty with monochrome FreeType rendering and 2x2 unbalanced padding, and records the pin", () => {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("\n    ghostty)")
+    if (start < 0) throw new Error("ghostty case not found in scripts/linux-container-run.sh")
+    const ghosttyCase = source.slice(start, source.indexOf(";;", start))
+    expect(ghosttyCase).toContain("--font-family='JetBrains Mono' --font-size=16 --window-decoration=none")
+    expect(ghosttyCase).toContain("--freetype-load-flags=monochrome")
+    expect(ghosttyCase).toContain("--window-padding-x=2 --window-padding-y=2 --window-padding-balance=false")
+    expect(ghosttyCase).toContain("target_render_pin=freetype-monochrome,padding-2x2-unbalanced")
+    // xterm's pin is unchanged by this one.
+    expect(source).toContain("target_render_pin=xft-antialias-off")
   })
 })
 
@@ -1637,14 +1869,16 @@ describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28
  * @failure split 120s curl / 180s attach budgets kill slow-but-complete groups (ghostty 140.6s,
  *   xterm 157.9s curl-28; wezterm attach-killed at 177s) so Candidate 2 rows go missing.
  *   A full WezTerm batch also progressed until the shared 600s SIGTERM on 2026-11-04 and 1200s
- *   SIGTERM (1196.9s solo App batch, exit 143) on 2026-11-09 (#32889).
+ *   SIGTERM (1196.9s solo App batch, exit 143) on 2026-11-09 (#32889), and again at the 1800s wall on
+ *   2026-11-17T01:06Z (exit 143 at 1797 s of captures, still writing frames): the control-frame
+ *   captures took a completed batch from 635 to 1548 frames, so the budget moved to 2400 s.
  * @level l1 — reads the launcher's declared probe-batch timeout.
  * @consumer scripts/linux-container-run.sh PROBE_BATCH_TIMEOUT_SECONDS (@dev/3 51326e54)
  */
 describe("declared probe-batch timeout is one value for curl and host attach", () => {
-  it("uses PROBE_BATCH_TIMEOUT_SECONDS=1800 for both curl --max-time and docker start --attach", () => {
+  it("uses PROBE_BATCH_TIMEOUT_SECONDS=2400 for both curl --max-time and docker start --attach", () => {
     const source = readFileSync(launcher, "utf8")
-    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=1800$/m)
+    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=2400$/m)
     expect(source).toMatch(/curl [^\n]*--max-time "\$PROBE_BATCH_TIMEOUT_SECONDS"/)
     expect(source).toMatch(/timeout "\$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach/)
     expect(source).not.toMatch(/--max-time 120\b/)
@@ -1894,7 +2128,7 @@ function muxProfileConfig(mux: string, profile: string): { status: number | null
 describe("mux profile configs", () => {
   it("records the default config and Screen's truecolor config exactly as the selection keys them", () => {
     expect(muxProfileConfig("screen", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
-    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: MUX_DEFAULT_CONFIG })
+    expect(muxProfileConfig("tmux", "default")).toMatchObject({ status: 0, stdout: "tmux: focus-events on" })
     expect(muxProfileConfig("screen", "truecolor")).toMatchObject({ status: 0, stdout: SCREEN_TRUECOLOR_CONFIG })
     expect(TRUECOLOR_ON.config).toEqual({ screen: SCREEN_TRUECOLOR_CONFIG })
   })
@@ -1948,7 +2182,6 @@ describe("mux profile configs", () => {
   it("writes tmux's set-titles bytes, exactly the bytes the receipt check declares", () => {
     const content = (profile: string) =>
       spawnSync("bash", ["-c", 'source "$1"; tmux_config_content "$2"', "_", launcher, profile], { encoding: "utf8" })
-    expect(content("default")).toMatchObject({ status: 0, stdout: "" })
     expect(content("set-titles")).toMatchObject({
       status: 0,
       stdout: MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content,
@@ -1962,26 +2195,116 @@ describe("mux profile configs", () => {
   // #33995: tmux reads a bare option line as a command name, ignores it, and starts with set-titles off — which is
   // how the supplement reached its readiness gate with titles off and a "[tmux]" window name. The profile's bytes
   // must therefore be tmux commands, and this reads the option back out of a real server started from them.
+  // #37175: a clock in status-right repaints the calibration baseline despite an unchanged terminal grid.
+  // Read both profiles from the launcher's actual config and keep the bar's geometry and title forwarding.
   // A host without tmux reports the case as skipped, never as a pass: the point of the case is the server's own
   // answer, so an unasked question must stay visible in the report.
   it.skipIf(spawnSync("tmux", ["-V"], { encoding: "utf8" }).status !== 0)(
-    "starts tmux with set-titles on from the profile's own bytes",
-    () => {
+    "starts tmux with stable status pixels, profile title forwarding and delivered focus reports",
+    async () => {
       const scratch = mkdtempSync(join(tmpdir(), "set-titles-profile-"))
       const config = join(scratch, "tmux.conf")
-      writeFileSync(config, MUX_PROFILE_CONFIG_FILES[TMUX_SET_TITLES_CONFIG]?.content ?? "")
       const socket = join(scratch, "server.sock")
       try {
-        const shown = spawnSync("tmux", ["-S", socket, "-f", config, "start-server", ";", "show", "-g", "set-titles"], {
-          encoding: "utf8",
-        })
-        expect(shown.stderr).toBe("")
-        expect(shown.stdout.trim()).toBe("set-titles on")
+        for (const profile of ["default", "set-titles"]) {
+          const content = spawnSync("bash", ["-c", 'source "$1"; tmux_config_content "$2"', "_", launcher, profile], {
+            encoding: "utf8",
+          })
+          expect(content.status).toBe(0)
+          writeFileSync(config, content.stdout)
+          const shown = spawnSync(
+            "tmux",
+            [
+              "-S",
+              socket,
+              "-f",
+              config,
+              "start-server",
+              ";",
+              "show",
+              "-gv",
+              "status-right",
+              ";",
+              "show",
+              "-gv",
+              "status",
+              ";",
+              "show",
+              "-gv",
+              "set-titles",
+            ],
+            { encoding: "utf8" },
+          )
+          expect(shown.status).toBe(0)
+          expect(shown.stderr).toBe("")
+          expect(shown.stdout.split("\n")).toEqual(["", "on", profile === "set-titles" ? "on" : "off", ""])
+          // #35126: X focus movement alone does not qualify forwarding through tmux. Send the outer
+          // terminal's reports to its attached client, then inspect bytes received by the raw inner pane.
+          // Never inject these bytes into the pane with send-keys: that would supply the answer.
+          const ready = join(scratch, `${profile}-ready`)
+          const received = join(scratch, `${profile}-received`)
+          const reader = `const fs = require("node:fs");
+            process.stdin.setRawMode(true);
+            process.stdin.on("data", data => fs.appendFileSync(${JSON.stringify(received)}, data));
+            process.stdout.write("\\x1b[?1004h");
+            fs.writeFileSync(${JSON.stringify(ready)}, "ready");`
+          let outerOutput = ""
+          const client = Bun.spawn(
+            [
+              "tmux",
+              "-T",
+              "focus",
+              "-S",
+              socket,
+              "-f",
+              config,
+              "new-session",
+              "-s",
+              "focus",
+              process.execPath,
+              "-e",
+              reader,
+            ],
+            {
+              env: { ...process.env, TERM: "xterm-256color", TMUX: "" },
+              terminal: {
+                cols: 80,
+                rows: 24,
+                data(_terminal, data) {
+                  outerOutput += Buffer.from(data).toString()
+                },
+              },
+            },
+          )
+          try {
+            await expect.poll(() => existsSync(ready), { timeout: 5000 }).toBe(true)
+            // The ready file follows the pane write; allow the server to consume its mode change.
+            await Bun.sleep(100)
+            // Like a terminal, emit reports only when the attached client requested mode 1004.
+            // tmux accepts unsolicited reports even with focus-events off; always injecting masks the bug.
+            await expect
+              .poll(() => [...outerOutput.matchAll(/\x1b\[\?1004([hl])/g)].at(-1)?.[1], { timeout: 5000 })
+              .toBe("h")
+            client.terminal!.write("\x1b[O")
+            await Bun.sleep(100)
+            client.terminal!.write("\x1b[I")
+            await expect
+              .poll(() => (existsSync(received) ? readFileSync(received, "utf8") : ""), { timeout: 2000 })
+              .toContain("\x1b[O\x1b[I")
+          } finally {
+            spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
+            client.kill()
+            await client.exited
+            client.terminal?.close()
+          }
+        }
       } finally {
         spawnSync("tmux", ["-S", socket, "kill-server"], { encoding: "utf8" })
         rmSync(scratch, { recursive: true, force: true })
       }
     },
+    // The standalone config defaults to 5s; two real client handshakes need the vendor project's 30s budget.
+    30_000,
   )
 })
 
@@ -2040,4 +2363,60 @@ exit 2
     expect(helperPid).toBe(readFileSync(join(out, "xterm-pid"), "utf8").trim())
     expect(Number(readFileSync(counter, "utf8"))).toBe(3)
   })
+})
+
+/**
+ * @failure The launcher mints a second run identity instead of adopting the one the host composer handed
+ *   down, so every Linux pass ends at /probe with "Capture identity X differs from this daemon's launch
+ *   run Y" and no draft can be collected (#34269, broken from the #34018 identity change on 2026-11-14).
+ * @level l3 — runs the launcher's own identity block with real bash; no container starts.
+ * @consumer scripts/linux-container-run.sh container identity handed to the collector (#34269)
+ */
+describe("the launcher adopts the handed run identity (#34269)", () => {
+  const source = readFileSync(launcher, "utf8")
+  const start = source.indexOf("\n# One identity per run (#34269)")
+  const end = source.indexOf("\nrun_dir=", start)
+  if (start < 0 || end < 0) throw new Error("run identity block not found in scripts/linux-container-run.sh")
+  const block = source.slice(start, end)
+
+  function runIdentity(handed?: string) {
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    delete env.TERMINFO_CAPTURE_RUN_ID
+    if (handed !== undefined) env.TERMINFO_CAPTURE_RUN_ID = handed
+    return spawnSync("bash", ["-c", `set -euo pipefail\n${block}\nprintf '%s' "$run_id"\n`], {
+      encoding: "utf8",
+      env,
+    })
+  }
+
+  it("names the run by the identity the composer handed down, not a fresh mint", () => {
+    const handed = "a3b238820289526e40d97d98b92188e4"
+    const minted = runIdentity()
+    expect(minted.status, minted.stderr).toBe(0)
+    const adopted = runIdentity(handed)
+    expect(adopted.status, adopted.stderr).toBe(0)
+    expect(adopted.stdout).toBe(handed)
+    expect(adopted.stdout).not.toBe(minted.stdout)
+    expect(minted.stdout).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it("mints a fresh identity per run only when nobody stated one", () => {
+    const first = runIdentity()
+    const second = runIdentity()
+    expect(first.status, first.stderr).toBe(0)
+    expect(second.status, second.stderr).toBe(0)
+    expect(first.stdout).toMatch(/^[0-9a-f]{32}$/)
+    expect(first.stdout).not.toBe(second.stdout)
+  })
+
+  it.each(["A3B238820289526E40D97D98B92188E4", "a3b23882-0289-526e-40d9-7d98b92188e4", "a3b23882"])(
+    "refuses %s by name instead of minting around it",
+    (handed) => {
+      const result = runIdentity(handed)
+      expect(result.status).toBe(2)
+      expect(result.stdout).toBe("")
+      expect(result.stderr).toContain("TERMINFO_CAPTURE_RUN_ID")
+      expect(result.stderr).toContain(handed)
+    },
+  )
 })

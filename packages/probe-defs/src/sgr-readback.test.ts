@@ -28,6 +28,7 @@ function sgrReadbackSource(reply: string | null | readonly (string | null)[], ca
   const writes: string[] = []
   const writesAtQuery: string[] = []
   const ctx = {
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     capture: capture

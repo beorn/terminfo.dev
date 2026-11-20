@@ -1,4 +1,4 @@
-import { PROBE_STATUSES, SILENCE_RULES } from "./types.ts"
+import { PROBE_STATUSES, SILENCE_RULES, frameDigests } from "./types.ts"
 import { createHash } from "node:crypto"
 import type { NotTestedCoverageResult, ProbeTestInput, SilenceDeclaration } from "./types.ts"
 import type {
@@ -15,6 +15,7 @@ import type {
 } from "./types.ts"
 import type {
   AssertionType,
+  CaptureLocated,
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -27,6 +28,9 @@ import type {
 } from "./types.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { sgrAttributeCaptureResult } from "./region-readback.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
+import { CALIBRATION_SOLID_PAINT } from "./calibrated-capture-geometry.ts"
+import { sourceNow } from "./source-clock.ts"
 
 /** Translate a screen row into the absolute buffer retained by the library source. */
 export function activeScreenRow(ctx: LibProbeSource, row: number): number {
@@ -84,6 +88,31 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
     "packages/kitty/build/native-mode-layout.json": "20b976ba87de032248a787fcb8b5adc64c640f07",
     "packages/kitty/build/native-mode-layout.receipt.json": "1e1e450aa08538ffb2d7ba80d45015aae4d86921",
+  },
+  // termless 1738b811 (vs 343c2e5d): layout.json moves only nativeModuleSha256 and the receipt only its build
+  // record (sha256, recipe and flake-lock hashes, gcc 16.2.0, python 3.14.10); offsets, widths and adapter code
+  // are unchanged (@cto bef7054c condition 4).
+  kitty1738b811: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "473d25a335c4e739f915a254625607f617ed9d1e",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "b131e26069edf2129b4ff70aa2ce88c154dea811",
+    "packages/kitty/build/native-mode-layout.receipt.json": "3e2dfd878a701eba5430a31948bc26a372ebdcfc",
+  },
+  // termless 3da7fd0e (34034, 34051), read against kitty1738b811: index.ts, backend.ts and layout.c unchanged.
+  // bridge.py (473d25a3..94e5f97e, @cto read at 3da7fd0e) only replaces the hand-typed native module sha with the
+  // build's kitty-native-identity.json, matched to the reviewed archive hash. native-mode-layout.json renames one field,
+  // nativeModuleSha256 -> reviewedArchiveHash. The receipt moves its embedded copy of that field, the layout's sha256,
+  // and recipeSha256 (layout.nix changed in 34034); compiler, python and flake-lock lines are 1738b811's. Same source
+  // commit b2cb8712, same headers.
+  kitty3da7fd0e: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "f8c227b927b805a3415efcc64968577848115033",
+    "packages/kitty/build/bridge.py": "94e5f97e5933625355b5c988721027f684f9f204",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "37594baca0cbd3ebf847478a47db999d937506ba",
+    "packages/kitty/build/native-mode-layout.receipt.json": "189dd4fdd9780f841756928e237490f75dfbb947",
   },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
@@ -256,6 +285,23 @@ export function auditedAdapterSources(
   )
 }
 
+/**
+ * The audited kitty 0.49.2 library: the engine version, the upstream commit the run read from the loaded binary
+ * (KITTY_VCS_REV), and an audited adapter cohort. kitty-official is upstream's prebuilt archive with only
+ * interpreter and runpath fixups, so its binary bytes move with every derivation edit while the engine does not;
+ * the binary sha stays in the record and decides nothing (@cto bef7054c, the vt100-rust shape of 90d6183a).
+ */
+export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]): boolean {
+  return (
+    identity?.kind === "native" &&
+    identity.engineVersion === "0.49.2" &&
+    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
+    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811", "kitty3da7fd0e"] as const).some((cohort) =>
+      auditedAdapterSources(identity, cohort),
+    )
+  )
+}
+
 export function unauditedAdapterSourceDiagnostic(
   backend: string,
   identity: LibProbeSource["runtimeIdentity"],
@@ -338,11 +384,56 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   }
 }
 
+/**
+ * Mark a read-method gap: the probe ran, but this terminal gave it no way to read the answer here — it has no
+ * owned reader, or a control the probe injected did not read back. The row stays open (probe-todo); only a
+ * broken fixture is probe-invalid (@cto 91ec1211, 2026-11-13).
+ */
+export function methodUnavailable(reason: string): ExecutionOnlyProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+    replyFailureTestIds: ["criterion"],
+  }
+}
+
 /** An operational cleanup failure replaces reply intent on the object already being returned. */
 export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackResult {
   const unmarked = result as { replyFailureTestIds?: readonly string[] }
   delete unmarked.replyFailureTestIds
   return result
+}
+
+/**
+ * A fixture that could not restore the surface after its controls records that on the reading it produced
+ * (@cto 1676cf8a, slice 2): the reading is the measurement, the restore is our own hygiene. The cleanup
+ * supersedes reply absence, so a reply marker is never attached to a failure the probe caused itself.
+ */
+export function cleanupReading(result: ProbeCallbackResult, cleanup: string): ProbeCallbackResult {
+  const carried = cancelReplyFailure({ ...result })
+  return { ...carried, note: carried.note ? `${carried.note}; ${cleanup}` : cleanup }
+}
+
+/** The reading a callback produced. Reaching a callback's return without one is a bug in its control flow. */
+export function callbackReading(result: ProbeCallbackResult | undefined): ProbeCallbackResult {
+  if (result === undefined) throw new Error("A probe callback reached its return without a reading")
+  return result
+}
+
+/**
+ * The failure a probe is already propagating, carrying one more fact: the restore the fixture could not
+ * complete. An Error is returned as the same object, so its type, identity and message survive and only the
+ * detail is appended; anything else thrown is wrapped, because a primitive or plain object cannot carry the
+ * detail at all. The caller throws the result from `finally` — assigning it to a local would leave the
+ * original value propagating and silently drop the detail (that is why a wrapper only works when thrown).
+ */
+export function withCleanupDetail(failure: unknown, cleanup: string): unknown {
+  if (failure instanceof Error) {
+    if (!failure.message.includes(cleanup)) failure.message = `${failure.message}; ${cleanup}`
+    return failure
+  }
+  return new Error(`${String(failure)}; ${cleanup}`)
 }
 
 /** Add completed producer evidence only where the callback explicitly requested it. */
@@ -368,9 +459,11 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests?.some((test) => test.id === id && test.status === "probe-invalid")) {
+    if (
+      !result.tests?.some((test) => test.id === id && (test.status === "probe-todo" || test.status === "probe-invalid"))
+    ) {
       throw new Error(
-        `Callback ${featureId} reply marker ${id} must name a probe-invalid test; fix the callback builder use`,
+        `Callback ${featureId} reply marker ${id} must name an open or invalid test; fix the callback builder use`,
       )
     }
   }
@@ -404,7 +497,9 @@ export function withReplyFailureEvidence(
   return {
     ...result,
     tests: result.tests?.map((test) =>
-      marked.has(test.id) && test.status === "probe-invalid" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+      marked.has(test.id) && (test.status === "probe-invalid" || test.status === "probe-todo")
+        ? { ...test, reason: `${test.reason}; ${detail}` }
+        : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
 }
@@ -875,8 +970,11 @@ export interface SgrReadback {
  * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
  * never a negative.
  */
+export const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
+export const DECRQSS_SGR_REPLY = /\x1bP1\$r([0-9;:]*)m\x1b\\/
+
 export async function querySgrState(ctx: TermProbeSource): Promise<string[] | null> {
-  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
+  const outcome = await ctx.queryWithSentinelOutcome(DECRQSS_SGR_QUERY, DECRQSS_SGR_REPLY)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
   if (payload === undefined) return null
@@ -1417,8 +1515,10 @@ const UNHANDLED_CSI_CELLS: ReadonlySet<string> = new Set([
 
 /**
  * The CSI arm's control (@cto 2026-11-05 07:37 status): SGR 1 must add no report entry while the same
- * cell reader shows bold applied, then the target must add one or more entries all carrying the code its own
- * sequence produces ("5m", "9m", "21m", "4:3m", "4:4m", "4:5m"). Anything else keeps the body's result.
+ * cell reader shows bold applied, then the target must add exactly its expected code or ordered codes.
+ * Missing, different, extra or reordered entries keep the body's result. Explicit colour targets
+ * may consult this fallback only when the body's cell reader does not expose underline colour;
+ * exposed-but-uncalibrated observations retain their unresolved result.
  * sgr.underline-color-reset calls it directly for "59m" (@cto routes-32 section 1, 23:02 PST Nov 5 2026).
  */
 export function withUnhandledSgrReport(
@@ -1430,6 +1530,7 @@ export function withUnhandledSgrReport(
   return (ctx) => {
     const result = body(ctx)
     if (reportsDecidedOutcome(result)) return result
+    if (target !== undefined && result.notTested?.reason !== "no-semantic-observable") return result
     const cursor = ctx.getCursor()
     const reported = unhandledSequenceVerdict(
       ctx,
@@ -1665,6 +1766,8 @@ export function sgrProbe(
           "no parsable cursor position reply; the public projection returned null and retained no bytes",
         )
       }
+      // 34675: only a cursor that reached its column is a passed control; a wrong position stays untagged.
+      if (pos.col === 2) raiseRefusedCapture(ctx, "Cursor advance does not verify SGR styling")
       // Cursor should be at col 2 (wrote 1 char "X")
       return {
         pass: pos.col === 2,
@@ -1872,6 +1975,189 @@ export function syncOutputCaptureTooSlow(settleMs: number, beforeSet: number, af
 }
 
 /**
+ * How long the no-set control, the release and the restored clear may each take to show on screen (33628). It bounds
+ * those three reads only. The held phase has no wait of its own: it lasts as long as the control took to appear.
+ */
+export const SYNC_OUTPUT_PAINT_WAIT_MS = 2000
+
+/**
+ * 33628 (@cto ruling 1957): WezTerm Linux's synchronized-output App row, graded by the rendered hold.
+ *
+ * Why not DECRPM: the pinned mux (mux/src/lib.rs) keeps parsing while mode 2026 is held and buffers the parsed actions
+ * until reset. Every in-band reply is withheld together with the paint, so a DECRPM read after DECSET cannot decide
+ * the row.
+ *
+ * What it reads: one cell is painted with calibration's own solid sentinel, and every frame is read by that exact
+ * colour alone (`locate`, no cells). Such a read paints nothing in-band, so nothing is written, queried or reset while
+ * the mode is held.
+ *
+ * Supported needs all of this, in one bounded sequence:
+ * - the colour is absent at baseline;
+ * - a no-set control paint appears, and its clear leaves the colour absent;
+ * - the held paint is absent from every frame up to one requested later than the control took to appear, and each of
+ *   those frames equals the cleared baseline;
+ * - the reset paint appears with the control's footprint;
+ * - after the final reset, DECRPM reads Ps 2 and the colour is gone.
+ *
+ * Anything else stays open with its reason; this arm states no negative. The claim is the observed hold and release in
+ * this sequence, not tear-free rendering or scroll cadence in general. The callback runs only on a disposable terminal,
+ * and the painted cell is left blank.
+ */
+async function syncOutputRenderedHold(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
+  const open = (reason: string, evidence?: object): ProbeCallbackResult => ({
+    pass: false,
+    ...(evidence === undefined ? {} : { response: JSON.stringify(evidence) }),
+    note: reason,
+    tests: [{ id: "criterion", status: "probe-todo", reason }],
+  })
+  const capture = ctx.capture
+  const sentinel = ctx.captureGeometry?.sentinel
+  // #34961 (@cto 34961-hold-geometry-go-0603): this definition declares no terminal geometry, so `ctx.cols` is
+  // refused for every subject. The hold paints at the last column of the grid this run's complete-raster calibration
+  // measured, the same raster the sentinel comes from; nothing is rounded or defaulted.
+  const raster = ctx.captureGeometry?.geometry
+  const cols =
+    raster === undefined ||
+    !(Number.isFinite(raster.textWidth) && raster.textWidth > 0) ||
+    !(Number.isFinite(raster.cellWidth) && raster.cellWidth > 0)
+      ? undefined
+      : raster.textWidth / raster.cellWidth
+  const missing = !capture
+    ? "no capture adapter"
+    : ctx.captureKind === "text-cells"
+      ? "only a text-cells capture"
+      : !sentinel
+        ? "no calibration sentinel"
+        : cols === undefined || !Number.isSafeInteger(cols) || cols < 1
+          ? `no measured width (calibrated text width ${String(raster?.textWidth)} px over cell width ${String(raster?.cellWidth)} px)`
+          : undefined
+  if (missing !== undefined || !capture || !sentinel || cols === undefined) {
+    return open(`synchronized-output rendered hold unmeasured: this run offers ${missing}, so the hold cannot be read`)
+  }
+  const cell = { row: 1, col: cols }
+  const at = `\x1b[${cell.row};${cell.col}H`
+  const paint = `\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]} \x1b[0m\x1b8`
+  const blank = `\x1b7${at}\x1b[0m \x1b8`
+  const start = sourceNow(ctx)
+  const elapsed = () => sourceNow(ctx) - start
+  const frames: ObservationFrame[] = []
+  const writes: { phase: string; atMs: number; bytes: string }[] = []
+  const reads: {
+    phase: string
+    ref: string
+    requestedMs: number
+    returnedMs: number
+    located: CaptureLocated | null
+  }[] = []
+  const evidence = { snapshot: 2, cell, rgb: sentinel.rgb, form: sentinel.form, writes, reads }
+  type Read = { frame: ObservationFrame; requestedMs: number; returnedMs: number; located: CaptureLocated | null }
+  const write = (phase: string, bytes: string) => {
+    const atMs = elapsed()
+    writes.push({ phase, atMs, bytes })
+    ctx.write(bytes)
+    return atMs
+  }
+  const read = async (phase: string): Promise<Read | string> => {
+    const requestedMs = elapsed()
+    const frame = await capture({
+      role: phase === "held" ? "target" : "control",
+      label: `synchronized-output ${phase}`,
+      locate: { rgb: sentinel.rgb },
+    })
+    const returnedMs = elapsed()
+    if (frame.located === undefined) return `the capture arm returned no located field for the ${phase} frame`
+    frames.push(frame)
+    reads.push({ phase, ref: frame.ref, requestedMs, returnedMs, located: frame.located })
+    return { frame, requestedMs, returnedMs, located: frame.located }
+  }
+  // Read until the colour is present (or absent), within SYNC_OUTPUT_PAINT_WAIT_MS of `since`.
+  const until = async (phase: string, present: boolean, since: number): Promise<Read | string> => {
+    for (;;) {
+      const r = await read(phase)
+      if (typeof r === "string" || (r.located !== null) === present) return r
+      if (elapsed() - since >= SYNC_OUTPUT_PAINT_WAIT_MS) {
+        return `the ${phase} frame did not ${present ? "show" : "clear"} the sentinel within ${SYNC_OUTPUT_PAINT_WAIT_MS} ms`
+      }
+    }
+  }
+  const whole = (r: Read) => frameDigests(r.frame).whole
+  let measured: { held: Read; control: Read; controlAt: number; heldAt: number } | string
+  try {
+    measured = await (async () => {
+      const baseline = await read("baseline")
+      if (typeof baseline === "string") return baseline
+      if (baseline.located !== null) return "the sentinel colour was already on screen before any paint"
+      const controlAt = write("control", paint)
+      const control = await until("control", true, controlAt)
+      if (typeof control === "string") return control
+      const clearedAt = write("control clear", blank)
+      const cleared = await until("control cleared", false, clearedAt)
+      if (typeof cleared === "string") return cleared
+      if (whole(cleared) === undefined) return "the cleared baseline frame carries no whole-frame digest"
+      // The held phase lasts until a frame is requested strictly later after its write than the control took to
+      // appear: a frame requested exactly at that latency does not meet the criterion, so the loop takes another
+      // (34938, @cto 2026-11-18).
+      const latency = control.returnedMs - controlAt
+      const heldAt = write("held", `\x1b[?2026h${paint}`)
+      let held: Read
+      let count = 0
+      do {
+        const r = await read("held")
+        if (typeof r === "string") return r
+        held = r
+        count++
+        if (held.located !== null) return `the held paint appeared ${held.requestedMs - heldAt} ms after DECSET 2026`
+        if (whole(held) !== whole(cleared)) return "a held frame differs from the cleared baseline"
+      } while (count < 2 || held.requestedMs - heldAt <= latency)
+      const releasedAt = write("release", "\x1b[?2026l")
+      const released = await until("released", true, releasedAt)
+      if (typeof released === "string") return released
+      if (JSON.stringify(released.located) !== JSON.stringify(control.located)) {
+        return "the released paint does not have the control's footprint"
+      }
+      return { held, control, controlAt, heldAt }
+    })()
+  } finally {
+    write("restore", `${blank}\x1b[?2026l`)
+  }
+  const restoredAt = elapsed()
+  const afterRestore = await queryDecrpm(ctx, 2026)
+  const restored = await until("restored", false, restoredAt)
+  const response = { ...evidence, afterRestore }
+  if (typeof measured === "string") {
+    return open(`synchronized-output rendered hold unresolved: ${measured}`, response)
+  }
+  if (afterRestore !== 2) {
+    return open(
+      `synchronized-output restoration unproven: DECRPM 2026 read ${String(afterRestore)} after the reset`,
+      response,
+    )
+  }
+  if (typeof restored === "string") return open(`synchronized-output restoration unproven: ${restored}`, response)
+  const { held, control, controlAt, heldAt } = measured
+  const note =
+    `synchronized-output rendered hold observed: the no-set control painted ${control.returnedMs - controlAt} ms after its write, ` +
+    `the held paint stayed off screen for ${held.requestedMs - heldAt} ms, and DECRST 2026 released it with the control's footprint; ` +
+    "tearing and scroll cadence unmeasured"
+  const observed = JSON.stringify(response)
+  return {
+    pass: true,
+    response: observed,
+    note,
+    observation: { outcome: "supported", assertionType: "screenshot", note, frames, screenshotRef: held.frame.ref },
+    assertions: [
+      {
+        assertionType: "screenshot",
+        kind: "positive",
+        expected:
+          "a no-set paint shows, the same paint after DECSET 2026 stays off every frame for longer than the control took, and DECRST 2026 shows it with the control's footprint",
+        observed,
+      },
+    ],
+  }
+}
+
+/**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
  */
@@ -1890,15 +2176,23 @@ export function decrpmModeProbe(
       if (!verifySet) return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
       const snapshot = await queryDecrpm(ctx, modeNum)
       let ps = snapshot
+      let afterRestore: DecrpmPs | null | undefined
+      // 33628: the one subject whose replies are withheld while held is graded by its rendered hold instead.
+      if (snapshot === 2 && modeNum === 2026 && ctx.syncOutputRenderedHold) return syncOutputRenderedHold(ctx)
       if (snapshot === 2) {
         try {
           ctx.write(`\x1b[?${modeNum}h`)
           ps = await queryDecrpm(ctx, modeNum)
         } finally {
           ctx.write(`\x1b[?${modeNum}l`)
+          if (modeNum === 2026) afterRestore = await queryDecrpm(ctx, modeNum)
         }
       }
-      const response = JSON.stringify({ snapshot, ...(snapshot === 2 ? { afterSet: ps } : {}) })
+      const response = JSON.stringify({
+        snapshot,
+        ...(snapshot === 2 ? { afterSet: ps } : {}),
+        ...(afterRestore === undefined ? {} : { afterRestore }),
+      })
       if (ps === null) {
         return {
           pass: false,
@@ -2567,6 +2861,22 @@ export function declaredUntestableResult(reason: string, state: object): NotTest
   }
 }
 
+/**
+ * The four viewport-history rows on a subject whose viewport route applies (34313, @cto held-reader correction
+ * 2026-11-17 10:49): no capture read returns a qualified scrolled-back frame today (the declared-hold reader
+ * refuses every hold), so the rows are a named apparatus PROBE TODO, checked BEFORE the app's declared Untestable,
+ * and they press no key and write nothing. A held-frame reader replaces this branch with the measurement.
+ */
+export function heldViewportReadTodo(ctx: TermProbeSource): NotTestedCoverageResult | undefined {
+  const route = ctx.viewportScroll
+  if (!route) return undefined
+  return notTestedResult(
+    `held-viewport read not available: viewport route "${route.route}" applies, but no capture read returns a ` +
+      "qualified scrolled-back frame (CaptureHoldUnresolved)",
+    { viewportRoute: route.route },
+  )
+}
+
 /** Internal fallback after a caller has qualified its own missing-setup controls. */
 export function noSetupResult(result: ProbeCallbackResult, reason: string, state: object): ProbeCallbackResult {
   if (reportsDecidedOutcome(result) || result.tests?.some((test) => test.status === "probe-invalid")) return result
@@ -2839,6 +3149,17 @@ export function fencedSilenceStatus(silence?: SilenceDeclaration): "unsupported"
 export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
   if (outcome.reason !== "sentinel") return null
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
+}
+
+/**
+ * Whether a query's silence was measured: a wait that ran out with nothing on the wire, or the DA1 fence
+ * came back with nothing that matched it. A timeout that still carried bytes is not silence, and neither
+ * are bytes the pattern could not read — both are an answer we failed to read, and the caller keeps
+ * treating those as its own defect (#30559).
+ */
+export function measuredSilence(outcome: TerminalQueryOutcome, expected: string): boolean {
+  const timedOutEmpty = outcome.reason === "timeout" && outcome.raw === ""
+  return timedOutEmpty || sentinelSilenceResult(outcome, expected) !== null
 }
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */

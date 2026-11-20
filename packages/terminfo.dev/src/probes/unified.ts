@@ -11,6 +11,7 @@ import {
   resolveProbeIds,
   recordExecutedProbe,
   colourSiblingSeparation,
+  colourOnlyAttempts,
   type OuterColourControl,
   finalizeProbeResult,
   finalizeVisualResult,
@@ -22,6 +23,8 @@ import {
   type RunDraft,
   type CaptureCells,
   type CaptureRequest,
+  type ReadHeldViewport,
+  type ReadViewportReference,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
   type InputFixture,
@@ -35,7 +38,23 @@ import {
   type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
+  type ViewportScroll,
+  basisScopeAdmits,
+  basisScopeRefusal,
 } from "@terminfo/probe-defs"
+
+import {
+  MutationRestoreRefused,
+  type AttributeReads,
+  type LedgerAttribute,
+  attributeKey,
+  ledgerOmega,
+  readbackFor,
+  touchedAttributes,
+} from "./attribute-ledger.ts"
+import { SpilloverRefused, spilloverVerdict, witnessAdmission } from "./spillover-witness.ts"
+import { SentinelFrameMoved } from "../sentinel-read.ts"
+import { windowBasisAdmission } from "./window-basis-admission.ts"
 import {
   query,
   queryOutcome,
@@ -49,6 +68,7 @@ import {
   readInjectedOutcome,
   releaseTTYQueue,
   withTTYOperation,
+  withRunSignal,
   withTTYQueryTrace,
   writeTTY,
   type TTYQueryTrace,
@@ -59,6 +79,7 @@ import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipbo
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
 import { createCallLog, withCallLog } from "viprobe"
+import { CAPTURE_BINDING_SUFFIX, captureBinding } from "@terminfo/probe-defs"
 import {
   ownedTerminalVerifiedFor,
   ownedTerminalProcessBasisFor,
@@ -66,6 +87,12 @@ import {
   type OwnedTerminal,
 } from "../owned-terminal.ts"
 import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
+import {
+  checkOrdinaryOpenLiveAncestry,
+  ordinaryOpenAdmission,
+  type LiveAncestryReader,
+  type OrdinaryOpenReceipt,
+} from "../ordinary-open-receipt.ts"
 import { beginMuxSgrCommandRead, hasOuterCommandMatcher } from "../app-semantic-state.ts"
 
 /**
@@ -85,6 +112,26 @@ export interface Probe {
 }
 
 /** Build a TermProbeSource from the tty.ts helpers */
+/**
+ * The cell's own reply to the readback query for `attribute`, taken from the last such query recorded
+ * before the first write that touched it. A probe that reads its pre-state itself (DECRQM, OSC 4) needs
+ * no pre-pass entry: that reply IS the pre-state (@cto e6ae2880 condition 3).
+ */
+function priorReply(events: readonly TTYTraceEvent[], attribute: LedgerAttribute, pattern: RegExp): string | undefined {
+  const key = attributeKey(attribute)
+  const writes: string[] = []
+  let candidate: string | undefined
+  for (const event of events) {
+    if (event.kind === "query") {
+      if (pattern.test(event.raw)) candidate = event.raw
+      continue
+    }
+    writes.push(event.sequence)
+    if (touchedAttributes(writes).attributes.some((touched) => attributeKey(touched) === key)) return candidate
+  }
+  return candidate
+}
+
 export function createTermProbeSource({
   probe,
   geometry,
@@ -108,6 +155,8 @@ export function createTermProbeSource({
   }
   return {
     kind: "live",
+    // #30932 S2: the live clock, unchanged; the source recorder keeps every value it returns.
+    now: () => Date.now(),
     write(text: string) {
       onWrite?.(text)
       writeTTY(text)
@@ -163,6 +212,7 @@ export type ProbeCapture = (checkpoint: {
   featureId: string
   role: ObservationFrame["role"]
   label: string
+  restoreAfterPaint?: CaptureRequest["restoreAfterPaint"]
   /** The cell-aligned region to digest; the collector maps it to window pixels itself. */
   cells?: CaptureCells
   /** A second cell-aligned region digested from the same captured image, beside `cells`. */
@@ -173,12 +223,42 @@ export type ProbeCapture = (checkpoint: {
   locate?: CaptureRequest["locate"]
   /** Cells the probe's own output may cover; the read never paints its sentinel there (33985). */
   avoid?: CaptureRequest["avoid"]
+  /** The viewport hold this read is taken under, forwarded verbatim to the collector (34163). */
+  scroll?: CaptureRequest["scroll"]
+  /** A layout guard over `cells`, forwarded verbatim to the collector (#34932). */
+  layoutGuard?: CaptureRequest["layoutGuard"]
+  /**
+   * The calibration's witnessed background members, added by the served route for a `layoutGuard`
+   * request; never set by a probe.
+   */
+  layoutGuardBackground?: ReadonlySet<number>
+  /** Select the screen mode's witnessed paint for this read, forwarded verbatim (#34932, @cto 34932-reverse-seam-ruling-2325). */
+  screenMode?: CaptureRequest["screenMode"]
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
 
+/**
+ * 34693 (@cto 3dd05e18): one row's held-viewport reader, built FOR that row by the preparation that calibrated
+ * its grid. The preparation runs on its own source; a reader closed over it would read that object's viewport
+ * route and record into the calibration, so the row's own source, feature id and frame recorder are passed in.
+ */
+export type HeldViewportReaderFor = (row: {
+  readonly featureId: string
+  /** The row's own source: its viewport route is read from here at each call. */
+  readonly source: TermProbeSource
+  /** The row's frame recorder: each raw frame joins its observation frames and the run's screenshot refs. */
+  readonly record: (result: CapturedProbeFrame) => void
+}) => { readonly read: ReadHeldViewport; readonly reference: ReadViewportReference }
+
 export interface GeometryCorroboration {
-  status: "agree" | "conflict" | "uncorroborated" | "silent" | "malformed"
+  /**
+   * `conflict-rows-only` is the one disagreement the complete-raster calibration may TEST (34672,
+   * @cto warp-geometry-ruling-1252): the terminal's reply agrees on columns and differs only in rows,
+   * so the owned PTY grid is a candidate the calibration can paint and verify. It is never reported as
+   * `agree`; the conflict stays in the record exactly as the terminal answered it.
+   */
+  status: "agree" | "conflict" | "conflict-rows-only" | "uncorroborated" | "silent" | "malformed"
   query: {
     sequence: "\x1b[18t"
     outbound: "\x1b[18t\x1b[c"
@@ -213,6 +293,7 @@ export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; 
 }
 
 /**
+ * OSC633 P can pin the pane cwd until it closes, so it follows cwd and prompt observations.
  * OSC 52 stays after the other probes so a clipboard write does not disturb them. DECRQCRA is
  * last: on iTerm2 it raises a consent banner that covers every later pixel probe (#31741).
  */
@@ -225,7 +306,35 @@ export function scheduleAppProbes<T extends { readonly id: string }>(requested: 
     else if (probe.id.startsWith("extensions.osc52-")) clipboard.push(probe)
     else body.push(probe)
   }
+  const cwdPin = body.findIndex((probe) => probe.id === "extensions.osc633-p")
+  if (cwdPin !== -1) body.push(...body.splice(cwdPin, 1))
   return [...body, ...clipboard, ...consent]
+}
+
+/**
+ * A row stopped by its wall says how far its captures got (34641 d): their count, the last one's offset from the
+ * row's first capture, and the median gap between them, from each frame's own `capturedAt`. A row with no captures
+ * keeps the bare text. Preparation and renewal captures are not this row's, so the span is the fixture's, not the
+ * run's.
+ */
+export function wallExceededReason(wallMs: number, capturedAt: readonly number[]): string {
+  const bare = `Probe exceeded ${wallMs}ms`
+  const [first, ...rest] = [...capturedAt].sort((a, b) => a - b)
+  if (first === undefined) return bare
+  const count = `${rest.length + 1} capture${rest.length === 0 ? "" : "s"}`
+  const last = `last at +${Math.round((rest.at(-1) ?? first) - first)}ms`
+  if (rest.length === 0) return `${bare} after ${count}, ${last}`
+  let before = first
+  const gaps = rest
+    .map((at) => {
+      const gap = at - before
+      before = at
+      return gap
+    })
+    .sort((a, b) => a - b)
+  const middle = gaps.slice(Math.ceil(gaps.length / 2) - 1, Math.floor(gaps.length / 2) + 1)
+  const median = middle.reduce((sum, gap) => sum + gap, 0) / middle.length
+  return `${bare} after ${count}, ${last} (median gap ${Math.round(median)}ms)`
 }
 
 /**
@@ -301,9 +410,15 @@ export function captureAdapterEligible(
 /** Probes that press the App's paste key: clipboard-paste, and bracketed-paste, whose App effect reuses it. */
 const PASTE_PROBE_IDS: ReadonlySet<string> = new Set(["extensions.clipboard-paste", "modes.bracketed-paste"])
 
+/**
+ * A live ancestry walk that refused mid-probe. Its own type so the ordinary-open fixture wrapper can tell "the
+ * method is gone" (a named probe-todo) from a real adapter failure, which must still propagate as itself.
+ */
+class OrdinaryOpenAncestryRefusal extends Error {}
+
 /** Why this run's recording pasteboard did not admit a clipboard row (#31741). */
 function clipboardGateRefusal(
-  clipboard: LinuxClipboardAdapter | undefined,
+  clipboard: Pick<LinuxClipboardAdapter, "pasteboard" | "pasteboardApp" | "profile" | "muxAttachmentProof"> | undefined,
   subject: { kind: "term" | "lib" | "mux"; id: string; os: string } | undefined,
 ): string {
   if (!clipboard) return "this run records no clipboard fixture"
@@ -369,8 +484,60 @@ function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string
   return subject?.kind === "term" && subject.id === "ghostty" && subject.os === "linux"
 }
 
-/** Collect the real callback result, without treating its legacy boolean as an observation. */
-export async function runProbeBatch(
+/**
+ * The WezTerm Linux builds whose mux holds parsed actions while ?2026 is set, so their synchronized-output App row is
+ * graded by its rendered hold. 33628 (@cto 1957) qualified 0-unstable-2026-10-10 (rev e2a98e1b8af1); 34961 (@cto
+ * cc2dac5d) added 0-unstable-2026-11-08 (rev 458a100c1bf4), whose source differs only in docs and get-deps, with
+ * mux/src/lib.rs byte-identical. Exact versions only: the run's own rendered-hold controls still decide each result.
+ */
+const SYNC_OUTPUT_RENDERED_WEZTERM_LINUX: ReadonlySet<string> = new Set([
+  "0-unstable-2026-10-10",
+  "0-unstable-2026-11-08",
+])
+
+/** 33628 (@cto 1957), 34961: the one subject whose synchronized-output App row is graded by its rendered hold. */
+export function syncOutputRenderedSubject(
+  subject: { kind: "term" | "lib" | "mux"; id: string; os: string; version?: string } | undefined,
+): boolean {
+  return (
+    subject?.kind === "term" &&
+    subject.id === "wezterm" &&
+    subject.os === "linux" &&
+    subject.version !== undefined &&
+    SYNC_OUTPUT_RENDERED_WEZTERM_LINUX.has(subject.version)
+  )
+}
+
+/**
+ * 34899 (@cto REVISE 1, r2 C1-C5): the one subject whose frame shows each prompt mark as a boundary of its own.
+ * Its OSC 133/633 mark rows read that frame differential instead of the cursor-position arm; every other subject
+ * keeps the cursor arm, so no second grading mechanism is introduced for them.
+ */
+function promptMarkBoundaryRendering(subject: { kind: "term" | "lib" | "mux"; id: string } | undefined): boolean {
+  return subject?.kind === "term" && subject.id === "warp"
+}
+
+/** Run-fatal: a row's wall could not prove its held viewport back at the bottom (34645, @cto e1cfff79 item 2). */
+class ViewportReturnRefused extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ViewportReturnRefused"
+  }
+}
+
+/**
+ * Collect the real callback result, without treating its legacy boolean as an observation.
+ *
+ * The run's cancellation is bound here, so every TTY wait and write it starts reads the same signal
+ * (#34941): a client that leaves stops an active callback, not just the next row.
+ */
+export function runProbeBatch(
+  options: Parameters<typeof runProbeBatchInRun>[0],
+): ReturnType<typeof runProbeBatchInRun> {
+  return withRunSignal(options?.signal, () => runProbeBatchInRun(options))
+}
+
+async function runProbeBatchInRun(
   options: {
     ids?: string[]
     capture?: ProbeCapture
@@ -379,12 +546,27 @@ export async function runProbeBatch(
     /** What the installed adapter reads; a text adapter is honest even where pixel geometry was
      * refused, so it is installed regardless of `captureGeometryRefusal`. */
     captureKind?: "pixels" | "text-cells"
+    /**
+     * #34940: the qualified terminal-owned text adapter, kept beside a pixel `capture`. Each probe with
+     * `textClaim: "characters"` and cellReadback reads it instead of pixels; it is absent on a text-only run, where
+     * `capture` is already that adapter, and on any run without a text qualification recipe.
+     */
+    textCellsCapture?: ProbeCapture
     /** Prepare owned capture through its existing factory, query trace and frame recorder. */
     prepareCapture?: (input: {
       source: TermProbeSource
       featureId: string
+      /** The row whose read asked for this preparation, when a later row renews the origin; absent
+       * on the pre-flight, which no row asked for (#34306 AC1). */
+      row?: string
       recordCapture: (result: CapturedProbeFrame) => void
-    }) => Promise<void>
+      /**
+       * A screen mode a selected row declared (`termScreenMode`), whose paint this preparation and every
+       * renewal it installs also witness (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). Absent keeps the normal calibration.
+       */
+      screenMode?: "reverse"
+      /** A preparation that can read held viewports returns the per-row reader factory (34693). */
+    }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
      * The one after-probes call point: runs once after every probe callback and the final ownership
      * check, through the same query trace and frame recorder. The caller decides what belongs before
@@ -394,7 +576,8 @@ export async function runProbeBatch(
       source: TermProbeSource
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
-    }) => Promise<void>
+      /** Same shape as prepareCapture's; a factory returned after the last row reaches no row. */
+    }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
@@ -407,7 +590,38 @@ export async function runProbeBatch(
     input?: InputFixture & {
       resizeWindow?(width: number, height: number, featureId?: string): Promise<{ width: number; height: number }>
     }
+    /** The subject owner's viewport route (34313); only the history rows read it, never the public input fixture. */
+    viewportScroll?: ViewportScroll
     ownedTerminal?: OwnedTerminal
+    /**
+     * 34753: the response that asked for this run is gone. Checked between rows and never allowed to
+     * become a row's own collector-error, so a cancelled collection stops instead of finishing a batch
+     * nobody is reading; the caller's lease and trace owners still run their real cleanup paths.
+     */
+    signal?: AbortSignal
+    /**
+     * Fold 3's witness window (#34148): a second window the SAME run opened in the SAME app instance and
+     * never writes to. Present only when the grant covers two windows; `read` asks that window the same
+     * query the cell's own attribute uses. Absent means every window cell refuses by name — there is no
+     * "assume window" path (@cto e6ae2880 condition 5).
+     */
+    witnessWindow?: {
+      readonly app: string
+      read(attribute: LedgerAttribute): Promise<string | undefined>
+    }
+    /**
+     * An app a person opened normally (@cto 2026-11-13): the receipt that names it and the adapter the Mac run
+     * path built from the receipt's own subject. This grants NOTHING beyond the three OSC 52 rows — it is never
+     * OR'd into `authorizedToWrite` — and every probe it might cover has to pass a LIVE ancestry walk first.
+     */
+    ordinaryOpen?: {
+      readonly receipt: OrdinaryOpenReceipt
+      readonly clipboard: NonNullable<OwnedTerminal["clipboard"]>
+      /** The bundle id the one Mac app registry names for the subject; without it the receipt binds to no app. */
+      readonly expectedBundleId: string | undefined
+      /** Overridable only so a test can drive the walk; production reads the real parent chain. */
+      readonly readAncestry?: LiveAncestryReader
+    }
     /** Sees every probe write before it is sent: an owned reader that must know what was drawn. */
     onWrite?: (text: string) => void
     captureRunId?: string
@@ -497,6 +711,31 @@ export async function runProbeBatch(
     bindReceiptToRun(disposable, options.subject, "collector.disposableOwnership")
   }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
+  // Ordinary-open (@cto 2026-11-13): a person launched the app themselves and a receipt names the live process
+  // chain that reached it. This is NOT ownership and never enters `authorizedToWrite`; it grants only the three
+  // OSC 52 rows, and each of those still has to pass a LIVE ancestry walk at the moment it runs.
+  const ordinaryOpen = options.ordinaryOpen
+  // Never a pass when the registry names no bundle: the live walk refuses that case itself, so this wrapper
+  // cannot turn a missing bundle id into admission (@cto 2026-11-13).
+  const ordinaryOpenLiveRefusal = (): string | undefined => {
+    if (!ordinaryOpen) return undefined
+    const verdict = checkOrdinaryOpenLiveAncestry({
+      receipt: ordinaryOpen.receipt,
+      expectedBundleId: ordinaryOpen.expectedBundleId,
+      probePid: process.pid,
+      ...(ordinaryOpen.readAncestry && { reader: ordinaryOpen.readAncestry }),
+    })
+    return verdict.ok ? undefined : verdict.probeTodo
+  }
+  // Resolves when the live walk passes, rejects with the row's named refusal when it does not. Written without
+  // `async` because the walk is synchronous: the promise is the contract the fixture takes, not a wrapper around
+  // an await, and an async function with nothing to await hides that.
+  const ordinaryOpenVerify = ordinaryOpen
+    ? () => {
+        const probeTodo = ordinaryOpenLiveRefusal()
+        return probeTodo === undefined ? Promise.resolve() : Promise.reject(new OrdinaryOpenAncestryRefusal(probeTodo))
+      }
+    : undefined
   if (disposable?.appLaunch) {
     batch.appLaunch = disposable.appLaunch
     if (disposable.appLaunch.argv === undefined) {
@@ -560,7 +799,12 @@ export async function runProbeBatch(
   let capturePrepared = false
   let capturePreparations = 0
   let captureGeometry: TermProbeSource["captureGeometry"]
+  // 34693: the last successful preparation's per-row held-viewport reader factory; a refusal clears it.
+  let heldViewportReaderFor: HeldViewportReaderFor | undefined
   let captureGeometryRefusal = options.captureGeometryRefusal
+  // #30932 S1: the preparation every later row's crops are measured against, by the id its own
+  // paint log is retained under, so a replayed row names the installation it actually used.
+  let activeCalibrationId: string | undefined
   const recordCapture = (
     featureId: string,
     captures: CapturedProbeFrame[],
@@ -574,16 +818,31 @@ export async function runProbeBatch(
       throw new Error(`Capture adapter returned an invalid frame for ${featureId}`)
     }
     captures.push(result)
-    // The frame's own kind decides which list holds its ref, so a text snapshot is never listed as a
-    // screenshot.
-    const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
-    if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
+    listCapturedFrame(result.frame)
+  }
+  // The frame's own kind decides which list holds its ref, so a text snapshot is never listed as a
+  // screenshot. Placement copies exactly these lists, so a kept frame that skips them is placed with no file.
+  const listCapturedFrame = (frame: CapturedProbeFrame["frame"]) => {
+    const refs = frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
+    if (!refs.includes(frame.ref)) refs.push(frame.ref)
+  }
+  // 35009: an owned App reader's window capture returns outside the probe's capture callback, and its frame
+  // sits in the reading's detail and callback response; it enters the same lists here, by the same rule.
+  const recordReaderCapture = (featureId: string, captured: unknown) => {
+    const frame = (captured as { frame?: { kind?: unknown; ref?: unknown } } | null)?.frame
+    if (typeof frame?.kind !== "string" || typeof frame.ref !== "string" || !/^sha256:[a-f0-9]{64}$/.test(frame.ref)) {
+      throw new Error(`App reader capture for ${featureId} returned no typed frame with a sha256 ref`)
+    }
+    listCapturedFrame(frame as CapturedProbeFrame["frame"])
   }
   const prepareCaptureWith = async (
     prepareCapture: typeof options.prepareCapture,
     probe: ProbeDefinition,
     preGeometry?: GeometryMeasurement,
     calibrationId = "collector.captureCalibration",
+    askingRow?: string,
+    rowIndex?: number,
+    screenMode?: "reverse",
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -644,6 +903,18 @@ export async function runProbeBatch(
               { name: "CaptureCalibrationRefused" },
             )
           }
+          // 34672 (@cto warp-geometry-ruling-1252 condition 2): a rows-only conflict may not widen the
+          // candidate set. The only counts painted are the stable owned PTY counts just checked against the
+          // grant - never the terminal's reply, and never a second trial. A reply that also disagrees on
+          // columns is not this status and never reaches here.
+          if (reported?.status === "conflict-rows-only" && reported.cols !== current.cols) {
+            throw Object.assign(
+              new Error(
+                `Capture calibration rejects a rows-only conflict whose columns differ: reply ${reported.rows}x${reported.cols}, owned ${current.rows}x${current.cols}`,
+              ),
+              { name: "CaptureCalibrationRefused" },
+            )
+          }
           preparationGrid = { rows: current.rows, cols: current.cols }
         }
         const preparationSource = createTermProbeSource({
@@ -653,7 +924,7 @@ export async function runProbeBatch(
           utf8Decoding: readUtf8Decoding,
         })
         // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
-        await withTTYOperation(
+        const prepared = await withTTYOperation(
           () =>
             withTTYQueryTrace(
               calibrationQueries,
@@ -662,6 +933,8 @@ export async function runProbeBatch(
                 prepareCapture({
                   source: preparationSource,
                   featureId: calibrationId,
+                  ...(askingRow !== undefined && { row: askingRow }),
+                  ...(screenMode !== undefined && { screenMode }),
                   recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
                 }),
               {
@@ -675,18 +948,44 @@ export async function runProbeBatch(
         )
         captureGeometry = preparationSource.captureGeometry
         captureGeometryRefusal = preparationSource.captureGeometryRefusal
+        // The factory, never readers: each row builds its own, bound to its own source (34693).
+        heldViewportReaderFor = captureGeometryRefusal ? undefined : (prepared || undefined)?.heldViewportReaderFor
       } catch (error) {
         if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
         captureGeometryRefusal = error.message
+        heldViewportReaderFor = undefined
       } finally {
-        batch.rawReplies[`${calibrationId}.trace`] = JSON.stringify({
-          grid: preparationGrid,
-          geometryCorroboration: reported,
-          refusal: captureGeometryRefusal,
-          writes: calibrationEvents.filter((event) => event.kind === "write").map((event) => event.sequence),
-          queries: calibrationQueries,
-          events: calibrationEvents,
-          captures: calibrationCaptures,
+        // 34261 pre-paint retention: the recorder this preparation handed out keeps appending after it
+        // returns - every sentinel read takes one raw frame before it paints - so the trace is read when
+        // the batch is published rather than frozen into a string here, where those later rows were
+        // lost. Reading it late costs one serialization per reader; none is done per acquisition.
+        // This preparation's own outcome is settled here: `captureGeometryRefusal` is one variable the
+        // next preparation overwrites, so the late read must not report a later preparation's refusal.
+        const refusalAtPreparation = captureGeometryRefusal
+        // #30932 S1: what this installation handed its rows, and the run position of the row it was
+        // prepared for, so a row's stored association is checked against this record (never re-derived).
+        const geometryAtPreparation =
+          refusalAtPreparation === undefined && captureGeometry
+            ? (JSON.parse(JSON.stringify(captureGeometry)) as NonNullable<TermProbeSource["captureGeometry"]>)
+            : undefined
+        const writesAtPreparation = calibrationEvents
+          .filter((event) => event.kind === "write")
+          .map((event) => event.sequence)
+        Object.defineProperty(batch.rawReplies, `${calibrationId}.trace`, {
+          enumerable: true,
+          configurable: true,
+          get: () =>
+            JSON.stringify({
+              grid: preparationGrid,
+              geometryCorroboration: reported,
+              refusal: refusalAtPreparation,
+              ...(rowIndex !== undefined && { preparedAt: { row: probe.id, index: rowIndex } }),
+              ...(geometryAtPreparation && { captureGeometry: geometryAtPreparation }),
+              writes: writesAtPreparation,
+              queries: calibrationQueries,
+              events: calibrationEvents,
+              captures: calibrationCaptures,
+            }),
         })
         // A run-fatal calibration error drops this batch, so the failure draft keeps the trace only from here (30666).
         options.onCheckpoint?.(batch)
@@ -695,7 +994,13 @@ export async function runProbeBatch(
     }
   }
   let sizeLeftBehind: string | undefined
+  // Fold 3's witness readings, kept across cells: the witness is never written by this run, so a value
+  // that changes between two cells is the spill, and the cell that just ran is the one that caused it.
+  const witnessBefore = new Map<string, string>()
   for (const probe of selected) {
+    // 34753: a closed client stops the batch here, before another row touches the terminal. The
+    // AbortError travels to collectProbeRun's cancelled path, which records the draft loudly.
+    options.signal?.throwIfAborted()
     if (sizeLeftBehind) {
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native size stop ${probe.id} is outside initialized catalogue`)
@@ -717,14 +1022,77 @@ export async function runProbeBatch(
     const titleReads: Array<{ title: string } | { error: string }> = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
+    // 34606: an owned App reader may write only through its private writer (WezTerm OSC 7), leaving no write
+    // event; its reading is still this row's recorded evidence, so the assertion must cite the row's trace.
+    let appSemanticRead = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
+    // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
+    const windowBasis = processOwnerBasis?.scope === "window"
+    const witness = windowBasis
+      ? witnessAdmission({
+          app: options.witnessWindow?.app ?? options.subject?.id,
+          witness: options.witnessWindow !== undefined,
+        })
+      : undefined
+    // Admission runs on EVERY row of an ordinary-open run, not only rows that need ownership, and the fixture
+    // hand-out below keys on an explicit `admitted: true`. Otherwise a row that is not marked as needing ownership
+    // would be handed the adapter unadmitted, and with no registry bundle id it would also skip the walk
+    // (@cto 2026-11-13, fail-open path 1). A row the receipt does not admit is refused BY NAME, never silently.
+    const ordinaryOpenGrant = ordinaryOpen
+      ? (() => {
+          const subject = options.subject
+          if (!subject) {
+            return {
+              admitted: false as const,
+              unprovable: true,
+              refusal: "an ordinary-open receipt binds an app by name, and this run names no subject",
+            }
+          }
+          const admission = ordinaryOpenAdmission({
+            receipt: ordinaryOpen.receipt,
+            probeId: probe.id,
+            subject,
+            measuredVersion: subject.version,
+            expectedBundleId: ordinaryOpen.expectedBundleId,
+          })
+          // One shape for every refusal: the receipt's own gate returns `admit`, and handing that arm back
+          // unmapped made `admitted` unreadable to both consumers below (root typecheck, 2026-11-13).
+          if (!admission.admit) {
+            return { admitted: false as const, refusal: admission.refusal, unprovable: admission.unprovable }
+          }
+          const liveRefusal = ordinaryOpenLiveRefusal()
+          return liveRefusal === undefined
+            ? { admitted: true as const }
+            : { admitted: false as const, unprovable: true, refusal: liveRefusal }
+        })()
+      : undefined
+    // A `window` footprint says how far a cell's effect reaches; it does not say the reach is provable.
+    // The admission table decides that here, before any byte: a ruling exclusion (DECSTR, the cells with
+    // no retained trace) or a write only the tokenizer can name refuses by name rather than being graded
+    // on a restore nothing can read back (@cto 69ad9f37, 0.29.2 ruling point 2).
+    const windowAdmission = windowBasis ? windowBasisAdmission(probe.id) : undefined
+    const windowRefusal = windowAdmission?.admitted === false ? windowAdmission.reason : undefined
     const refusedBecause = !needsOwnership
       ? undefined
-      : !authorizedToWrite
-        ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
-        : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
-          ? "no verified disposable-ownership receipt was presented"
-          : undefined
+      : ordinaryOpen !== undefined && !authorizedToWrite
+        ? ordinaryOpenGrant?.admitted === true
+          ? undefined
+          : (ordinaryOpenGrant?.refusal ?? "an ordinary-open receipt was not admitted for this row")
+        : !authorizedToWrite
+          ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
+          : windowRefusal !== undefined
+            ? windowRefusal
+            : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
+              ? "no verified disposable-ownership receipt was presented"
+              : probe.termNeedsDisposable === true &&
+                  !disposable &&
+                  processOwnerBasis &&
+                  !basisScopeAdmits(processOwnerBasis.scope, probe.id)
+                ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
+                : witness?.admitted === false
+                  ? witness.refusal
+                  : undefined
     if (refusedBecause) {
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
@@ -746,6 +1114,11 @@ export async function runProbeBatch(
     let geometryStartedAt: string | undefined
     let preGeometry: GeometryMeasurement | undefined
     let geometryCheck: (typeof geometryChecks)[number] | undefined
+    // A rows-only conflict is admitted past the pre-check only so the one complete-raster calibration can
+    // test the owned candidate (condition 2). Until that same run installs its proof, no row that reads the
+    // grid may execute - a query row grades from the same conflicting grid a capture row would paint
+    // (@cto 34672 rows-only finding; cursor.position-report never calls capture).
+    let rowsOnlyConflict = false
     if (probe.termNeedsGeometry) {
       geometryCheck = { featureId: probe.id }
       geometryChecks.push(geometryCheck)
@@ -762,12 +1135,23 @@ export async function runProbeBatch(
           ? `Grant geometry unavailable: ${grant?.status === "unavailable" ? grant.diagnostic : "no owned measurement"}`
           : preGeometry?.status !== "measured"
             ? `Pre-callback geometry unavailable: ${preGeometry?.status === "unavailable" ? preGeometry.diagnostic : "no measurement"}`
-            : corroboration?.status === "conflict"
-              ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}`
-              : corroboration?.status === "agree" &&
-                  (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
-                ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
+            : // 34672 (@cto warp-geometry-ruling-1252 condition 1): a rows-only conflict stops blocking a row
+              // here only while the preconditions that make it testable still hold - the same columns and the
+              // same owned grid the grant measured. It never authorizes the row by itself: `rowsOnlyConflict`
+              // makes the row wait for this run's complete-raster proof below (condition 3).
+              corroboration?.status === "conflict-rows-only"
+              ? corroboration.cols !== preGeometry.cols ||
+                preGeometry.rows !== grant.rows ||
+                preGeometry.cols !== grant.cols
+                ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}, and the owned grid moved from the grant ${grant.rows}x${grant.cols}, so no candidate grid may be tested`
                 : undefined
+              : corroboration?.status === "conflict"
+                ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}`
+                : corroboration?.status === "agree" &&
+                    (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
+                  ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
+                  : undefined
+      if (diagnostic === undefined && corroboration?.status === "conflict-rows-only") rowsOnlyConflict = true
       if (diagnostic) {
         geometryCheck.diagnostic = diagnostic
 
@@ -781,14 +1165,21 @@ export async function runProbeBatch(
         pending.attempt = attempt
         pending.reason = diagnostic
         pending.rawReplyRef = probe.id
+        // 34675 (@cto go-r2-1341): this gate's refusing arm is a harness reading that did not finish; the
+        // row keeps its real reason, attempt and raw reference, and a passage above never reaches here.
+        pending.harnessOutcome = "geometry-refused"
         pending.tests = [{ id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id }]
         options.onCheckpoint?.(batch)
         continue
       }
     }
     let rowSentRis = false
+    // The refusal paths below retain "this row sent no bytes" as a fact, so they read a counter the row's
+    // own source feeds rather than asserting an empty list (@dev/11 peer on 34677).
+    const rowWrites: string[] = []
     const probeSource = createTermProbeSource({
       onWrite(text) {
+        rowWrites.push(text)
         rowSentRis ||= text.includes("\x1bc")
         options.onWrite?.(text)
       },
@@ -797,8 +1188,102 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
+    // Fold 2's pre-pass: exactly the attributes this cell may touch, read before its first write. The
+    // list is derived from the cell's own retained trace (scripts/generate-window-basis-table.ts), so a
+    // class nobody reads for itself still has a pre-state, and one that does not come back is absent
+    // from the ledger rather than assumed restored (@cto e6ae2880 conditions 1 and 3).
+    const ledgerPreReads = new Map<string, string>()
+    const preStateGaps = new Map<string, string>()
+    if (windowAdmission?.admitted === true) {
+      for (const attribute of windowAdmission.preSeed) {
+        const key = attributeKey(attribute)
+        if (options.witnessWindow) {
+          // The witness baseline is taken immediately before THIS cell, so its verdict is about this
+          // cell's effect and not about drift between earlier cells. A reading it cannot take is removed,
+          // and the cell then ungrades by name instead of being graded against a reading nobody took
+          // (@cto 34148 REVISE 2).
+          const value = await options.witnessWindow.read(attribute)
+          if (value === undefined) witnessBefore.delete(key)
+          else witnessBefore.set(key, value)
+        }
+        const readback = readbackFor(attribute)
+        if ("unprovable" in readback) continue
+        const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+        const parsed = outcome?.reason === "reply" ? readback.read(outcome.raw) : null
+        if (outcome !== undefined && parsed !== null) ledgerPreReads.set(key, outcome.raw)
+        else {
+          // Three different facts, and the fixer needs to be told which one: the terminal answered DA1 and
+          // stayed silent on this query, nothing arrived before the wall, or what arrived could not be read
+          // as this attribute's state.
+          preStateGaps.set(
+            key,
+            outcome === undefined
+              ? "the probe source recorded no outcome for the query"
+              : outcome.reason === "sentinel"
+                ? "the terminal answered the sentinel but not this query"
+                : outcome.reason === "timeout"
+                  ? "no reply arrived before the query's wall"
+                  : "the reply could not be read as this attribute's state",
+          )
+        }
+      }
+    }
+    // Two ways an admitted cell can still be unprovable, both decided HERE, before its first byte, so
+    // neither ever becomes the run-fatal ledger refusal (@dev/brain d5b4517c6 review, @cto 06:41).
+    // (1) No pre-read at all. The ledger's own fallback is consulted first, so a state the probe already
+    // answered earlier in the run still counts and a cell the ledger COULD prove is not refused.
+    // (2) A pre-read that differs from the value this cell's own cleanup writes: a probe resets to the
+    // DEFAULT, not to the state it found, so a terminal already in the non-default state cannot be
+    // restored by it.
+    if (windowAdmission?.admitted === true) {
+      const refusals = windowAdmission.preSeed
+        .map((attribute) => {
+          const key = attributeKey(attribute)
+          const readback = readbackFor(attribute)
+          if ("unprovable" in readback) return `${key} has no readback at all`
+          const raw = ledgerPreReads.get(key) ?? priorReply(events, attribute, readback.pattern)
+          if (raw === undefined) {
+            const gap = preStateGaps.get(key) ?? "no earlier reply for this attribute was recorded"
+            return `the terminal did not answer the pre-read for ${key} before this cell (${gap}), so the restore cannot be proven`
+          }
+          const value = readback.read(raw)
+          if (value === null) {
+            return `the reply for ${key} could not be read as its state, so the restore cannot be proven`
+          }
+          const target = windowAdmission.restoreTarget[key]
+          if (target === undefined) return `${key} has no derived cleanup target, so the restore cannot be proven`
+          return value === target
+            ? undefined
+            : `${key} is ${value} (already non-default) and this cell's cleanup writes ${target}`
+        })
+        .filter((entry): entry is string => entry !== undefined)
+      if (refusals.length > 0) {
+        const reason =
+          `${probe.id} is not admitted on a window basis: this terminal cannot be restored by it — ` +
+          `${refusals.join("; ")}. A cell is never graded on a restore it cannot prove.`
+        batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
+        const pending = batch.results.find((result) => result.featureId === probe.id)
+        if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
+        pending.reason = reason
+        pending.rawReplyRef = probe.id
+        pending.tests = [
+          { id: "prerequisite", status: "probe-todo", attempt: { scope: "none" }, reason, rawReplyRef: probe.id },
+        ]
+        options.onCheckpoint?.(batch)
+        continue
+      }
+    }
     if (ownsTerminal) {
-      probeSource.readAppSemanticState = options.ownedTerminal?.readAppSemanticState
+      // The verified owner knows which rows its reader observes. Other rows retain their original term
+      // callbacks, including wrappers whose unavailable reading does not fall back.
+      const semanticFeatures = options.ownedTerminal?.appSemanticStateFeatures
+      const readAppSemanticState = options.ownedTerminal?.readAppSemanticState
+      if (readAppSemanticState && (semanticFeatures === undefined || semanticFeatures.has(probe.id))) {
+        probeSource.readAppSemanticState = (featureId, write) => {
+          appSemanticRead = true
+          return readAppSemanticState(featureId, write, (captured) => recordReaderCapture(featureId, captured))
+        }
+      }
       const read = options.ownedTerminal?.getScrollback
       if (read) probeSource.getScrollback = () => withTTYOperation(read, out, verify)
       const reset = options.ownedTerminal?.resetScrollback
@@ -851,6 +1336,12 @@ export async function runProbeBatch(
       }
     }
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
+    if (probe.id === "modes.synchronized-output" && ownsTerminal && syncOutputRenderedSubject(options.subject)) {
+      probeSource.syncOutputRenderedHold = true
+    }
+    if (ownsTerminal && promptMarkBoundaryRendering(options.subject)) {
+      probeSource.promptMarkBoundaryRendering = true
+    }
     const isDirectLinuxApp =
       options.subject?.kind === "term" &&
       options.subject.os === "linux" &&
@@ -929,6 +1420,28 @@ export async function runProbeBatch(
           (event) => clipboardEvents.push(event),
           verify,
         )
+    } else if (ordinaryOpen && ordinaryOpenVerify && ordinaryOpenGrant?.admitted === true) {
+      // @cto 2026-11-13: this adapter was built by the collector's Mac run path from the receipt's own subject, and
+      // the gate only admits it. The live ancestry walk in `ordinaryOpenVerify` repeats on every fixture use.
+      const ordinaryOpenClipboard = ordinaryOpen.clipboard
+      probeSource.withClipboardFixture = async (work) => {
+        try {
+          return await ordinaryOpenClipboard.withClipboardFixture(
+            (fixture) => work(fixture),
+            (event) => clipboardEvents.push(event),
+            ordinaryOpenVerify,
+          )
+        } catch (error) {
+          // A walk that passed at the gate and fails inside the fixture keeps the row's named probe-todo wording
+          // (@dev/16 19:42 item 3); any other adapter failure still propagates as itself.
+          if (!(error instanceof OrdinaryOpenAncestryRefusal)) throw error
+          return {
+            pass: false,
+            note: error.message,
+            tests: [{ id: "prerequisite", status: "probe-todo" as const, reason: error.message }],
+          }
+        }
+      }
     } else if (clipboard && verify) {
       // #31741: the run HAS a pasteboard, so the row must not be told it has no fixture — that reason
       // named a thing the same artifact records as present. Say what the gate actually found instead.
@@ -960,6 +1473,20 @@ export async function runProbeBatch(
           resizeWindow: (width: number, height: number) =>
             withTTYOperation(() => resizeWindow(width, height, probe.id), out, verify),
         }),
+      }
+    }
+    if (options.viewportScroll) {
+      // 34313: the owner's viewport route reaches the four history rows through THIS handoff, each press under
+      // the same TTY lease as every input action; the public input fixture stays absent on this arm.
+      const viewport = options.viewportScroll
+      const returnToBottom = viewport.returnToBottom?.bind(viewport)
+      // adoptHold writes nothing and only marks the route's own state, so it takes no TTY lease (34680).
+      const adoptHold = viewport.adoptHold?.bind(viewport)
+      probeSource.viewportScroll = {
+        route: viewport.route,
+        press: (step) => withTTYOperation(() => viewport.press(step), out, verify),
+        ...(returnToBottom && { returnToBottom: () => withTTYOperation(returnToBottom, out, verify) }),
+        ...(adoptHold && { adoptHold }),
       }
     }
     const notificationReceiptPath = process.env.TERMINFO_NOTIFICATION_FIXTURE_RECEIPT
@@ -1040,43 +1567,103 @@ export async function runProbeBatch(
         return result
       }
     }
-    const capture = options.capture
+    // #34940 (@cto 28ff372f): a pixel run that also holds the qualified terminal-owned text adapter reads each
+    // text-claimed cell-readback row from text cells. The route is chosen here, once, before the callback, and
+    // this attempt's kind feeds eligibility, error attribution and the finalizer below. A failed read on either
+    // route stays that route's own result; neither ever falls back to the other. Only Terminal.app on macOS
+    // takes it (@cto 34940-text-claims-40-go): other apps with a text recipe keep their run-wide route.
+    const textRoute =
+      options.captureKind !== "text-cells" &&
+      options.textCellsCapture !== undefined &&
+      options.subject?.kind === "term" &&
+      options.subject.id === "terminal-app" &&
+      options.subject.os === "macos" &&
+      probe.textClaim === "characters" &&
+      probe.cellReadback === true
+    const attemptCaptureKind = textRoute ? "text-cells" : options.captureKind
+    const capture = textRoute ? options.textCellsCapture : options.capture
     // A run-level fact, set for every row whether or not this row gets the adapter: a row may state
     // what no capture in this run can see (#33032).
     if (options.captureSettleMs !== undefined) probeSource.captureSettleMs = options.captureSettleMs
+    // 34675: the run's own capture kind, beside the row's adapter, so a refusal is attributed only on a pixel run.
+    probeSource.runCaptureKind = options.captureKind ?? "pixels"
     // A text run hands its adapter to the region readback alone: it is the one consumer whose
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
     // its own named no-capture branch — an error row where a named refusal belongs is exactly what
     // the no-capture branches exist to avoid.
-    const textCells = options.captureKind === "text-cells"
+    const textCells = attemptCaptureKind === "text-cells"
     const imageSubject = options.subject
     const pointerImageEligible =
       probe.id !== "extensions.osc22-pointer" ||
       (ownsTerminal &&
         imageSubject?.kind === "term" &&
         imageSubject.os === "linux" &&
-        ((imageSubject.id === "xterm" && imageSubject.version === "411") ||
-          (imageSubject.id === "wezterm" && imageSubject.version === "0-unstable-2026-10-10") ||
+        // 34932 (@cto 21:33 response to 672197f0): 412, the build every hourly xterm Linux run measures since Nov 13,
+        // is admitted as a measurement route beside 411; exact versions only, the callback's same-run controls grade.
+        ((imageSubject.id === "xterm" && (imageSubject.version === "411" || imageSubject.version === "412")) ||
+          // 34932 (@cto 34932-wezterm-pointer-version-go-1852): 0-unstable-2026-11-08 (rev 458a100c1bf4) differs from
+          // 10-10 (rev e2a98e1b8af1) only in docs and get-deps; exact versions only, the callback's controls grade.
+          (imageSubject.id === "wezterm" &&
+            (imageSubject.version === "0-unstable-2026-10-10" || imageSubject.version === "0-unstable-2026-11-08")) ||
           (imageSubject.id === "ghostty" && imageSubject.version === "1.4.0") ||
           (imageSubject.id === "alacritty" && imageSubject.version === "0.17.0")))
     const captureEligible =
-      pointerImageEligible && captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
+      pointerImageEligible && captureAdapterEligible(probe, attemptCaptureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
+      // One served path for both kinds. The caller measurement starts at the served entry, BEFORE
+      // withTTYOperation, or the queue and verification interval before the adapter disappears
+      // outside every bucket (34261). The first interval is named for the boundaries it actually
+      // spans - served entry to adapter callback entry - and is not called transport, nor charged
+      // to the queue or to verification. adapterCallbackMs is inclusive: it contains the
+      // collector's own acquisition and finish buckets, so the two are never added together.
+      const servedCapture = async (request: CaptureRequest) => {
+        // Attempted is stamped BEFORE withTTYOperation, where both wrappers of the baseline
+        // (041c6879) stamped it. A failed ownership verification is custody-classified and stops the
+        // run, so it never grades this row either way; the flag decides the failures that do reach the
+        // error path - a queue wait or a refused restore before the adapter - and matching the baseline
+        // is owed on its own (34261 post-merge review).
+        captureAttempted = true
+        const entryAt = performance.now()
+        let adapterEnteredAt: number | undefined
+        let adapterReturnedAt: number | undefined
+        const result = await withTTYOperation(
+          async () => {
+            adapterEnteredAt = performance.now()
+            const value = await capture({ featureId: probe.id, ...request })
+            adapterReturnedAt = performance.now()
+            return value
+          },
+          out,
+          verify,
+        )
+        recordCapture(probe.id, captures, result, request.role)
+        // The completion mark is taken AFTER recordCapture, so the frame validation and the
+        // capture/reference retention inside it sit in the measured span instead of before it (34261
+        // post-merge review). recordCapture retains the adapter's own object, and real adapters return
+        // a fresh literal per call, so the caller block is attached to that recorded trace rather than
+        // copied; a throw above records no caller block at all, and a value that was not observed stays
+        // absent rather than being reported as zero.
+        const recordedAt = performance.now()
+        if (adapterEnteredAt !== undefined && adapterReturnedAt !== undefined) {
+          result.trace = {
+            ...result.trace,
+            caller: {
+              basis: "caller monotonic clock, milliseconds",
+              entryToAdapterCallbackMs: Math.max(0, Math.round(adapterEnteredAt - entryAt)),
+              adapterCallbackMs: Math.max(0, Math.round(adapterReturnedAt - adapterEnteredAt)),
+              adapterCallbackContains: "acquisition, finish (inclusive, not disjoint)",
+              adapterReturnToRecordedMs: Math.max(0, Math.round(recordedAt - adapterReturnedAt)),
+              totalMs: Math.max(0, Math.round(recordedAt - entryAt)),
+            },
+          }
+        }
+        return result.frame
+      }
       if (textCells) {
         probeSource.captureKind = "text-cells"
-        probeSource.cells = async (checkpoint) => {
-          captureAttempted = true
-          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
-          recordCapture(probe.id, captures, result, checkpoint.role)
-          return result.frame
-        }
+        probeSource.cells = servedCapture
       } else {
-        probeSource.capture = async (checkpoint) => {
-          captureAttempted = true
-          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
-          recordCapture(probe.id, captures, result, checkpoint.role)
-          return result.frame
-        }
+        probeSource.capture = servedCapture
       }
     }
     if (options.prepareCapture && !capturePrepared) {
@@ -1085,10 +1672,46 @@ export async function runProbeBatch(
           ? "collector.captureCalibration"
           : `collector.captureCalibration.renewal.${capturePreparations}`
       capturePreparations++
-      await prepareCaptureWith(options.prepareCapture, probe, preGeometry, calibrationId)
+      await prepareCaptureWith(
+        options.prepareCapture,
+        probe,
+        preGeometry,
+        calibrationId,
+        calibrationId === "collector.captureCalibration" ? undefined : probe.id,
+        selected.indexOf(probe),
+        // #34932 item 1: calibration is shared by the batch, so it witnesses a mode any selected row declares.
+        selected.some((candidate) => candidate.termScreenMode === "reverse") ? "reverse" : undefined,
+      )
+      activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry
       if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) probeSource.capture = undefined
+    }
+    if (rowsOnlyConflict && probeSource.captureGeometry === undefined) {
+      const reason = `Rows-only geometry conflict needs this run's complete-raster proof before ${probe.id} may use the grid: ${
+        captureGeometryRefusal ?? "no proof was installed"
+      }`
+      batch.rawReplies[probe.id] = JSON.stringify({ writes: rowWrites, queries, events })
+      const pending = batch.results.find((result) => result.featureId === probe.id)
+      if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
+      const attempt =
+        preGeometry?.status === "measured"
+          ? { scope: "probe" as const, startedAt: new Date().toISOString() }
+          : { scope: "none" as const }
+      pending.status = preGeometry?.status === "measured" ? "probe-invalid" : "probe-todo"
+      pending.attempt = attempt
+      pending.reason = reason
+      pending.rawReplyRef = probe.id
+      pending.tests = [{ id: "geometry", status: pending.status, attempt, reason, rawReplyRef: probe.id }]
+      options.onCheckpoint?.(batch)
+      continue
+    }
+    // #30932 S1 (@cto 1220): associate this row with the installation it is handed, as evidence
+    // beside its call log. The geometry is the one the callback context carries; nothing here
+    // re-derives it, and a renewal inside the callback stays ordered in that row's own call log.
+    if (options.prepareCapture && activeCalibrationId !== undefined) {
+      const binding = captureBinding(activeCalibrationId, selected.indexOf(probe), probeSource)
+      if (binding) batch.rawReplies[probe.id + CAPTURE_BINDING_SUFFIX] = JSON.stringify(binding)
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
@@ -1114,6 +1737,21 @@ export async function runProbeBatch(
             proof: muxProof?.platform === "linux" ? muxProof : undefined,
           })
         : undefined
+    // 34693: this row's own held-viewport reader, after any renewal above and only on a settled grid; it reads
+    // THIS source's viewport route and records into THIS row's captures.
+    if (heldViewportReaderFor && !captureGeometryRefusal && probeSource.viewportScroll) {
+      const held = heldViewportReaderFor({
+        featureId: probe.id,
+        source: probeSource,
+        record: (result) => {
+          // A held read takes real frames: they are this row's captures and its raw reference.
+          captureAttempted = true
+          recordCapture(probe.id, captures, result)
+        },
+      })
+      probeSource.readHeldViewport = held.read
+      probeSource.readViewportReference = held.reference
+    }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
@@ -1125,6 +1763,8 @@ export async function runProbeBatch(
       const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
       let result: ProbeCallbackResult
       let probeWallExceeded = false
+      /** Set when the wall could not return a held viewport; thrown outside the per-probe catch (34645). */
+      let viewportNotSettled: ViewportReturnRefused | undefined
       try {
         // A probe may declare its own wall. The default stays 30s. Run 42836445788 cut
         // font-ligatures, reset.sgr and modes.xtrestore at that default.
@@ -1151,13 +1791,19 @@ export async function runProbeBatch(
           out,
           verify,
         ).then((value) => ({ timedOut: false as const, value }))
-        const raced = await Promise.race([
-          operation,
-          new Promise<{ timedOut: true }>((resolve) => {
-            wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
-          }),
-        ])
-        clearTimeout(wall)
+        // The wall is cleared on every exit: a callback that throws must not leave a 30s timer holding
+        // the process open after the run (34835: a refused calibration delayed every collector exit by 30s).
+        let raced: Awaited<typeof operation> | { timedOut: true }
+        try {
+          raced = await Promise.race([
+            operation,
+            new Promise<{ timedOut: true }>((resolve) => {
+              wall = setTimeout(() => resolve({ timedOut: true }), wallMs)
+            }),
+          ])
+        } finally {
+          clearTimeout(wall)
+        }
         if (raced.timedOut) {
           // The callback did not return. Abandon its trace before the queue moves on: the scope
           // keeps the writes it settled before the wall and refuses every later one, so the
@@ -1179,9 +1825,53 @@ export async function runProbeBatch(
             sourceSession?.abandon()
             releaseTTYQueue()
           }
+          // 34645 (@cto e1cfff79 items 2-3): a step the abandoned row dispatched may still land, and the route
+          // now refuses that row's later steps, so the wall owns the way back to the bottom. It settles every
+          // dispatched step first. It runs after the trace is abandoned and the queue released, so neither
+          // waits on it, and it is bounded by this row's own wall. A window it cannot prove settled stops the
+          // run here: no later row is graded on a viewport that may still be held.
+          const backToBottom = options.viewportScroll?.returnToBottom?.bind(options.viewportScroll)
+          if (backToBottom) {
+            let bound: ReturnType<typeof setTimeout> | undefined
+            // Not under the TTY lease the wall just released: a helper that never settles would hold that
+            // queue for good and hang the run instead of stopping it by name.
+            const settled = await Promise.race([
+              backToBottom().then(
+                (value) => ({ value }),
+                (error: unknown) => ({ error }),
+              ),
+              new Promise<{ unsettled: true }>((resolve) => {
+                bound = setTimeout(() => resolve({ unsettled: true }), wallMs)
+              }),
+            ])
+            clearTimeout(bound)
+            if ("unsettled" in settled) {
+              viewportNotSettled = new ViewportReturnRefused(
+                `${probe.id}: viewport input dispatched before the ${wallMs}ms wall did not settle within another ${wallMs}ms; ` +
+                  "the window may still be held, so no later row is graded on it (34645)",
+              )
+            } else if ("error" in settled) {
+              const reason = settled.error instanceof Error ? settled.error.message : String(settled.error)
+              viewportNotSettled = new ViewportReturnRefused(
+                `${probe.id}: returning the viewport to the bottom after the wall failed: ${reason}; ` +
+                  "no later row is graded on that window (34645)",
+              )
+            } else {
+              batch.rawReplies[`${probe.id}.viewportAfterWall`] = settled.value
+            }
+          }
           result = {
             pass: false,
-            tests: [{ id: "criterion", status: "probe-todo", reason: `Probe exceeded ${wallMs}ms` }],
+            tests: [
+              {
+                id: "criterion",
+                status: "probe-todo",
+                reason: wallExceededReason(
+                  wallMs,
+                  captures.map(({ frame }) => frame.capturedAt),
+                ),
+              },
+            ],
           }
         } else {
           result = raced.value
@@ -1214,6 +1904,80 @@ export async function runProbeBatch(
         // The wall ends the callback's hold on the terminal, not the measurement: the geometry
         // after it is what the timed-out row is judged against (#33431).
         if (geometryCheck) geometryCheck.post = await readGeometry()
+      }
+      // Outside the per-probe catch, like the window-basis refusal below: the run stops here, with this row's
+      // evidence retained, and nothing after it is graded on a window that may still be held.
+      if (viewportNotSettled) throw viewportNotSettled
+      if (windowBasis) {
+        // Fold 2's verdict: every attribute this cell's own writes touched is read back now and compared
+        // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the
+        // run stops with the diff retained and nothing after it is graded (@cto e6ae2880 conditions 1, 3, 4).
+        const writes = events.filter((event) => event.kind === "write").map((event) => event.sequence)
+        const { attributes, unclassified } = touchedAttributes(writes)
+        const reads = new Map<string, AttributeReads>()
+        for (const attribute of attributes) {
+          const key = attributeKey(attribute)
+          const readback = readbackFor(attribute)
+          if ("unprovable" in readback) continue
+          const before = ledgerPreReads.get(key) ?? priorReply(events, attribute, readback.pattern)
+          const outcome = await probeSource.queryWithSentinelOutcome?.(readback.query, readback.pattern)
+          reads.set(key, {
+            ...(before === undefined ? {} : { before }),
+            ...(outcome?.reason === "reply" ? { after: outcome.raw } : {}),
+          })
+        }
+        const omega = ledgerOmega({ writes, reads })
+        batch.rawReplies[`${probe.id}.ledger`] = JSON.stringify({
+          basis: "window",
+          touched: omega.touched,
+          unclassified,
+          reads: Object.fromEntries(
+            [...reads].map(([key, value]) => [key, { before: value.before ?? null, after: value.after ?? null }]),
+          ),
+          omega,
+        })
+        // The restore ledger is run-fatal FIRST: a state that may be left behind must not be graded,
+        // nor may the next cell run against it (@cto 34148 REVISE blocking 1).
+        if (omega.status === "refused") throw new MutationRestoreRefused(probe.id, omega)
+        if (options.witnessWindow && witness?.admitted === true) {
+          // Fold 3: the witness is never written by this run, so any change in it is this cell's spill.
+          const witnessReads: Record<string, { before: string | null; after: string | null }> = {}
+          let ungraded: string | undefined
+          for (const attribute of attributes) {
+            const key = attributeKey(attribute)
+            const before = witnessBefore.get(key)
+            const after = await options.witnessWindow.read(attribute)
+            const verdict = spilloverVerdict({ attribute, before, after })
+            witnessReads[key] = { before: before ?? null, after: after ?? null }
+            // A spill is run-fatal: the declaration is wrong and the app instance has changed.
+            if (verdict.status === "spilled") {
+              batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({ reads: witnessReads, verdict })
+              throw new SpilloverRefused(probe.id, verdict)
+            }
+            // No reading before this cell is NOT a spill and not a pass: the restore is proved, so the
+            // cell is ungraded by name and the reading it did get seeds later cells (@cto REVISE 2).
+            if (verdict.status === "refused") {
+              ungraded ??= verdict.reason
+              if (after !== undefined) witnessBefore.set(key, after)
+              continue
+            }
+            if (after === undefined) throw new Error(`witness unchanged verdict for ${key} carried no reading`)
+            witnessBefore.set(key, after)
+          }
+          batch.rawReplies[`${probe.id}.spillover`] = JSON.stringify({
+            reads: witnessReads,
+            verdict: ungraded === undefined ? "unchanged" : { status: "refused", reason: ungraded },
+          })
+          // The restore is proved, so nothing was leaked; the reach is unmeasured. That is coverage,
+          // not a run failure: record the cell as PROBE TODO naming the missing reading (@cto REVISE 2).
+          if (ungraded !== undefined) {
+            result = {
+              pass: false,
+              notTested: { reason: "no-semantic-observable", noObservable: ungraded },
+              ...(result.response === undefined ? {} : { response: result.response }),
+            }
+          }
+        }
       }
       result = withReplyFailureEvidence(probe.id, result, {
         producer: "TTY",
@@ -1328,7 +2092,8 @@ export async function runProbeBatch(
             : events.some((event) => event.kind === "write") ||
                 queries.length ||
                 captureAttempted ||
-                clipboardEvents.length
+                clipboardEvents.length ||
+                appSemanticRead
               ? probe.id
               : undefined
         const post = geometryCheck?.post
@@ -1349,6 +2114,38 @@ export async function runProbeBatch(
         // The capture trace is where a text read records whose buffer it returned; the observation
         // carries that host so no consumer parses it out of a caption (30055 AC4).
         const host = captures.map((capture) => capturedConsoleHost(capture.trace)).find((value) => value !== undefined)
+        // The colour branch grades only when EVERY attempt reaching the comparison fires it (@cto
+        // 91917ee1): a terminal that supports a reset but paints late would otherwise grade from one
+        // stale frame. The attempts are visible here, in the capture list, not inside the reader.
+        const colourAttempts =
+          criterionBranch === "colour-only-mismatch"
+            ? colourOnlyAttempts(
+                probe.id,
+                captures.map(({ frame }) => frame),
+              )
+            : undefined
+        const colourNote = colourAttempts && "note" in colourAttempts ? colourAttempts.note : undefined
+        const colourDisagreement =
+          colourAttempts && "disagreement" in colourAttempts ? colourAttempts.disagreement : undefined
+        if (colourDisagreement !== undefined) {
+          // @cto 2026-11-14 (96a8d82c): the writer grades from the explicit tests, so withdrawing the colour
+          // result from the observation alone left the criterion's unsupported grade standing on evidence this
+          // row had just refused - a terminal negative on refused evidence. Supply the established
+          // ATTEMPTED-inconclusive result instead, which in this writer is a probe-invalid criterion with the
+          // named cause (helpers.ts: the inconclusive-observation branch folds to probe-invalid before explicit
+          // tests override it; probe-todo would claim the row was never attempted). Captures, the attempt
+          // policy and the writer's own precedence are untouched; nothing here retries or re-captures.
+          callbackTests = callbackTests?.some((test) => test.id === "criterion")
+            ? callbackTests.map((test) =>
+                test.id === "criterion"
+                  ? { ...test, status: "probe-invalid" as const, reason: colourDisagreement }
+                  : test,
+              )
+            : [
+                ...(callbackTests ?? []),
+                { id: "criterion", status: "probe-invalid" as const, reason: colourDisagreement },
+              ]
+        }
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
@@ -1356,6 +2153,16 @@ export async function runProbeBatch(
           ...(result.observation.frames && { frames: captures.map(({ frame }) => frame) }),
           ...(host === undefined ? {} : { host }),
           ...(result.note && !result.observation.note ? { note: result.note } : {}),
+          ...(colourNote === undefined
+            ? {}
+            : { note: [result.observation.note, colourNote].filter(Boolean).join("; ") }),
+          ...(colourDisagreement === undefined
+            ? {}
+            : {
+                outcome: "inconclusive" as const,
+                reason: "insufficient-evidence" as const,
+                note: colourDisagreement,
+              }),
           ...(resized
             ? {
                 outcome: "inconclusive" as const,
@@ -1399,15 +2206,34 @@ export async function runProbeBatch(
       }
     } catch (error) {
       if (custody.failure) throw custody.failure.error
+      // 34753: cancellation is not this row's finding; it stops the run rather than being graded as
+      // one more collector-error while the remaining rows keep writing to a terminal nobody reads.
+      if (options.signal?.aborted) throw error
       const name = error instanceof Error ? error.name : "Error"
+      // #34148 fold 2 and fold 3: a restore that cannot be proved, and a cell that changed the app
+      // instance, both leave state behind. Grading the next cell against it would launder that state
+      // into that cell's result, so both stop the RUN here rather than becoming this cell's
+      // collector-error (@cto 34148 REVISE blocking 1). Their `.ledger` / `.spillover` record is
+      // written before the throw, so the failure draft keeps the diff.
+      // 34645: a held viewport the wall could not prove back at the bottom leaves state behind the same way.
+      if (name === "MutationRestoreRefused" || name === "SpilloverRefused" || name === "ViewportReturnRefused") {
+        throw error
+      }
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).
+      // A read that cannot prove where its crop goes claims nothing about pixels: it is named as a
+      // diagnostic (which frames could not be related), never graded as a terminal failure (34163).
+      // SentinelFrameMoved joins them (@cto, 33981): one frame moving after the read chose its cells
+      // ends THAT read as ungraded, not the run — the terminal is not shown to be wrong by it.
       const errorAssertionType =
-        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
+        name === "UndeclaredTerminalGeometry" ||
+        name === "FrameUnavailable" ||
+        name === "CaptureHoldUnresolved" ||
+        name === "SentinelFrameMoved"
           ? undefined
           : captureAttempted
-            ? options.captureKind === "text-cells"
+            ? attemptCaptureKind === "text-cells"
               ? "buffer_state"
               : "screenshot"
             : undefined
@@ -1421,12 +2247,26 @@ export async function runProbeBatch(
           ...(queries.length || captureAttempted || clipboardEvents.length ? { rawReplyRef: probe.id } : {}),
         })
       } else {
-        batch.ungradedDiagnostics[probe.id] = { kind: "collector-error", name, message }
+        batch.ungradedDiagnostics[probe.id] = {
+          kind: "collector-error",
+          name,
+          message,
+          // 33982: a moved frame refuses before this probe writes any frame record, so the count it
+          // measured is attached here or it is lost. Absent for every other refusal.
+          ...(error instanceof SentinelFrameMoved
+            ? {
+                evidence: {
+                  changedOutside: error.changedOutside,
+                  ...(error.rowShift !== undefined ? { rowShift: error.rowShift } : {}),
+                },
+              }
+            : {}),
+        }
       }
     } finally {
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       if (probe.termNeedsDisposable && !disposable && processOwnerBasis && observation) {
-        observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis}`
+        observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis.basis}`
       }
       const trace = JSON.stringify({
         writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
@@ -1447,7 +2287,7 @@ export async function runProbeBatch(
       const index = batch.results.findIndex((result) => result.featureId === probe.id)
       if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
-      const recorded = recordExecutedProbe({
+      const recordInput = {
         featureId: probe.id,
         attempt,
         observation,
@@ -1462,7 +2302,8 @@ export async function runProbeBatch(
         rawReplyRef: probe.id,
         criterionBranch,
         ...(wallFired ? { harnessOutcome: "probe-exceeded" as const } : {}),
-      })
+      }
+      const recorded = recordExecutedProbe(recordInput)
       const commands =
         recorded.status === "unsupported" &&
         recorded.criterionBranch === "sgr-attribute-same-run" &&
@@ -1479,24 +2320,41 @@ export async function runProbeBatch(
       // visual finalizer must still validate this probe's own captured frame first.
       const visualInput =
         commands?.status === "measured" ? { ...recorded, criterionBranch: "sgr-attribute-outer-command" } : recorded
-      let finalized =
-        subject?.kind === "term" || subject?.kind === "mux"
-          ? finalizeVisualResult(
-              visualInput,
-              subject,
-              captures.map(({ frame }) => frame),
-            )
-          : recorded
+      // 34675 (@cto go-r2-1341 amendment 2): a pixel run hands the finalizer this row's recorded refusal; its
+      // missing-paint arm then raises the named FrameUnavailable diagnostic HERE, after the callback catch, so it
+      // is caught at this boundary and recorded through the same recorder as the callback's own diagnostics.
+      // Any other error keeps propagating, so a fatal custody failure is never swallowed or replaced.
+      const finalizerRefusal = attemptCaptureKind === "text-cells" ? undefined : probeSource.captureGeometryRefusal
+      let finalized = recorded
+      if (subject?.kind === "term" || subject?.kind === "mux") {
+        try {
+          finalized = finalizeVisualResult(
+            visualInput,
+            subject,
+            captures.map(({ frame }) => frame),
+            finalizerRefusal,
+          )
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "FrameUnavailable") throw error
+          const refused = { kind: "collector-error" as const, name: error.name, message: error.message }
+          batch.ungradedDiagnostics[probe.id] = refused
+          finalized = recordExecutedProbe({ ...recordInput, diagnostic: refused })
+        }
+      }
       if (commands?.status === "measured" && finalized.status === "unsupported") {
         if (commands.targetSent) {
           const reason = `${subject?.id}: SGR ${commands.target} was passed to outer terminal ${subject?.outerTerminal}; the controlled sample still drew no distinct target effect`
           const declared = declaredUntestableResult(reason, commands)
+          const coverage = { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` }
+          const existing = batch.notTested.findIndex((entry) => entry.featureId === probe.id)
+          if (existing < 0) batch.notTested.push(coverage)
+          else batch.notTested[existing] = coverage
           finalized = {
             ...finalized,
             ...recordExecutedProbe({
               featureId: probe.id,
               attempt,
-              coverage: { featureId: probe.id, ...declared.notTested, rawReplyRef: `${probe.id}.outerCommands` },
+              coverage,
               criterionBranch: declared.criterionBranch,
               tests: declared.tests,
               assertions: [],
@@ -1561,6 +2419,7 @@ export async function runProbeBatch(
         capturePrepared = false
         captureGeometry = undefined
         captureGeometryRefusal = undefined
+        activeCalibrationId = undefined
       }
       options.onCheckpoint?.(batch)
     }

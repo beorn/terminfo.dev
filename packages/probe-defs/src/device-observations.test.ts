@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
@@ -282,6 +282,57 @@ describe("device query observations", () => {
         assertionType: "query_reply",
       })
       expect(result.assertions, item.id).toBeUndefined()
+    }
+  })
+
+  // #34937 (@cto 5380390b, option b): Terminal.app 2.15 retained ESC[?1;2c twice for CSI = c plus its DA1 sentinel.
+  // The row stays PROBE INVALID with a reason naming those bytes, never the writer's callback-defect default, and
+  // no frame is attributed to CSI = c. The silence negative and on-time/late DA3 replies keep their grades.
+  test("DA3 read of only DA1-shaped frames is a named PROBE INVALID, not the writer default", async () => {
+    const terminalApp = "\x1b[?1;2c"
+    const da3 = callback("device.tertiary-da")
+    const record = (result: Awaited<ReturnType<typeof da3.terminal>>) =>
+      recordExecutedProbe({
+        featureId: "device.tertiary-da",
+        attempt: { scope: "probe", startedAt: "2026-11-18T17:36:27.073Z" },
+        rawReplyRef: "device.tertiary-da",
+        ...(result.observation && { observation: { ...result.observation, featureId: "device.tertiary-da" } }),
+        assertions: (result.assertions ?? []).map((assertion) => ({
+          ...assertion,
+          featureId: "device.tertiary-da",
+          rawReplyRef: "device.tertiary-da",
+        })),
+        ...(result.tests && { tests: result.tests }),
+      })
+    const named =
+      "DA3 expected a DECRPTUI frame; 2 DA1-shaped frames were received, leaving unmatched output before the last DA1 fence"
+    const twice = await da3.terminal(terminal(terminalApp + terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(twice.response).toBe(terminalApp + terminalApp)
+    expect(twice.assertions).toBeUndefined()
+    expect(twice.tests).toStrictEqual([{ id: "criterion", status: "probe-invalid", reason: named }])
+    const stored = record(twice)
+    expect(stored.status).toBe("probe-invalid")
+    expect(stored.tests).toMatchObject([{ id: "criterion", status: "probe-invalid", reason: named }])
+    expect(JSON.stringify(stored)).not.toContain("callback defect")
+
+    // Bytes that are not all DA1-shaped ahead of the fence keep today's unnamed inconclusive.
+    const mixed = await da3.terminal(terminal("\x1b[12;20R" + terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(mixed.tests).toBeUndefined()
+
+    const silent = await da3.terminal(terminal(terminalApp, "sentinel", { atMs: 2, graceMs: 250 }))
+    expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
+    expect(silent.tests).toBeUndefined()
+    expect(record(silent).status).toBe("unsupported")
+
+    const valid = "\x1bP!|1234ABCD\x1b\\"
+    for (const [raw, sentinel] of [
+      [valid + terminalApp, undefined],
+      [terminalApp + valid, { atMs: 2, graceMs: 250 }],
+    ] as const) {
+      const replied = await da3.terminal(terminal(raw, "reply", sentinel))
+      expect(replied.observation, raw).toMatchObject({ outcome: "supported" })
+      expect(replied.tests, raw).toBeUndefined()
+      expect(record(replied).status, raw).toBe("supported")
     }
   })
 
@@ -827,22 +878,39 @@ describe("window-operation qualification", () => {
     return { ctx, title: () => title, depth: () => stack.length }
   }
 
-  test.each(["working", "stale", "none", "unobservable"] as const)(
+  test.each(["working", "stale", "none", "unobservable", "reader-absent"] as const)(
     "App title stack reads its owned state and restores it: %s",
     async (behavior) => {
       // #32573: the library fixture models title/stack state; the App callback must actually read it.
       // Existing library-only cases cannot catch an App arm that merely receives a cursor reply.
+      // CTO35140: an exercised reader with failed controls is INVALID; only an absent reader is TODO.
       for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
-        const fixture = titleContext(behavior)
+        const fixture = titleContext(behavior === "reader-absent" ? "working" : behavior)
         const source = {
           write: fixture.ctx.feed,
-          readTitle: async () => fixture.ctx.getTitle(),
+          ...(behavior !== "reader-absent" && { readTitle: async () => fixture.ctx.getTitle() }),
           queryCursorPosition: async () => ({ row: 1, col: 1 }),
         } as unknown as TermProbeSource
-        const result = await callback(id).terminal(source)
-        if (behavior === "unobservable") {
+        // #34932: a restore or set that never arrives waits one real settle budget (2 s); on fake time the case runs
+        // in milliseconds with the same outcome, instead of 4 s per case against vitest's 5 s.
+        vi.useFakeTimers()
+        let settled = false
+        const running = callback(id)
+          .terminal(source)
+          .finally(() => {
+            settled = true
+          })
+        try {
+          while (!settled) await vi.advanceTimersByTimeAsync(50)
+        } finally {
+          vi.useRealTimers()
+        }
+        const result = await running
+        if (behavior === "unobservable" || behavior === "reader-absent") {
           expect(result.observation).toBeUndefined()
-          expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+          expect(result.tests).toContainEqual(
+            expect.objectContaining({ status: behavior === "unobservable" ? "probe-invalid" : "probe-todo" }),
+          )
         } else {
           expect(result.observation).toMatchObject({
             assertionType: "buffer_state",
@@ -921,6 +989,53 @@ describe("window-operation qualification", () => {
     }
   })
 
+  // #34012 (@cto 1676cf8a, slice 2): a cleanup failure is recorded on the reading, never thrown instead of it.
+  test("a failed owned-title cleanup is recorded on the reading, not raised instead of it", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      let title = "incoming-title"
+      let restoring = false
+      const source = {
+        write(bytes: string) {
+          for (const [, code, text] of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07/g)) {
+            if (code === "2") title = text ?? ""
+            // Only the owned-title restore writes the incoming title back.
+            if (code === "2" && text === "incoming-title") restoring = true
+          }
+        },
+        // The owned-title restore reads a title this surface never shows.
+        readTitle: async () => (restoring ? "leaked-title" : title),
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      const result = await callback(id).terminal(source)
+      expect(result.observation?.outcome, id).toBe("unsupported")
+      expect(result.note, id).toMatch(/Owned title restoration mismatch/)
+      expect(
+        result.tests?.some((one) => one.status === "probe-invalid"),
+        id,
+      ).toBeFalsy()
+    }
+  })
+
+  // A probe that threw still reports why the surface was left dirty: the restore detail rides on the error
+  // already propagating instead of being lost with it (@dev/luna3's note on slice 2).
+  test("a failed restore is added to the error a title-stack probe already raised", async () => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+      let reads = 0
+      const source = {
+        write: () => {},
+        readTitle: async () => {
+          reads++
+          if (reads === 3) throw new Error("injected title read error")
+          return reads === 4 ? "leaked-title" : "incoming-title"
+        },
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      } as unknown as TermProbeSource
+      await expect(callback(id).terminal(source)).rejects.toThrow(
+        /injected title read error; Owned title restoration mismatch/,
+      )
+    }
+  })
+
   /**
    * @failure A terminal that shows the icon title (OSC 1) in preference to the OSC 2 title hid every
    *   title control once device.xtwinops-20 left "test-icon" set: both title-stack rows read
@@ -966,6 +1081,75 @@ describe("window-operation qualification", () => {
       expect(leaked.title(), id).toBe("test-icon")
     }
   })
+
+  /**
+   * @failure #34932: the title-stack controls read the title once, straight after each OSC 2 write. WezTerm applies
+   *   titles asynchronously, so its 13:06Z run read the previous "test-title" as the first control and both
+   *   title-stack rows stayed "Owned title reader failed the OSC 2 controls", whatever the push/pop behaviour.
+   *   Without a title stack, a restore that never arrives must not starve the cleanup's own late OSC 2 write
+   *   (@dev/4 review): that terminal reads unsupported with no restoration mismatch.
+   * @level l1
+   * @consumer device.xtwinops-22/23 App callbacks on a title surface that applies each title a few reads late.
+   * @testonly none
+   */
+  test.each([
+    ["with a title stack", true, "supported"],
+    ["without a title stack", false, "unsupported"],
+  ] as const)(
+    "title-stack controls settle when each title applies a few reads late, %s (34932)",
+    async (_name, hasStack, outcome) => {
+      vi.useFakeTimers()
+      try {
+        for (const id of ["device.xtwinops-22", "device.xtwinops-23"]) {
+          for (let repetition = 0; repetition < 6; repetition++) {
+            let shown = "incoming-title"
+            let current = shown
+            const stack: string[] = []
+            let pending: { title: string; readsLeft: number } | undefined
+            const apply = (title: string) => {
+              current = title
+              pending = { title, readsLeft: 1 + (repetition % 3) }
+            }
+            const source = {
+              write(bytes: string) {
+                for (const match of bytes.matchAll(/\x1b\](\d+);([^\x07]*)\x07|\x1b\[(22|23);0t/g)) {
+                  if (match[1] === "2") apply(match[2] ?? "")
+                  else if (!hasStack) continue
+                  else if (match[3] === "22") stack.push(current)
+                  else if (match[3] === "23") {
+                    const popped = stack.pop()
+                    if (popped !== undefined) apply(popped)
+                  }
+                }
+              },
+              readTitle: async () => {
+                if (pending && pending.readsLeft-- === 0) {
+                  shown = pending.title
+                  pending = undefined
+                }
+                return shown
+              },
+              queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+            } as unknown as TermProbeSource
+            let settled = false
+            const running = callback(id)
+              .terminal(source)
+              .finally(() => {
+                settled = true
+              })
+            while (!settled) await vi.advanceTimersByTimeAsync(50)
+            const result = await running
+            const label = `${id} repetition ${repetition}`
+            expect(result.criterionBranch, label).not.toBe("app-title-control")
+            expect(result.observation?.outcome, label).toBe(outcome)
+            expect(result.note ?? "", label).not.toMatch(/restoration mismatch/)
+          }
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 
   // #32323: only the controlled round-trip effect decides, independent of any source/artifact identity.
   // Failed restoration is a joint negative; it never identifies which stack primitive is missing.

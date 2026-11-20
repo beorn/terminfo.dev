@@ -5,7 +5,7 @@ import type {
   ProbeCallbackResult,
   TerminalQueryOutcome,
 } from "./types.ts"
-import { hasAuditedOscInterfaceAbsence } from "./extensions.ts"
+import { hasAuditedOscInterfaceAbsence, settledTitle } from "./extensions.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   probe,
@@ -20,6 +20,9 @@ import {
   sentinelNegativeResult,
   sentinelSilenceResult,
   stackStateResult,
+  cleanupReading,
+  callbackReading,
+  withCleanupDetail,
 } from "./helpers.ts"
 
 /**
@@ -51,6 +54,20 @@ interface DeviceReply {
   contradicts?: RegExp
   note?: (frame: string) => string | undefined
   direct?: boolean
+  /**
+   * #34937 (@cto 5380390b): the named PROBE INVALID reason for a read whose only bytes are DA1-shaped frames,
+   * given how many were received. It describes the bytes and attributes none of them to this query.
+   */
+  da1PrefixReason?: (frames: number) => string
+}
+
+/** The count of DA1-shaped frames when nothing else precedes the last one (the sentinel's fence), else null. */
+function da1OnlyPrefix(raw: string): number | null {
+  const fence = sentinelAnswer(raw)
+  if (!fence || fence.start === 0 || raw.slice(fence.end).trim() !== "") return null
+  const prefix = raw.slice(0, fence.start)
+  const frames = prefix.match(/\x1b\[\?[0-9;]+c/gu) ?? []
+  return frames.join("") === prefix ? frames.length + 1 : null
 }
 
 function deviceReplyResult(
@@ -143,9 +160,14 @@ function deviceReplyResult(
   if (raw.length === 0) {
     return { ...replyFailure(`${missingReason}; expected ${spec.expected}`), response: raw }
   }
+  const da1Frames = spec.da1PrefixReason ? da1OnlyPrefix(raw) : null
   return {
     pass: false,
     response: raw,
+    ...(da1Frames !== null &&
+      spec.da1PrefixReason && {
+        tests: [{ id: "criterion", status: "probe-invalid" as const, reason: spec.da1PrefixReason(da1Frames) }],
+      }),
     observation: { outcome: "inconclusive", reason: missingReason, assertionType: "query_reply" },
   }
 }
@@ -346,19 +368,41 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
   ctx.write(CLEAR_ICON_TITLE)
   let pushed = false
   const state: Record<string, unknown> = { before }
-  let result: ProbeCallbackResult
+  let result: ProbeCallbackResult | undefined
+  let failure: unknown
+  // #34932: the terminal applies each title asynchronously, so every read after a write settles past what the
+  // surface showed before it (WezTerm 13:06Z read the previous "test-title" as the first control). Each kind of write
+  // that never arrives costs one bounded budget, and later writes of that kind then read once: a restore that never
+  // comes (no title stack), and a plain OSC 2 set the reader never shows (Screen's own-title reader, @dev/fixer
+  // f4aa844d: four full budgets ran past the test's 5 s). The two are separate: a stackless terminal still shows sets.
+  let shown = before
+  let restoreBudget: number | undefined
+  let setBudget: number | undefined
+  const settleRestore = async (written: string) => {
+    const settled = await settledTitle(read, written, [shown], restoreBudget)
+    if (settled.value !== written) restoreBudget = 0
+    return settled.value
+  }
+  const settleSet = async (written: string, previous: readonly string[]) => {
+    const settled = await settledTitle(read, written, previous, setBudget)
+    if (settled.value !== written) setBudget = 0
+    return settled.value
+  }
   try {
     const fixture = async (originalTitle: string, changedTitle: string) => {
       set(saved)
       set(originalTitle)
-      const original = await read()
+      const original = await settleSet(originalTitle, [shown, saved])
       pushed = true
       ctx.write("\x1b[22;0t")
       set(changedTitle)
-      const changed = await read()
+      const changed = await settleSet(changedTitle, [original])
+      shown = changed
       ctx.write("\x1b[23;0t")
       pushed = false
-      return { original, changed, restored: await read() }
+      const restored = await settleRestore(original)
+      shown = restored
+      return { original, changed, restored }
     }
     const popFixture = await fixture(saved, "new-title")
     state.popFixture = popFixture
@@ -377,16 +421,29 @@ async function titleStackApp(ctx: TermProbeSource): Promise<ProbeCallbackResult>
         )
       : { ...replyFailure("Owned title reader failed the OSC 2 controls"), response: JSON.stringify(state) }
     if (!controlled) result.criterionBranch = "app-title-control"
+  } catch (error) {
+    failure = error
+    throw error
   } finally {
     try {
       if (pushed) ctx.write("\x1b[23;0t")
     } finally {
       set(before)
-      state.restored = await read()
-      if (state.restored !== before) throw new Error(`Owned title restoration mismatch: ${JSON.stringify(state)}`)
+      // The cleanup is a plain OSC 2 write, not a 23t pop: a stackless terminal still applies it, so it takes the set
+      // budget and never inherits a zero restore budget (@dev/4 review of slice 1).
+      state.restored = await settleSet(before, [shown])
+      if (state.restored !== before) {
+        // A cleanup failure is recorded on the reading, or on the error already propagating, never in place of
+        // either. `result` is undefined here only because the try threw; a plain return added inside that try
+        // would leave neither, so this branch names that invariant instead of assuming it.
+        const cleanup = `Owned title restoration mismatch: ${JSON.stringify(state)}`
+        if (result) result = cleanupReading(result, cleanup)
+        else if (failure !== undefined) throw withCleanupDetail(failure, cleanup)
+        else throw withCleanupDetail(new Error("cleanup ran with neither a reading nor a propagating failure"), cleanup)
+      }
     }
   }
-  return { ...result, response: JSON.stringify(state) }
+  return { ...callbackReading(result), response: JSON.stringify(state) }
 }
 
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
@@ -576,6 +633,8 @@ export const deviceProbes: ProbeDefinition[] = [
     valid: /\x1bP!\|[0-9A-Fa-f]{8}\x1b\\/,
     malformed: /\x1bP!\|/,
     expected: "complete DECRPTUI DCS !| followed by four hexadecimal pairs and ST",
+    da1PrefixReason: (frames) =>
+      `DA3 expected a DECRPTUI frame; ${String(frames)} DA1-shaped frames were received, leaving unmatched output before the last DA1 fence`,
   }),
   decrqssFacilityProbe(),
   deviceQuery({

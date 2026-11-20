@@ -51,11 +51,13 @@ describe("website build identity", () => {
         "-e",
         'import { resolveConfig } from "vitepress"; const config = await resolveConfig("./docs", "build"); console.log(JSON.stringify({ root: config.root }));',
       ],
-      // Hang protection only: resolving the config loads the whole catalog, measured at 11-19 s on CI (30632).
-      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 60_000 },
+      // Hang protection only, never a performance budget: resolving the config loads the whole catalog,
+      // measured at 11-19 s on CI (30632) and 52-90 s successes on a loaded shared host (load 25-59,
+      // 2026-11-18, 34904), where 60 s misfired. @cto 40d94c25: 180 s for this test alone.
+      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 180_000 },
     )
     expect(JSON.parse(stdout)).toEqual({ root: join(siteRoot, "docs") })
-  }, 65_000)
+  }, 185_000)
 
   it("accepts only the exact validated clean CI build from the deployed HTTP endpoint", async () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -239,8 +241,18 @@ describe("website sidebar metadata", () => {
         home: pageCategories("./docs/index.md", "sortedCategories"),
         features: pageCategories("./docs/features.md", "activeCategories") }));
     `
+    // The child loads the vitepress config and every probe: 17.9 s alone at load 20, so 20 s left no margin.
+    // Hang protection only: on a loaded shared host (load 45-64, 2026-11-18, 34904) the same corpus load hit
+    // the 90 s guard (spawnSync ETIMEDOUT at 90.2 s). @cto 73e68f53: 180 s for this child alone.
+    // stderr is piped, not inherited: the selection's "placed … because the probe changed" log is the child's
+    // own, and inherited it failed the root runner's no-output check (full-test-suite 1a1ef3d8926, 34904).
     const observed = JSON.parse(
-      execFileSync(process.execPath, ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 20_000 }),
+      execFileSync(process.execPath, ["-e", script], {
+        cwd: siteRoot,
+        encoding: "utf8",
+        timeout: 180_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
     ) as { expected: string[]; nav: string[]; sidebar: string[]; home: string[]; features: string[] }
     expect(observed).toEqual({
       expected: observed.expected,
@@ -249,7 +261,7 @@ describe("website sidebar metadata", () => {
       home: observed.expected,
       features: observed.expected,
     })
-  }, 25_000)
+  }, 185_000)
 
   it.each([
     ["features", "features.json"],

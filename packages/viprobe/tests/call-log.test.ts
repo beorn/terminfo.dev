@@ -5,7 +5,14 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { createCallLog, IncompleteReplay, readCallLog, snapshotCallLog, withCallLog } from "../src/index.ts"
+import {
+  callLogProgress,
+  createCallLog,
+  IncompleteReplay,
+  readCallLog,
+  snapshotCallLog,
+  withCallLog,
+} from "../src/index.ts"
 
 // Source queries return the inner TTY recorder's matched array directly. Single-recorder
 // fixtures miss a foreign array proxy retained after both recording lifetimes finish.
@@ -84,6 +91,52 @@ test("deferred callback functions remain ordered operations after persistence", 
   const skipped = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(bytes)) })
   expect(await skipped.context.listen(() => {})).toBe("reply")
   expect(() => skipped.finish()).toThrow(IncompleteReplay)
+})
+
+// #30932 S3: a headless encoder returns bytes the callback decodes. A recorder that handed back a proxy around them
+// changed what the callback observed (TextDecoder refuses a proxy), so recording itself turned supported rows invalid.
+test("recorded and replayed calls hand back real bytes that built-ins accept", () => {
+  const log = createCallLog()
+  const recorded = withCallLog(
+    { encodeKey: (key: string) => new TextEncoder().encode(key + "\r") },
+    { mode: "record", log },
+  )
+  const live = recorded.context.encodeKey("x")
+  expect(live).toBeInstanceOf(Uint8Array)
+  expect(new TextDecoder().decode(live)).toBe("x\r")
+  recorded.finish()
+  const replay = withCallLog<{ encodeKey: (key: string) => Uint8Array }>(null, {
+    mode: "replay",
+    log: readCallLog(JSON.parse(JSON.stringify(log))),
+  })
+  expect(new TextDecoder().decode(replay.context.encodeKey("x"))).toBe("x\r")
+  replay.finish()
+})
+
+// #30932 S3: a probe clones the colours a backend returns. A proxy around returned plain data made structuredClone
+// throw, so recording turned a supported row invalid. Plain data comes back unwrapped, live and in replay.
+test("recorded and replayed plain-data results are accepted by structuredClone", () => {
+  const log = createCallLog()
+  const subject = { colors: () => ({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] }) }
+  const recorded = withCallLog(subject, { mode: "record", log })
+  expect(structuredClone(recorded.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
+  recorded.finish()
+  const replay = withCallLog<typeof subject>(null, {
+    mode: "replay",
+    log: readCallLog(JSON.parse(JSON.stringify(log))),
+  })
+  expect(structuredClone(replay.context.colors())).toEqual({ fg: { r: 1, g: 2, b: 3 }, bg: null, list: [1, 2] })
+  replay.finish()
+})
+
+// #30932 S3: a value the log cannot hold (here an array iterator) threw into the live callback. The caller now keeps
+// the live value, and the log refuses to finish or serialize.
+test("an unencodable recorded value poisons the log without changing what the caller observes", () => {
+  const log = createCallLog()
+  const recorded = withCallLog({ items: () => [1, 2].values() }, { mode: "record", log })
+  expect([...recorded.context.items()]).toEqual([1, 2])
+  expect(() => recorded.finish()).toThrow(IncompleteReplay)
+  expect(() => JSON.stringify(log)).toThrow()
 })
 
 // The TTY host needs decoded display data without a second decoder or executable replay handles.
@@ -563,20 +616,16 @@ test("caught unencodable input keeps capture finalization incomplete", () => {
   const cycle: { self?: unknown } = {}
   cycle.self = cycle
   const capture = withCallLog({ write: (value: unknown) => String(value) }, { mode: "record", log: createCallLog() })
-  let failure: unknown
-  try {
-    capture.context.write(cycle)
-  } catch (error) {
-    failure = error
-  }
-  expect.soft(failure).toBeInstanceOf(IncompleteReplay)
+  // Recording never changes what the caller observes (#30932 S3): the live call returns its own result.
+  expect(capture.context.write(cycle)).toBe("[object Object]")
   let finished: unknown
   try {
     capture.finish()
   } catch (error) {
     finished = error
   }
-  expect(finished).toBe(failure)
+  expect(finished).toBeInstanceOf(IncompleteReplay)
+  expect(String(finished)).toContain("cyclic")
 })
 
 test.each(["record", "replay"] as const)(
@@ -637,4 +686,39 @@ test("completed capture and strict replay preserve writes, nested paths and retu
   replay.context.input.send("key")
   replay.finish()
   expect(writes).toEqual(["seed", "key"])
+})
+
+// 34645 (@cto e1cfff79): a held-viewport bracket must see a write or query that STARTS inside it while the
+// callback is still live. The projected trace arrays only fill at abandon or after the callback, so the
+// recording itself is the one live reader: every call and callback is recorded at its start.
+test("live progress counts every started call and callback and the ones still unsettled", async () => {
+  const log = createCallLog()
+  let release: (value: string) => void = () => {}
+  const subject = {
+    write(_sequence: string): void {},
+    matchResponse(write: () => void): Promise<string> {
+      write()
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+  }
+  const capture = withCallLog(subject, { mode: "record", log })
+  expect(callLogProgress(log)).toEqual({ started: 0, unsettled: 0 })
+  capture.context.write("\x1b[c")
+  expect(callLogProgress(log)).toEqual({ started: 1, unsettled: 0 })
+  // A query's own write runs as its callback: the call and the callback both count as started.
+  const reply = capture.context.matchResponse(() => capture.context.write("\x1b[5n"))
+  const pending = callLogProgress(log)
+  expect(pending.started).toBe(4)
+  expect(pending.unsettled).toBe(1)
+  release("ok")
+  await reply
+  expect(callLogProgress(log)).toEqual({ started: 4, unsettled: 0 })
+  capture.finish()
+  expect(callLogProgress(log)).toEqual({ started: 4, unsettled: 0 })
+})
+
+test("live progress refuses a value that is not a recording handle", () => {
+  expect(() => callLogProgress({} as never)).toThrow(IncompleteReplay)
 })

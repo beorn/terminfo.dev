@@ -6,7 +6,7 @@
  * @reach fs-walk <fixture-only: /tmp/terminfo-serve-*>
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
@@ -31,6 +31,356 @@ function stderrWithoutInputInstall(stderr: string): string[] {
 let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
+
+// Requirement: the actual generated extension, native reader, grader, batch and collector must
+// retain the same read/capture in the returned run on success and failure. Owner OS custody is
+// covered separately; helper-only reader tests cannot detect a missing collector callback.
+it.each([
+  { app: "com.microsoft.VSCode", failed: false },
+  { app: "com.microsoft.VSCode", failed: true },
+  { app: "cursor", failed: false },
+  { app: "cursor", failed: true },
+])("serializes $app native editor evidence (failed=$failed)", ({ app, failed }) => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    import { runInNewContext } from "node:vm"
+    const app = process.env.EDITOR_APP, failed = process.env.EDITOR_FAILED === "yes"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+      manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+        probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] } },
+      collectorRevision: "b".repeat(40),
+    }
+    const cursorSetup = await import("./packages/admin/src/cursor-onboarding.ts")
+    mock.module("./packages/admin/src/cursor-onboarding.ts", () => ({ ...cursorSetup, assertCursorBundlePinsShipped: () => {} }))
+    const runId = "c".repeat(32), directory = join(process.env.HOME, "private-launch")
+    mkdirSync(directory)
+    const run = { id: runId, directory, scriptPath: join(directory, "serve.sh") }
+    const { prepareCliLaunch } = await import("./packages/admin/src/app.ts")
+    prepareCliLaunch(app, run)
+    const prefix = app === "cursor" ? "cursor" : "vscode"
+    let nativeCwd = "file:///native-original"
+    const subscriptions = [], captures = []
+    const disposable = () => ({ dispose() {} })
+    const terminal = {
+      name: failed ? "" : "exact native terminal",
+      processId: Promise.resolve(process.pid),
+      get shellIntegration() { return { cwd: new URL(nativeCwd) } },
+      show() {}, dispose() {},
+    }
+    const vscode = {
+      env: { appName: "Native " + app }, version: "native-api-1",
+      commands: { executeCommand: async () => {} },
+      RelativePattern: class {},
+      workspace: { createFileSystemWatcher: () => ({ dispose() {}, onDidCreate: disposable, onDidChange: disposable }) },
+      window: {
+        createTerminal: options => { Object.assign(process.env, options.env); return terminal },
+        onDidCloseTerminal: disposable, onDidChangeTerminalShellIntegration: disposable,
+      },
+    }
+    const exported = {}
+    runInNewContext(readFileSync(join(directory, prefix + "-fixture", "extension.cjs"), "utf8"), {
+      exports: exported, require: id => id === "vscode" ? vscode : require(id),
+      process, Date, setInterval, clearInterval, setTimeout, clearTimeout,
+    })
+    await exported.activate({ subscriptions })
+    process.env.TERMINFO_RUN_ID = runId
+    process.env.TERMINFO_MUX_KIND = ""
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const { readAppSemanticState } = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const geometry = { status: "measured", rows: 24, cols: 80 }
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+      detectTerminal: () => ({ name: app, version: "counted-build", os: "macos", osVersion: "fixture" }),
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => undefined,
+    }))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+      ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => true,
+      createOwnedTerminal: async options => ({
+        hostedAppId: app, appPid: 4242, geometryAtGrant: geometry, geometrySource: "fixture",
+        summary: "owner OS boundary fixture", readGeometry: async () => geometry, dispose: async () => {},
+        readAppSemanticState: (featureId, write) => readAppSemanticState({ featureId, write, runId,
+          editor: { appId: app, assertProcess: async () => {}, capture: options.appSemanticCapture } }),
+      }),
+    }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      writeTTY: text => {
+        const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(text)?.[1]
+        if (cwd !== undefined) nativeCwd = "file://" + cwd
+      },
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const raw = sequence === "\x1b[18t" ? "\x1b[8;24;80t" : sequence === "\x1b[16t" ? "\x1b[6;17;8t" : sequence === "\x1b[14t" ? "\x1b[4;408;640t" : "\x1b[?1;2c"
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      },
+    }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+      calibrateCaptureOrigin: async () => { throw Object.assign(new Error("No crop in native-read fixture"), { name: "CaptureCalibrationRefused" }) },
+    }))
+    mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+      createDarwinCapture: async (captureDirectory, options) => ({
+        captureRaw: async checkpoint => {
+          assert.equal(options.appPid, 4242)
+          captures.push({ phase: checkpoint.label, nativeCwd })
+          mkdirSync(captureDirectory, { recursive: true })
+          const path = join(captureDirectory, "native-window-" + captures.length + ".png")
+          const bytes = Buffer.from("owned pixel adapter fixture bytes")
+          const sha256 = createHash("sha256").update(bytes).digest("hex")
+          writeFileSync(path, bytes)
+          options.onRetained({ path, sha256 })
+          return { result: { frame: { kind: "pixels", path, sha256 }, trace: { label: checkpoint.label } } }
+        },
+      }),
+    }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    try {
+      const returned = await collectProbeRun({ ids: ["extensions.osc633-p"], captureRunId: "editor-evidence" })
+      // Assert the actual JSON boundary, not the live reading or a helper-built record.
+      const record = JSON.parse(JSON.stringify(returned))
+      const reading = JSON.parse(record.rawReplies["extensions.osc633-p.callbackResponse"])
+      assert.equal(reading.status, failed ? "invalid" : "measured")
+      assert.equal(reading.detail.identity.app.name, "Native " + app)
+      assert.ok(reading.detail.nativeObservations.length >= (failed ? 1 : 7))
+      // The JSON boundary carries a digest of each native reply, never its bytes (34666).
+      for (const observation of reading.detail.nativeObservations) {
+        assert.equal("raw" in observation, false)
+        const retained = readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, observation.artifact))
+        assert.equal(createHash("sha256").update(retained).digest("hex"), observation.sha256)
+      }
+      const publicReading = record.rawReplies["extensions.osc633-p.callbackResponse"]
+      for (const secret of ["exact native terminal", directory, '"extensionPid"', '"requestPath"', '"replyDirectory"']) {
+        assert.equal(publicReading.includes(secret), false, secret)
+      }
+      assert.equal(reading.detail.captures.length, 1)
+      const frame = reading.detail.captures[0].observation.frame
+      assert.equal(createHash("sha256").update(readFileSync(frame.path)).digest("hex"), frame.sha256)
+      const blobs = JSON.parse(record.rawReplies["collector.traceManifest"]).blobs
+      assert.deepEqual(blobs, [{ path: "artifacts/native-window-1.png", sha256: frame.sha256 }])
+      assert.equal(captures.length, 1)
+      assert.equal(captures[0].phase, failed ? "Native App failed-read" : "Native App target")
+      if (!failed) assert.ok(captures[0].nativeCwd.includes("/terminfo-target-"))
+      assert.equal(nativeCwd, "file:///native-original")
+      const row = record.results.find(row => row.featureId === "extensions.osc633-p")
+      assert.equal(row.status, failed ? "probe-invalid" : "supported")
+    } finally {
+      for (const subscription of subscriptions) subscription.dispose()
+    }
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        HOME: home,
+        EDITOR_APP: app,
+        EDITOR_FAILED: failed ? "yes" : "no",
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
+        TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
+        TERMINFO_RUNTIME_PROVENANCE: "",
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+      },
+      encoding: "utf8",
+      timeout: 15000,
+    },
+  )
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// Requirement (34685, @cto 34685-execution-scope-ruling-1435): the actual generated extension, native reader,
+// grader and collector qualify OSC 133/633 C, D and 633 E only from execution events that the collector's own
+// written marks cause. The native source below fires events solely from the bytes the collector writes, so a
+// collector that graded from anything else, or an extension that dropped or relabelled events, would fail here.
+// The osc633-p case above has no execution events and cannot see this.
+it.each([
+  { app: "com.microsoft.VSCode", failed: false },
+  { app: "cursor", failed: false },
+])(
+  "drives $app native execution rows from the collector's own marks",
+  ({ app, failed }) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-editor-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    import { runInNewContext } from "node:vm"
+    const app = process.env.EDITOR_APP, failed = process.env.EDITOR_FAILED === "yes"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+      manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+        probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] } },
+      collectorRevision: "b".repeat(40),
+    }
+    const cursorSetup = await import("./packages/admin/src/cursor-onboarding.ts")
+    mock.module("./packages/admin/src/cursor-onboarding.ts", () => ({ ...cursorSetup, assertCursorBundlePinsShipped: () => {} }))
+    const runId = "c".repeat(32), directory = join(process.env.HOME, "private-launch")
+    mkdirSync(directory)
+    const run = { id: runId, directory, scriptPath: join(directory, "serve.sh") }
+    const { prepareCliLaunch } = await import("./packages/admin/src/app.ts")
+    prepareCliLaunch(app, run)
+    const prefix = app === "cursor" ? "cursor" : "vscode"
+    let nativeCwd = "file:///native-original"
+    const subscriptions = [], captures = []
+    const disposable = () => ({ dispose() {} })
+    const executionHandlers = { start: [], end: [] }
+    const editorNonce = "vscode-nonce-fixture-34894"
+    let current, pendingLine
+    const terminal = {
+      name: failed ? "" : "exact native terminal",
+      processId: Promise.resolve(process.pid),
+      get shellIntegration() { return { cwd: new URL(nativeCwd) } },
+      show() {}, dispose() {},
+    }
+    const vscode = {
+      env: { appName: "Native " + app }, version: "native-api-1",
+      commands: { executeCommand: async () => {} },
+      RelativePattern: class {},
+      workspace: { createFileSystemWatcher: () => ({ dispose() {}, onDidCreate: disposable, onDidChange: disposable }) },
+      window: {
+        createTerminal: options => { Object.assign(process.env, options.env, { VSCODE_NONCE: editorNonce }); return terminal },
+        onDidCloseTerminal: disposable, onDidChangeTerminalShellIntegration: disposable,
+        onDidStartTerminalShellExecution: handler => (executionHandlers.start.push(handler), disposable()),
+        onDidEndTerminalShellExecution: handler => (executionHandlers.end.push(handler), disposable()),
+      },
+    }
+    const exported = {}
+    runInNewContext(readFileSync(join(directory, prefix + "-fixture", "extension.cjs"), "utf8"), {
+      exports: exported, require: id => id === "vscode" ? vscode : require(id),
+      process, Date, setInterval, clearInterval, setTimeout, clearTimeout,
+    })
+    await exported.activate({ subscriptions })
+    process.env.TERMINFO_RUN_ID = runId
+    process.env.TERMINFO_MUX_KIND = ""
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+    const { readAppSemanticState } = await import("./packages/terminfo.dev/src/app-semantic-state.ts")
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const geometry = { status: "measured", rows: 24, cols: 80 }
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+      detectTerminal: () => ({ name: app, version: "counted-build", os: "macos", osVersion: "fixture" }),
+    }))
+    mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+      readDisposableReceipt: () => undefined,
+    }))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+      ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => true,
+      createOwnedTerminal: async options => ({
+        hostedAppId: app, appPid: 4242, geometryAtGrant: geometry, geometrySource: "fixture",
+        summary: "owner OS boundary fixture", readGeometry: async () => geometry, dispose: async () => {},
+        readAppSemanticState: (featureId, write) => readAppSemanticState({ featureId, write, runId,
+          editor: { appId: app, assertProcess: async () => {}, capture: options.appSemanticCapture } }),
+      }),
+    }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      writeTTY: text => {
+        // The independent native source: shell-integration marks the terminal parsed become execution events.
+        for (const [, selector, letter, argument] of text.matchAll(/\x1b\](133|633);([A-E])(?:;([^\x07]*))?\x07/gu)) {
+          if (letter === "E" && selector === "633") {
+            const [line = "", nonce] = (argument ?? "").split(";")
+            const trusted = nonce === editorNonce
+            pendingLine = { value: trusted ? line : "", confidence: 2, isTrusted: trusted }
+          }
+          if (letter === "C") {
+            current = { commandLine: pendingLine }
+            pendingLine = undefined
+            for (const handler of executionHandlers.start) handler({ terminal, execution: current })
+          }
+          if (letter === "D") {
+            const execution = current
+            current = undefined
+            for (const handler of executionHandlers.end) handler({ terminal, execution, exitCode: Number(argument) })
+          }
+        }
+        const cwd = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(text)?.[1]
+        if (cwd !== undefined) nativeCwd = "file://" + cwd
+      },
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const raw = sequence === "\x1b[18t" ? "\x1b[8;24;80t" : sequence === "\x1b[16t" ? "\x1b[6;17;8t" : sequence === "\x1b[14t" ? "\x1b[4;408;640t" : "\x1b[?1;2c"
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      },
+    }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+      calibrateCaptureOrigin: async () => { throw Object.assign(new Error("No crop in native-read fixture"), { name: "CaptureCalibrationRefused" }) },
+    }))
+    mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+      createDarwinCapture: async (captureDirectory, options) => ({
+        captureRaw: async checkpoint => {
+          assert.equal(options.appPid, 4242)
+          captures.push({ phase: checkpoint.label, nativeCwd })
+          mkdirSync(captureDirectory, { recursive: true })
+          const path = join(captureDirectory, "native-window-" + captures.length + ".png")
+          const bytes = Buffer.from("owned pixel adapter fixture bytes")
+          const sha256 = createHash("sha256").update(bytes).digest("hex")
+          writeFileSync(path, bytes)
+          options.onRetained({ path, sha256 })
+          return { result: { frame: { kind: "pixels", path, sha256 }, trace: { label: checkpoint.label } } }
+        },
+      }),
+    }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    try {
+      const rows = ["extensions.osc633-c", "extensions.osc133-d", "extensions.osc633-e"]
+      const returned = await collectProbeRun({ ids: rows, captureRunId: "editor-execution" })
+      const record = JSON.parse(JSON.stringify(returned))
+      for (const featureId of rows) {
+        const publicReading = record.rawReplies[featureId + ".callbackResponse"]
+        const reading = JSON.parse(publicReading)
+        assert.equal(reading.status, "measured", featureId + ": " + reading.reason)
+        assert.equal(record.results.find(row => row.featureId === featureId).status, "supported", featureId)
+        // Digest-only public record: no command text, terminal name, private path or process id (34666 rule).
+        for (const secret of ["terminfo-target-", "terminfo-control-", "exact native terminal", directory, '"extensionPid"', editorNonce]) {
+          assert.equal(publicReading.includes(secret), false, featureId + " " + secret)
+        }
+      }
+      // The command text exists only in the private run-directory log, recorded by the real extension.
+      const logged = readFileSync(join(directory, "editor-executions.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line))
+      assert.ok(logged.some(fact => String(fact.commandLineValue).startsWith("terminfo-target-")))
+      assert.ok(logged.some(fact => fact.kind === "end" && fact.exitCode.value === 17))
+    } finally {
+      for (const subscription of subscriptions) subscription.dispose()
+    }
+  `,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          EDITOR_APP: app,
+          EDITOR_FAILED: failed ? "yes" : "no",
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "job-output", "artifacts"),
+          TERMINFO_DISPOSABLE_RECEIPT: "owned-hardware-fixture",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        },
+        encoding: "utf8",
+        timeout: 110000,
+      },
+    )
+    expect(result.status, result.stderr).toBe(0)
+  },
+  120_000,
+)
 
 // The owner factory has its own live-custody tests. The collector consumes the owner-level proof:
 // Darwin has no clipboard adapter, and a second clipboard home could hide a missing owner proof.
@@ -66,6 +416,19 @@ it.each(["tmux", "screen", "darwin-screen"])(
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
     let suppliedTarget=target,hasAttachment=true,hasBinary=true,historyThroughCli=false,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt,preflightOnly=false
+    // 31741 cmux record boundary (@dev/1 peer verdict, F2): the arm's evidence must reach the run the
+    // collector persists, so this models the owner's own shape - a live lastRead getter over the last CLI
+    // read - and switches arms between collects below.
+    const cmuxExecutable="/Applications/cmux.app/Contents/MacOS/cmux"
+    const cmuxNonceReceipt=(config)=>JSON.stringify({surface:"surface-uuid-1",ownership:"nonce",markers:null,extras:null,totalLines:41,...config})
+    // The owner publishes the last read as facts, never the receipt text: a receipt carries the pane
+    // transcript (@cto REVISE 2026-11-13). "grant-only" models a run whose only read was the grant.
+    const cmuxFacts=(over)=>({kind:"read",receiptSha256:"cd".repeat(32),receiptLength:120,ownership:"surface",markers:null,extras:1,totalLines:73,screenLines:24,config:{read:"present",sha256:"ef".repeat(32)},...over})
+    let cmuxArm,cmuxLast
+    const cmuxHistory=()=>cmuxArm==="grant-failed"
+      ? {executable:cmuxExecutable,surface:null,grant:"failed",grantRefusal:"cmux-surface-not-owned (reason withheld: names a host path)",grantProof:"cmux-surface-not-owned: cmux CLI /Applications/cmux.app/Contents/MacOS/cmux answered nothing this run may read (exit 1)",lastRead:null}
+      : {executable:cmuxExecutable,surface:"surface-uuid-1",grant:"proved",grantRefusal:null,grantProof:cmuxNonceReceipt(cmuxArm==="config-absent"?{config:{read:"absent"}}:{}),
+        get lastRead(){return cmuxArm==="grant-only"?cmuxFacts({kind:"grant",ownership:"nonce",extras:2}):(cmuxLast??null)}}
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
@@ -75,19 +438,24 @@ it.each(["tmux", "screen", "darwin-screen"])(
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts",()=>({...owned,createOwnedTerminal:async options=>{
       if(preflightOnly){
         assert.equal(options.darwinPreflight,true)
-        return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
+        return {geometryAtGrant:{status:"measured",rows:24,cols:80},appPid:4242,summary:JSON.stringify({preflightIdentity:{...preflight,launchRunId:"a".repeat(32)}}),readCells:async()=>{throw new Error("No frame requested")},dispose:async()=>{}}
       }
       if(darwin)assert.equal(options.process.asserter,"terminfo-admin")
       else assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={platform:darwin?"darwin":"linux",mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:preflight,executable:{...(hasBinary?{path:"/fixture/"+mux,sha256:"ab".repeat(32)}:{}),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version},config:{path:"/out/mux.conf"}}
-      return {geometryAtGrant:{status:"measured",rows:24,cols:80},getScrollback:async()=>({totalLines:24}),summary:JSON.stringify({muxAttachment:attachment}),
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},...(darwin?{appPid:4242}:{}),getScrollback:async()=>{cmuxLast=cmuxFacts(cmuxArm==="config-absent"?{config:{read:"absent"}}:{});return {totalLines:24}},summary:JSON.stringify({muxAttachment:attachment}),
         ...(hasAttachment?{muxAttachmentProof:attachment}:{}),
+        ...(cmuxArm===undefined?{}:{cmuxHistory:cmuxHistory(),historyReadsThroughCli:true,historyExecutable:{path:cmuxExecutable,sha256:"ab".repeat(32),version:"cmux 0.65.2"}}),
         // 31741 @dev/18: an arm that counts through the terminal's own CLI must never borrow another
         // binary's proof; this flag models that arm with no measured CLI proof.
         ...(historyThroughCli?{historyReadsThroughCli:true}:{}),
         ...(darwin?{textRecipe:"macos-text-cells-v1",readCells:async()=>{throw new Error("This subject-join test does not request a text frame")}}:{}),
         ...(!darwin?{clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(!hasAttachment?{muxAttachmentProof:attachment}:{})}}:{}),dispose:async()=>{}}
     }}))
+    if(darwin)mock.module("./packages/terminfo.dev/src/darwin-capture.ts",()=>({createDarwinCapture:async()=>({
+      capture:async()=>{throw new Error("Subject-join fixture requests no pixels")},
+      captureRaw:async()=>{throw new Error("Subject-join fixture requests no pixels")}
+    })}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
       assert.equal(options.subject.kind,preflightOnly?"term":"mux");assert.equal(options.subject.id,preflightOnly?"kitty":mux)
       // Native SGR attribution needs these facts during callbacks, before the final run subject exists.
@@ -96,6 +464,9 @@ it.each(["tmux", "screen", "darwin-screen"])(
       else assert.equal(options.ownedTerminal.clipboard,undefined)
       inBatch=true
       try{if(!darwin)await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
+      // The history probe reads through the owner before the run record exists; a record serialized at
+      // grant would carry the grant receipt as its last read (@dev/1 peer verdict, F2).
+      if(cmuxArm==="success"||cmuxArm==="config-absent")await options.ownedTerminal.getScrollback()
       // Batch-only coverage cannot see the producer overwrite its persisted collection custody.
       const readDraft=()=>JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY||join(process.env.HOME,".terminfo-dev","http-responses"),options.captureRunId+".draft.json"),"utf8"))
       collectionAttempt=readDraft().rawReplies["collector.collectionAttempt"]
@@ -119,6 +490,7 @@ it.each(["tmux", "screen", "darwin-screen"])(
     assert.deepEqual(JSON.parse(run.rawReplies["collector.historyIdentityCheck"]).executable,{path:"/fixture/"+mux,sha256:"ab".repeat(32),version:darwin?"Screen version 4.00.03 (FAU) 23-Oct-06":version})
     assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
+    assert.equal(run.rawReplies["collector.cmuxHistory"],undefined,"a run with no cmux arm writes no history evidence")
     if(!darwin){
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
@@ -155,6 +527,44 @@ it.each(["tmux", "screen", "darwin-screen"])(
       preflightOnly=true;writeFileSync(path,JSON.stringify(outerApp.provenance))
       const outer=await collect()
       assert.deepEqual(JSON.parse(outer.rawReplies["collector.preflightIdentity"]),{...preflight,launchRunId:"a".repeat(32)})
+      // F2: collect through serve.ts's own record construction and read what the collector persists, so
+      // deleting the assignment at serve.ts:1319 fails here instead of leaving a helper test green.
+      preflightOnly=false;outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({...preflight,launchRunId:"a".repeat(32)});write()
+      cmuxArm="success"
+      const cmuxRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(cmuxRecord.executable,"cmux","the record names the executable by basename, never the host path")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/Applications/"),false,"no host path reaches the record")
+      assert.equal(JSON.stringify(cmuxRecord).includes("/"),false,"no path separator reaches the record at all")
+      assert.equal(cmuxRecord.surface,"cmux")
+      assert.equal(cmuxRecord.pane,"surface-uuid-1")
+      assert.equal(cmuxRecord.grant,"proved","the grant's outcome is recorded as a status")
+      assert.equal(cmuxRecord.nativeEditorFields.status,"inapplicable")
+      assert.match(cmuxRecord.nativeEditorFields.reason,/name.*processId.*shellIntegration.cwd/)
+      assert.equal("grantProof" in cmuxRecord,false,"the grant proof stays out of the record")
+      assert.equal("grantRefusal" in cmuxRecord,false,"a proved grant has no refusal to record")
+      assert.equal(cmuxRecord.lastRead.kind,"read","the record carries the read that happened, not the grant")
+      assert.equal(cmuxRecord.lastRead.ownership,"surface")
+      assert.equal(cmuxRecord.lastRead.totalLines,73)
+      assert.equal(typeof cmuxRecord.lastRead,"object","the last read is facts, never the receipt text")
+      cmuxArm="grant-only";cmuxLast=undefined
+      const grantOnlyRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(grantOnlyRecord.lastRead.kind,"grant","a run with no later read shows the grant read, not nothing")
+      assert.equal(grantOnlyRecord.lastRead.extras,2,"extras is published as a count")
+      assert.equal(JSON.stringify(grantOnlyRecord).includes("/"),false,"the grant receipt never reaches the record")
+      cmuxArm="grant-failed";cmuxLast=undefined
+      const failedRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(failedRecord.pane,null)
+      assert.equal(failedRecord.grant,"failed")
+      assert.equal(failedRecord.grantRefusal,"cmux-surface-not-owned (reason withheld: names a host path)","a failed grant keeps its code and withholds a reason that names a path")
+      assert.equal(JSON.stringify(failedRecord).includes("/"),false,"the withheld reason's path stays out")
+      assert.equal(failedRecord.lastRead,null,"a failed grant has no read to show")
+      assert.equal("grantProof" in failedRecord,false)
+      cmuxArm="config-absent";cmuxLast=undefined
+      const absentRecord=JSON.parse((await collect()).rawReplies["collector.cmuxHistory"])
+      assert.equal(absentRecord.grant,"proved","a launch with no config still shows the grant's outcome")
+      assert.equal(absentRecord.lastRead.ownership,"surface")
+      assert.equal(absentRecord.lastRead.config.read,"absent","a launch with no config keeps the absence in the record")
+      cmuxArm=undefined
     }
   `,
       ],
@@ -369,7 +779,7 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         },
         capture: async (checkpoint, origin) => {
           assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
-          assert.strictEqual(origin, measured, "every graded capture receives the unchanged measured origin")
+          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
           capturedCheckpoints.push(checkpoint)
           return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
@@ -377,6 +787,14 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         }
       }
     } }))
+    // Same cell and text dimensions every time, distinct origins: the shape a block terminal makes
+    // when it re-lays-out its text area by whole rows, which dimensions alone cannot tell apart.
+    const grantedReadings: Array<typeof measured> = []
+    const readingAt = index => {
+      const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+      grantedReadings.push(stable)
+      return stable
+    }
     mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
       calibrations++
       if (calibrations === 1) {
@@ -385,7 +803,9 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       }
       if (calibrationFailure) throw calibrationFailure
       assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
-      return measured
+      // Numbered by SUCCESSFUL installs, so a refused attempt does not consume an origin and the
+      // fixture's y values stay one whole-row step apart regardless of how many attempts failed.
+      return readingAt(grantedReadings.length + 1)
     } }))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified, runProbeBatch: async options => {
       assert.equal(typeof options.prepareCapture, "function", "Linux serve installation must prepare capture before probe callbacks")
@@ -398,6 +818,10 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: result => retained.push(result) })
       assert.equal(calibrations, 1)
       assert.strictEqual(source.captureGeometry.geometry, pixelGeometry)
+      // 33774: the origin is askable again, so a row whose own frame writes RIS can be measured
+      // instead of refused as a moved window. Calibration paints the grid, so the probe re-writes
+      // its frame after the renewal — both halves are asserted on the probe side.
+      assert.equal(typeof source.renewCaptureGeometry, "function", "a RIS row can ask for the origin again")
       assert.deepEqual(retained, [raw], "raw calibration evidence reaches batch retention")
       await assert.rejects(
         () => options.capture({ ...checkpoints[0], pixelGeometry: { ...pixelGeometry, textWidth: pixelGeometry.textWidth - pixelGeometry.cellWidth } }),
@@ -407,19 +831,25 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
       for (const checkpoint of checkpoints) visualFrames.push((await options.capture(checkpoint)).frame)
       assert.deepEqual(capturedCheckpoints, checkpoints)
       assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
+      // 34306 AC1: the renewal is recorded with the row that asked and both origins, so a later row
+      // is never left standing on an origin the artifact does not name. Asked after the retention
+      // assertion so this fixture keeps proving one install retained exactly one raw frame.
+      const renewed = await source.renewCaptureGeometry("reset.sgr-0")
+      assert.deepEqual(renewed.geometry, pixelGeometry)
       // Initial failure tests create a new adapter per run. Only re-entry on this same
       // adapter exposes a stale closure error blocking capture after successful renewal.
       if (proofState === "source-capable") {
         const renewalSource = { kind: "live", rows: 24, cols: 80 }
         calibrationFailure = Object.assign(new Error("renewal fixture refused"), { name: "CaptureCalibrationRefused" })
-        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.1", recordCapture: () => {} })
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.1", row: "sgr.bg.default", recordCapture: () => {} })
         assert.equal(renewalSource.captureGeometry, undefined)
         assert.equal(renewalSource.captureGeometryRefusal, "renewal fixture refused")
         await assert.rejects(() => options.capture(checkpoints[0]), error => error === calibrationFailure)
         calibrationFailure = undefined
-        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", recordCapture: () => {} })
+        await options.prepareCapture({ source: renewalSource, featureId: "collector.captureCalibration.renewal.2", row: "sgr.bg.default", recordCapture: () => {} })
         assert.equal(renewalSource.captureGeometryRefusal, undefined, "successful renewal clears its prior refusal")
         assert.strictEqual(renewalSource.captureGeometry.geometry, pixelGeometry)
+        await renewalSource.renewCaptureGeometry("editing.delete-chars")
         await options.capture(checkpoints[0])
       }
       const results = options.draft.results.map(row => row.featureId !== visualId ? row : {
@@ -433,20 +863,52 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         observations: [], assertions: [], screenshotRefs: retained.map(result => result.frame.ref), ungradedDiagnostics: {}, suiteComplete: false }
       options.onCheckpoint(batch)
       const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, options.captureRunId + ".draft.json"), "utf8"))
-      assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
-      assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+      assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+      assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
       return batch
     } }))
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
     const run = await collectProbeRun({ ids: [visualId] })
     assert.strictEqual(declaredResizeHook, declareWindowSize, "serve.ts wires Linux capture resize declaration into createLinuxInput")
-    assert.equal(calibrations, proofState === "source-capable" ? 3 : 1)
-    assert.equal(rawCaptures, proofState === "source-capable" ? 2 : 1)
-    assert.deepEqual(run.screenshotRefs, [raw.frame.ref])
-    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    assert.equal(calibrations, proofState === "source-capable" ? 5 : 2)
+    assert.equal(rawCaptures, proofState === "source-capable" ? 4 : 2)
+    // The renewal re-runs the fixture capture under the same frame, so its evidence is retained twice.
+    assert.deepEqual(run.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+    // 34306 AC1: the published fact states each renewal — the row and both origins — so no grade
+    // stands on an origin the run does not name.
+    // 34306 AC1: every renewal the run asked for, in the order it happened. The first one is asked
+    // before the refused preparation below, and the old code lost it when that refusal replaced the
+    // calibration fact; it must survive, not just the last renewal of the run.
+    // The second entry is the row that asked through the preparation production itself uses, and it
+    // must survive the refused attempt before it (from is the origin the last successful install left).
+    // Dimensions never move here; only the measured y does, by whole rows. So every entry below is
+    // unreadable from from/to alone and readable exactly once fromOrigin/toOrigin is present.
+    const at = y => ({ x: 13, y })
+    const expectedRenewals = proofState === "source-capable"
+      ? [
+          { row: "reset.sgr-0", from: pixelGeometry, fromOrigin: at(57), to: pixelGeometry, toOrigin: at(597) },
+          { row: "sgr.bg.default", from: pixelGeometry, fromOrigin: at(597), to: pixelGeometry, toOrigin: at(1137) },
+          { row: "editing.delete-chars", from: pixelGeometry, fromOrigin: at(1137), to: pixelGeometry, toOrigin: at(1677) },
+        ]
+      : [{ row: "reset.sgr-0", from: pixelGeometry, fromOrigin: at(57), to: pixelGeometry, toOrigin: at(597) }]
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, expectedRenewals)
+    // #30932 S1: the fact names the origin of its own installation and, frozen, the run's first one;
+    // an in-row renewal moves neither. The pre-flight ran once, through the recorder, under its own key,
+    // and each reply keeps the query layer's own match.
+    const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
+    assert.deepEqual(fact.initialOrigin, at(57))
+    assert.deepEqual(fact.origin, proofState === "source-capable" ? at(1137) : at(57))
+    assert.equal(fact.preflight, "collector.captureCalibration.preflight.callLog")
+    assert.ok(fact.queries.length > 0)
+    for (const query of fact.queries) assert.ok(Array.isArray(query.match), query.sequence + " keeps its match")
+    const { readCallLog } = await import("viprobe")
+    readCallLog(JSON.parse(run.rawReplies["collector.captureCalibration.preflight.callLog"]))
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
-    assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
-    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,
+      expectedRenewals, "the checkpoint carries the same renewal record as the final run")
+    assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref, raw.frame.ref])
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw, raw])
     // The stored criterion reference must resolve to the exact retained font receipt.
     assert.equal(run.rawReplies[fontKey], fontReceipt, "validated font-source receipt retained in final raw evidence")
     assert.equal(persisted.rawReplies[fontKey], fontReceipt, "final checkpoint retains identical receipt bytes")
@@ -487,6 +949,378 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
   },
 )
 
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 1, 3, 4, 6): the preparation input carries a row's
+// declared screen mode to calibration, a read under the mode selects the witnessed reverse classes or fails
+// by name, an undeclared read keeps the normal ones, and a renewal never leaves a previous origin's witness.
+it("selects a witnessed reverse screen per read and drops it on preparation and renewal", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-reverse-seam-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    Object.defineProperty(process, "platform", { value: "linux" })
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+    const hash = "a".repeat(12), revision = "b".repeat(40)
+    const pixelGeometry = { cellWidth: 9, cellHeight: 22, textWidth: 720, textHeight: 528 }
+    const measured = { origin: { x: 13, y: 57 }, pixelGeometry, basis: "fixture complete raster" }
+    const decoded = { width: 800, height: 600, rgba: Buffer.alloc(800 * 600 * 4) }
+    const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
+      capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
+    const digest = seed => createHash("sha256").update(seed).digest("hex")
+    // Synthetic receipt bytes exercise custody, not a claim about installed fonts or HarfBuzz.
+    const proofState = process.env.FONT_CONTROL_PROOF_STATE
+    const fontReceipt = proofState === "absent" ? "DejaVu Sans Mono | /fixture/dejavu.ttf" : JSON.stringify({
+      fixture: "synthetic font-source receipt", proofState, reason: "synthetic source-control state",
+      requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
+      source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
+      harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
+        featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
+    const fontKey = "collector.fontSource", visualId = "extensions.font-ligatures"
+    const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
+      sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
+      runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
+        nixLockRevision: "2".repeat(40), sourceRevision: revision, cleanTree: true, suiteHash: hash },
+      fixture: { definition: "fixture", config: "--config NONE", font: fontReceipt, geometry: "80x24", display: "fixture", gl: "fixture" } }
+    writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
+      catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+      probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
+    }, collectorRevision: revision }
+    let calibrations = 0, rawCaptures = 0, source, calibrationFailure
+    const checkpoints = [
+      { featureId: visualId, role: "control", label: "spaced operator control", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
+      { featureId: visualId, role: "target", label: "contiguous operator target", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
+    ]
+    const capturedCheckpoints = []
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
+      name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture"
+    }) }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const reply = sequence === "\x1b[16t" ? "\x1b[6;22;9t"
+          : sequence === "\x1b[14t" ? "\x1b[4;528;720t"
+          : sequence === "\x1b[18t" ? "\x1b[8;24;80t" : "\x1bP>|kitty(0.49.2)\x1b\\"
+        return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
+      }
+    }))
+    let declaredResizeHook
+    const declareWindowSize = () => {}
+    mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async (_executable, options) => {
+      declaredResizeHook = options?.onResizeWindow
+      return undefined
+    } }))
+    mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async (directory, executable) => {
+      assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
+      assert.deepEqual(executable, { path: provenance.executable.path, sha256: provenance.executable.sha256 })
+      return {
+        declareWindowSize,
+        captureRaw: async (checkpoint) => {
+          rawCaptures++
+          assert.match(checkpoint.featureId, /^collector\.captureCalibration(?:\.renewal\.\d+)?$/)
+          assert.equal(checkpoint.role, "control")
+          assert.equal(checkpoint.label, "origin witness")
+          return { result: raw, decoded }
+        },
+        capture: async (checkpoint, origin) => {
+          assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
+          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
+          assert.strictEqual(origin.pixelGeometry, pixelGeometry)
+          capturedCheckpoints.push(checkpoint)
+          return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
+            ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
+        }
+      }
+    } }))
+    // Same cell and text dimensions every time, distinct origins: the shape a block terminal makes
+    // when it re-lays-out its text area by whole rows, which dimensions alone cannot tell apart.
+    const grantedReadings: Array<typeof measured> = []
+    const readingAt = index => {
+      const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+      grantedReadings.push(stable)
+      return stable
+    }
+    // #34932 reverse seam: calibration returns a reverse witness only when the preparation asked for it.
+    const calibrationModes = []
+    let reverseWitness
+    const normalClasses = { background: { anchor: [0, 0, 0], members: new Set([0]) },
+      sentinel: { anchor: [255, 0, 255], members: new Set([0xff00ff]) } }
+    const reverseClasses = { background: { anchor: [250, 250, 250], members: new Set([0xfafafa]) },
+      sentinel: { anchor: [10, 20, 30], members: new Set([0x0a141e]) } }
+    const reverseSentinel = { form: "basic", rgb: [10, 20, 30] }
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
+      calibrations++
+      calibrationModes.push(options.screenMode)
+      if (calibrationFailure) throw calibrationFailure
+      assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
+      const reading = { ...readingAt(grantedReadings.length + 1), paintClasses: normalClasses }
+      if (options.screenMode === "reverse" && reverseWitness) reading.reverseScreen = reverseWitness
+      grantedReadings.push(reading)
+      return reading
+    } }))
+    let checked = false
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified, runProbeBatch: async options => {
+      // No cells: the read goes straight to the adapter, whose checkpoint shows the classes this read selected.
+      const guarded = { featureId: "modes.reverse-video", role: "target", label: "reverse read", pixelGeometry, layoutGuard: {} }
+      const unwitnessed = error => error.name === "CaptureScreenModeUnwitnessed"
+      const source = { kind: "live", rows: 24, cols: 80 }
+      // A preparation that did not ask for the mode witnesses nothing, so a reverse read fails by name.
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: () => {} })
+      assert.deepEqual(calibrationModes, [undefined])
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }), unwitnessed)
+      // Asked and witnessed: the reverse read selects the reverse classes, and the adapter never sees the mode.
+      reverseWitness = { status: "witnessed", sentinel: reverseSentinel, paintClasses: reverseClasses }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.1",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      assert.deepEqual(calibrationModes, [undefined, "reverse"])
+      assert.deepEqual(source.captureGeometry.reverseSentinel, reverseSentinel)
+      await options.capture({ ...guarded, screenMode: "reverse" })
+      assert.equal("screenMode" in capturedCheckpoints.at(-1), false, "frames are unchanged: the adapter never sees the mode")
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, reverseClasses.background.members)
+      // An undeclared read on the same calibration keeps the normal classes.
+      await options.capture(guarded)
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, normalClasses.background.members)
+      // A refused renewal leaves no witness from the previous origin, on the source or for a read.
+      calibrationFailure = Object.assign(new Error("renewal fixture refused"), { name: "CaptureCalibrationRefused" })
+      await assert.rejects(() => source.renewCaptureGeometry("modes.reverse-video"), error => error === calibrationFailure)
+      calibrationFailure = undefined
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }), unwitnessed)
+      // A successful in-row renewal re-measures the normal paint only, so the reverse witness stays
+      // explicitly unavailable until the next preparation, while normal reads keep working.
+      const renewed = await source.renewCaptureGeometry("reset.sgr-0")
+      assert.equal(calibrationModes.at(-1), undefined)
+      assert.equal(renewed.reverseSentinel, undefined)
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }),
+        error => unwitnessed(error) && error.message.includes("not re-witnessed by an in-row renewal (reset.sgr-0)"))
+      await options.capture(guarded)
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, normalClasses.background.members)
+      // The next preparation, under the declared requirement, witnesses the reverse paint again.
+      const renewedClasses = { background: { anchor: [240, 240, 240], members: new Set([0xf0f0f0]) },
+        sentinel: reverseClasses.sentinel }
+      reverseWitness = { status: "witnessed", sentinel: reverseSentinel, paintClasses: renewedClasses }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.2",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      assert.equal(calibrationModes.at(-1), "reverse")
+      await options.capture({ ...guarded, screenMode: "reverse" })
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, renewedClasses.background.members)
+      // A calibration that left the mode unavailable names its reason on the read.
+      reverseWitness = { status: "unavailable", reason: "reverse screen mode ignored: fixture" }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.3",
+        row: "modes.reverse-video", screenMode: "reverse", recordCapture: () => {} })
+      await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }),
+        error => unwitnessed(error) && error.message.includes("reverse screen mode ignored: fixture"))
+      assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      checked = true
+      throw new Error("reverse seam fixture complete")
+    } }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    await collectProbeRun({ ids: [visualId] }).catch(error => {
+      if (!checked) throw error
+    })
+    assert.equal(checked, true)
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        FONT_CONTROL_PROOF_STATE: "absent",
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        TERMINFO_DISPOSABLE_RECEIPT: "",
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
+// 34306 AC1, the test the earlier head could not pass: the renewal record has to come out of the
+// production path, so this drives the REAL collectProbeRun and the REAL runProbeBatch (neither is
+// mocked) with two rows, and reads the published array. Only the custody grant and the terminal's
+// own layers are fixtures: detect, tty, linux capture/input, calibration, and the disposable receipt.
+// A real xterm screen is fed the run's own writes, so a capture is a reading of what was painted.
+it("records a renewal's own origins through a real two-row collectProbeRun batch", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-renewal-real-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+import { mock } from "bun:test"
+import assert from "node:assert/strict"
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { createHash } from "node:crypto"
+Object.defineProperty(process, "platform", { value: "linux" })
+const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+const tty = await import("./packages/terminfo.dev/src/tty.ts")
+const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+const hash = "a".repeat(12), revision = "5fa93036a8f87bf66d0b98ba96d0a32043775d2a"
+const pixelGeometry = { cellWidth: 9, cellHeight: 22, textWidth: 720, textHeight: 528 }
+const measured = { origin: { x: 13, y: 57 }, pixelGeometry, basis: "fixture complete raster" }
+const decoded = { width: 800, height: 600, rgba: Buffer.alloc(800 * 600 * 4) }
+const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
+  capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
+const digest = seed => createHash("sha256").update(seed).digest("hex")
+const fontReceipt = JSON.stringify({
+  fixture: "synthetic font-source receipt", proofState: "source-capable", reason: "synthetic source-control state",
+  requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
+  source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
+  harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
+    featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
+const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
+  sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
+  runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10", sourceRevision: revision, cleanTree: true, suiteHash: hash },
+  fixture: { definition: "fixture", config: "--config NONE", font: fontReceipt, geometry: "80x24", display: "fixture", gl: "fixture" } }
+if (!existsSync(process.env.TERMINFO_CAPTURE_DIRECTORY)) mkdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY)
+writeFileSync(process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT, JSON.stringify({ fixture: "clipboard custody" }))
+writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+writeFileSync(process.env.TERMINFO_DISPOSABLE_RECEIPT, JSON.stringify({
+  schemaVersion: 1, kind: "linux-xvfb-container", runId: "b".repeat(32), collectedAt: "2026-10-06T22:00:00Z",
+  runtime: { imageId: provenance.runtime.imageId, imageTarSha256: provenance.runtime.imageTarSha256,
+    arch: "amd64", nixLockRevision: provenance.runtime.nixLockRevision, sourceRevision: revision,
+    sourceTreeStatus: "clean", rootRevision: "3ffeb2c8d2a30527990135b610c41b8ba989ccab", suiteHash: hash },
+  runnerArtifact: { frozenRunnerSha256: digest("frozen runner"), buildReceiptSha256: digest("build receipt") },
+  declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+  preset: "current", clipboardProfile: "default" }))
+
+globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
+  catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+  probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
+}, collectorRevision: revision }
+let calibrations = 0, rawCaptures = 0
+const grantedReadings: Array<typeof measured> = []
+const granted = []
+const readingAt = index => {
+  const stable = { ...measured, origin: { x: 13, y: 57 + (index - 1) * 540 } }
+  grantedReadings.push(stable)
+  return stable
+}
+const { createXtermBackend } = await import("@termless/xtermjs")
+const screen = createXtermBackend()
+screen.init({ rows: 24, cols: 80 })
+const encoder = new TextEncoder()
+// Every byte this run paints goes into the screen, so a capture is a reading of what was written,
+// not a constant: the collector's paint witness needs a frame that can change.
+process.stdout.write = (chunk) => { screen.feed(encoder.encode(String(chunk))); return true }
+const screenText = () => Array.from({ length: 24 }, (_, row) =>
+  Array.from({ length: 80 }, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")).join("\n")
+mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
+  name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture"
+}) }))
+mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+  withRawMode: async callback => callback(), drainStdin: async () => {},
+  queryWithSentinelOutcome: async (sequence, pattern) => {
+    const reply = sequence === "\x1b[16t" ? "\x1b[6;22;9t"
+      : sequence === "\x1b[14t" ? "\x1b[4;528;720t"
+      : sequence === "\x1b[18t" ? "\x1b[8;24;80t" : "\x1bP>|kitty(0.49.2)\x1b\\"
+    return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
+  }
+}))
+mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async () => undefined }))
+mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async () => ({
+  declareWindowSize: () => {},
+  captureRaw: async () => { rawCaptures++; return { result: raw, decoded } },
+  capture: async (checkpoint, origin) => {
+    granted.push({ featureId: checkpoint.featureId, origin })
+    const bytes = Buffer.from(screenText())
+    const sha256 = createHash("sha256").update(bytes).digest("hex")
+    const path = "artifacts/" + checkpoint.featureId.replace(/[^a-z0-9.-]/gi, "_") + ".png"
+    const directory = join(process.env.TERMINFO_CAPTURE_DIRECTORY, "artifacts")
+    if (!existsSync(directory)) mkdirSync(directory)
+    writeFileSync(join(directory, path.replace("artifacts/", "")), bytes)
+    return { frame: { kind: "pixels", role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
+      ref: "sha256:" + sha256, path, sha256, regionDigest: "sha256:" + sha256,
+      pixelsDigest: "sha256:" + sha256,
+      regionRectangle: { x: 0, y: 0, width: pixelGeometry.textWidth, height: pixelGeometry.textHeight } },
+      trace: { label: checkpoint.label } }
+  }
+}) }))
+const geometryMeasurement = { status: "measured", at: new Date(0).toISOString(), source: "stty",
+  rows: 24, cols: 80, stdout: "24 80", stderr: "" }
+// Custody is fixture-granted here on purpose: this case proves the renewal RECORD a real batch writes,
+// not terminal ownership, which has its own suite. Naming it keeps the grant from reading as measured.
+mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+  createOwnedTerminal: async () => ({
+    geometryAtGrant: geometryMeasurement, geometrySource: "stty", summary: "fixture owned terminal",
+    readGeometry: async () => geometryMeasurement, dispose: async () => {} }),
+  ownedTerminalVerifiedFor: () => true, ownedTerminalProcessBasisFor: () => undefined }))
+mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
+  calibrations++
+  return readingAt(grantedReadings.length + 1)
+} }))
+const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+let run, failure
+try {
+  run = await collectProbeRun({ ids: ["sgr.fg.default", "sgr.bg.default"], captureRunId: "real-two-row" })
+} catch (error) { failure = String(error && error.stack || error) }
+
+assert.equal(failure, undefined)
+// The asking row is the SECOND row: the first row's own install is the one this renewal leaves.
+assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals, [{
+  row: "sgr.bg.default",
+  from: pixelGeometry, fromOrigin: { x: 13, y: 57 },
+  to: pixelGeometry, toOrigin: { x: 13, y: 597 },
+}])
+// Both rows really ran: a renewal recorded beside a row that never reached its callback would prove nothing.
+for (const id of ["sgr.fg.default", "sgr.bg.default"]) {
+  const row = run.results.find(candidate => candidate.featureId === id)
+  assert.equal(row.attempt.scope, "probe", id + " did not start its callback")
+}
+// The renewal is its own install, published under its own key, not folded into the first calibration.
+assert.ok(Object.keys(run.rawReplies).includes("collector.captureCalibration.renewal.1.trace"))
+// The checkpoint carries the same renewal record as the completed run.
+const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
+assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration"]).renewals,
+  JSON.parse(run.rawReplies["collector.captureCalibration"]).renewals)
+// Each row was graded against ITS OWN install, not merely somewhere: the first row never saw the
+// renewal's origin and the row that asked never fell back to the first one.
+for (const [id, expected] of [["sgr.fg.default", 57], ["sgr.bg.default", 597]]) {
+  const origins = [...new Set(granted.filter(entry => entry.featureId === id).map(entry => entry.origin.origin.y))]
+  assert.deepEqual(origins, [expected], id + " was graded against an origin it did not install")
+}
+
+`,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: join(home, "clipboard.json"),
+        TERMINFO_DISPOSABLE_RECEIPT: join(home, "ownership.json"),
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
   environment: Record<string, string | undefined> = {},
@@ -497,18 +1331,31 @@ async function startTestDaemon(
     env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "", ...environment },
     stdio: ["pipe", "ignore", "pipe"],
   })
+  // A daemon that dies before registering used to surface only as "ENOENT: daemons", naming neither
+  // the seal nor the line that refused; its stderr belongs in that failure.
+  let stderr = ""
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString()
+    if (process.env.DEBUG_DAEMON_STDERR) process.stderr.write(chunk)
+  })
   let filename!: string
   let registration!: { port: number; token?: string; runId: string; pid: number }
-  await vi.waitFor(
-    () => {
-      const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
-      expect(files).toHaveLength(1)
-      filename = join(home!, ".terminfo-dev/daemons", files[0]!)
-      registration = JSON.parse(readFileSync(filename, "utf8")) as typeof registration
-    },
-    { timeout: 2000 },
-  )
-  return { filename, registration }
+  try {
+    await vi.waitFor(
+      () => {
+        const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
+        expect(files).toHaveLength(1)
+        filename = join(home!, ".terminfo-dev/daemons", files[0]!)
+        registration = JSON.parse(readFileSync(filename, "utf8")) as typeof registration
+      },
+      { timeout: 2000 },
+    )
+  } catch (error) {
+    throw new Error(`${(error as Error).message}\nDaemon stderr:\n${stderr}`)
+  }
+  // 34753: a post-admission failure answers by ending the body, so its only record is the daemon's own
+  // log; expose it so a row can prove the log names the run and the draft it left behind.
+  return { filename, registration, stderr: () => stderr }
 }
 
 afterEach(async () => {
@@ -522,11 +1369,192 @@ afterEach(async () => {
 })
 
 describe("daemon HTTP boundary", () => {
+  // The smallest daemon that can answer /probe: a bundled suite to read, a detached terminal to name,
+  // and an empty selection so no probe ever runs. Used by the run-identity rows (#34018).
+  const suiteDaemon = String.raw`
+    import {mock} from "bun:test"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12), sourceRevision:"b".repeat(40), generatedAt:"2026-09-28T00:00:00Z", adapterVersion:"test", probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(), lib: [], mux: []}}, collectorRevision:"b".repeat(40)}
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
+    const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
+    await startDaemon()
+  `
+  const suiteDaemonEnvironment = {
+    TERMINFO_PROBE_HASH: "",
+    TERMINFO_SOURCE_REVISION: "",
+    TERMINFO_CAPTURE_DIRECTORY: "",
+    TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+    TERMINFO_DISPOSABLE_RECEIPT: "",
+    TERMINFO_RUNTIME_PROVENANCE: "",
+  }
+  // The same daemon, with the probe batch substituted so /probe/single answers in milliseconds.
+  const answeringDaemon = String.raw`
+    import {mock} from "bun:test"
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12), sourceRevision:"b".repeat(40), generatedAt:"2026-09-28T00:00:00Z", adapterVersion:"test", probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(), lib: [], mux: []}}, collectorRevision:"b".repeat(40)}
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty, withRawMode:async callback=>callback(), drainStdin:async()=>{}}))
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified, runProbeBatch:async options=>({results: options.draft.results, rawReplies: {}, observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false})}))
+    const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
+    await startDaemon()
+  `
+
+  // The daemon minted a second identity for its own draft, so the run the composer handed never reached
+  // the draft and the composer refused a complete run one stage later (#34018).
+  it("names the draft by the launch identity the run handed it (34018)", async () => {
+    const handed = "d".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, { ...suiteDaemonEnvironment, TERMINFO_RUN_ID: handed })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    expect(registration.runId).toBe(handed)
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [] }),
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(200)
+    expect((JSON.parse(text) as { runId: string }).runId).toBe(handed)
+    expect(readdirSync(join(home, ".terminfo-dev", "http-responses"))).toContain(`${handed}.draft.json`)
+  })
+
+  it("refuses a capture identity naming another run before any collection (34018)", async () => {
+    const handed = "d".repeat(32)
+    const other = "e".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      TERMINFO_CAPTURE_RUN_ID: other,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [] }),
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(400)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(other)
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("TERMINFO_CAPTURE_RUN_ID")
+    // Named, not "empty as far as I looked": neither run has a draft, and the directory itself was
+    // observed rather than assumed absent.
+    const drafts = join(home, ".terminfo-dev", "http-responses")
+    expect(existsSync(drafts), `draft directory ${drafts} was never created`).toBe(false)
+  })
+
+  // 35014: /probe/single reserved its draft but never named the request's run, so a post-admission failure logged
+  // "Probe daemon request failed:" with neither run nor draft, breaking 34753's custody line (the /probe twin is 30412).
+  it("names the run and its draft when /probe/single fails after admission (35014)", async () => {
+    const handed = "d".repeat(32)
+    const failing = answeringDaemon.replace(
+      "runProbeBatch:async options=>({results: options.draft.results, rawReplies: {}, observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false})",
+      `runProbeBatch:async()=>{throw new Error("fixture batch failure 35014")}`,
+    )
+    if (failing === answeringDaemon) {
+      throw new Error("Fixture: the answering daemon no longer substitutes runProbeBatch as expected")
+    }
+    const { registration, stderr } = await startTestDaemon(failing, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    await fetch(`http://127.0.0.1:${registration.port}/probe/single?id=sgr.bold`, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+    })
+      .then((response) => response.arrayBuffer())
+      .catch(() => undefined) // post-admission: the streamed body is ended, so the read may fail; the log is the record
+    const draft = join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`)
+    await vi.waitFor(() => expect(stderr()).toContain("fixture batch failure 35014"), { timeout: 10_000 })
+    expect(existsSync(draft), `the reserved draft ${draft}`).toBe(true)
+    expect(stderr()).toContain(`Probe daemon request failed for run ${handed}, draft ${draft}:`)
+  }, 30_000)
+
+  it("refuses /probe/single a capture identity naming another run before collecting (34018)", async () => {
+    const handed = "d".repeat(32)
+    const other = "e".repeat(32)
+    const { registration } = await startTestDaemon(answeringDaemon, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      TERMINFO_CAPTURE_RUN_ID: other,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe/single?id=sgr.bold`, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+    })
+    const text = await response.text()
+    expect(response.status, text).toBe(400)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(other)
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("TERMINFO_CAPTURE_RUN_ID")
+    expect(existsSync(join(home, ".terminfo-dev", "http-responses", `${other}.draft.json`))).toBe(false)
+    expect(existsSync(join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`))).toBe(false)
+  })
+
+  it("names a second collection in one run instead of surfacing the filesystem's EEXIST (34018)", async () => {
+    const handed = "d".repeat(32)
+    const { registration } = await startTestDaemon(suiteDaemon, { ...suiteDaemonEnvironment, TERMINFO_RUN_ID: handed })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const url = `http://127.0.0.1:${registration.port}/probe`
+    const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
+    const body = JSON.stringify({ ids: [] })
+    const first = await fetch(url, { method: "POST", headers, body })
+    expect(first.status, await first.clone().text()).toBe(200)
+    const second = await fetch(url, { method: "POST", headers, body })
+    const text = await second.text()
+    expect(second.status, text).toBe(409)
+    const failure = JSON.parse(text) as { error: string }
+    expect(failure.error).toContain(handed)
+    expect(failure.error).toContain("already holds a draft")
+    expect(failure.error).not.toContain(".terminfo-dev")
+    expect(failure.error).not.toContain(".draft.json")
+  })
+
+  // 34995: the failure line named "draft <path>" whenever a draft FILE existed, not when THIS request reserved it.
+  // A second request in the same run that fails before admission pointed its reader at the first request's draft.
+  // The suite receipt breaks once a marker file exists, so only the second request fails, before its reservation.
+  it("a second request that fails before admission does not name the first request's draft (34995)", async () => {
+    const handed = "d".repeat(32)
+    const breaking = suiteDaemon.replace(
+      `probeHash:"a".repeat(12),`,
+      `get probeHash(){return require("node:fs").existsSync(process.env.SUITE_BREAK_MARKER) ? "broken" : "a".repeat(12)},`,
+    )
+    if (breaking === suiteDaemon) throw new Error("Fixture: the suite daemon no longer names probeHash as expected")
+    const marker = join(tmpdir(), `terminfo-34995-${process.pid}-${Date.now()}`)
+    const { registration, stderr } = await startTestDaemon(breaking, {
+      ...suiteDaemonEnvironment,
+      TERMINFO_RUN_ID: handed,
+      SUITE_BREAK_MARKER: marker,
+    })
+    if (!home || !registration.token) throw new Error("Fixture lacks its private home or daemon token")
+    const url = `http://127.0.0.1:${registration.port}/probe`
+    const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
+    const body = JSON.stringify({ ids: [] })
+    const first = await fetch(url, { method: "POST", headers, body })
+    expect(first.status, await first.clone().text()).toBe(200)
+    const draft = join(home, ".terminfo-dev", "http-responses", `${handed}.draft.json`)
+    expect(existsSync(draft), `first request's draft ${draft}`).toBe(true)
+    writeFileSync(marker, "")
+    try {
+      const second = await fetch(url, { method: "POST", headers, body })
+      const text = await second.text()
+      expect(second.status, text).toBe(500)
+      expect(text).toContain("invalid suite or collector revision metadata")
+      await vi.waitFor(() => expect(stderr()).toContain(`Probe daemon request failed for run ${handed}`))
+      expect(stderr()).toContain(`for run ${handed}, before its draft was reserved:`)
+      expect(stderr()).not.toContain(draft)
+    } finally {
+      rmSync(marker, { force: true })
+    }
+  })
+
   // A generic helper test misses both serialization and the client's early non-OK rejection.
   // Only the OS command is substituted: the Darwin census, command callback, HTTP handler and
   // client are real. This fixture establishes byte custody, never a native macOS failure cause.
-  it("retains a failed census command's stderr through HTTP and client original custody (30412)", async () => {
-    const { registration } = await startTestDaemon(
+  it("ends a streamed body and keeps the failed draft when the census command fails (30412)", async () => {
+    const { registration, stderr } = await startTestDaemon(
       String.raw`
         import {mock} from "bun:test"
         import assert from "node:assert/strict"
@@ -554,9 +1582,12 @@ describe("daemon HTTP boundary", () => {
         const processOwner={asserter:"terminfo-admin",launchRunId:registration.runId,workerPid:registration.pid,
           provider:"kitty",ownerPid:900,executablePath:"/Applications/kitty.app/Contents/MacOS/kitty",
           basis:{kind:"marker",marker:{flag:"--instance-group",value:"terminfo-"+registration.runId}},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
-        try {await requestDaemonProbe(registration,{process:processOwner})}
-        catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
-          message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
+        try {
+          const response = await requestDaemonProbe(registration,{process:processOwner})
+          const body = await response.arrayBuffer()
+          writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({streamedStatus:response.status,bodyBytes:body.byteLength}))
+        } catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
+          name:error.name,message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
       `,
       {
         TERMINFO_PROBE_HASH: "",
@@ -569,44 +1600,46 @@ describe("daemon HTTP boundary", () => {
     )
     if (!home || !registration.token) throw new Error("Diagnostic fixture lacks its private home or daemon token")
     const privateHome = home
-    {
-      let failure: unknown
-      await vi.waitFor(
-        () => {
-          failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8"))
-        },
-        { timeout: 5000 },
-      )
-      expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
-        file: "/usr/bin/osascript",
-        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
-      })
-      expect(failure).toMatchObject({ status: 500 })
-      const directory = join(privateHome, ".terminfo-dev", "http-responses")
-      const files = readdirSync(directory).filter((name) => /^[a-f0-9]{64}$/.test(name))
-      expect(files).toHaveLength(1)
-      expect(readdirSync(directory).some((name) => name.endsWith(".json"))).toBe(true)
-      const path = join(directory, files[0]!)
-      const bytes = readFileSync(path)
-      const sha256 = createHash("sha256").update(bytes).digest("hex")
-      expect(failure).toMatchObject({ path, sha256 })
-      expect(failure).toHaveProperty("message", expect.stringContaining("HTTP 500"))
-      expect(failure).toHaveProperty("message", expect.stringContaining(path))
-      expect(failure).toHaveProperty("message", expect.stringContaining(sha256))
-      expect(files[0]).toBe(sha256)
-      const body = JSON.parse(bytes.toString())
-      expect(body).toHaveProperty("captureCommand", {
-        file: "/usr/bin/osascript",
-        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
-        stdoutBase64: "",
-        stderrBase64: Buffer.from([100, 0, 255, 10]).toString("base64"),
-        code: 17,
-        signal: null,
-        killed: false,
-      })
-      expect(bytes.toString()).not.toContain(registration.token)
+    let failure: Record<string, unknown> = {}
+    await vi.waitFor(
+      () => {
+        failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8")) as Record<string, unknown>
+      },
+      { timeout: 15_000 },
+    )
+    // The census command really ran, with the same argv the daemon used before 34753.
+    expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
+      file: "/usr/bin/osascript",
+      args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
+    })
+    // 34753: the run is admitted before the census runs, so this failure is post-header. The daemon ends the
+    // streamed body instead of answering HTTP 500, and the client fails while reading it: a 200 status alone
+    // never means a captured run (@cto 34753-probe-streaming-go.md, condition 2).
+    expect(failure).not.toHaveProperty("streamedStatus")
+    expect(failure).toMatchObject({
+      name: expect.any(String),
+      message: expect.stringMatching(/ECONNRESET|closed unexpectedly|terminated/i),
+    })
+    // No client-side receipt: a terminated body has no bytes to hash or retain.
+    expect(failure).not.toHaveProperty("sha256")
+    // Custody survives where the writer left it: one partial draft under the run's own id, and the request
+    // log names that run with its draft path (probeDraftPath) rather than dropping the failed collection.
+    const drafts = readdirSync(join(privateHome, ".terminfo-dev", "http-responses")).filter((name) =>
+      name.endsWith(".draft.json"),
+    )
+    expect(drafts).toHaveLength(1)
+    const draftPath = join(privateHome, ".terminfo-dev", "http-responses", drafts[0]!)
+    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as {
+      runId: string
+      schemaVersion: number
+      results: unknown
     }
-  })
+    expect(drafts[0]).toBe(`${draft.runId}.draft.json`)
+    expect(draft).toMatchObject({ schemaVersion: 4 })
+    expect(Array.isArray(draft.results)).toBe(true)
+    // The log names the run and its draft, so the failed collection is traceable from the daemon alone.
+    expect(stderr()).toContain(`for run ${draft.runId}, draft ${draftPath}`)
+  }, 30_000)
 
   // Carrier validation precedes source-suite loading. The old endpoint ignored
   // these bodies and tried to probe; authentication coverage did not detect that.
@@ -775,6 +1808,7 @@ function runHostedDarwinFixture(script: string, timeoutMs = 10_000) {
 function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwner?: Record<string, unknown>) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
   const ownerPidField = ownerPid === undefined ? "" : `appPid: ${ownerPid},`
+  const windowIdField = processOwner?.provider === "iterm2" ? `expectedWindowId: ${processOwner.windowId},` : ""
   const script = `
     import { mock } from "bun:test"
     Object.defineProperty(process, "platform", { value: "darwin" })
@@ -789,7 +1823,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined, processOwn
     }))
     mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
       ownedTerminalVerifiedFor: () => true,
-      createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField}
+      createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField} ${windowIdField}
         summary: JSON.stringify({preflightIdentity:{pid:process.pid,startedAtEpochSeconds:1792698257,launchRunId:"a".repeat(32)}}), readGeometry: async () => geometry, dispose: async () => {} })
     }))
     mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
@@ -1138,9 +2172,10 @@ describe("private finite daemon startup", () => {
       // Compare the same retained facts while excluding the intentionally different refusal reason and wall-clock times.
       const withoutNote = (run) => JSON.parse(JSON.stringify(run.results, (key, value) => ["reason", "startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.deepEqual(withoutNote(refused), withoutNote(bare))
-      const noAdapter = (run) => run.results.filter((o) => /no owned capture adapter is installed in this run/.test(o.reason ?? ""))
-      const named = refused.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
-      assert.equal(named.length, noAdapter(bare).length)
+      const noAdapter = (run) => run.results.filter((o) => /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/.test(o.reason ?? ""))
+      const named = refused.results.filter((o) => /this run refused capture geometry: /.test(o.reason ?? ""))
+      assert.ok(named.length > 0)
+      for (const row of named) assert.ok(noAdapter(bare).some(candidate => candidate.featureId === row.featureId), row.featureId)
       assert.equal(noAdapter(refused).length, 0)
       assert.ok(named.every((o) => /nonuniform columns/.test(o.reason)))
       assert.equal(refused.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
@@ -1190,6 +2225,17 @@ describe("private finite daemon startup", () => {
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
       let reportedCellSize = null, frames = 0, calibrationFailure
+      const rawTimings = { censusMs: 11, censusInnerMs: 3, imageMs: 17, restoreMs: 23, restoreInnerMs: 5, convertMs: 29 }
+      const styledTimings = { censusMs: 31, censusInnerMs: 7, imageMs: 37, restoreMs: 41, restoreInnerMs: 9, convertMs: 43 }
+      const sentinelRead = await import("./packages/terminfo.dev/src/sentinel-read.ts")
+      // This collector fixture checks trace custody, not the sentinel's pixel oracle (whose
+      // own suite uses real changed frames). Execute both callbacks through the served route.
+      mock.module("./packages/terminfo.dev/src/sentinel-read.ts", () => ({ ...sentinelRead,
+        readThroughSentinel: async input => {
+          await input.prePaint()
+          return input.capture(() => ({ origin: input.reading, basis: "fixture sentinel" }))
+        }
+      }))
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -1220,13 +2266,13 @@ describe("private finite daemon startup", () => {
           const painted = checkpoint.label.includes("paint witness")
           return { frame: { role: checkpoint.role, ref: "sha256:" + (painted ? "d" : "a").repeat(64), capturedAt: 1,
             label: checkpoint.label, regionDigest: "sha256:" + (painted ? "e" : "b").repeat(64),
-            pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture" } }
+            pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture", ...styledTimings } }
         },
         captureRaw: async (checkpoint) => {
           frames++
           return { result: { frame: { role: checkpoint.role, ref: "sha256:" + "f".repeat(64), capturedAt: 1,
             label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) },
-            trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
+            trace: { captureCommand: "fixture", ...rawTimings } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
         }
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw, collectorLaunched }) => {
@@ -1238,7 +2284,8 @@ describe("private finite daemon startup", () => {
         }
         if (calibrationFailure) throw calibrationFailure
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
-        return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
+        return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 },
+          basis: "fixture complete raster", sentinel: { form: "basic", rgb: [255, 0, 255] } }
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
         probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -1275,7 +2322,7 @@ describe("private finite daemon startup", () => {
       assert.match(unavailableFact.refusal, /^osascript window census killed; secondary capture restoration failure/)
       assert.deepEqual(unavailableFact.causes[1].captureCommand, censusFailure.captureCommand)
       assert.ok(!unavailable.results.some(o => o.assertionType === "screenshot"))
-      assert.ok(unavailable.results.some(o => /cell-to-pixel geometry was refused.*osascript window census killed/.test(o.reason ?? "")))
+      assert.ok(unavailable.results.some(o => /this run refused capture geometry: osascript window census killed/.test(o.reason ?? "")))
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
       const unseen = await collectProbeRun({})
       assert.equal(unseen.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
@@ -1303,6 +2350,17 @@ describe("private finite daemon startup", () => {
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still reaches pixels; RIS rows may renew its calibration within a run.
       assert.ok(frames > 0)
+      // #35145: raw pre-paint acquisitions stay in the existing calibration trace; styled
+      // acquisitions stay in the row trace. Both retain their own buckets, not caller totals.
+      const rawCaptures = JSON.parse(derived.rawReplies["collector.captureCalibration.trace"]).captures
+      const prePaint = rawCaptures.filter(({ frame }) => frame.label.endsWith(": pre-paint"))
+      const styled = JSON.parse(derived.rawReplies["sgr.bold"]).captures
+      assert.ok(prePaint.length > 0)
+      assert.ok(styled.length > 0)
+      for (const capture of prePaint) assert.deepEqual(capture.trace, { captureCommand: "fixture", ...rawTimings })
+      for (const capture of styled) {
+        for (const [key, value] of Object.entries(styledTimings)) assert.equal(capture.trace[key], value)
+      }
       // Capture labels can include independently allocated image IDs; compare all deciding pixel facts, not those labels.
       const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt", "label"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)
@@ -1417,7 +2475,7 @@ describe("private finite daemon startup", () => {
         if (shape.expect === "refused") {
           assert.equal(thrown, null, shape.name + " must complete, not throw: " + String(thrown === null ? "" : thrown.message))
           const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
-          const named = run.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
+          const named = run.results.filter((o) => /this run refused capture geometry: /.test(o.reason ?? ""))
           measured.push({ name: shape.name, kind: "refused", outcome: fact.outcome, refusal: fact.refusal,
             complete: run.results.length === globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length, ungraded: Number("ungradedDiagnostics" in run),
             named: named.length, firstNamed: named.length > 0 ? named[0].reason : "" })
@@ -1451,7 +2509,7 @@ describe("private finite daemon startup", () => {
       assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
     `)
     expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
-    expect(result.status).toBe(0)
+    expect(result.status, result.error?.message ?? result.signal ?? result.stderr).toBe(0)
   })
 
   it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {
@@ -1470,7 +2528,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
-      let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
+      let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = [], startupFailure = false
       let launch, expectedBatchVersion
       let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
@@ -1479,7 +2537,8 @@ describe("private finite daemon startup", () => {
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned, createOwnedTerminal: async () => ({
-        geometryAtGrant:{status:"measured",rows:24,cols:80},hostedAppId:terminal.name,summary:"owned fixture",dispose:async()=>{disposed++}
+        geometryAtGrant:{status:"measured",rows:24,cols:80},hostedAppId:terminal.name,summary:"owned fixture",dispose:async()=>{disposed++},
+        get clipboard(){ if(startupFailure)throw new Error("fixture startup failed after owner acquisition");return undefined }
       })}))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty,
         withRawMode:async callback=>callback(),drainStdin:async()=>{},
@@ -1504,6 +2563,12 @@ describe("private finite daemon startup", () => {
         executablePath:"/Applications/iTerm.app/Contents/MacOS/iTerm2",executableSha256:"a".repeat(64),
         sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
+      // 35130: fixture resources acquired during setup must be released even before runProbeBatch starts.
+      startupFailure=true
+      const beforeStartupFailure=disposed
+      await assert.rejects(collectProbeRun({ids,terminalAppOwner:{}}),/fixture startup failed after owner acquisition/)
+      assert.equal(disposed,beforeStartupFailure+1,"dispose acquired resources when startup fails before the batch")
+      startupFailure=false
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
       assert.equal(run.subject.version,"0.49.2")
       assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)
@@ -1584,11 +2649,24 @@ describe("private finite daemon startup", () => {
   })
 
   it.each([
+    // 35140: pixels alone do not prove that the real collector bridges the owned title capability.
+    { arm: "process", app: "ghostty", route: "title", retained: true, pid: true },
+    { arm: "process", app: "ghostty", route: "title-uninstalled", retained: false, pid: true },
+    { arm: "process", app: "ghostty", route: "title-install-refused", retained: true, pid: true },
     { arm: "windowsHosted", app: "kitty", route: "absent", retained: false, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "absent", retained: false, pid: true },
     { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
-    { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
+    { arm: "darwinHosted", app: "kitty", route: "pixels", retained: true, pid: true },
+    ...["ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "warp", "cmux"].map((app) => ({
+      arm: "darwinHosted",
+      app,
+      route: "pixels",
+      retained: true,
+      pid: true,
+    })),
     { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "cursor", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "com.microsoft.VSCode", route: "pixels", retained: true, pid: true },
     { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
     { arm: "terminalApp", app: "terminal-app", route: "pixels", retained: true, pid: true },
     {
@@ -1621,9 +2699,10 @@ describe("private finite daemon startup", () => {
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let capture
+      let nativeTitle
       let captureKind = "absent"
       let reads = 0, drains = 0
-      let pixelFrames = 0, calibrations = 0
+      let pixelFrames = 0, calibrations = 0, captureOwners = 0, titleReads = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
@@ -1634,15 +2713,26 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async options => {
+          if (arm === "process") {
+            nativeTitle = options.readDarwinTitle
+            await assert.rejects(nativeTitle(), /no installed capture owner/)
+          }
           if (arm === "terminalApp") {
             assert.ok(options.terminalApp, "Terminal text must retain its existing owner proof")
             if (process.env.FIXTURE_OWNER_FAILS === "yes") throw new Error("owned Terminal.app proof failed")
           }
           return {
+          // The factory seam delegates only a supplied production dependency; this mock cannot
+          // manufacture the serve-to-capture bridge that the regression asserts.
+          ...(arm === "process" && { readTitle: options.readDarwinTitle }),
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           ...(arm !== "terminalApp" && { hostedAppId: app }),
+          ...(arm === "terminalApp" && { expectedWindowId: options.terminalApp.windowId }),
+          captureWindowSelection: app === "terminal-app" || app === "iterm2" ? "largest" : "unique",
           ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
-          summary: "owned fixture",
+          summary: arm === "process"
+            ? JSON.stringify({ preflightIdentity: { pid: process.pid, launchRunId: "a".repeat(32), startedAtEpochSeconds: 1795120000 } })
+            : "owned fixture",
           ...(arm !== "windowsHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => {
             if (app === "terminal-app") assert.equal(drains, 1, "Terminal qualification must drain before its first cell read")
@@ -1659,18 +2749,26 @@ describe("private finite daemon startup", () => {
             : sequence === "\\x1b[16t" ? "\\x1b[6;17;8t"
             : sequence === "\\x1b[14t" ? "\\x1b[4;408;640t"
             : app === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
+            : app === "ghostty" ? "\\x1bP>|ghostty 1.3.1\\x1b\\\\"
+            : app === "wezterm" ? "\\x1bP>|WezTerm 20240203-110809-5046fc22\\x1b\\\\"
             : app === "kitty" ? "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c" : "\\x1b[?1;2c"
           return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
         }
       }))
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
         createDarwinCapture: async (_directory, options) => {
+          captureOwners++
+          if (route === "title-install-refused") throw new Error("capture owner install refused")
           assert.equal(options.appPid, 5705)
+          assert.equal(options.windowSelection, app === "terminal-app" || app === "iterm2" ? "largest" : "unique")
           if (arm === "terminalApp") {
             assert.equal(options.expectedWindowId, 791, "Pixels must come from the asserted Terminal.app window")
             assert.equal(options.ownedHost, true, "An owned Mac must retain window-only capture")
           }
-          return { captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") } }
+          return {
+            readTitle: async () => "fresh installed title " + titleReads++,
+            captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") }
+          }
         }
       }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
@@ -1683,6 +2781,21 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (route === "title") {
+            assert.equal(typeof options.ownedTerminal.readTitle, "function", "native title capability never reached the collector")
+            assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 0")
+            assert.equal(await options.ownedTerminal.readTitle(), "fresh installed title 1")
+            assert.equal(captureOwners, 1, "title reads must share the installed capture owner")
+          }
+          if (route === "title-uninstalled") {
+            await assert.rejects(options.ownedTerminal.readTitle(), /no installed capture owner/)
+            assert.equal(captureOwners, 0)
+          }
+          if (!retained && arm !== "windowsHosted") {
+            assert.equal(capture, undefined)
+            assert.match(options.captureGeometryRefusal, /screenshot capture requires TERMINFO_CAPTURE_DIRECTORY/)
+            assert.equal(reads, 0, "Missing pixel retention must not select text")
+          }
           if (route === "pixels") {
             assert.equal(typeof capture, "function", "Mac route must attempt a pixel frame")
             assert.equal(captureKind, "absent", "Mac route must not install text-cells")
@@ -1720,7 +2833,20 @@ describe("private finite daemon startup", () => {
       const collect = () => arm === "terminalApp"
         // The window and tab an owner assertion always names; input needs both (33587).
         ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: { windowId: 791, tabTty: "/dev/ttys004" } })
-        : collectProbeRun({ ids: ["device.xtversion"] })
+        : arm === "process"
+          ? collectProbeRun({ ids: ["device.xtversion"], processOwner: {
+              asserter: "terminfo-admin", launchRunId: "a".repeat(32), workerPid: process.pid,
+              provider: "cli-process", ownerPid: 5705, executablePath: "/fixture/ghostty",
+              basis: { kind: "marker", marker: { flag: "--run", value: "a".repeat(32) } },
+              tty: "/dev/ttys004", intendedVersion: "1.4.0"
+            } })
+          : collectProbeRun({ ids: ["device.xtversion"] })
+      if (route === "title-install-refused") {
+        await assert.rejects(collect(), /capture owner install refused/)
+        await assert.rejects(nativeTitle(), /no installed capture owner/)
+        assert.equal(titleReads, 0)
+        process.exit(0)
+      }
       if (route === "platform-refused" || route === "owner-refused") {
         await assert.rejects(collect(), route === "platform-refused"
           ? /Controlled Linux collection requires runtime provenance/
@@ -1736,6 +2862,7 @@ describe("private finite daemon startup", () => {
         process.exit(0)
       }
       const run = await collect()
+      if (arm === "process") await assert.rejects(nativeTitle(), /no installed capture owner/)
       if (app === "terminal-app" && retained) {
         assert.match(run.rawReplies["collector.windowDisposal"], arm === "terminalApp" ? /pending launcher/ : /pending the hosted workflow's/)
         assert.equal(run.rawReplies["collector.collectionStatus"], "Collected selected probe results; draft " + run.runId + " awaits final writer")
@@ -1745,11 +2872,11 @@ describe("private finite daemon startup", () => {
       assert.equal(reads, app === "terminal-app" && retained ? 1 : 0)
       assert.equal(drains, 1, "Each completed collection drains once, never after Terminal qualification")
       assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
-      assert.equal(calibrations, route === "pixels" ? 1 : 0)
+      assert.equal(calibrations, route === "pixels" || route === "title" ? 1 : 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
       // Hosted pixel runs must retain the same qualification refusals without replacing pixels.
-      if (route === "text-cells" || route === "pixels") {
+      if (route === "text-cells" || (route === "pixels" && !["cursor", "com.microsoft.VSCode"].includes(app))) {
         assert.ok(run.textQualification, "hosted pixel capture skipped text qualification")
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
@@ -1769,7 +2896,7 @@ describe("private finite daemon startup", () => {
             FIXTURE_PLATFORM: platform ?? "",
             FIXTURE_OWNER_FAILS: ownerFails ? "yes" : "no",
             TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
-            TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
+            TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" && arm !== "process" ? "hardware-receipt-fixture" : "",
             // An empty value names a run with no helper, so an owned terminalApp arm never compiles one.
             TERMINFO_DARWIN_INPUT_HELPER: "",
             TERMINFO_RUNTIME_PROVENANCE: "",
@@ -1781,17 +2908,17 @@ describe("private finite daemon startup", () => {
       )
       const lines = stderrWithoutInputInstall(result.stderr)
       expect(result.status, result.stderr).toBe(0)
-      expect(lines, result.stderr).toHaveLength(retained ? 0 : 1)
+      expect(lines, result.stderr).toHaveLength(!retained && arm === "windowsHosted" ? 1 : 0)
       // 33587: an owned Terminal.app run installs keyboard input too, so with a pid and no helper it
       // reaches the adapter and refuses there by name. A refused platform or owner stops the run first.
-      if (arm === "terminalApp" && pid && (route === "absent" || route === "text-cells")) {
+      if (retained && arm === "terminalApp" && pid && (route === "absent" || route === "text-cells")) {
         expect(result.stderr).toContain(
           "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset",
         )
       }
       // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line.
       if (arm !== "terminalApp") expect(result.stderr).not.toContain("collector.inputInstall")
-      if (!retained) {
+      if (!retained && arm === "windowsHosted") {
         expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
         expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
         expect(lines[0]).toMatch(/no-capture branch$/u)
@@ -1825,9 +2952,11 @@ describe("private finite daemon startup", () => {
       import { Writable } from "node:stream"
       const expectation = process.env.FIXTURE_EXPECT
       const closure = expectation.startsWith("closure")
-      const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length) : undefined
+      const nativeQualification = closure || ["non-windows", "pending-write", "write-error", "final-custody"].includes(expectation)
+      const pixelApp = closure && expectation !== "closure" ? expectation.slice("closure-".length)
+        : nativeQualification ? "kitty" : undefined
       // Existing xterm adapter supplies the substituted native screen; collection/retention stay real.
-      const screen = closure ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
+      const screen = nativeQualification ? (await import("@termless/xtermjs")).createXtermBackend() : undefined
       screen?.init({ rows: 24, cols: 80 })
       const hosted = expectation !== "refusal"
       let reads = 0
@@ -1836,6 +2965,7 @@ describe("private finite daemon startup", () => {
       const darwin = closure || ["pending-write", "write-error", "non-windows", "final-custody"].includes(expectation)
       let text = "stale"
       let finishWrite
+      let selectedWriteFailure
       const out = new Writable({
         write(chunk, encoding, done) {
           writes.push(chunk.toString())
@@ -1871,7 +3001,32 @@ describe("private finite daemon startup", () => {
       let captured = false
       let retainedFrame
       let calibrations = 0
-      if (pixelApp) {
+      if (expectation === "closure") {
+        // Substitute acquisition only: this journey proves production frame/qualification/trace custody,
+        // not the screenshot oracle. Raster acquisition and grading have their own owning contracts.
+        const core = await import("./packages/terminfo.dev/src/capture-core.ts")
+        mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+          createDarwinCapture: async (directory, { onRetained }) => {
+            const acquire = async checkpoint => {
+              const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aK1sAAAAASUVORK5CYII=", "base64")
+              const ref = core.retain(directory, png, "png", onRetained)
+              const cells = Array.from({ length: 24 }, (_, row) => Array.from({ length: 80 }, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join(""))
+              const digest = "sha256:" + createHash("sha256").update(cells.join("\\n")).digest("hex")
+              return { frame: { role: checkpoint.role, label: checkpoint.label, ref, sourceRef: ref,
+                capturedAt: Date.now(), regionDigest: digest, pixelsDigest: digest }, trace: { captureCommand: "custody acquisition fixture" } }
+            }
+            return { capture: acquire, captureRaw: async checkpoint => ({ result: await acquire(checkpoint), decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }) }
+          }
+        }))
+        mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+          calibrateCaptureOrigin: async ({ captureRaw }) => {
+            calibrations++
+            await captureRaw("custody calibration frame", Date.now() + 1000)
+            return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 80, textHeight: 24 }, basis: "custody fixture" }
+          }
+        }))
+      }
+      if (pixelApp && expectation !== "closure") {
         mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
           createDarwinCapture: async () => ({ captureRaw: async () => { throw new Error("pixel fixture must calibrate first") } })
         }))
@@ -1899,7 +3054,7 @@ describe("private finite daemon startup", () => {
           summary: "owned fixture",
           ...(darwin && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1;
-            if (closure) { return { status: "read", app: pixelApp ?? "kitty", cells: {
+            if (nativeQualification) { return { status: "read", app: pixelApp ?? "kitty", cells: {
               cols: 80, rows: 24, text: Array.from({length: 24}, (_, row) => Array.from({length: 80}, (_, col) => screen.getCell(screen.getScrollback().viewportTop + row, col).char || " ").join("")), paddedRows: [], droppedLines: 0
             } } }
             return ({
@@ -1913,8 +3068,8 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async callback => callback(), drainStdin: async () => {},
-        queryMode: closure ? async () => "set" : tty.queryMode,
-        queryCursorPosition: closure ? async () => [1, 1] : tty.queryCursorPosition,
+        queryMode: nativeQualification ? async () => "set" : tty.queryMode,
+        queryCursorPosition: nativeQualification ? async () => [1, 1] : tty.queryCursorPosition,
         queryWithSentinelOutcome: async (sequence, pattern) => {
           const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t"
             : pixelApp === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
@@ -1926,38 +3081,36 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (expectation === "pending-write" || expectation === "write-error") {
+            // Text now serves qualification beside primary pixels. Its reads still wait for output completion.
+            options.out.write("queued-clear")
+            const pending = actualBatch(options)
+            pending.catch(() => {})
+            await Promise.resolve()
+            assert.equal(reads, 0, "qualification readback ran before the selected output completed")
+            assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
+            if (expectation === "write-error") {
+              selectedWriteFailure = new Error("selected output completion failed")
+              const errorSeen = new Promise(resolve => out.once("error", resolve))
+              finishWrite(selectedWriteFailure)
+              const refused = await pending
+              assert.equal(reads, 0)
+              assert.equal(await errorSeen, selectedWriteFailure)
+              return refused
+            }
+            finishWrite()
+            return pending
+          }
+          if (pixelApp && !closure) return actualBatch(options)
           if (expectation === "timeout" || closure) {
             return actualBatch(options)
           }
           if (options.capture) {
-            if (expectation === "pending-write" || expectation === "write-error") {
-              // Real Writable queues the adapter's completion behind this unfinished chunk.
-              options.out.write("queued-clear")
-              const pending = tty.withTTYOperation(() => options.capture({ role: "witness", label: "fixture" }), options.out)
-              pending.catch(() => {}) // The original promise is asserted below, including its error.
-              await Promise.resolve()
-              assert.equal(reads, 0, "text readback ran before the selected output completed")
-              assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
-              if (expectation === "write-error") {
-                const failure = new Error("selected output completion failed")
-                const errorSeen = new Promise(resolve => out.once("error", resolve))
-                finishWrite(failure)
-                await assert.rejects(pending, error => error === failure)
-                assert.equal(reads, 0)
-                assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
-                assert.equal(await errorSeen, failure)
-              } else {
-                finishWrite()
-                await pending
-                captured = true
-              }
-            } else {
-              text = "hello"
-              options.out.write("probe-paint")
-              const retained = await tty.withTTYOperation(() => options.capture({ role: "control", label: "fixture" }), options.out)
-              retainedFrame = retained.frame
-              captured = true
-            }
+            text = "hello"
+            options.out.write("probe-paint")
+            const retained = await tty.withTTYOperation(() => options.capture({ role: "control", label: "fixture" }), options.out)
+            retainedFrame = retained.frame
+            captured = true
           }
           return {
             results: options.draft.results, rawReplies: {},
@@ -1975,8 +3128,15 @@ describe("private finite daemon startup", () => {
           /Controlled Linux collection requires runtime provenance/u,
         )
       } else {
-        const run = await collectProbeRun({ ids: [expectation === "timeout" || closure ? "erase.character" : "device.xtversion"], out })
-        if (pixelApp) {
+        if (expectation === "write-error") {
+          const refused = await collectProbeRun({ ids: ["erase.character"], out })
+          assert.ok(refused.textQualification.shapes.every(shape => shape.reason.includes(selectedWriteFailure.message)), JSON.stringify(refused.textQualification))
+          assert.equal(reads, 0)
+          assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
+          process.exit(0)
+        }
+        const run = await collectProbeRun({ ids: [expectation === "timeout" || nativeQualification ? "erase.character" : "device.xtversion"], out })
+        if (pixelApp && expectation !== "closure") {
           assert.equal(captureKind, "absent", "qualification replaced the primary pixel adapter")
           assert.equal(calibrations, 1, "text qualification skipped pixel calibration")
           assert.equal(JSON.parse(run.rawReplies["collector.captureCalibration"]).outcome, "refused")
@@ -1996,7 +3156,7 @@ describe("private finite daemon startup", () => {
           }
           const assessment = assessTextQualification({ ...run, textQualificationSpec: TEXT_QUALIFICATION_SPEC }, snapshots)
           assert.equal(assessment.qualified, true, assessment.reason)
-          process.exit(0)
+          if (expectation !== "final-custody") process.exit(0)
         }
         if (expectation === "closure") {
           // Existing retention tests omit nested bindings; this production bundle supplies their positive control.
@@ -2048,14 +3208,16 @@ describe("private finite daemon startup", () => {
           assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
           process.exit(0)
         }
-        assert.equal(captureKind, "text-cells")
-        assert.equal(typeof capture, "function")
-        assert.equal(captured, expectation !== "write-error")
         const frames = readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt"))
-        assert.equal(frames.length, expectation === "write-error" ? 0 : 1)
-        if (expectation !== "write-error") {
-          assert.equal(reads, 1)
-          assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+        if (expectation !== "final-custody") {
+          assert.equal(captureKind, "text-cells")
+          assert.equal(typeof capture, "function")
+          assert.equal(captured, expectation !== "write-error")
+          assert.equal(frames.length, expectation === "write-error" ? 0 : 1)
+          if (expectation !== "write-error") {
+            assert.equal(reads, 1)
+            assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+          }
         }
         assert.equal(queryWrites, darwin ? 0 : 1)
         if (!darwin) assert.ok(writes.indexOf("probe-paint") < writes.indexOf("\\x1b[6n"))
@@ -2064,8 +3226,9 @@ describe("private finite daemon startup", () => {
           assert.equal(typeof run.rawReplies["collector.traceManifest"], "string", "producer did not seal retained artifact paths")
           const manifestBytes = run.rawReplies["collector.traceManifest"]
           const manifest = JSON.parse(manifestBytes)
-          assert.equal(manifest.blobs.length, 1)
-          assert.equal(manifest.blobs[0].path, "artifacts/" + frames[0])
+          assert.ok(frames.length > 0)
+          assert.deepEqual(manifest.blobs.map(blob => blob.path).sort(), frames.map(name => "artifacts/" + name).sort())
+          const retainedBytes = new Map(frames.map(name => ["artifacts/" + name, readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, name))]))
           const originalBytes = Buffer.from(JSON.stringify(run))
           const { readRetainedDaemonProbeResponse } = await import("./packages/terminfo.dev/src/daemon-client.ts")
           const { getTrustedSuiteReceipt } = await import("./packages/terminfo.dev/src/serve.ts")
@@ -2085,8 +3248,10 @@ describe("private finite daemon startup", () => {
             captureRunId: run.runId, captureSuiteId: run.suiteId, captureSourceRevision: run.sourceRevision
           }, { manifest: getTrustedSuiteReceipt().manifest, sourceRevision: run.sourceRevision, subject: run.subject })
           assert.equal(reopened.capture.rawReplies["collector.traceManifest"], manifestBytes)
-          assert.ok(reopened.files.includes(join(finalRoot, manifest.blobs[0].path)))
-          assert.match(readFileSync(join(finalRoot, manifest.blobs[0].path), "utf8"), /hello/u)
+          for (const blob of manifest.blobs) {
+            assert.ok(reopened.files.includes(join(finalRoot, blob.path)))
+            assert.deepEqual(readFileSync(join(finalRoot, blob.path)), retainedBytes.get(blob.path))
+          }
         }
       }
       `,

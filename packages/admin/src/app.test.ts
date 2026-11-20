@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import {
@@ -40,6 +40,7 @@ import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./curso
 import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { placeCollectedRun } from "../corpus-placement.ts"
+import * as collectedRun from "./collected-run.ts"
 
 vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () => ({ manifest: {} }) }))
@@ -47,6 +48,8 @@ vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () =
 vi.mock("node:fs", () => ({
   closeSync: vi.fn(),
   existsSync: vi.fn(() => true),
+  lstatSync: vi.fn(() => ({})),
+  realpathSync: vi.fn((path: string) => path),
   mkdirSync: vi.fn(),
   openSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
@@ -136,6 +139,7 @@ beforeEach(() => {
   // Default collection requires authoring-checkout replies before retention.
   vi.mocked(spawnSync).mockImplementation((file, args = []) => {
     const replies: Record<string, string> = {
+      "/bin/ps -o lstart= -p 777": "Thu Oct 22 14:20:06 2026\n",
       "git rev-parse HEAD": "a".repeat(40),
       "git symbolic-ref --quiet --short HEAD": "task/fixture",
       "git symbolic-ref --quiet --short refs/remotes/origin/HEAD": "origin/main",
@@ -198,6 +202,8 @@ beforeEach(() => {
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
   vi.mocked(placeCollectedRun).mockReturnValue("/corpus/terminal-app.json")
+  // #30932 S2: the shadow's own behaviour is pinned in unified.test.ts; here only that it reads the retained run.
+  vi.spyOn(collectedRun, "shadowCollectedRun").mockResolvedValue(undefined)
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(closeOwnedTerminalWindow).mockReturnValue(
     JSON.stringify({ windowId: 14, tty: "/dev/ttys003", status: 0, stdout: "0\n", stderr: "", remaining: 0 }),
@@ -241,6 +247,28 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
     log.mockRestore()
     warn.mockRestore()
     error.mockRestore()
+  }
+})
+
+// Native semantic readers need the selected launch identity, even with no hosted caller.
+test.each([undefined, "stale-parent"])("WezTerm preparation replaces inherited target hints: %s", (inherited) => {
+  vi.stubEnv("TERMINFO_TARGET_ID", inherited)
+  vi.stubEnv("TERMINFO_TARGET_VERSION", inherited)
+  const version = "20240203-110809-5046fc22"
+  vi.mocked(execFileSync).mockReturnValueOnce(`wezterm ${version}\n`)
+  try {
+    const prepared = prepareCliLaunch("wezterm", {
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+    expect(prepared.env).toMatchObject({
+      TERMINFO_TARGET_ID: "wezterm",
+      TERMINFO_TARGET_VERSION: version,
+      TERMINFO_RUN_ID: "private-run",
+    })
+  } finally {
+    vi.unstubAllEnvs()
   }
 })
 
@@ -408,14 +436,225 @@ describe("WezTerm cli-process arm", () => {
   const ownedWindow = {
     provider: "cli-process" as const,
     ownerPid: 777,
+    ownerBirth: {
+      pid: 777,
+      startedAtEpochSeconds: 1792678806,
+      rawLstart: "Thu Oct 22 14:20:06 2026\n",
+      observedAt: "2026-10-22T14:21:00.000Z",
+      observedByUid: 501,
+      observedOnHost: "owned-mac",
+    },
     tty: "/dev/ttys009",
     executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
     marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
   }
 
+  // 34076: the hand operation must use the real app lifetime without entering collection.
+  // Existing tests exercise collection, so none detects a diagnostic accidentally grading a run.
+  test("hand-read retains one own-pane snapshot and closes its fresh fixture without collecting", async () => {
+    vi.mocked(realpathSync).mockImplementation((path) =>
+      String(path).replace("/Applications/WezTerm.app", "/private/VerifiedWezTerm.app"),
+    )
+    vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    vi.mocked(readFileSync).mockImplementation((path) =>
+      String(path).endsWith("wezterm-hand-binding.txt")
+        ? "private-run\n/private/run/wezterm.sock\n4\n"
+        : "/dev/ttys009\n",
+    )
+    const stdout = '[{"pane_id":4,"cwd":"file:///private/app-reported","size":{"rows":2,"cols":24}}]\n'
+    const text = "owned fixture text\n\n"
+    const previous = vi.mocked(spawnSync).getMockImplementation()!
+    vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("get-text")) {
+        return {
+          pid: 9,
+          status: 0,
+          signal: null,
+          stdout: Buffer.from(text),
+          stderr: Buffer.alloc(0),
+          output: [null, Buffer.from(text), Buffer.alloc(0)],
+        }
+      }
+      if (String(file).endsWith("/wezterm") && args?.includes("list")) {
+        return { pid: 8, status: 0, signal: null, stdout, stderr: "", output: [null, stdout, ""] }
+      }
+      return previous(file, args, options)
+    })
+
+    const retain = vi.spyOn(collectedRun, "retainCollectedRun").mockReturnValue("/private/unwanted-collection.json")
+    try {
+      await handleApp("wezterm", { handRead: true, output: "/private/hand" })
+
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(requestDaemonProbe).not.toHaveBeenCalled()
+      expect(retain).not.toHaveBeenCalled()
+      expect(readRetainedDaemonProbeResponse).not.toHaveBeenCalled()
+      expect(placeCollectedRun).not.toHaveBeenCalled()
+      const reads = vi.mocked(spawnSync).mock.calls.filter((call) => call[1]?.includes("list"))
+      expect(reads).toHaveLength(1)
+      expect(reads[0]?.[0]).toBe("/private/VerifiedWezTerm.app/Contents/MacOS/wezterm")
+      expect(reads[0]?.[1]).toEqual([
+        "--config-file",
+        "/private/run/wezterm-private-run.lua",
+        "cli",
+        "--no-auto-start",
+        "list",
+        "--format",
+        "json",
+      ])
+      expect(reads[0]?.[2]?.env?.WEZTERM_UNIX_SOCKET).toBe("/private/run/wezterm.sock")
+      expect(reads[0]?.[2]?.env?.WEZTERM_PANE).toBe("4")
+      // B2: the list-only journey cannot prove this bound pane was read before its owner closed.
+      const textReads = vi
+        .mocked(spawnSync)
+        .mock.calls.flatMap((call, index) => (call[1]?.includes("get-text") ? [{ call, index }] : []))
+      expect(textReads).toHaveLength(1)
+      const textRead = textReads[0]!
+      expect(textRead.call[0]).toBe("/private/VerifiedWezTerm.app/Contents/MacOS/wezterm")
+      expect(textRead.call[1]).not.toContain("--start-line")
+      expect(textRead.call[1]?.[textRead.call[1].indexOf("--pane-id") + 1]).toBe("4")
+      expect(textRead.call[2]?.env?.WEZTERM_UNIX_SOCKET).toBe("/private/run/wezterm.sock")
+      expect(textRead.call[2]?.env?.WEZTERM_PANE).toBe("4")
+      const textOrder = vi.mocked(spawnSync).mock.invocationCallOrder[textRead.index]!
+      expect(textOrder).toBeLessThan(vi.mocked(stopOwnedDaemon).mock.invocationCallOrder[0]!)
+      expect(textOrder).toBeLessThan(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]!)
+      expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledExactlyOnceWith(ownedWindow)
+      const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
+      expect(saved).toBeDefined()
+      const diagnostic = JSON.parse(String(saved![1]))
+      expect(diagnostic).toHaveProperty("bundle.cliPath", reads[0]?.[0])
+      expect(diagnostic).toMatchObject({
+        primaryFailure: null,
+        read: { stdout, pane: { pane_id: 4, cwd: "file:///private/app-reported" } },
+        cleanup: { errors: [] },
+      })
+      expect(JSON.stringify(diagnostic)).toContain(Buffer.from(text).toString("base64"))
+      expect(diagnostic).not.toHaveProperty("results")
+      expect(JSON.stringify(diagnostic)).not.toContain('"featureId"')
+      expect(JSON.stringify(diagnostic)).not.toContain('"grade"')
+    } finally {
+      retain.mockRestore()
+    }
+  })
+
+  test("hand-read refuses another app before creating a fixture", async () => {
+    await expect(handleApp("ghostty", { handRead: true, output: "/private/hand" })).rejects.toThrow(/WezTerm/)
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  // Each row breaks a different boundary of the one hand operation. The old collection
+  // journeys cannot detect a wrong socket/pane or a lost primary error in this mode.
+  test.each<{
+    name: string
+    binding?: string
+    stdout?: string
+    status?: number
+    textStatus?: number
+    cleanupFailure?: boolean
+    ownerFailure?: boolean
+    message: RegExp
+  }>([
+    { name: "missing socket", binding: "private-run\n\n4\n", message: /launch binding/ },
+    { name: "stale run", binding: "other-run\n/private/run/wezterm.sock\n4\n", message: /launch binding/ },
+    { name: "foreign pane", stdout: '[{"pane_id":9,"cwd":"file:///foreign"}]', message: /0 candidates/ },
+    { name: "ambiguous pane", stdout: '[{"pane_id":4,"cwd":"a"},{"pane_id":4,"cwd":"b"}]', message: /2 candidates/ },
+    { name: "malformed JSON", stdout: "not-json", message: /invalid JSON/ },
+    { name: "CLI failure", status: 2, message: /exit 2/ },
+    { name: "missing native rows", stdout: '[{"pane_id":4,"cwd":"file:///private/own"}]', message: /native row count/ },
+    { name: "text read and close failure", textStatus: 17, cleanupFailure: true, message: /get-text unavailable/ },
+    { name: "read and close failure", status: 2, cleanupFailure: true, message: /exit 2/ },
+    // 34076: a cleanup-only failure must not be mislabeled as a primary read failure in CLI JSON.
+    { name: "close failure only", cleanupFailure: true, message: /close failed/ },
+    { name: "unresolved owner", ownerFailure: true, message: /ambiguous owner/ },
+  ])("hand-read preserves $name and only closes an acquired owner", async (fault) => {
+    vi.mocked(existsSync).mockImplementation((path) => !String(path).endsWith("hand-read.json"))
+    vi.mocked(readFileSync).mockImplementation((path) =>
+      String(path).endsWith("wezterm-hand-binding.txt")
+        ? (fault.binding ?? "private-run\n/private/run/wezterm.sock\n4\n")
+        : "/dev/ttys009\n",
+    )
+    if (fault.ownerFailure) {
+      vi.mocked(resolveOwnedProcessByMarker).mockImplementation(() => {
+        throw new Error("ambiguous owner")
+      })
+    } else vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    if (fault.cleanupFailure) {
+      vi.mocked(closeOwnedTerminalWindow).mockImplementation(() => {
+        throw new Error("close failed")
+      })
+    }
+    const previous = vi.mocked(spawnSync).getMockImplementation()!
+    vi.mocked(spawnSync).mockImplementation((file, args, options) => {
+      if (String(file).endsWith("/wezterm") && args?.includes("get-text")) {
+        const stdout = Buffer.from("owned diagnostic text\n\n")
+        const stderr = Buffer.from("owned text stderr")
+        return { pid: 9, status: fault.textStatus ?? 0, signal: null, stdout, stderr, output: [null, stdout, stderr] }
+      }
+      if (String(file).endsWith("/wezterm") && args?.includes("list")) {
+        const stdout = fault.stdout ?? '[{"pane_id":4,"cwd":"file:///private/own","size":{"rows":2,"cols":24}}]'
+        return {
+          pid: 8,
+          status: fault.status ?? 0,
+          signal: null,
+          stdout,
+          stderr: "diagnostic stderr",
+          output: [null, stdout, "diagnostic stderr"],
+        }
+      }
+      return previous(file, args, options)
+    })
+    const summaryLog =
+      fault.name === "close failure only" ? vi.spyOn(console, "log").mockImplementation(() => {}) : undefined
+    try {
+      await expect(handleApp("wezterm", { handRead: true, output: "/private/hand" })).rejects.toThrow(fault.message)
+      expect(requestDaemonProbe).not.toHaveBeenCalled()
+      expect(placeCollectedRun).not.toHaveBeenCalled()
+      expect(stopOwnedDaemon).toHaveBeenCalledTimes(1)
+      expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(fault.ownerFailure ? 0 : 1)
+      const saved = vi.mocked(writeFileSync).mock.calls.find((call) => String(call[0]).endsWith("hand-read.json"))
+      expect(saved).toBeDefined()
+      const diagnostic: unknown = JSON.parse(String(saved![1]))
+      expect(diagnostic).toMatchObject({ primaryFailure: summaryLog ? null : expect.stringMatching(fault.message) })
+      if (fault.textStatus !== undefined) {
+        expect(JSON.stringify(diagnostic)).toContain(Buffer.from("owned diagnostic text\n\n").toString("base64"))
+        expect(JSON.stringify(diagnostic)).toContain(Buffer.from("owned text stderr").toString("base64"))
+      }
+      if (summaryLog) {
+        expect(summaryLog).toHaveBeenCalledExactlyOnceWith(expect.any(String))
+        const summary: unknown = JSON.parse(String(summaryLog.mock.calls[0]?.[0]))
+        expect(summary).toEqual({
+          kind: "app-hand-read",
+          receipt: "/private/hand/hand-read.json",
+          error: expect.stringMatching(/close failed/),
+        })
+        expect(summary).not.toHaveProperty("primaryFailure")
+      }
+      expect(diagnostic).toMatchObject({
+        cleanup: {
+          errors: fault.cleanupFailure || fault.ownerFailure ? expect.arrayContaining([expect.any(String)]) : [],
+        },
+      })
+    } finally {
+      summaryLog?.mockRestore()
+    }
+  })
+
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
     await handleApp("wezterm", {})
+    // The real recipe must deliver private artifacts without measuring Ghostty preferences.
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/serve.sh",
+      expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
+      { flag: "wx", mode: 0o700 },
+    )
+    expect(vi.mocked(execFileSync).mock.calls.some(([file]) => String(file) === "/usr/bin/defaults")).toBe(false)
+    expect(vi.mocked(readFileSync).mock.calls.some(([file]) => String(file).includes("com.mitchellh.ghostty"))).toBe(
+      false,
+    )
     const [binary, args] = vi.mocked(spawn).mock.calls[0]!
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(ownedWindow, 555, "2.15", [binary, ...args!])
     expect(writeFileSync).toHaveBeenCalledWith("/private/run/wezterm-private-run.lua", "return {}\n", {
@@ -483,12 +722,71 @@ describe("WezTerm cli-process arm", () => {
       JSON.stringify({ argvAbsentReason: "not Developer ID", codesignDetailsRaw: "Identifier=fixture" }),
     )
   })
+
+  // #34018 R2 (@dev/17 peer REVISE): the handoff and collision boundary, on the App owner's own
+  // suite. A handed identity is one run's name, so it is checked for a live registration first and
+  // then reaches the run construction unchanged; a selection that would have to reuse it, or a run
+  // already registered under it, refuses before anything is launched or written.
+  test("a handed run id is checked for a live daemon and reaches the run construction unchanged", async () => {
+    const handed = "0123456789abcdef0123456789abcdef"
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    // A handed id is free (the single no-wait check passes) and the later launch wait still finds
+    // the daemon it started, which is the only difference a handed id makes before launch.
+    vi.mocked(findOwnedDaemon).mockImplementation(async (_id, _dir, _app, timeout) =>
+      timeout === 0 ? null : ({ filepath: "/private/registration", registration } as never),
+    )
+    vi.mocked(createProbeRun).mockReturnValueOnce({
+      id: handed,
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+    await handleApp("wezterm", { runId: handed })
+    expect(findOwnedDaemon).toHaveBeenNthCalledWith(1, handed, expect.any(String), "wezterm", 0)
+    expect(createProbeRun).toHaveBeenCalledWith(handed)
+    // Direct local use keeps minting: no id handed in means no collision check and no id passed on.
+    vi.mocked(createProbeRun).mockClear()
+    vi.mocked(findOwnedDaemon).mockClear()
+    await handleApp("wezterm", {})
+    expect(createProbeRun).toHaveBeenCalledWith(undefined)
+    expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "wezterm")
+    expect(vi.mocked(findOwnedDaemon).mock.calls.some((call) => call[3] === 0)).toBe(false)
+  })
+
+  test("refuses a handed id already registered by a live daemon, before any launch or write", async () => {
+    const handed = "fedcba9876543210fedcba9876543210"
+    vi.mocked(findOwnedDaemon).mockResolvedValueOnce({ filepath: "/private/registration", registration })
+    await expect(handleApp("wezterm", { runId: handed })).rejects.toThrow(
+      `run id ${handed} is already registered by a live daemon`,
+    )
+    expect(findOwnedDaemon).toHaveBeenCalledWith(handed, expect.any(String), "wezterm", 0)
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+    expect(writeFileSync).not.toHaveBeenCalled()
+  })
+
+  test("refuses a handed id across a multi-app selection before any run starts", async () => {
+    const handed = "00112233445566778899aabbccddeeff"
+    await expect(handleApp(undefined, { all: true, runId: handed })).rejects.toThrow(
+      /--run-id names one run and \d+ apps would run/,
+    )
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+    expect(spawn).not.toHaveBeenCalled()
+  })
 })
 
 describe("Ghostty cli-process arm", () => {
   const ownedWindow = {
     provider: "cli-process" as const,
     ownerPid: 777,
+    ownerBirth: {
+      pid: 777,
+      startedAtEpochSeconds: 1792678806,
+      rawLstart: "Thu Oct 22 14:20:06 2026\n",
+      observedAt: "2026-10-22T14:21:00.000Z",
+      observedByUid: 501,
+      observedOnHost: "owned-mac",
+    },
     tty: "/dev/ttys009",
     executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
@@ -510,7 +808,7 @@ describe("Ghostty cli-process arm", () => {
       "command = /private/run/serve-private-run.sh\nconfirm-close-surface = false\nquit-after-last-window-closed = true\nwindow-save-state = never\n",
       { flag: "wx", mode: 0o600 },
     )
-    // D5: Ghostty's recipe is the one ruled capture route, so its collector gets the artifact directory.
+    // Every owned launch's collector gets the artifact directory (31743; Ghostty's D5 route keeps it).
     expect(writeFileSync).toHaveBeenCalledWith(
       "/private/run/serve-private-run.sh",
       expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
@@ -686,6 +984,27 @@ describe("Ghostty cli-process arm", () => {
   })
 })
 
+// 31743: the directory reaches the run script before ownership is known, so ownership is what gates
+// capture. An editor launch whose owner resolution refuses (no live marked process, or more than one)
+// never sends the probe request, so its collector gets no owner claim and no row is captured or written.
+test.each([
+  { input: "cursor", refusal: "no live process runs Cursor carrying the run-scoped marker" },
+  { input: "cursor", refusal: "2 live processes run Cursor carrying the run-scoped marker; the owner is ambiguous" },
+  { input: "com.microsoft.VSCode", refusal: "no live process runs Code carrying the run-scoped marker" },
+  {
+    input: "com.microsoft.VSCode",
+    refusal: "2 live processes run Code carrying the run-scoped marker; the owner is ambiguous",
+  },
+])("$input refusing its owner ($refusal) sends no probe and writes no run", async ({ input, refusal }) => {
+  vi.mocked(resolveOwnedProcessByMarker).mockImplementation(() => {
+    throw new Error(`cli-process owner resolution: ${refusal}`)
+  })
+  await expect(handleApp(input, {})).rejects.toThrow(refusal)
+  expect(requestDaemonProbe).not.toHaveBeenCalled()
+  expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+  expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+})
+
 // Editor recipes deliver a terminal through the extension API without workspace
 // tasks or input synthesis. The canonical mixed-case VS Code id also exercises selection.
 test.each([
@@ -703,6 +1022,14 @@ test.each([
     const ownedWindow = {
       provider: "cli-process" as const,
       ownerPid: 778,
+      ownerBirth: {
+        pid: 778,
+        startedAtEpochSeconds: 1792678806,
+        rawLstart: "Thu Oct 22 14:20:06 2026\n",
+        observedAt: "2026-10-22T14:21:00.000Z",
+        observedByUid: 501,
+        observedOnHost: "owned-mac",
+      },
       tty: "/dev/ttys009",
       executablePath: `${appPath}/Contents/MacOS/${executable}`,
       marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
@@ -810,10 +1137,12 @@ test.each([
     if (prefix === "vscode") {
       expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
       expect(JSON.parse(String(settings?.[1]))).toEqual({
+        "update.mode": "none",
         "chat.disableAIFeatures": true,
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,
         "workbench.panel.opensMaximized": "always",
+        "terminal.integrated.tabs.title": "${sequence}",
       })
       expect(DatabaseSync).not.toHaveBeenCalled()
     } else {
@@ -822,6 +1151,7 @@ test.each([
       expect(JSON.parse(String(settings?.[1]))).toEqual({
         "update.mode": "none",
         "workbench.panel.opensMaximized": "always",
+        "terminal.integrated.tabs.title": "${sequence}",
       })
       // Application storage records the command-line prompt as dismissed, so it never schedules.
       expect(DatabaseSync).toHaveBeenCalledWith("/private/run/cursor-private-run/User/globalStorage/state.vscdb")
@@ -832,74 +1162,18 @@ test.each([
       expect(sqlite.close).toHaveBeenCalledTimes(1)
       expect(sqlite.close.mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(spawn).mock.invocationCallOrder[0]!)
     }
+    // 31743: an owned editor launch gets the same capture directory as every other owned Mac launch, so
+    // its collector can retain evidence; before, only the per-app list and declared recipes received it.
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/serve.sh",
+      expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
+      { flag: "wx", mode: 0o700 },
+    )
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
-    const terminalJson =
-      '{"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["-p","/private/run/serve.sh"],"cwd":"/private/run"}'
-    const vscodeFixture = `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
-};
-`
-    const cursorFixture = `const vscode = require("vscode");
-exports.activate = async (context) => {
-  await vscode.commands.executeCommand("workbench.action.closePanel");
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
-  const terminal = vscode.window.createTerminal(${terminalJson});
-  context.subscriptions.push(terminal);
-  terminal.show();
-};
-`
-    expect(script?.[1]).toBe(prefix === "cursor" ? cursorFixture : vscodeFixture)
-    const terminal = { show: vi.fn(), dispose: vi.fn() }
-    const createTerminal = vi.fn(() => terminal)
-    const commands: string[] = []
-    const executeCommand = vi.fn(async (command: string) => {
-      commands.push(command)
-    })
-    const exported: { activate?: (context: { subscriptions: unknown[] }) => void | Promise<void> } = {}
-    runInNewContext(String(script?.[1]), {
-      exports: exported,
-      require: (id: string) => {
-        if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-        return { commands: { executeCommand }, window: { createTerminal } }
-      },
-    })
-    const subscriptions: unknown[] = []
-    expect(typeof exported.activate).toBe("function")
-    await exported.activate!({ subscriptions })
-    if (prefix === "cursor") {
-      expect(commands).toEqual(["workbench.action.closePanel", "workbench.action.toggleMaximizedPanel"])
-      expect(executeCommand.mock.invocationCallOrder[1]).toBeLessThan(createTerminal.mock.invocationCallOrder[0]!)
-      const rejectedCreate = vi.fn(() => terminal)
-      const rejected: { activate?: (context: { subscriptions: unknown[] }) => Promise<void> } = {}
-      runInNewContext(String(script?.[1]), {
-        exports: rejected,
-        require: (id: string) => {
-          if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-          return {
-            commands: {
-              executeCommand: async () => {
-                throw new Error("panel command failed")
-              },
-            },
-            window: { createTerminal: rejectedCreate },
-          }
-        },
-      })
-      await expect(rejected.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
-      expect(rejectedCreate).not.toHaveBeenCalled()
-    }
-    expect(createTerminal).toHaveBeenCalledWith({
-      name: "terminfo-private-run",
-      shellPath: "/bin/bash",
-      shellArgs: ["-p", "/private/run/serve.sh"],
-      cwd: "/private/run",
-    })
-    expect(terminal.show).toHaveBeenCalledOnce()
-    expect(subscriptions).toEqual([terminal])
+    // The emitted extension's actual activation and native reads are exercised below.
+    // Keep this launch test on arguments/private config/owner forwarding, not exact source text.
+    expect(script?.[1]).toEqual(expect.any(String))
     expect(requestDaemonProbe).toHaveBeenCalledWith(
       registration,
       {
@@ -944,6 +1218,8 @@ describe("Terminal.app app collection", () => {
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
     expect(placeCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json", {})
+    expect(collectedRun.shadowCollectedRun).toHaveBeenCalledOnce()
+    expect(collectedRun.shadowCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json")
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
       origin: { kind: "collector", appLaunch: receipt },
       rawReplies: {
@@ -1131,3 +1407,501 @@ describe("cli-process stop when the owner was never resolved", () => {
     }
   })
 })
+
+// Requirement: the emitted extension, not a fake reader, samples its exact native Terminal
+// afresh for each phase and still answers when a watcher notification is missed.
+// Existing launch tests only create/show a Terminal; they never request or retain an API read.
+test.each(["vscode", "cursor"] as const)(
+  "%s fixture retains activation-bound fresh native observations with interval delivery",
+  async (prefix) => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { randomUUID } = await import("node:crypto")
+    const directory = fs.mkdtempSync(join(tmpdir(), "terminfo-editor-observation-"))
+    const subscriptions: Array<{ dispose: () => void }> = []
+    const intervals: Array<() => unknown> = []
+    const watcher = {
+      onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    }
+    let rejectPanel = false
+    const executeCommand = vi.fn(async () => {
+      if (rejectPanel) throw new Error("panel command failed")
+    })
+    let nativeReads = 0
+    let nativeCwd: string | undefined = "file:///native/first"
+    const nativeTerminal = {
+      name: "native terminal name",
+      processId: Promise.resolve(4321),
+      get shellIntegration() {
+        nativeReads++
+        return nativeCwd === undefined
+          ? undefined
+          : {
+              cwd: {
+                scheme: "file",
+                authority: "",
+                path: new URL(nativeCwd).pathname,
+                query: "",
+                fragment: "",
+                toString: () => nativeCwd,
+              },
+            }
+      },
+      show: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const createTerminal = vi.fn(() => nativeTerminal)
+    try {
+      prepareCliLaunch(prefix === "vscode" ? "com.microsoft.VSCode" : prefix, {
+        id: "private-run",
+        directory,
+        scriptPath: join(directory, "serve.sh"),
+      })
+      const emitted = vi
+        .mocked(writeFileSync)
+        .mock.calls.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+      expect(emitted?.[1]).toEqual(expect.any(String))
+      const exported: { activate?: (context: { subscriptions: typeof subscriptions }) => unknown } = {}
+      runInNewContext(String(emitted?.[1]), {
+        exports: exported,
+        process: { pid: process.pid },
+        setInterval: (callback: () => unknown) => {
+          intervals.push(callback)
+          return 1
+        },
+        clearInterval: vi.fn(),
+        setTimeout,
+        clearTimeout,
+        require: (id: string) => {
+          if (id === "node:fs") return fs
+          if (id === "node:path") return { join }
+          if (id === "node:crypto") return { randomUUID }
+          if (id !== "vscode") throw new Error(`Unexpected emitted fixture import: ${id}`)
+          return {
+            version: "native-version",
+            env: { appName: `Native ${prefix}` },
+            RelativePattern: class {
+              constructor(
+                readonly base: string,
+                readonly pattern: string,
+              ) {}
+            },
+            workspace: { createFileSystemWatcher: vi.fn(() => watcher) },
+            commands: { executeCommand },
+            window: {
+              createTerminal,
+              onDidCloseTerminal: vi.fn(() => ({ dispose: vi.fn() })),
+              onDidChangeTerminalShellIntegration: vi.fn(() => ({ dispose: vi.fn() })),
+            },
+          }
+        },
+      })
+      await exported.activate!({ subscriptions })
+      expect(createTerminal).toHaveBeenCalledWith({
+        shellPath: "/bin/bash",
+        shellArgs: ["-p", join(directory, "serve.sh")],
+        cwd: directory,
+        env: { TERMINFO_EDITOR_RUN_DIRECTORY: directory },
+      })
+      expect(nativeTerminal.show).toHaveBeenCalledOnce()
+      expect(subscriptions.some((value) => value === nativeTerminal)).toBe(true)
+      if (prefix === "cursor") {
+        expect(executeCommand.mock.calls).toEqual([
+          ["workbench.action.closePanel"],
+          ["workbench.action.toggleMaximizedPanel"],
+        ])
+        expect(executeCommand.mock.invocationCallOrder[1]).toBeLessThan(createTerminal.mock.invocationCallOrder[0]!)
+      } else expect(executeCommand).not.toHaveBeenCalled()
+      const activationPath = join(directory, "editor-activation.json")
+      expect(fs.existsSync(activationPath), "generated extension must retain its own activation before requests").toBe(
+        true,
+      )
+      const activation = JSON.parse(fs.readFileSync(activationPath, "utf8")) as {
+        runId: string
+        activationNonce: string
+        extensionPid: number
+        app: { name: string; version: string }
+        requestPath: string
+        replyDirectory: string
+      }
+      expect(activation).toMatchObject({
+        runId: "private-run",
+        extensionPid: process.pid,
+        app: { name: `Native ${prefix}`, version: "native-version" },
+      })
+      expect(activation.activationNonce).toEqual(expect.any(String))
+      expect(intervals).toHaveLength(1)
+      const replies = []
+      const nativeReadsBeforeRequests = nativeReads
+      for (const [index, cwd] of ["file:///native/first", "file:///native/first", undefined].entries()) {
+        nativeCwd = cwd
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-p",
+          phase: `phase-${index}`,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + 5000,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        // Deliberately deliver no watcher event. The production interval must evaluate native state.
+        await intervals[0]!()
+        const replyPath = join(activation.replyDirectory, `${request.nonce}.json`)
+        await vi.waitFor(() => expect(fs.existsSync(replyPath)).toBe(true))
+        const reply = JSON.parse(fs.readFileSync(replyPath, "utf8")) as {
+          evaluatedAt: number
+          sequence: number
+          terminal: {
+            name: string
+            processId: { present: boolean; value?: number }
+            shellIntegrationCwd: { present: boolean; value?: string; reason?: string }
+          }
+        }
+        expect(reply).toMatchObject({
+          ...request,
+          activationNonce: activation.activationNonce,
+          extensionPid: process.pid,
+          delivery: "interval",
+          app: activation.app,
+          terminal: { name: "native terminal name", processId: { present: true, value: 4321 } },
+        })
+        expect(reply.evaluatedAt).toBeGreaterThanOrEqual(request.requestedAt)
+        expect(reply.sequence).toBe(index + 1)
+        if (cwd === undefined) {
+          expect(reply.terminal.shellIntegrationCwd).toMatchObject({ present: false, reason: expect.any(String) })
+          expect(reply.terminal.shellIntegrationCwd).not.toHaveProperty("value")
+        } else {
+          expect(reply.terminal.shellIntegrationCwd).toMatchObject({ present: true, value: cwd })
+        }
+        replies.push(reply)
+      }
+      expect(nativeReads - nativeReadsBeforeRequests).toBe(3)
+      const first = replies[0]
+      const second = replies[1]
+      if (first === undefined || second === undefined) throw new Error("Fixture did not return two native replies")
+      expect(first.terminal).toEqual(second.terminal)
+      expect(first.sequence).not.toBe(second.sequence)
+      // A PTY fence does not order delivery to the extension API. A phase requesting a
+      // known state must wait for its actual native value, retaining intermediate reads.
+      nativeCwd = "file:///native/before-delivery"
+      const delayed = {
+        runId: "private-run",
+        featureId: "extensions.osc633-p",
+        phase: "delayed-native-delivery",
+        activationNonce: activation.activationNonce,
+        nonce: randomUUID(),
+        requestedAt: Date.now(),
+        deadline: Date.now() + 5000,
+        expectedCwd: "file:///native/after-delivery",
+      }
+      fs.writeFileSync(activation.requestPath, JSON.stringify(delayed))
+      await intervals[0]!()
+      const delayedPath = join(activation.replyDirectory, `${delayed.nonce}.json`)
+      expect(fs.existsSync(delayedPath), "a stale API value must not complete a known-state request").toBe(false)
+      nativeCwd = delayed.expectedCwd
+      await intervals[0]!()
+      await vi.waitFor(() => expect(fs.existsSync(delayedPath)).toBe(true))
+      expect(JSON.parse(fs.readFileSync(delayedPath, "utf8"))).toMatchObject({
+        nonce: delayed.nonce,
+        phase: delayed.phase,
+        terminal: { shellIntegrationCwd: { present: true, value: delayed.expectedCwd } },
+      })
+      const evaluations = fs
+        .readFileSync(join(directory, "editor-evaluations.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { nonce: string; terminal: { shellIntegrationCwd: { value: string } } })
+        .filter((value) => value.nonce === delayed.nonce)
+      expect(evaluations.map((value) => value.terminal.shellIntegrationCwd.value)).toEqual([
+        "file:///native/before-delivery",
+        delayed.expectedCwd,
+      ])
+      if (prefix === "cursor") {
+        rejectPanel = true
+        await expect(exported.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
+        expect(createTerminal).toHaveBeenCalledOnce()
+      }
+    } finally {
+      for (const disposable of subscriptions.reverse()) disposable.dispose()
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// Requirement (34666, @cto 34666-editor-observer-scope-1245 amendments 1, 2, 4): the emitted extension subscribes
+// to the native execution events before its terminal exists, keeps only its own terminal's events, gives start and
+// end of one execution object one identity, records command line and exit code with explicit absence, and delivers
+// each event in exactly one reply (the window since the previous published reply), so a cached event is never
+// relabelled onto a later phase. A missing event API is a named absence, never a crash of the osc633-p route.
+// The existing fixture test above has no execution events at all, so it cannot see any of this.
+test.each([
+  { prefix: "vscode", api: true },
+  { prefix: "cursor", api: true },
+  { prefix: "vscode", api: false },
+] as const)(
+  "$prefix fixture binds native execution events to one reply each (event API $api)",
+  async ({ prefix, api }) => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { randomUUID, createHash } = await import("node:crypto")
+    const directory = fs.mkdtempSync(join(tmpdir(), "terminfo-editor-execution-"))
+    const subscriptions: Array<{ dispose: () => void }> = []
+    const intervals: Array<() => unknown> = []
+    const handlers: { start?: (event: object) => void; end?: (event: object) => void } = {}
+    const order: string[] = []
+    const nativeTerminal = {
+      name: "native terminal name",
+      processId: Promise.resolve(4321),
+      shellIntegration: undefined,
+      show: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const otherTerminal = { name: "another terminal" }
+    const subscribe = (kind: "start" | "end") =>
+      vi.fn((handler: (event: object) => void) => {
+        order.push(`subscribe-${kind}`)
+        handlers[kind] = handler
+        return { dispose: vi.fn() }
+      })
+    try {
+      prepareCliLaunch(prefix === "vscode" ? "com.microsoft.VSCode" : prefix, {
+        id: "private-run",
+        directory,
+        scriptPath: join(directory, "serve.sh"),
+      })
+      const emitted = vi
+        .mocked(writeFileSync)
+        .mock.calls.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+      const exported: { activate?: (context: { subscriptions: typeof subscriptions }) => unknown } = {}
+      runInNewContext(String(emitted?.[1]), {
+        exports: exported,
+        process: { pid: process.pid },
+        setInterval: (callback: () => unknown) => {
+          intervals.push(callback)
+          return 1
+        },
+        clearInterval: vi.fn(),
+        setTimeout,
+        clearTimeout,
+        require: (id: string) => {
+          if (id === "node:fs") return fs
+          if (id === "node:path") return { join }
+          if (id === "node:crypto") return { randomUUID, createHash }
+          if (id !== "vscode") throw new Error(`Unexpected emitted fixture import: ${id}`)
+          return {
+            version: "native-version",
+            env: { appName: `Native ${prefix}` },
+            RelativePattern: class {},
+            workspace: {
+              createFileSystemWatcher: () => ({
+                onDidCreate: () => ({ dispose() {} }),
+                onDidChange: () => ({ dispose() {} }),
+                dispose() {},
+              }),
+            },
+            commands: { executeCommand: async () => {} },
+            window: {
+              createTerminal: () => {
+                order.push("createTerminal")
+                return nativeTerminal
+              },
+              onDidCloseTerminal: () => ({ dispose() {} }),
+              onDidChangeTerminalShellIntegration: () => ({ dispose() {} }),
+              ...(api && {
+                onDidStartTerminalShellExecution: subscribe("start"),
+                onDidEndTerminalShellExecution: subscribe("end"),
+              }),
+            },
+          }
+        },
+      })
+      await exported.activate!({ subscriptions })
+      const activation = JSON.parse(fs.readFileSync(join(directory, "editor-activation.json"), "utf8")) as {
+        activationNonce: string
+        requestPath: string
+        replyDirectory: string
+        executionApi: Record<"start" | "end", { present: boolean; reason?: string }>
+      }
+      type Fact = {
+        eventSequence: number
+        kind: "start" | "end"
+        at: number
+        execution: string
+        startSeen?: boolean
+        commandLine: {
+          present: boolean
+          valueSha256?: string
+          valueLength?: number
+          confidence?: { present: boolean; value?: number; reason?: string }
+          isTrusted?: { present: boolean; value?: boolean; reason?: string }
+          reason?: string
+        }
+        exitCode?: { present: boolean; value?: number; reason?: string }
+      }
+      const sample = async (phase: string) => {
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-d",
+          phase,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + 5000,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        await intervals[0]!()
+        const replyPath = join(activation.replyDirectory, `${request.nonce}.json`)
+        await vi.waitFor(() => expect(fs.existsSync(replyPath)).toBe(true))
+        return JSON.parse(fs.readFileSync(replyPath, "utf8")) as {
+          evaluatedAt: number
+          executionApi: typeof activation.executionApi
+          executions: Fact[]
+          executionWindow: { since: number; until: number; attribution: string }
+        }
+      }
+      if (!api) {
+        // Fail named: the absence, the app and version, and the manifest's ^1.74.0 claim are all on record.
+        for (const kind of ["start", "end"] as const) {
+          expect(activation.executionApi[kind].present).toBe(false)
+          expect(activation.executionApi[kind].reason).toContain(`Native ${prefix} native-version`)
+          expect(activation.executionApi[kind].reason).toContain("^1.74.0")
+        }
+        const reply = await sample("initial")
+        expect(reply.executionApi).toEqual(activation.executionApi)
+        expect(reply.executions).toEqual([])
+        return
+      }
+      expect(activation.executionApi).toEqual({ start: { present: true }, end: { present: true } })
+      // Subscribed before the terminal (and so before any stimulus) exists.
+      expect(order).toEqual(["subscribe-start", "subscribe-end", "createTerminal"])
+      const first = await sample("initial")
+      expect(first.executions).toEqual([])
+      const ok = { commandLine: { value: "printf ok", confidence: 2, isTrusted: true } }
+      const failing = { commandLine: { value: "false", confidence: 1, isTrusted: false } }
+      const bare = {}
+      handlers.start!({ terminal: otherTerminal, execution: { commandLine: { value: "not ours", confidence: 2 } } })
+      handlers.start!({ terminal: nativeTerminal, execution: ok })
+      handlers.end!({ terminal: nativeTerminal, execution: ok, exitCode: 0 })
+      handlers.start!({ terminal: nativeTerminal, execution: failing })
+      handlers.end!({ terminal: nativeTerminal, execution: failing, exitCode: 17 })
+      handlers.end!({ terminal: nativeTerminal, execution: bare, exitCode: undefined })
+      handlers.end!({ terminal: otherTerminal, execution: bare, exitCode: 1 })
+      const target = await sample("target")
+      expect(target.executionWindow).toMatchObject({ since: first.evaluatedAt, until: target.evaluatedAt })
+      // Co-location in a window is not stimulus attribution, and the fact says so (@dev/11 peer, 34666).
+      expect(target.executionWindow.attribution).toContain("not attributed to this request's stimulus")
+      const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+      expect(target.executions.map((fact) => [fact.kind, fact.execution, fact.commandLine.valueSha256])).toEqual([
+        ["start", "execution-1", digest("printf ok")],
+        ["end", "execution-1", digest("printf ok")],
+        ["start", "execution-2", digest("false")],
+        ["end", "execution-2", digest("false")],
+        ["end", "execution-3", undefined],
+      ])
+      // The reply is retained into the committed run record, so it carries no command text (@dev/11 peer, 34666).
+      expect(JSON.stringify(target)).not.toContain("printf ok")
+      expect(target.executions.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5])
+      for (const fact of target.executions) {
+        expect(fact.at).toBeGreaterThanOrEqual(first.evaluatedAt)
+        expect(fact.at).toBeLessThanOrEqual(target.evaluatedAt)
+      }
+      expect(target.executions[0]!.commandLine).toEqual({
+        present: true,
+        valueSha256: digest("printf ok"),
+        valueLength: 9,
+        confidence: { present: true, value: 2 },
+        isTrusted: { present: true, value: true },
+      })
+      expect(target.executions[2]!.commandLine).toMatchObject({
+        confidence: { present: true, value: 1 },
+        isTrusted: { present: true, value: false },
+      })
+      expect(target.executions[1]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 0 } })
+      expect(target.executions[3]).toMatchObject({ startSeen: true, exitCode: { present: true, value: 17 } })
+      expect(target.executions[4]).toMatchObject({
+        startSeen: false,
+        commandLine: { present: false, reason: expect.any(String) },
+        exitCode: { present: false, reason: expect.any(String) },
+      })
+      expect(target.executions[4]!.exitCode).not.toHaveProperty("value")
+      // Delivered once: the next phase starts empty, then carries only what arrived after the target reply.
+      // A native command line without confidence or trust records each absence by name.
+      const later = { commandLine: { value: "printf later" } }
+      const restore = await sample("restore")
+      expect(restore.executions).toEqual([])
+      handlers.start!({ terminal: nativeTerminal, execution: later })
+      const after = await sample("after")
+      expect(after.executions.map((fact) => [fact.eventSequence, fact.execution])).toEqual([[6, "execution-4"]])
+      expect(after.executions[0]!.commandLine).toMatchObject({
+        present: true,
+        confidence: { present: false, reason: expect.any(String) },
+        isTrusted: { present: false, reason: expect.any(String) },
+      })
+      // Private evidence keeps every owned event in arrival order; the other terminal's never appear.
+      const logged = fs
+        .readFileSync(join(directory, "editor-executions.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Fact & { activationNonce: string })
+      expect(logged.map((fact) => fact.eventSequence)).toEqual([1, 2, 3, 4, 5, 6])
+      expect(logged.every((fact) => fact.activationNonce === activation.activationNonce)).toBe(true)
+      // The raw command text lives only in this private run-directory log.
+      expect(logged.map((fact) => (fact as unknown as { commandLineValue?: string }).commandLineValue)).toEqual([
+        "printf ok",
+        "printf ok",
+        "false",
+        "false",
+        undefined,
+        "printf later",
+      ])
+      expect(JSON.stringify(logged)).not.toContain("not ours")
+      // A phase awaiting a native event holds its reply until that event arrives or the deadline nears, and says
+      // which (34685, @cto 1435 amendment 1): an immediate empty read cannot decide that the callback never comes.
+      const awaitPhase = (phase: string, awaitEvent: "start" | "end", deadlineIn: number) => {
+        const request = {
+          runId: "private-run",
+          featureId: "extensions.osc633-c",
+          phase,
+          activationNonce: activation.activationNonce,
+          nonce: randomUUID(),
+          requestedAt: Date.now(),
+          deadline: Date.now() + deadlineIn,
+          awaitEvent,
+        }
+        fs.writeFileSync(activation.requestPath, JSON.stringify(request))
+        return join(activation.replyDirectory, `${request.nonce}.json`)
+      }
+      type Held = { executions: Fact[]; awaitedEvent: { kind: string; met: boolean } }
+      const heldPath = awaitPhase("await-start", "start", 5000)
+      await intervals[0]!()
+      expect(fs.existsSync(heldPath), "no start event yet: the reply is held").toBe(false)
+      handlers.start!({ terminal: nativeTerminal, execution: { commandLine: { value: "awaited" } } })
+      await intervals[0]!()
+      await vi.waitFor(() => expect(fs.existsSync(heldPath)).toBe(true))
+      const held = JSON.parse(fs.readFileSync(heldPath, "utf8")) as Held
+      expect(held.awaitedEvent).toEqual({ kind: "start", met: true })
+      expect(held.executions.map((fact) => [fact.kind, fact.execution])).toEqual([["start", "execution-5"]])
+      const quietPath = awaitPhase("await-quiet", "end", 600)
+      await intervals[0]!()
+      expect(fs.existsSync(quietPath), "the deadline is not near yet: still held").toBe(false)
+      await vi.waitFor(
+        async () => {
+          await intervals[0]!()
+          expect(fs.existsSync(quietPath)).toBe(true)
+        },
+        { timeout: 2000, interval: 50 },
+      )
+      const quiet = JSON.parse(fs.readFileSync(quietPath, "utf8")) as Held
+      expect(quiet.awaitedEvent).toEqual({ kind: "end", met: false })
+      expect(quiet.executions).toEqual([])
+    } finally {
+      for (const disposable of subscriptions.reverse()) disposable.dispose()
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)

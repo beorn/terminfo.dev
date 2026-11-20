@@ -2,7 +2,9 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored results change.
+**Where a grading rule lives.** Each feature's grading rule has one home, in code: its probe callback in this package (reached from the [registry](src/index.ts) and recorded through `recordExecutedProbe` in [helpers.ts](src/helpers.ts)) plus that feature's row in [content/features.json](../../content/features.json), keyed by the probe's dot-path id. The row's `probe` field is the criterion in words: what is sent and what readback counts as supported. Rows that no automated probe can grade say so in `probeStatus` and `probeStatusReason`. Change a rule by changing the probe and its features.json criterion together; no other document restates it.
+
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The headless (lib) collector records each row's full-source call log on its first pass (repeat passes keep no logs), so every library run retains the inputs for offline replay (#30932 S3). `terminfo report --reassert <run.json...> [--json]` replays retained runs offline through the bound reader, the row's own callback and the one grader, and reports agreement, disagreement, incomplete and not-comparable rows; a row without its log is incomplete, never excluded, and live-only inputs are named not comparable (#30932 S4). Limits: stored statuses still come from live grading, and the other collectors still evaluate during their live run; deriving status from replay and replacing both TTY recording owners remain open under recorder #30932, and deleting live grading (#30933) and the result helpers (#30935) wait on that. No stored results change.
 
 The hosted Mac Alacritty launcher explicitly sets one pixel of window padding on both axes.
 Its measured launch receipt retains the actual invocation and a plain `launchDeviation` sentence
@@ -44,7 +46,11 @@ on the four rows `scrollback.accumulate`, `scrollback.total-lines`, `erase.scree
 carries the feature's static rows, OSC 720's geometry row included: `termNeedsGeometry` says what a definition
 needs when it can run, not what one run could measure. When that run's geometry is unavailable or conflicting, the row reads the geometry refusal instead of the declaration, like every flagged geometry probe. The declaration is field-driven and reversible — without
 the field every row keeps its existing reader and screenshot behaviour, and an app version that grows a read
-removes it. A missing, failed or unimplemented reader is never a declaration: it stays PROBE TODO.
+removes it (`erase.screen.scrollback`'s frame-only non-mux XTEST path, with no mux and no owned reader, also
+returns `declaredUntestableResult` when `wheel-up did not change captured pixels; cannot observe history`,
+while its mux and owned-reader paths remain count-decided — a context carrying both frames and a reader hands
+a collapsed frame to that reader, #34563 @cto 34448). A missing, failed or unimplemented reader is never a
+declaration: it stays PROBE TODO.
 
 An arm that cannot reach a read the app does expose names its own missing prerequisite instead:
 `scrollbackProbeTodo` on the probe source (copied from `OwnedTerminal.scrollbackProbeTodo`) makes the same
@@ -55,7 +61,18 @@ values (@cto 8c084f05). It is deliberately not the declaration above: that one s
 and is removed by a later app version; this one says this run could not reach the read and is removed by a
 later arm. Neither is ever inferred from a failed screenshot.
 
-The owned Linux App collector also supplies an optional semantic-state reader. One exact-version
+A subject whose screen and history are read only from pixels can carry a viewport route instead (34313):
+`viewportScroll` on the probe source, `{ route, press(step) }` with the portable steps `pageUp`, `pageDown`, `top`
+and `bottom`. The owner decides it applies from the qualified subject alone — today hosted Alacritty 0.17.0 on
+macOS in this run's own unmultiplexed launch, keyed by its default bindings — before installing keys-only input
+into the window the capture install selected; a refused install keeps the route, names the refusal in `route`,
+and makes every `press` reject by name. The route is checked BEFORE `scrollbackUnavailable`, so Alacritty's
+declaration never stands in for a reader we lack. No capture read returns a qualified scrolled-back frame yet
+(the declared-hold reader refuses every hold), so the four rows return PROBE TODO
+`held-viewport read not available: viewport route "<route>" applies, ...`, press no key and write nothing, until a
+held-frame reader under its own reviewed contract replaces that branch with the measurement.
+
+The owned App collector supplies an optional semantic-state reader. Linux's exact-version
 table beside the child-environment reader selects tmux's public diagnostic grid/formats or fresh
 Kitty/Ghostty/WezTerm command-report bytes. Each row retains its own report-path and handled-command controls;
 a WezTerm OSC8 row uses the existing owned pane CLI with escaped attributes and the shared OSC8 span controls,
@@ -64,6 +81,60 @@ a failed control is PROBE INVALID. Qualified state transitions can decide suppor
 refusal can establish only Unsupported, takes precedence over a no-setup fallback, and retains the
 appended bytes through its row-bounded completion marker. Silence supplies no positive answer.
 App identity stays in the collector; the shared probe package grades these readings without an App switch.
+WezTerm CWD uses one pane-list parser and one controlled sequence through the Linux and Mac owners.
+The Mac WezTerm owner declares the two CWD rows its reader serves; the collector asks that owner and leaves other
+rows on their existing terminal callbacks. OSC633 P reuses the owned pane read behind same-pane text checkpoints,
+compares decoded paths with retained raw URI/host and records an undetermined initial source kind. Its unknown,
+OSC7 handled and OSC633 P target phases run last among directory/prompt rows; the disposable pane stays pinned
+until its normal end-of-run close. Its raw reading and process cwd are retained privately; published phases
+carry hashes and nonce control/target paths only, including invalid results. Clipboard and consent retain their later positions. This is one Mac position;
+the other prompt/metadata positions and native qualification retain their own prerequisites.
+The measured CLI version and launch version must match the reviewed Linux
+`0-unstable-2026-10-10` or Mac `20240203-110809-5046fc22` tuple, with the launch's run id and no mux.
+Live ownership checks bracket the private TTY writes and native reads; CWD requires one matching pane
+and a safe literal public directory URI. For OSC7, fresh inert, handled and target controls precede exact
+restoration of the initial URI. The private capture retains the initial/restored values and feed/text
+trace; publishable evidence carries their hashes and equality plus nonce control/target URIs.
+An initial owned-read failure retains its diagnostic privately before any stimulus; an artifact reference
+is published only after the write succeeds, and retention failure is a named collector error.
+The restoration writer bypasses the publishable call log. Terminal.app 2.15's OSC 633 P reader (34935) also
+sends its two OSC 7 controls and two OSC 633 P targets through that private writer, because they name run-owned
+directories under the runner's capture area. Its public rawReplies and callLog therefore omit those four feeds and are not
+a complete replay of the experiment. Private evidence keeps their ordered bytes, each marked written only once the
+write returned, and the public reading names each directory `/run-owned/<name>`. Failed restoration throws through the
+collector's run-error path and prevents a complete graded run. Initial protocol presence is unreported;
+neither process-CWD inference nor URI normalization supplies an answer.
+The reading carries the existing path-free owned-pane identity receipt. Native pane-list and get-text
+argv/stdout are retained through the capture artifact writer; the public reading carries only their hash refs.
+The initial/restored phase and feed records use that same content-addressed writer and artifact observer;
+the private evidence basename names a registered immutable blob rather than a collector-local file.
+The hosted Darwin editor reader extends the existing generated VSCode/Cursor fixture.
+Each phase retains fresh Terminal.name, awaited processId and shellIntegration.cwd or
+an explicit native-absence reason, bound to the activation and request nonces.
+Those ordinary files establish activation correlation, not process-writer attestation.
+Controlled CWD changes can qualify a positive reading; API absence never supplies an Unsupported grade.
+Owned-window screenshots and generated private config/read evidence are retained before restoration
+and cleanup on both success and failure, without copying the inherited environment or user profile.
+The same fixture subscribes to the editor's shell-execution start and end events before its terminal exists
+and publishes each event in exactly one reply. OSC 133/633 C, D and 633 E rows use them (34685): the collector
+writes A and B, then C (with E), then D into its own terminal as separate stages, and each stage's reply waits
+for the awaited event until shortly before the request deadline. Start and end are joined by execution identity;
+extra, stale, unpaired or other-execution events make the row invalid rather than graded. The opposite selector
+(C, D) or a known E text (E) is the handled control and an unknown OSC number the unknown control, so the generic
+three-control grader decides. Command lines reach the public reading only as SHA-256 digests; confidence and the
+nonce trust flag are recorded apart from the digest match. Execution facts only show what the editor's API
+reported in a window, so a native run must still show that these marks produce events on the measured version.
+cmux retains raw read-screen responses through the same private content-addressed capture writer,
+including refused responses. Its history reading pairs `read-screen --scrollback` with plain `read-screen`
+on the acquired surface. Both responses drop trailing empty lines; the plain response must equal the
+history response's tail. Their line counts supply totalLines and screenLines, independently of geometry.
+An empty plain response is an accepted, uncorroborated zero-screen reading; empty history remains a named
+refusal pending a measured case. A failed plain read or inconsistent pair preserves proved ownership
+without publishing a count. Both raw responses remain private. Its public record carries the acquired surface, read facts and transcript
+hash reference; the receipt contains no rawScreen field. The persisted record names editor API fields
+inapplicable rather than inventing values and rejects any surviving host path separator.
+Actual per-App native compatibility and non-author raw/screenshot review remain separate from fixture tests.
+
 The owned X11 icon fixture uses read-only numeric `xprop` observations of both client icon-name properties
 and the independent owned title reader for OSC0/OSC1. A present UTF8 label, including empty, wins over
 legacy latin-1 STRING; missing or malformed setup stays unresolved before stimulus. Both-label OSC0 and
@@ -103,12 +174,18 @@ digest), and decides on the samples it achieved, never on the interval it reques
 styled value returning decides Supported first, at any achieved rate, recording the measured
 half-period. At least three distinct values with a differing final pair also decide Supported when
 focus reads before and after qualify and every plain digest agrees. A negative may speak only
-inside the achieved-frames gate — at least 12 styled frames, an actual styled `capturedAt` span of
-at least 6000 ms, and no interim gap above 6000/(12−1) ms — where at most one change followed by
+inside the achieved-frames gate — at least 12 styled frames and an actual styled `capturedAt` span of
+at least 6000 ms — where at most one change followed by
 stillness decides Unsupported only with those focus reads, this row's literal `a` injected and read
 back, input age below 15000 ms at the last styled capture, and a changed third-region repaint
-after sampling. Below the gate the row stays PROBE TODO as capture too slow to decide blink,
-recording the achieved frame count, span and gap min/median/max; missing controls remain PROBE
+after sampling. Inside the gate the achieved capture times must also see a return of every
+50%-duty blink with a period from 600 to 3000 ms at every phase, checked exactly over that
+continuous interval (`blink-coverage.ts`); otherwise the row stays PROBE TODO as blink phase not
+covered, naming one uncovered period. A negative therefore rules out that declared class, not every
+blink rate or duty. Coverage replaced the former 545 ms gap ceiling, which neither established it
+nor was needed for it (#34549). Below the gate the row stays PROBE TODO as capture too slow to
+decide blink, recording the achieved frame count, span and gap min/median/max; missing controls
+remain PROBE
 TODO naming the condition. The negative reason states the measured span and gaps; the existing
 subject-aware finalizer keeps mux flat results PROBE TODO and names the recorded outer terminal.
 These controls use existing input and capture fixtures.
@@ -145,7 +222,7 @@ feature-to-reason map only after an unresolved callback; observations, command r
 results keep precedence. Unknown versions select nothing. Ghostty's command-end and full-cycle
 no-setup reasons additionally require this run's absent session-bus address and an absent default
 socket, retained as `collector.sessionBus`; unreadable socket paths remain unresolved.
-The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 411 on Linux,
+The OSC666 declarations cover only Ghostty 1.4.0, GNU Screen 5.0.2 and xterm 412 on Linux,
 with their exact parser citations and missing public property readback. They declare the
 unresolved observation unavailable; they supply no command report or measured negative.
 The same exact versions additionally declare OSC176/440 observation gaps, and Screen/xterm
@@ -153,7 +230,7 @@ declare OSC3008 gaps. Kitty 0.49.2 on Linux additionally declares OSC3008's cont
 its recognized command reaches an empty callback, with no stored context or public readback.
 Generic OSC consumption tracing supplies no deciding observation. Ghostty's recognized OSC3008
 parser and named optional debug diagnostic remain outside this declaration group.
-The same selector declares the reviewed OSC7 observation gaps for xterm 411 and Screen 5.0.2,
+The same selector declares the reviewed OSC7 observation gaps for xterm 412 and Screen 5.0.2,
 and Screen 5.0.2's DECSCLM gap, on Linux only. Their parser citations qualify an unavailable
 observation; they establish no measured negative and do not apply to other versions.
 
@@ -178,8 +255,16 @@ made-up OSC control and a distinct independent SGR reference. OSC 112 uses a vis
 CPR, shown/hidden/restored pixels and the made-up control, and both post-reset reads must be cropped
 from the same rectangle as the frames they are compared with; a moved crop is probe-invalid. Only
 unchanged setup declares Untestable (no setup); a changed setter does not itself establish a positive
-reset or stack result. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
-paint/restore and a made-up subcommand; qualified no-change declares Untestable (no observer), because
+reset or stack result. A pixel-region read whose target frame carries the expected frame's own background and
+per-pixel ink coverage, within 2 of 255, while its ink COLOUR differs is graded Unsupported as a
+named colour mismatch (osc104), and the reason spells out after, expected and seed colours plus
+whether the target paints the seed's own colour (nothing changed) or a third colour. Each compared
+pixel frame records `background`, `inkColour`, `inkCount` and `contrast` from the crop its
+`regionDigest` hashed; the coverage array itself stays in memory, because a full-run record holds
+millions of compared pixels and the retained PNGs already carry them. The branch refuses at a
+coverage difference of 3 or more, on a background change, on a moved crop, and on ink below
+contrast 40 of 255 or under 16 ink pixels. App OSC 9;4 uses stable whole-window clear/set-50/clear captures, plain
+paint/restore and a made-up OSC command; qualified no-change declares Untestable (no observer), because
 the progress shows outside the window the run captures. If set-50 changes the App window and clear
 restores it, the same capture additionally compares stable normal-state37/73/37 pairs, clearing
 exactly to baseline after each. Both values must differ from baseline and each other, and replay37
@@ -261,6 +346,20 @@ transport only: without the criterion's own DECRPM reply, these mode results ret
 Application-cursor and reverse-video opt into a public-state criterion when DECRPM is absent:
 reset false, set true, reset false, an unknown mode leaves the state unchanged, and the other
 flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
+Library reverse-video presentation stays unmeasured. The application arm keeps the DECRPM set
+check, and when mode 5 answers Ps 0 or nothing it reads the effect in pixels: a seeded `REVERSED`
+line, then DECSCNM set, compared against an SGR 7 reference and the unchanged line
+(`reverse-video-pixels`). A text-cell collector records PROBE INVALID, since text cells cannot
+show the effect. Those target reads are taken with the screen inverted, so the definition declares
+`termScreenMode: "reverse"` and its region-readback spec marks the under-edit steps with
+`editScreenMode: "reverse"`. Each such read reaches the collector as `CaptureRequest.screenMode`.
+Calibration on that blank canvas then observes normal, reverse, normal: with DECSCNM set it
+witnesses the reverse background and the same sentinel paint (`reverseSentinel`), all measured and
+none synthesized, and it refuses the whole calibration if the normal paint does not return. A
+`screenMode` read projects, locates and layout-guards with those witnessed reverse classes; with no
+witness, including after an in-row renewal, which re-measures only the normal paint, it fails as
+`CaptureScreenModeUnwitnessed` with the reason named. Adapters never see the field, and frames and
+the run JSON are unchanged (#34932).
 The seventeen DEC1 mode/mouse definitions also consult the existing unhandled report after an
 undecided prior arm. DECAWM off must read false and add no entry, then one exact own command
 must add one or more new entries all carrying that command's code. Explicit multi-code targets
@@ -382,9 +481,15 @@ uses a fresh preparation; the resetting row's own captures and refusal stay unch
 Each renewal retains a separate `collector.captureCalibration.renewal.N` trace beside the initial and finish traces.
 Preparation discards the prior attempt's origin and refusal; a refused renewal cannot reuse stale geometry.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
+The post-hoc layout check that runs after an undecided pixel read reads the witness cell in a frame of its own
+before painting calibration's sentinel there, and paints nothing when the cell holds ink (34243): a refused check
+costs a reason clause, never the probe's own glyph. The same crop is read once more after the clearing write, and a
+cell that did not come back byte-identical is named rather than assumed.
 Every confirmation compares consecutive complete frames under one fixed deadline.
 Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;
 the chosen form and attempt outcomes are retained, and stripe colors come from the captured pixels.
+For solid, column and row geometry, each witnessed paint forms an occupied-member colour class anchored at the observed mode within Chebyshev radius `R <= 1` in decoded 8-bit RGB space (with minimum pair separation `G >= 16` codes on the background/witness pair and on both column and row stripe-class pairs, and rows inheriting the column anchors while admitting their own observed dither phases), recorded in the calibration `basis` prose so consumers do not read it as exact single-colour evidence; baseline confirmation, outside-grid comparisons and relational restoration against the original confirmed baseline remain exact (`34480`).
+The collector-local `textOrigin` lifecycle carries the witnessed unmasked background and solid sentinel occupied-member sets into `readThroughSentinel` (refreshed on renewal and never exported into `probe-defs` or the run schema), where one selection-only background projection per pre-paint frame serves blank-cell selection and landing-pose verification (refusing by name if an unobserved colour dominates the frame's modal background) and `locateChangedColour` admits only changed pixels in the calibrated sentinel member set, while raw crop bytes/digests and generic `locateColour` stay exact (`34480`).
 Both forms missing leaves a named no-capture outcome; complete geometry and restoration checks still apply.
 Every session, launched by the collector or not, runs the shared capture lifecycle: SGR reset and
 DECTCEM off before the first paint, DECTCEM restored set on the way out, because a hidden cursor is
@@ -397,6 +502,27 @@ Native capture-command failures during installation retain their primary command
 secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
 
+**The sentinel pair that anchors a moved window** is two cells repainted in the sentinel colour and
+chosen from the frame taken immediately before that paint by `sentinelCellsInFrame` in
+[`region-readback.ts`](src/region-readback.ts). A cell is eligible only when its whole cell AND both
+of its neighbours on the same row are the frame's background colour — blank alone would let the
+restore erase the blank half of a wide glyph — and it lies outside every digested region and the
+probe's own output footprint. The record names the tier that chose them, first match wins:
+`region-free` (both cells on blank cells outside every digested region, differing in row AND column,
+so one stray patch or a full-line repaint cannot satisfy the pair) and `same-row` (no such diagonal
+pair exists, so the second cell sits on the first cell's own row, never adjacent, at least
+`SAME_ROW_MIN_COLUMN_GAP` columns away, and the pair measures the column pitch alone). There is no
+third `no-clear-row` tier, and that is consolidation rather than unreachability (@dev/10's peer read):
+a cell two columns clear of every region's edge is OUTSIDE every region, so it is an ordinary
+`region-free` candidate under the frame rule. The old tier named the constraint that made such a cell
+choosable (a clear column, no free row), not a third geometry; where such a cell carries ink the frame
+rule now refuses it instead of painting over it. `readThroughSentinel` accepts a one-row pair on the column pitch
+and on the two boxes sharing a row, and its basis says so: `(one-axis pair: both cells on one row,
+so it measures the column pitch only)`. A pair that proves no row height never authorizes a
+vertical move — `gridMoveExemption` grants nothing from such a seed and `cropPositionRefusal` names
+the reason — and every later frame must match the seed's witness cell coordinates, so it cannot swap
+to a one-row pair behind a two-axis seed.
+
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
 - `lib(ctx)` is synchronous and reads a `LibProbeSource` backed by a headless engine.
@@ -406,6 +532,30 @@ Terminal-query timeouts and apparatus errors without a native capture-command ca
   An absent hyperlink is unreported metadata; null is a reported unlinked cell.
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
+
+A mutation definition also declares how far its effect reaches. `termFootprint` is `window`,
+`app-instance` or `machine`, carried from the footprint table in
+[`term-footprints.ts`](./src/term-footprints.ts), which keeps the cells in one reviewable place. A cell
+absent from that table carries no footprint, and admission refuses it as undeclared rather than
+assuming the narrow case. A process-owner basis carries its own scope: a `window`-scoped grant admits
+only cells whose footprint is `window`, and an `app-instance` or `machine` cell is refused by name
+with its footprint and its cell id. Where a cell's effect is not obviously window-confined,
+`TERM_FOOTPRINT_NOTES` records why, in the same file as the table. A separate declaration of shared
+transient effects is not implemented yet: the first slice that issues a window-scoped basis is where
+each effect and its restore are named, so no such field is documented here as shipped. Issuance is
+process-only today: no window-scoped basis is granted at runtime, so a `window` footprint states what
+a cell would need, not a permission it has. Granting one at runtime stays blocked on the restore-abort
+proof and the per-cell cross-window spillover read.
+
+The restore-abort proof is built in `packages/terminfo.dev/src/probes/attribute-ledger.ts` and is
+inert until a window-scoped basis exists. On that scope the collector reads the SGR pen state through
+DECRQSS `$ q m` and the pointer shape through OSC 22's current-shape query before the cell's first
+write, takes every other pre-state from the cell's own readback reply, and reads every touched
+attribute back after the callback. A touched attribute with no query, or whose query drew no reply,
+refuses as "restore unprovable"; a divergence or an unclassifiable write refuses by name; either one
+throws `MutationRestoreRefused` outside the per-probe catch, so the run stops with the diff kept in
+`rawReplies["<cell>.ledger"]` and nothing after it is graded. The queries are the bytes probe-defs
+already sends (`DECRQSS_SGR_QUERY`, `OSC22_CURRENT_QUERY`), not a second parser.
 
 The SGR colour capture owner supplies an explicit pending review test when its observation is
 inconclusive, including equal references and a witness timeout. It retains the observation's reason,
@@ -430,15 +580,20 @@ capability declaration. The setting does not decide the measured resize phases.
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support result. Callbacks retain it explicitly.
 App focus tracking uses the optional owned focus roundtrip fixture under both DECSET1004
-and DECRST1004. Separate key-terminated reads retain enable-time input and the enabled
-roundtrip; the first reader starts before enabling. The reset roundtrip has its own key-terminated read.
+and DECRST1004. A full bounded read retains enable-time input; its reader starts before enabling.
+Each enabled attempt reads ordered focus-out/in separately before injecting and reading a plain key.
+At most three attempts run, retaining every phase's exact bytes and the attempt's own focus witness;
+reports from different attempts, enable-time input or the key phase cannot complete one another.
+The reset roundtrip retains its entire bounded window, including reports arriving after the key.
 The existing fixture returns its verified owned/helper/owned X window IDs, retained in the assertion.
 Its optional work callback runs after helper focus is verified and before restoration. The callback can
 read the current focus immediately around a target write and hold focus through its observation deadline.
 The same fixture restores the owned window in `finally`, including when that work fails.
 At most one enable-time focus report is retained separately; it does not satisfy the roundtrip.
-Ordered focus-out/in only while set is Supported; no roundtrip reports in either arm is Unsupported.
-A wrong read, missing key or focus report while reset is PROBE INVALID. DECRPM is retained as detail;
+One witnessed complete enabled attempt and only a plain key throughout reset is Supported.
+Missing, partial or wrong reports after verified X focus are PROBE INVALID for every App:
+the X witness does not establish that the terminal processed its callbacks. Malformed enable-time input,
+a missing key or focus report while reset is also PROBE INVALID. DECRPM is retained as detail;
 the library callback is unchanged.
 App UTF8 mouse uses the optional owned-window resize and positioned-click fixture.
 CSI18t polling runs every100ms under one absolute2s deadline for resize and restoration.
@@ -997,7 +1152,17 @@ every other subset before the target is sent. The target must equal it for Suppo
 or another subset is Unsupported on a bare terminal and TODO on a mux. A third crop is Invalid.
 The recipe paints bare YY without RIS or setters in the reference. Failed separation restores the
 saved rendition and tries the existing DECRQSS fallback. More than one expected subset throws with
-the row named; no flag retains the initial-N verdict unchanged. Only the two newly declared SGR
+the row named; no flag retains the initial-N verdict unchanged.
+After its one N save, each read carries fixture-owned `CaptureRequest.restoreAfterPaint` bytes.
+The existing pixel observer uses those bytes after every paint and clear, including retries and
+failure cleanup, instead of touching the fixture's DECSC slot. Known phases restore N and apply
+only their setter sequence; the final target restores N without replaying the reset or repainting
+YY. The already-painted target remains decisive. Each request freezes its phase's bytes before
+awaiting capture. An absent field keeps the observer's existing save/restore behavior; an empty
+field is a declaration error before painting. Text reads do not gain observer writes.
+Each phase also restores its future pen after painting YY and before its first freshness mark,
+so even a corrupt made-up control or partial target cannot change witness styling across reads.
+Only the two newly declared SGR
 reset entries add reference-before-query routing; other SGR rows keep their current routes.
 Without a deciding independent capture, an omitted setup attribute retains named PROBE TODO coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
@@ -1125,7 +1290,20 @@ new comparison or support conclusion.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+Owned Darwin apps share the existing window pixel capture, retention and calibration path.
+Their ownership adapter supplies the measured PID and any proved window ID; the common reader
+does not interpret app-specific launch receipts. Newly routed PID-only apps require exactly one
+visible normal-layer owned window, while Terminal.app and iTerm2 retain their existing selection
+policy. Missing retention names an apparatus refusal on affected rows and never selects text as
+a screenshot substitute. Existing text qualification retains its separate frames and write-error
+causes. Routing alone grades no feature and does not authorize a native run.
+
 The optional `TermProbeSource.readTitle` reads this run's owned public title surface.
+Native Cursor and VS Code use the exact Terminal held by the generated fixture,
+through the same activation-bound native exchange as semantic observations.
+The disposable fixture selects the sequence-responsive tab label and supplies no fixed launch name.
+Its fresh `Terminal.name`, including an empty string, feeds the existing title reader;
+this wiring alone qualifies no native feature result.
 The existing Linux ownership adapter supplies the recorded App window's `xdotool getwindowname`,
 or the attached mux's own title query; mux rows never substitute the outer window.
 An empty string is an observed title; configured read errors keep their cause.
@@ -1185,6 +1363,19 @@ fresh-CPR selection uses those facts together with an Unsupported query-reply re
 independently of the human explanation. Conclusive observations carry no unknown-cause reason.
 
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `probe-todo` and `probe-invalid`.
+
+The Kitty 0.49.2 Linux App prompt reader uses the launch's private Unix socket and
+collector window ID. `kitten @ ls` must identify that collector and supply prompt,
+exit-status and title fields; `get-text --extent=last_cmd_output` reads its output
+range. OSC 2 title fences order each native read. Unknown `133;Z` must preserve
+semantic state, an independent title control must change its own state, and the
+target observes prompt start, output range, exit status or the A/C/D lifecycle.
+The shared App grader keeps unavailable reads and failed controls distinct from
+capability negatives. Cleanup restores the observed title and exit status and
+clears the disposable grid; prior command-output history remains replaced by the fixture.
+This reader adds no declaration for another version and leaves OSC 133 B/P and
+other exact-version declarations unchanged. Native before/after qualification and
+the remaining-row comparison are separate from hermetic reader tests.
 
 A marked fenced silence defaults to Unsupported. The optional `switchable` silence rule maps it to PROBE INVALID;
 the catalog refuses declarations until a collector route carries them. A silence rule cannot declare Untestable.

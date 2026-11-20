@@ -1,4 +1,5 @@
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 /**
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
@@ -314,6 +315,34 @@ describe("consumer selection", () => {
       libSuite.catalogIds = ["sgr.bold"]
       libSuite.probes.lib = ["sgr.bold"]
       writeFileSync(suitePath, JSON.stringify(libSuite))
+      // 33964: unreferenced placements must leave the canonical selection unchanged. The existing
+      // freshness fixture never varied artifact population; use fresh cache keys for both real reads.
+      const emptyArtifacts = join(root, "empty-artifacts")
+      const extraArtifacts = join(root, "extra-artifacts")
+      mkdirSync(emptyArtifacts)
+      mkdirSync(extraArtifacts)
+      const selectedBefore = loadCurrentResults(join(root, "content"), { artifactDir: emptyArtifacts }).projection
+      expect(Object.keys(selectedBefore.contexts).length).toBeGreaterThan(0)
+      for (let index = 0; index < 64; index++) {
+        writeFileSync(join(extraArtifacts, `${index}.png`), Buffer.alloc(16_384, index))
+      }
+      collectGarbage()
+      const memoryBefore = process.memoryUsage()
+      const selectedAfter = loadCurrentResults(join(root, "content"), { artifactDir: extraArtifacts }).projection
+      const memoryAfter = process.memoryUsage()
+      expect(JSON.stringify(selectedAfter)).toBe(JSON.stringify(selectedBefore))
+      writeFileSync(
+        2,
+        JSON.stringify({
+          diagnostic: "33964 canonical-loader",
+          unreferencedFiles: 64,
+          unreferencedBytes: 64 * 16_384,
+          contexts: Object.keys(selectedAfter.contexts).length,
+          projectionBytes: Buffer.byteLength(JSON.stringify(selectedAfter)),
+          heapDelta: memoryAfter.heapUsed - memoryBefore.heapUsed,
+          rssDelta: memoryAfter.rss - memoryBefore.rss,
+        }) + "\n",
+      )
       const lock = join(root, "scripts", "sitefile.lock.json")
       const before = '{"unchanged":"a check does not regenerate inventory"}\n'
       writeFileSync(lock, before)
@@ -415,6 +444,10 @@ describe("consumer selection", () => {
   // Exercises the site, the generator and the projection together; a correctness check, not a latency one.
   it("resolves every v3 run reference to a digest-verified run document", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
+    // The selection log goes to console.error (aae1b4381, @cto b0de55c0); admit exactly its two shapes
+    // from docs/data/selected-results.ts and name any other line (34550, as consumer-parity).
+    const stderr: string[] = []
+    const error = vi.spyOn(console, "error").mockImplementation((message: unknown) => stderr.push(String(message)))
     try {
       // Exercise real current run references; display fixtures deliberately carry no admission grant.
       const contentDir = join(import.meta.dirname, "..", "content")
@@ -494,10 +527,20 @@ describe("consumer selection", () => {
       assertGroup(v3.history, expected.history)
       expect(v3.exclusions).toEqual(expected.exclusions)
       expect(Object.keys(v3.contexts).length).toBeGreaterThan(0)
+      const unexpectedStderr = stderr.filter(
+        (line) =>
+          !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
+          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line) &&
+          // A row a review declared untestable (content/declared-untestable.json, #34803) is logged by design (#35123).
+          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line),
+      )
+      expect(unexpectedStderr).toEqual([])
     } finally {
+      error.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
-  }, 30_000)
+    // 30 s timed out at host load (34589); a cap that holds under load, as consumer-parity.
+  }, 600_000)
 
   // @cto f71ed475: v1 is frozen bytes committed under docs/public/api/v1, not generator output.
   it("keeps the frozen v1 data and badge bytes on disk", () => {

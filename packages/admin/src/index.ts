@@ -94,11 +94,21 @@ probe
   .description("Launch and probe macOS terminal apps")
   .argument("[terminal]", "Terminal app to probe")
   .option("--all", "Probe all installed terminals")
+  .option("--hand-read", "Launch one owned WezTerm, read its pane once, and close without probing")
   .option("-f, --force", "Re-run even if cached")
   .option("--output <directory>", "Retain the collected run and original HTTP response privately")
   .option("--probe-ids <json>", "Exact probe IDs as a JSON array; [] executes none", json)
+  .option("--run-id <id>", "Carry this run identity instead of minting one; 32 lowercase hex characters (#34018)")
   .actionMerged(
-    async (opts: { terminal?: string; all?: boolean; force?: boolean; output?: string; probeIds?: unknown }) => {
+    async (opts: {
+      terminal?: string
+      all?: boolean
+      force?: boolean
+      output?: string
+      probeIds?: unknown
+      runId?: string
+      handRead?: boolean
+    }) => {
       ensureSourceSuiteEnvironment()
       const { handleApp } = await import("./app.ts")
       const probeIds = opts.probeIds === undefined ? undefined : collectorIds(opts.probeIds, "--probe-ids")
@@ -142,7 +152,13 @@ program
     "Show context progress from explicit raw captures or collection pass files/directories",
     (value: string, previous: string[] = []) => [...previous, value],
   )
-  .action(async (opts: { scoreboard?: string[] }) => {
+  .option(
+    "--reassert <runs...>",
+    "Replay saved runs offline against this checkout's suite and compare each row with its stored status; exits 2 on a refused or incomplete run, else 1 on a disagreement, else 0",
+    (value: string, previous: string[] = []) => [...previous, value],
+  )
+  .option("--json", "With --reassert: one JSON document for every run on stdout")
+  .action(async (opts: { scoreboard?: string[]; reassert?: string[]; json?: boolean }) => {
     const { handleReport } = await import("./report.ts")
     await handleReport(opts)
   })

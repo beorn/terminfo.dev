@@ -14,10 +14,16 @@ import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import { isDefaultOf, MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
+import {
+  REMOVE_DECLARED_ROW,
+  loadDeclaredUntestable,
+  type DeclaredMarker,
+  type DeclaredUntestableCell,
+} from "./declared-untestable.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
-import type { CurrentTraceDocument } from "./run-trace.ts"
+import type { CurrentTraceDocument, TraceIdentityRuleCheck } from "./run-trace.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -35,9 +41,12 @@ import {
   readCollectorSelection,
   readCollectorAttempt,
   isHarnessOutcome,
+  type HarnessOutcome,
 } from "@terminfo/probe-defs"
 import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import {
+  currentIdentityRuleCheck,
+  identityRuleRevision,
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
@@ -76,11 +85,32 @@ export type ProjectionRun = Pick<
 > & {
   assertions: Array<Pick<ReadAssertion, "featureId" | "kind" | "assertionType">>
   selection: CollectorSelection | undefined
+  /**
+   * Whether the recorded selection covers the cohort its own declared suite names for this subject kind
+   * (#34868). Undefined when the run records no selection or its suite is not on this build.
+   */
+  selectionCoversSuite?: boolean
   attempt: CollectorAttempt | undefined
   screenRecord: string | undefined
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
   readRaw: () => RunTraceFacts
   traceMemo?: RunTraceMemo
+  /** Stored runs only: this build's identity-rule match (#34617). Working runs never carry it. */
+  identityRuleCheck?: TraceIdentityRuleCheck
+}
+
+/**
+ * Does a recorded selection cover the cohort its declared suite names (#34868)? Set membership, not counts:
+ * extra ids cannot hide a missing one, so 263 of 264 and a same-length wrong-id selection both refuse. The
+ * cohort is the run own suite manifest entry for its subject kind; there is no fallback to another suite.
+ */
+export function selectionCoversCohort(
+  selection: CollectorSelection | undefined,
+  cohort: readonly string[] | undefined,
+): boolean | undefined {
+  if (selection === undefined || cohort === undefined) return undefined
+  const selected = new Set(selection.ids)
+  return cohort.every((id) => selected.has(id))
 }
 
 function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun {
@@ -209,14 +239,33 @@ export interface CurrentSelectedVersion {
   catalogIds: string[]
   results: ProbeResult[]
   selection: CollectorSelection | undefined
+  /** Whether the recorded selection covers the declared suite cohort (#34868); see ProjectionRun. */
+  selectionCoversSuite?: boolean
   screenRecord: string | undefined
   readRaw: () => RunTraceFacts
   traceMemo?: RunTraceMemo
+  identityRuleCheck?: TraceIdentityRuleCheck
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
   score: { supported: number; all: number }
   complete: boolean
+}
+
+/**
+ * 34691: the last decided original a cross-suite harness refusal replaced, for display only. It refers to the original
+ * by run and result; its public reason resolves through the original mapping, never a copy here.
+ */
+export interface PriorDecision {
+  runId: string
+  resultId: string
+  /** The decided effective status it read: supported, unsupported or untestable. */
+  status: FeatureResultStatus
+  version: string
+  suiteId: string
+  measuredAt: string
+  /** Set when a reopened-cells row withdrew this historical grade: it is then never shown as a valid decision. */
+  reopened?: ReopenedMarker
 }
 
 /** A private view refers to the original result and its own run, never to a synthetic capture. */
@@ -232,6 +281,22 @@ export interface SelectedContextCell {
    * `noted`: a decided default cell keeps its status, reason and tests; the supplement's decided status is only a note
    * (#33151, a supplement that declares notesDecided).
    */
+  /**
+   * 34675 (@cto go-r2-1341): set only when a newer same-version, same-suite attempt's harness reading did not finish and
+   * this older decided cell was kept against it. It names the NEWEST such refused row; the cell's own origin, status
+   * and reason stay the older decision's. A later real replacement drops it, a later refusal replaces it.
+   */
+  refusedAttempt?: { runId: string; resultId: string; measuredAt: string; harnessOutcome: HarnessOutcome }
+  /**
+   * 34691 (@cto history-reframe-scope-1754): set only when a newer same-version attempt under ANOTHER suite placed a
+   * harness outcome over a decided cell. "Another suite" is tested as a different probeHash (priorDecisionOf); the
+   * same-probeHash case never gets here, because keptDecidedCell keeps the decided cell and names the refusal in
+   * `refusedAttempt`. The cell itself stays that newest refusal, current and open; this names the
+   * last decided original it replaced, shown only as dated history. Nothing that decides status reads it: not
+   * effective status, context joins, method composition, derived cells, totals or release qualification. A refusal
+   * after a refusal keeps it; a version change or a real result drops it; a same-suite keep uses `refusedAttempt`.
+   */
+  priorDecision?: PriorDecision
   supplement?: { name: string; qualifier: string; runId: string; declaredDefault?: string } & (
     | { filled: true }
     | { filled: false; open: string }
@@ -242,6 +307,11 @@ export interface SelectedContextCell {
    * probe-todo, while `result`, `run` and `origin` stay the witnessed original.
    */
   reopened?: ReopenedMarker
+  /**
+   * Set only when a declared-untestable row (declared-untestable.ts, @cto 82a54984) read this open cell: the feature
+   * result reads untestable by review, while `result`, `run` and `origin` stay the original. Never a grade.
+   */
+  declared?: DeclaredMarker
   /**
    * Set only when a declared pair (derived-cells.ts, #33019) read this cell from a decided-Unsupported parent in the
    * same context: the feature result reads unsupported, while `result`, `run` and `origin` stay the child's own.
@@ -290,6 +360,8 @@ export interface SelectedContextSummary {
   counts: RollupCounts
   /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
   derivedIds: string[]
+  /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
+  byReview: number
   score: { supported: number; all: number }
   /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
   complete: boolean
@@ -449,6 +521,8 @@ export function projectResults(
     log?: (line: string) => void
     /** Cells whose grade a ruling withdrew (content/reopened-cells.json); loadSelectedResults always passes them. */
     reopened?: readonly ReopenedCell[]
+    /** Open cells reviewed as untestable (content/declared-untestable.json); loadSelectedResults always passes them. */
+    declared?: readonly DeclaredUntestableCell[]
     /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
     derived?: readonly DerivedPair[]
   },
@@ -466,7 +540,7 @@ export function projectResults(
   // a default context, so it is refused by name.
   for (const run of contextRuns) {
     const { kind, id, os, config } = run.subject
-    if (kind === "mux" && os === "linux" && config !== MUX_DEFAULT_CONFIG) {
+    if (kind === "mux" && os === "linux" && !isDefaultOf(run.subject, run.subject)) {
       throw new Error(
         `${run.runId}: mux ${id} records config ${JSON.stringify(config)}, which is neither the default ${MUX_DEFAULT_CONFIG} nor a declared context supplement`,
       )
@@ -516,9 +590,11 @@ export function projectResults(
       results,
       suiteRelation,
       selection: run.selection,
+      ...(run.selectionCoversSuite !== undefined && { selectionCoversSuite: run.selectionCoversSuite }),
       screenRecord: run.screenRecord,
       readRaw: run.readRaw,
       ...(run.traceMemo && { traceMemo: run.traceMemo }),
+      ...(run.identityRuleCheck && { identityRuleCheck: run.identityRuleCheck }),
       suiteFreshness,
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
@@ -604,6 +680,7 @@ export function projectResults(
       supplements,
       policy.reopened ?? [],
       policy.derived ?? DERIVED_UNSUPPORTED,
+      policy.declared ?? [],
     ),
   }
 }
@@ -644,7 +721,26 @@ function applyReopened(
     if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
     const cell = cells[row.featureId]
     const featureResult = cell?.featureResult
-    if (!cell || featureResult?.status !== row.graded) continue
+    if (!cell) continue
+    if (featureResult?.status !== row.graded) {
+      // 34691: the row withdraws the grade this cell shows only as history, so that history is qualified, never shown
+      // as a valid decision. A remeasured row naming other suites leaves it unmatched, and the check below throws.
+      const history = cell.priorDecision
+      if (
+        history?.status === row.graded &&
+        (row.exit.kind !== "remeasured" || row.exit.suiteIds.includes(history.suiteId))
+      ) {
+        cells[row.featureId] = {
+          ...cell,
+          priorDecision: {
+            ...history,
+            reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
+          },
+        }
+        applied.add(row)
+      }
+      continue
+    }
     if (row.exit.kind === "remeasured" && !row.exit.suiteIds.includes(cell.run.suiteId)) {
       throw new Error(
         `Reopened cell ${cellLabel(row)} is graded ${row.graded} in ${contextKey} by run ${cell.run.runId} under suite ${cell.run.suiteId}, which the row does not name; it was re-measured, so delete the row`,
@@ -656,6 +752,43 @@ function applyReopened(
       reopened: { reason: row.reason, reopenedOn: row.reopenedOn, exit: row.exit.kind },
     }
     applied.add(row)
+  }
+}
+
+/**
+ * Read the declared-untestable rows into one context's cells (@cto 82a54984 (c), b0d3cd4e). A row covers every context
+ * of its app on its OS. Its cell must read PROBE TODO: then the feature result reads untestable with the row's words,
+ * and result, run and origin stay. A measured cell, a probe's own Untestable, a probe defect (PROBE INVALID, PROBE
+ * CONFLICT), a reopened cell or a missing cell throws naming the row: a measured result always beats a declaration.
+ */
+function applyDeclared(
+  contextKey: string,
+  cells: Record<string, SelectedContextCell>,
+  subject: ProbeSubject | undefined,
+  rows: readonly DeclaredUntestableCell[],
+  applied: Set<DeclaredUntestableCell>,
+  log?: (line: string) => void,
+): void {
+  if (!subject) return
+  for (const row of rows) {
+    if (row.kind !== subject.kind || row.id !== subject.id || row.os !== subject.os) continue
+    const cell = cells[row.featureId]
+    const featureResult = cell?.featureResult
+    const status = cell?.reopened ? "reopened" : (featureResult?.status ?? "missing")
+    if (!cell || !featureResult || status !== "probe-todo") {
+      throw new Error(
+        `Declared-untestable cell ${cellLabel(row)} reads ${status} in ${contextKey}${
+          cell ? ` (run ${cell.run.runId})` : ""
+        }; a probe result beats a declaration, so ${REMOVE_DECLARED_ROW}`,
+      )
+    }
+    cells[row.featureId] = {
+      ...cell,
+      featureResult: { ...featureResult, status: "untestable", strength: null },
+      declared: { reason: row.reason, testableIf: row.testableIf, reviewedOn: row.reviewedOn },
+    }
+    applied.add(row)
+    log?.(`declared untestable by review: ${contextKey}/${row.featureId} (row ${cellLabel(row)})`)
   }
 }
 
@@ -715,8 +848,10 @@ function composeContextSummaries(
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
   derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
+  declared: readonly DeclaredUntestableCell[] = [],
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
+  const declaredApplied = new Set<DeclaredUntestableCell>()
   const runsById = new Map<string, ProjectionRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
     // A pass may cite its original draft and its sealed admitted snapshot: one run, different
@@ -810,10 +945,39 @@ function composeContextSummaries(
       const streak = (keptStreak.get(result.featureId) ?? 0) + 1
       keptStreak.set(result.featureId, streak)
       keptCount += 1
+      cells[result.featureId] = {
+        ...prior,
+        refusedAttempt: {
+          runId: run.runId,
+          resultId: result.featureId,
+          measuredAt: run.measuredAt,
+          harnessOutcome: result.harnessOutcome,
+        },
+      }
       log?.(
         `kept ${run.subject.id} ${result.featureId} ${priorStatus} refused ${result.harnessOutcome} from ${run.runId} streak ${streak}${streak >= 3 ? " needs its own issue" : ""}`,
       )
       return true
+    }
+    // 34691: the history a harness outcome about to replace this cell carries. Only a same-version refusal under
+    // another suite records one, from the decided cell it replaces or, after an earlier such refusal, that refusal's
+    // own history. A real result, a version change or no prior cell records none, so remember() drops it.
+    const priorDecisionOf = (run: ProjectionRun, result: ProbeResult): PriorDecision | undefined => {
+      if (!isHarnessOutcome(result.harnessOutcome)) return undefined
+      const prior = cells[result.featureId]
+      const version = run.subject.version
+      if (!prior || version.trim() === "" || prior.run.subject.version !== version) return undefined
+      if (prior.priorDecision) return prior.priorDecision
+      const priorStatus = prior.featureResult?.status ?? prior.result.status
+      if (prior.run.probeHash === run.probeHash || !decided.has(priorStatus)) return undefined
+      return {
+        runId: prior.origin.runId,
+        resultId: prior.origin.resultId,
+        status: priorStatus,
+        version,
+        suiteId: prior.run.suiteId,
+        measuredAt: prior.run.measuredAt,
+      }
     }
     const remember = (run: ProjectionRun, result: ProbeResult): void => {
       const classification = classifyResultMethod(result, run.subject, run.assertions)
@@ -880,7 +1044,12 @@ function composeContextSummaries(
         const result = emitted.get(id)
         if (!result || attempt?.startedAt === undefined) noOutputIds.push(id)
         else if (keptDecidedCell(run, result)) continue
-        else remember(run, result)
+        else {
+          const history = priorDecisionOf(run, result)
+          remember(run, result)
+          const placed = cells[result.featureId]
+          if (history && placed) cells[result.featureId] = { ...placed, priorDecision: history }
+        }
       }
       attempts.push({ runId: run.runId, path: run.path, selection, attempt, noOutputIds })
     }
@@ -904,6 +1073,8 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // After reopening, so a reopened cell refuses a declaration; before derivation, so a declared parent derives nothing.
+    applyDeclared(contextKey, cells, candidates[0]?.subject, declared, declaredApplied, log)
     // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
     applyHeld(cells, HELD_NEGATIVES, heldWitnesses)
     // After reopening and holding, before derivation, so a demoted parent derives nothing (#33665, @cto fccc41a9).
@@ -928,6 +1099,7 @@ function composeContextSummaries(
         featureId,
         status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
         ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
+        ...(cells[featureId]?.declared && { declared: cells[featureId]?.declared }),
       })),
       viewIds,
     )
@@ -952,6 +1124,7 @@ function composeContextSummaries(
       attempts,
       counts: aggregate.counts,
       derivedIds,
+      byReview: aggregate.byReview,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
       ...(outerAbsentRefusals.length > 0 && { outerAbsentRefusals }),
@@ -964,6 +1137,14 @@ function composeContextSummaries(
       `${unmatched.length} reopened row(s) match no context cell graded as withdrawn; delete or re-confirm: ${unmatched
         .map((row) => `${cellLabel(row)} (${row.graded})`)
         .join(", ")}`,
+    )
+  }
+  const undeclared = declared.filter((row) => !declaredApplied.has(row))
+  if (undeclared.length > 0) {
+    throw new Error(
+      `${undeclared.length} declared-untestable row(s) match no context cell: ${undeclared
+        .map((row) => cellLabel(row))
+        .join(", ")}; ${REMOVE_DECLARED_ROW}`,
     )
   }
   return summaries
@@ -1142,10 +1323,26 @@ export function loadSelectedResults(
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const features = loadFeatures(contentDir)
   const catalog = Object.keys(features)
-  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw): ProjectionRun => ({
-    ...compactRun(run, readRaw),
-    traceMemo: {},
-  }))
+  // #34617: one rule fingerprint per build; each stored run is checked once against this build's identity rule.
+  const ruleRevision = identityRuleRevision()
+  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw, suites): ProjectionRun => {
+    const check = currentIdentityRuleCheck(run)
+    // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
+    if ("refused" in check && run.identity !== "unverified") {
+      console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
+    }
+    const selection = readCollectorSelection(run.rawReplies)
+    const cohort = run.probeHash === null ? undefined : suites.get(run.probeHash)?.probes[run.subject.kind]
+    const selectionCoversSuite = selectionCoversCohort(selection, cohort)
+    return {
+      ...compactRun(run, readRaw),
+      ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
+      traceMemo: {},
+      ...("matched" in check && {
+        identityRuleCheck: { checkedAt: "build" as const, ...check.matched, ruleRevision },
+      }),
+    }
+  })
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
   for (const run of runs) {
@@ -1168,8 +1365,10 @@ export function loadSelectedResults(
       textSnapshots,
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
-      log: (line) => console.log(line),
+      // Diagnostics go to stderr: callers such as the VitePress config loader print JSON on stdout.
+      log: (line) => console.error(line),
       reopened: loadReopenedCells(contentDir, features),
+      declared: loadDeclaredUntestable(contentDir),
     },
     loadArchivedExclusions(contentDir),
   )

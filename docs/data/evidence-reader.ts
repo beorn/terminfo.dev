@@ -6,6 +6,7 @@ import type {
   ProbeAssertion,
 } from "../../packages/probe-defs/src/types.ts"
 import type { HistoricalCellEvidence } from "./public-results.ts"
+import type { TraceIdentityRuleCheck } from "./run-trace.ts"
 
 export type LoadedCellEvidence = HistoricalCellEvidence & { version: 2; runId: string; runSha256: string }
 export interface CellEvidenceExpectation {
@@ -58,6 +59,7 @@ export interface LoadedCellTrace {
   sourceRevision: string | null
   identity: {
     recorded: string
+    currentRuleCheck?: TraceIdentityRuleCheck
   }
   featureId: string
   cell: TraceCellRecord
@@ -84,7 +86,8 @@ export interface TracePaneCopy {
     reasonLine?: string
     items: TracePaneItem[]
     sourceLine: string
-    identityLine: string
+    /** Absent when the trace carries no identity-rule check (#34617): the recorded draft field is no verdict. */
+    identityLine?: string
     notKeptLine: string
     text: string
   }
@@ -320,8 +323,66 @@ function formatParserState(parserState: unknown): string {
   return typeof parserState === "string" ? formatControlBytes(parserState) : JSON.stringify(parserState)
 }
 
-function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
-  return `Identity ${identity.recorded} in run file.`
+/**
+ * #34617: name this build's identity-rule check of the run's retained evidence, scoped to the trace build; the
+ * recorded collector field (`unverified` on every draft) is kept in the trace but never printed as a verdict.
+ */
+function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string | undefined {
+  const check = identity.currentRuleCheck
+  if (!check) return undefined
+  const facts = [
+    `rule revision ${check.ruleRevision}`,
+    ...(check.xtversion !== undefined ? [`XTVERSION "${check.xtversion}"`] : []),
+    ...(check.da1 !== undefined ? [`DA1 "${check.da1}"`] : []),
+    ...(check.receipt ? [`bundle version ${check.receipt.cfBundleShortVersionString}`] : []),
+    ...(check.executable
+      ? [`executable ${check.executable.version}, sha256 ${check.executable.sha256.slice(0, 12)}`]
+      : []),
+  ]
+  return `At trace build, retained identity evidence matched the ${check.rule} identity rule (${facts.join("; ")}).`
+}
+
+const RULE_CHECK_KEYS = new Set(["checkedAt", "rule", "ruleRevision", "da1", "xtversion", "receipt", "executable"])
+const optionalString = (value: unknown): boolean => value === undefined || typeof value === "string"
+
+/** Validate an optional `identity.currentRuleCheck` by name: absent is no claim, malformed is a structure error. */
+function readIdentityRuleCheck(value: unknown): TraceIdentityRuleCheck | undefined | null {
+  if (value === undefined) return undefined
+  if (!isRecord(value) || Object.keys(value).some((key) => !RULE_CHECK_KEYS.has(key))) return null
+  const { checkedAt, rule, ruleRevision, da1, xtversion, receipt, executable } = value
+  if (
+    checkedAt !== "build" ||
+    typeof rule !== "string" ||
+    rule.length === 0 ||
+    typeof ruleRevision !== "string" ||
+    !/^[0-9a-f]{12}$/.test(ruleRevision) ||
+    !optionalString(da1) ||
+    !optionalString(xtversion) ||
+    (receipt !== undefined &&
+      (!isRecord(receipt) ||
+        Object.keys(receipt).length !== 1 ||
+        typeof receipt.cfBundleShortVersionString !== "string")) ||
+    (executable !== undefined &&
+      (!isRecord(executable) ||
+        Object.keys(executable).length !== 2 ||
+        typeof executable.version !== "string" ||
+        typeof executable.sha256 !== "string"))
+  ) {
+    return null
+  }
+  return {
+    checkedAt,
+    rule,
+    ruleRevision,
+    ...(da1 !== undefined && { da1: da1 as string }),
+    ...(xtversion !== undefined && { xtversion: xtversion as string }),
+    ...(receipt !== undefined && {
+      receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString as string },
+    }),
+    ...(executable !== undefined && {
+      executable: { version: executable.version as string, sha256: executable.sha256 as string },
+    }),
+  }
 }
 
 /**
@@ -393,6 +454,8 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
   ) {
     throw new Error("Trace document identity or structure does not match this result")
   }
+  const currentRuleCheck = readIdentityRuleCheck(parsed.identity.currentRuleCheck)
+  if (currentRuleCheck === null) throw new Error("Trace document identity or structure does not match this result")
   const cellEntry = featureResults[expectation.featureId]
   if (cellEntry === undefined) {
     throw new Error("no trace stored for this cell")
@@ -416,6 +479,7 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     sourceRevision: parsed.sourceRevision,
     identity: {
       recorded: parsed.identity.recorded,
+      ...(currentRuleCheck && { currentRuleCheck }),
     },
     featureId: expectation.featureId,
     cell: cellEntry as unknown as TraceCellRecord,
@@ -551,7 +615,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     ...(reasonLine ? [reasonLine] : []),
     ...items.flatMap((item) => [item.label, item.code, item.pre, item.text].filter((v): v is string => Boolean(v))),
     sourceLine,
-    identityLine,
+    ...(identityLine ? [identityLine] : []),
     notKeptLine,
   ]
 
@@ -573,7 +637,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
       ...(reasonLine && { reasonLine }),
       items,
       sourceLine,
-      identityLine,
+      ...(identityLine && { identityLine }),
       notKeptLine,
       text: testedLines.join("\n"),
     },

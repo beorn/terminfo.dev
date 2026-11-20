@@ -18,8 +18,10 @@ import {
   readInjectedOutcome,
   readResponse,
   withRawMode,
+  withRunSignal,
   withTTYOperation,
   withTTYQueryTrace,
+  currentTTYTraceMark,
   writeTTY,
   type TTYTraceEvent,
   type TTYQueryTrace,
@@ -175,8 +177,39 @@ describe("TTY transaction replies", () => {
     },
   )
 
-  // Recorder identity and distinct injection causes miss their same-error TTY join.
+  // Recorder identity and distinct injection causes miss their same-error TTY join. Recording is transparent
+  // (#30932 S3): a recorded reply array destructures natively and the log completes, so the sticky failure here is
+  // the one a body can still meet, a replay that asks something the log never recorded.
   it("keeps a sticky recorder failure fatal without making it its own cause", async () => {
+    const pattern = /\x1b\]17;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)\x07/
+    let captured: CallLog | undefined
+    const red = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            const result = await queryOutcome("\x1b]17;?\x07", pattern, 50)
+            if (!result.match) throw new Error("Fixture did not return a matched colour")
+            const [, value] = result.match
+            return value
+          },
+          {
+            onLog(log) {
+              captured = log
+            },
+          },
+        ),
+      {
+        write() {
+          reply("\x1b]17;rgb:1111/2222/3333\x07")
+          return true
+        },
+      } as unknown as NodeJS.WriteStream,
+    )
+    expect(red).toBe("1111")
+    expect(captured).toBeDefined()
+
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const listeners = process.stdin.listenerCount("data")
@@ -190,15 +223,8 @@ describe("TTY transaction replies", () => {
             queries,
             events,
             async () => {
-              const result = await queryOutcome(
-                "\x1b]17;?\x07",
-                /\x1b\]17;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)\x07/,
-                50,
-              )
               try {
-                if (!result.match) throw new Error("Fixture did not return a matched colour")
-                const [, red] = result.match
-                return red
+                return await queryOutcome("\x1b]10;?\x07", pattern, 50)
               } catch (error) {
                 if (!(error instanceof Error)) throw error
                 bodyError = error
@@ -206,6 +232,8 @@ describe("TTY transaction replies", () => {
               }
             },
             {
+              mode: "replay",
+              log: readCallLog(JSON.parse(JSON.stringify(captured))),
               onLog() {
                 published = true
               },
@@ -213,8 +241,7 @@ describe("TTY transaction replies", () => {
           ),
         {
           write() {
-            reply("\x1b]17;rgb:1111/2222/3333\x07")
-            return true
+            throw new Error("Offline replay attempted native I/O")
           },
         } as unknown as NodeJS.WriteStream,
       )
@@ -226,7 +253,7 @@ describe("TTY transaction replies", () => {
     expect(finalError instanceof IncompleteReplay).toBe(true)
     expect(finalError === bodyError).toBe(true)
     expect(finalError?.cause === undefined).toBe(true)
-    expect(finalError?.message).toBe("Incomplete: call log cannot encode prototype [object Array Iterator]")
+    expect(finalError?.message).toMatch(/^Incomplete: arguments at call 0: /)
     expect(published).toBe(false)
     expect(queries).toEqual([])
     expect(events).toEqual([])
@@ -1087,4 +1114,120 @@ describe("UTF-8 decode context measurement", () => {
     expect(writes).toContain("\x1b[2;1H\x1b[2X")
     expect(writes.at(-1)).toBe("\x1b8")
   })
+})
+
+// 34645 (@cto e1cfff79 item 1): a held-viewport bracket reads its own row's live trace. The projected
+// `queries`/`events` arrays stay empty until the callback ends, so a mark taken from them inside the callback
+// cannot see a write. The mark reads the recording itself, which records every operation as it starts.
+describe("live TTY trace mark", () => {
+  const sink = () => ({ write: () => true }) as unknown as NodeJS.WriteStream
+
+  it("sees a write started inside the callback that the projected arrays cannot yet see", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const marks = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, async () => {
+          const before = currentTTYTraceMark()
+          writeTTY("\x1b[5n")
+          const after = currentTTYTraceMark()
+          return { before, after, eventsInside: events.length }
+        }),
+      sink(),
+    )
+    expect(marks.before).toEqual({ mode: "record", started: 0, unsettled: 0, abandoned: false })
+    expect(marks.after).toEqual({ mode: "record", started: 1, unsettled: 0, abandoned: false })
+    expect(marks.eventsInside).toBe(0)
+    expect(events).toEqual([{ kind: "write", sequence: "\x1b[5n" }])
+  })
+
+  it("counts a query still awaiting its reply as unsettled", async () => {
+    const seen = await withTTYOperation(
+      () =>
+        withTTYQueryTrace([], [], async () => {
+          const pending = queryOutcome("\x1b[c", /\x1b\[\?[0-9;]*c/, 200)
+          await Promise.resolve()
+          const inFlight = currentTTYTraceMark()
+          reply("\x1b[?1;2c")
+          await pending
+          return { inFlight, settled: currentTTYTraceMark() }
+        }),
+      sink(),
+    )
+    expect(seen.inFlight?.unsettled).toBeGreaterThan(0)
+    expect(seen.settled?.unsettled).toBe(0)
+    expect(seen.settled?.started).toBeGreaterThan(0)
+  })
+
+  it("reports an abandoned scope and is absent outside any trace", async () => {
+    expect(currentTTYTraceMark()).toBeUndefined()
+    let scope: { abandon(): void; mark(): unknown } | undefined
+    const marks = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(
+          [],
+          [],
+          async () => {
+            scope?.abandon()
+            return { inside: currentTTYTraceMark(), viaScope: scope?.mark() }
+          },
+          {
+            onScope(value) {
+              scope = value
+            },
+          },
+        ),
+      sink(),
+    )
+    expect(marks.inside).toMatchObject({ abandoned: true })
+    expect(marks.viaScope).toMatchObject({ abandoned: true })
+  })
+})
+
+// Requirement (34753 condition 3, 34941): the run signal reaches a wait that is already in flight, so an
+// active callback stops at the edge instead of running to its own timeout and painting afterwards.
+it("34941 aborts an in-flight read when the run's client leaves, and refuses every later write", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((chunk: unknown) => {
+    writes.push(String(chunk))
+    return true
+  }) as typeof process.stdout.write
+  const controller = new AbortController()
+
+  const run = withRunSignal(controller.signal, () => withTTYOperation(() => readResponse(/\x1b\[\d+;\d+R/, 5000)))
+  setTimeout(() => controller.abort(), 25)
+  const startedAt = Date.now()
+
+  await expect(run).rejects.toMatchObject({ name: "AbortError" })
+  // Promptly: the 5000 ms read deadline did not decide this.
+  expect(Date.now() - startedAt).toBeLessThan(1000)
+
+  const wroteBefore = writes.length
+  await expect(withRunSignal(controller.signal, async () => writeTTY("\x1b[2J"))).rejects.toMatchObject({
+    name: "AbortError",
+  })
+  expect(writes.length).toBe(wroteBefore)
+})
+
+// Requirement (34753 condition 3, 34941 AC3): a cancelled run releases the operation lease, so the
+// terminal is usable afterwards - the next operation is not stuck behind the abandoned one.
+it("34941 releases the operation lease after a cancelled run", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((chunk: unknown) => {
+    writes.push(String(chunk))
+    return true
+  }) as typeof process.stdout.write
+  const controller = new AbortController()
+
+  const cancelled = withRunSignal(controller.signal, () => withTTYOperation(() => readResponse(/\x1b\[\d+;\d+R/, 5000)))
+  setTimeout(() => controller.abort(), 20)
+  await expect(cancelled).rejects.toMatchObject({ name: "AbortError" })
+
+  // A later run on the same stream: the queue entry the cancelled operation held must be free.
+  const later = withTTYOperation(async () => {
+    writeTTY("\x1b[2Jafter-cancel")
+    return "ran"
+  })
+  await expect(later).resolves.toBe("ran")
+  expect(writes.some((write) => write.includes("after-cancel"))).toBe(true)
 })

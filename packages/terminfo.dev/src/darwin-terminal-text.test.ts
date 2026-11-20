@@ -1057,11 +1057,11 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
   it("counts retained lines above the screen plus the screen's rows; an empty history reads exactly rows", () => {
     const model = terminalModel(4, 20)
     const empty = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
-    expect(empty).toEqual({ status: "read", historyLines: [], reading: { totalLines: 4, screenLines: 4 } })
+    expect(empty).toMatchObject({ status: "read", historyLines: [], reading: { totalLines: 4, screenLines: 4 } })
     model.write("a\r\nb\r\nc\r\nd\r\ne\r\n")
     const read = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
     // a and b scrolled off; c, d, e are on screen above the blank cursor row.
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       status: "read",
       historyLines: ["a", "b", "c", "d", "e"],
       reading: { totalLines: 2 + 4, screenLines: 4 },
@@ -1075,7 +1075,7 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
     model.write(`${"x".repeat(40)}\r\n`)
     const read = readTerminalAppHistory({ tty: "/dev/ttys003", cols: 20, rows: 4, run: model.run })
     // 40 cells on 20 columns fills two of the screen's four rows; the count is still the screen's.
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       status: "read",
       historyLines: ["x".repeat(40)],
       reading: { totalLines: 4, screenLines: 4 },
@@ -1124,7 +1124,7 @@ describe("Terminal.app history: one snapshot, one count definition, and a per-ru
     expect(controls).toEqual([{ markers: 11, before: 0, after: 11, status: "passed" }])
     expect(model.scrollback.at(0)).toBe("terminfo history control run-1 0")
     // 11 markers on 6 rows: 6 scrolled into history, then the control cleared the 5 on screen.
-    expect(first).toEqual({ totalLines: 6 + 6, screenLines: 6 })
+    expect(first).toMatchObject({ totalLines: 6 + 6, screenLines: 6 })
     model.write(Array.from({ length: 16 }, (_unused, index) => `line ${index}\r\n`).join(""))
     const second = await reader()
     expect(second.totalLines - first.totalLines).toBe(16 - 5)

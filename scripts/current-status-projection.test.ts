@@ -16,11 +16,21 @@ import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 import {
   countContexts,
   projectResults,
+  statesFor,
   maskRunnerStorePath,
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
-import { currentCoverageSentence } from "../docs/data/release-scope.ts"
-import { candidateFromSelected, pickContextRun, type HistoricalContextCandidate } from "../docs/data/run-selection.ts"
+import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
+import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
+import { priorDecisionSentence, refusalSummarySentence } from "../docs/data/prior-decision.ts"
+import {
+  candidateFromSelected,
+  measuresSelectionOnly,
+  pickContextRun,
+  type HistoricalContextCandidate,
+} from "../docs/data/run-selection.ts"
+import { selectionCoversCohort } from "../docs/data/selected-results.ts"
+import { buildFullProjectRows } from "../docs/data/full-project.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -249,6 +259,76 @@ it("ranks a full run above a selected run, and names the partial summary when no
     run: { key: "kitty/partial" },
     selection: "latest partial selection",
   })
+})
+
+// #34868: the same rule must hold where the site picks its per-(app, OS) primary by lineage. A 9-row run
+// placed at the newest source revision took the whole wezterm macOS bar (266 rows read probe-todo) while a
+// complete run of the same app version stood one revision behind, because ancestry alone decided the pick.
+// @failure A partial run at a newer revision becomes the app primary and the complete run is demoted.
+// @level l2 @consumer run-selection pickByLineage behind compatibilitySubjects and the app page bar.
+it("ranks a complete run above a partial run of the same app version at a newer source revision", () => {
+  const candidate = (key: string, partial: boolean): HistoricalContextCandidate => ({
+    key,
+    kind: "term",
+    terminalId: "wezterm",
+    os: "macos",
+    permissions: null,
+    states: {},
+    cells: {},
+    sources: [
+      { runId: key, measuredAt: "2026-11-18T00:00:00Z", suiteId: suite.probeHash, suiteRelation: "tree", partial },
+    ],
+  })
+  const full = candidate("wezterm/full", false)
+  const partial = candidate("wezterm/partial", true)
+  const runs = (picked: HistoricalContextCandidate): { runId: string; version: string; sourceRevision: string }[] => [
+    {
+      runId: picked.key,
+      version: "20240203-110809-5046fc22",
+      sourceRevision: picked.key === "wezterm/full" ? "a".repeat(40) : "b".repeat(40),
+    },
+  ]
+  const lineage = {
+    runs,
+    history: {
+      isAncestor: (ancestor: string, descendant: string) => ancestor === descendant || ancestor === "a".repeat(40),
+    },
+  }
+  expect(pickContextRun([partial, full], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
+  expect(pickContextRun([full, partial], lineage)).toMatchObject({ run: { key: "wezterm/full" } })
+  expect(pickContextRun([partial], lineage)).toMatchObject({
+    run: { key: "wezterm/partial" },
+    selection: "latest partial selection",
+  })
+})
+
+// #34868: every app run records a selection, so presence cannot mark a run as partial, and counts cannot
+// decide coverage either (@cto 34868-scope-membership): a 263-of-264 selection and a same-length wrong-id
+// selection are both a selection, not a reading of the suite. The run own declared suite cohort decides it.
+// @failure A partial run reads as the suite because it selected most ids, or a wrong-id selection of the
+// same length passes, or the guard leans on decision counts instead of suite membership.
+// @level l2 @consumer run-selection carriesPartial behind the page pick.
+it("decides suite coverage by set membership against the declared cohort, never by counts", () => {
+  const cohort = Array.from({ length: 264 }, (_, index) => `probe-${index}`)
+  const outside = Array.from({ length: 9 }, (_, index) => `outside-${index}`)
+  const covers = (ids: undefined | string[], declared: undefined | string[]) =>
+    selectionCoversCohort(ids === undefined ? undefined : { ids }, declared)
+
+  // Control: the full 264 plus 9 ids outside the suite is still a reading of the suite.
+  expect(covers([...cohort, ...outside], cohort)).toBe(true)
+  // 263 of 264 is a selection: the missing id cannot be hidden by extra ones.
+  expect(covers([...cohort.slice(1), ...outside], cohort)).toBe(false)
+  // Same length, one wrong id: counts match but membership does not.
+  expect(covers([...cohort.slice(1), "probe-wrong"], cohort)).toBe(false)
+  // The 04:31 draft: 9 ids of 264.
+  expect(covers(cohort.slice(0, 9), cohort)).toBe(false)
+  // No recorded selection or no declared cohort: no claim either way, and no fallback to another suite.
+  expect(covers(undefined, cohort)).toBeUndefined()
+  expect(covers(cohort, undefined)).toBeUndefined()
+
+  expect(measuresSelectionOnly({ selection: { ids: cohort }, selectionCoversSuite: true })).toBe(false)
+  expect(measuresSelectionOnly({ selection: { ids: cohort.slice(1) }, selectionCoversSuite: false })).toBe(true)
+  expect(measuresSelectionOnly({ selection: undefined, selectionCoversSuite: undefined })).toBe(false)
 })
 
 // Current selection reads the stored five statuses and frozen denominator
@@ -997,6 +1077,115 @@ it("a harness outcome keeps a decided cell of the same probe", () => {
   expect(cell?.result.status).toBe("supported")
 })
 
+// @failure A kept decided cell hides that a newer same-suite attempt refused, or keeps naming a refusal after a real
+//   replacement, or a refusal-only run is promoted to a contributing run (34675, @cto go-r2-1341 item 4).
+// @level l1
+// @consumer projectResults keptDecidedCell -> publicResults featureResults[id].refusedAttempt.
+it("a kept cell names its newest refused attempt publicly, and a real replacement clears it", () => {
+  const prior = supportedBaseline()
+  const featureId = ids[0]!
+  const attemptRun = (runId: string, at: string, row: Partial<ProbeResult>, extra: Record<string, unknown> = {}) => {
+    const results = todos()
+    const emittedAttempt = { scope: "probe" as const, startedAt: at }
+    results[0] = {
+      featureId,
+      status: "probe-todo",
+      attempt: emittedAttempt,
+      tests: [{ id: "criterion", status: "probe-todo", attempt: emittedAttempt, reason: "refused" }],
+      reason: "refused",
+      ...row,
+    } as ProbeResult
+    const next = raw(results)
+    return parse({
+      ...next,
+      runId,
+      measuredAt: at,
+      rawReplies: {
+        ...next.rawReplies,
+        "collector.selection": JSON.stringify({ ids: [featureId] }),
+        "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt: at, result: "completed" }),
+        ...(extra.rawReplies as Record<string, string> | undefined),
+      },
+      ...(extra.assertions ? { assertions: extra.assertions } : {}),
+    })
+  }
+  const capture = attemptRun("capture-run", "2026-10-21T07:00:00.000Z", { harnessOutcome: "capture-refused" })
+  const geometry = attemptRun("geometry-run", "2026-10-21T08:00:00.000Z", { harnessOutcome: "geometry-refused" })
+  const contraryAttempt = { scope: "probe" as const, startedAt: "2026-10-21T09:00:00.000Z" }
+  const contrary = attemptRun(
+    "contrary-run",
+    "2026-10-21T09:00:00.000Z",
+    {
+      status: "unsupported",
+      assertionType: "query_reply",
+      rawReplyRef: featureId,
+      reason: undefined,
+      tests: [
+        {
+          id: "criterion",
+          status: "unsupported",
+          attempt: contraryAttempt,
+          assertionRefs: [0],
+          rawReplyRef: featureId,
+        },
+      ],
+    },
+    {
+      rawReplies: { [featureId]: "NAK" },
+      assertions: [
+        {
+          featureId,
+          kind: "negative",
+          assertionType: "query_reply",
+          rawReplyRef: featureId,
+          expected: "ACK",
+          observed: "NAK",
+        },
+      ],
+    },
+  )
+  const select = (runs: ReturnType<typeof parse>[]) =>
+    projectResults(runs, ids, { currentProbeHash: suite.probeHash }, []).contexts["term:kitty"]!
+
+  const once = select([prior, capture])
+  expect(once.cells[featureId]).toMatchObject({
+    origin: { runId: prior.runId },
+    result: { status: "supported" },
+    refusedAttempt: {
+      runId: "capture-run",
+      resultId: featureId,
+      measuredAt: "2026-10-21T07:00:00.000Z",
+      harnessOutcome: "capture-refused",
+    },
+  })
+  // A refusal-only run records provenance; it is never promoted into the context's contributing runs.
+  expect(once.contributingRunIds).not.toContain("capture-run")
+  const projected = projectResults([prior, capture], ids, { currentProbeHash: suite.probeHash }, [])
+  const published = publicResults(projected, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
+  expect(published).toMatchObject({
+    status: "supported",
+    origin: { runId: prior.runId },
+    refusedAttempt: {
+      runId: "capture-run",
+      resultId: featureId,
+      measuredAt: "2026-10-21T07:00:00.000Z",
+      harnessOutcome: "capture-refused",
+    },
+  })
+
+  // A second refusal replaces the note; the cell itself is still the older decision.
+  expect(select([prior, capture, geometry]).cells[featureId]).toMatchObject({
+    origin: { runId: prior.runId },
+    refusedAttempt: { runId: "geometry-run", harnessOutcome: "geometry-refused" },
+  })
+
+  // A valid contrary result replaces the cell and drops the note.
+  const replaced = select([prior, capture, geometry, contrary]).cells[featureId]!
+  expect(replaced.origin.runId).toBe("contrary-run")
+  expect(replaced.result.status).toBe("unsupported")
+  expect(replaced.refusedAttempt).toBeUndefined()
+})
+
 // Fails without the selected-results.ts keep. The writer test is recordExecutedProbe's IncompleteReplay path.
 it("unfinished-calls keeps a decided cell of the same probe", () => {
   const prior = supportedBaseline()
@@ -1290,4 +1479,271 @@ it("the parser refuses an unknown harness outcome", () => {
       results: [{ ...feature!, harnessOutcome: "not-a-real-outcome" }],
     }),
   ).toThrow(/harness outcome/)
+})
+
+// @failure A same-version refusal under another suite hides the older decision entirely, or shows it as the current
+//   grade; repeated refusals lose or move it; a version change, a real result or a same-suite keep shows one; or the
+//   history reaches a status, total or rollup (34691, @cto history-reframe-scope-1754).
+// @level l1
+// @consumer projectResults priorDecisionOf -> publicResults featureResults[id].priorDecision -> aggregateCurrentResults.
+describe("a cross-suite refusal keeps the older decision only as dated history (34691)", () => {
+  const featureId = ids[0]!
+  const newer: ProbeSuiteManifest & { schemaVersion: 4 } = {
+    ...suite,
+    probeHash: "newer-suite",
+    sourceRevision: "2".repeat(40),
+  }
+  const suites = new Map([
+    [suite.probeHash, suite],
+    [newer.probeHash, newer],
+  ])
+  const row = (at: string, extra: Partial<ProbeResult>): ProbeResult => {
+    const emitted = { scope: "probe" as const, startedAt: at }
+    return {
+      featureId,
+      status: "probe-todo",
+      attempt: emitted,
+      tests: [{ id: "criterion", status: "probe-todo", attempt: emitted, reason: "refused" }],
+      reason: "refused",
+      ...extra,
+    } as ProbeResult
+  }
+  const attemptRun = (
+    runId: string,
+    at: string,
+    result: ProbeResult,
+    opts: { manifest?: typeof suite; version?: string; extra?: object } = {},
+  ) => {
+    const results = todos()
+    results[0] = result
+    const value = raw(results, opts.manifest ?? newer)
+    return parseRun(
+      "fixture.json",
+      JSON.stringify({
+        ...value,
+        runId,
+        measuredAt: at,
+        subject: { ...value.subject, version: opts.version ?? value.subject.version },
+        ...opts.extra,
+        rawReplies: {
+          ...value.rawReplies,
+          "collector.selection": JSON.stringify({ ids: [featureId] }),
+          "collector.collectionAttempt": JSON.stringify({ ids: [featureId], startedAt: at, result: "completed" }),
+          ...(opts.extra as { rawReplies?: Record<string, string> } | undefined)?.rawReplies,
+        },
+      }),
+      ids,
+      suites,
+    )
+  }
+  const refusal = (runId: string, at: string, opts: { manifest?: typeof suite; version?: string } = {}) =>
+    attemptRun(runId, at, row(at, { harnessOutcome: "capture-refused" }), opts)
+  const project = (runs: ReturnType<typeof parse>[], reopened: Parameters<typeof projectResults>[2]["reopened"] = []) =>
+    projectResults(runs, ids, { currentProbeHash: newer.probeHash, reopened }, [])
+  const cellOf = (runs: ReturnType<typeof parse>[]) => project(runs).contexts["term:kitty"]!.cells[featureId]!
+
+  it("keeps the newest refusal current and open, with the older decision as dated, suite-attributed history", () => {
+    const prior = supportedBaseline()
+    const first = refusal("refusal-run", "2026-10-21T07:00:00.000Z")
+    const projection = project([prior, first])
+    const cell = projection.contexts["term:kitty"]!.cells[featureId]!
+    // B1: the current cell is the refusal, its result and computed status the refusal's own; no older result underneath.
+    expect(cell.origin.runId).toBe("refusal-run")
+    expect(cell.result.status).toBe("probe-todo")
+    expect(cell.featureResult?.status).toBe("probe-todo")
+    expect(cell.refusedAttempt).toBeUndefined()
+    expect(cell.priorDecision).toEqual({
+      runId: prior.runId,
+      resultId: featureId,
+      status: "supported",
+      version: "0.46.2",
+      suiteId: prior.suiteId,
+      measuredAt: prior.measuredAt,
+    })
+    const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults
+    expect(published[featureId]).toMatchObject({
+      status: "probe-todo",
+      reason: "refused",
+      origin: { runId: "refusal-run" },
+      priorDecision: {
+        origin: { runId: prior.runId, resultId: featureId },
+        status: "supported",
+        version: "0.46.2",
+        suiteId: prior.suiteId,
+        measuredAt: prior.measuredAt,
+      },
+    })
+    // B5: history reaches no total; the rollup counts the cell open, and every other output equals the marker-free one.
+    const rows = Object.entries(published).map(([id, result]) => ({ featureId: id, status: result.status }))
+    const rollup = aggregateCurrentResults(rows, ids)
+    expect(rollup.idsByState.supported).not.toContain(featureId)
+    expect(rollup.supported).toBe(3)
+    const context = projection.contexts["term:kitty"]!
+    const { priorDecision: _dropped, ...bare } = context.cells[featureId]!
+    const stripped = {
+      ...projection,
+      contexts: {
+        ...projection.contexts,
+        "term:kitty": { ...context, cells: { ...context.cells, [featureId]: bare } },
+      },
+    }
+    const without = publicResults(stripped, new Map()).projection
+    const withMarker = publicResults(projection, new Map()).projection
+    const { priorDecision: _shown, ...shownBare } = withMarker.contexts["term:kitty"]!.featureResults[featureId]!
+    expect(shownBare).toEqual(without.contexts["term:kitty"]!.featureResults[featureId])
+    const shownContext = withMarker.contexts["term:kitty"]!
+    const bareContext = without.contexts["term:kitty"]!
+    expect({ ...shownContext, featureResults: {}, refusals: [] }).toEqual({
+      ...bareContext,
+      featureResults: {},
+      refusals: [],
+    })
+    // B4: the summary counts the refused cell once under its suite; the historical subset M stays apart from N.
+    const summary = { suiteId: first.suiteId, open: 1, reasons: [{ reason: "refused", cells: 1 }] }
+    expect(shownContext.refusals).toEqual([{ ...summary, withPriorDecision: 1 }])
+    expect(bareContext.refusals).toEqual([{ ...summary, withPriorDecision: 0 }])
+    expect(refusalSummarySentence(shownContext.refusals![0]!)).toBe(
+      `Suite ${first.suiteId}: 1 cell open because the harness refused the attempt (refused: 1). 1 of them had an earlier decision under another suite, shown on its row as not current.`,
+    )
+    expect(priorDecisionSentence(shownContext.featureResults[featureId]!.priorDecision!)).toBe(
+      `Not current: suite ${prior.suiteId} read Supported on ${prior.measuredAt.slice(0, 10)} for version 0.46.2. The newer suite has not measured it yet.`,
+    )
+    expect(withMarker.versions).toEqual(without.versions)
+  })
+
+  it("feeds no release row: the release build reads the same rows with or without the marker (B5)", () => {
+    const prior = supportedBaseline()
+    const projection = project([prior, refusal("refusal-run", "2026-10-21T07:00:00.000Z")])
+    const context = projection.contexts["term:kitty"]!
+    expect(context.cells[featureId]!.priorDecision).toBeDefined()
+    const { priorDecision: _dropped, ...bare } = context.cells[featureId]!
+    const stripped = {
+      ...projection,
+      contexts: {
+        ...projection.contexts,
+        "term:kitty": { ...context, cells: { ...context.cells, [featureId]: bare } },
+      },
+    }
+    const rows = (input: typeof projection) =>
+      buildFullProjectRows({
+        census: [{ context: "kitty/macos", terminalId: "kitty", os: "macos", kind: "term" }],
+        catalogIds: ids,
+        candidates: [
+          candidateFromSelected("term:kitty", input.contexts["term:kitty"]!, statesFor(input, "term:kitty"), input)!,
+        ],
+        requiredSuiteId: newer.probeHash,
+        projection: input,
+        standings: new Map([["term:kitty", "current" as const]]),
+      })
+    const released = rows(projection)
+    expect(released.contexts[0]!.collected).toBe(true)
+    expect(JSON.stringify(released)).not.toContain("priorDecision")
+    expect(released).toEqual(rows(stripped))
+    expect(statesFor(projection, "term:kitty")).toEqual(statesFor(stripped, "term:kitty"))
+  })
+
+  it("keeps one history across repeated refusals, under either suite", () => {
+    const prior = supportedBaseline()
+    const runs = [
+      prior,
+      refusal("refusal-run", "2026-10-21T07:00:00.000Z"),
+      refusal("again-run", "2026-10-21T08:00:00.000Z"),
+      refusal("third-run", "2026-10-21T09:00:00.000Z", { manifest: suite }),
+    ]
+    const cell = cellOf(runs)
+    expect(cell.origin.runId).toBe("third-run")
+    expect(cell.priorDecision).toMatchObject({ runId: prior.runId, status: "supported" })
+  })
+
+  it("records none for a version change, a real replacement or a same-suite keep", () => {
+    const prior = supportedBaseline()
+    // A version change: the row stays as it is today.
+    const upgraded = cellOf([prior, refusal("upgrade-run", "2026-10-21T07:00:00.000Z", { version: "9.9.9" })])
+    expect(upgraded.origin.runId).toBe("upgrade-run")
+    expect(upgraded.priorDecision).toBeUndefined()
+    // A real contrary result replaces the refusal and drops the history.
+    const at = "2026-10-21T09:00:00.000Z"
+    const contrary = attemptRun(
+      "contrary-run",
+      at,
+      row(at, {
+        status: "unsupported",
+        assertionType: "query_reply",
+        rawReplyRef: featureId,
+        reason: undefined,
+        tests: [
+          {
+            id: "criterion",
+            status: "unsupported",
+            attempt: { scope: "probe", startedAt: at },
+            assertionRefs: [0],
+            rawReplyRef: featureId,
+          },
+        ],
+      }),
+      {
+        extra: {
+          rawReplies: { [featureId]: "NAK" },
+          assertions: [
+            {
+              featureId,
+              kind: "negative",
+              assertionType: "query_reply",
+              rawReplyRef: featureId,
+              expected: "ACK",
+              observed: "NAK",
+            },
+          ],
+        },
+      },
+    )
+    const replaced = cellOf([prior, refusal("refusal-run", "2026-10-21T07:00:00.000Z"), contrary])
+    expect(replaced.origin.runId).toBe("contrary-run")
+    expect(replaced.result.status).toBe("unsupported")
+    expect(replaced.priorDecision).toBeUndefined()
+    // A same-suite refusal keeps the decided cell with its existing marker, never a history.
+    const kept = cellOf([prior, refusal("same-suite-run", "2026-10-21T07:00:00.000Z", { manifest: suite })])
+    expect(kept.origin.runId).toBe(prior.runId)
+    expect(kept.refusedAttempt).toMatchObject({ runId: "same-suite-run" })
+    expect(kept.priorDecision).toBeUndefined()
+  })
+
+  it("qualifies a history whose grade a reopened row withdrew, and never shows it as a valid decision", () => {
+    const prior = supportedBaseline()
+    const first = refusal("refusal-run", "2026-10-21T07:00:00.000Z")
+    const reopened = [
+      {
+        kind: "term" as const,
+        id: "kitty",
+        os: "macos",
+        featureId,
+        graded: "supported" as const,
+        reason: "The criterion was wrong; the grade waits for a re-measurement.",
+        reopenedOn: "2026-10-22",
+        ruling: "fixture",
+        evidence: "fixture",
+        exit: { kind: "remeasured" as const, suiteIds: [prior.suiteId] },
+        witnesses: [{ runId: prior.runId, assertionIndex: 0 }],
+      },
+    ] satisfies ReopenedCell[]
+    const projection = project([prior, first], reopened)
+    const cell = projection.contexts["term:kitty"]!.cells[featureId]!
+    expect(cell.featureResult?.status).toBe("probe-todo")
+    expect(cell.reopened).toBeUndefined()
+    expect(cell.priorDecision).toMatchObject({
+      status: "supported",
+      reopened: { reopenedOn: "2026-10-22", reason: "The criterion was wrong; the grade waits for a re-measurement." },
+    })
+    expect(
+      publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!.priorDecision,
+    ).toMatchObject({ reopened: { reopenedOn: "2026-10-22" } })
+    expect(
+      priorDecisionSentence(
+        publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
+          .priorDecision!,
+      ),
+    ).toMatch(
+      /^Not current, and that grade was withdrawn on 2026-10-22 \(The criterion was wrong; the grade waits for a re-measurement\.\): suite /,
+    )
+  })
 })

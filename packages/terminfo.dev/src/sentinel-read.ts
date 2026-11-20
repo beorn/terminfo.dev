@@ -1,16 +1,151 @@
 import {
   CALIBRATION_SOLID_PAINT,
+  sentinelCellsInFrame,
   originFromSentinel,
-  CELL_EDGE_TOLERANCE_PX,
+  SENTINEL_BOX_SLACK_PX,
   sentinelBlockRefusal,
-  witnessCellsFor,
+  sentinelFillClause,
+  frameBackground,
+  frameCellBlank,
+  originFollowsFromBoxA,
+  pairMeasuredNoRowHeight,
+  witnessProvesPitch,
+  type PixelCellCrop,
   type CalibrationSentinel,
   type CaptureCells,
+  type CapturePixelGeometry,
+  type DeclaredViewportHold,
 } from "@terminfo/probe-defs"
-import { locateChangedColour, type CapturedFrame, type OriginResolver } from "./capture-core.ts"
+import { locateChangedColour, type CapturedFrame, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
+import type { CalibratedPaintClass, CalibratedPaintClasses } from "./capture-calibration.ts"
+
+/**
+ * Project a selection-only copy of `frame` using the occupied background member set witnessed during
+ * this run's calibration (34480, @cto 8f743614): only pixels whose packed RGB is in `background.members`
+ * collapse to `background.anchor`. Any unobserved colour (including an unobserved RGB within R=1) or ink
+ * pixel stays untouched, and if an unobserved colour dominates the frame such that `frameBackground` does
+ * not equal `background.anchor`, the projection refuses by name rather than silently re-anchoring.
+ */
+function projectCalibratedBackground(
+  frame: CapturedFrame,
+  background: CalibratedPaintClass,
+  label?: string,
+): CapturedFrame {
+  const [ar, ag, ab] = background.anchor
+  const anchorPacked = (ar << 16) | (ag << 8) | ab
+  if (!background.members.has(anchorPacked)) {
+    throw new Error(
+      `${label ? `${label}: ` : ""}calibrated background anchor (${background.anchor.join(",")}) is absent from its own member set`,
+    )
+  }
+  const rgba = new Uint8Array(frame.rgba)
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    const packed = ((rgba[offset] ?? 0) << 16) | ((rgba[offset + 1] ?? 0) << 8) | (rgba[offset + 2] ?? 0)
+    if (background.members.has(packed)) {
+      rgba[offset] = ar
+      rgba[offset + 1] = ag
+      rgba[offset + 2] = ab
+    }
+  }
+  const inferred = frameBackground(rgba, frame.width, frame.height)
+  if (inferred !== anchorPacked) {
+    const inferredRgb: [number, number, number] = [(inferred >> 16) & 0xff, (inferred >> 8) & 0xff, inferred & 0xff]
+    throw new Error(
+      `${label ? `${label}: ` : ""}projected frame modal background (${inferredRgb.join(",")}) differs from calibrated background anchor (${background.anchor.join(",")}); refusing to select or verify blank sentinel cells against an unobserved dominant colour`,
+    )
+  }
+  return { width: frame.width, height: frame.height, rgba }
+}
 
 /** A frame this read cannot anchor yet: the paint may still be one capture behind (33000). Never fatal. */
 class SentinelNotOnFrame extends Error {}
+
+/**
+ * A read that cannot prove where its crop goes. Never a fallback (34163, @cto 2b): a declared hold
+ * whose frames carry no measured displacement, an ambiguous displacement, or one that differs from
+ * the declaration has no origin this code may use, so it names the two frames it could not relate.
+ */
+export class CaptureHoldUnresolved extends Error {
+  override name = "CaptureHoldUnresolved"
+}
+
+/**
+ * 33982 condition 3: the noise bound on changed pixels outside the located boxes. Zero is the STRICT
+ * limit, not a cut placed in a distribution: a moved frame is accepted only when not one pixel outside
+ * the painted pair changed, so the value can only refuse too much, never accept too much, and needs no
+ * distribution to be safe (@cto, d1a8cb1c). The six measured Warp rows — all 0 changedOutside on a
+ * 0,560 px move — are what says the path is not dead code at zero.
+ *
+ * Raising it ABOVE zero requires a field-backed counted run, brought to @cto with the numbers; an
+ * invented tolerance was refused outright (route 3). Nothing else in the read changes with the value.
+ */
+export const ROW_MOVE_NOISE_BOUND_PX: number | undefined = 0
+
+/**
+ * Whether the two cells the read painted were CLEAR in its own pre-paint frame, at the pose the pair
+ * actually landed at (33982 condition 2, @cto).
+ *
+ * The refusal exists because the paint may have landed on ink this read never saw. The pose that
+ * matters is therefore the LANDING pose — the derived origin — not the pose the cells were chosen at:
+ * `choose(before)` already established those cells were blank at `reading`, so asking again there can
+ * only ever say yes and would prove nothing. What is genuinely unknown is whether the frame this read
+ * painted over already carried ink where the pair now sits. The test is the capture path's own `blank`
+ * predicate, shared rather than restated: whether the cell is background with no ink beside it.
+ */
+export function pairClearBeforePaint(input: {
+  before: CapturedFrame
+  reading: { x: number; y: number }
+  cell: { width: number; height: number }
+  columns: number
+  cells: ReadonlyArray<{ row: number; col: number }>
+  backgroundClass?: CalibratedPaintClass
+}): boolean {
+  const { reading, cell, columns, cells, backgroundClass } = input
+  if (!Number.isSafeInteger(columns) || columns <= 0) return false
+  const before = backgroundClass ? projectCalibratedBackground(input.before, backgroundClass) : input.before
+  const background = frameBackground(before.rgba, before.width, before.height)
+  return cells.every((cellAt) =>
+    frameCellBlank({
+      rgba: before.rgba,
+      width: before.width,
+      height: before.height,
+      reading,
+      cell,
+      background,
+      columns,
+      row: cellAt.row,
+      col: cellAt.col,
+    }),
+  )
+}
+
+/**
+ * A read whose frame moved after its cells were chosen. Named, so the capture boundary can record it
+ * as an ungraded result instead of ending the run (@cto, 33981): one moved frame is a frame this read
+ * could not vouch for, never a verdict about the terminal. Never retried — a retry repaints cells that
+ * the first paint may already have covered.
+ */
+export class SentinelFrameMoved extends Error {
+  override name = "SentinelFrameMoved"
+  /**
+   * Pixels that changed outside the located pair between this read's own pre-paint frame and the
+   * frame it located. Carried on the refusal because the throw happens before any frame record is
+   * written, so without it the evidence a moved read produced is discarded with the read (33982).
+   */
+  readonly changedOutside: number
+  /**
+   * The whole-row displacement that would align the pre-paint frame, present only when the pair
+   * landed an exact number of rows off with no horizontal component. Absent means no such shift was
+   * observed — never zero rows (33982, @cto).
+   */
+  readonly rowShift: { rows: number; px: number } | undefined
+
+  constructor(message: string, evidence: { changedOutside: number; rowShift?: { rows: number; px: number } }) {
+    super(message)
+    this.changedOutside = evidence.changedOutside
+    this.rowShift = evidence.rowShift
+  }
+}
 
 /**
  * The one pixel read that anchors its crop on the sentinel it paints (33000), located by FRAME
@@ -48,8 +183,9 @@ class SentinelNotOnFrame extends Error {}
  * Deliberately NOT calibration's two-frame confirmation: calibration pays a capture-until-stable loop
  * because it is measuring geometry once, while this runs for every pixel row.
  *
- * Three residuals, none reachable today by a pixel-row probe, stated rather than implied:
- * - `ESC 7` is one save slot: a probe holding its own DECSC across a read loses that saved state.
+ * Residuals stated rather than implied:
+ * - `ESC 7` is one save slot: an owner holding DECSC across reads supplies restoreAfterPaint,
+ *   so the observer never overwrites it (the saved-rendition reset recipe, 34276).
  * - Under DECOM the margins move the CUP origin, so the paint lands off the cells and the derived
  *   origin is shifted by the margin: a wrong crop, not a refusal.
  * - The restore writes a default-colour blank, so whatever the witness cells held (probe text, or a
@@ -59,6 +195,8 @@ class SentinelNotOnFrame extends Error {}
 export async function readThroughSentinel<T>(input: {
   /** Where this read paints, and the grid its sentinel cells must fit in. */
   source: { write(text: string): void; rows: number; cols: number }
+  /** Fixture-owned nonempty bytes after every paint/clear; the observer uses no save slot with them. */
+  restoreAfterPaint?: string
   /**
    * One frame of the same window through the same capture route, taken before this read paints and
    * after the previous read's restore has been written.
@@ -72,17 +210,89 @@ export async function readThroughSentinel<T>(input: {
   regions: readonly CaptureCells[]
   /** Cells the probe's own output may cover (an inline image); the pair is never painted there (33985). */
   avoid?: CaptureCells
+  /**
+   * Where cell 1,1 sits in the frames this read compares, in pixels — the witnessed text origin the
+   * capture adapter measures against, never a window width divided by a column count. This is also
+   * the origin the witness cells are CHOSEN against (33981): the frame that decides which cells are
+   * blank is the frame this run actually shows, so a window that moved since calibration still gets
+   * a pair painted on cells that are background where it now is.
+   */
+  reading: { x: number; y: number }
+  /** The cell this run was calibrated to, which the chosen cells must be measured in. */
+  cell: { width: number; height: number }
+  /**
+   * 33982 condition 3: how many changed pixels outside the located boxes a whole-row move may still
+   * be accepted with. Supplied by whatever MEASURED it; absent means the measurement has not happened
+   * yet and every moved frame refuses exactly as it did before this path existed.
+   */
+  noiseBound?: number
+  /**
+   * The settled calibrated origin this route measured before the read, when the route has one
+   * (34163). With it the pair is a WITNESS of where the paint landed, never a second origin source:
+   * one origin per read, and the settled one wins.
+   */
+  settled?: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry; paintClasses?: CalibratedPaintClasses }
+  /**
+   * The viewport hold this read is taken under, as the probe that created it declared it (34163). A
+   * hold renders the pair N rows off the settled grid, and every declared hold ends as a named
+   * CaptureHoldUnresolved with no origin claimed: two frames carry net displacement only, and the
+   * caller declares notches rather than rows.
+   */
+  scroll?: DeclaredViewportHold
   /** Absolute deadline for re-capturing a frame that does not show the paint yet. */
   deadline: number
 }): Promise<T> {
-  const { a, b } = witnessCellsFor(
-    input.regions,
-    { rows: input.source.rows, cols: input.source.cols },
-    input.avoid ? [input.avoid] : [],
-  )
-  const atA = `\x1b[${a.row};${a.col}H`
-  const atB = `\x1b[${b.row};${b.col}H`
-  const where = `cells ${a.row},${a.col} and ${b.row},${b.col}`
+  const restoreAfterPaint = input.restoreAfterPaint
+  if (restoreAfterPaint === "") throw new Error(`${input.label}: restoreAfterPaint must be nonempty`)
+  if (input.settled !== undefined && input.settled.paintClasses === undefined) {
+    throw new Error(
+      `${input.label}: settled origin at ${input.settled.origin.x},${input.settled.origin.y} carries no calibrated paintClasses; refusing to select blank sentinel cells without calibrated background and sentinel classes (34480)`,
+    )
+  }
+  const grid = { rows: input.source.rows, cols: input.source.cols }
+  const paintClasses = input.settled?.paintClasses
+  /**
+   * The two cells to paint, chosen from the frame taken just before this attempt's paint: only cells
+   * that were already background, so the blank this read writes back restores them and the probe's
+   * own drawing is never covered (@dev/15's 19-row diagnosis, 33981).
+   */
+  const choose = (frame: CapturedFrame) => {
+    try {
+      return sentinelCellsInFrame({
+        rgba: frame.rgba,
+        width: frame.width,
+        height: frame.height,
+        reading: input.reading,
+        cell: input.cell,
+        grid,
+        regions: input.regions,
+        ...(input.avoid ? { avoid: [input.avoid] } : {}),
+      })
+    } catch (error) {
+      if (
+        paintClasses === undefined &&
+        error instanceof Error &&
+        error.message.includes("because every cell carries ink")
+      ) {
+        throw new Error(
+          `${input.label}: ${error.message}; no calibrated paintClasses were supplied to readThroughSentinel, so a dithered background is indistinguishable from ink (34480)`,
+          { cause: error },
+        )
+      }
+      throw error
+    }
+  }
+  let chosen: ReturnType<typeof choose> | undefined
+  const pair = () => {
+    if (chosen === undefined) {
+      throw new Error(`${input.label}: the sentinel cells were chosen after the capture that needed them`)
+    }
+    return chosen
+  }
+  const where = () => {
+    const { a, b } = pair()
+    return `cells ${a.row},${a.col} and ${b.row},${b.col}`
+  }
   const named = (
     regions: readonly { box: { x: number; y: number; width: number; height: number }; pixels: number }[],
   ) => {
@@ -96,18 +306,35 @@ export async function readThroughSentinel<T>(input: {
     return regions.length > 8 ? `${spelled}; and ${regions.length - 8} more` : spelled
   }
   let before = await input.prePaint()
+  // One projected copy per pre-paint capture, reused by selection (`choose`) and landing-pose (`pairClearBeforePaint`).
+  let beforeProjected = paintClasses
+    ? projectCalibratedBackground(before, paintClasses.background, input.label)
+    : before
+  chosen = choose(beforeProjected)
   const resolve: OriginResolver = ({ frame, pixelGeometry }) => {
-    const { regions, ignoredPixels } = locateChangedColour(before, frame, input.sentinel.rgb)
+    // A declared hold ends the read here, before the pair is asked anything and whatever `settled` is
+    // (@cto, 33981). Every declared hold is CaptureHoldUnresolved: both frames carry the NET
+    // displacement of the text area, so a hold of N rows with an opposite move of M rows is
+    // indistinguishable from one that moved N - M. Asking the pair first let a hold that declared
+    // scroll WITHOUT a settled origin fall through to an unguarded origin — the hole this closes.
+    if (input.scroll !== undefined) throw declaredHoldRefusal(input.label, input.scroll)
+    const { a, b } = pair()
+    const { regions, ignoredPixels } = locateChangedColour(
+      before,
+      frame,
+      input.sentinel.rgb,
+      paintClasses?.sentinel.members,
+    )
     const noise = ignoredPixels === 0 ? "" : ` (${ignoredPixels} other changed px carry no sentinel colour)`
     if (regions.length === 0) {
       throw new SentinelNotOnFrame(
-        `${input.label}: no cell changed to the sentinel colour at ${where} between the frames this read compared${noise}, so its crop cannot be anchored`,
+        `${input.label}: no cell changed to the sentinel colour at ${where()} between the frames this read compared${noise}, so its crop cannot be anchored`,
       )
     }
     const size = { width: pixelGeometry.cellWidth, height: pixelGeometry.cellHeight }
     const wrong = (reason: string) =>
       new SentinelNotOnFrame(
-        `${input.label}: the changed sentinel at ${where} is not one painted pair: ${reason}${noise}`,
+        `${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}${noise}`,
       )
     if (regions.length !== 2) {
       throw wrong(
@@ -126,7 +353,7 @@ export async function readThroughSentinel<T>(input: {
     // axis and move its origin by the same, so "the same size" and "the offset the cells imply" are
     // both read with that tolerance — never with the box size in place of the cell PITCH, which a
     // blended edge would break on every read (@dev/10 peer read).
-    const slack = 2 * CELL_EDGE_TOLERANCE_PX
+    const slack = SENTINEL_BOX_SLACK_PX
     if (
       Math.abs(first.box.width - second.box.width) > slack ||
       Math.abs(first.box.height - second.box.height) > slack
@@ -137,29 +364,120 @@ export async function readThroughSentinel<T>(input: {
     }
     const offset = { x: second.box.x - first.box.x, y: second.box.y - first.box.y }
     const gap = { x: b.col - a.col, y: b.row - a.row }
-    const impliedPitch = { x: Math.abs(offset.x) / Math.abs(gap.x), y: Math.abs(offset.y) / Math.abs(gap.y) }
-    const basis = `sentinel re-located by frame difference at ${where} (33000, 33981)`
-    const direction =
-      Math.sign(offset.x) * Math.sign(gap.x) === Math.sign(offset.y) * Math.sign(gap.y)
-        ? Math.sign(offset.x) * Math.sign(gap.x)
+    // 34040: a tier-2 pair sits on ONE row, so its row gap is zero and no row pitch can be divided
+    // out of it. It still anchors — on the column pitch and on the two boxes sharing a row within
+    // the blend slack — and says so, so no reader takes it for a pair that measured both pitches.
+    // The vertical move is refused elsewhere (`gridMoveExemption`), never granted from this pair.
+    const oneAxis = gap.y === 0
+    const impliedPitch = {
+      x: Math.abs(offset.x) / Math.abs(gap.x),
+      y: oneAxis ? 0 : Math.abs(offset.y) / Math.abs(gap.y),
+    }
+    const basis = `sentinel re-located by frame difference at ${where()} (33000, 33981)`
+    const basisKind = "sentinel pair located by frame difference"
+    const columnDirection = Math.sign(offset.x) * Math.sign(gap.x)
+    const direction = oneAxis
+      ? columnDirection
+      : columnDirection === Math.sign(offset.y) * Math.sign(gap.y)
+        ? columnDirection
         : 0
-    if (
-      direction !== 0 &&
-      Math.abs(impliedPitch.x - size.width) <= slack &&
-      Math.abs(impliedPitch.y - size.height) <= slack
-    ) {
+    // "One row" is not a free pass on the row: the two boxes' vertical origins may differ by the
+    // blend slack at most, and by less than half a cell — a whole-cell row apart is not one row.
+    const rowsAgree = oneAxis
+      ? Math.abs(offset.y) <= slack && Math.abs(offset.y) < size.height / 2
+      : Math.abs(impliedPitch.y - size.height) <= slack
+    if (direction !== 0 && Math.abs(impliedPitch.x - size.width) <= slack && rowsAgree) {
       const aBox = direction > 0 ? first : second
-      return { origin: originFromSentinel(aBox, a, size), basis: `${basis}${noise}` }
+      const bBox = direction > 0 ? second : first
+      // 34015: a box the size of the cell that is one or two pixels short is ACCEPTED, and says so
+      // here — the basis travels on the frame, so a reader can count how many reads leaned on the
+      // slack instead of inferring it from a silence.
+      const derived = originFromSentinel(aBox, a, size)
+      const witness = {
+        a: { cell: { row: a.row, col: a.col }, box: { x: aBox.box.x, y: aBox.box.y } },
+        b: { cell: { row: b.row, col: b.col }, box: { x: bBox.box.x, y: bBox.box.y } },
+      }
+      const basisText = `${basis}${oneAxis ? " (one-axis pair: both cells on one row, so it measures the column pitch only)" : ""}${noise}${sentinelFillClause([aBox, bBox])}`
+      // 33981 x 34163, @cto's condition on the composition: the cells were chosen against a frame at
+      // `input.reading`, so a frame that moved since then put those cells somewhere else, and this
+      // read cannot show they were blank in the frame it painted — the paint may have landed on ink
+      // it never saw. A re-anchor computed from such a pair would carry the 33981 defect in through
+      // the other door, and RE-CHOOSING cannot rescue it either: the origin it would have to re-choose
+      // against is only knowable from the pair it just mistrusts, and a raw pre-paint capture cannot
+      // map cells before a named origin at all (linux-capture's captureRaw says so outright). So the
+      // read refuses by name instead of anchoring on a crop it cannot vouch for. SentinelFrameMoved is
+      // not a SentinelNotOnFrame: nothing retries it, because a retry repaints cells the first paint may
+      // already have covered, and the boundary records it as ungraded rather than failing the run.
+      //
+      // A read that DECLARED a hold never reaches this point (it refused above), so there is no
+      // exception here any more: every remaining read is judged, and a moved one refuses by name.
+      if (Math.abs(derived.x - input.reading.x) > slack || Math.abs(derived.y - input.reading.y) > slack) {
+        return acceptOrRefuseMovedSentinelOrigin({
+          label: input.label,
+          reading: input.reading,
+          derived,
+          size,
+          pixelGeometry,
+          frame,
+          beforeProjected,
+          a,
+          b,
+          where: where(),
+          witness,
+          basisText,
+          basisKind,
+          ignoredPixels,
+          noiseBound: input.noiseBound,
+        })
+      }
+      if (input.settled !== undefined) {
+        return onSettledOrigin({
+          label: input.label,
+          settled: input.settled,
+          derived,
+          witness,
+          basis: basisText,
+          changedOutside: ignoredPixels,
+          refuse: wrong,
+        })
+      }
+      return {
+        origin: derived,
+        basis: basisText,
+        basisKind,
+        // The origin came from `aBox` alone; the pair travels so a later comparison can prove the
+        // pitch on its own rather than restating the one box it already reduced to an origin (33982).
+        witness,
+        // The pre-paint difference, counted so a refusal can say how much changed outside the chosen
+        // pair. It does not separate a hold from a text-area move, and is never read as one (34163).
+        changedOutside: ignoredPixels,
+      }
     }
     throw wrong(
-      `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`,
+      !oneAxis
+        ? `their offset is ${offset.x},${offset.y}, which is a pitch of ${impliedPitch.x.toFixed(2)}x${impliedPitch.y.toFixed(2)} across the ${gap.x} columns and ${gap.y} rows between the painted cells, not the ${size.width}x${size.height} cell`
+        : !rowsAgree
+          ? `their offset is ${offset.x},${offset.y}: this pair is on one row, so it can only measure the column pitch, and these two boxes do not share a row — they sit ${Math.abs(offset.y)} px apart vertically, more than the ${slack} px blend slack or half the ${size.height} px cell`
+          : `their offset is ${offset.x},${offset.y} across the ${gap.x} columns of one shared row, which is a column pitch of ${impliedPitch.x.toFixed(2)} px, not the ${size.width} px cell`,
     )
   }
   const paint = CALIBRATION_SOLID_PAINT[input.sentinel.form]
-  const paintCells = () => input.source.write(`\x1b7${atA}\x1b[0m${paint} ${atB}${paint} \x1b[0m\x1b8`)
-  const clearCells = () => input.source.write(`\x1b7${atA}\x1b[0m ${atB} \x1b[0m\x1b8`)
-  paintCells()
+  const atA = () => {
+    const { a } = pair()
+    return `\x1b[${a.row};${a.col}H`
+  }
+  const atB = () => {
+    const { b } = pair()
+    return `\x1b[${b.row};${b.col}H`
+  }
+  const save = restoreAfterPaint === undefined ? "\x1b7" : ""
+  const restore = restoreAfterPaint ?? "\x1b8"
+  const paintCells = () => input.source.write(`${save}${atA()}\x1b[0m${paint} ${atB()}${paint} \x1b[0m${restore}`)
+  const clearCells = () => input.source.write(`${save}${atA()}\x1b[0m ${atB()} \x1b[0m${restore}`)
+  let failed = false
+  let failure: unknown
   try {
+    paintCells()
     for (;;) {
       try {
         return await input.capture(resolve)
@@ -172,10 +490,163 @@ export async function readThroughSentinel<T>(input: {
         // truly a frame BEFORE the paint, then repaint and capture again.
         clearCells()
         before = await input.prePaint()
+        beforeProjected = paintClasses
+          ? projectCalibratedBackground(before, paintClasses.background, input.label)
+          : before
+        chosen = choose(beforeProjected)
         paintCells()
       }
     }
+  } catch (error) {
+    failed = true
+    failure = error
+    throw error
   } finally {
-    clearCells()
+    try {
+      clearCells()
+    } catch (cleanup) {
+      if (failed) {
+        throw new AggregateError([failure, cleanup], `${input.label}: capture and cleanup failed`, { cause: failure })
+      }
+      throw cleanup
+    }
+  }
+}
+
+/**
+ * The one sentence a declared hold refuses with, whichever read asks: ungraded, no origin claimed.
+ */
+function declaredHoldRefusal(label: string, scroll: DeclaredViewportHold): CaptureHoldUnresolved {
+  return new CaptureHoldUnresolved(
+    `${label}: this read declared a viewport hold of ${scroll.notches} notch(es); a declared hold is not read until the rows it moves are established independently, so no origin is claimed (34163)`,
+  )
+}
+
+/**
+ * One origin per read (34163, @cto 2026-11-13): when the route already settled a calibrated origin,
+ * the pair proves the paint landed and says where. It never yields the crop origin.
+ *
+ * A pair still on the settled grid is an ordinary read. Any further move is refused BEFORE this
+ * function, by the read's own guard, and never becomes an origin here: the cells were chosen against
+ * a frame at `reading`, so a moved frame may have put them on ink this read never saw (33981), and a
+ * crop computed from that pair is one nobody can vouch for. Warp's command header is the case 34163
+ * first re-anchored; it refuses by name instead of cropping from a grid the terminal left.
+ *
+ * A declared viewport hold never reaches here: it refuses before this function is asked anything.
+ * Both frames carry the NET displacement of
+ * the text area, so a hold of N rows with an opposite move of M rows looks exactly like one that
+ * moved N - M, and the caller declares notches rather than rows: every declared hold throws
+ * CaptureHoldUnresolved, ungraded, and the probe records a named todo. Measuring the row a notch
+ * moves needs a non-pixel read (@i/terminfo/34222-wheel-notch-row-unit).
+ */
+function acceptOrRefuseMovedSentinelOrigin(input: {
+  label: string
+  reading: { x: number; y: number }
+  derived: { x: number; y: number }
+  size: { width: number; height: number }
+  pixelGeometry: CapturePixelGeometry
+  frame: CapturedFrame
+  beforeProjected: CapturedFrame
+  a: { row: number; col: number }
+  b: { row: number; col: number }
+  where: string
+  witness: NonNullable<NamedTextOrigin["witness"]>
+  basisText: string
+  basisKind: string
+  ignoredPixels: number
+  noiseBound?: number
+}): NamedTextOrigin {
+  const {
+    label,
+    reading,
+    derived,
+    size,
+    pixelGeometry,
+    frame,
+    beforeProjected,
+    a,
+    b,
+    where,
+    witness,
+    basisText,
+    basisKind,
+    ignoredPixels,
+    noiseBound,
+  } = input
+  const dx = derived.x - reading.x
+  const dy = derived.y - reading.y
+  const rowShift =
+    dx === 0 && dy !== 0 && size.height > 0 && dy % size.height === 0 ? { rows: dy / size.height, px: dy } : undefined
+  const bound = noiseBound ?? ROW_MOVE_NOISE_BOUND_PX
+  const withinBound = bound !== undefined && ignoredPixels <= bound
+  if (rowShift !== undefined && withinBound) {
+    const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
+    const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
+    const cropCandidate: PixelCellCrop = {
+      origin: derived,
+      basis: basisText,
+      cell: size,
+      ...(Number.isSafeInteger(columns) && Number.isSafeInteger(rows) && columns > 0 && rows > 0
+        ? { grid: { columns, rows } }
+        : {}),
+      image: { width: frame.width, height: frame.height },
+      witness,
+    }
+    const pairMeasuredRowHeight = !pairMeasuredNoRowHeight(cropCandidate)
+    const geometryProves =
+      pairMeasuredRowHeight && witnessProvesPitch(cropCandidate, cropCandidate) && originFollowsFromBoxA(cropCandidate)
+    const clearBeforePaint = pairClearBeforePaint({
+      before: beforeProjected,
+      reading: derived,
+      cell: size,
+      columns,
+      cells: [a, b],
+    })
+    if (geometryProves && clearBeforePaint && withinBound) {
+      return {
+        origin: derived,
+        basis: basisText,
+        basisKind,
+        witness,
+        changedOutside: ignoredPixels,
+        acceptedRowMove: { rows: rowShift.rows, px: rowShift.px },
+        basisDetail: `the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
+      }
+    }
+  }
+  throw new SentinelFrameMoved(
+    `${label}: the frame moved after ${where} were chosen at ${reading.x},${reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
+    {
+      changedOutside: ignoredPixels,
+      ...(rowShift !== undefined ? { rowShift } : {}),
+    },
+  )
+}
+
+function onSettledOrigin(input: {
+  label: string
+  settled: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
+  derived: { x: number; y: number }
+  witness: NonNullable<NamedTextOrigin["witness"]>
+  basis: string
+  changedOutside: number
+  refuse: (reason: string) => Error
+}): NamedTextOrigin {
+  const { settled, derived } = input
+  // The pair landed on the origin its cells were chosen at — the guard in the resolver has already
+  // refused every other displacement — so this is the ordinary case and not a re-anchor.
+  const slack = SENTINEL_BOX_SLACK_PX
+  if (Math.abs(derived.x - settled.origin.x) > slack || Math.abs(derived.y - settled.origin.y) > slack) {
+    throw input.refuse(
+      `the pair landed ${derived.x - settled.origin.x},${derived.y - settled.origin.y} px off the settled origin at ${settled.origin.x},${settled.origin.y}, which the guard in this read should already have refused`,
+    )
+  }
+  return {
+    ...settled,
+    origin: settled.origin,
+    basis: `${input.basis}; the pair landed on the settled calibrated origin, which is where this read crops (34163)`,
+    basisKind: settled.basisKind,
+    witness: input.witness,
+    changedOutside: input.changedOutside,
   }
 }

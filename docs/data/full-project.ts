@@ -9,7 +9,7 @@
  * a corpus.
  */
 import { publicDerivedReason } from "./derived-cells.ts"
-import type { ContextCandidate } from "./run-selection.ts"
+import type { ContextCandidate, SetupStanding } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import { originalRunFor, type SelectedContextCell, type SelectedProjection } from "./selected-results.ts"
@@ -41,6 +41,11 @@ export interface CollectedRow {
   os: string
   kind: ContextKind
   collected: true
+  /**
+   * The context's standing among its own app's setups: the group's newest setup, or one strictly behind it. Explicit on
+   * every collected context, so no reader can read an absence as current (@cto 026fd6fd rule 2).
+   */
+  standing: SetupStanding
   selection: {
     contextKey: string
     method: string
@@ -76,7 +81,12 @@ export interface FullProjectRows {
   collected: number
   notCollected: number
   complete: boolean
+  /** Explicit feature positions over CURRENT setups: what the preview counts. */
   recordedPositions: number
+  /** Explicit feature positions over older setups, published beside the total so the exclusion is never silent. */
+  olderPositions: number
+  /** Setup groups the version-and-ancestry rule could not order, named; nothing in them was made older. */
+  undecidableSetups: readonly string[]
 }
 
 /**
@@ -104,19 +114,32 @@ export function buildFullProjectRows(args: {
   candidates: readonly ContextCandidate[]
   requiredSuiteId: string
   projection?: Pick<SelectedProjection, "history">
+  /** Every context key the classifier settled, with an explicit standing (`classifyProjectionSetups`). */
+  standings: ReadonlyMap<string, SetupStanding>
+  /** The groups that classifier could not order, carried so the output names them. */
+  undecidableSetups?: readonly string[]
 }): FullProjectRows {
   if (!args.requiredSuiteId) throw new Error("the full-scope reader needs the suite it scores against")
   const rows = args.census.map((context): FullContextRow => buildRow(context, args))
+  const collected = rows.filter((row) => row.collected)
   return {
     requiredSuiteId: args.requiredSuiteId,
     catalogRows: args.catalogIds.length,
     gradedRows: scoredFeatureIds(args.catalogIds).length,
     environmentGroups: environmentGroupIds(args.catalogIds).length,
     contexts: rows,
-    collected: rows.filter((row) => row.collected).length,
+    collected: collected.length,
     notCollected: rows.filter((row) => !row.collected).length,
     complete: rows.length > 0 && rows.every((row) => row.collected && row.result.complete),
-    recordedPositions: rows.reduce((sum, row) => sum + (row.collected ? row.result.catalogRows : 0), 0),
+    recordedPositions: collected.reduce(
+      (sum, row) => sum + (row.standing === "current" ? row.result.catalogRows : 0),
+      0,
+    ),
+    olderPositions: collected.reduce(
+      (sum, row) => sum + (row.standing === "older setup" ? row.result.catalogRows : 0),
+      0,
+    ),
+    undecidableSetups: args.undecidableSetups ?? [],
   }
 }
 
@@ -127,6 +150,7 @@ function buildRow(
     candidates: readonly ContextCandidate[]
     requiredSuiteId: string
     projection?: Pick<SelectedProjection, "history">
+    standings: ReadonlyMap<string, SetupStanding>
   },
 ): FullContextRow {
   const base = { context: context.context, terminalId: context.terminalId, os: context.os, kind: context.kind }
@@ -219,9 +243,16 @@ function buildRow(
   })
   const held = new Set(heldIds)
   const states = new Map(observations.map((observation) => [observation.id, observation.state]))
+  const standing = args.standings.get(picked.run.key)
+  if (standing === undefined) {
+    throw new Error(
+      `Context ${picked.run.key} has no setup standing; the classifier must settle every collected context`,
+    )
+  }
   return {
     ...base,
     collected: true,
+    standing,
     selection: {
       contextKey: picked.run.key,
       method: picked.selection,

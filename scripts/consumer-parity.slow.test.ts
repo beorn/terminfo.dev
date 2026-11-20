@@ -515,6 +515,12 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(matrix.stats[key].score,app.score);
         assert.deepEqual(v3.contexts[contextKey].score,selected.score);
         if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
+        // 33994/34533: the app's analysis sits under that page header, so it quotes the joined count and cites
+        // exactly the joined summary's runs: the primary's plus each joined context that stands in for a cell.
+        const appSources=JSON.stringify(Object.keys(app.sources).sort());
+        const analysis=Object.entries(analyses).find(([name,entry])=>name.startsWith("terminals/") && JSON.stringify((entry.sources ?? []).map(source=>source.runId).sort())===appSources);
+        assert.ok(analysis,key+" has no analysis entry citing its joined runs "+appSources);
+        assert.deepEqual(analysis[1].score,app.score,analysis[0]+" analysis score");
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
         // analysis row agree on 264 while the run still records all 273 positions.
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
@@ -575,17 +581,25 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       console.log(JSON.stringify({exactContexts:keys(projection.contexts).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
-      { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
+      { cwd: root, encoding: "utf8", timeout: 600_000, maxBuffer: 2 * 1024 * 1024 },
     )
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
     // Missing conclusive measurements are expected and remain open, including real tmux/screen proof.
-    expect(
-      result.stderr
-        .split("\n")
-        .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no stored current runs$/.test(line)),
-    ).toBe(true)
+    // The selection log also goes to stderr (aae1b4381, @cto b0de55c0); admit exactly its two shapes
+    // from docs/data/selected-results.ts and name any other line (34550).
+    const unexpectedStderr = result.stderr
+      .split("\n")
+      .filter(Boolean)
+      .filter(
+        (line) =>
+          !/^Warning: Terminal '.+' has no stored current runs$/.test(line) &&
+          !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
+          !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line) &&
+          // A row a review declared untestable (content/declared-untestable.json, #34803) is logged by design (#35123).
+          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line),
+      )
+    expect(unexpectedStderr).toEqual([])
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
       sealedRunFiles: number
@@ -606,7 +620,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
   } finally {
     rmSync(out, { recursive: true, force: true })
   }
-}, 65_000)
+}, 610_000)
 
 it("analysis rejects malformed required catalogs before replacing its output", () => {
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))

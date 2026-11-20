@@ -109,7 +109,7 @@ export function candidateFromSelected(
           measuredAt: original.measuredAt,
           suiteId: original.suiteId,
           suiteRelation: original.suiteRelation,
-          partial: original.selection !== undefined,
+          partial: measuresSelectionOnly(original),
         }
       }),
       context: selected,
@@ -134,6 +134,21 @@ export function candidateFromSelected(
     ...("results" in selected ? { results: selected.results } : { cells: selected.cells }),
     states,
   }
+}
+
+/**
+ * Did this run measure a selection rather than the suite (#34868)? Presence of a selection cannot decide it,
+ * because every app run records one: a suite-complete wezterm macOS run selects all 264 ids its suite declares
+ * and leaves only the 9 ids outside that suite unselected, while the 04:31 draft selected 9. Completeness is
+ * set membership against the run own declared suite cohort (selectionCoversCohort in selected-results.ts), so
+ * 263 of 264 and a same-length wrong-id selection are both a selection, not a reading of the suite (@cto
+ * 34868-scope-membership ruling).
+ */
+export function measuresSelectionOnly(run: {
+  selection?: { ids: readonly string[] }
+  selectionCoversSuite?: boolean
+}): boolean {
+  return run.selection !== undefined && run.selectionCoversSuite === false
 }
 
 /** How the summary context was chosen, printed beside the row. */
@@ -222,11 +237,13 @@ function descendantOfAll(revisions: readonly string[], history: ContextLineage["
 }
 
 /**
- * A candidate holding a run that measured only a selection is a real reading of its ids and never a reading
- * of the suite. Both picks use this one predicate so neither can present such a run as the whole suite.
+ * A STRICT-SUBSET-ONLY candidate is one whose every contributing run measured only a selection: it is a real
+ * reading of its ids and never a reading of the suite. A candidate that also holds a full-scope run is
+ * qualified (#34868 scope-membership: @cto 2026-11-18), because demoting it would hand the bar to older
+ * evidence than the run that joined the partial cells. Both picks use this one predicate.
  */
 function carriesPartial(candidate: ContextCandidate): boolean {
-  return candidate.sources.some((source) => source.partial === true)
+  return candidate.sources.length > 0 && candidate.sources.every((source) => source.partial === true)
 }
 
 /**
@@ -259,28 +276,33 @@ function pickByLineage<T extends ContextCandidate>(
     return { candidate, version, runs: runs.filter((run) => run.version === version) }
   })
   const top = facts.map((fact) => fact.version).sort((left, right) => versionCompare(right, left))[0]
-  const tips = facts
-    .filter((fact) => fact.version === top)
-    .map((fact) => {
-      const revisions = [
-        ...new Set(
-          fact.runs.map((run) => {
-            if (run.sourceRevision === null) {
-              throw new Error(`Context ${fact.candidate.key} run ${run.runId} records no source revision`)
-            }
-            return run.sourceRevision
-          }),
-        ),
-      ]
-      const tip = descendantOfAll(revisions, lineage.history)
-      if (tip === undefined) {
-        throw new Error(
-          `Context ${fact.candidate.key} holds runs of app version ${fact.version} from unrelated source revisions ` +
-            `${revisions.join(", ")}; the pick refuses`,
-        )
-      }
-      return { candidate: fact.candidate, tip }
-    })
+  // A run that measured a selection is never a reading of the suite (#34868). At the newest app version a
+  // complete context outranks a partial one however ancestry orders them: a 9-row run at the newest revision
+  // must not take the app bar from a complete run one revision behind. Only when nothing complete stands may
+  // a partial run be the primary, and the reason then says so.
+  const atTopVersion = facts.filter((fact) => fact.version === top)
+  const complete = atTopVersion.filter((fact) => !carriesPartial(fact.candidate))
+  const considered = complete.length > 0 ? complete : atTopVersion
+  const tips = considered.map((fact) => {
+    const revisions = [
+      ...new Set(
+        fact.runs.map((run) => {
+          if (run.sourceRevision === null) {
+            throw new Error(`Context ${fact.candidate.key} run ${run.runId} records no source revision`)
+          }
+          return run.sourceRevision
+        }),
+      ),
+    ]
+    const tip = descendantOfAll(revisions, lineage.history)
+    if (tip === undefined) {
+      throw new Error(
+        `Context ${fact.candidate.key} holds runs of app version ${fact.version} from unrelated source revisions ` +
+          `${revisions.join(", ")}; the pick refuses`,
+      )
+    }
+    return { candidate: fact.candidate, tip }
+  })
   const winner = descendantOfAll(
     tips.map((entry) => entry.tip),
     lineage.history,
@@ -295,7 +317,7 @@ function pickByLineage<T extends ContextCandidate>(
   // Equal standing only: among candidates the version-and-ancestry order cannot separate, a full run wins.
   const fullTied = tied.filter((candidate) => !carriesPartial(candidate))
   const pool = fullTied.length > 0 ? fullTied : tied
-  const partialOnly = fullTied.length === 0
+  const partialOnly = complete.length === 0
   const defaults = pool.filter((candidate) => candidate.permissions === null)
   const [chosen] =
     defaults.length === 1 ? defaults : [...pool].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
@@ -305,4 +327,148 @@ function pickByLineage<T extends ContextCandidate>(
       selection: partialOnly ? "latest partial selection" : "app version, then source ancestry",
     }
   )
+}
+
+/** The physical facts that separate one setup from another: every context-key field except `config`. */
+export interface SetupSubject {
+  kind: string
+  id: string
+  os: string | null
+  osVersion: string | null
+  outerTerminal: string | null
+  mux: string | null
+  permissions: string | null
+}
+
+/** One context as the setup classifier sees it: what it was measured as, and the runs behind it. */
+export interface SetupContext {
+  key: string
+  subject: SetupSubject
+  runs: readonly LineageRun[]
+}
+
+/**
+ * A context's standing among the setups of one app on one machine: the group's newest setup, or one strictly behind
+ * it. Only `config` may differ inside a group, so a second font measured by the newest run is likewise current.
+ */
+export type SetupStanding = "current" | "older setup"
+
+export interface SetupClassification {
+  /** Every classified context, with an explicit standing. A context absent from this map was never classified. */
+  standings: Map<string, SetupStanding>
+  /** Groups whose order the version-and-ancestry rule cannot decide, named; nothing in them is older. */
+  undecidable: string[]
+}
+
+/** The group a context belongs to: setups that differ only in `config`. */
+function setupGroupKey(subject: SetupSubject): string {
+  return JSON.stringify([
+    subject.kind,
+    subject.id,
+    subject.os,
+    subject.osVersion,
+    subject.outerTerminal,
+    subject.mux,
+    subject.permissions,
+  ])
+}
+
+/** A readable name for a group, so an undecidable one is named rather than defaulted (@cto 026fd6fd rule 4). */
+function setupGroupName(subject: SetupSubject): string {
+  const parts = [`${subject.kind}:${subject.id}`, subject.os ?? "no OS"]
+  if (subject.osVersion) parts.push(subject.osVersion)
+  if (subject.outerTerminal) parts.push(`outer ${subject.outerTerminal}`)
+  if (subject.mux) parts.push(`mux ${subject.mux}`)
+  if (subject.permissions) parts.push(`permissions ${subject.permissions}`)
+  return parts.join(" · ")
+}
+
+/**
+ * Which setup of an app is current, and which are older, by the one order the site already uses (33587): the highest
+ * app version, then the source revision that descends from every other. A context is current only when it sits AT the
+ * group's newest position; every context strictly behind it is "older setup". Ties are not broken: two configs at the
+ * newest position, such as two fonts measured by the same run, are both current.
+ *
+ * A group whose order cannot be decided — a run without an app version, runs of one version from unrelated source
+ * revisions, or tips that no single revision descends from — classifies NOTHING in it as older and names the group.
+ * There is no default in either direction (@cto 026fd6fd rules 1-4).
+ */
+export function classifySetups(
+  contexts: readonly SetupContext[],
+  history: Pick<SourceHistory, "isAncestor">,
+): SetupClassification {
+  const groups = new Map<string, SetupContext[]>()
+  for (const context of contexts) {
+    const key = setupGroupKey(context.subject)
+    const group = groups.get(key) ?? []
+    group.push(context)
+    groups.set(key, group)
+  }
+  const standings = new Map<string, SetupStanding>()
+  const undecidable: string[] = []
+  for (const group of groups.values()) {
+    const [first] = group
+    if (!first) continue
+    // A group of one is its own newest setup; no order is needed, so no history is read.
+    if (group.length === 1) {
+      standings.set(first.key, "current")
+      continue
+    }
+    const named = setupGroupName(first.subject)
+    const facts = group.map((context) => {
+      if (context.runs.length === 0) return { context, undecidable: `no contributing run` }
+      if (context.runs.some((run) => run.version === null)) {
+        return { context, undecidable: `a run records no app version` }
+      }
+      const version = context.runs
+        .map((run) => run.version as string)
+        .sort((left, right) => versionCompare(right, left))[0] as string
+      const revisions = [
+        ...new Set(
+          context.runs
+            .filter((run) => run.version === version)
+            .map((run) => {
+              if (run.sourceRevision === null) return ""
+              return run.sourceRevision
+            }),
+        ),
+      ]
+      if (revisions.some((revision) => revision === "")) {
+        return { context, undecidable: `a run of version ${version} records no source revision` }
+      }
+      const tip = descendantOfAll(revisions, history)
+      if (tip === undefined) {
+        return {
+          context,
+          undecidable: `version ${version} from unrelated source revisions ${revisions.join(", ")}`,
+        }
+      }
+      return { context, version, tip }
+    })
+    const refused = facts.find((fact) => fact.undecidable !== undefined)
+    if (refused) {
+      undecidable.push(`${named}: ${refused.undecidable}`)
+      for (const context of group) standings.set(context.key, "current")
+      continue
+    }
+    const settled = facts as Array<{ context: SetupContext; version: string; tip: string }>
+    const top = settled.map((fact) => fact.version).sort((left, right) => versionCompare(right, left))[0] as string
+    const atTop = settled.filter((fact) => fact.version === top)
+    const winner = descendantOfAll(
+      atTop.map((fact) => fact.tip),
+      history,
+    )
+    if (winner === undefined) {
+      undecidable.push(
+        `${named}: version ${top} from unrelated source revisions ${atTop.map((fact) => fact.tip).join(", ")}`,
+      )
+      for (const context of group) standings.set(context.key, "current")
+      continue
+    }
+    for (const fact of settled) {
+      const current = fact.version === top && fact.tip === winner
+      standings.set(fact.context.key, current ? "current" : "older setup")
+    }
+  }
+  return { standings, undecidable }
 }

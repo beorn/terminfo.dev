@@ -14,6 +14,7 @@ import {
   probe,
   withUnhandledModeReport,
   replyFailure,
+  methodUnavailable,
   decrpmModeProbe,
   headlessDecrpmArm,
   parserStateResult,
@@ -54,6 +55,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   endCaptureLifecycle,
 } from "./region-readback.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -451,7 +453,24 @@ async function captureStackFixture(
   if (!result) throw new Error(`${id}: owned ${fixture} capture disappeared`)
   const outcome = result.observation?.outcome
   if (outcome === undefined) return result
-  return { match: outcome === "supported" ? "expected" : outcome === "unsupported" ? "ignored" : "other", result }
+  if (outcome !== "unsupported") return { match: outcome === "supported" ? "expected" : "other", result }
+  return { match: targetMatchedIgnored(id, fixture, result) ? "ignored" : "other", result }
+}
+
+/**
+ * Whether an unsupported fixture read IS its ignored contrast: the oracle's recorded target digest
+ * equals its ignored-frame digest. The oracle also calls an untouched screen and a colour-only
+ * mismatch unsupported; on a stack fixture those are a third reading, never the contrast. Reading
+ * them as the contrast turned a no-op stack's persisted PUSH fixture into "earlier" on Alacritty and
+ * WezTerm, so neither stack row could ever be decided (34547).
+ */
+function targetMatchedIgnored(id: string, fixture: string, result: ProbeCallbackResult): boolean {
+  const recorded = typeof result.response === "string" ? (JSON.parse(result.response) as unknown) : undefined
+  const digests = recorded as { after?: unknown; ignored?: unknown } | undefined
+  if (typeof digests?.after !== "string" || typeof digests.ignored !== "string") {
+    throw new Error(`${id}: ${fixture} was graded unsupported without a recorded target and ignored-frame digest`)
+  }
+  return digests.after === digests.ignored
 }
 
 /** One row's grade from its fixture readings, with every fixture's frames kept as its evidence. */
@@ -721,7 +740,13 @@ async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "po
           compared: ["pre-edit seed", "post-sequence target", "expected frame", "ignored-attribute frame"].map(
             (role) => {
               const captured = frame(role)
-              return { role, rectangle: captured?.kind === "text-cells" ? undefined : captured?.regionRectangle }
+              return {
+                role,
+                rectangle: captured?.kind === "text-cells" ? undefined : captured?.regionRectangle,
+                ...(captured?.kind === "text-cells" || captured?.cellCrop === undefined
+                  ? {}
+                  : { crop: captured.cellCrop }),
+              }
             },
           ),
           response: result.response ?? "",
@@ -1485,12 +1510,29 @@ const DECSSCLS_LINES_PER_SECOND = 9
 /**
  * Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry, and
  * enough of the throttled window survives the capture latency for the timing bound to be decisive.
+ *
+ * 34, not 16 or 29 (34722). The target band is first read after two captures, and on the 2026-11-17
+ * image that read took 1932 ms (cmux), 2001 ms (VS Code) and 2155 ms (Cursor) on run 44200861479,
+ * plus 3044 ms (VS Code) on run 44197283015. At 16 the window was 1889 ms, so every arm landed
+ * outside its own window and the row went probe-invalid, replacing a decided `unsupported` with
+ * nothing. At 29 the bound was 3184 ms, which the 3044 ms arm still passes by 140 ms - inside
+ * DECSSCLS_TIMING_MARGIN_MS, so that arm was not confined either. Sizing is the slowest measured
+ * arm under the 20 percent headroom rule plus the margin: 3044 x 1.2 = 3653, + 150 = 3803 ms, which
+ * needs 35 scrolled lines. At the editors measured p90 per-frame cost (1.50 s) that leaves two
+ * captures plus a frame inside the window; the native terminals (0.82-0.85 s p90) sit far inside it.
+ * 34 rows over a 24-row screen is 35 scrolled lines, so ceil(35 / 9 * 1000) = 3889 ms and the
+ * timing bound is 3739 ms. The phase settle becomes 4389 ms. Measured against that: at 16 rows the
+ * whole probe spanned 11514 ms (cmux), 11948 ms (VS Code) and 12960 ms (Cursor) over 9 captures
+ * each in run 44200861479, and this change adds the 2000 ms of settle it lengthens plus the
+ * throttled scroll of 18 more lines (about 2 s at 9 lines per second), so about 17 s against the
+ * 30 s default wall this probe inherits.
  */
-const DECSSCLS_OVERFLOW_ROWS = 16
+const DECSSCLS_OVERFLOW_ROWS = 34
 /**
- * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
- * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
- * before the last settles the band at screen row `rows - 8`: above the cursor, inside the witness.
+ * The marker band is authored this many lines before the burst's last line. The burst runs
+ * DECSSCLS_OVERFLOW_ROWS lines past the screen and its trailing line feed leaves one blank row
+ * under the text, so seven lines before the last settles the band at screen row `rows - 8`: above
+ * the cursor, inside the witness.
  */
 const DECSSCLS_MARKER_LINES_BEFORE_BURST_END = 7
 /**
@@ -1584,6 +1626,7 @@ interface DecssclsPair {
 async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const captureCallback = ctx.capture
   if (!captureCallback) {
+    raiseRefusedCapture(ctx, "DECSSCLS needs rendered frames")
     return notTestedResult(
       "DECSSCLS needs rendered frames; this context exposes no pixel capture callback (a text-only arm keeps its buffer, not its viewport)",
       { capture: false },
@@ -1611,6 +1654,9 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const cols = ctx.cols
   const geometry = ctx.captureGeometry?.geometry
   if (!Number.isSafeInteger(cols) || cols < 1 || geometry === undefined) {
+    if (Number.isSafeInteger(cols) && cols >= 1 && geometry === undefined) {
+      raiseRefusedCapture(ctx, "DECSSCLS needs a measured pixel geometry to digest a cell region")
+    }
     const refusal = ctx.captureGeometryRefusal
     return notTestedResult(
       refusal === undefined
@@ -1862,12 +1908,14 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
   if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
   const { input, readInput } = ctx
   if (!input || !readInput) {
-    return replyFailure("Application cursor effect needs owned key injection and input readback")
+    return methodUnavailable("Application cursor effect needs owned key injection and input readback")
   }
   try {
     ctx.write("\x1b[?1l")
     const control = (await readInput(/^a$/, 1000, () => input.injectKey("a")))?.[0]
-    if (control !== "a") return replyFailure("Application cursor delivery control did not read the injected plain a")
+    if (control !== "a") {
+      return methodUnavailable("Application cursor delivery control did not read the injected plain a")
+    }
     const readUp = async (enabled: boolean) => {
       ctx.write(`\x1b[?1${enabled ? "h" : "l"}`)
       return (
@@ -1883,7 +1931,7 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
     const response = JSON.stringify({ decrpm, control, reset, set, resetAgain })
     if ([reset, set, resetAgain].some((report) => report !== "\x1b[Aa" && report !== "\x1bOAa")) {
       return {
-        ...replyFailure(
+        ...methodUnavailable(
           "Application cursor effect did not read an Up encoding followed by the plain-a delivery control in every arm",
         ),
         response,
@@ -1932,7 +1980,7 @@ export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | nul
     const control = await ctx.queryCursorPosition()
     if (home?.row !== 1 || home.col !== 1 || control?.row !== 1 || control.col !== cols) {
       return {
-        ...replyFailure(
+        ...methodUnavailable(
           "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
         ),
         response: JSON.stringify({ decrpm, cols, home, control }),
@@ -2024,7 +2072,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         reset.cols !== resetAgain.cols
       ) {
         return {
-          ...replyFailure("DECCOLM size controls did not establish valid stable reset/set/reset readings"),
+          ...methodUnavailable("DECCOLM size controls did not establish valid stable reset/set/reset readings"),
           response,
         }
       }
@@ -2066,7 +2114,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     }
   }
   if (!ctx.capture && !ctx.cells) {
-    return replyFailure(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
+    return methodUnavailable(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
   }
   const refusal = captureRefusal(ctx, 4, 54, "DECCOLM")
   if (refusal) return refusal
@@ -2147,6 +2195,8 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     minCols: 8,
     seed: plain,
     edit: "\x1b[?5h",
+    // The edit leaves DECSCNM set for the target's reads; the expected and ignored frames reset it first.
+    editScreenMode: "reverse",
     expected: "\x1b[?5l\x1b[0;7m\x1b[2J\x1b[HREVERSED",
     ignored: plain,
     discriminator: { signal: "reverse-video-pixels", expected: "change" },
@@ -2197,7 +2247,7 @@ const modeDefinitions: ProbeDefinition[] = [
     term: async (ctx) => {
       const decrpm = await queryDecrpm(ctx, 1049)
       if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1049)
-      if (!ctx.capture && !ctx.cells) return replyFailure("Alternate-screen effect needs owned marker readback")
+      if (!ctx.capture && !ctx.cells) return methodUnavailable("Alternate-screen effect needs owned marker readback")
       const refusal = captureRefusal(ctx, 3, 8, "Alt-screen entry")
       if (refusal) return refusal
       const result = await primaryRestoreCapture(ctx, "modes.alt-screen.enter", 1049, "PRIMARY", "ALTONLY")
@@ -2209,6 +2259,8 @@ const modeDefinitions: ProbeDefinition[] = [
     },
     termWrites: undefined,
     termNeedsDisposable: true,
+    // 35128: complete the22-capture region path at the observed slow-host cadence.
+    wallMs: 60_000,
     termNeedsGeometry: true,
   },
 
@@ -2276,6 +2328,9 @@ const modeDefinitions: ProbeDefinition[] = [
     termNeedsGeometry: true,
     cellReadback: true,
     textClaim: "characters",
+    // 34567: cmux on the Nov 12 hosted image hit the 30 s default mid-capture on this row, which takes 22 captures
+    // (19.6 s on the same row before the image bump); 22 x 1.158 s x 1.20 headroom rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // Bracketed paste
@@ -2289,7 +2344,7 @@ const modeDefinitions: ProbeDefinition[] = [
       const decrpm = await queryDecrpm(ctx, 2004)
       if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 2004)
       if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture) {
-        return replyFailure("Bracketed-paste effect needs owned clipboard, key injection and input readback")
+        return methodUnavailable("Bracketed-paste effect needs owned clipboard, key injection and input readback")
       }
       const paste = extensionsProbes.find((entry) => entry.id === "extensions.clipboard-paste")?.term
       if (!paste) throw new Error("Missing existing clipboard-paste App callback")
@@ -2389,7 +2444,12 @@ const modeDefinitions: ProbeDefinition[] = [
     ...reverseVideoProtocol,
     term: reverseVideoApp,
     termNeedsGeometry: true,
+    // #34932 (@cto 34932-reverse-seam-ruling-2325 item 1): its target is read under DECSCNM, so calibration witnesses that paint.
+    termScreenMode: "reverse",
     libAssertionType: undefined,
+    // 34694 second fold: 22 captures, 28.2 s worst at VS Code in run 44200861479, cut by the 30 s default.
+    // 28.2 x 1.20 = 33.8 rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // Synchronized output
@@ -2718,6 +2778,9 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 34694 second fold: 22 captures, 28.8 s worst at VS Code in run 44200861479, cut by the 30 s default.
+    // 28.8 x 1.20 = 34.5 rounds up to 45 s.
+    wallMs: 45_000,
   },
 
   // ?47 — legacy alt screen (no cursor save)
@@ -2742,6 +2805,10 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    // 34694 second fold: cut at 45000 ms in cmux and VS Code on run 44200861479 while still capturing (33-36 captures,
+    // 44.8 s worst at VS Code = 99 percent of the wall), so 45 was the bug, not a hang witness.
+    // 44.8 x 1.20 = 53.7 rounds up to 60 s.
+    wallMs: 60_000,
   },
 
   // ?1047 — alt screen; DECRST 1047 clears the alternate buffer on EXIT (headless: graded by a second entry)
@@ -2778,6 +2845,14 @@ const modeDefinitions: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsGeometry: true,
+    // 34694 second fold: 43 captures at 44.3 s on cmux and 36 at 43.7 s on VS Code in run 44200861479, so 45 s cut it.
+    // 34694 fix-forward (chief 5a820263, sized by @dev/luna6 at /hh/var/@dev-luna6/altscreen-sizing-1117/sizing.md): the
+    // capture count is a path property, not an app speed - 50 on every record that completes (xterm, wezterm, iTerm2,
+    // ghostty, kitty, cmux) and 22 only on the rows that exit early unsupported. At cmux's own 0.95-1.00 s per capture
+    // today, 50 captures is 50 s and 60 is the 20 percent value; at the 1.25 s per capture measured for the cmux arm in
+    // 44200861479 it is 62.5 s, so 75 is the rule and 80 is the round wall that survives one more load band. cmux's own
+    // completed 0.41 s per capture record is the unloaded floor and is not the sizing input.
+    wallMs: 80_000,
     cellReadback: true,
     textClaim: "characters",
   },
@@ -3035,6 +3110,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3052,8 +3128,11 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 54.9 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
+    // 34694 second fold: 83.8 s in the VS Code arm of hosted run 44197283015 (66 captures at 1.27 s) is 93 percent
+    // of 90 s, the last row still outside the 20 percent rule after the 14-row fold. 83.8 x 1.20 = 100.6 rounds up
+    // to 105 s, which is also where its twin xtpopsgr now sits (dev/11, 34694-WALL-MARGIN-FULL).
+    wallMs: 105_000,
   },
 
   // XTPOPSGR — pop SGR stack (CSI # })
@@ -3072,6 +3151,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -3086,8 +3166,10 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 55.1 s over 66 captures (run 2026-11-17T13-06Z), 92 percent of the old 60 s wall; 90 s puts it at 61 percent.
+    // 34694 second fold: 66 captures, worst arm 75.9 s (VS Code) in run 44200861479 = 84 percent of 90 s.
+    // 75.9 x 1.20 = 91.0 rounds up to 105 s.
+    wallMs: 105_000,
   },
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
@@ -3105,6 +3187,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3122,8 +3205,11 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 34641: Linux WezTerm took up to 54.7 s over 66 captures (run 2026-11-17T13-06Z), 91 percent of the old 60 s wall.
+    // 34694 fix-forward: hosted run 44200861479 measured 74.1 s in all three arms of the current image, which 90 s holds
+    // at 21.5 percent headroom - but VS Code cut this row at 90 s on run 44197283015, so the need is above 90 s, not at
+    // it. A cut is a lower bound: 90 x 1.20 = 108 s, rounded up to 120 s.
+    wallMs: 120_000,
   },
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
@@ -3141,6 +3227,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -3174,6 +3261,7 @@ const modeDefinitions: ProbeDefinition[] = [
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             )
           }
+          raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
           return {
             pass: false,
             response: JSON.stringify(pos),
@@ -3191,8 +3279,11 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 34567: 66 captures at 1.158 s per capture
+    // on the Nov 12 hosted image is 76 s, so 105 s is that with 20 percent headroom, rounded up to the next 15 s.
+    // 34694 second fold: 66 captures, worst arm 90.8 s (cmux) in run 44200861479 = 86 percent of 105 s.
+    // 90.8 x 1.20 = 109.0 rounds up to 120 s.
+    wallMs: 120_000,
   },
 
   // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
@@ -3210,6 +3301,7 @@ const modeDefinitions: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        raiseRefusedCapture(ctx, "Cursor responsiveness does not measure saved/restored state")
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -3224,8 +3316,9 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 60 s is double the worst reading. The 30 s default stays.
-    wallMs: 60_000,
+    // 20 to 30 s on WezTerm, and on Ghostty for xtpushcolors and xtpushsgr. 34567: 66 captures at 1.158 s per capture
+    // on the Nov 12 hosted image is 76 s, so 105 s is that with 20 percent headroom, rounded up to the next 15 s.
+    wallMs: 105_000,
   },
 
   // DECSSCLS — presentation speed with no query; measured by a settled jump control and a timed

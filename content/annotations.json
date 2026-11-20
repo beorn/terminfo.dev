@@ -999,5 +999,9 @@
   },
   "vterm:extensions.osc21-kitty-color": {
     "note": "Kitty color protocol (OSC 21) not implemented in vterm.js"
+  },
+  "iterm2:editing.decrqcra": {
+    "note": "iTerm2 3.6.11 ships with DECRQCRA off: the advanced setting \"Disable DECRQCRA?\" (NoSyncDisableDECRQCRA) defaults to Yes, and while it is on iTerm2 drops the request without any reply (VT100Terminal.m:2052-2064) and asks in the window whether to enable it. This is the documented default, not a setting read from the measured run; a run with the setting off decides the row under that configuration.",
+    "url": "https://github.com/gnachman/iTerm2/blob/v3.6.11/sources/iTermAdvancedSettingsModel.m#L458"
   }
 }

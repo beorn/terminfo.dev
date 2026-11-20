@@ -7,11 +7,19 @@
  */
 import { expect, test } from "vitest"
 import { isDeclaredUntestable } from "./helpers.ts"
-import { extensionsProbes, OSC22_MUX_NO_RECORD, OSC22_SILENT_TERMINAL, osc22SilentMultiplexer } from "./extensions.ts"
+import {
+  extensionsProbes,
+  OSC22_MUX_NO_RECORD,
+  OSC22_NO_CONTROL_REPLY,
+  OSC22_READ_METHOD_UNAVAILABLE,
+  osc22SilentMultiplexer,
+} from "./extensions.ts"
 import type { TerminalQueryOutcome, TermProbeSource } from "./types.ts"
 
 type Fault =
   | "none"
+  | "cpr-silent"
+  | "both-silent"
   | "target-disabled"
   | "control-disabled"
   | "initial-silent"
@@ -28,12 +36,19 @@ function terminal(initial: string, fault: Fault = "none", terminator = "\x07") {
   const writes: string[] = []
   const replies: string[] = []
   const read = async (sequence: string, pattern: RegExp): Promise<TerminalQueryOutcome> => {
+    if (sequence === "\x1b[6n") {
+      const silent = fault === "cpr-silent" || fault === "both-silent"
+      const raw = silent ? "" : "\x1b[24;1R"
+      const reason: TerminalQueryOutcome["reason"] = silent ? "timeout" : "reply"
+      return { match: pattern.exec(raw), reason, raw, rawBase64: Buffer.from(raw).toString("base64") }
+    }
     if (sequence !== "\x1b]22;?__current__\x07") throw new Error(`Unexpected query ${JSON.stringify(sequence)}`)
     queryCount++
     let raw = `\x1b]22;${selected}${terminator}`
     let reason: TerminalQueryOutcome["reason"] = "reply"
     if (
       (queryCount === 1 && fault === "initial-silent") ||
+      (queryCount === 1 && fault === "both-silent") ||
       (queryCount === 2 && fault === "control-silent") ||
       (queryCount === 4 && fault === "restore-silent")
     ) {
@@ -128,8 +143,8 @@ test.each(["initial-silent", "initial-sentinel"] as const)(
  */
 test("a silent OSC 22 query says why it stays open, per subject kind", async () => {
   const term = await definition().term!(terminal("0", "initial-silent").source)
-  expect(term.notTested?.noObservable).toBe(OSC22_SILENT_TERMINAL)
-  expect(term.notTested?.noObservable).toContain("silence on the query form is not unsupported")
+  expect(term.notTested?.noObservable).toBe(OSC22_READ_METHOD_UNAVAILABLE)
+  expect(term.notTested?.noObservable).toContain("read-method gap, never an unsupported")
   for (const mux of ["screen", "tmux"] as const) {
     const input = terminal("0", "initial-silent")
     const result = await definition().term!({ ...input.source, mux })
@@ -142,6 +157,38 @@ test("a silent OSC 22 query says why it stays open, per subject kind", async () 
     expect(input.writes, mux).toEqual(["\x1b]22;pointer\x1b\\"])
     expect(input.replies, mux).toEqual([])
   }
+})
+
+/**
+ * @failure The probe blames the app for a shape it could not read while nothing was reading the session, or
+ *   credits it with an observation when neither the control nor the query was answered.
+ * @level l1
+ * @consumer extensions.osc22-pointer App callback on a terminal subject with an unanswered control.
+ * @testonly none
+ */
+test("an unanswered control leaves the row undecided, not blamed on the app", async () => {
+  const input = terminal("0", "both-silent")
+  const result = await definition().term!(input.source)
+  expect(result.notTested?.noObservable).toBe(OSC22_NO_CONTROL_REPLY)
+  expect(result.notTested?.noObservable).toContain("no observation the row is not decided")
+  expect(result.observation?.outcome).toBeUndefined()
+  expect(input.writes).toEqual([])
+  expect(input.selected()).toBe("0")
+})
+
+/**
+ * @failure A terminal that answers the shape query but not CPR is treated as if nothing was reading, so a real
+ *   reading is thrown away because the control is stricter than the answer it guards.
+ * @level l1
+ * @consumer extensions.osc22-pointer App callback when only the control is silent.
+ * @testonly none
+ */
+test("a shape reply still decides when only the control is silent", async () => {
+  const input = terminal("0", "cpr-silent")
+  const result = await definition().term!(input.source)
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation?.outcome).toBe("supported")
+  expect(input.selected()).toBe("0")
 })
 
 /**

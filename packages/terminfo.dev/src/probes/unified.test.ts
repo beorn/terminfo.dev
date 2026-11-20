@@ -10,37 +10,57 @@
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
-import { appSemanticDeclarations, readSessionBus } from "../app-semantic-state.ts"
+import { appSemanticDeclarations, readSessionBus, readWezTermCwd } from "../app-semantic-state.ts"
 import { detectOS } from "../detect.ts"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { zstdDecompressSync } from "node:zlib"
+import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from "vitest"
 import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import {
   ALL_PROBES,
+  TEXT_QUALIFICATION_SPEC,
   initializeRunDraft,
   type ProbeSuiteManifest,
+  type CapturedRunDraft,
+  type ProbeCallbackResult,
   type ObservationFrame,
   type TextQualification,
   type TermProbeSource,
+  type CaptureRequest,
   type AppSemanticReading,
+  type ProbeDefinition,
 } from "@terminfo/probe-defs"
 import { replyFailure, notTestedResult, declaredUntestableResult } from "../../../probe-defs/src/helpers.ts"
+import { raiseRefusedCapture } from "../../../probe-defs/src/refused-capture.ts"
 import { parseRun, parseSuiteManifest, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
-import { measureUtf8Decoding } from "../tty.ts"
-import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
+import { measureUtf8Decoding, withTTYOperation, writeTTY } from "../tty.ts"
+import {
+  captureAdapterEligible,
+  createTermProbeSource,
+  runProbeBatch,
+  syncOutputRenderedSubject,
+  wallExceededReason,
+  type HeldViewportReaderFor,
+  type ProbeCapture,
+} from "./unified.ts"
 import { saveDaemonProbeRun } from "../capture-writer.ts"
 import { retainCollectedRun } from "../../../admin/src/collected-run.ts"
-import { readProbeCapture } from "../../../probes/erase-capture.ts"
+import { readCaptureBinding, readProbeCapture, resolveReference } from "../../../probes/erase-capture.ts"
 import { runEraseReplay } from "../../../probes/erase-run.ts"
+import { shadowStoredRun } from "../../../probes/stored-run-shadow.ts"
+import { shadowCollectedRun, shadowReportPath } from "../../../admin/src/collected-run.ts"
+import * as serveModule from "../serve.ts"
+import { currentTrace } from "../../../../docs/data/run-trace.ts"
 import * as headlessIdentity from "../../../probes/headless-identity.ts"
 import { derivedSuiteManifest, sourceSuiteEnvironment } from "../../../admin/versions.ts"
 import { finishCapture } from "../capture-core.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
-import { collectTextQualification } from "../text-qualification.ts"
+import { collectTextQualification, recordTextQualificationTests } from "../text-qualification.ts"
 import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
+import { parseOrdinaryOpenReceipt, type LiveAncestryReader } from "../ordinary-open-receipt.ts"
 
 // Most cases stub only decode-context measurement; its evidence owner below exercises the real
 // round trip. Every other tty export stays real, so the batch path under test is unchanged.
@@ -91,6 +111,47 @@ it.each([
     }
   },
 )
+
+// Requirement (34753 condition 3, 34941): the run's signal reaches a callback that is already ACTIVE, so
+// a disconnect stops it at the edge instead of letting it run to its own timeout and paint afterwards.
+it("34941 stops an active callback at the disconnect edge and writes nothing after it", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  const writes: string[] = []
+  const stdoutWrite = process.stdout.write
+  const controller = new AbortController()
+  let entered: (() => void) | undefined
+  const started = new Promise<void>((resolve) => (entered = resolve))
+  try {
+    process.stdout.write = ((chunk: unknown) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+    definition.termWrites = "query"
+    definition.term = async () => {
+      entered?.()
+      await withTTYOperation(async () => {
+        // A setup wait with no deadline of its own: only the run's signal can end it early.
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        writeTTY("\x1b[2J late-write")
+      })
+      return notTestedResult("never reached", { input: false })
+    }
+
+    const run = runProbeBatch({ ids: [id], signal: controller.signal })
+    await started
+    const writesAtEdge = writes.length
+    controller.abort()
+
+    await expect(run).rejects.toMatchObject({ name: "AbortError" })
+    expect(writes.slice(writesAtEdge).filter((write) => write.includes("late-write"))).toEqual([])
+  } finally {
+    process.stdout.write = stdoutWrite
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
 
 // @failure A declaration silently coexists with a measurement, hiding that its route ruling is stale.
 // Preserve the measured evidence while refusing the contradictory declaration by name (CTO1dbd273f).
@@ -164,7 +225,16 @@ it("retains the stored iTerm2 1005 measurement and names its declaration collisi
           return { ...assertion, assertionType }
         }),
     })
-    const batch = await runProbeBatch({ ids: [id], appDeclarations: appSemanticDeclarations(stored.subject) })
+    // The real list no longer declares this cell (@cto b0de55c0, app-semantic-state.test.ts); the collision path
+    // keeps this measured row as its only real-data witness by declaring the cell here.
+    expect(appSemanticDeclarations(stored.subject)).not.toHaveProperty(id)
+    const batch = await runProbeBatch({
+      ids: [id],
+      appDeclarations: {
+        ...appSemanticDeclarations(stored.subject),
+        [id]: "no permitted pointer route: owned-host rule and hosted no-input rule",
+      },
+    })
     expect(batch.results.find((entry) => entry.featureId === id)).toMatchObject({
       status: "supported",
       assertionType: "query_reply",
@@ -280,9 +350,9 @@ it("applies the audited Alacritty declaration to the real OSC 710 coverage resul
 it.each([
   { kind: "term", id: "kitty", version: "0.49.2" },
   { kind: "term", id: "ghostty", version: "1.4.0" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
   { kind: "term", id: "alacritty", version: "0.17.0" },
-  { kind: "term", id: "xterm", version: "411" },
+  { kind: "term", id: "xterm", version: "412" },
   { kind: "mux", id: "screen", version: "5.0.2" },
   { kind: "mux", id: "tmux", version: "3.8" },
 ] as const)("uses current-run bus absence for both $id notification cells", async (subject) => {
@@ -337,19 +407,19 @@ it.each([
 // Exact-version routing is not covered by the generic map-consumption cases above.
 // @failure New versions inherit an audit, or an audited subject loses its declaration.
 it.each([
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc7-cwd" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc7-cwd" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "modes.decsclm" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc633-e" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc633-e" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-b" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-p" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc133-a" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.semantic-prompts" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-d" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-a" },
-  { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", count: 8, feature: "extensions.osc133-p" },
+  // #32955: kitty's prompt state is read through owned remote control (eae044269), so its declarations
+  // drop from 10 to 6 and osc133-a / semantic-prompts are no longer declarations but reader runs.
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc133-b" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc133-p" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
@@ -357,18 +427,18 @@ it.each([
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc666-termprop" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc666-termprop" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc666-termprop" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc666-termprop" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc176-app-id" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc440-audio" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc3008-context" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc176-app-id" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc440-audio" },
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc176-app-id" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc440-audio" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc3008-context" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc555-flash" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc710-font-normal" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc176-app-id" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc440-audio" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc3008-context" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc555-flash" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc710-font-normal" },
   // #32601: existing subjects cannot catch a missing Alacritty audit or identity leakage from its one-cell declaration.
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc710-font-normal" },
   // #32918: Alacritty implements no OSC 133/633, so its thirteen prompt cells are declarations, not runs.
@@ -387,10 +457,10 @@ it.each([
   // #32948: Linux App and mux OSC 8 hyperlink declarations. WezTerm's is no longer one: c0651cbe8 (33001)
   // reads its owned OSC 8 link spans, so its declarations drop to 8 and omit extensions.osc8 (33455).
   { kind: "mux", id: "screen", version: "5.0.2", count: 26, feature: "extensions.osc8" },
-  { kind: "term", id: "xterm", version: "411", count: 23, feature: "extensions.osc8" },
+  { kind: "term", id: "xterm", version: "412", count: 23, feature: "extensions.osc8" },
   { kind: "term", id: "alacritty", version: "0.17.0", count: 21, feature: "extensions.osc8" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc8" },
-  { kind: "term", id: "kitty", version: "0.49.2", count: 10, feature: "extensions.osc8" },
+  { kind: "term", id: "kitty", version: "0.49.2", count: 6, feature: "extensions.osc8" },
 ] as const)(
   "routes only the audited $id version through the canonical recorder",
   async ({ kind, id, version, count, feature }) => {
@@ -619,6 +689,54 @@ function legacyReplies(replies: Record<string, string>): Record<string, string> 
     }),
   )
 }
+// #34276: the actual collector wrapper and persisted call log must preserve owner restoration
+// bytes. Recipe state tests cannot detect a dropped field or non-serializable transport.
+it("retains owner restoration through capture and strict call-log replay", async () => {
+  verifiedBatchFixture()
+  const probe = ALL_PROBES.find((entry) => entry.id === "sgr.reset")
+  if (!probe) throw new Error("Missing SGR transport fixture")
+  const original = probe.term
+  const restoreAfterPaint = "\x1b8\x1b[1;3;7m\x1b[4;1H"
+  const callback = async (ctx: TermProbeSource): Promise<ProbeCallbackResult> => {
+    if (!ctx.capture) throw new Error("Missing collector capture wrapper")
+    await ctx.capture({ role: "control", label: "owner transport", restoreAfterPaint })
+    return {
+      pass: false as const,
+      tests: [{ id: "criterion", status: "probe-todo" as const, reason: "transport fixture" }],
+    }
+  }
+  let observed: string | undefined
+  try {
+    probe.term = callback
+    const batch = await runProbeBatch({
+      ids: [probe.id],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async (checkpoint) => {
+        observed = checkpoint.restoreAfterPaint
+        return {
+          frame: {
+            role: checkpoint.role,
+            label: checkpoint.label,
+            ref: `sha256:${"a".repeat(64)}`,
+            capturedAt: Date.now(),
+          },
+          trace: {},
+        }
+      },
+    })
+    expect(observed).toBe(restoreAfterPaint)
+    const stored = batch.rawReplies[`${probe.id}.callLog`]
+    if (stored === undefined) throw new Error("Missing retained owner call log")
+    const log = readCallLog(JSON.parse(stored))
+    const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+    await callback(replay.context)
+    replay.finish()
+    expect(observed).toBe(restoreAfterPaint)
+  } finally {
+    probe.term = original
+  }
+})
+
 // A callback that never returns must still have an actual attempt in the retained checkpoint.
 it("checkpoints the native attempt before invoking its callback", async () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "device.decrpm")!
@@ -778,6 +896,135 @@ it.each([
     expect.objectContaining({ featureId: id, kind: positive ? "positive" : "negative", rawReplyRef: id }),
   )
 })
+
+// @failure An owned App reader that writes only through its private writer (WezTerm OSC 7 uses the owned
+//   terminal's own output, never the publishable writer) yields an assertion with no rawReplyRef, so the daemon
+//   reader refuses the whole run: "extensions.osc7-cwd lacks bound positive assertion" (run 44133870892).
+// The case above always writes through the publishable writer, so it never reaches this branch.
+// @level l1
+// @consumer Registered App semantic callback -> native recorder -> strict daemon capture reader.
+it("binds an App state assertion whose reader never wrote through the publishable writer", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const id = "extensions.osc7-cwd"
+  const reading: AppSemanticReading = {
+    status: "measured",
+    reader: "state",
+    runId: "a".repeat(32),
+    unknown: { before: "control", after: "control" },
+    handled: { before: "control", after: "handled", expected: "handled" },
+    target: { before: "control", after: "target", expected: "target" },
+    detail: {},
+  }
+  const read = vi.fn(async () => reading)
+  const batch = await runProbeBatch({
+    ids: [id],
+    ownedTerminal: { ...geometryOwner(noGeometry), readAppSemanticState: read },
+  })
+  expect(read).toHaveBeenCalledOnce()
+  expect(writes).toEqual([])
+  expect(batch.results.find((row) => row.featureId === id)?.status).toBe("supported")
+  const decoded = decodeCollectorDraft(
+    "owned-app-state.json",
+    JSON.stringify(asRun(batch)),
+    manifest,
+    sourceRevision,
+  ).run
+  expect(decoded.results.find((row) => row.featureId === id)?.status).toBe("supported")
+  expect(decoded.assertions).toContainEqual(
+    expect.objectContaining({ featureId: id, kind: "positive", rawReplyRef: id }),
+  )
+})
+
+// @failure A native editor reader keeps a window capture in its reading's detail and callback response, but the
+//   frame never enters screenshotRefs, so placement copies no file for it and the published run cites a PNG that
+//   content/artifacts lacks (35004: 18 such refs across five macOS editor runs; 35009).
+// Placement's own missing-file refusal only sees listed refs, so its existing cases cannot catch a producer that
+// never lists the frame. This drives the reader's recorder through the real batch and the strict run decoder.
+// @level l1
+// @consumer Owned editor reader -> batch capture recorder -> run screenshotRefs -> placeCollectedRun.
+it.each(["measured", "invalid", "untyped"] as const)(
+  "lists an owned editor reader's window captures in the run's screenshotRefs: %s",
+  async (shape) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const id = "extensions.osc633-p"
+    const ref = (byte: number) =>
+      `sha256:${createHash("sha256")
+        .update(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, byte]))
+        .digest("hex")}`
+    // A decoded-pixel comparison value names no file and must stay out of the typed lists.
+    const pixelsDigest = `sha256:${"c".repeat(64)}`
+    const frame = (phase: string, byte: number) => ({
+      frame: {
+        kind: "pixels",
+        role: phase === "target" ? "target" : "control",
+        label: `Native App ${phase}`,
+        ref: ref(byte),
+        pixelsDigest,
+      },
+    })
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        async readAppSemanticState(featureId, _write, recordCapture) {
+          expect(featureId).toBe(id)
+          if (shape === "untyped") {
+            recordCapture({ retained: true })
+            throw new Error("unreachable: an untyped capture is refused as it is recorded")
+          }
+          const target = frame("target", 1)
+          recordCapture(target)
+          if (shape === "measured") {
+            return {
+              status: "measured",
+              reader: "state",
+              runId: "a".repeat(32),
+              unknown: { before: "control", after: "control" },
+              handled: { before: "control", after: "handled", expected: "handled" },
+              target: { before: "control", after: "target", expected: "target" },
+              detail: { captures: [{ phase: "target", observation: target }] },
+            }
+          }
+          // A failed read keeps its window too; that frame lives only in the invalid reading's detail.
+          const failed = frame("failed-read", 2)
+          recordCapture(failed)
+          return {
+            status: "invalid",
+            reason: "Native editor fixture",
+            detail: {
+              captures: [
+                { phase: "target", observation: target },
+                { phase: "failed-read", observation: failed },
+              ],
+            },
+          }
+        },
+      },
+    })
+    if (shape === "untyped") {
+      expect(batch.screenshotRefs).toEqual([])
+      expect(JSON.stringify(batch)).toContain(`App reader capture for ${id} returned no typed frame with a sha256 ref`)
+      return
+    }
+    const expected = shape === "measured" ? [ref(1)] : [ref(1), ref(2)]
+    expect(batch.screenshotRefs).toEqual(expected)
+    expect(batch.textSnapshotRefs).not.toContain(pixelsDigest)
+    const decoded = decodeCollectorDraft(
+      "owned-editor.json",
+      JSON.stringify(asRun(batch)),
+      manifest,
+      sourceRevision,
+    ).run
+    expect(decoded.screenshotRefs).toEqual(expected)
+    expect(decoded.screenshotRefs).not.toContain(pixelsDigest)
+  },
+)
 
 // Callback-returned responses survive current transport without becoming measured evidence.
 it.each([
@@ -991,6 +1238,224 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
 
+function ordinaryOpenReceiptFixture(overrides: Record<string, unknown> = {}) {
+  const runId = "a".repeat(32)
+  const nonce = `nonce-${runId}-b7d1`
+  return parseOrdinaryOpenReceipt(
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "ordinary-open-app",
+      runId,
+      collectedAt: "2026-11-13T19:00:00Z",
+      subject: {
+        id: "iterm2",
+        bundleId: "com.googlecode.iterm2",
+        version: "3.5.14",
+        executableInBundle: "iTerm.app/Contents/MacOS/iTerm2",
+      },
+      ancestry: {
+        appPid: 4711,
+        chain: [
+          { pid: 4802, executable: "bun" },
+          { pid: 4790, executable: "zsh" },
+          { pid: 4711, executable: "iTerm2" },
+        ],
+      },
+      nonce: { value: nonce, sha256: createHash("sha256").update(nonce).digest("hex") },
+      witness: { command: "pbpaste", exit: 0, matched: true },
+      baselineRestore: { length: 12, sha256: "b".repeat(64), restored: true },
+      signature: { teamId: "H7H8Q7M5BK", signingIdentifier: "com.googlecode.iterm2" },
+      ...overrides,
+    }),
+  )
+}
+
+/** The live walk a real ordinary-open run gets: this process -> zsh -> the app the receipt names. */
+function liveAncestryToApp(reaches = 4711): LiveAncestryReader {
+  return {
+    parent(pid) {
+      if (pid === process.pid) return { pid: 4790, executable: "zsh" }
+      if (pid === 4790) return { pid: reaches, executable: "iTerm2" }
+      if (pid === reaches) return { pid: 1, executable: "launchd" }
+      return undefined
+    },
+  }
+}
+
+function ordinaryOpenClipboard(): LinuxClipboardAdapter {
+  return {
+    profile: "default",
+    pasteboard: "darwin",
+    pasteboardApp: "iterm2",
+    config: null,
+    permissions: "clipboard: read=allow,write=allow",
+    summary: "ordinary-open pasteboard for iTerm2",
+    assertOwned: async () => {},
+    readTitle: async () => {
+      throw new Error("An ordinary-open receipt carries no title reader")
+    },
+    dispose: async () => {},
+    async withClipboardFixture(work, _trace, verify) {
+      await verify()
+      return work({ readText: async () => "fixture", writeText: async () => {} })
+    },
+  }
+}
+
+// @failure A receipt for an app a person opened themselves grants a row it is not about, or grants its three OSC 52
+//   rows on stored bytes alone — either way a Mac row is graded on evidence nobody can trace.
+// @level l1
+// @consumer the OSC 52 gate on an ordinary-open receipt (@cto 2026-11-13).
+it("refuses an ordinary-open receipt on a row outside the OSC 52 set, naming that row", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const batch = await runProbeBatch({
+    ids: ["modes.bracketed-paste"],
+    captureRunId: "a".repeat(32),
+    subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+    ordinaryOpen: {
+      receipt: ordinaryOpenReceiptFixture(),
+      clipboard: ordinaryOpenClipboard(),
+      expectedBundleId: "com.googlecode.iterm2",
+      readAncestry: liveAncestryToApp(),
+    },
+  })
+  expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")).toMatchObject({
+    status: "probe-todo",
+    reason: "Required grant missing: an ordinary-open receipt admits only the OSC 52 rows, not modes.bracketed-paste",
+  })
+})
+
+it("admits an OSC 52 row when the live ancestry still reaches the app the receipt names", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  const readFixture = vi.fn()
+  try {
+    definition.term = async (probeSource) =>
+      probeSource.withClipboardFixture!(async (fixture) => {
+        readFixture(await fixture.readText())
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      })
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: "com.googlecode.iterm2",
+        readAncestry: liveAncestryToApp(),
+      },
+    })
+    expect(readFixture).toHaveBeenCalledWith("fixture")
+    expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toMatchObject({
+      status: "supported",
+    })
+  } finally {
+    definition.term = originalTerm
+  }
+})
+
+it("keeps an OSC 52 row probe-todo when the live ancestry no longer reaches the app", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc52-read"],
+    captureRunId: "a".repeat(32),
+    subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+    ordinaryOpen: {
+      receipt: ordinaryOpenReceiptFixture(),
+      clipboard: ordinaryOpenClipboard(),
+      expectedBundleId: "com.googlecode.iterm2",
+      readAncestry: liveAncestryToApp(9999),
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc52-read")
+  expect(row).toMatchObject({ status: "probe-todo" })
+  expect(row?.reason).toContain("read method unavailable here: the live ancestry from pid")
+})
+
+/** Passes the gate's walk, then loses the chain: the fixture-time re-walk must refuse rather than grade. */
+function ancestryFailingAfterFirstWalk(): LiveAncestryReader {
+  let starts = 0
+  return {
+    parent(pid) {
+      if (pid === process.pid) {
+        starts += 1
+        if (starts > 1) return undefined
+        return { pid: 4790, executable: "zsh" }
+      }
+      if (pid === 4790) return { pid: 4711, executable: "iTerm2" }
+      if (pid === 4711) return { pid: 1, executable: "launchd" }
+      return undefined
+    },
+  }
+}
+
+// @cto 2026-11-13 fail-open path 1: the fixture clause must key on an explicit admission, not on "no refusal was
+// computed". A row that does not need ownership must still get no adapter, and a missing bundle id must never pass.
+it("gives no clipboard fixture to an OSC 52 row that does not need ownership when no bundle id is named", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  const originalWrites = definition.termWrites
+  const seen: unknown[] = []
+  try {
+    definition.termWrites = "query"
+    definition.term = async (probeSource) => {
+      seen.push(probeSource.withClipboardFixture)
+      return { pass: true, observation: { outcome: "unsupported", assertionType: "query_reply" } }
+    }
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: undefined,
+        readAncestry: liveAncestryToApp(),
+      },
+    })
+    expect(seen).toEqual([undefined])
+    expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toBeDefined()
+  } finally {
+    definition.term = originalTerm
+    definition.termWrites = originalWrites
+  }
+})
+
+// @dev/16 19:42 item 3: a walk that passes at the gate and fails inside the fixture must stay a named probe-todo,
+// not degrade into an ungraded collector-error.
+it("keeps the named probe-todo when the live walk fails inside the fixture after passing at the gate", async () => {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(false)
+  const definition = ALL_PROBES.find((entry) => entry.id === "extensions.osc52-read")!
+  const originalTerm = definition.term
+  try {
+    definition.term = async (probeSource) =>
+      probeSource.withClipboardFixture!(async (fixture) => {
+        await fixture.readText()
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
+      })
+    const batch = await runProbeBatch({
+      ids: ["extensions.osc52-read"],
+      captureRunId: "a".repeat(32),
+      subject: { kind: "term", id: "iterm2", os: "macos", version: "3.5.14" },
+      ordinaryOpen: {
+        receipt: ordinaryOpenReceiptFixture(),
+        clipboard: ordinaryOpenClipboard(),
+        expectedBundleId: "com.googlecode.iterm2",
+        readAncestry: ancestryFailingAfterFirstWalk(),
+      },
+    })
+    const row = batch.results.find((result) => result.featureId === "extensions.osc52-read")
+    expect(row).toMatchObject({ status: "probe-todo" })
+    expect(row?.reason).toContain("read method unavailable here")
+    expect(batch.ungradedDiagnostics?.["extensions.osc52-read"]).toBeUndefined()
+  } finally {
+    definition.term = originalTerm
+  }
+})
+
 // A caller cannot manufacture ownership by satisfying the owner's public TypeScript shape.
 it("refuses a structural terminal owner even with the same claimed capture ID", async () => {
   const writes: string[] = []
@@ -1135,6 +1600,119 @@ it("carries the owned collector's no-pane-read declaration into every history ro
   }
 })
 
+// @failure serve.ts builds hosted alacritty's viewport route, but the batch handoff drops it, so the four history
+//   rows report the app's "no pane read" declaration instead of our missing held-frame reader (34313).
+// @level l1
+// @consumer App batch -> probe source handoff -> history rows on hosted alacritty 0.17.0.
+it("carries the owner's viewport route into every history row ahead of the declaration, pressing nothing", async () => {
+  verifiedBatchFixture()
+  const ids = [
+    "scrollback.accumulate",
+    "scrollback.total-lines",
+    "erase.screen.scrollback",
+    "extensions.osc720-scroll-up",
+  ]
+  const pressed: string[] = []
+  const batch = await runProbeBatch({
+    ids,
+    subject: { kind: "term", id: "alacritty", os: "darwin" },
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), scrollbackUnavailable: "no pane read on this app" },
+    viewportScroll: { route: "hosted alacritty 0.17.0 fixture route", press: async (step) => void pressed.push(step) },
+  })
+  const rows = batch.results.filter((result) => ids.includes(result.featureId))
+  expect(rows).toHaveLength(4)
+  for (const row of rows) {
+    expect(row.status, row.featureId).toBe("probe-todo")
+    expect(row.reason, row.featureId).toContain("held-viewport read not available")
+    expect(row.reason, row.featureId).toContain("hosted alacritty 0.17.0 fixture route")
+    expect(row.tests?.some((item) => item.id === "declared-untestable") ?? false, row.featureId).toBe(false)
+  }
+  expect(pressed).toEqual([])
+})
+
+// @failure serve installs the held-viewport reader on the preparation's own source, which the row never sees:
+//   the reader is never called, and a reader closed over that source reads no viewport route and records into
+//   the calibration. adoptHold is dropped by the row's route wrapper too (@cto 3dd05e18, 34693).
+// @level l1
+// @consumer App batch preparation -> per-row held-viewport reader -> history row callback.
+describe("held-viewport reader handoff (34693)", () => {
+  const id = "scrollback.accumulate"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = {
+    term: definition.term,
+    termWrites: definition.termWrites,
+    termNeedsGeometry: definition.termNeedsGeometry,
+  }
+  afterEach(() => Object.assign(definition, original))
+  const frameRef = `sha256:${"ab".repeat(32)}`
+
+  async function run(refuse: boolean) {
+    verifiedBatchFixture()
+    const built: Array<{ featureId: string; source: TermProbeSource }> = []
+    const seen: { source?: TermProbeSource; routeAtRead?: string; reads: number; adopted: number } = {
+      reads: 0,
+      adopted: 0,
+    }
+    definition.termWrites = "query"
+    delete definition.termNeedsGeometry
+    definition.term = async (source) => {
+      seen.source = source
+      source.viewportScroll?.adoptHold?.()
+      await source.readViewportReference?.("before the trigger")
+      return { pass: false, tests: [{ id: "handoff", status: "probe-todo", reason: "fixture reads the handoff only" }] }
+    }
+    const heldViewportReaderFor: HeldViewportReaderFor = (row) => {
+      built.push({ featureId: row.featureId, source: row.source })
+      return {
+        read: () => Promise.reject(new Error("fixture holds nothing")),
+        reference: () => {
+          seen.reads++
+          seen.routeAtRead = row.source.viewportScroll?.route
+          row.record({ frame: { role: "control", ref: frameRef, capturedAt: 1, label: "held reference" }, trace: {} })
+          return Promise.resolve({ status: "unavailable", reason: "capture-failed", detail: "fixture" } as const)
+        },
+      }
+    }
+    const batch = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "term", id: "alacritty", os: "darwin", version: "0.17.0" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      viewportScroll: {
+        route: "hosted alacritty 0.17.0 fixture route",
+        press: async () => {},
+        adoptHold: () => void seen.adopted++,
+      },
+      prepareCapture: ({ source }) => {
+        if (refuse) source.captureGeometryRefusal = "fixture refused the grid"
+        return Promise.resolve({ heldViewportReaderFor })
+      },
+    })
+    return { batch, built, seen }
+  }
+
+  it("builds the reader for the row's own source, route and captures", async () => {
+    const { batch, built, seen } = await run(false)
+    expect(built.map((row) => row.featureId)).toEqual([id])
+    expect(built[0]?.source).toBe(seen.source)
+    expect([seen.reads, seen.adopted]).toEqual([1, 1])
+    expect(seen.routeAtRead).toBe("hosted alacritty 0.17.0 fixture route")
+    expect(batch.screenshotRefs).toContain(frameRef)
+    expect(
+      (JSON.parse(batch.rawReplies[id] ?? "{}") as { captures?: Array<{ frame: ObservationFrame }> }).captures?.map(
+        (capture) => capture.frame.ref,
+      ),
+    ).toEqual([frameRef])
+  })
+
+  it("installs no reader when the preparation refused the grid", async () => {
+    const { built, seen } = await run(true)
+    expect(built).toEqual([])
+    expect(seen.source?.readViewportReference).toBeUndefined()
+    expect(seen.source?.readHeldViewport).toBeUndefined()
+    expect(seen.reads).toBe(0)
+  })
+})
+
 // @failure A run whose geometry is unavailable reports the declaration instead of the geometry refusal, hiding
 //   that this run could not establish the grid its row needs (@cto 34005 ruling: the refusal wins).
 // @level l1
@@ -1195,7 +1773,7 @@ it("retains the focus report emitted while enabling 1004", async () => {
   })
   expect(batch.ungradedDiagnostics).toEqual({})
   const trace = JSON.parse(batch.rawReplies["modes.focus-tracking"]!) as { queries: Array<{ raw: string }> }
-  expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[Ia", "\x1b[O\x1b[Ia", "a"])
+  expect(trace.queries.slice(1).map((query) => query.raw)).toEqual(["\x1b[Ia", "\x1b[O\x1b[I", "a", "a"])
   expect(batch.results.find((row) => row.featureId === "modes.focus-tracking")?.status).toBe("supported")
   expect(JSON.parse(batch.assertions[0]!.observed)).toMatchObject({
     enableTimeReport: "\x1b[I",
@@ -1281,28 +1859,34 @@ it.each(
   ["extensions.osc2-title", "device.xtwinops-22", "device.xtwinops-23"].flatMap((id) =>
     ["controls", "query"].map((failure) => ({ id, failure })),
   ),
-)("names Screen's missing own-title reader after $failure fails: $id", async ({ id, failure }) => {
-  verifiedBatchFixture()
-  process.stdout.write = (() => true) as typeof process.stdout.write
-  const batch = await runProbeBatch({
-    ids: [id],
-    subject: { kind: "mux", id: "screen", os: "linux" },
-    ownedTerminal: {
-      ...geometryOwner(noGeometry),
-      readTitle: async () => {
-        if (failure === "query") throw new Error("screen -Q title is unavailable")
-        return "unchanged Screen title"
+)(
+  "names Screen's missing own-title reader after $failure fails: $id",
+  async ({ id, failure }) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({
+      ids: [id],
+      subject: { kind: "mux", id: "screen", os: "linux" },
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        readTitle: async () => {
+          if (failure === "query") throw new Error("screen -Q title is unavailable")
+          return "unchanged Screen title"
+        },
       },
-    },
-  })
-  const row = batch.results.find((result) => result.featureId === id)!
-  expect(row.status).toBe("probe-todo")
-  expect(row.reason).toMatch(/Screen.*screen -Q title/)
-  expect(batch.assertions).toEqual([])
-  const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
-  if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
-  else expect(reads.length).toBeGreaterThan(1)
-})
+    })
+    const row = batch.results.find((result) => result.featureId === id)!
+    expect(row.status).toBe("probe-todo")
+    expect(row.reason).toMatch(/Screen.*screen -Q title/)
+    expect(batch.assertions).toEqual([])
+    const reads = (JSON.parse(batch.rawReplies[id]!) as { titleReads: unknown[] }).titleReads
+    if (failure === "query") expect(reads).toEqual([{ error: "screen -Q title is unavailable" }])
+    else expect(reads.length).toBeGreaterThan(1)
+    // #34932 red (@dev/fixer f4aa844d): a reader that never shows a set spends one settle budget, not one per set. The
+    // old code took 8.2 s here and passed only under a project timeout above vitest's 5 s default, so the bound is pinned.
+  },
+  5_000,
+)
 
 // #33375: the OSC 7 title reader installs from the owned run, never from a subject name. The first assertion
 // is the installation itself: an App that used to fall through now reads its own title. Only Ghostty, whose
@@ -1364,6 +1948,92 @@ it.each([false, true])("binds the title reader and its raw readings only to the 
     expect(trace.titleReads).toBeUndefined()
   }
 })
+
+// @failure A pixel run whose capture calibration was refused records a row that lost its own pixel reading as an
+//   ordinary open result, which reopens an older decided cell; or the finalizer's diagnostic escapes its finally and
+//   aborts the run; or a text-cells run, a run with no refusal, or a row decided another way is relabelled (34675).
+// @level l1
+// @consumer runProbeBatch -> buildProbeResult -> selected-results keep (selected-results.ts keptDecidedCell).
+it.each([
+  { runKind: "pixels", refusal: "calibration refused for the fixture", tagged: true },
+  { runKind: "text-cells", refusal: "calibration refused for the fixture", tagged: false },
+  { runKind: "pixels", refusal: undefined, tagged: false },
+] as const)(
+  "attributes a refused capture only where the row's own pixel reading was lost ($runKind, refusal $refusal)",
+  async ({ runKind, refusal, tagged }) => {
+    verifiedBatchFixture()
+    vi.spyOn(process.stdout, "write").mockReturnValue(true)
+    const ids = ["sgr.bold", "sgr.italic", "device.primary-da"]
+    const definitions = ids.map((featureId) => ALL_PROBES.find((probe) => probe.id === featureId)!)
+    const originals = definitions.map(({ term, termWrites, termNeedsGeometry }) => ({
+      term,
+      termWrites,
+      termNeedsGeometry,
+    }))
+    try {
+      for (const definition of definitions) {
+        definition.termWrites = "query"
+        delete definition.termNeedsGeometry
+      }
+      // A paint row decided by a status reply alone: the finalizer, after the callback catch, is where it is open.
+      definitions[0]!.term = async () => ({
+        pass: true,
+        response: "status reply 1m",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ assertionType: "query_reply", kind: "positive", expected: "SGR 1", observed: "1m" }],
+      })
+      // A callback arm whose own pixel reading is the missing one raises inside the callback.
+      definitions[1]!.term = async (ctx) => {
+        raiseRefusedCapture(ctx, "Italic needs rendered pixels")
+        return {
+          pass: false,
+          response: "cursor 1;2",
+          tests: [{ id: "criterion", status: "probe-todo", reason: "Italic pixels were not read" }],
+        }
+      }
+      definitions[2]!.term = async () => ({
+        pass: true,
+        response: "1;2c",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ assertionType: "query_reply", kind: "positive", expected: "DA1", observed: "1;2c" }],
+      })
+      const batch = await runProbeBatch({
+        ids,
+        subject: { kind: "term", id: "refused-capture-fixture", os: "linux" },
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        captureKind: runKind,
+        prepareCapture: async ({ source }) => {
+          source.captureGeometryRefusal = refusal
+        },
+      })
+      const row = (id: string) => batch.results.find((result) => result.featureId === id)!
+      // The run went on: the row after both refused rows still ran and decided.
+      expect(row("device.primary-da").status).toBe("supported")
+      // The row's retained trace and its reference survive whatever the grade.
+      for (const id of ["sgr.bold", "sgr.italic"]) {
+        expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ writes: [], queries: [], events: [] })
+        expect(row(id).rawReplyRef, id).toBe(id)
+      }
+      for (const id of ["sgr.bold", "sgr.italic"]) {
+        expect(row(id).status, id).toBe("probe-todo")
+        if (tagged) {
+          expect(row(id).harnessOutcome, id).toBe("capture-refused")
+          expect(batch.ungradedDiagnostics[id], id).toMatchObject({
+            kind: "collector-error",
+            name: "FrameUnavailable",
+            message: expect.stringContaining(`this run refused capture geometry: ${refusal}`),
+          })
+        } else {
+          expect(row(id).harnessOutcome, id).toBeUndefined()
+          expect(batch.ungradedDiagnostics[id], id).toBeUndefined()
+        }
+      }
+      if (!tagged) expect(row("sgr.italic").reason).toBe("Italic pixels were not read")
+    } finally {
+      definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+    }
+  },
+)
 
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
@@ -1561,7 +2231,16 @@ it.each([
     })
     const result = batch.results.find((row) => row.featureId === id)!
     expect(result.status).toBe(scenario.expected)
-    if (scenario.expected === "untestable") expect(result.reason).toMatch(/passed.*outer terminal kitty/i)
+    if (scenario.expected === "untestable") {
+      expect(result.reason).toMatch(/passed.*outer terminal kitty/i)
+      expect(batch.notTested.find((item) => item.featureId === id)).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: expect.stringMatching(/passed.*outer terminal kitty/i),
+        rawReplyRef: `${id}.outerCommands`,
+      })
+    } else {
+      expect(batch.notTested.find((item) => item.featureId === id)).toBeUndefined()
+    }
     if (scenario.expected === "unsupported") expect(result.reason).toMatch(/tmux.*did not forward/i)
     if (scenario.expected !== "probe-todo") {
       expect(JSON.parse(batch.rawReplies[`${id}.outerCommands`]!)).toMatchObject({
@@ -1577,6 +2256,20 @@ it.each([
         sourceRevision,
       ).run
       expect(decoded.results.find((row) => row.featureId === id)?.status).toBe(scenario.expected)
+      if (scenario.expected === "untestable") {
+        expect(decoded.results.find((row) => row.featureId === id)).toMatchObject({
+          status: "untestable",
+          reason: expect.stringMatching(/passed.*outer terminal kitty/i),
+          rawReplyRef: `${id}.outerCommands`,
+          tests: [
+            expect.objectContaining({
+              id: "declared-untestable",
+              status: "untestable",
+              rawReplyRef: `${id}.outerCommands`,
+            }),
+          ],
+        })
+      }
     }
   } finally {
     Object.assign(definition, original)
@@ -1991,7 +2684,11 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     ids: ["reset.ris"],
     ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
   })
-  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-todo" })
+  // 34675 (@cto go-r2-1341): the gate's refusing arm is tagged as an unfinished harness reading.
+  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
+    status: "probe-todo",
+    harnessOutcome: "geometry-refused",
+  })
   expect(
     decodeCollectorDraft(
       "missing-geometry.json",
@@ -2020,7 +2717,10 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       },
     },
   })
-  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "probe-invalid" })
+  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
+    status: "probe-invalid",
+    harnessOutcome: "geometry-refused",
+  })
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
     source: darwinGeometrySource,
@@ -2046,13 +2746,21 @@ it.each([
     renewalRefusal: true,
   },
   { name: "RIS renews after an initial refusal", sequence: "\x1bc", initialRefusal: true, renewalRefusal: false },
+  // #30932 S1: a renewal at equal dimensions is still a second installation, which only its id tells apart.
+  {
+    name: "RIS renews at equal dimensions",
+    sequence: "\x1bc",
+    initialRefusal: false,
+    renewalRefusal: false,
+    sameSize: true,
+  },
   {
     name: "DECSTR preserves the existing calibration",
     sequence: "\x1b[!p",
     initialRefusal: false,
     renewalRefusal: false,
   },
-])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal }) => {
+])("capture lifetime: $name", async ({ sequence, initialRefusal, renewalRefusal, sameSize }) => {
   verifiedBatchFixture()
   const ids = ["reset.ris", "reset.decaln"]
   const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
@@ -2065,10 +2773,13 @@ it.each([
     geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
     source: "measured by complete raster calibration" as const,
   }
-  const renewed = { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
+  const renewed = sameSize
+    ? { ...initial, geometry: { ...initial.geometry } }
+    : { ...initial, geometry: { ...initial.geometry, cellWidth: 10, textWidth: 800 } }
   const order: string[] = []
   const observedWrites: string[] = []
   const handedSources: TermProbeSource[] = []
+  const preparedRows: Array<string | undefined> = []
   const resets = sequence === "\x1bc"
   let preparations = 0
   process.stdout.write = (() => true) as typeof process.stdout.write
@@ -2092,8 +2803,9 @@ it.each([
       ids,
       ownedTerminal: geometryOwner(measured(24, 80)),
       onWrite: (text) => observedWrites.push(text),
-      prepareCapture: async ({ source, featureId, recordCapture }) => {
+      prepareCapture: async ({ source, featureId, recordCapture, row }) => {
         preparations++
+        preparedRows.push(row)
         order.push(`prepare:${preparations}`)
         expect(source.captureGeometry).toBeUndefined()
         expect(source.captureGeometryRefusal).toBeUndefined()
@@ -2133,6 +2845,9 @@ it.each([
         ? ["prepare:1", "callback:0", "prepare:2", "callback:1", "finish"]
         : ["prepare:1", "callback:0", "callback:1", "finish"],
     )
+    // 34306 AC1: the recursion that renews is the later ROW's read, so the preparation must name
+    // that row. Without it the published fact can only name the pass number, never the row.
+    expect(preparedRows).toEqual(resets ? [undefined, ids[1]] : [undefined])
     expect(observedWrites.filter((text) => text === sequence)).toEqual([sequence])
     expect(handedSources[0]?.captureGeometry).toEqual(initialRefusal ? undefined : initial)
     expect(handedSources[0]?.captureGeometryRefusal).toBe(initialRefusal ? "initial refused" : undefined)
@@ -2148,9 +2863,277 @@ it.each([
         captures: [{ frame: { ref: `sha256:${"2".repeat(64)}` } }],
       })
     } else expect(batch.rawReplies["collector.captureCalibration.renewal.1.trace"]).toBeUndefined()
+    // #30932 S1: each row names the installation it was handed. The earlier row keeps the first
+    // one after a later renewal, and a refusal is carried as the refusal, never as stale geometry.
+    const header = { format: "terminfo.capture-binding", version: 1 }
+    const bindingFor = (
+      calibrationId: string,
+      rowIndex: number,
+      refusal: string | undefined,
+      geometry: typeof initial,
+    ) =>
+      refusal === undefined
+        ? { ...header, calibrationId, rowIndex, outcome: "installed", captureGeometry: geometry }
+        : { ...header, calibrationId, rowIndex, outcome: "refused", refusal }
+    const initialRefused = initialRefusal ? "initial refused" : undefined
+    expect(JSON.parse(batch.rawReplies[ids[0] + ".captureBinding"]!)).toEqual(
+      bindingFor("collector.captureCalibration", 0, initialRefused, initial),
+    )
+    expect(JSON.parse(batch.rawReplies[ids[1] + ".captureBinding"]!)).toEqual(
+      resets
+        ? bindingFor(
+            "collector.captureCalibration.renewal.1",
+            1,
+            renewalRefusal ? "renewal refused" : undefined,
+            renewed,
+          )
+        : bindingFor("collector.captureCalibration", 1, initialRefused, initial),
+    )
+    // The reader resolves each association to the NAMED installation's own record (#30932 S1 review):
+    // its preparing row, its run position and what it handed. Both rows read back as recorded.
+    const rawReplies: Record<string, string> = { ...batch.rawReplies }
+    for (const id of ids) {
+      expect(readCaptureBinding(rawReplies, id)).toEqual(JSON.parse(rawReplies[id + ".captureBinding"]!))
+    }
+    if (resets) {
+      // A recorded but wrong reference fails at equal dimensions too, whether only the id is wrong or
+      // the rows' whole associations are swapped.
+      const withBinding = (id: string, binding: Record<string, unknown>) => ({
+        ...rawReplies,
+        [id + ".captureBinding"]: JSON.stringify(binding),
+      })
+      const stored = (id: string) => JSON.parse(rawReplies[id + ".captureBinding"]!) as Record<string, unknown>
+      const renewal = "collector.captureCalibration.renewal.1"
+      expect(() =>
+        readCaptureBinding(withBinding(ids[0]!, { ...stored(ids[0]!), calibrationId: renewal }), ids[0]!),
+      ).toThrow(`replay-incomplete: capture binding names ${renewal}, installed at row ${ids[1]}, after this row ran`)
+      expect(() =>
+        readCaptureBinding(
+          withBinding(ids[1]!, { ...stored(ids[1]!), calibrationId: "collector.captureCalibration" }),
+          ids[1]!,
+        ),
+      ).toThrow(`but ${renewal} was installed at row ${ids[1]}, before this row ran (${ids[1]})`)
+      expect(() => readCaptureBinding(withBinding(ids[0]!, stored(ids[1]!)), ids[0]!)).toThrow(
+        `capture binding names ${renewal}, but this row prepared collector.captureCalibration (${ids[0]})`,
+      )
+      expect(() => readCaptureBinding(withBinding(ids[1]!, stored(ids[0]!)), ids[1]!)).toThrow(
+        `capture binding names collector.captureCalibration, but this row prepared ${renewal} (${ids[1]})`,
+      )
+    }
     expect(JSON.parse(batch.rawReplies["collector.textQualification.trace"]!)).toMatchObject({
       captures: [{ frame: { ref: `sha256:${"f".repeat(64)}` } }],
     })
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+/** The calibration trace as a retention assertion reads it back; `JSON.parse` is typed `unknown` here. */
+function retainedCaptureTrace(
+  batch: { rawReplies: Record<string, string> },
+  key: string,
+): { captures: Array<{ frame: { ref: string; label: string; capturedAt: number } }> } {
+  return JSON.parse(batch.rawReplies[key]!) as {
+    captures: Array<{ frame: { ref: string; label: string; capturedAt: number } }>
+  }
+}
+
+// @failure A capture recorded after capture preparation returns is frozen out of the published
+//   calibration trace, so every pre-paint frame a sentinel read pays for leaves no observation row.
+// @level l1
+// @consumer runProbeBatch -> collector.captureCalibration.trace captures[] and the pre-paint reading.
+it("keeps a capture recorded after preparation returns, with identical pixels kept as two rows", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const samePixels = `sha256:${"a".repeat(64)}`
+  let lateRecorder: Parameters<CapturePreparation>[0]["recordCapture"] | undefined
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const definition of definitions) {
+      delete definition.termNeedsGeometry
+      definition.termWrites = "query"
+      definition.term = async () => {
+        // 34261 retention: the same recorder the preparation handed out, invoked after it returned.
+        // Two acquisitions of identical pixels are two observations, so both rows must survive even
+        // though recordCapture deduplicates their shared content reference.
+        for (const capturedAt of [1_764_000_000_123, 1_764_000_000_456]) {
+          lateRecorder?.({
+            frame: { role: "control", ref: samePixels, capturedAt, label: "reset.ris: pre-paint" },
+            trace: { acquisition: { label: "reset.ris: pre-paint", role: "control", totalMs: 237 } },
+          })
+        }
+        return {
+          pass: false,
+          tests: [
+            { id: "criterion", status: "probe-todo", reason: "Late-acquisition fixture does not measure support" },
+          ],
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        source.write("calibration:1")
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${"1".repeat(64)}`,
+            capturedAt: 1_764_000_000_000,
+            label: "calibration witness",
+          },
+          trace: { captureCommand: "fixture-capture" },
+        })
+        // Handed out here, called by the callback below: the ordering the defect froze out.
+        lateRecorder = recordCapture
+        source.captureGeometry = {
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+          source: "measured by complete raster calibration" as const,
+        }
+      },
+    })
+    const captureTrace = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
+    expect(captureTrace.captures.map((capture) => capture.frame.capturedAt)).toEqual([
+      1_764_000_000_000, 1_764_000_000_123, 1_764_000_000_456,
+    ])
+    expect(captureTrace.captures.map((capture) => capture.frame.label)).toEqual([
+      "calibration witness",
+      "reset.ris: pre-paint",
+      "reset.ris: pre-paint",
+    ])
+    // Two rows, one content reference: the row count is observations, never deduplicated pixels.
+    expect(new Set(captureTrace.captures.map((capture) => capture.frame.ref)).size).toBe(2)
+    expect(batch.screenshotRefs.filter((ref) => ref === samePixels)).toEqual([samePixels])
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+// @failure A refused preparation loses the acquisitions it did record, so a failure cannot show what
+//   was actually observed before it.
+// @level l1
+// @consumer runProbeBatch -> failure draft collector.captureCalibration.trace.
+it("keeps the rows a refused preparation recorded before it refused", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  delete definitions[0]!.termNeedsGeometry
+  definitions[0]!.termWrites = "query"
+  definitions[0]!.term = async () => ({
+    pass: false,
+    tests: [{ id: "criterion", status: "probe-todo", reason: "Refused-preparation fixture does not measure support" }],
+  })
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        source.write("calibration:1")
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${"2".repeat(64)}`,
+            capturedAt: 1_764_000_000_200,
+            label: "before refusal",
+          },
+          trace: { captureCommand: "fixture-capture" },
+        })
+        throw Object.assign(new Error("refused after one frame"), { name: "CaptureCalibrationRefused" })
+      },
+    })
+    const captureTrace = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
+    expect(captureTrace).toMatchObject({ refusal: "refused after one frame", writes: ["calibration:1"] })
+    expect(captureTrace.captures).toHaveLength(1)
+    expect(captureTrace.captures[0]).toMatchObject({
+      frame: { label: "before refusal", capturedAt: 1_764_000_000_200 },
+    })
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
+// @failure Late acquisitions land in whichever preparation happens to be newest, so a renewal is
+//   credited with frames taken under the preparation it replaced.
+// @level l1
+// @consumer runProbeBatch -> collector.captureCalibration[.renewal.N].trace capture ownership.
+it("keeps each preparation's late acquisitions with the preparation that handed them out", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris", "reset.decaln"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const recorders: Array<Parameters<CapturePreparation>[0]["recordCapture"]> = []
+  const settled = {
+    geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+    source: "measured by complete raster calibration" as const,
+  }
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const [index, definition] of definitions.entries()) {
+      delete definition.termNeedsGeometry
+      definition.termWrites = "query"
+      definition.term = async (source) => {
+        if (index === 0) {
+          // RIS expires the geometry, so the next row prepares again; the first preparation's recorder
+          // is still the one that took this frame, and it must stay with that preparation.
+          source.write("\x1bc")
+          recorders[0]?.({
+            frame: {
+              role: "control",
+              ref: `sha256:${"3".repeat(64)}`,
+              capturedAt: 1_764_000_000_300,
+              label: "reset.ris: pre-paint",
+            },
+            trace: {},
+          })
+        }
+        return {
+          pass: false,
+          tests: [
+            { id: "criterion", status: "probe-todo", reason: "Renewal-ownership fixture does not measure support" },
+          ],
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ source, recordCapture }) => {
+        const preparation = recorders.length
+        recorders.push(recordCapture)
+        source.write(`calibration:${preparation + 1}`)
+        recordCapture({
+          frame: {
+            role: "control",
+            ref: `sha256:${String(preparation + 4).repeat(64)}`,
+            capturedAt: 1_764_000_000_400 + preparation,
+            label: `preparation ${preparation}`,
+          },
+          trace: {},
+        })
+        source.captureGeometry = settled
+      },
+    })
+    expect(recorders).toHaveLength(2)
+    const initial = retainedCaptureTrace(batch, "collector.captureCalibration.trace")
+    const renewal = retainedCaptureTrace(batch, "collector.captureCalibration.renewal.1.trace")
+    expect(initial.captures.map((capture) => capture.frame.label)).toEqual(["preparation 0", "reset.ris: pre-paint"])
+    expect(renewal.captures.map((capture) => capture.frame.label)).toEqual(["preparation 1"])
   } finally {
     definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
   }
@@ -2655,10 +3638,117 @@ it("refuses app named coverage that arrives beside supported observation and ass
   }
 })
 
+// @failure A witness with no reading before a cell kills the run, so one unmeasured attribute stops every
+//   later cell (@cto 34148 REVISE 2), or the cell grades on a witness that never read it.
+// @level l1
+// @consumer A window-scoped batch's cross-window read.
+it("ungrades a cell the witness never read before, records the reading it got, and runs the next cell", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  // Both cells are admitted by the window-basis table: decsclm (dec:4) and synchronized-output (dec:2026).
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let secondRan = false
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    // Answer "reset" (2): it is what this cell's cleanup writes, so the cell is admitted and the
+    // witness path is the thing this test exercises.
+    if (mode) process.stdin.emit("data", Buffer.from(`\x1b[?${mode};2$y\x1b[?62c`))
+    else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async (ctx) => {
+    await ctx.queryMode?.(4)
+    await ctx.write("\x1b[?4l")
+    await ctx.write("\x1b[?4h")
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  try {
+    // The first witness reading is missing and every later one is present: the cell has no baseline,
+    // which ungrades it without being a spill, and the reading it does get seeds the next cell.
+    let witnessReads = 0
+    const batch = await runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => (witnessReads++ === 0 ? undefined : "0") },
+    })
+    expect(batch.results.find((result) => result.featureId === "modes.decsclm")?.reason).toContain(
+      "spillover unmeasured for dec:4",
+    )
+    expect(secondRan).toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
+// @failure A cell whose writes cannot be read back leaves state behind, the collector records it as that
+//   cell's collector-error, and the next cell is graded against the leaked state (@cto 34148 REVISE blocking 1).
+// @level l1
+// @consumer A window-scoped batch's per-cell restore proof.
+it("stops the run at a restore it cannot prove, and never calls the next cell's callback", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let secondRan = false
+  // The PRE-read is answered (2 = reset, which is what this cell's cleanup writes), so the cell is
+  // admitted and its callback runs. The post-read is then left unanswered, which is the one case that
+  // stays run-fatal: a write went out and its restore cannot be proven (@cto 06:41).
+  let modeReads = 0
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    if (/\x1b\[\?4\$p\x1b\[c$/.test(text) && modeReads++ === 0) {
+      process.stdin.emit("data", Buffer.from("\x1b[?4;2$y\x1b[?62c"))
+    } else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async (ctx) => {
+    await ctx.write("\x1b[?4l")
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  try {
+    const run = runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "0" },
+    })
+    await expect(run).rejects.toThrow(/cannot prove its writes were restored/)
+    expect(secondRan).toBe(false)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
 it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
   verifiedBatchFixture()
   // Reach the geometry contract after the wrap probe's disposable-process prerequisite.
-  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "owned disposable regression process",
+    scope: "process",
+  })
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   const originalAssertionType = definition.termAssertionType
@@ -2694,7 +3784,10 @@ it.each([
 ] as const)("delivers owned geometry to %s and preserves its declaration guard", async (id, undersizedStatus) => {
   verifiedBatchFixture()
   if (id === "modes.auto-wrap") {
-    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+    vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+      basis: "owned disposable regression process",
+      scope: "process",
+    })
   }
   const definition = ALL_PROBES.find((item) => item.id === id)!
   const original = definition.termNeedsGeometry
@@ -3029,7 +4122,21 @@ it("offers a text run's adapter to cell-readback probes alone and never gates it
 // @consumer Exact owned App subject -> unified capture forwarding -> OSC22 callback.
 it.each([
   { kind: "term", id: "xterm", version: "411", os: "linux", allowed: true },
+  // 34932 (@cto 672197f0 response 21:33): the exact 412 build every hourly xterm Linux run measures since Nov 13 is
+  // admitted as a measurement route; a near version, a prefix, an absent version and another OS stay out.
+  { kind: "term", id: "xterm", version: "412", os: "linux", allowed: true },
+  { kind: "term", id: "xterm", version: "413", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "41", os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: undefined, os: "linux", allowed: false },
+  { kind: "term", id: "xterm", version: "412", os: "darwin", allowed: false },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-10-10", os: "linux", allowed: true },
+  // 34932 (@cto 1852): the exact 11-08 build the hourly runs measure is admitted; a near version, a prefix and an
+  // absent version stay out.
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "linux", allowed: true },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-09", os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026", os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: undefined, os: "linux", allowed: false },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "darwin", allowed: false },
   // 32593: the off-window control decides Ghostty 1.4.0 and Alacritty 0.17.0; other versions stay unreviewed.
   { kind: "term", id: "ghostty", version: "1.4.0", os: "linux", allowed: true },
   { kind: "term", id: "alacritty", version: "0.17.0", os: "linux", allowed: true },
@@ -3037,7 +4144,6 @@ it.each([
   { kind: "term", id: "alacritty", version: "0.16.1", os: "linux", allowed: false },
   { kind: "term", id: "kitty", version: "0.49.2", os: "linux", allowed: false },
   { kind: "mux", id: "tmux", version: "3.8", os: "linux", allowed: false },
-  { kind: "term", id: "xterm", version: "412", os: "linux", allowed: false },
   { kind: "term", id: "xterm", version: "411", os: "darwin", allowed: false },
 ] as const)("limits OSC22 image forwarding to the reviewed $id/$version/$os tuple", async (entry) => {
   verifiedBatchFixture()
@@ -3136,11 +4242,247 @@ it("records a text run's collector throw as text evidence", async () => {
   })
 })
 
+// #34940 (@cto 28ff372f): a pixel run that also holds the qualified terminal-owned text adapter. The text fake
+// answers each checkpoint from its own label: a seed, the post-sequence target and the expected frame are distinct
+// screens, and `applied` says what the target shows: the expected frame (the DEC glyph drawn, the region scrolled),
+// the seed (the sequence ignored) or a third screen (a wrong margin). Expected characters never enter a target read.
+function mixedTextAdapter(applied: "expected" | "seed" | "other", calls: string[], fail = false): ProbeCapture {
+  return async ({ featureId, role, label }) => {
+    calls.push(featureId)
+    if (fail) throw new Error("the terminal's text snapshot read refused")
+    const step = label.split(": ").slice(1).join(": ")
+    const content = label.includes("capture stability")
+      ? "stable"
+      : step.startsWith("post-sequence target")
+        ? "edited"
+        : step.startsWith("expected frame")
+          ? "expected"
+          : "seed"
+    const phase = label.endsWith("— baseline") ? "base" : label.includes("paint witness") ? "witness" : "measured"
+    const screen = content === "edited" && phase === "measured" ? applied : content
+    const cells = `sha256:${createHash("sha256").update(`${screen}:${phase}`).digest("hex")}`
+    const whole = `sha256:${createHash("sha256").update(`${screen}:${phase}:whole`).digest("hex")}`
+    return {
+      frame: {
+        kind: "text-cells" as const,
+        role,
+        label,
+        capturedAt: Date.now(),
+        ref: whole,
+        cellDigest: cells,
+        frameDigest: whole,
+        cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+      },
+      trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+    }
+  }
+}
+
+describe("a pixel run with a qualified text adapter (#34940)", () => {
+  const claimed = ["charsets.dec-special", "scrollback.decstbm", "scrollback.decstbm-reset"] as const
+  const subject = { kind: "term" as const, id: "terminal-app", version: "2.15", os: "macos" }
+  // The charsets rows ask the run's decode context; answer it here so these runs neither wait on a
+  // terminal reply nor leave calls on the shared mock for the once-per-run test below.
+  beforeEach(() => {
+    vi.mocked(measureUtf8Decoding).mockResolvedValue("utf8")
+  })
+  afterEach(() => {
+    vi.mocked(measureUtf8Decoding).mockRestore()
+  })
+
+  // @failure A text-claimed cell row keeps the run's pixel reader (or a pixel row gets text) because the route is
+  //   chosen per run, so Terminal.app's DEC-glyph and margin rows stay a pixel "third distinct frame" forever.
+  it("routes each text-claimed cell-readback row to text cells and every other row to pixels", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    // The manifest's textClaims are every app probe declaring textClaim "characters" (admin/versions.ts).
+    const claims = ALL_PROBES.filter((p) => p.term !== null && p.textClaim === "characters").map((p) => p.id)
+    expect(claims).toHaveLength(40)
+    const textRows = claims.filter((id) => ALL_PROBES.find((p) => p.id === id)!.cellReadback === true)
+    const ids = [...claims, "erase.el-with-attrs", "cursor.shape"]
+    const definitions = ids.map((id) => ALL_PROBES.find((p) => p.id === id)!)
+    const originals = definitions.map(({ term }) => term)
+    const seen: Record<string, { kind: string | undefined; cells: boolean; pixels: boolean }> = {}
+    try {
+      for (const definition of definitions) {
+        definition.term = async (ctx) => {
+          seen[definition.id] = {
+            kind: ctx.captureKind,
+            cells: typeof ctx.cells === "function",
+            pixels: typeof ctx.capture === "function",
+          }
+          return notTestedResult("Capture routing exercised without terminal operations", {})
+        }
+      }
+      const pixelCalls: string[] = []
+      const run = (withText: boolean, runSubject: typeof subject) =>
+        runProbeBatch({
+          ids,
+          capture: async () => {
+            pixelCalls.push("pixels")
+            throw new Error("Routing test must not capture")
+          },
+          ...(withText && { textCellsCapture: mixedTextAdapter("expected", []) }),
+          subject: runSubject,
+          ownedTerminal: geometryOwner(measured(24, 80)),
+        })
+      const pixelRoute = { kind: undefined, cells: false, pixels: true }
+      await run(true, subject)
+      expect(textRows.length).toBeGreaterThan(0)
+      for (const id of claims) {
+        expect(seen[id], id).toEqual(
+          textRows.includes(id) ? { kind: "text-cells", cells: true, pixels: false } : pixelRoute,
+        )
+      }
+      for (const id of ["erase.el-with-attrs", "cursor.shape"]) expect(seen[id], id).toEqual(pixelRoute)
+      // Without the text adapter, and on another app that has a text recipe, every row keeps today's pixel route.
+      for (const [withText, runSubject] of [
+        [false, subject],
+        [true, { ...subject, id: "iterm2", version: "3.6.11" }],
+      ] as const) {
+        await run(withText, runSubject)
+        for (const id of ids) expect(seen[id], `${runSubject.id} ${id}`).toEqual(pixelRoute)
+      }
+      expect(pixelCalls).toEqual([])
+    } finally {
+      definitions.forEach((definition, index) => (definition.term = originals[index]!))
+    }
+  })
+
+  // @failure A run-wide pixel geometry refusal also withholds the text reader, or erases the pixel rows' refusal.
+  it("keeps the text reader for claimed rows when pixel geometry was refused, and the refusal for pixel rows", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const textCalls: string[] = []
+    const pixelCalls: string[] = []
+    const refusal = "the app answers no cell geometry"
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special", "erase.el-with-attrs"],
+      captureGeometryRefusal: refusal,
+      capture: async ({ featureId }) => {
+        pixelCalls.push(featureId)
+        throw new Error("a refused pixel route must not be read")
+      },
+      textCellsCapture: mixedTextAdapter("expected", textCalls),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    expect(pixelCalls).toEqual([])
+    expect(new Set(textCalls)).toEqual(new Set(["charsets.dec-special"]))
+    expect(batch.observations.find((item) => item.featureId === "charsets.dec-special")).toMatchObject({
+      outcome: "supported",
+      assertionType: "buffer_state",
+    })
+    const pixelRow = batch.results.find((item) => item.featureId === "erase.el-with-attrs")
+    expect(pixelRow?.status).not.toBe("supported")
+    expect(JSON.stringify(pixelRow)).toContain(refusal)
+    expect(batch.screenshotRefs).toEqual([])
+    expect(batch.textSnapshotRefs?.length).toBeGreaterThan(0)
+  })
+
+  // @failure A failed selected text read is labelled a screenshot error, or the row quietly retries on pixels.
+  it("attributes a throwing selected text reader to buffer_state and never reads pixels", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const pixelCalls: string[] = []
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special"],
+      capture: async ({ featureId }) => {
+        pixelCalls.push(featureId)
+        throw new Error("a text-routed row must not fall back to pixels")
+      },
+      textCellsCapture: mixedTextAdapter("expected", [], true),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    expect(pixelCalls).toEqual([])
+    const observation = batch.observations.find((item) => item.featureId === "charsets.dec-special")
+    expect(observation).toMatchObject({ outcome: "error", assertionType: "buffer_state" })
+    expect(observation?.note).toContain("text snapshot read refused")
+    expect(batch.screenshotRefs).toEqual([])
+  })
+
+  // @failure A mixed run's text-decided row stays Supported without a passing qualification, its pixel row loses
+  //   the refusal, or the strict draft reader drops one of the two reference lists.
+  it("holds a mixed run's text row to the qualification and keeps both reference lists through the reader", async () => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const refusal = "the app answers no cell geometry"
+    const batch = await runProbeBatch({
+      ids: ["charsets.dec-special", "erase.el-with-attrs"],
+      captureGeometryRefusal: refusal,
+      capture: async () => {
+        throw new Error("a refused pixel route must not be read")
+      },
+      textCellsCapture: mixedTextAdapter("expected", []),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    const textClaims = ALL_PROBES.filter((p) => p.term !== null && p.textClaim === "characters").map((p) => p.id)
+    const claimedManifest = { ...manifest, textClaims, textQualification: TEXT_QUALIFICATION_SPEC }
+    const pixelBefore = batch.results.find((row) => row.featureId === "erase.el-with-attrs")
+    expect(batch.results.find((row) => row.featureId === "charsets.dec-special")?.status).toBe("supported")
+    for (const [attempt, status, reason] of [
+      [undefined, "probe-todo", "Text qualification has not been attempted"],
+      [{ scope: "probe" as const, startedAt: "2026-09-28T00:00:00.000Z" }, "probe-invalid", undefined],
+    ] as const) {
+      const run = asRun(batch, claimedManifest) as CapturedRunDraft
+      run.subject = { ...run.subject!, id: "terminal-app", version: "2.15", os: "macos" }
+      run.intendedSubject = { kind: "term", id: "terminal-app" }
+      recordTextQualificationTests(run, claimedManifest, new Map(), attempt)
+      const textRow = run.results.find((row) => row.featureId === "charsets.dec-special")
+      expect(textRow?.status, status).toBe(status)
+      if (reason) expect(textRow?.reason).toBe(reason)
+      expect(
+        run.results.find((row) => row.featureId === "erase.el-with-attrs"),
+        status,
+      ).toEqual(pixelBefore)
+      const decoded = decodeCollectorDraft("mixed.json", JSON.stringify(run), claimedManifest, sourceRevision).run
+      expect(decoded.results.find((row) => row.featureId === "charsets.dec-special")?.status).toBe(status)
+      expect(decoded.textSnapshotRefs).toEqual(batch.textSnapshotRefs)
+      expect(decoded.screenshotRefs).toEqual(batch.screenshotRefs)
+      expect(JSON.stringify(decoded.results.find((row) => row.featureId === "erase.el-with-attrs"))).toContain(refusal)
+    }
+  })
+
+  // @failure The text route decides a DEC glyph from the literal seed, or an ignored or wrong margin as scrolled.
+  it.each([
+    ["expected", "supported"],
+    ["seed", "unsupported"],
+    ["other", "inconclusive"],
+  ] as const)("grades each claimed row from its own text reads when the target shows %s", async (applied, outcome) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const textCalls: string[] = []
+    const batch = await runProbeBatch({
+      ids: [...claimed],
+      capture: async () => {
+        throw new Error("a text-routed row must not read pixels")
+      },
+      textCellsCapture: mixedTextAdapter(applied, textCalls),
+      subject,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    for (const id of claimed) {
+      expect(textCalls, id).toContain(id)
+      const observation = batch.observations.find((item) => item.featureId === id)
+      expect(observation, id).toMatchObject({ outcome, assertionType: "buffer_state" })
+      expect(
+        observation?.frames?.every((frame) => frame.kind === "text-cells"),
+        id,
+      ).toBe(true)
+    }
+  })
+})
+
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
   // Qualify disposable ownership without changing the selected TTY or its recorded traffic.
-  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue("owned disposable regression process")
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "owned disposable regression process",
+    scope: "process",
+  })
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
   definition.termNeedsGeometry = true
@@ -4051,9 +5393,89 @@ it("records failed clipboard restoration as collector error rather than retainin
   expect(batch.suiteComplete).toBe(false)
 })
 
+// A direct semantic reading cannot see the collector's publishable call log or run-level failure.
+// The actual batch and shared observer must retain a home URI privately and revoke a failed restore.
+it.each([false, true])(
+  "WezTerm CWD batch keeps host URIs private and reports failed restoration: %s",
+  async (failRestore) => {
+    verifiedBatchFixture()
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cwd-batch-"))
+    receiptDirectories.push(directory)
+    const initial = "file:///Users/private-person/secret-project"
+    let cwd = initial
+    let text = ""
+    const privateWrites: string[] = []
+    const retainedPhases: Array<{ path: string; sha256: string }> = []
+    const captured: { reading?: AppSemanticReading } = {}
+    const id = "extensions.osc7-cwd"
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: {
+        ...geometryOwner(noGeometry),
+        async readAppSemanticState(featureId, _publishableWrite) {
+          expect(featureId).toBe(id)
+          captured.reading = await readWezTermCwd({
+            onRetained: (artifact) => retainedPhases.push(artifact),
+            runId: "a".repeat(32),
+            captureDirectory: directory,
+            write(bytes) {
+              privateWrites.push(bytes)
+              text = bytes
+              const command = /\x1b\]7;([^\x07]*)\x07/.exec(bytes)
+              if (command && !(failRestore && command[1] === initial)) cwd = command[1]!
+            },
+            readPane: async () => cwd,
+            readText: async () => text,
+          })
+          return captured.reading
+        },
+      },
+    })
+    const published = JSON.stringify(batch)
+    expect(published).not.toContain(initial)
+    expect(published).not.toContain("private-person")
+    expect(privateWrites).toHaveLength(4)
+    expect(privateWrites.at(-1)).toContain(initial)
+    const phaseRecord = JSON.parse(readFileSync(retainedPhases.at(-1)!.path, "utf8")) as {
+      initial?: string
+      phases: unknown[]
+    }
+    expect(phaseRecord.initial).toBe(initial)
+    expect(phaseRecord.phases).toContainEqual(
+      expect.objectContaining({ name: "restoration", feed: expect.stringContaining(initial) }),
+    )
+    const row = batch.results.find((result) => result.featureId === id)
+    if (failRestore) {
+      expect(batch.rawReplies[id]).toBeDefined()
+      expect(cwd).not.toBe(initial)
+      expect(row?.status).not.toBe("supported")
+      expect(batch.suiteComplete).toBe(false)
+      expect(JSON.stringify(batch.ungradedDiagnostics[id])).toContain("pane's reported directory was left changed")
+      expect(phaseRecord.phases).toContainEqual(
+        expect.objectContaining({ name: "restoration", error: expect.any(String) }),
+      )
+    } else {
+      expect(batch.rawReplies[`${id}.callLog`]).toBeDefined()
+      expect(cwd).toBe(initial)
+      expect(row?.status).toBe("supported")
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      const reading = captured.reading
+      if (reading?.status !== "measured") throw new Error("No measured CWD reading")
+      const detail = reading.detail as { privateEvidence: string; restoredEqual: boolean }
+      expect(detail.restoredEqual).toBe(true)
+      expect(retainedPhases.some((artifact) => basename(artifact.path) === detail.privateEvidence)).toBe(true)
+      expect(readFileSync(join(directory, detail.privateEvidence), "utf8")).toContain(initial)
+    }
+  },
+  15_000,
+)
+
 // #30932 AC3: a TTY-only log loses the source's optional capture method. The saved-rendition
 // reference now needs pixel geometry before capture; replay must retain that same source shape
 // and named refusal rather than taking a different no-capture path.
+// #30932 S2: this row replays sgr.reset on real timers (the recorded paint-witness schedule waits for real), so
+// it sits near the 5 s default under load; the explicit timeout matches its neighbours.
 it("retains SGR capture source shape and pixel-geometry refusal for strict offline replay", async (context) => {
   verifiedBatchFixture()
   const writes: string[] = []
@@ -4236,7 +5658,9 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
       await expect(
         runEraseReplay(context, { directory, source: invalidSource, expected, featureId: "sgr.reset" }),
         fault,
-      ).rejects.toThrow(fault === "tty-root" ? /SGR source shape does not match its live capture/ : /SGR replay:/)
+      ).rejects.toThrow(
+        fault === "tty-root" ? /Source shape does not match its live capture: sgr.reset/ : /SGR replay:/,
+      )
       expect(context.task.meta.terminfoErase?.failureResults, fault).toMatchObject([
         { featureId: "sgr.reset", status: "probe-invalid" },
       ])
@@ -4325,12 +5749,573 @@ it("retains SGR capture source shape and pixel-geometry refusal for strict offli
     nativeIdentity.mockRestore()
   }
   expect(readFileSync(path)).toEqual(bytes)
+}, 30_000)
+
+// #30932 S1 (@cto PROCEED 1220, R4): the real positive beside the negative control above. A
+// collector-installed measured raster reaches the SGR callback, the batch persists the row's
+// association to the calibration it used, the bound reader validates that association, and the
+// callback replays offline with every live route forbidden, keeping the live status and order.
+it("binds an SGR row to its installed calibration and replays it offline with the live status", async (context) => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  let sgrState = "0"
+  process.stdout.write = ((value: string) => {
+    writes.push(value)
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
+    }
+    return true
+  }) as typeof process.stdout.write
+  // 80x24 cells of 2x4 pixels: the whole text area is one small decoded frame.
+  const geometry = { cellWidth: 2, cellHeight: 4, textWidth: 160, textHeight: 96 }
+  const sentinel = { form: "basic" as const, rgb: [255, 0, 0] as const }
+  const captured: Array<{ label: string; pixelGeometry: unknown }> = []
+  // A real retained frame through the capture writer, so the bound reader checks its blob.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-capture-binding-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
+  let captures = 0
+  const capture = async (request: CaptureRequest & { featureId: string }) => {
+    const { featureId, role, label, pixelGeometry } = request
+    captures += 1
+    captured.push({ label, pixelGeometry })
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+      "base64",
+    )
+    return finishCapture({
+      directory: artifacts,
+      onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+      checkpoint: request,
+      source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
+      png,
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+      trace: {},
+    })
+  }
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source: probeSource }) => {
+            probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration", sentinel }
+          },
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  const live = batch.results.find(({ featureId }) => featureId === "sgr.reset")
+  if (!live) throw new Error("Missing live SGR reset row")
+  // The measured raster, never a query-derived size, is what the row's crops used.
+  expect(captured.length).toBeGreaterThan(0)
+  for (const request of captured) expect(request.pixelGeometry).toEqual(geometry)
+  expect(JSON.parse(batch.rawReplies["sgr.reset.captureBinding"]!)).toEqual({
+    format: "terminfo.capture-binding",
+    version: 1,
+    calibrationId: "collector.captureCalibration",
+    rowIndex: 0,
+    outcome: "installed",
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  // The installation records the row it was prepared for and what it handed, under its own id.
+  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+    preparedAt: { row: "sgr.reset", index: 0 },
+    captureGeometry: { geometry, source: "measured by complete raster calibration", sentinel },
+  })
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
+  const bytes = readFileSync(path)
+  const source = {
+    kind: "trace" as const,
+    trace: { path: basename(path), sha256: createHash("sha256").update(bytes).digest("hex") },
+    captureRunId: draft.runId,
+    captureSuiteId: draft.suiteId,
+    captureSourceRevision: draft.sourceRevision,
+  }
+  const expected = { manifest, sourceRevision, subject: draft.subject }
+  const { capture: validated } = readProbeCapture(directory, source, expected)
+  expect(readCaptureBinding(validated.rawReplies, "sgr.reset")).toMatchObject({
+    calibrationId: "collector.captureCalibration",
+    outcome: "installed",
+  })
+  // R2: the association stays private. The public trace reads a raw reply only through a result's
+  // rawReplyRef, and the stored run with the new record publishes none of it.
+  const publicTrace = currentTrace({
+    ...draft,
+    schemaVersion: 4,
+    sha256: source.trace.sha256,
+    probeHash: draft.suiteId,
+    catalogIds: manifest.catalogIds ?? [],
+    results: draft.results ?? [],
+    readRaw: () => ({ rawReplies: draft.rawReplies, assertions: draft.assertions ?? [], identity: draft.identity }),
+  } as unknown as Parameters<typeof currentTrace>[0])
+  expect(publicTrace?.bytes).toBeDefined()
+  expect(publicTrace?.bytes).not.toContain("terminfo.capture-binding")
+  expect(publicTrace?.bytes).not.toContain("captureBinding")
+  // The association is evidence checked inside the bound read, never an override: each fault is a
+  // named incomplete replay, and none of them touches the stored row.
+  const tampered = (label: string, edit: (rawReplies: Record<string, string>) => void) => {
+    const rawReplies = { ...draft.rawReplies }
+    edit(rawReplies)
+    const candidateBytes = Buffer.from(JSON.stringify({ ...draft, rawReplies }))
+    const candidatePath = "binding-" + label + ".json"
+    writeFileSync(join(directory, candidatePath), candidateBytes, { flag: "wx" })
+    return () =>
+      readProbeCapture(
+        directory,
+        {
+          ...source,
+          trace: { path: candidatePath, sha256: createHash("sha256").update(candidateBytes).digest("hex") },
+        },
+        expected,
+      )
+  }
+  const binding = JSON.parse(draft.rawReplies["sgr.reset.captureBinding"]!) as Record<string, unknown>
+  const otherGeometry = {
+    ...binding,
+    captureGeometry: { ...(binding.captureGeometry as object), geometry: { ...geometry, cellWidth: 3 } },
+  }
+  const faults: Array<[string, (rawReplies: Record<string, string>) => void, string]> = [
+    [
+      "missing",
+      (rawReplies) => delete rawReplies["sgr.reset.captureBinding"],
+      "no capture binding recorded (run predates it) (sgr.reset)",
+    ],
+    [
+      "malformed",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({ ...binding, version: 2 })),
+      "capture binding malformed: version (sgr.reset)",
+    ],
+    [
+      "unrecorded-renewal",
+      (rawReplies) =>
+        (rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })),
+      "capture binding names collector.captureCalibration.renewal.1, which this run did not record (sgr.reset)",
+    ],
+    [
+      // A recorded but wrong reference at equal dimensions: a later renewal handed the same geometry
+      // (another origin), and this row's association names it instead of the installation it ran on.
+      "recorded-wrong-renewal",
+      (rawReplies) => {
+        rawReplies["collector.captureCalibration.renewal.1.trace"] = JSON.stringify({
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
+          preparedAt: { row: "sgr.later", index: 1 },
+        })
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+          ...binding,
+          calibrationId: "collector.captureCalibration.renewal.1",
+        })
+      },
+      "capture binding names collector.captureCalibration.renewal.1, installed at row sgr.later, after this row ran (sgr.reset)",
+    ],
+    [
+      "installation-predates",
+      (rawReplies) => {
+        const trace = JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>
+        delete trace.preparedAt
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify(trace)
+      },
+      "collector.captureCalibration records no preparing row (run predates it) (sgr.reset)",
+    ],
+    [
+      "unrecorded-calibration",
+      (rawReplies) => {
+        delete rawReplies["collector.captureCalibration.callLog"]
+        delete rawReplies["collector.captureCalibration.trace"]
+      },
+      "capture binding names collector.captureCalibration, which this run did not record (sgr.reset)",
+    ],
+    [
+      "other-geometry",
+      (rawReplies) => (rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)),
+      "capture binding names collector.captureCalibration, whose recorded geometry differs from the one this row carries (sgr.reset)",
+    ],
+    [
+      // The installation record and the association agree with each other but not with the context
+      // the recorded callback read: the call log stays the authority for what the row was handed.
+      "other-geometry-recorded",
+      (rawReplies) => {
+        rawReplies["sgr.reset.captureBinding"] = JSON.stringify(otherGeometry)
+        rawReplies["collector.captureCalibration.trace"] = JSON.stringify({
+          ...(JSON.parse(rawReplies["collector.captureCalibration.trace"]!) as Record<string, unknown>),
+          captureGeometry: otherGeometry.captureGeometry,
+        })
+      },
+      "capture binding differs from the geometry the recorded callback was handed (sgr.reset)",
+    ],
+  ]
+  // A preparation that refused by throwing keeps its trace but no finished paint log; its refused
+  // association is checked against the refusal that installation recorded.
+  const refused = { ...binding, outcome: "refused", refusal: "fixture refused" }
+  delete (refused as Record<string, unknown>).captureGeometry
+  const refusedTrace = JSON.stringify({ preparedAt: { row: "row", index: 0 }, refusal: "fixture refused" })
+  expect(
+    readCaptureBinding(
+      { "row.captureBinding": JSON.stringify(refused), "collector.captureCalibration.trace": refusedTrace },
+      "row",
+    ),
+  ).toEqual(refused)
+  expect(() =>
+    readCaptureBinding(
+      {
+        "row.captureBinding": JSON.stringify({ ...refused, refusal: "another refusal" }),
+        "collector.captureCalibration.trace": refusedTrace,
+      },
+      "row",
+    ),
+  ).toThrow("whose recorded refusal differs from the one this row carries (row)")
+  for (const [label, edit, message] of faults) {
+    expect(tampered(label, edit), label).toThrow("replay-incomplete: " + message)
+  }
+  const log = readCallLog(JSON.parse(validated.rawReplies["sgr.reset.callLog"]!))
+  const replay = withCallLog<TermProbeSource>(null, { mode: "replay", log })
+  expect(replay.context.captureGeometry?.geometry).toEqual(geometry)
+  const callback = ALL_PROBES.find(({ id }) => id === "sgr.reset")?.term
+  if (!callback) throw new Error("Missing SGR reset callback")
+  const beforeReplay = writes.length
+  const liveCaptures = captures
+  // #30932 S2: the paint-witness deadlines read the recorded source clock, so the replay asks for the live
+  // row's polls on this machine's real timers; no fake clock stands in for the live one.
+  const result = await callback(replay.context)
+  replay.finish()
+  expect(writes).toHaveLength(beforeReplay)
+  expect(captures).toBe(liveCaptures)
+  // The replay reaches the live row's observation from the recorded calls alone.
+  const liveObservation = batch.observations.find(({ featureId }) => featureId === "sgr.reset")
+  if (!liveObservation) throw new Error("Missing live SGR reset observation")
+  expect(result.observation).toMatchObject({
+    outcome: liveObservation.outcome,
+    assertionType: liveObservation.assertionType,
+    ...(liveObservation.reason !== undefined && { reason: liveObservation.reason }),
+  })
+  const nativeIdentity = vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockImplementation(async () => {
+    throw new Error("Offline SGR assertion attempted native runtime discovery")
+  })
+  try {
+    const record = await runEraseReplay(context, { directory, source, expected, featureId: "sgr.reset" })
+    for (const assertion of record.assertions) {
+      const replayed = assertion.results.find(({ featureId }) => featureId === "sgr.reset")
+      expect(replayed?.status).toBe(live.status)
+    }
+  } finally {
+    nativeIdentity.mockRestore()
+  }
+}, 60_000)
+
+/**
+ * #30932 S2: record one SGR row through the real collector, with a scripted terminal and a real retained frame,
+ * and save it as a private run. A scripted recording proves source determinism; it is not native evidence.
+ */
+async function recordBoundSgrRun(options: { refusal?: string; ids?: string[] } = {}) {
+  verifiedBatchFixture()
+  let sgrState = "0"
+  process.stdout.write = ((value: string) => {
+    if (value === "\x1b[0m") sgrState = "0"
+    if (value === "\x1b[1;3;4m") sgrState = "1;3;4"
+    if (value.includes("\x1bP$qm")) {
+      process.stdin.emit("data", Buffer.from(`\x1bP1$r${sgrState}m\x1b\\\x1b[?1;2c`))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const geometry = { cellWidth: 2, cellHeight: 4, textWidth: 160, textHeight: 96 }
+  const sentinel = { form: "basic" as const, rgb: [255, 0, 0] as const }
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-shadow-"))
+  receiptDirectories.push(directory)
+  const artifacts = join(directory, "artifacts")
+  mkdirSync(artifacts)
+  const blobs = new Map<string, { path: string; sha256: string }>()
+  let captures = 0
+  const capture = async (request: CaptureRequest & { featureId: string }) => {
+    captures += 1
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+      "base64",
+    )
+    return finishCapture({
+      directory: artifacts,
+      onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
+      checkpoint: request,
+      source: { format: "png", bytes: png, width: 160, height: 96, capturedAt: captures },
+      png,
+      decoded: { width: 160, height: 96, rgba: new Uint8Array(160 * 96 * 4).fill(255) },
+      origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
+      trace: {},
+    })
+  }
+  vi.useFakeTimers()
+  const batch = await (async () => {
+    try {
+      const [collected] = await Promise.all([
+        runProbeBatch({
+          ids: options.ids ?? ["sgr.reset"],
+          subject: { kind: "term", id: "kitty", os: "linux" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          prepareCapture: async ({ source: probeSource }) => {
+            if (options.refusal !== undefined) {
+              probeSource.captureGeometryRefusal = options.refusal
+              return
+            }
+            probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration", sentinel }
+          },
+          capture,
+        }),
+        vi.runAllTimersAsync(),
+      ])
+      return collected
+    } finally {
+      vi.useRealTimers()
+    }
+  })()
+  batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  const draft = asRun(batch)
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+  const path = saveDaemonProbeRun(
+    { ...draft, subject: draft.subject, identity: draft.identity, measuredAt: draft.measuredAt, origin: draft.origin },
+    directory,
+  )
+  return { batch, directory, path, suite: { manifest, sourceRevision } }
+}
+
+/** Edit one saved private run in place, standing in for a stored run whose bytes differ from what was recorded. */
+function rewriteStoredRun(path: string, edit: (run: Record<string, any>) => void) {
+  const run = JSON.parse(readFileSync(path, "utf8")) as Record<string, any>
+  edit(run)
+  writeFileSync(path, JSON.stringify(run, null, 2) + "\n")
+}
+
+describe("#30932 S2 stored-run shadow (scripted recordings prove source determinism only, never native evidence)", () => {
+  it("replays a fresh recording to agree on real timers, counts every row once and leaves the run's bytes alone", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    const stored = JSON.parse(before.toString("utf8")) as { runId: string; suiteId: string; results: unknown[] }
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+    expect(report).toMatchObject({
+      format: "terminfo.shadow-report",
+      version: 1,
+      run: {
+        runId: stored.runId,
+        suiteId: stored.suiteId,
+        sourceRevision,
+        artifact: { path: basename(recorded.path), sha256: createHash("sha256").update(before).digest("hex") },
+      },
+    })
+    expect(report.runIncomplete).toBeUndefined()
+    expect(report.rows).toEqual([
+      { featureId: "sgr.reset", family: "sgr", outcome: "agree", status: "probe-todo", reasonsEqual: true },
+    ])
+    expect(report.families).toEqual([
+      { family: "sgr", rows: 1, agree: 1, disagree: 0, incomplete: 0, notComparable: 0 },
+      { family: "outer-command", rows: 0, agree: 0, disagree: 0, incomplete: 0, notComparable: 0 },
+    ])
+    // Rows outside the shadow stay visible with a reason; none is silently dropped.
+    expect(report.excluded.map(({ reason }) => reason)).toEqual(["not executed in this run"])
+    const counted = report.rows.length + report.excluded.reduce((sum, { rows }) => sum + rows, 0)
+    expect(counted).toBe(stored.results.length)
+  }, 60_000)
+
+  it("reports a disagreement with both statuses and reasons when a stored status differs with complete evidence", async () => {
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.results.find((row: { featureId: string }) => row.featureId === "sgr.reset").status = "probe-invalid"
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    const reason = "graded from a status reply only; this row is decided by what is painted"
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "disagree",
+        stored: { status: "probe-invalid", reason },
+        replayed: { status: "probe-todo", reason },
+      },
+    ])
+    expect(report.families[0]).toMatchObject({ family: "sgr", disagree: 1, agree: 0 })
+  }, 60_000)
+
+  it("names the missing clock on the preserved S1-era log instead of synthesizing its timestamps", async () => {
+    const preClock = readFileSync(
+      new URL("../../../probes/fixtures/s1-sgr-reset-pre-clock.callLog.json", import.meta.url),
+      "utf8",
+    )
+    // The S1-era bytes are kept exactly as they were captured.
+    expect(createHash("sha256").update(preClock).digest("hex").slice(0, 16)).toBe("1ad0590d46bc5998")
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.rawReplies["sgr.reset.callLog"] = preClock
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "incomplete",
+        reason: "Incomplete: call log predates the recorded source clock (sgr.reset)",
+      },
+    ])
+  }, 60_000)
+
+  it("is incomplete, never agree, when the capture binding or the row's log is missing or corrupt", async () => {
+    const tampered = await recordBoundSgrRun()
+    rewriteStoredRun(tampered.path, (run) => {
+      const binding = JSON.parse(run.rawReplies["sgr.reset.captureBinding"]) as Record<string, unknown>
+      run.rawReplies["sgr.reset.captureBinding"] = JSON.stringify({
+        ...binding,
+        calibrationId: "collector.captureCalibration.renewal.1",
+      })
+    })
+    const bindingReport = await shadowStoredRun(tampered.path, tampered.suite)
+    expect(bindingReport.runIncomplete).toMatch(/capture binding names collector.captureCalibration.renewal.1/)
+    expect(bindingReport.rows).toEqual([
+      expect.objectContaining({ featureId: "sgr.reset", outcome: "incomplete", reason: bindingReport.runIncomplete }),
+    ])
+
+    const missing = await recordBoundSgrRun()
+    rewriteStoredRun(missing.path, (run) => {
+      delete run.rawReplies["sgr.reset.callLog"]
+    })
+    const missingReport = await shadowStoredRun(missing.path, missing.suite)
+    expect(missingReport.rows).toEqual([expect.objectContaining({ featureId: "sgr.reset", outcome: "incomplete" })])
+    expect(missingReport.excluded.map(({ reason }) => reason)).toEqual(["not executed in this run"])
+  }, 60_000)
+
+  it("leaves one row incomplete, not the whole run, when a live input it checks cannot be read", async () => {
+    const recorded = await recordBoundSgrRun()
+    rewriteStoredRun(recorded.path, (run) => {
+      run.rawReplies["collector.geometry"] = "{not json"
+    })
+    const report = await shadowStoredRun(recorded.path, recorded.suite)
+    expect(report.runIncomplete).toBeUndefined()
+    expect(report.rows).toEqual([
+      expect.objectContaining({
+        featureId: "sgr.reset",
+        outcome: "incomplete",
+        reason: expect.stringMatching(/^live inputs unreadable: /),
+      }),
+    ])
+  }, 60_000)
+
+  it("calls an over-time row and a refused capture not-comparable even where the statuses are equal", async () => {
+    const overTime = await recordBoundSgrRun()
+    rewriteStoredRun(overTime.path, (run) => {
+      run.results.find((row: { featureId: string }) => row.featureId === "sgr.reset").harnessOutcome = "probe-exceeded"
+    })
+    expect((await shadowStoredRun(overTime.path, overTime.suite)).rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "not-comparable",
+        input: "harness outcome probe-exceeded",
+        storedStatus: "probe-todo",
+      },
+    ])
+    const refused = await recordBoundSgrRun({ refusal: "fixture refused calibration" })
+    const live = refused.batch.results.find(({ featureId }) => featureId === "sgr.reset")
+    // The live finalizer's refusal kept the same status a replay grades to; it still decides nothing here.
+    expect(live?.status).toBe("probe-todo")
+    const report = await shadowStoredRun(refused.path, refused.suite)
+    expect(report.rows).toEqual([
+      {
+        featureId: "sgr.reset",
+        family: "sgr",
+        outcome: "not-comparable",
+        input: "harness outcome capture-refused",
+        storedStatus: "probe-todo",
+      },
+    ])
+    expect(report.families[0]).toMatchObject({ notComparable: 1, agree: 0, disagree: 0 })
+  }, 60_000)
+
+  it("keeps the collection's report private beside the run, where a reader of the run directory never sees it", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockReturnValue({ manifest, collectorRevision: sourceRevision })
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    await shadowCollectedRun(recorded.path)
+    const path = shadowReportPath(recorded.path)
+    expect(path).toBe(join(recorded.directory, "shadow", basename(recorded.path, ".json") + ".shadow.json"))
+    expect(nodeFs.statSync(path).mode & 0o777).toBe(0o600)
+    expect(nodeFs.statSync(join(recorded.directory, "shadow")).mode & 0o777).toBe(0o700)
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(
+      JSON.parse(JSON.stringify(await shadowStoredRun(recorded.path, recorded.suite))),
+    )
+    expect(String(log.mock.calls.at(-1)?.[0])).toContain("Shadow sgr 1 rows: 1 agree, 0 disagree")
+    // The run's own bytes are unchanged, and the directory still holds exactly one run JSON.
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+    expect(nodeFs.readdirSync(recorded.directory).filter((name) => name.endsWith(".json"))).toEqual([
+      basename(recorded.path),
+    ])
+  }, 60_000)
+
+  it("records a failed replay as an error, never agreement, and leaves the run and the collection's result alone", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockImplementation(() => {
+      throw new Error("Collector source is uncommitted: fixture detail")
+    })
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    await expect(shadowCollectedRun(recorded.path)).resolves.toBeUndefined()
+    const report = JSON.parse(readFileSync(shadowReportPath(recorded.path), "utf8"))
+    expect(report).toMatchObject({
+      format: "terminfo.shadow-report",
+      outcome: "shadow-error",
+      run: basename(recorded.path),
+      error: { name: "Error", message: "Collector source is uncommitted: fixture detail" },
+    })
+    expect(report).not.toHaveProperty("rows")
+    const line = String(error.mock.calls.at(-1)?.[0])
+    expect(line).toContain("FAILED (Error)")
+    // The raw error stays in the private report.
+    expect(line).not.toContain("fixture detail")
+    expect(String(log.mock.calls.at(-1)?.[0])).toContain("Shadow FAILED (Error); private report")
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+  }, 60_000)
+
+  it("names a report it could not write, without overwriting what is there or touching the run", async () => {
+    const recorded = await recordBoundSgrRun()
+    const before = readFileSync(recorded.path)
+    const path = shadowReportPath(recorded.path)
+    mkdirSync(join(recorded.directory, "shadow"), { mode: 0o700 })
+    writeFileSync(path, "earlier report\n")
+    vi.spyOn(serveModule, "getTrustedSuiteReceipt").mockReturnValue({ manifest, collectorRevision: sourceRevision })
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    await expect(shadowCollectedRun(recorded.path)).resolves.toBeUndefined()
+    expect(String(error.mock.calls.at(-1)?.[0])).toMatch(/Shadow report for .* NOT WRITTEN to .* \(EEXIST\)/)
+    expect(readFileSync(path, "utf8")).toBe("earlier report\n")
+    expect(readFileSync(recorded.path).equals(before)).toBe(true)
+  }, 60_000)
 })
 
 // AC1/AC3: retain the unchanged blink capture/replay path; the attribute kind has its own deciding tests.
 // Images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
-it("retains same-callback control and target frames without declaring visual support", async (context) => {
+// 34127: an X window dump source is retained zstd-compressed, so this producer-to-replay chain runs for
+// both source kinds; the .xwd.zst blob has to satisfy the manifest, the generic stored-byte read, the
+// private-copy check and the offline replay exactly as a PNG source does.
+async function retainsSameCallbackFrames(sourceFormat: "png" | "xwd", context: TestContext) {
   verifiedBatchFixture()
   // sgr.blink samples on a real 7500 ms schedule in the live callback and both replays below;
   // fake timers drive those waits so this retention contract costs no wall time per pass.
@@ -4370,7 +6355,13 @@ it("retains same-callback control and target frames without declaring visual sup
           directory: artifacts,
           onRetained: ({ path, sha256 }) => blobs.set(path, { path: "artifacts/" + basename(path), sha256 }),
           checkpoint: { featureId, role, label },
-          source: { format: "png", bytes: png, width: 1, height: 1, capturedAt: checkpoints.length },
+          source: {
+            format: sourceFormat,
+            bytes: sourceFormat === "png" ? png : Buffer.from(`XWD fixture for checkpoint ${checkpoints.length}`),
+            width: 1,
+            height: 1,
+            capturedAt: checkpoints.length,
+          },
           png,
           decoded: { width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) },
           origin: { origin: { x: 0, y: 0 }, basis: "whole-frame fixture" },
@@ -4411,6 +6402,32 @@ it("retains same-callback control and target frames without declaring visual sup
   })
   expect(batch.suiteComplete).toBe(false)
   batch.rawReplies["collector.traceManifest"] = JSON.stringify({ blobs: [...blobs.values()] })
+  // 34127: what each source kind leaves in the manifest. An XWD source is one .xwd.zst blob per frame,
+  // named by its stored bytes, read back through the generic reader and decompressed to the exact dump;
+  // the same blob with one byte changed is refused by that reader.
+  const sourceBlobs = [...blobs.values()].filter(({ path }) => !path.endsWith(".png"))
+  if (sourceFormat === "xwd") {
+    expect(sourceBlobs.length).toBeGreaterThan(0)
+    for (const blob of sourceBlobs) {
+      expect(blob.path).toBe(`artifacts/${blob.sha256}.xwd.zst`)
+      expect(zstdDecompressSync(resolveReference(directory, blob).bytes).toString()).toMatch(
+        /^XWD fixture for checkpoint \d+$/,
+      )
+    }
+    for (const frame of frames) {
+      expect(sourceBlobs.some(({ sha256 }) => frame.sourceRef === `sha256:${sha256}`)).toBe(true)
+    }
+    const corrupt = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+    receiptDirectories.push(corrupt)
+    const first = sourceBlobs[0]!
+    const altered = readFileSync(join(directory, first.path))
+    altered.writeUInt8(altered.readUInt8(altered.length - 1) ^ 1, altered.length - 1)
+    mkdirSync(join(corrupt, "artifacts"))
+    writeFileSync(join(corrupt, first.path), altered)
+    expect(() => resolveReference(corrupt, first)).toThrow(/SHA256 differs/)
+  } else {
+    expect(sourceBlobs).toEqual([])
+  }
   const draft = asRun(batch)
   const open = (candidate: typeof draft, label: string) => {
     const bytes = Buffer.from(JSON.stringify(candidate)),
@@ -4521,7 +6538,14 @@ it("retains same-callback control and target frames without declaring visual sup
     expect(typeof assertion.rawReplies[live.featureId]).toBe("string")
   }
   expect(writes).toHaveLength(beforeOffline)
-}, 30_000)
+}
+for (const sourceFormat of ["png", "xwd"] as const) {
+  it(
+    `retains same-callback control and target frames without declaring visual support (${sourceFormat} source)`,
+    (context) => retainsSameCallbackFrames(sourceFormat, context),
+    30_000,
+  )
+}
 
 // 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
 // one must say so by name, in its own result, and must not claim pixels that do not exist.
@@ -4922,6 +6946,228 @@ it.each(["conflict", "malformed", "live mismatch"] as const)(
     })
   },
 )
+
+// 34672 (@cto warp-geometry-ruling-1252, Q1 option 1): a reply that agrees on columns and differs only in
+// rows no longer refuses before painting. The complete-raster calibration tests ONE candidate - the stable
+// owned PTY grid - and the conflict stays in the trace exactly as the terminal answered it.
+it("lets the complete-raster calibration test the owned grid on a rows-only conflict", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  const handed: Array<[number, number]> = []
+  const batch = await runProbeBatch({
+    ids: ["device.decrpm"],
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: {
+      status: "conflict-rows-only",
+      rows: 39,
+      cols: 123,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      },
+    },
+    prepareCapture: async ({ source }) => {
+      handed.push([source.rows, source.cols])
+      source.captureGeometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+        source: "measured by complete raster calibration" as const,
+      }
+    },
+  })
+  expect(handed, "the only candidate painted is the owned PTY grid").toEqual([[45, 123]])
+  const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as {
+    grid?: { rows: number; cols: number }
+    refusal?: string
+    geometryCorroboration?: { status: string; rows?: number; cols?: number }
+  }
+  expect(trace.grid, "the reply's 39 rows never becomes the candidate").toEqual({ rows: 45, cols: 123 })
+  expect(trace.refusal, "a verified candidate is not a refusal").toBeUndefined()
+  expect(trace.geometryCorroboration, "the conflict is preserved as observed").toMatchObject({
+    status: "conflict-rows-only",
+    rows: 39,
+    cols: 123,
+  })
+  expect(batch.rawReplies["collector.geometry"]).toContain('"conflict-rows-only"')
+  expect(batch.rawReplies["collector.geometry"]).toContain('"rows":39')
+})
+
+// Condition 3: a conflict stops blocking a row only with that same run's complete-raster proof. A failed
+// proof for the owned candidate leaves the refusal set, and the row says so by name.
+it("keeps a rows-only conflict blocking a row when the raster proof fails", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  const refusal = "complete raster calibration measured 39 rows for the owned 45-row candidate"
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc8"],
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: {
+      status: "conflict-rows-only",
+      rows: 39,
+      cols: 123,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      },
+    },
+    prepareCapture: async ({ source }) => {
+      source.captureGeometryRefusal = refusal
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "extensions.osc8")
+  expect(row?.reason, "the row names the failed proof, not a silent pass").toContain(refusal)
+  expect(row?.status).not.toBe("supported")
+  expect(batch.observations.find((item) => item.featureId === "extensions.osc8")?.assertionType).not.toBe("pixels")
+  expect((JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!) as { refusal?: string }).refusal).toBe(
+    refusal,
+  )
+})
+
+// 34672 condition 3 covers every geometry-dependent row, not only the rows that capture: a query row
+// reaches its verdict from the same conflicting grid, so it may not run before this run's complete-raster
+// proof is installed (@cto rows-only finding, cursor.position-report).
+const rowsOnlyConflictReply = () => {
+  const raw = "\x1b[8;39;123t"
+  return {
+    status: "conflict-rows-only" as const,
+    rows: 39,
+    cols: 123,
+    query: {
+      sequence: "\x1b[18t" as const,
+      outbound: "\x1b[18t\x1b[c" as const,
+      reason: "reply" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    },
+  }
+}
+
+const serveCursorReplies = (writes: string[]) => {
+  const replies = ["\x1b[1;4R", "\x1b[3;6R"]
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text.includes("\x1b[6n")) {
+      const reply = replies.shift()
+      if (reply) queueMicrotask(() => process.stdin.emit("data", Buffer.from(reply)))
+    }
+    return true
+  }) as typeof process.stdout.write
+  return replies
+}
+
+it("blocks a geometry-dependent query row when a rows-only conflict has no installed proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+  expect(row?.status).toBe("probe-invalid")
+  expect(row?.reason).toContain("complete-raster proof")
+  expect(batch.observations.find((item) => item.featureId === "cursor.position-report")).toBeUndefined()
+})
+
+it("blocks a geometry-dependent query row when the renewal refuses after RIS", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  serveCursorReplies(writes)
+  let preparations = 0
+  const batch = await runProbeBatch({
+    ids: ["reset.ris", "cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      preparations++
+      if (preparations === 1) {
+        source.captureGeometry = {
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+          source: "measured by complete raster calibration" as const,
+        }
+      } else {
+        source.captureGeometryRefusal = "renewal fixture refused"
+      }
+    },
+  })
+  const reset = batch.results.find((result) => result.featureId === "reset.ris")
+  const cursor = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(reset?.reason, "the first row runs on the installed proof").not.toContain("complete-raster proof")
+  expect(cursor?.status).toBe("probe-invalid")
+  expect(cursor?.reason).toContain("renewal fixture refused")
+  expect(JSON.parse(batch.rawReplies["cursor.position-report"]!), "the row never sends its CPR queries").toEqual({
+    writes: [],
+    queries: [],
+    events: [],
+  })
+})
+
+it("runs a geometry-dependent query row when the rows-only conflict carries this run's proof", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  const replies = serveCursorReplies(writes)
+  const batch = await runProbeBatch({
+    ids: ["cursor.position-report"],
+    subject: { kind: "term", id: "warp", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(45, 123)),
+    geometryCorroboration: rowsOnlyConflictReply(),
+    prepareCapture: async ({ source }) => {
+      source.captureGeometry = {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 720 },
+        source: "measured by complete raster calibration" as const,
+      }
+    },
+  })
+  const row = batch.results.find((result) => result.featureId === "cursor.position-report")
+  expect(row?.status, "an installed proof keeps the row independent").toBe("supported")
+  expect(replies, "both CPR replies are consumed by the row that ran").toHaveLength(0)
+})
+
+// Condition 1: the owned grid must still be the one the grant measured. A move since the grant keeps its
+// existing failure path - it never becomes a candidate.
+it("refuses a rows-only conflict when the owned grid moved since the grant", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  const raw = "\x1b[8;39;123t"
+  let painted = false
+  await expect(
+    runProbeBatch({
+      ids: ["device.decrpm"],
+      ownedTerminal: geometryOwner(measured(45, 123), async () => measured(46, 123)),
+      geometryCorroboration: {
+        status: "conflict-rows-only",
+        rows: 39,
+        cols: 123,
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "reply",
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        },
+      },
+      prepareCapture: async () => {
+        painted = true
+      },
+    }),
+  ).rejects.toThrow(/grid.*changed|grid.*disagree/)
+  expect(painted).toBe(false)
+})
 
 it("an 18t timeout aborts capture preparation instead of recording a terminal refusal", async () => {
   verifiedBatchFixture()
@@ -5698,6 +7944,66 @@ it("a callback that outlives its wall cannot write while the next probe runs and
 })
 
 /**
+ * @failure A row stopped by its wall reads only "Probe exceeded Nms", so nobody can tell whether it was slow
+ *   from the start or ran out a few captures short without opening the draft's captures (34641 d).
+ * @level l1
+ * @consumer runProbeBatch wall timeout -> criterion reason, rawReplies[feature].captures
+ * @testonly none
+ */
+it("a row stopped by its wall says how many captures it took, the last one's offset and the median gap", async () => {
+  verifiedBatchFixture()
+  const slow = ALL_PROBES.find((probe) => probe.id === "reset.ris")!
+  const original = { term: slow.term, termWrites: slow.termWrites, wallMs: slow.wallMs }
+  let releaseTheWall!: () => void
+  const afterTheWall = new Promise<void>((resolve) => {
+    releaseTheWall = resolve
+  })
+  const at = [1_000, 1_900, 2_700]
+  try {
+    slow.termWrites = "query"
+    slow.wallMs = 80
+    slow.term = async (source) => {
+      await source.capture!({ role: "control", label: "first" })
+      await source.capture!({ role: "control", label: "second" })
+      await source.capture!({ role: "control", label: "third" })
+      await afterTheWall
+      return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+    }
+    let taken = 0
+    const batch = await runProbeBatch({
+      ids: [slow.id],
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
+      out: { write: () => true } as unknown as NodeJS.WriteStream,
+      ownedTerminal: geometryOwner(measured(30, 100)),
+      capture: async (checkpoint) => ({
+        frame: { role: "control", ref: `sha256:${"c".repeat(64)}`, capturedAt: at[taken++]!, label: checkpoint.label },
+        trace: {},
+      }),
+    })
+    const row = batch.results.find((result) => result.featureId === slow.id)!
+    const reason = "Probe exceeded 80ms after 3 captures, last at +1700ms (median gap 850ms)"
+    expect.soft(row.status).toBe("probe-todo")
+    expect.soft(row.reason).toBe(reason)
+    expect.soft(row.tests).toEqual([expect.objectContaining({ id: "criterion", status: "probe-todo", reason })])
+    // The count is the row's own recorded captures, the same ones its draft keeps.
+    const recorded = JSON.parse(batch.rawReplies[slow.id] ?? "{}") as { captures?: unknown[] }
+    expect.soft(recorded.captures).toHaveLength(3)
+  } finally {
+    releaseTheWall()
+    Object.assign(slow, original)
+  }
+})
+
+it("the wall reason counts from the row's first capture; one capture has no gap and none keeps the bare text", () => {
+  expect(wallExceededReason(120_000, [])).toBe("Probe exceeded 120000ms")
+  expect(wallExceededReason(120_000, [5_000])).toBe("Probe exceeded 120000ms after 1 capture, last at +0ms")
+  // Out of order on input, and an even count of gaps (900, 1000, 1100, 2000): the median is the mean of the middle two.
+  expect(wallExceededReason(60_000, [4_000, 1_000, 6_000, 1_900, 2_900])).toBe(
+    "Probe exceeded 60000ms after 5 captures, last at +5000ms (median gap 1050ms)",
+  )
+})
+
+/**
  * @failure A callback that hangs inside its own query at the wall leaves the trace snapshot
  *   unreadable, so the wall branch throws before it releases the TTY queue and the probe loses the
  *   writes it settled before the hang (#33431).
@@ -5758,4 +8064,844 @@ it("keeps the wall's trace when the callback hangs inside its own pending query"
     Object.assign(slow, originalSlow)
     Object.assign(next, originalNext)
   }
+})
+
+// @failure One frame moving under a pixel read ended the whole collection. The refusal was a plain
+// Error, so this boundary graded it as a collector error and the run lost every cell with it, the
+// text-read ones included — the harness was telling the terminal it was wrong about a frame nobody
+// could vouch for (@cto 2be9f946, from @dev/brain's peer read).
+// @level l1
+// @consumer runProbeBatch -> the one capture boundary every pixel probe passes through.
+it("records a moved frame as an ungraded cell and keeps the batch going (33981)", async () => {
+  verifiedBatchFixture()
+  const movedId = "sgr.underline.dashed"
+  const textId = "device.primary-da"
+  const moved = ALL_PROBES.find((probe) => probe.id === movedId)!
+  const text = ALL_PROBES.find((probe) => probe.id === textId)!
+  const originals = { moved: { term: moved.term }, text: { term: text.term } }
+  const movedReason =
+    "cells 2,2 and 3,3: the frame moved after the cells were chosen at 16,32 — the pair landed 0,16 px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink"
+  try {
+    // A pixel probe's own capture is exercised by sentinel-read.test.ts; what this boundary owns is what
+    // happens to the ERROR it raises. A verified owned terminal gets the row past the grant gate, so the
+    // stub is the callback that runs and the assertion is about the grade catch (@dev/11, red before the fix).
+    moved.term = async (source) => {
+      // One frame is captured before the refusal, so the boundary is in its production state: the
+      // error arrives where a frame WOULD have been graded, and the only thing deciding its fate is
+      // the name it carries (red before the fix: graded as a screenshot collector error).
+      const capture = source.capture
+      if (!capture) throw new Error("the moved-frame row needs this run's capture adapter")
+      await capture({ role: "control", label: "the moved frame" })
+      const refusal = new Error(movedReason)
+      refusal.name = "SentinelFrameMoved"
+      throw refusal
+    }
+    text.term = async () => ({
+      pass: true,
+      observation: { outcome: "supported", assertionType: "query_reply", note: "the text read is unaffected" },
+      tests: [{ id: "criterion", status: "supported", reason: "controlled actual reply" }],
+    })
+    const batch = await runProbeBatch({
+      ids: [movedId, textId],
+      subject: { kind: "term", id: "kitty", os: "linux" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async ({ role, label }) => ({
+        frame: { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}`, pixelsDigest: "moved-frame" },
+        trace: {},
+      }),
+    })
+    // Ungraded WITH the reason, never a pass and never a fail: the cell claims nothing about pixels.
+    expect(batch.ungradedDiagnostics[movedId]).toMatchObject({
+      kind: "collector-error",
+      name: "SentinelFrameMoved",
+      message: expect.stringContaining("will not re-anchor from a pair that may have covered ink"),
+    })
+    expect(batch.observations.filter((entry) => entry.featureId === movedId)).toEqual([])
+    // The collection finished: the text-read cell in the same batch is recorded as it always was.
+    expect(batch.results.find((entry) => entry.featureId === textId)).toMatchObject({ status: "supported" })
+    expect(batch.ungradedDiagnostics[textId]).toBeUndefined()
+  } finally {
+    moved.term = originals.moved.term
+    text.term = originals.text.term
+  }
+})
+
+// @failure A window-scoped basis grades a cell whose restore nothing can read back (DECSTR clears the
+//   saved cursor and charsets), or classifies one of the four cells that have no retained trace from a
+//   guess, so a leaky cell is called restored or a cell is graded on evidence nobody has (@cto 69ad9f37).
+// @level l1
+// @consumer A window-scoped batch's admission, before the cell's first byte.
+it("refuses reset.soft and the traceless cells on a window basis before any byte, naming why", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const traceless = ["modes.application-cursor", "modes.mouse-all", "modes.mouse-sgr", "modes.mouse-tracking"]
+  const writesOf = (id: string): unknown => (JSON.parse(batch.rawReplies[id] ?? "{}") as { writes?: unknown }).writes
+  const batch = await runProbeBatch({
+    ids: ["reset.soft", ...traceless],
+    subject: { kind: "term", id: "terminal-app", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    witnessWindow: { app: "terminal-app", read: async () => "0" },
+  })
+  const reset = batch.results.find((result) => result.featureId === "reset.soft")
+  expect(reset?.reason, "reset.soft is refused by name").toContain("not admitted on a window basis")
+  expect(reset?.reason).toContain("DECSTR")
+  expect(reset?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+  // The refusal happens before the cell writes: its own trace holds no write event at all.
+  expect(writesOf("reset.soft")).toEqual([])
+  for (const id of traceless) {
+    const row = batch.results.find((result) => result.featureId === id)
+    expect(row?.reason, `${id} is refused by name`).toContain("no retained trace")
+    expect(writesOf(id), `${id} wrote nothing`).toEqual([])
+  }
+})
+
+// @failure A cell whose probe resets its attribute to the DEFAULT is graded on a terminal that already
+//   holds the non-default value: pre is 1 and post is 2, the ledger throws, and one cell kills the rest
+//   of the run (@dev/brain e1b6910e1 review 1).
+// @level l1
+// @consumer A window-scoped batch on a terminal that is not in its default state.
+it("refuses by name when the terminal is already non-default, and keeps running", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let firstRan = false
+  let secondRan = false
+  // Mode 4 answers "set" (1), which is not what this cell's cleanup (?4l → reset = 2) leaves behind.
+  // Mode 2026 answers "reset" (2), which its cleanup does leave, so that cell is admitted.
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    if (mode) {
+      process.stdin.emit("data", Buffer.from(`\x1b[?${mode};${mode === "4" ? "1" : "2"}$y\x1b[?62c`))
+    } else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async () => {
+    firstRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+    const refused = batch.results.find((result) => result.featureId === "modes.decsclm")
+    expect(refused?.reason, "the refusal names the cell and the mismatch").toContain("already non-default")
+    expect(refused?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+    expect(firstRan, "a refused cell's callback never runs").toBe(false)
+    expect((JSON.parse(batch.rawReplies["modes.decsclm"] ?? "{}") as { writes?: unknown }).writes).toEqual([])
+    expect(secondRan, "the run continues to the next cell").toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
+// @failure A terminal that does not answer the pre-read for an admitted cell's attribute lets the cell
+//   run, and then the ledger's no-pre-state refusal kills the whole run at that cell, taking every later
+//   cell's grade with it (@dev/brain d5b4517c6 review, @cto 06:41).
+// @level l1
+// @consumer A window-scoped batch on a terminal silent about one query.
+it("refuses by name when the pre-read went unanswered, and keeps running", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const first = ALL_PROBES.find((item) => item.id === "modes.decsclm")!
+  const second = ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const originalFirst = first.term
+  const originalSecond = second.term
+  let firstRan = false
+  let secondRan = false
+  // Mode 4 is never answered — only the DA1 sentinel comes back, which is the measured "silent" case.
+  // Mode 2026 is answered 2, so that cell is admitted and grades.
+  process.stdout.write = ((text: string) => {
+    if (typeof text !== "string") return true
+    const mode = /\x1b\[\?(\d+)\$p\x1b\[c$/.exec(text)?.[1]
+    if (mode === "2026") process.stdin.emit("data", Buffer.from(`\x1b[?${mode};2$y\x1b[?62c`))
+    else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+    return true
+  }) as typeof process.stdout.write
+  first.term = async () => {
+    firstRan = true
+    return { pass: false, notTested: { reason: "no-semantic-observable", noObservable: "fixture cell" } }
+  }
+  second.term = async () => {
+    secondRan = true
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["modes.decsclm", "modes.synchronized-output"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+    const refused = batch.results.find((result) => result.featureId === "modes.decsclm")
+    expect(refused?.reason, "the refusal names the missing pre-read").toContain("did not answer the pre-read for dec:4")
+    expect(refused?.reason, "and says which kind of silence it was").toContain(
+      "answered the sentinel but not this query",
+    )
+    expect(refused?.tests?.[0]?.status, "a refused cell is ungraded, never graded").toBe("probe-todo")
+    expect(firstRan, "a refused cell's callback never runs").toBe(false)
+    expect((JSON.parse(batch.rawReplies["modes.decsclm"] ?? "{}") as { writes?: unknown }).writes).toEqual([])
+    expect(secondRan, "the run continues to the next cell").toBe(true)
+  } finally {
+    first.term = originalFirst
+    second.term = originalSecond
+  }
+})
+
+// @cto 2026-11-14 (osc104 after-merge review): the disagreement branch withdrew the colour result from the
+// observation only, while the writer grades from the explicit tests. A refused attempt vector therefore left an
+// unsupported criterion authoritative and the terminal kept a negative on evidence this row had refused. These
+// drive that composition through the collector, which the helper-only tests cannot reach.
+describe("a colour-attempt disagreement reaches the recorded grade (osc104)", () => {
+  type Round = "qualifies" | "does-not-qualify"
+  const framesOf = (round: Round) => [
+    { label: "pre-edit seed", role: "control" as const, ink: "#616161" },
+    { label: "post-sequence target", role: "target" as const, ink: "#123456" },
+    // A round qualifies when its expected ink differs from the target's; the second round below repaints the
+    // target's own colour there, so colourOnlyMismatch refuses that attempt and the vector disagrees.
+    { label: "expected frame", role: "control" as const, ink: round === "qualifies" ? "#c1e3fe" : "#123456" },
+  ]
+  const axes = (inkColour: string) => ({
+    background: "#050505",
+    inkColour,
+    inkCount: 58,
+    contrast: 200,
+    coverage: Uint8Array.from([0, 1, 2, 3]),
+  })
+  const drive = async (
+    probeId: string,
+    rounds: readonly Round[],
+    tests: { id: string; status: string }[],
+    outcome: "supported" | "unsupported" | "inconclusive",
+  ) => {
+    const probe = ALL_PROBES.find((entry) => entry.id === probeId)!
+    const original = probe.term
+    const asked: string[] = []
+    try {
+      probe.term = async (source) => {
+        const frames = []
+        for (const round of rounds) {
+          for (const frame of framesOf(round)) {
+            asked.push(frame.label)
+            frames.push(await source.capture!({ role: frame.role, label: frame.label }))
+          }
+        }
+        return {
+          pass: false as const,
+          criterionBranch: "colour-only-mismatch",
+          tests: tests as never,
+          observation: {
+            featureId: probe.id,
+            outcome,
+            assertionType: "screenshot" as const,
+            frames,
+          },
+        }
+      }
+      let next = 0
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async (checkpoint) => {
+          const frame = framesOf(rounds[Math.floor(next / 3)] ?? "qualifies")[next % 3]!
+          next += 1
+          return {
+            frame: {
+              role: checkpoint.role,
+              label: checkpoint.label,
+              ref: `sha256:${"c".repeat(64)}`,
+              capturedAt: Date.now(),
+              rendering: axes(frame.ink),
+            },
+            trace: {},
+          }
+        },
+      })
+      const result = batch.results.find((entry) => entry.featureId === probe.id)
+      if (result === undefined) throw new Error(`${probe.id} left the batch`)
+      return { result, asked }
+    } finally {
+      probe.term = original
+    }
+  }
+
+  it("leaves the recorded grade attempted-inconclusive with the named cause instead of a negative", async () => {
+    const { result, asked } = await drive(
+      "device.decrpm",
+      ["qualifies", "does-not-qualify"],
+      [{ id: "criterion", status: "unsupported" }],
+      "unsupported",
+    )
+    expect(asked, "both attempts reached the capture list").toHaveLength(6)
+    // @cto 96a8d82c: the established attempted-inconclusive result is a probe-invalid criterion, not a
+    // probe-todo one - the row ran and could not decide, it was not never-attempted.
+    expect(result.status).toBe("probe-invalid")
+    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
+    expect(result.tests?.[0]?.reason ?? "").toContain("attempts disagree")
+    expect(result.reason ?? "").toContain("attempts disagree")
+  })
+
+  it("keeps the negative when every attempt qualifies (agreement control)", async () => {
+    const { result } = await drive(
+      "device.decrpm",
+      ["qualifies", "qualifies"],
+      [{ id: "criterion", status: "unsupported" }],
+      "unsupported",
+    )
+    expect(result.status).toBe("unsupported")
+    expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "unsupported" })
+  })
+
+  it("keeps an exact positive positive (positive control)", async () => {
+    const { result } = await drive(
+      "device.decrpm",
+      ["qualifies"],
+      [{ id: "criterion", status: "supported" }],
+      "supported",
+    )
+    expect(result.status).toBe("supported")
+  })
+})
+
+describe("the served capture path records its own caller intervals (34261)", () => {
+  const fixtureFrame = (label: string): ObservationFrame => ({
+    role: "control",
+    ref: `sha256:${"b".repeat(64)}`,
+    capturedAt: 1,
+    label,
+  })
+
+  // The recorded reply is a string here and JSON.parse is `unknown` under this config, so the shape the
+  // assertions read is declared once instead of cast at every line.
+  type CallerTrace = {
+    basis: string
+    adapterCallbackContains: string
+    entryToAdapterCallbackMs: number
+    adapterCallbackMs: number
+    adapterReturnToRecordedMs: number
+    totalMs: number
+  }
+  type RecordedCapture = { trace: Record<string, unknown> & { caller: CallerTrace } }
+  const CALLER_INTERVALS = [
+    "entryToAdapterCallbackMs",
+    "adapterCallbackMs",
+    "adapterReturnToRecordedMs",
+    "totalMs",
+  ] as const satisfies ReadonlyArray<keyof CallerTrace>
+  const readCaptures = (raw: string | undefined): RecordedCapture[] => {
+    if (raw === undefined) throw new Error("the probe recorded no reply at all")
+    return (JSON.parse(raw) as { captures: RecordedCapture[] }).captures
+  }
+
+  it("records the caller intervals beside the existing buckets without replacing them", async () => {
+    // A controlled clock, not host speed: each fixture step advances it by a known amount, so every
+    // interval is an exact number instead of a threshold a loaded host can miss (34261 post-merge
+    // review). The recorded frame's ref is a getter, so recordCapture's own read of it is visible to
+    // the completion mark.
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    let clock = 1_000
+    let recordWorkRuns = 0
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => clock)
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ role: "control", label: "caller interval" })
+        return {
+          pass: false as const,
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "lifecycle fixture does not measure support" },
+          ],
+        }
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async (checkpoint) => {
+          clock += 7
+          const frame = fixtureFrame(checkpoint.label)
+          Object.defineProperty(frame, "ref", {
+            enumerable: true,
+            get: () => {
+              recordWorkRuns += 1
+              clock += 123
+              return `sha256:${"b".repeat(64)}`
+            },
+          })
+          return {
+            frame,
+            trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
+          }
+        },
+      })
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toHaveLength(1)
+      const trace = recorded[0]!.trace
+      // The existing buckets are untouched: the caller block is added beside them, not instead of them.
+      expect(trace.acquisition).toEqual({ totalMs: 2 })
+      expect(trace.finish).toEqual({ totalMs: 1 })
+      const caller = trace.caller
+      expect(String(caller.basis)).toContain("caller monotonic")
+      expect(String(caller.adapterCallbackContains)).toContain("acquisition")
+      for (const key of CALLER_INTERVALS) {
+        expect(Number.isFinite(caller[key])).toBe(true)
+        expect(Number(caller[key])).toBeGreaterThanOrEqual(0)
+      }
+      // Exact, not threshold: ownership verification did not advance the clock, so the pre-adapter
+      // interval is zero and the adapter interval is the 7 ms only the adapter added.
+      expect(Number(caller.entryToAdapterCallbackMs)).toBe(0)
+      expect(Number(caller.adapterCallbackMs)).toBe(7)
+      // recordCapture reads the frame's ref, and each read advances the same clock. The completion mark
+      // must come after that read or this interval stays 0 - which is exactly the boundary the
+      // post-merge review found missing (34261).
+      expect(recordWorkRuns).toBeGreaterThan(0)
+      expect(Number(caller.adapterReturnToRecordedMs)).toBeGreaterThanOrEqual(123)
+      expect(Number(caller.totalMs)).toBe(7 + Number(caller.adapterReturnToRecordedMs))
+    } finally {
+      nowSpy.mockRestore()
+      probe.term = original
+    }
+  })
+
+  it("propagates a capture failure without recording a caller block", async () => {
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ role: "control", label: "fails" })
+        throw new Error("unreachable: the capture adapter must fail")
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async () => {
+          throw new Error("adapter exploded")
+        },
+      })
+      const row = batch.results.find((result) => result.featureId === probe.id)
+      expect(JSON.stringify(row)).toContain("adapter exploded")
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toEqual([])
+    } finally {
+      probe.term = original
+    }
+  })
+
+  it("charges ownership verification to the pre-adapter interval, not to the adapter", async () => {
+    // The interval that used to fall outside every bucket is the one BEFORE the adapter: the TTY queue
+    // wait and lease.verify(). A verification that costs time must show up there, and must not be
+    // counted as adapter time, or the two numbers would be indistinguishable in a real run (34261
+    // review). The cost is a controlled clock advance, so a loaded host changes nothing.
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    let clock = 1_000
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => clock)
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ role: "control", label: "slow verify" })
+        return {
+          pass: false as const,
+          tests: [
+            { id: "criterion", status: "probe-todo" as const, reason: "lifecycle fixture does not measure support" },
+          ],
+        }
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: {
+          ...geometryOwner(measured(24, 80)),
+          clipboard: {
+            profile: "allow",
+            config: "fixture",
+            permissions: "fixture",
+            summary: "{}",
+            assertOwned: async () => {
+              clock += 11
+            },
+            // Only ownership verification is under test here; a probe that reached the clipboard
+            // transaction would be outside this fixture's scope, so it says so instead of passing.
+            withClipboardFixture: async () => {
+              throw new Error("this fixture provides ownership verification only")
+            },
+            readTitle: async () => {
+              throw new Error("This clipboard fixture has no title reader")
+            },
+            dispose: async () => {},
+          },
+        },
+        capture: async (checkpoint) => ({
+          frame: fixtureFrame(checkpoint.label),
+          trace: { acquisition: { totalMs: 2 }, finish: { totalMs: 1 } },
+        }),
+      })
+      const recorded = readCaptures(batch.rawReplies[probe.id])
+      expect(recorded).toHaveLength(1)
+      const caller = recorded[0]!.trace.caller
+      expect(Number(caller.entryToAdapterCallbackMs)).toBe(11)
+      expect(Number(caller.adapterCallbackMs)).toBe(0)
+      expect(Number(caller.totalMs)).toBe(11)
+    } finally {
+      nowSpy.mockRestore()
+      probe.term = original
+    }
+  })
+
+  it("stops the run when ownership verification fails, so no capture grade is invented", async () => {
+    // Verified at the reviewed heads: a failed ownership verification is custody-classified, and the
+    // probe catch rethrows a custody failure instead of grading the row. So the attempted stamp can
+    // never change this path's outcome - what diverged on main was the source ordering, not an
+    // observed error shape (34261 post-merge review). Both halves are pinned here so a later change to
+    // either the custody classification or the stamp placement is visible.
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find(({ id }) => id === "device.decrpm")!
+    const original = probe.term
+    try {
+      probe.term = async (source) => {
+        await source.capture!({ role: "control", label: "verify fails" })
+        throw new Error("unreachable: the owning terminal must refuse verification")
+      }
+      const batch = runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: {
+          ...geometryOwner(measured(24, 80)),
+          clipboard: {
+            profile: "allow",
+            config: "fixture",
+            permissions: "fixture",
+            summary: "{}",
+            assertOwned: async () => {
+              throw new Error("ownership verification failed")
+            },
+            // Only ownership verification is under test here; a probe that reached the clipboard
+            // transaction would be outside this fixture's scope, so it says so instead of passing.
+            withClipboardFixture: async () => {
+              throw new Error("this fixture provides ownership verification only")
+            },
+            readTitle: async () => {
+              throw new Error("This clipboard fixture has no title reader")
+            },
+            dispose: async () => {},
+          },
+        },
+        capture: async (checkpoint) => ({
+          frame: fixtureFrame(checkpoint.label),
+          trace: { acquisition: { totalMs: 2 } },
+        }),
+      })
+      await expect(batch).rejects.toThrow("ownership verification failed")
+    } finally {
+      probe.term = original
+    }
+  })
+  it("records the caller intervals on the text-cells kind, which shares the same wrapper", async () => {
+    // One wrapper serves both call sites, so the second one is proved rather than assumed: a cells
+    // capture keeps its own trace fields and gains the same measured intervals beside them.
+    verifiedBatchFixture()
+    let reads = 0
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    const batch = await runProbeBatch({
+      ids: ["erase.el-with-attrs"],
+      captureKind: "text-cells",
+      captureGeometryRefusal: "the app answers no cell geometry",
+      capture: async ({ role, label }) => {
+        reads += 1
+        const ref = `sha256:${String(reads).padStart(64, "0")}`
+        return {
+          frame: {
+            kind: "text-cells" as const,
+            role,
+            label,
+            capturedAt: reads,
+            ref,
+            cellDigest: ref,
+            frameDigest: ref,
+            cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+          },
+          trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+        }
+      },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    const recorded = readCaptures(batch.rawReplies["erase.el-with-attrs"])
+    expect(recorded.length).toBeGreaterThan(0)
+    for (const capture of recorded) {
+      expect(capture.trace.kind).toBe("text-cells")
+      expect(capture.trace.retained).toBe("snapshot.txt")
+      const caller = capture.trace.caller
+      expect(String(caller.basis)).toContain("caller monotonic")
+      expect(Number.isFinite(caller.entryToAdapterCallbackMs)).toBe(true)
+      expect(Number.isFinite(caller.adapterCallbackMs)).toBe(true)
+      expect(Number(caller.totalMs)).toBeGreaterThanOrEqual(Number(caller.adapterCallbackMs))
+    }
+  })
+})
+
+/**
+ * @failure A history row that holds the viewport and outlives its wall leaves the window scrolled, or its
+ *   in-flight hold lands during the next row, so that row reads a held window as its own (34645, @cto e1cfff79
+ *   items 2-3). The #33431 wall test above covers TTY writes only, never a dispatched input step.
+ * @level l1
+ * @consumer runProbeBatch wall -> viewport route returnToBottom -> next row
+ * @testonly none
+ */
+describe("the row wall returns a held viewport to the bottom before the next row", () => {
+  const ids = ["scrollback.accumulate", "scrollback.total-lines"] as const
+  function heldRows(slowTerm: ProbeDefinition["term"], nextTerm: ProbeDefinition["term"]) {
+    const find = (id: string) => {
+      const probe = ALL_PROBES.find((entry) => entry.id === id)
+      if (!probe) throw new Error(`no probe ${id} in ALL_PROBES`)
+      return probe
+    }
+    const slow = find(ids[0])
+    const next = find(ids[1])
+    const saved = [slow, next].map((probe) => ({ probe, term: probe.term, wallMs: probe.wallMs }))
+    slow.term = slowTerm
+    slow.wallMs = 80
+    next.term = nextTerm
+    next.wallMs = 20_000
+    return () => {
+      for (const { probe, term, wallMs } of saved) {
+        probe.term = term
+        probe.wallMs = wallMs
+      }
+    }
+  }
+
+  it("settles the dispatched hold, posts the bottom once, then runs the next row", async () => {
+    verifiedBatchFixture()
+    const order: string[] = []
+    let releaseTheWall!: () => void
+    const afterTheWall = new Promise<void>((resolve) => (releaseTheWall = resolve))
+    let held = false
+    const restore = heldRows(
+      async (source) => {
+        await source.viewportScroll?.press("pageUp")
+        await afterTheWall
+        await source.viewportScroll?.press("pageDown").catch((error: Error) => order.push(`late:${error.message}`))
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "late" }] }
+      },
+      async () => {
+        order.push(`next:held=${held}`)
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran" }] }
+      },
+    )
+    try {
+      const batch = await runProbeBatch({
+        ids: [...ids],
+        subject: { kind: "term", id: "alacritty", os: "darwin" },
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        viewportScroll: {
+          route: "fixture route",
+          press: async (step) => {
+            order.push(`press:${step}`)
+            held = step !== "bottom"
+          },
+          async returnToBottom() {
+            order.push("back")
+            if (!held) return "not-held"
+            held = false
+            return "bottom-pressed"
+          },
+        },
+      })
+      expect(batch.results.find((row) => row.featureId === ids[0])?.reason).toBe("Probe exceeded 80ms")
+      expect(batch.rawReplies[`${ids[0]}.viewportAfterWall`]).toBe("bottom-pressed")
+      expect(order.slice(0, 3)).toEqual(["press:pageUp", "back", "next:held=false"])
+    } finally {
+      releaseTheWall()
+      restore()
+    }
+  })
+
+  it("stops the run when the dispatched input cannot be shown settled within the row's wall", async () => {
+    verifiedBatchFixture()
+    const order: string[] = []
+    const restore = heldRows(
+      async (source) => {
+        await source.viewportScroll?.press("pageUp")
+        await new Promise(() => {})
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "never" }] }
+      },
+      async () => {
+        order.push("next:started")
+        return { pass: false, tests: [{ id: "criterion", status: "probe-todo", reason: "next ran" }] }
+      },
+    )
+    try {
+      await expect(
+        runProbeBatch({
+          ids: [...ids],
+          subject: { kind: "term", id: "alacritty", os: "darwin" },
+          ownedTerminal: geometryOwner(measured(24, 80)),
+          viewportScroll: {
+            route: "fixture route",
+            press: async () => {},
+            // The helper never settles: the dispatched hold may still land.
+            returnToBottom: () => new Promise(() => {}),
+          },
+        }),
+      ).rejects.toThrow(/did not settle within another 80ms; the window may still be held/)
+      expect(order).toEqual([])
+    } finally {
+      restore()
+    }
+  })
+})
+
+// 33628 (@cto 1957), 34961 (@cto cc2dac5d): only the two qualified WezTerm Linux builds are handed the rendered
+// hold; every other context keeps the reply criterion, so a change here cannot alter an unapproved row.
+it("only WezTerm Linux 0-unstable-2026-10-10 and 0-unstable-2026-11-08 are graded by the rendered hold", () => {
+  const wezterm = { kind: "term", id: "wezterm", os: "linux", version: "0-unstable-2026-10-10" } as const
+  expect(syncOutputRenderedSubject(wezterm)).toBe(true)
+  // 34961: the hourly runs since 2026-11-16 measure 0-unstable-2026-11-08 and fell back to the withheld in-mode reply.
+  expect(syncOutputRenderedSubject({ ...wezterm, version: "0-unstable-2026-11-08" })).toBe(true)
+  for (const other of [
+    { ...wezterm, version: "20240203" },
+    { ...wezterm, version: "0-unstable-2026-11-09" },
+    { ...wezterm, version: "0-unstable-2026" },
+    { ...wezterm, version: undefined },
+    { ...wezterm, os: "macos" },
+    { ...wezterm, id: "alacritty" },
+    { ...wezterm, kind: "lib" },
+    undefined,
+  ] as const) {
+    expect(syncOutputRenderedSubject(other)).toBe(false)
+  }
+})
+
+/**
+ * @failure The 05:06 PST 2026-11-19 WezTerm Linux run reached the rendered hold for the first time (snapshot Ps 2) and
+ *   graded probe-invalid "accessed undeclared or unavailable terminal geometry": the hold painted at `ctx.cols`, which
+ *   the collector's source refuses because this definition declares no terminal geometry. The modes-observations hold
+ *   fixtures hand a plain-number `cols`, so they never met the guard (#34961, @cto 34961-hold-geometry-go-0603).
+ * @level l1
+ * @consumer modes.synchronized-output App callback through the collector's own createTermProbeSource.
+ * @testonly none
+ */
+describe("34961: the rendered hold runs on the collector's own probe source", () => {
+  const definition = () => ALL_PROBES.find((item) => item.id === "modes.synchronized-output")!
+  const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+
+  /** The real source (no declared geometry), with its terminal I/O replaced by a WezTerm-shaped hold. */
+  function holdSource(raster: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }) {
+    const source = createTermProbeSource({
+      probe: definition(),
+      utf8Decoding: async () => {
+        throw new Error("not read by this row")
+      },
+    })
+    const writes: string[] = []
+    let held = false
+    let shown = false
+    let pending: boolean | undefined
+    let decrpm = 0
+    let shot = 0
+    let clock = 0
+    source.syncOutputRenderedHold = true
+    source.captureKind = "pixels"
+    source.captureGeometry = {
+      geometry: raster,
+      source: "measured by complete raster calibration",
+      sentinel: { form: "basic", rgb: [181, 0, 181] },
+    }
+    source.now = () => (clock += 5)
+    source.write = (bytes) => {
+      writes.push(bytes)
+      if (bytes.includes("\x1b[?2026h")) held = true
+      const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+      if (painted !== undefined) {
+        if (held) pending = painted
+        else shown = painted
+      }
+      if (bytes.includes("\x1b[?2026l")) {
+        held = false
+        if (pending !== undefined) shown = pending
+        pending = undefined
+        if (bytes.includes("\x1b[0m \x1b8")) shown = false
+      }
+    }
+    source.queryWithSentinel = async (_sequence, pattern) => {
+      if (held) return null
+      decrpm++
+      return pattern.exec("\x1b[?2026;2$y")
+    }
+    source.capture = async (request: CaptureRequest) => {
+      shot++
+      return {
+        role: request.role,
+        label: request.label,
+        capturedAt: shot,
+        ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+        kind: "pixels",
+        pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+        located: shown ? box : null,
+      } satisfies ObservationFrame
+    }
+    return { source, writes, decrpmReads: () => decrpm }
+  }
+
+  it("keeps the declaration guard and paints at the calibrated last column (800 px / 10 px = 80)", async () => {
+    const { source, writes } = holdSource({ cellWidth: 10, cellHeight: 22, textWidth: 800, textHeight: 528 })
+    expect(definition().termNeedsGeometry).toBeUndefined()
+    expect(() => source.cols).toThrow(/accessed undeclared or unavailable terminal geometry/)
+    const result = await definition().term!(source)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    expect(JSON.parse(result.response!)).toMatchObject({ snapshot: 2, cell: { row: 1, col: 80 } })
+    expect(writes.some((bytes) => bytes.includes("\x1b[1;80H"))).toBe(true)
+  })
+
+  it.each([
+    ["a fractional quotient", { cellWidth: 10, cellHeight: 22, textWidth: 805, textHeight: 528 }],
+    ["a zero cell width", { cellWidth: 0, cellHeight: 22, textWidth: 800, textHeight: 528 }],
+    ["a negative text width", { cellWidth: 10, cellHeight: 22, textWidth: -800, textHeight: 528 }],
+    ["a non-finite text width", { cellWidth: 10, cellHeight: 22, textWidth: Number.NaN, textHeight: 528 }],
+    [
+      "an infinite cell width",
+      { cellWidth: Number.POSITIVE_INFINITY, cellHeight: 22, textWidth: 800, textHeight: 528 },
+    ],
+  ])("%s is a named probe-todo before any hold paint", async (_name, raster) => {
+    const { source, writes } = holdSource(raster)
+    const result = await definition().term!(source)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toEqual([
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringMatching(/rendered hold unmeasured: .*no measured width/),
+      },
+    ])
+    expect(writes).toEqual([])
+  })
+
+  it("a subject without the hold flag keeps the DECRPM criterion and reads no geometry", async () => {
+    const { source } = holdSource({ cellWidth: 10, cellHeight: 22, textWidth: 800, textHeight: 528 })
+    delete source.syncOutputRenderedHold
+    delete source.captureGeometry
+    let reads = 0
+    source.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[?2026;${++reads === 2 ? 1 : 2}$y`)
+    const result = await definition().term!(source)
+    expect(JSON.parse(result.response!)).toEqual({ snapshot: 2, afterSet: 1, afterRestore: 2 })
+    expect(result.tests?.[0]?.status).not.toBe("probe-invalid")
+    expect(result.observation).toMatchObject({ outcome: "supported" })
+  })
 })

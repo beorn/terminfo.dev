@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdirSync, readFileSync, realpathSync } from "node:fs"
+import { mkdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
@@ -7,6 +7,35 @@ import type { ProbeCapture } from "./probes/unified.ts"
 export interface LiveExecutable {
   path: string
   sha256: string
+}
+
+/**
+ * Successful byte measurements of live executables (34549, @cto 1c9a7980). Hashing a 12-29 MB terminal
+ * binary twice per capture pushed sgr.blink's samples past their gap bound, so a success is reused,
+ * but only for the same expected path and digest, the same process lifetime (pid AND its start time,
+ * so pid reuse is a new key), and the same image file (device, inode, size, mtime, ctime of
+ * /proc/<pid>/exe, so an exec into another image or a replaced file is a new key). A file a running
+ * process executes cannot be written (ETXTBSY) and any write moves ctime, so a key seen before names
+ * the bytes that were hashed. Insertion-ordered and bounded; the oldest entry goes first.
+ */
+const verifiedExecutables = new Set<string>()
+const VERIFIED_EXECUTABLE_LIMIT = 64
+
+/**
+ * The reuse key of one live process image. A /proc entry that cannot be read throws here, as the hash
+ * read below would; a start time that cannot be parsed is a broken /proc contract and throws too.
+ */
+function liveExecutableKey(pid: number, expected: LiveExecutable): string {
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+  const file = statSync(`/proc/${pid}/exe`, { bigint: true })
+  // Field 22 (starttime) is the 20th after the parenthesised command name, which may itself hold spaces.
+  const startTime = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
+  if (startTime === undefined || !/^\d+$/.test(startTime)) {
+    throw new Error(`Live executable start time unreadable for PID ${pid}`)
+  }
+  return [expected.path, expected.sha256, pid, startTime, file.dev, file.ino, file.size, file.mtimeNs, file.ctimeNs]
+    .map(String)
+    .join(":")
 }
 
 /** Bind a launched process to the same actual ELF bytes recorded by the launcher. */
@@ -21,34 +50,30 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
   const path = realpathSync(`/proc/${pid}/exe`)
   if (path !== expected.path) throw new Error(`Live executable path mismatch for PID ${pid}: ${path}`)
+  const key = liveExecutableKey(pid, expected)
+  if (verifiedExecutables.has(key)) return
   if (digest(readFileSync(`/proc/${pid}/exe`)) !== expected.sha256) {
     throw new Error(`Live executable digest mismatch for PID ${pid}`)
   }
+  verifiedExecutables.add(key)
+  if (verifiedExecutables.size > VERIFIED_EXECUTABLE_LIMIT) {
+    const oldest = verifiedExecutables.values().next().value
+    if (oldest !== undefined) verifiedExecutables.delete(oldest)
+  }
 }
 
-import { command, decodeCapture, finishCapture, type NamedTextOrigin, type OriginResolver } from "./capture-core.ts"
+import {
+  command,
+  convertCapture,
+  converterIdentity,
+  finishCapture,
+  type NamedTextOrigin,
+  type OriginResolver,
+} from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
 }
-
-/**
- * The PNG conversion a capture writes (#30764). Two things made identical pixels hash differently:
- * magick stamps `tIME` and `date:*` text into every conversion, and it copies the XWD window name
- * into a `tEXt comment` — 715 of the 2,724 duplicate-image groups on main, measured 2026-10-22,
- * differ only by that name ("Alacritty", "bun", "osc0-icon-title"). Excluding the date and time
- * chunks and clearing the comment gives one evidence hash per screen; `-strip` would do the same but
- * also drops cHRM and bKGD, which describe the pixels.
- */
-export const PNG_CONVERSION_ARGS = [
-  "xwd:-",
-  "-define",
-  "png:exclude-chunks=date,time",
-  "-set",
-  "comment",
-  "",
-  "png:-",
-] as const
 
 /** The window's own pixel size, parsed from xdotool getwindowgeometry --shell. */
 export function windowPixels(geometry: string): { width: number; height: number } {
@@ -277,7 +302,7 @@ export async function createLinuxCapture(
   await assertOwned()
   await assertFocusHelperIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
-  const converter = (await command("magick", ["-version"])).toString().trim()
+  const converter = await converterIdentity()
   const startupGeometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
   const startupWindow = windowPixels(startupGeometry)
   const screen = screenPixels(display)
@@ -304,7 +329,20 @@ export async function createLinuxCapture(
     declaredGeometry = nextGeometry
     declaredByFeatureId = nextGeometry === startupGeometry ? undefined : featureId
   }
-  const acquire = async (featureId: string, deadline?: number) => {
+  /** How many times one labelled acquisition has been asked for, so a retry is visible as one. */
+  const attempts = new Map<string, number>()
+  const acquire = async (featureId: string, deadline?: number, identity?: { role: string; label: string }) => {
+    const phaseStart = performance.now()
+    let phase = phaseStart
+    const mark = () => {
+      const now = performance.now()
+      const elapsed = Math.round(now - phase)
+      phase = now
+      return elapsed
+    }
+    const attemptKey = `${featureId}\u0000${identity?.label ?? ""}`
+    const attempt = (attempts.get(attemptKey) ?? 0) + 1
+    attempts.set(attemptKey, attempt)
     const expectedGeometry = declaredGeometry
     const expectedFeatureId = declaredByFeatureId
     if (expectedGeometry !== startupGeometry && featureId !== expectedFeatureId) {
@@ -312,17 +350,24 @@ export async function createLinuxCapture(
         `Capture window ${windowId} left resized by ${String(expectedFeatureId)} (${describeWindowGeometry(expectedGeometry)}, startup ${describeWindowGeometry(startupGeometry)}) during ${featureId}`,
       )
     }
-    // Static-frame settling is recorded; callbacks own any temporal schedule.
+    // Static-frame settling is recorded; callbacks own any temporal schedule. The configured delay is
+    // reported beside the ELAPSED one: a reader deciding whether this wait is redundant needs what the
+    // clock actually did, not what the constant asked for (@cto 34261).
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LINUX_CAPTURE_SETTLE_MS)
     })
+    const settleElapsedMs = mark()
     await assertOwned(deadline)
+    const ownedMs = mark()
     await assertFocusHelperIdentity(deadline)
+    const focusIdentityMs = mark()
     const before = (
       await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
     ).toString()
+    const geometryMs = mark()
     if (before !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, before)
     await assertFocusHelperClear(before, deadline)
+    const focusClearMs = mark()
     const observedWindow = windowPixels(before)
     if (observedWindow.width > screen.width || observedWindow.height > screen.height) {
       throw new Error(
@@ -349,16 +394,27 @@ export async function createLinuxCapture(
     } else {
       original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
     }
+    const captureMs = mark()
     const capturedAt = Date.now()
-    const png = await command(
-      "magick",
-      pointerImage ? ["png:-", ...PNG_CONVERSION_ARGS.slice(1)] : [...PNG_CONVERSION_ARGS],
-      original,
-      deadline,
-    )
-    if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-      throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
+    const source = {
+      bytes: original,
+      format: pointerImage ? ("png" as const) : ("xwd" as const),
+      width: observedWindow.width,
+      height: observedWindow.height,
+      capturedAt,
     }
+    // Decode the acquired image once for both required outputs, through the one converter owner. Both
+    // Linux routes (XWD and the pointer PNG) retain the normalized PNG (#30764), chosen here (#34549).
+    const { png, frame: decoded } = await convertCapture({
+      bytes: original,
+      format: source.format,
+      extent: observedWindow,
+      retain: "normalized",
+      scratchDirectory: directory,
+      featureId,
+      deadline,
+    })
+    const convertMs = mark()
     await assertOwned(deadline)
     const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
     if (after !== expectedGeometry) throw geometryChangedError(windowId, featureId, expectedGeometry, after)
@@ -366,14 +422,9 @@ export async function createLinuxCapture(
       throw geometryChangedError(windowId, featureId, expectedGeometry, declaredGeometry)
     }
     return {
-      source: {
-        bytes: original,
-        format: pointerImage ? ("png" as const) : ("xwd" as const),
-        width: observedWindow.width,
-        height: observedWindow.height,
-        capturedAt,
-      },
+      source,
       png,
+      decoded,
       trace: {
         featureId,
         collectorPid: process.pid,
@@ -382,29 +433,50 @@ export async function createLinuxCapture(
         windowId,
         geometry: before,
         converter,
-        settleMs: 150,
+        // The configured delay the settle asks for, and what it actually took, kept apart. Read from
+        // the constant, never spelled again: a second literal would keep saying 150 while an
+        // experiment asked for less, and the trace is the only place a reader can see which delay a
+        // run was bound to (34129 settle study).
+        settleMs: LINUX_CAPTURE_SETTLE_MS,
+        // One monotonic basis (performance.now) for every duration; capturedAt keeps its wall-clock
+        // meaning. The identity names which leg this acquisition was (its own role and label) and
+        // which attempt at that leg, so a retry is distinguishable from a first shot (@cto 34261).
+        acquisition: {
+          role: identity?.role ?? "unknown",
+          label: identity?.label ?? featureId,
+          attempt,
+          settleElapsedMs,
+          ownedMs,
+          focusIdentityMs,
+          geometryMs,
+          focusClearMs,
+          captureMs,
+          convertMs,
+          finalizeMs: mark(),
+          totalMs: Math.round(performance.now() - phaseStart),
+        },
       },
     }
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
-    const acquired = await acquire(checkpoint.featureId)
+    const acquired = await acquire(checkpoint.featureId, undefined, checkpoint)
     return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
-    const acquired = await acquire(checkpoint.featureId, deadline)
-    const decoded = await decodeCapture({ source: acquired.source, featureId: checkpoint.featureId, deadline })
+    const acquired = await acquire(checkpoint.featureId, deadline, checkpoint)
+    const decoded = acquired.decoded
     const result = await finishCapture({
       directory,
       onRetained,
       checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       ...acquired,
-      decoded,
-      deadline,
       origin: () => {
         throw new Error("Linux calibration raw capture cannot map cells before a named origin")
       },
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, declareWindowSize, settleMs: LINUX_CAPTURE_SETTLE_MS }
+  // #34632: the owned X window, so the held-view reader crops the same window the pixel route captures. A
+  // private field: the capture's callers on this arm already resolve the same id through linux-input.
+  return { capture, captureRaw, declareWindowSize, windowId: ownedWindowId, settleMs: LINUX_CAPTURE_SETTLE_MS }
 }

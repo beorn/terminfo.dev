@@ -552,7 +552,8 @@ test.each(ARM_CASES)(
       const live = await term(replayingLive(outcomes))
       if (id === "extensions.osc0-icon-title") {
         expect(headless.notTested?.noObservable).toContain("icon name")
-        expect(live.tests).toContainEqual(expect.objectContaining({ status: "probe-invalid" }))
+        // The silent target queries are unavailable label instruments (CTO1676cf8a Q3), not a broken probe.
+        expect(live.tests).toContainEqual(expect.objectContaining({ status: "probe-todo" }))
       } else {
         expect(headless.notTested?.noObservable).toContain("stored the image")
         // CTO87a56285: the App's two controlled silent windows decide its transmit negative;

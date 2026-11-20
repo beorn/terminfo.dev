@@ -13,10 +13,17 @@ import {
   type SelectedContextSummary,
   statesFor,
 } from "./selected-results.ts"
-import { candidateFromSelected, pickContextRun, type LineageRun } from "./run-selection.ts"
+import {
+  candidateFromSelected,
+  classifySetups,
+  pickContextRun,
+  type LineageRun,
+  type SetupClassification,
+  type SetupContext,
+} from "./run-selection.ts"
 import { joinContextCells, type ContextCellFacts, type ContextFacts, type JoinedApp } from "./app-cells.ts"
 import { definitionDiffers, gitSourceHistory, type SourceHistory } from "./source-history.ts"
-import { suiteEntryHashes } from "./legacy-entry-hashes.ts"
+import { cellEntryHashes, suiteEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import { loadTerminals } from "@terminfo/catalog"
@@ -169,8 +176,25 @@ export function loadCurrentResults(
   return results
 }
 
+/**
+ * Every context the projection holds with evidence, classified as the group's newest setup or one strictly behind it.
+ * One call, so the API document and the preview never hold two classifications (@cto 026fd6fd rules 1-2).
+ */
+export function classifyProjectionSetups(
+  projection: Pick<SelectedProjection, "contexts">,
+  history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
+): SetupClassification {
+  const contexts: SetupContext[] = []
+  for (const [key, summary] of Object.entries(projection.contexts)) {
+    if (summary.contributingRunIds.length === 0) continue
+    if (!summary.subject) throw new Error(`Context ${key} has evidence without physical subject facts`)
+    contexts.push({ key, subject: summary.subject, runs: contributingRuns(summary) })
+  }
+  return classifySetups(contexts, history)
+}
+
 /** Every run that contributed a cell to `summary`, with the app version and source revision the pick orders by. */
-function contributingRuns(summary: SelectedContextSummary): LineageRun[] {
+export function contributingRuns(summary: SelectedContextSummary): LineageRun[] {
   const runs = new Map<string, LineageRun>()
   for (const cell of Object.values(summary.cells)) {
     runs.set(cell.run.runId, {
@@ -254,7 +278,7 @@ export function compatibilitySubjects(
 /** One context reduced to the facts the join compares and names (`app-cells.ts`). */
 function contextFacts(
   summary: SelectedContextSummary,
-  entryHashes: (suiteId: string) => Readonly<Record<string, string>> | undefined,
+  entryHashes: (suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined,
 ): ContextFacts {
   const cells: Record<string, ContextCellFacts | undefined> = {}
   for (const [featureId, cell] of Object.entries(summary.cells)) {
@@ -265,7 +289,7 @@ function contextFacts(
       // never equal another context's absence and join on it (@cto c5ddabf3).
       version: cell.run.subject.version || null,
       suite,
-      entryHash: (suite === null ? undefined : entryHashes(suite)?.[featureId]) ?? null,
+      entryHash: (suite === null ? undefined : entryHashes(suite, cell.run.runId)?.[featureId]) ?? null,
       sourceRevision: cell.run.sourceRevision || null,
       runId: cell.run.runId,
       ...(cell.reopened !== undefined && { reopened: true }),
@@ -287,8 +311,10 @@ export function joinedAppCells(
   subjects: ReadonlyMap<string, { contextKey: string }>,
   contentDir: string,
   history: SourceHistory = gitSourceHistory(),
+  /** Each loaded working run's validated retained manifest hashes, by run id (34953); placed rows never read these. */
+  working: ReadonlyMap<string, RunEntryHashes> = new Map(),
 ): Map<string, JoinedApp> {
-  const entryHashes = suiteEntryHashes(contentDir)
+  const entryHashes = cellEntryHashes(suiteEntryHashes(contentDir), working)
   const definition = (featureId: string, left: string, right: string): string | null =>
     definitionDiffers(history, featureId, left, right)
   const bySubject = new Map<string, SelectedContextSummary[]>()

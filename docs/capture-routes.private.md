@@ -5,6 +5,16 @@ It distinguishes source policy, collector implementation and a measured native r
 One does not establish the others. The filename uses the existing private-page exclusion;
 the source repository remains public, so host access details and private evidence stay elsewhere.
 
+## Owned macOS input helper
+
+An owned macOS run builds its input helper from the staged Swift source and retains that run's signed binary. It executes a verified byte-identical copy at `~/Library/Application Support/terminfo.dev/owned-mac-input/darwin-input-helper`. Hosted keys-only input continues to execute its per-run helper.
+
+`TERMINFO_DARWIN_INPUT_SIGNING_IDENTITY` must name the approved signing certificate's full 40-hex SHA-1 fingerprint. This selects an existing identity; the collector never creates, searches for, imports or exports a key. The fixed code identifier and certificate-bound designated requirement are verified before publication. Changing source is expected to change binary bytes while preserving the approved designated requirement.
+
+The collector owns an exclusive publication lease through input self-test, all helper use and teardown. Busy ownership, unsafe destinations, missing signer metadata, build/signature failures and failed publication name an input-install refusal; an older installed binary is never substituted for a failed fresh build. Run evidence retains source/compiler/binary identity, expected and actual requirements, executed path and copied-byte equality. Existing PID/window/TTY checks and the per-event input lock remain in force.
+
+Signing success does not establish Accessibility permission. An authorized native check must prove trust and the run's own input self-test across two byte-different staged builds at that same path. No key provisioning or permission mutation follows from running the collector.
+
 ## Linux: reuse the existing apparatus
 
 The collector already has owned terminal output, disposable-target binding, clipboard
@@ -208,6 +218,13 @@ These describe workflow and launcher code, not measured results.
   `NoSyncSuppressDownloadConfirmation_selection=0` (Yes). The existing `launcher.log`
   records both exact settings commands and their outcomes. This describes the configured
   hosted target's consent policy, not iTerm2's default user configuration or accepted results.
+  It also sets `PreventEscapeSequenceFromClearingHistory=true`, so the first CSI 3 J raises no in-window
+  "clear scrollback history?" strip that would move the grid between capture calibrations. At 3.6.11 the unset
+  default and `true` both refuse that clear (PTYSession.m `clearScrollbackAllowed`), so erase readings are unchanged.
+  Before launch it writes a dynamic profile `terminfo-measure` that sets only `Show Offscreen Command line` false and
+  makes it the default (`Default Bookmark Guid`); a copy is kept as `iterm2-dynamic-profile.json`. Otherwise the
+  command our OSC 133 rows record is pinned as a bar over the grid's top rows once it scrolls off, and every
+  calibration renewal after those rows refuses (run 44178738960).
 - For Alacritty, Cursor, VS Code and cmux, the workflow exports the bundle's
   `CFBundleShortVersionString` as `TERMINFO_TARGET_VERSION`; it also checks that Alacritty's
   binary version agrees. The app launcher reads WezTerm's version from `wezterm --version`

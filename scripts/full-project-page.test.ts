@@ -167,6 +167,7 @@ describe("stored results without membership eligibility", () => {
       contexts[contextKey] = {
         contextKey,
         derivedIds: [],
+        byReview: 0,
         subject: run.subject,
         cells,
         contributingRunIds: [run.runId],
@@ -187,6 +188,7 @@ describe("stored results without membership eligibility", () => {
         os: "headless",
         kind: "lib",
         collected: true,
+        standing: "current",
         selection: { contextKey, method: "only current" },
         sources: [{ runId: run.runId, suiteId: run.suiteId, measuredAt: run.measuredAt, suiteRelation: "tree" }],
         heldIds: [],
@@ -220,6 +222,8 @@ describe("stored results without membership eligibility", () => {
       notCollected: rows.filter((row) => !row.collected).length,
       complete: false,
       recordedPositions: 44,
+      olderPositions: 0,
+      undecidableSetups: [],
       requiredSuiteId: suite,
     }))
     return { rows, contexts, source: contexts["lib:libvterm"]!.cells[ids[0]!]!.run }

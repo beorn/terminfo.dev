@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { recordExecutedProbe } from "./helpers.ts"
-import { finalizeVisualResult, sgrProbes } from "./sgr.ts"
+import { blinkSeriesDecision, finalizeVisualResult, sgrProbes } from "./sgr.ts"
 import type { CaptureCells, ObservationFrame, TermProbeSource } from "./types.ts"
 
 function blink() {
@@ -50,6 +50,7 @@ function app(opts: {
   let plain = 0
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     write: (bytes) => writes.push(bytes),
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
@@ -235,9 +236,10 @@ test("an undecided blink is recorded as review pending, never a test failure; a 
   expect(record(await term(context)).status).toBe("supported")
 })
 
-test("a one-way change achieved too slowly stays open: capture too slow to decide blink", async () => {
+test("a one-way change at phase-locked capture times stays open: blink phase not covered", async () => {
   // The Terminal.app 3053c5ec shape (#33117): one change then a hold, but the achieved capturedAt
-  // gaps are far above the negative gate's ceiling, so the series could not have seen a return.
+  // sit exactly 1000 ms apart, so a 2000 ms blink at 50% duty reads one state at every sample and the
+  // series could not have seen a return (#34549).
   const styled = Array.from({ length: SAMPLES }, (_, index) => (index < 4 ? "a" : "b"))
   const { context } = app({
     styled,
@@ -248,8 +250,9 @@ test("a one-way change achieved too slowly stays open: capture too slow to decid
   const result = await term(context)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
-    note: expect.stringContaining("capture too slow to decide blink"),
+    note: expect.stringContaining("blink phase not covered"),
   })
+  expect(result.observation?.note).toContain("would miss a 50%-duty blink of period")
 })
 
 test("equal blink samples without their live controls stay inconclusive, not Unsupported", async () => {
@@ -259,7 +262,7 @@ test("equal blink samples without their live controls stay inconclusive, not Uns
   expect(result.observation?.outcome).not.toBe("unsupported")
 })
 
-test("equal blink samples achieved too slowly stay open even with every live control", async () => {
+test("equal blink samples at phase-locked capture times stay open even with every live control", async () => {
   const { context } = app({
     styled: EQUAL,
     plain: STEADY_PLAIN,
@@ -270,7 +273,7 @@ test("equal blink samples achieved too slowly stay open even with every live con
   const result = await term(context)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
-    note: expect.stringContaining("capture too slow to decide blink"),
+    note: expect.stringContaining("blink phase not covered"),
   })
 })
 
@@ -299,14 +302,56 @@ test("a producer that settles 200 ms per acquisition records requested offsets b
     timing: Array<{ requestedOffsetMs: number; invokedMs: number; styledCapturedAt: number; plainCapturedAt: number }>
   }
   expect(timing.map((entry) => entry.requestedOffsetMs)).toEqual([
-    0, 512, 1043, 1581, 2083, 2604, 3101, 3636, 4106, 4615, 5078, 5610, 6018, 6544, 6985, 7500,
+    0, 470, 980, 1458, 1968, 2451, 2960, 3446, 3956, 4448, 4956, 5466, 5975, 6485, 6992, 7500,
   ])
+  const gaps = timing.slice(1).map((entry, index) => entry.requestedOffsetMs - timing[index]!.requestedOffsetMs)
+  expect(gaps).toHaveLength(SAMPLES - 1)
+  expect(Math.max(...gaps)).toBeLessThanOrEqual(510)
+  expect(gaps.reduce((sum, gap) => sum + gap, 0)).toBe(7500)
   // One settled acquisition per sample now (#33117): the plain control is cropped from the same
   // shot, so its timestamp IS the styled sample's, not a second settled acquisition later.
   expect(timing.at(-1)!.invokedMs).toBeGreaterThanOrEqual(7500)
   for (const entry of timing) {
     expect(entry.plainCapturedAt - entry.styledCapturedAt).toBe(0)
   }
+})
+
+// 34129 margin ruling, revisited by #34549: the declared varying capture lag below — up to 30 ms, the
+// largest gap delta the settle-0 study observed — pushed the previous schedule to a 568 ms gap, which
+// the former 545 ms ceiling refused. The negative now asks for coverage of the declared blink class
+// instead of a gap ceiling, and both schedules under that lag cover it, so both decide. The lag is a
+// declared fixture over whole-millisecond capturedAt: it models a host whose captures cost varying
+// amounts, it measures no host, and it is not a forecast that any host passes.
+const OLD_BLINK_GAPS_MS = [512, 531, 538, 502, 521, 497, 535, 470, 509, 463, 532, 408, 526, 441, 515]
+// The last step is zero so the post-sampling repaint, captured after the final sample, keeps its own
+// place in capture order rather than inheriting that sample's step.
+const FIXTURE_LAG_MS = [0, 8, 4, 34, 10, 6, 28, 2, 20, 12, 30, 6, 24, 0, 16, 0]
+
+test("declared varying capture lag leaves both the old and the shipped schedule covering the declared class", async () => {
+  const laggedCapturedAt = (now: number, sample: number) => now + (FIXTURE_LAG_MS[sample] ?? 0)
+  const oldOffsets = [0]
+  for (const gap of OLD_BLINK_GAPS_MS) oldOffsets.push(oldOffsets.at(-1)! + gap)
+  expect(
+    blinkSeriesDecision({
+      styled: EQUAL,
+      plain: STEADY_PLAIN,
+      capturedAt: oldOffsets.map((offset, sample) => offset + (FIXTURE_LAG_MS[sample] ?? 0)),
+      focusQualified: true,
+    }),
+  ).toMatchObject({ kind: "negative-decidable", witness: { gapMaxMs: 568 } })
+
+  // Same lag steps, shipped schedule, every live control: the flat series decides rather than staying
+  // open, so the margin is the schedule's and not a coincidence of this fixture's capture times.
+  const { context } = app({
+    styled: EQUAL,
+    plain: STEADY_PLAIN,
+    geometry: true,
+    controls: true,
+    capturedAt: laggedCapturedAt,
+  })
+  const result = await term(context)
+  expect(result.observation).toMatchObject({ outcome: "unsupported" })
+  expect(result.observation?.note ?? "").not.toContain("capture too slow")
 })
 
 test("without a measured raster the control and the blink samples go to review together", async () => {

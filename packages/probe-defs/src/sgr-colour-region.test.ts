@@ -27,7 +27,7 @@ import {
   colourCaptureCallbackResult,
   underlineColourRgbCaptureResult,
 } from "./sgr-colour-capture.ts"
-import { captureRegionCallbackResult } from "./region-readback.ts"
+import { captureRegionCallbackResult, cropPositionRefusal } from "./region-readback.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type {
   CaptureCells,
@@ -161,6 +161,7 @@ type Mode =
   | "collapse-bright"
   | "deferred-paint"
   | "ignore-58"
+  | "ignore-59"
   | "ignore-58-rgb-first"
   | "ignore-58-rgb-second"
   | "ignore-underline"
@@ -348,7 +349,7 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       continue
     }
     if (param === 59) {
-      next.underlineColour = "default"
+      if (mode !== "ignore-59") next.underlineColour = "default"
       index += 1
       continue
     }
@@ -449,11 +450,15 @@ function blankScreen(): Screen {
 
 const CONTROL = /^\x1b\[([0-9;:?]*)([@-~])/
 
-/** Paint one write onto the fake screen. The probe only writes CUP, ED and SGR, so everything else
- * is ignored rather than guessed at. */
+/** Paint CUP, ED, SGR and the reset fixture's independent RIS reference onto the fake screen. */
 function paint(screen: Screen, write: string, mode: Mode, palette: Palette, suppressColour: boolean): void {
   let rest = write
   while (rest.length > 0) {
+    if (rest.startsWith("\x1bc")) {
+      Object.assign(screen, blankScreen())
+      rest = rest.slice(2)
+      continue
+    }
     const control = CONTROL.exec(rest)
     if (control) {
       const params = (control[1] ?? "")
@@ -583,6 +588,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
   }
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: geometry.rows,
     cols: geometry.cols,
     captureKind: "pixels",
@@ -1214,6 +1220,79 @@ test("the colour owner preserves non-mux reset negatives and broken mux captures
   })
   expect(coverage.observation).toBeUndefined()
 })
+
+/**
+ * @failure A colour row whose compared frames were cropped from different screen positions must
+ *   refuse BY NAME. 33982: Warp cropped sgr.fg.truecolor's ignored-attribute frame 16 px left of
+ *   the other three, and the shared colour result boundary turned the refusal into probe-todo,
+ *   leaving the row ungraded while six sibling rows refused by name.
+ * @level l1
+ * @consumer The colour capture callback's shared result boundary on owned pixel-capture runs.
+ * @testonly none
+ */
+test("the colour owner keeps a crop-position refusal as a named refusal", () => {
+  const rectangle = (x: number) => ({ x, y: 78, width: 32, height: 16 })
+  const frames: ObservationFrame[] = [
+    { role: "control", label: "seed", ref: "sha256:" + "a".repeat(64), capturedAt: 1, regionRectangle: rectangle(33) },
+    {
+      role: "target",
+      label: "expected",
+      ref: "sha256:" + "b".repeat(64),
+      capturedAt: 2,
+      regionRectangle: rectangle(33),
+    },
+    {
+      role: "target",
+      label: "ignored attribute",
+      ref: "sha256:" + "c".repeat(64),
+      capturedAt: 3,
+      regionRectangle: rectangle(17),
+    },
+  ]
+  const refusal = cropPositionRefusal({
+    id: "sgr.fg.truecolor",
+    compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+    response: "crop positions differ",
+    frames,
+    screenshotRef: frames[2]!.ref,
+  })
+  expect(refusal?.criterionBranch).toBe("same-crop-comparison")
+  const result = colourCaptureCallbackResult("sgr.fg.truecolor", refusal!)
+  expect(result.criterionBranch).toBe("same-crop-comparison")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "probe-invalid" }))
+  expect(result.tests?.every((check) => check.status !== "probe-todo")).toBe(true)
+  expect(result.observation?.note).toContain("cropped from different screen positions")
+})
+
+/**
+ * @failure A valid independent-reference reset negative is lost by the generic mux colour
+ *   downgrade (#33534). Ignoring only SGR 59 preserves setup and both independent controls;
+ *   the registered callback and result writer must retain its negative and assertion references.
+ *   Existing ignore-58 mux cases keep ambiguous setup undecided.
+ * @level l1
+ * @consumer The registered underline-colour reset callback and collected result.
+ * @testonly none
+ */
+test.each([undefined, "tmux", "screen"] as const)(
+  "a qualified reset negative survives callback and collection through %s",
+  async (mux) => {
+    const featureId = "sgr.underline-color-reset"
+    const { ctx } = colourTerminal("ignore-59", PALETTES[0] as Palette)
+    const result = await run(featureId, { ...ctx, mux })
+    expect.soft(result.observation?.outcome, result.observation?.note).toBe("unsupported")
+    expect.soft(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "screenshot" })])
+    const published = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-11-14T22:47:53.471Z" },
+      observation: result.observation && { ...result.observation, featureId },
+      assertions: (result.assertions ?? []).map((assertion) => ({ featureId, ...assertion })),
+      tests: result.tests,
+      criterionBranch: result.criterionBranch,
+    })
+    expect(published.status).toBe("unsupported")
+    expect(published.tests[0]?.assertionRefs).toEqual([0])
+  },
+)
 
 for (const id of REVIEW_IDS) {
   test(`${id} is never graded from the colour-only fixture`, async () => {

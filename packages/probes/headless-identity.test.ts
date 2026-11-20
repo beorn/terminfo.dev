@@ -261,6 +261,39 @@ for (const [name, pkg] of [
 }
 
 /**
+ * @failure 13:04Z library run (34537): the vterm and termless checkouts' origins became local paths,
+ *   identity recorded "/hh/dev/vendor/vterm" as the repository, and exact-identity declarations
+ *   silently stopped matching (32 cells to PROBE TODO). A borrowed local origin is unmeasured identity.
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts sourceIntegrity (34537)
+ * @reach fs-walk <fixture-only: vterm checkout origin>
+ * @testonly none
+ */
+test.each([
+  { origin: "/hh/dev/vendor/vterm", hosted: false },
+  { origin: "file:///hh/dev/vendor/vterm", hosted: false },
+  { origin: "git@github.com:beorn/vterm.git", hosted: true },
+  { origin: "https://github.com/beorn/vterm.git", hosted: true },
+  // git-clone's scp-like form takes an optional user and an absolute remote path (34557, @cto 4c84d8db).
+  { origin: "example.com:org/repo.git", hosted: true },
+  { origin: "git@example.com:/srv/repo.git", hosted: true },
+  { origin: "ssh://git@example.com/srv/repo.git", hosted: true },
+])("a source engine whose checkout origin is $origin is graded only from a hosted origin", ({ origin, hosted }) => {
+  const set = spawnSync("git", ["-C", fixture.vterm, "remote", "set-url", "origin", origin], { encoding: "utf8" })
+  expect(set.status, set.stderr).toBe(0)
+  const result = runIdentity("vt100", "@termless/vt100")
+  if (hosted) {
+    expect(result.status, result.stderr).toBe(0)
+    return
+  }
+  expect(result.status).not.toBe(0)
+  expect(result.stdout).toBe("")
+  expect(result.stderr).toContain("Engine identity unmeasured")
+  expect(result.stderr).toContain(JSON.stringify(origin))
+  expect(result.stderr).toContain("34531")
+})
+
+/**
  * @failure A name whose bun.lock entry is not a registry tuple must still be refused loudly; the
  *   file: arm must not weaken that check.
  * @level l2

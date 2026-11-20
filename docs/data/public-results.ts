@@ -1,6 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import { isEnvironmentGroup } from "@terminfo/probe-defs"
+import { isEnvironmentGroup, isHarnessOutcome } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   FeatureResultStatus,
@@ -9,13 +9,17 @@ import type {
   TextQualification,
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
-import type { CurrentResult } from "./current-results.ts"
-import type { AppCellStatus, JoinedApp } from "./app-cells.ts"
+import { classifyProjectionSetups, type CurrentResult } from "./current-results.ts"
+import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
+import type { SetupStanding } from "./run-selection.ts"
+import { standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
 import type { FeatureResult } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
+import { publicDeclaredReason } from "./declared-untestable.ts"
 import { publicDerivedReason } from "./derived-cells.ts"
 import { publicHeldReason } from "./held-negatives.ts"
 import {
+  type PriorDecision,
   type SelectedCell,
   type SelectedContextCell,
   type SelectedContextSummary,
@@ -152,7 +156,7 @@ export interface PublicProbeResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo"
+  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo" | "identityRuleCheck"
 > {
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
@@ -184,6 +188,16 @@ export type PublicFeatureResult = Omit<PublicProbeResult, "status"> &
   }
 
 export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
+  /**
+   * 34691: the current cells a harness refusal holds open, once per suite that refused them; absent when none. `open` is
+   * every such cell; `withPriorDecision` is the subset whose row shows an older decision as history. Display only.
+   */
+  refusals?: PublicRefusalSummary[]
+  /**
+   * The context's standing among its own app's setups: the group's newest setup, or one strictly behind it. Explicit on
+   * every published context, so no reader can read an absence as current (@cto 026fd6fd rule 2).
+   */
+  standing: SetupStanding
   featureResults: Record<
     string,
     PublicFeatureResult & {
@@ -204,6 +218,21 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       derived?: SelectedContextCell["derived"]
       /** Present only when a held negative waits for a Supported reading in its suite (#33034); `reason` says so. */
       held?: SelectedContextCell["held"]
+      /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
+      declared?: SelectedContextCell["declared"]
+      /**
+       * Present only when this older decision was kept against a newer same-suite attempt whose harness reading did
+       * not finish (34675). The cell's own status, reason and origin stay the older decision's; this names the newest
+       * refused attempt, its time read from that run's own original.
+       */
+      refusedAttempt?: NonNullable<SelectedContextCell["refusedAttempt"]>
+      /**
+       * Present only when a same-version attempt under another suite refused this cell and replaced an older decision
+       * (34691). The cell's own status, reason and origin are that newest refusal, current and open; this is the last
+       * decided original, dated and attributed to its suite, never a current grade. `reason` is that original's public
+       * reason; `reopened` says its grade was later withdrawn.
+       */
+      priorDecision?: PublicPriorDecision
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -214,6 +243,69 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
    * app version and probe suite (@cto d321729a). Absent when the app has one context.
    */
   contexts?: string[]
+}
+
+/** 34691: a historical decision as the public page shows it: resolved through the original run, never copied. */
+export interface PublicPriorDecision {
+  origin: { runId: string; resultId: string }
+  status: FeatureResultStatus
+  version: string
+  suiteId: string
+  measuredAt: string
+  reason?: string
+  reopened?: NonNullable<SelectedContextCell["reopened"]>
+}
+
+/** 34691: one suite's refused current cells in one context, with the public reasons they read. */
+export interface PublicRefusalSummary {
+  suiteId: string
+  open: number
+  withPriorDecision: number
+  reasons: Array<{ reason: string; cells: number }>
+}
+
+/**
+ * 34691: count each current cell a harness refusal holds open once, under the suite of the run that refused it. A cell
+ * kept as an older decision (`refusedAttempt`) is decided, not open, so it is not counted. Reasons are the rows' public
+ * reasons, most common first.
+ */
+export function refusalSummary(
+  cells: Readonly<Record<string, SelectedContextCell>>,
+  reasonOf: (id: string) => string | undefined,
+): PublicRefusalSummary[] {
+  const bySuite = new Map<string, { open: number; withPriorDecision: number; reasons: Map<string, number> }>()
+  for (const [id, cell] of Object.entries(cells)) {
+    if (isEnvironmentGroup(id) || !isHarnessOutcome(cell.result.harnessOutcome)) continue
+    const suite = bySuite.get(cell.run.suiteId) ?? { open: 0, withPriorDecision: 0, reasons: new Map<string, number>() }
+    suite.open += 1
+    if (cell.priorDecision) suite.withPriorDecision += 1
+    const reason = reasonOf(id) ?? cell.result.harnessOutcome
+    suite.reasons.set(reason, (suite.reasons.get(reason) ?? 0) + 1)
+    bySuite.set(cell.run.suiteId, suite)
+  }
+  return [...bySuite].map(([suiteId, suite]) => ({
+    suiteId,
+    open: suite.open,
+    withPriorDecision: suite.withPriorDecision,
+    reasons: [...suite.reasons]
+      .map(([reason, count]) => ({ reason, cells: count }))
+      .sort((a, b) => b.cells - a.cells || (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0)),
+  }))
+}
+
+/** 34691: the history marker with its time, suite and public reason read from its original run's public mapping. */
+function publicPriorDecision(priorDecision: PriorDecision, original: PublicVersion): PublicPriorDecision {
+  const result = original.results.find((row) => row.featureId === priorDecision.resultId)
+  if (!result) throw new Error(`History original ${original.runId} lacks result ${priorDecision.resultId}`)
+  return {
+    origin: { runId: priorDecision.runId, resultId: priorDecision.resultId },
+    status: priorDecision.status,
+    version: priorDecision.version,
+    suiteId: original.suiteId,
+    measuredAt: original.measuredAt,
+    ...(result.reason !== undefined && { reason: result.reason }),
+    ...(priorDecision.reopened && { reopened: priorDecision.reopened }),
+  }
 }
 
 /** One context's contribution to a joined cell's grade, for the cell that must name its contexts. */
@@ -236,7 +328,7 @@ export function composeJoinedSummary(
   const featureResults = { ...primary.featureResults }
   // A cell that carries another context's evidence names that context's run, so the summary carries its
   // receipt too: a reader resolves every cell as `sources[cell.origin.runId]` (docs/api.md, 33979).
-  // `contributingRunIds` stays the primary's: a page matches its analysis entry on exactly that list.
+  // `contributingRunIds` stays the primary's; a page matches its analysis entry on these `sources` (34533).
   const sources = { ...primary.sources }
   for (const [featureId, cell] of Object.entries(app.cells)) {
     const own = primary.featureResults[featureId]
@@ -244,8 +336,7 @@ export function composeJoinedSummary(
     // The primary's own result carries the origin, measuredAt and reason a page shows whenever the
     // primary decided; another context's result stands in only when the primary did not decide
     // (@cto c5ddabf3).
-    const primaryDecided = cell.from.some((grade) => grade.context === primary.contextKey)
-    const source = primaryDecided ? undefined : cell.from.find((grade) => grade.context !== primary.contextKey)
+    const source = standInGrade(cell, primary.contextKey)
     const other = source ? contexts[source.context]?.featureResults[featureId] : undefined
     if (source && other && !(other.origin.runId in sources)) {
       const receipt = contexts[source.context]?.sources[other.origin.runId]
@@ -330,7 +421,10 @@ export function publicResults(
   subjects: ReadonlyMap<string, CurrentResult>,
   /** The same-suite join for every chosen subject (`joinedAppCells`); omitted by readers that hold one context. */
   joined?: ReadonlyMap<string, JoinedApp>,
+  /** The history the setup order reads; a fixture passes a stub rather than a repository. */
+  history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
 ) {
+  const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
@@ -373,6 +467,8 @@ export function publicResults(
       screenRecord: _screen,
       readRaw: _read,
       traceMemo: _trace,
+      // #34617: the identity-rule claim is published only inside the run's trace document.
+      identityRuleCheck: _identityRuleCheck,
       results,
       ...metadata
     } = version
@@ -433,18 +529,39 @@ export function publicResults(
                 reason: publicDerivedReason(cell.derived),
               }),
               ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
+              ...(cell.declared && { declared: cell.declared, reason: publicDeclaredReason(cell.declared) }),
+              // 34675: qualified through the existing original-run store; a refusal-only run need not contribute.
+              ...(cell.refusedAttempt && {
+                refusedAttempt: {
+                  ...cell.refusedAttempt,
+                  measuredAt: originalRunFor(projection, key, cell.refusedAttempt.runId).measuredAt,
+                },
+              }),
+              ...(cell.priorDecision && {
+                priorDecision: publicPriorDecision(
+                  cell.priorDecision,
+                  mapVersion(originalRunFor(projection, key, cell.priorDecision.runId)),
+                ),
+              }),
             },
           ]
         }),
       )
+      const refusals = refusalSummary(context.cells, (id) => featureResults[id]?.reason)
       const { cells: _cells, ...metadata } = context
+      const standing = setups.standings.get(key)
+      if (standing === undefined) {
+        throw new Error(`Context ${key} has no setup standing; every published context is classified`)
+      }
       return [
         key,
         {
           ...metadata,
+          standing,
           contributingRunIds: context.contributingRunIds,
           featureResults,
           sources,
+          ...(refusals.length > 0 && { refusals }),
           attempts: context.attempts.map((attempt) => ({
             runId: attempt.runId,
             noOutputIds: attempt.noOutputIds,

@@ -68,7 +68,10 @@ function expectedFrame(setup: string, residual: string): string {
   return (
     `\x1b[2J\x1b[3;3H${setup}XX\x1b[3;5H${setup}YY` +
     // The INDEPENDENT neutral reference. It is not the sequence under test on any of these rows.
-    "\x1bc\x1b[?25l" +
+    // SGR 0 comes first because a terminal may erase on RIS with the pen still set and only then
+    // reset it: iTerm2 3.6.11 left the whole sgr.bg.default reference green that way (34712, @cto
+    // 8d123098). SGR 0 is independent of every reset these six rows test (39, 49, 59, 24, 23, 27).
+    "\x1b[0m\x1bc\x1b[?25l" +
     `\x1b[3;5H${residual}YY\x1b[3;3H${setup}XX\x1b[${CURSOR_ROW};1H`
   )
 }
@@ -160,6 +163,17 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
       control: { label: "made-up SGR 99", sequence: "\x1b[99m" },
       signal: "criterion",
       branch: "sgr-selective-reset-saved-rendition",
+      // #34932 (@cto 34932-observed-reset-scope-2136): an app that paints no faint (xterm 412) is graded on the facets
+      // it shows. The faint-only attempt painting exactly N drops the faint combinations; the setup becomes the
+      // qualified bold+italic, SGR 99 stays its control, and SGR 22 must clear bold and keep italic.
+      unobservable: {
+        facet: "faint",
+        attempt: "SGR 2",
+        omitted: ["SGR 1;2", "SGR 2;3", "SGR 1;2;3"],
+        setup: "\x1b[1;3m",
+        setupSubset: "SGR 1;3",
+        measured: "SGR 22 graded on clearing bold while keeping italic",
+      },
     },
   },
   "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m", "\x1b[1m\x1b[4m"),

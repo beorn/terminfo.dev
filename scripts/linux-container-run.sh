@@ -8,7 +8,49 @@ set -euo pipefail
 # A full WezTerm batch was still progressing when the shared 600s limit sent SIGTERM
 # on 2026-11-04 (OOMKilled=false) and when the 1200s limit sent SIGTERM at 1196.9s
 # (exit 143) on 2026-11-09 (#32889). Keep both consumers on the same shared batch budget.
-PROBE_BATCH_TIMEOUT_SECONDS=1800
+# #34398: the ladder, with the commit that bought each raise, so the next raise is a recorded decision
+# rather than a surprise. 180 was a literal timeout on the host attach line, before the budget was
+# declared once; the rest are value changes, each read from the value line at that commit:
+#   180 -> 600   d413a1ae5  declare 600s probe-batch timeout for curl and attach
+#   600 -> 900   73bf985cd  allow progressing full batches fifteen minutes
+#   900 -> 1200  b05c68dd6  allow shared probe batches twenty minutes
+#   1200 -> 1800 ba7e4a173  raise PROBE_BATCH_TIMEOUT_SECONDS from 1200 to 1800
+#   1800 -> 2400 2026-11-17 raise for the same-run control frames: a completed wezterm batch captures
+#     1548 frames where the 2026-11-13 batch captured 635, and its measured wall grew 1497 -> 1873-1899 s.
+#     The 2026-11-17T01:06Z run was still writing frames at 1797 s, so the 1800 s wall fired on a working
+#     batch, not a hang. New trigger for the next raise: a completed batch above 1900 s of captures.
+PROBE_BATCH_TIMEOUT_SECONDS=2400
+
+# 35020: the /probe stream opens with the daemon's keepalive -- leading JSON whitespace (space, tab, LF, CR)
+# written so a stock socket timer never sees a silent socket (34753). Those bytes are transport, not payload:
+# the client strips exactly that leading run once at its retention boundary
+# (packages/terminfo.dev/src/daemon-client.ts stripProbeKeepalivePrefix), so the container has to strip the same
+# run before it validates and hashes the body. Otherwise container-receipt.json names a sha of bytes the
+# collector never retained, and placement refuses the run with "does not bind original capture bytes".
+# Never a BOM, interior whitespace, trailing bytes or anything after the first non-whitespace byte.
+# Bash and coreutils only: the image declares no awk (flake.nix runtimeTools), and the 2026-11-19T05:51Z ghostty
+# run died here on `awk: command not found`.
+strip_capture_keepalive_prefix() {
+  local file=$1 offset='' count=0 byte
+  local -a bytes
+  read -r -d '' -a bytes < <(head -c 65536 "$file" | od -An -v -tu1) || true
+  for byte in "${bytes[@]}"; do
+    case $byte in
+      32 | 9 | 10 | 13) count=$((count + 1)) ;;
+      *)
+        offset=$count
+        break
+        ;;
+    esac
+  done
+  if [[ -z "$offset" ]]; then
+    echo "Capture at $file is empty, or opens with nothing but keepalive whitespace in its first 65536 bytes; refusing to strip it blind" >&2
+    return 1
+  fi
+  [[ "$offset" == 0 ]] && return 0
+  tail -c "+$((offset + 1))" "$file" > "$file.keepalive-stripped"
+  mv "$file.keepalive-stripped" "$file"
+}
 
 # Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
 # never an engine grade. The private fontconfig pins the regular face and its style companions,
@@ -341,13 +383,44 @@ mux_receipt_target() {
 
 await_owned_daemon() {
   local daemon_dir=$1 app_pid=$2 previous_pid=${3:-0} socket_receipt=${4:-} files candidate mux_socket mux_state=
+  local registration read_status read_attempt vanished=no started=$SECONDS
   for _ in $(seq 1 150); do
     files=("$daemon_dir"/*.json)
     if [[ "${#files[@]}" == 1 && -f "${files[0]}" ]]; then
-      candidate=$(jq -er '.pid' "${files[0]}") || return 2
-      if [[ "$candidate" != "$previous_pid" ]]; then
-        jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run and (.port | type == "number") and (.token | type == "string")' \
-          "${files[0]}" >/dev/null || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
+      # register() writes directly with writeFileSync(wx), not by rename. Read one JSON
+      # snapshot: retirement may remove the old file, and one incomplete read may finish
+      # on an immediate second read. Neither changes the existing poll or its interval.
+      registration=
+      for read_attempt in 1 2; do
+        if registration=$(jq -c . "${files[0]}" 2>&1); then
+          [[ -n "$registration" ]] && break
+          read_status=5 # An empty file is the writer's not-yet-complete JSON too.
+        else
+          read_status=$?
+        fi
+        # jq's input/system-error status plus an absent file distinguishes retirement
+        # from malformed JSON without interpreting its human diagnostic text.
+        if [[ "$read_status" == 2 && ! -e "${files[0]}" ]]; then
+          vanished=yes
+          registration=
+          break
+        fi
+        if [[ ( "$read_status" != 4 && "$read_status" != 5 ) || "$read_attempt" == 2 ]]; then
+          if [[ "$read_status" == 4 || "$read_status" == 5 ]]; then
+            echo "Daemon registration ${files[0]} has malformed JSON after $read_attempt read(s)" >&2
+          else
+            echo "Daemon registration ${files[0]} could not be read (jq exit $read_status)" >&2
+          fi
+          return 2
+        fi
+        echo "Daemon registration ${files[0]} has incomplete JSON; rereading once because its writer does not rename" >&2
+      done
+      if [[ -n "$registration" ]]; then
+        candidate=$(jq -er --arg run "$TERMINFO_RUN_ID" \
+          'if .runId == $run and (.port | type == "number") and (.token | type == "string") then .pid else error("wrong run ID or invalid fields") end' \
+          <<< "$registration") || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
+      fi
+      if [[ -n "$registration" && "$candidate" != "$previous_pid" ]]; then
         if [[ -n "$socket_receipt" ]]; then
           [[ -r "$socket_receipt" ]] && IFS= read -r mux_socket < "$socket_receipt" && [[ -n "$mux_socket" ]] || {
             echo "Owned tmux socket receipt cannot supply a socket path: $socket_receipt" >&2; return 2;
@@ -371,6 +444,7 @@ await_owned_daemon() {
   else
     echo "Expected exactly one live owned collector registration, different from $previous_pid" >&2
   fi
+  echo "Collector readiness waited $((SECONDS - started))s; old collector PID $previous_pid; registration file vanished: $vanished" >&2
   return 2
 }
 
@@ -381,7 +455,10 @@ await_owned_daemon() {
 mux_profile_config() {
   local mux=$1 profile=$2
   case "$profile" in
-    default) printf '%s\n' /out/mux-empty.conf ;;
+    default)
+      if [[ "$mux" == tmux ]]; then printf '%s\n' 'tmux: focus-events on'
+      else printf '%s\n' /out/mux-empty.conf; fi
+      ;;
     truecolor)
       if [[ "$mux" != screen ]]; then
         echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
@@ -394,7 +471,7 @@ mux_profile_config() {
         echo "mux profile $profile has no declared option on mux ${mux:-(none)}" >&2
         return 2
       fi
-      printf '%s\n' 'tmux: set-titles on; set-titles-string "#T"'
+      printf '%s\n' 'tmux: focus-events on; set-titles on; set-titles-string "#T"'
       ;;
     *) echo "Unknown mux profile $profile on mux ${mux:-(none)}" >&2; return 2 ;;
   esac
@@ -409,22 +486,40 @@ screen_config_content() {
   if [[ "$1" == truecolor ]]; then printf 'truecolor on\n'; fi
 }
 
-# The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919): the default profile's file stays
-# empty, and set-titles is the profile's one documented option, so tmux forwards a pane title to the outer terminal.
+# The exact bytes the owned tmux server starts with for PROFILE (#32593, @cto 33919). Both profiles remove the
+# status clock so calibration can restore identical pixels (#37175), retaining the bar and its grid geometry.
+# set-titles forwards a pane title to the outer terminal.
 # set-titles-string "#T" keeps that forwarded title the pane title itself, nonce included, rather than tmux's default
 # "#S:#I:#W - ..." wrapper.
 # The mux receipt hashes this file, and the placement check (MUX_PROFILE_CONFIG_FILES in disposable-receipt.ts)
 # accepts a profile's recorded config only when that hash matches these bytes; the launcher test keeps the two equal.
 tmux_config_content() {
+  printf 'set -g status-right ""\nset -g focus-events on\n'
   if [[ "$1" == set-titles ]]; then printf 'set -g set-titles on\nset -g set-titles-string "#T"\n'; fi
 }
 
+# #34632: the two viewport steps xterm does not bind, declared in argv rather than a config file, and MERGED with
+# its default table by `#override` (a plain `translations` resource would replace the table and change every other
+# row). MEASURED 2026-11-18 under a private Xvfb over 200 rows on BOTH versions this project runs - 411 in
+# terminfo-xterm-probe:default and 412 in the image the flake builds today: with this line shift+Home stops at the
+# top (a Prior after it moves nothing), shift+End returns byte-exact to the bottom frame from both a page-up and
+# the top, shift+Prior/Next still page (so the default table survived the merge), and Shift+Insert pastes PRIMARY
+# byte-exact. Without it, shift+Home and shift+End change pixels but are not scroll-to-top/bottom. `scroll-forw` is
+# this build's action name (the binary carries `scroll-back`, `scroll-forw`, `scroll-to`, never `scroll-forward`,
+# which it rejects silently), and 9999 lines is a bounded jump: both actions clamp at the ends.
+# One variable, so the launch and the paste guard below compare the same bytes.
+xterm_viewport_override='XTerm*VT100.Translations: #override \n Shift<Key>Home: scroll-back(9999,line) \n Shift<Key>End: scroll-forw(9999,line)'
+
 # xterm's default paste is Shift+Insert from PRIMARY (charproc.c:15024, #32164). A translations,
 # selectToClipboard or insert-selection resource anywhere on its command line could rebind it, so the
-# launcher refuses one. Prints the first such argument and succeeds; fails when there is none.
+# launcher refuses one. The ONE exception is xterm_viewport_override above, matched byte for byte: it merges with
+# `#override` and so keeps the default Shift<Key>Insert: insert-selection binding, and an edited or differently
+# sourced string does not match, so nothing can smuggle an Insert rebinding in under that name. Prints the first
+# refused argument and succeeds; fails when there is none.
 xterm_paste_rebinding_arg() {
   local arg
   for arg in "$@"; do
+    if [[ "$arg" == "$xterm_viewport_override" ]]; then continue; fi
     if [[ "$arg" =~ [Tt]ranslations|selectToClipboard|insert-selection ]]; then
       printf '%s\n' "$arg"
       return 0
@@ -577,9 +672,10 @@ if [[ "${1:-}" == "--inside" ]]; then
       # locally on xterm 411 + DejaVu Sans Mono 16 at window 1304x814: AA on 1 px differing at
       # (28,76), AA off 0 px. Exact equality only: no tolerance, no similarity (CTO ruling #28752).
       target_launch_args=(-name "terminfo-$target_id-container-daemon" -u8 -fa 'DejaVu Sans Mono'
-        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false')
+        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false'
+        -xrm "$xterm_viewport_override")
       target_command_lead=(-e)
-      target_render_pin=xft-antialias-off
+      target_render_pin=xft-antialias-off,viewport-keys-shift-home-end
       parse_version() {
         local line
         IFS= read -r line
@@ -593,8 +689,16 @@ if [[ "${1:-}" == "--inside" ]]; then
     ghostty)
       # A forced --title ignores application title sequences, including OSC 7's title fallback.
       # The existing PID/window ownership receipt identifies the window without overriding its title.
-      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none)
+      # Rendering is PINNED and recorded like xterm's (#28829, #31331): FreeType monochrome turns
+      # antialiasing off, so a plainly painted frame cannot carry edge pixels an edited one lacks; the
+      # padding is set to ghostty's shipped 2x2, unbalanced, so the grid origin no longer rides on a
+      # default. `ghostty +validate-config` accepts these four values and refuses a bad one
+      # (2026-11-17). The pin alone proves no grid registration; #31328 owns that.
+      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none
+        --freetype-load-flags=monochrome
+        --window-padding-x=2 --window-padding-y=2 --window-padding-balance=false)
       target_command_lead=(-e)
+      target_render_pin=freetype-monochrome,padding-2x2-unbalanced
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
       target_xtversion_mode=require
       target_xtversion_expect="ghostty $target_version"
@@ -991,7 +1095,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
   daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid") || { cat /out/daemon.log >&2; exit 2; }
-  jq 'del(.token)' "$daemon_file" > /out/daemon-registration.json
+  jq 'del(.token)' "$daemon_file" > /out/daemon-registration.json || {
+    registration_copy_status=$?
+    echo "$daemon_file: Owned preflight collector registration copy failed (jq exit $registration_copy_status); expected the live owned collector JSON returned by readiness" >&2
+    exit 2
+  }
   port=$(jq -er .port /out/daemon-registration.json)
   token=$(jq -er .token "$daemon_file")
   curl --fail-with-body --silent --show-error "http://127.0.0.1:$port/info" > /out/info.json
@@ -1057,7 +1165,11 @@ if [[ "${1:-}" == "--inside" ]]; then
     daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid" "$preflight_pid" "$mux_socket_receipt") || {
       cat /out/daemon.log >&2; exit 2;
     }
-    jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json
+    jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json || {
+      registration_copy_status=$?
+      echo "$daemon_file: Owned mux collector registration copy failed (jq exit $registration_copy_status); expected a new live owned collector JSON after preflight PID $preflight_pid retired" >&2
+      exit 2
+    }
     collector_pid=$(jq -er .pid /out/mux-daemon-registration.json)
     port=$(jq -er .port /out/mux-daemon-registration.json)
     token=$(jq -er .token "$daemon_file")
@@ -1152,6 +1264,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/batch-elapsed-seconds.txt || batch_status=$?
   date -u +%FT%TZ > /out/batch-wall-end.txt
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
+  strip_capture_keepalive_prefix /out/v3-capture.json
   if [[ "$selected_ids" != null ]]; then
     jq -e --argjson ids "$selected_ids" '
       (.rawReplies["collector.selection"] | fromjson | .ids | sort) == ($ids | sort)' /out/v3-capture.json >/dev/null || {
@@ -1201,14 +1314,18 @@ if [[ "${1:-}" == "--inside" ]]; then
     # png one, and a selection of only extensions.osc22-pointer has no xwd-sourced frame at all.
     png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
     source_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
-    if [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd
-    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png
-    else source_kind=""; fi
+    # 34127: a capture now retains its X window dump zstd-compressed as <sha>.xwd.zst, the sha naming
+    # the stored bytes like every other retained file, so the digest check below is unchanged. A raw
+    # <sha>.xwd from an earlier capture still reads; both keep the xwd receipt shape.
+    if [[ -r "/out/artifacts/$source_sha.xwd.zst" ]]; then source_kind=xwd source_extension=xwd.zst
+    elif [[ -r "/out/artifacts/$source_sha.xwd" ]]; then source_kind=xwd source_extension=xwd
+    elif [[ -r "/out/artifacts/$source_sha.png" ]]; then source_kind=png source_extension=png
+    else source_kind="" source_extension=""; fi
     [[ -r "/out/artifacts/$png_sha.png" && -n "$source_kind" ]] || {
-      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd or .png" >&2
+      echo "Callback capture artifacts are missing: frame artifacts/$png_sha.png, source artifacts/$source_sha.xwd.zst, .xwd or .png" >&2
       exit 2
     }
-    source_file="artifacts/$source_sha.$source_kind"
+    source_file="artifacts/$source_sha.$source_extension"
     [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
        "$(sha256sum "/out/$source_file" | cut -d ' ' -f 1)" == "$source_sha" ]] || {
       echo "Callback capture digest mismatch" >&2; exit 2;
@@ -1355,7 +1472,23 @@ code_root=$(cd "$vendor_root/../.." && pwd -P)
 }
 mkdir -p "$output_parent"
 output_parent=$(cd "$output_parent" && pwd -P)
-run_id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+# One identity per run (#34269): the host composer hands its draft id down as
+# TERMINFO_CAPTURE_RUN_ID and the collector draft, the owner assertion and this launcher must all
+# name it. Minting a second, unrelated id here made /probe refuse every Linux pass with
+# "Capture identity X differs from this daemon's launch run Y". Mint only when nobody stated one.
+resolve_run_id() {
+  local handed="${TERMINFO_CAPTURE_RUN_ID:-}"
+  if [[ -z "$handed" ]]; then
+    od -An -tx1 -N16 /dev/urandom | tr -d ' \n'
+    return
+  fi
+  [[ "$handed" =~ ^[0-9a-f]{32}$ ]] || {
+    echo "TERMINFO_CAPTURE_RUN_ID must be the 32-lowercase-hex run identity the host handed down, got '$handed'" >&2
+    return 2
+  }
+  printf '%s' "$handed"
+}
+run_id=$(resolve_run_id) || exit 2
 run_dir="$output_parent/$run_id"
 mkdir "$run_dir"
 mkdir -p "$run_dir/prep/receipt" "$run_dir/raw"

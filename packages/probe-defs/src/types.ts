@@ -159,6 +159,8 @@ export const HARNESS_OUTCOMES = [
   "probe-exceeded",
   "unfinished-calls",
   "capture-refused",
+  // 34675: the pre-callback geometry gate refused this row, so its callback never ran.
+  "geometry-refused",
   // Written by the 33048 expiry path, not by this package.
   "killed-mid-probe",
   "never-started",
@@ -307,7 +309,11 @@ export interface ObservationFrameBase {
   ref: string
   capturedAt: number
   label: string
-  /** Original capture bytes, such as XWD; retained with the raw run receipt. */
+  /**
+   * Original capture source, retained with the raw run receipt: the digest of the stored artifact,
+   * which for an X window dump is its zstd-compressed copy (`.xwd.zst`, 34127) and decompresses to
+   * the exact dump.
+   */
   sourceRef?: string
 }
 
@@ -315,6 +321,38 @@ export interface ObservationFrameBase {
  * A frame read from the screen's PIXELS. Its digests are over raw bytes, so two frames are
  * comparable only when their rectangles match.
  */
+/**
+ * The rendering axes of one cropped pixel frame, measured from the same bytes its `regionDigest`
+ * hashed (osc104). Two frames that agree on `background`, whose per-pixel coverage agrees within the
+ * tolerance the reader names, and whose ink colour differs, differ in INK COLOUR and nothing else —
+ * a result the terminal's colour rows can be graded on instead of refusing it as "some rendering
+ * axis differed".
+ *
+ * `coverage` is each pixel's distance from the frame's own modal background as a fraction of that
+ * frame's own modal ink distance, scaled to 0..255. Normalising by the frame's OWN ink is what keeps
+ * a brighter ink's footprint equal to a dimmer one's: at raw byte level one antialiasing pixel of the
+ * same glyph crosses the "differs from background" line when the ink colour changes (measured: 198
+ * vs 197 background pixels on Warp's retained osc104 pair).
+ */
+export interface CaptureRenderingAxes {
+  /** Modal background colour of the crop, as `#rrggbb`. */
+  background: string
+  /** Modal ink colour of the crop, as `#rrggbb`; equal to `background` when the crop carries no ink. */
+  inkColour: string
+  /** Pixels that differ from the modal background. A crop with no ink carries 0. */
+  inkCount: number
+  /** Largest channel distance between the modal ink and the modal background, 0..255. */
+  contrast: number
+  /**
+   * One byte per pixel, row-major, of the coverage these axes were measured from. IN MEMORY ONLY:
+   * the capture adapter defines it non-enumerable, so it never reaches a stored run record — a
+   * full-run record holds millions of compared pixels and the retained PNGs already carry them.
+   * Absent on every frame read back from a record, which is why the reader refuses rather than
+   * guesses when it is missing.
+   */
+  readonly coverage?: Uint8Array
+}
+
 export interface PixelObservationFrame extends ObservationFrameBase {
   /**
    * Optional HERE on purpose: every frame written before text frames existed is a pixel frame and every one of
@@ -330,6 +368,8 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * the same buffer as `pixelsDigest`. Present exactly when the request named cells.
    */
   regionDigest?: string
+  /** The answer to a request's `layoutGuard` with `against` (#34932): present only on such a frame. */
+  layoutGuardComparison?: CaptureLayoutGuard
   /**
    * Raw-pixel digest of the whole captured window, over raw pixel bytes at a fixed depth and
    * colorspace — never the encoded container, whose text chunks differ between identical frames.
@@ -345,6 +385,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * carries neither.
    */
   regionRectangle?: CaptureRectangle
+  /**
+   * The rendering axes of exactly this crop, taken from the same pixels as `regionDigest`. Present
+   * exactly when `regionDigest` is. Recorded whether or not a colour verdict is reached, so a reader
+   * of the record can see the background, ink colour, ink count and contrast the run measured.
+   */
+  rendering?: CaptureRenderingAxes
   /**
    * Raw-pixel digest of the second cell-aligned region named by the request's `controlCells`,
    * cropped from the SAME captured image as `regionDigest` and `pixelsDigest`, so the two
@@ -365,6 +411,12 @@ export interface PixelObservationFrame extends ObservationFrameBase {
    * named no colour, or when the arm could not decode its frame; undefined is never read as null.
    */
   located?: CaptureLocated | null
+  /**
+   * What this frame measured about the grid its rectangle was mapped from (33982). Present exactly
+   * when the frame carries a `regionRectangle`, which the arm maps from that origin. A comparison
+   * that needs a proved grid move reads it here; a frame without it refuses as before.
+   */
+  cellCrop?: PixelCellCrop
 }
 
 /**
@@ -376,11 +428,14 @@ export interface PixelObservationFrame extends ObservationFrameBase {
 export interface TextCellsObservationFrame extends ObservationFrameBase {
   kind: "text-cells"
   regionDigest?: never
+  rendering?: never
   pixelsDigest?: never
   regionRectangle?: never
   controlRegionDigest?: never
   controlRegionRectangle?: never
   located?: never
+  cellCrop?: never
+  layoutGuardComparison?: never
   /** Digest over the named cells' characters, and their attributes where the arm reports them. */
   cellDigest: string
   /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
@@ -496,6 +551,206 @@ export interface CapturePixelGeometry {
 }
 
 /**
+ * What one pixel frame measured about the grid its region rectangle was mapped from (33982). Carried
+ * beside `regionRectangle` so a later frame's crop that differs from the first by WHOLE ROWS reads as
+ * the grid moving — Warp repaints its text area 35 rows lower after a reset — instead of as two
+ * frames cropped from unrelated positions. Absent on a hand-built frame, and a comparison over such
+ * frames refuses exactly as it did before this field existed.
+ */
+export interface PixelCellCrop {
+  /** The text-area origin this frame's rectangle was mapped from, in the captured image's pixels. */
+  origin: { x: number; y: number }
+  /**
+   * How the origin was measured, as a short settled name, and the arm's own prose beside it. Two
+   * frames are compared only when the NAME agrees: a calibrated origin and a sentinel-derived one are
+   * different measurements, and treating them as one would count one measurement twice (33982, @cto).
+   */
+  basis?: string
+  basisDetail?: string
+  /** The measured surface the text area sits on, when the arm names one. */
+  surface?: CaptureRectangle
+  /** The cell pitch the rectangle was mapped at. */
+  cell: { width: number; height: number }
+  /**
+   * The measured text-area grid, in cells. A move that comes with a resize refuses: the same rows at
+   * a different column count is a different screen, not the same screen further down.
+   */
+  grid?: { columns: number; rows: number }
+  /** The captured image's own size, so a moved rectangle is checked against pixels that exist. */
+  image: { width: number; height: number }
+  /**
+   * The sentinel pair this frame located: the two painted cells and the boxes they actually changed.
+   * The origin is derived from ONE of these boxes, so "the origins differ by N rows" alone is that
+   * one measurement restated. The PAIR is the independent half: its two boxes must sit exactly one
+   * cell pitch apart per row and column their cells differ by, which is what proves this frame's cell
+   * size and that the origin it implies lands on the grid the read asked for.
+   */
+  witness?: {
+    a: { cell: { row: number; col: number }; box: { x: number; y: number } }
+    b: { cell: { row: number; col: number }; box: { x: number; y: number } }
+  }
+  /**
+   * Pixels that changed between this frame's pre-paint frame and the frame itself, outside the
+   * located pair. A held viewport shifted by whole rows shows a small delta here; a re-anchored
+   * viewport shows a large one. Absent means the read made no such comparison, never zero
+   * (33982, @cto).
+   */
+  changedOutside?: number
+  /**
+   * The whole-row displacement this read accepted, in rows and pixels (33982). Present only when a
+   * MEASURED bound licensed it, so a reader can count accepted moves without parsing prose.
+   */
+  acceptedRowMove?: { rows: number; px: number }
+  /**
+   * The row delta a DECLARED hold produced between the settled origin and where the painted pair
+   * actually landed (34163). An observation only: no grade or published cell may read it until the
+   * XTest wheel event's effective displacement is measured, because "one notch" is not yet a row
+   * count in this codebase.
+   */
+  scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+}
+
+/** A portable viewport step; the subject's owner maps it to that app's own input (34313). */
+export type ViewportStep = "pageUp" | "pageDown" | "top" | "bottom"
+
+/**
+ * A subject owner's viewport scroll route (34313, @cto cf1ffd6d). Probe definitions name only the
+ * portable step; the owner holds the platform key names. `press` resolves once the owner's input posted
+ * the step under its own delivery proof, and rejects by name when the route's input is not installed.
+ * Resolution says the step was posted, never that the viewport moved: the caller observes that.
+ */
+export interface ViewportScroll {
+  /** Names the route and its mapping in every result that used it. */
+  readonly route: string
+  press(step: ViewportStep): Promise<void>
+  /**
+   * Put the viewport back at the bottom (34645, @cto e1cfff79 items 2-3): first settle every step this route
+   * dispatched, so none can land afterwards, then post `bottom` once if a non-bottom step was dispatched since
+   * the last bottom settled; a step that landed and then rejected counts as dispatched. `bottom-pressed` says
+   * the step was posted, never that the view moved. Rejects by name when asked from a row abandoned at its wall
+   * (the wall owns it then), or when the bottom step itself fails. Absent on a route that installed no input.
+   */
+  returnToBottom?(): Promise<"not-held" | "bottom-pressed">
+  /**
+   * Record that the view is held by something other than this route's keys (an OSC 720 trigger the caller wrote),
+   * so `returnToBottom` and the row wall return it once like a hold the route dispatched (34680, @cto 1359).
+   * Throws by name when asked from a row abandoned at its wall. Present wherever `returnToBottom` is.
+   */
+  adoptHold?(): void
+}
+
+/** Why a held-viewport read returned no candidate (34645). Each names the first check that failed. */
+export type HeldViewportUnavailable =
+  | "no-trace-scope" // not inside a live row's TTY trace
+  | "replay" // the row replays a recorded trace
+  | "trace-unsettled" // a query or callback was still pending at a bracket mark
+  | "trace-moved" // a TTY operation started inside the bracket
+  | "trace-abandoned" // the row's wall fired
+  | "route-missing" // this source has no viewport route
+  | "route-rejected" // a viewport step rejected (its own message kept)
+  | "no-bound-reference" // "already-held" without a bottom reference this reader recorded for this row
+  | "capture-failed" // no calibrated origin, or a raw capture threw (message kept)
+  | "geometry-changed" // the owned window's identity or bounds changed during a capture
+  | "no-unique-shift" // the held crops are unstable, or show no unique full-height row shift
+  | "reference-mismatch" // the bottom reference after the hold is not the one before it
+  | "deadline" // the read's one deadline passed
+
+/**
+ * One raw frame the reader took, exactly as the capture record stored it (@cto e1cfff79 item 4): `ref` and
+ * `capturedAt` come from that recorded result, and `regionDigest` is derived from the same decoded bytes at
+ * `regionRectangle`. Never a looked-up or synthesized frame.
+ */
+export interface HeldViewportFrame {
+  readonly ref: string
+  readonly capturedAt: number
+  readonly regionDigest: string
+  readonly regionRectangle: CaptureRectangle
+  /** The frame the capture record stored: held crops are `target`, bottom references `control`. */
+  readonly recorded: ObservationFrame
+}
+
+/** The trace bracket around the hold and its observation: one per read. */
+export interface HeldViewportBracket {
+  readonly id: string
+  /** TTY operations started by the bracket's opening mark; equal at its closing mark. */
+  readonly started: number
+  readonly openedAt: number
+  readonly closedAt: number
+}
+
+/**
+ * What one read saw: a bottom reference, two held crops with one unique full-height row shift against it, and
+ * the bottom reference again after `bottom`. A candidate is evidence, never a grade (`qualified: false`): only
+ * the row's grader may qualify it against its own observed reference.
+ */
+export interface HeldViewportCandidate {
+  readonly kind: "held-viewport-candidate"
+  readonly featureId: string
+  readonly label: string
+  readonly route: string
+  readonly hold: Exclude<ViewportStep, "bottom"> | "already-held"
+  readonly geometry: {
+    readonly origin: { readonly x: number; readonly y: number }
+    readonly cell: { readonly width: number; readonly height: number }
+    readonly cols: number
+    readonly rows: number
+    readonly window: string
+  }
+  readonly bracket: HeldViewportBracket
+  readonly b0: HeldViewportFrame
+  readonly held: readonly [HeldViewportFrame, HeldViewportFrame]
+  readonly b1: HeldViewportFrame
+  /** Text rows the held view sits above the bottom: held row r shows bottom row r - shift. */
+  readonly shift: number
+  readonly qualified: false
+}
+
+export type HeldViewportReading =
+  | { readonly status: "candidate"; readonly candidate: HeldViewportCandidate }
+  | {
+      readonly status: "unavailable"
+      readonly reason: HeldViewportUnavailable
+      readonly detail: string
+      /** The frames recorded before the read stopped. */
+      readonly frames: readonly HeldViewportFrame[]
+      /** `bottom-pressed` proves only that the step was posted; `left-to-wall` means the row's wall owns it. */
+      readonly restored: "not-held" | "bottom-pressed" | "restore-failed" | "left-to-wall"
+    }
+
+/**
+ * Read a held viewport (34645, @cto e1cfff79). With a step, the reader takes the bottom reference itself,
+ * then holds with that step. With `"already-held"`, the caller has triggered the hold, and `bottom` must be a
+ * reference this reader recorded earlier in the same row, taken before the trigger: the reader then writes
+ * nothing to the TTY before its held crops. Without one, it reports `no-bound-reference` before any step.
+ */
+/** A reference crop with no key and no TTY write, recorded so this row's reads can bind to it (34645). */
+export type HeldViewportReferenceReading =
+  | { readonly status: "reference"; readonly frame: HeldViewportFrame }
+  | { readonly status: "unavailable"; readonly reason: HeldViewportUnavailable; readonly detail: string }
+
+export type ReadViewportReference = (label: string) => Promise<HeldViewportReferenceReading>
+
+export type ReadHeldViewport = (
+  hold: Exclude<ViewportStep, "bottom"> | "already-held",
+  label: string,
+  bottom?: HeldViewportFrame,
+) => Promise<HeldViewportReading>
+
+/**
+ * The viewport hold a probe declares on its capture request (34163). A held viewport renders the
+ * painted sentinel pair N rows off the calibrated grid, so a declared read crops at the settled
+ * origin and records N as an observation; undeclared, that move refuses by name.
+ */
+export interface DeclaredViewportHold {
+  /** "up" means the viewport is held above the bottom; the pair then renders LOW (positive rows). */
+  direction: "up" | "down"
+  /** Notches the probe injected since it last returned to the bottom. */
+  notches: number
+  /** The most rows that hold can have scrolled, from the fixture's own construction. */
+  maxRows: number
+}
+
+/**
  * A capture checkpoint. `cells` asks the collector to digest one cell-aligned region of the same
  * capture; `ref`, `sourceRef`, `capturedAt` and `label` keep their shape either way, so a request
  * without `cells` is byte for byte the previous path.
@@ -503,6 +758,12 @@ export interface CapturePixelGeometry {
 export interface CaptureRequest {
   role: ObservationFrame["role"]
   label: string
+  /**
+   * Fixture-owned state restoration after every observer paint and clear, including retries and
+   * failure cleanup. Supplying these bytes prevents the observer from using the fixture's DECSC
+   * slot. Must be nonempty and must not repaint the measured region or replay the target.
+   */
+  restoreAfterPaint?: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
   /**
@@ -513,11 +774,25 @@ export interface CaptureRequest {
    */
   controlCells?: CaptureCells
   /**
+   * Regions this shot measures elsewhere and the calibration mark must not paint on, including the
+   * cell the mark's trailing space lands in. They are not cropped and not digested. Optional: a
+   * request without the list is the previous path (34240, @cto 55e9ad34).
+   */
+  keepClear?: readonly CaptureCells[]
+  /**
    * Cells the probe's own output may cover beyond what it digests (an inline image's footprint,
    * 33985). A read that paints calibration's sentinel never paints it here: a terminal that draws the
    * image over text hides the sentinel, and the crop cannot be anchored.
    */
   avoid?: CaptureCells
+  /**
+   * The viewport hold this read is taken under, declared by the probe that created it (34163). A
+   * held viewport renders the painted sentinel pair N rows BELOW the calibrated grid, so a declared
+   * read crops at the settled origin and records N as an observation; without the declaration a
+   * moved pair is a refusal naming the delta. `maxRows` bounds what the fixture can have scrolled —
+   * a hold can never exceed one screen — so a delta outside it is not a hold and refuses.
+   */
+  scroll?: DeclaredViewportHold
   /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
   /**
@@ -525,6 +800,49 @@ export interface CaptureRequest {
    * a request without it is byte for byte the previous path. Needs no `cells`.
    */
   locate?: { rgb: readonly [number, number, number] }
+  /**
+   * A layout guard over `cells` (#34932, @cto 34932-five-criteria-ruling-2216 item 5). Without `against`
+   * the collector keeps this crop for one later comparison; with `against` (the `ref` of that earlier
+   * frame) it compares this crop to it and answers `layoutGuardComparison`. Optional: a request without it is
+   * byte for byte the previous path. A frame whose arm cropped no cells answers nothing.
+   */
+  layoutGuard?: CaptureLayoutGuardRequest
+  /**
+   * Read this frame under the reverse screen mode (DECSCNM) the probe's own write left set (#34932,
+   * @cto 34932-reverse-seam-ruling-2325 item 1). It selects the background and sentinel paint this run's calibration witnessed
+   * under that mode. Absent keeps the normal path. A collector with no witnessed reverse paint refuses the
+   * read by name; it never reads it as normal.
+   */
+  screenMode?: "reverse"
+}
+
+export interface CaptureLayoutGuardRequest {
+  /** The `ref` of the earlier frame, taken with `layoutGuard: {}` over the same cells, to compare against. */
+  readonly against?: string
+}
+
+/**
+ * A layout guard's bounded comparison of two crops of the same cells (#34932, @cto 2216 item 5). It holds
+ * only when the dimensions are equal, alpha is exact, no RGB channel differs by more than 1, and every
+ * coordinate keeps its background/ink class under the run's witnessed background members. No
+ * neighbourhood matching, resampling or changed-pixel allowance. Only a layout guard uses it.
+ */
+export interface CaptureLayoutGuard {
+  /** The earlier frame's `ref`. */
+  against: string
+  holds: boolean
+  /** Why the guard does not hold; absent exactly when it holds. */
+  reason?: string
+  width: number
+  height: number
+  /** Pixels whose RGBA differs at all between the two crops. */
+  changedPixels: number
+  maxChannelDelta: number
+  alphaExact: boolean
+  /** Coordinates whose background/ink class differs between the two crops. */
+  maskChangedPixels: number
+  /** How many witnessed background colours classified the mask; 0 means none were supplied. */
+  backgroundMembers: number
 }
 
 /** Calibration's witnessed solid paint: which SGR form painted it and the exact colour it measured. */
@@ -750,7 +1068,17 @@ export type UngradedDiagnostic =
    * as a `collector-error` instead.
    */
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
-  | { kind: "collector-error"; name: string; message?: string }
+  | {
+      kind: "collector-error"
+      name: string
+      message?: string
+      /**
+       * What the refused read measured before it refused (33982). A moved frame throws before any
+       * frame record exists, so this is the only place its evidence can survive. Present only for
+       * refusals that produce it; absent is "the read produced none", never a zero.
+       */
+      evidence?: { changedOutside: number; rowShift?: { rows: number; px: number } }
+    }
 
 /**
  * One named coverage record: the probe ran and its raw state is retained, but the environment exposes
@@ -1179,6 +1507,22 @@ export interface PasteRoute {
 export interface ClipboardFixture {
   /** Owned transaction baseline verified before the callback starts. */
   readonly baseline?: string
+  /**
+   * The clipboard-read setting this run's owned configuration applied, when it applied one (@cto 2026-11-13): a
+   * record names its profile and the exact setting, so a profile reading is never mistaken for the default
+   * configuration a person gets when they open the app. Absent on a default-configuration reading, and absent on a
+   * Mac ordinary-open run, where the app keeps its own settings.
+   */
+  readonly readProfile?: { readonly profile: string; readonly setting: string }
+  /**
+   * The app's pinned default for a clipboard read at this run's version, with its source (@cto 2026-11-13): "ask"
+   * means a read waits on a person, so a silent query cannot tell "no" from "waiting" and grades nothing; "deny" or
+   * "absent" means the silence is the default answer, so it grades unsupported. Absent when the default is not pinned
+   * from the app's own documentation — a run then names that, never a guess.
+   */
+  readonly readDefault?: { readonly posture: "ask" | "deny" | "absent"; readonly source: string }
+  /** This tree's citation is for another app version: the row names both, and no default is applied. */
+  readonly readDefaultRefusal?: string
   /** True only when the collector verified a disposable session that sets and restores 2004 blind (#32164). */
   readonly disposableSession?: boolean
   /** Verified tmux server `set-clipboard` option read before the callback (#32164). */
@@ -1338,6 +1682,13 @@ export type TerminalScrollbackReading = Readonly<{
   viewportOffset?: number
   /** Maximum retained scrollback history lines, when known by the reader. */
   capacity?: number
+  /**
+   * The reader's own identity receipt, when it produces one: which pane or surface this count came from,
+   * its listed tty, this run's measured tty and whether the two match, whether a socket was named, and the
+   * reader's executable — each by name or basename, never a path. A count without it says which program
+   * ran, not which pane was read (@cto 238ed303, 41fcd747).
+   */
+  receipt?: string
 }>
 
 /** Post-reset receipt from an owned multiplexer window history reset (#32874). */
@@ -1348,6 +1699,14 @@ export type TerminalScrollbackReset = Readonly<{
 
 export interface TermProbeSource {
   readonly kind: ProbeSourceKind
+  /**
+   * Wall-clock milliseconds, exactly `Date.now()` on a live source (#30932 S2). A callback's deadline and
+   * schedule reads go through this method rather than the global clock, so the source recorder keeps each
+   * value and an offline replay asks for the same polls the live row asked for. Read it only through
+   * `sourceNow`, which refuses a source without one: a log recorded before this method existed has no clock to
+   * give, and nothing falls back to the replaying machine's time.
+   */
+  now?: () => number
   /** Verified multiplexer identity when this run's subject is a multiplexer (#32774). */
   mux?: "tmux" | "screen"
   /** Same-session owned history. Absent when the terminal exposes no complete reading. */
@@ -1377,7 +1736,38 @@ export interface TermProbeSource {
      * before the check existed.
      */
     sentinel?: CalibrationSentinel
+    /**
+     * The same sentinel paint and the colour calibration measured for it while the reverse screen mode
+     * was set (#34932, @cto 34932-reverse-seam-ruling-2325 item 2). Present only when that witness succeeded; a layout check
+     * of a read under the mode repaints with it.
+     */
+    reverseSentinel?: CalibrationSentinel
   }
+  /**
+   * Re-measure this run's pixel origin after a frame that re-lays-out the window. A full reset (RIS)
+   * re-renders a block terminal's shell-integration block, so every absolute row after it renders
+   * elsewhere while the grid size and the calibrated footprint stay identical — a move the footprint
+   * check cannot see (#33774; Warp runs 43285337469 and 43597976383, 560 px = 35 rows, stable).
+   *
+   * A collector installs this only when it can re-run its own calibration arm, and the caller writes
+   * the frame again afterwards because calibration paints the whole grid. Absent on a text arm or a
+   * collector with no arm to re-run, where a moved window still refuses by name exactly as it does
+   * today. Returns the reading now installed, or undefined when this arm had nothing to renew.
+   *
+   * `row` is the probe id that asked, and the collector records it with the origin it moved FROM and
+   * the one it moved TO. That record is what makes a later row's origin readable: a run that renewed
+   * states each renewal and the row it happened under, so no grade is left standing on an origin the
+   * artifact does not name (#34306 AC1).
+   */
+  renewCaptureGeometry?: (row: string) => Promise<
+    | {
+        geometry: CapturePixelGeometry
+        source: "measured by complete raster calibration"
+        sentinel?: CalibrationSentinel
+        reverseSentinel?: CalibrationSentinel
+      }
+    | undefined
+  >
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
   measureRenderedWidth(text: string): Promise<RenderedWidthResult>
@@ -1433,12 +1823,41 @@ export interface TermProbeSource {
    * version; this one says the arm, not the app, is the obstacle.
    */
   scrollbackProbeTodo?: string
+  /**
+   * The viewport scroll route this run's subject owner installed (34313, @cto cf1ffd6d): present exactly
+   * when the route APPLIES to the qualified subject, whether or not its input installed. A failed install
+   * keeps the field and its `press` rejects by name, so the history rows report an apparatus TODO instead of
+   * falling back to `scrollbackUnavailable`. Only the viewport-history callbacks read it; it is not an
+   * input fixture and grants no other callback a route.
+   */
+  viewportScroll?: ViewportScroll
+  /**
+   * The held-viewport reader (34645): installed only beside a viewport route on a calibrated raw-capture
+   * arm. Absent means the history rows keep their apparatus TODO.
+   */
+  readHeldViewport?: ReadHeldViewport
+  /** Installed with `readHeldViewport`: the grid as it stands, recorded as a reference for this row's reads. */
+  readViewportReference?: ReadViewportReference
   /** Receipt and independent control are qualified before the callback; missing negative evidence stays explicit. */
   withNotificationObserver?: (
     work: (fixture: NotificationFixture) => Promise<ProbeCallbackResult>,
   ) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
+  /**
+   * 34899 (@cto REVISE 1, r2 C1-C5): set only for a subject whose frame shows each prompt mark as a boundary of its
+   * own — Warp's command-block chrome. That subject's App rows answer the OSC 133/633 mark cells from a same-run
+   * differential (mark, mark omitted, mark moved, plus a stability pair) instead of the cursor-position arm. Every
+   * other subject keeps the cursor arm, and the flag is the collector's statement about the frame, not a grade.
+   */
+  promptMarkBoundaryRendering?: true
+  /**
+   * 33628 (@cto ruling 1957): set only on modes.synchronized-output for an owned WezTerm Linux run. Its mux keeps
+   * parsing while mode 2026 is held and withholds replies together with the paint, so the App callback grades the
+   * rendered hold from colour-only frames instead of a DECRPM reply after DECSET. Every other subject keeps the reply
+   * criterion.
+   */
+  syncOutputRenderedHold?: true
   /**
    * The run's pixel capture waits this many ms before it reads the screen (the collector's own number,
    * #33032). Set for every row of a run whose adapter declares a fixed wait, whether or not the row
@@ -1453,6 +1872,13 @@ export interface TermProbeSource {
    * no adapter is installed, and absent in every run recorded before text frames existed, where the
    * only adapter that could have been installed was a pixel one. */
   captureKind?: "pixels" | "text-cells"
+  /**
+   * The run's capture kind, set for every row whether or not this row gets an adapter (34675, like
+   * `captureSettleMs`). `captureKind` above says what THIS row's adapter reads and is absent without
+   * one; this says what the run captures, so a pixel branch on a text run can tell that its missing
+   * adapter is the run's kind, not a refused calibration.
+   */
+  runCaptureKind?: "pixels" | "text-cells"
   /** Present only when an owned OS input adapter is installed for this run. */
   input?: InputFixture
   /**
@@ -1488,8 +1914,20 @@ export interface ProbeDefinition {
    * ownership alone never authorizes it; absent, forged or foreign authority leaves the terminal untouched.
    */
   termNeedsDisposable?: true
+  /**
+   * What this mutation may touch. A window-scoped owner basis admits `window` only; `app-instance`
+   * and `machine` refuse by name, and an absence refuses as undeclared (#34148). Populated from
+   * `term-footprints.ts`, so the 27 declarations stay one reviewable table.
+   */
+  termFootprint?: import("./term-footprints.ts").TermFootprint
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
+  /**
+   * This row reads frames under the reverse screen mode, so the run's capture calibration also witnesses
+   * the background and sentinel paint under it (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). It asks for a calibration
+   * capability only; it does not say the callback runs reversed.
+   */
+  termScreenMode?: "reverse"
   /** This callback decides at least one row through the region readback, so a text-cells run hands
    * it the cells adapter. Every other probe is handed nothing on such a run. */
   cellReadback?: true

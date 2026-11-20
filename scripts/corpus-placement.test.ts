@@ -5,10 +5,20 @@
  * @testonly none
  * @reach fs-read vendor/terminfo.dev/content/features.json vendor/terminfo.dev/content/suites/**
  * @reach fs-walk <fixture-only: isolated collection and content directories>
+ * @reach fs-read vendor/terminfo.dev/packages/** (the identity-rule source closure the rule revision hashes)
  */
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
@@ -16,11 +26,20 @@ import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import { parseOuterLaunchRecord, serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
-import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
+import {
+  IDENTITY_RULE_SOURCES,
+  identityRuleRevision,
+  identityRuleSourceRevision,
+  loadStoredRuns,
+  placeCollectedRun,
+  refusedCaptureRows,
+} from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { loadSelectedResults, projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
+import { currentTrace } from "../docs/data/run-trace.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -48,7 +67,7 @@ function muxSpecimen() {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function fixture() {
+function fixture(runId = "fixture-run") {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-placement-"))
   dirs.push(dir)
   const content = join(dir, "content")
@@ -68,7 +87,7 @@ function fixture() {
     permissions: null,
   }
   const draft = initializeRunDraft({
-    runId: "fixture-run",
+    runId,
     sourceRevision: "a".repeat(40),
     manifest: currentManifest,
     source: { kind: "live" },
@@ -102,6 +121,30 @@ function fixture() {
 
 // Accepted: placement must retain exact run bytes and its trusted suite, and reads must bind them.
 // The retired admission tests never call the collection writer or reload what it actually persisted.
+// #34018: the composed owned route hands the run its identity, so the record the host produced and
+// the record the pass asked for are one run. The place path must accept that identity unchanged —
+// if placement only worked for a locally minted id, the handoff would be fixed and uncounted anyway.
+test("places a run whose identity the composer handed down", () => {
+  const handed = "0123456789abcdef0123456789abcdef"
+  const f = fixture(handed)
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  expect(destination).toBe(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-" + handed + ".json"))
+  expect(loadStoredRuns(f.content, f.manifest.catalogIds!)).toMatchObject([{ runId: handed }])
+})
+
+// #34868: the suites map handed to a projection is the read of `suites/` a caller must use. Proof at
+// this seam keeps a second directory scan from creeping back into a consumer like selected-results.ts.
+test("hands the projection the suites it already parsed", () => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const cohorts = loadStoredRuns(
+    f.content,
+    f.manifest.catalogIds!,
+    (_run, _reread, suites) => suites.get(f.manifest.probeHash)?.probes,
+  )
+  expect(cohorts).toEqual([f.manifest.probes])
+})
+
 test("persists and reloads exact bytes, idempotently, refusing conflicts", () => {
   const f = fixture()
   const bytes = readFileSync(f.source)
@@ -300,56 +343,77 @@ test.each(["malformed", "invalid-utf8", "foreign-suite", "conflicting-suite", "i
 
 // Accepted: cited screenshot and text bytes are verified and copied before a run becomes visible.
 // Prior tests exercised the standalone artifact helper, so they could miss writer ordering.
-test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "bom-text", "conflict"] as const)(
-  "retained artifacts: %s",
-  (fault) => {
-    const f = fixture()
-    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1])
-    const text = Buffer.from(
-      fault === "invalid-utf8" ? [0xff] : fault === "bom-text" ? [0xef, 0xbb, 0xbf, 0x68] : [0x68, 0x69],
-    )
-    const pngHash = hash(png)
-    const textHash = hash(text)
-    f.run.screenshotRefs = [`sha256:${pngHash}`]
-    f.run.textSnapshotRefs = [`sha256:${textHash}`]
+// 35009: a missing listed file is refused by its digest, and a decoded-pixel comparison value that names no file
+// (pixelsDigest) beside a listed editor frame is not a file reference, so the run still places.
+test.each([
+  "valid",
+  "comparison-digest",
+  "missing",
+  "wrong-hash",
+  "not-png",
+  "invalid-utf8",
+  "bom-text",
+  "conflict",
+] as const)("retained artifacts: %s", (fault) => {
+  const f = fixture()
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1])
+  const text = Buffer.from(
+    fault === "invalid-utf8" ? [0xff] : fault === "bom-text" ? [0xef, 0xbb, 0xbf, 0x68] : [0x68, 0x69],
+  )
+  const pngHash = hash(png)
+  const textHash = hash(text)
+  f.run.screenshotRefs = [`sha256:${pngHash}`]
+  f.run.textSnapshotRefs = [`sha256:${textHash}`]
+  if (fault === "comparison-digest") {
+    f.run.rawReplies["extensions.osc633-p.callbackResponse"] = JSON.stringify({
+      captures: [
+        {
+          phase: "target",
+          observation: {
+            frame: { kind: "pixels", ref: `sha256:${pngHash}`, pixelsDigest: `sha256:${"c".repeat(64)}` },
+          },
+        },
+      ],
+    })
+  }
+  f.save()
+  mkdirSync(join(f.dir, "artifacts"))
+  if (fault !== "missing") {
+    writeFileSync(join(f.dir, "artifacts", `${pngHash}.png`), fault === "wrong-hash" ? "wrong" : png)
+  }
+  if (fault === "not-png") {
+    const nonPng = Buffer.from("not png")
+    f.run.screenshotRefs = [`sha256:${hash(nonPng)}`]
+    writeFileSync(join(f.dir, "artifacts", `${hash(nonPng)}.png`), nonPng)
     f.save()
-    mkdirSync(join(f.dir, "artifacts"))
-    if (fault !== "missing") {
-      writeFileSync(join(f.dir, "artifacts", `${pngHash}.png`), fault === "wrong-hash" ? "wrong" : png)
+  }
+  writeFileSync(join(f.dir, "artifacts", `${textHash}.txt`), text)
+  if (fault === "conflict") {
+    mkdirSync(join(f.content, "artifacts"))
+    writeFileSync(join(f.content, "artifacts", `${textHash}.txt`), "different")
+  }
+  if (fault === "valid" || fault === "comparison-digest") {
+    const destination = placeCollectedRun(f.source, f.manifest, f.content)
+    expect(existsSync(join(f.content, "artifacts", `${"c".repeat(64)}.png`))).toBe(false)
+    expect(readFileSync(join(f.content, "artifacts", `${pngHash}.png`))).toEqual(png)
+    expect(readFileSync(join(f.content, "artifacts", `${textHash}.txt`))).toEqual(text)
+    expect(readFileSync(destination)).toEqual(readFileSync(f.source))
+    expect(placeCollectedRun(f.source, f.manifest, f.content)).toBe(destination)
+  } else {
+    const errors = {
+      missing: new RegExp(`screenshot sha256:${pngHash}, but .*${pngHash}\\.png does not exist beside the run`),
+      "wrong-hash": /hashes to/,
+      "not-png": /not a PNG/,
+      "invalid-utf8": /not exact UTF-8/,
+      "bom-text": /not exact UTF-8/,
+      conflict: /different text-snapshot/,
     }
-    if (fault === "not-png") {
-      const nonPng = Buffer.from("not png")
-      f.run.screenshotRefs = [`sha256:${hash(nonPng)}`]
-      writeFileSync(join(f.dir, "artifacts", `${hash(nonPng)}.png`), nonPng)
-      f.save()
-    }
-    writeFileSync(join(f.dir, "artifacts", `${textHash}.txt`), text)
-    if (fault === "conflict") {
-      mkdirSync(join(f.content, "artifacts"))
-      writeFileSync(join(f.content, "artifacts", `${textHash}.txt`), "different")
-    }
-    if (fault === "valid") {
-      const destination = placeCollectedRun(f.source, f.manifest, f.content)
-      expect(readFileSync(join(f.content, "artifacts", `${pngHash}.png`))).toEqual(png)
-      expect(readFileSync(join(f.content, "artifacts", `${textHash}.txt`))).toEqual(text)
-      expect(readFileSync(destination)).toEqual(readFileSync(f.source))
-      expect(placeCollectedRun(f.source, f.manifest, f.content)).toBe(destination)
-    } else {
-      const errors = {
-        missing: /does not exist/,
-        "wrong-hash": /hashes to/,
-        "not-png": /not a PNG/,
-        "invalid-utf8": /not exact UTF-8/,
-        "bom-text": /not exact UTF-8/,
-        conflict: /different text-snapshot/,
-      }
-      expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
-      expect(existsSync(join(f.content, "suites"))).toBe(false)
-      expect(existsSync(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))).toBe(false)
-      expect(existsSync(join(f.content, "artifacts", `${pngHash}.png`))).toBe(false)
-    }
-  },
-)
+    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
+    expect(existsSync(join(f.content, "suites"))).toBe(false)
+    expect(existsSync(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))).toBe(false)
+    expect(existsSync(join(f.content, "artifacts", `${pngHash}.png`))).toBe(false)
+  }
+})
 
 // Accepted: measured identity and clean provenance are factual placement constraints.
 // Parser-only cases do not reach the writer's identity/provenance decisions.
@@ -1083,4 +1147,197 @@ test.each([
       expect(existsSync(join(f.content, "suites"))).toBe(false)
     }
   }
+})
+
+// #34617 (@cto 34617-current-rule-contract-go-1347): a stored run's trace states that, at trace build, its
+// retained identity evidence matched this build's identity rule, and the panel reads that object back through
+// the real serialize -> readCellTrace -> describeTracePanes path. Pure reader tests cannot prove the producer
+// gives it only to stored runs, so this goes through the stored-run loader and the public documents.
+function storedTracePanes(f: ReturnType<typeof fixture>, workingRuns: ReturnType<typeof parseRun>[] = []) {
+  writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  const projection = loadSelectedResults(f.content, f.manifest.probeHash, { workingRuns })
+  const published = publicResults(projection, new Map())
+  const entry = [...published.documents].find(([, value]) => "featureResults" in value.document)
+  if (!entry) throw new Error("Missing stored trace fixture")
+  const [, { bytes, document }] = entry
+  if (!("featureResults" in document)) throw new Error("Missing stored trace cells")
+  const [featureId] = Object.keys(document.featureResults)
+  if (!featureId) throw new Error("Missing stored trace cell")
+  const sha = hash(new TextEncoder().encode(bytes))
+  const expectation = {
+    schemaVersion: 4,
+    runId: f.run.runId,
+    runSha256: document.runSha256,
+    featureId,
+    expectedSha256: sha,
+    actualSha256: sha,
+  }
+  const loaded = readCellTrace(JSON.parse(bytes), expectation)
+  return { projection, document, bytes, expectation, loaded, panes: describeTracePanes(loaded) }
+}
+
+test("a stored run's trace names this build's identity-rule match; a working run of the same bytes gets none", () => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const working = parseRun(
+    f.source,
+    readFileSync(f.source, "utf8"),
+    f.manifest.catalogIds!,
+    new Map([[f.manifest.probeHash, f.manifest]]),
+  )
+  const { projection, document, loaded, panes } = storedTracePanes(f, [working])
+  const revision = identityRuleRevision()
+  expect(revision).toMatch(/^[0-9a-f]{12}$/)
+  expect(document.identity).toEqual({
+    recorded: "verified",
+    currentRuleCheck: { checkedAt: "build", rule: "runtime-identity", ruleRevision: revision },
+  })
+  expect(loaded.identity.currentRuleCheck).toEqual(document.identity.currentRuleCheck)
+  expect(panes.tested.identityLine).toBe(
+    `At trace build, retained identity evidence matched the runtime-identity identity rule (rule revision ${revision}).`,
+  )
+  expect(panes.tested.text).toContain(panes.tested.identityLine)
+  expect(panes.tested.text).not.toMatch(/admission|in run file/i)
+
+  // The working original of the very same run never carries the claim and never reuses the stored memo.
+  const [workingOriginal] = Object.values(projection.workingOriginals).flat()
+  if (!workingOriginal) throw new Error("Missing working original")
+  expect(workingOriginal.identityRuleCheck).toBeUndefined()
+  const workingTrace = currentTrace(workingOriginal)
+  expect(workingTrace?.document.identity).toEqual({ recorded: "verified" })
+  const stored = Object.values(projection.versions).flat()[0]
+  expect(stored?.identityRuleCheck?.ruleRevision).toBe(revision)
+  expect(workingOriginal.traceMemo).not.toBe(stored?.traceMemo)
+  expect(currentTrace(stored!)?.document.identity.currentRuleCheck?.ruleRevision).toBe(revision)
+
+  // The public version metadata never repeats the claim outside the trace document.
+  const publicVersion = Object.values(publicResults(projection, new Map()).projection.versions).flat()[0]
+  expect(publicVersion?.runId).toBe(f.run.runId)
+  expect(publicVersion).not.toHaveProperty("identityRuleCheck")
+})
+
+test("a disputed stored run gets no identity-rule object and no panel line, and its selection is unchanged", () => {
+  const verified = fixture()
+  placeCollectedRun(verified.source, verified.manifest, verified.content)
+  const before = storedTracePanes(verified)
+
+  const f = fixture()
+  const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  const stored = JSON.parse(readFileSync(destination, "utf8")) as Record<string, unknown>
+  writeFileSync(destination, JSON.stringify({ ...stored, identity: "disputed" }))
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+  const { projection, document, panes } = storedTracePanes(f)
+  expect(errors.mock.calls.flat().join("\n")).toContain("current identity rule refused (identity-disputed)")
+  errors.mockRestore()
+  expect(document.identity).toEqual({ recorded: "disputed" })
+  expect(panes.tested.identityLine).toBeUndefined()
+  expect(panes.tested.text).not.toMatch(/identity/i)
+  const contributing = (p: typeof projection) =>
+    Object.values(p.contexts).flatMap((context) => context.contributingRunIds)
+  expect(contributing(projection)).toEqual(contributing(before.projection))
+})
+
+test.each([
+  ["a wrong checkedAt", { checkedAt: "admission" }],
+  ["an empty rule", { rule: "" }],
+  ["a revision that is not 12 hex", { ruleRevision: "abc" }],
+  ["a missing revision", { ruleRevision: undefined }],
+  ["a non-string XTVERSION", { xtversion: 7 }],
+  ["a receipt without its version", { receipt: {} }],
+  ["an unknown key", { verifiedAt: "admission" }],
+])("a trace whose identity-rule object has %s is the existing structure error, never a claim", (_name, patch) => {
+  const f = fixture()
+  placeCollectedRun(f.source, f.manifest, f.content)
+  const { bytes, expectation } = storedTracePanes(f)
+  const parsed = JSON.parse(bytes) as { identity: { currentRuleCheck?: unknown } }
+  parsed.identity.currentRuleCheck = JSON.parse(
+    JSON.stringify({ ...(parsed.identity.currentRuleCheck as object), ...patch }),
+  )
+  expect(() => readCellTrace(parsed, expectation)).toThrow(
+    "Trace document identity or structure does not match this result",
+  )
+  delete parsed.identity.currentRuleCheck
+  expect(describeTracePanes(readCellTrace(parsed, expectation)).tested.identityLine).toBeUndefined()
+})
+
+test("the rule revision covers every identity-rule source and is deterministic for unchanged bytes", () => {
+  // The closure @cto named: the rule table and helpers, the Linux version tokens and the Windows comm base.
+  expect(IDENTITY_RULE_SOURCES).toEqual([
+    "admin/corpus-placement.ts",
+    "terminfo.dev/src/identity-guard.ts",
+    "run-parser/src/index.ts",
+    "terminfo.dev/src/windows-process-ancestry.ts",
+  ])
+  const packagesDir = join(import.meta.dirname, "../packages")
+  const copy = mkdtempSync(join(tmpdir(), "terminfo-rule-revision-"))
+  dirs.push(copy)
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    mkdirSync(dirname(join(copy, relative)), { recursive: true })
+    copyFileSync(join(packagesDir, relative), join(copy, relative))
+  }
+  const revision = identityRuleSourceRevision(copy)
+  expect(revision).toBe(identityRuleRevision())
+  expect(identityRuleSourceRevision(copy)).toBe(revision)
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    const original = readFileSync(join(copy, relative))
+    writeFileSync(join(copy, relative), Buffer.concat([original, Buffer.from("\n")]))
+    expect(identityRuleSourceRevision(copy), relative).not.toBe(revision)
+    writeFileSync(join(copy, relative), original)
+  }
+  expect(identityRuleSourceRevision(copy)).toBe(revision)
+})
+
+// #34885 (@cpo/term 07:02 rebuild): the wezterm/macos context of run 44267909484 carried 71 rows with
+// harnessOutcome capture-refused ("this run refused capture geometry ... osascript") and 162 screenshots
+// against 1,481-2,319 for every other context in the same run, yet its selection covered the suite. It was
+// placed as a complete reading, took the primary from a complete run, and reopened 83 decided cells.
+test("refuses a record carrying rows that refused capture geometry", () => {
+  const f = fixture()
+  const results = f.run.results ?? []
+  for (const result of results.slice(0, 71)) {
+    result.harnessOutcome = "capture-refused"
+    result.reason =
+      "Cursor pixel fixture needs capture; this run refused capture geometry: Capture calibration restore failed"
+  }
+  f.save()
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(
+    /71 of \d+ rows refused capture geometry \(first /,
+  )
+  expect(readdirSync(join(f.content, "probes-libs"))).toEqual([])
+})
+
+// #34885, the real shape: the wezterm/macos run of 44267909484 declared a selection of 264 ids while 71
+// rows refused capture geometry, and a selection is what the site counts, so coverage cannot carry the
+// refusal. Placement must refuse the record whatever it declares.
+test("refuses capture-refused rows even when the record declares a selection", () => {
+  const f = fixture()
+  const results = f.run.results ?? []
+  results[0]!.harnessOutcome = "capture-refused"
+  results[0]!.reason = "this run refused capture geometry: Capture calibration restore failed"
+  const raw = f.run.rawReplies
+  raw["collector.selection"] = JSON.stringify({ ids: [results[0]!.featureId] })
+  f.save()
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/refused capture geometry/)
+})
+
+// The exact record @cpo/term withdrew (terminfo 4f2c8f216ac): the wezterm/macos context of hosted run
+// 44267909484, 71 of 273 rows refused capture geometry and a declared selection of 264 ids. This is the
+// bytes that were placed as a complete reading before the guard existed.
+test("refuses the wezterm/macos context of run 44267909484", () => {
+  // The exact bytes @cpo/term withdrew (terminfo 4f2c8f216ac). Placement runs this check before any
+  // suite verification, and the collecting revision is not the unit-test tree, so the refusal is read
+  // here through the rule placement calls, with the suite manifest that run was collected under.
+  const source = join(import.meta.dirname, "../test-fixtures/probes-apps/wezterm-44267909484-capture-refused.json")
+  const manifestPath = join(
+    import.meta.dirname,
+    "../test-fixtures/probes-apps/wezterm-44267909484-capture-refused-suite.json",
+  )
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const loaded = parseRun(
+    source,
+    readFileSync(source, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(refusedCaptureRows(loaded)).toMatch(/^71 of 273 rows refused capture geometry \(first cursor\.hide: /)
 })

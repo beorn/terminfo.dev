@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import type { ProbeSuiteSnapshot } from "./versions.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot, type ProbeSuiteSnapshot } from "./versions.ts"
 import { parseSuiteManifest, canonicalJson } from "@terminfo/run-parser"
 
 const KINDS = ["term", "lib", "mux"] as const
@@ -49,11 +49,42 @@ const SUITE_ID_RE = /^[0-9a-f]{12}$/u
 export type ExplicitSuiteTarget = Readonly<{ suiteId: string; path: string; manifest: ProbeSuiteManifest }>
 
 /**
+ * The one refusal a caller may handle by name: the named suite has no committed manifest and is not this tree's
+ * live suite. It carries the tree's suite id so a caller can keep its own wording without deriving the tree again.
+ */
+export class MissingSuiteManifestError extends Error {
+  constructor(
+    readonly path: string,
+    readonly suiteId: string,
+    readonly treeSuiteId: string,
+  ) {
+    super(`${path}: no suite manifest carries that id, so "--suite ${suiteId}" names no suite in this registry`)
+    this.name = "MissingSuiteManifestError"
+  }
+}
+
+/**
+ * The tree a named suite is measured against, decided once: `root` carries the registry and is the measured tree
+ * when it holds probe sources (a checkout). A vault root holding only `content/suites` measures this installed
+ * tree, which is what every caller did before the decision was folded here — the halves could disagree only
+ * because the registry half read `root` while the tree half read the default. There is no "unknown tree" state: an
+ * installation whose own probe sources cannot be read fails loudly rather than reporting a suite it never measured.
+ */
+function measuredTree(root: string): ProbeSuiteSnapshot {
+  return existsSync(join(root, "packages", "probes")) ? probeSuiteSnapshot(root) : probeSuiteSnapshot()
+}
+
+/**
  * Read a suite the caller named instead of the live collector suite (28018). A ruling can name an
  * older suite the registry still carries, and no collector can be made to re-derive it.
  * The target is therefore read, never assumed: the id must be shaped like a suite id, a manifest must
- * carry it, and that manifest must declare the id it is filed under. The live snapshot is not consulted
- * and no live-suite comparison runs, because the named suite is deliberately not the live one.
+ * carry it, and that manifest must declare the id it is filed under.
+ *
+ * The one live-suite exception (@cto 70719828 rule 1): `content/suites` is retention, so a suite with
+ * no placed run is correctly absent from it. When the named id IS this tree's live suite, the target
+ * is derived from the measured tree by the one existing deriver instead of refused. Every other
+ * absent id still refuses by name, because a derived declaration never stands in for an older suite
+ * (rule 3), and that is the property 28018 exists to keep.
  */
 export function readExplicitSuiteTarget(root: string, suiteId: string): ExplicitSuiteTarget {
   if (!SUITE_ID_RE.test(suiteId)) {
@@ -63,9 +94,11 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
   }
   const path = join(root, "content", "suites", `${suiteId}.json`)
   if (!existsSync(path)) {
-    throw new Error(
-      `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
-    )
+    const tree = measuredTree(root)
+    if (tree.probeHash === suiteId) {
+      return { suiteId, path: `${suiteId} (derived from this tree)`, manifest: derivedSuiteManifest(tree) }
+    }
+    throw new MissingSuiteManifestError(path, suiteId, tree.probeHash)
   }
   return { suiteId, path, manifest: readSuiteManifestFile(path, suiteId) }
 }

@@ -1,15 +1,32 @@
 import { randomBytes } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { mkdirSync, readFileSync, unlinkSync } from "node:fs"
+import { join } from "node:path"
 import {
-  capturePixels,
   command,
-  decodeCapture,
+  convertCapture,
+  converterIdentity,
   finishCapture,
   type NamedTextOrigin,
   type OriginResolver,
 } from "./capture-core.ts"
 import type { ProbeCapture } from "./probes/unified.ts"
+
+/**
+ * The window census and the restore confirmation are one osascript query each and normally answer in
+ * milliseconds. They own this budget (#34892): a cold WebGPU first paint can consume the calibration
+ * paint deadline, and sharing that one budget let our own timeout kill the census, which then read back
+ * as the app's bare SIGKILL in 71 rows of run 44267909484.
+ */
+const DARWIN_CENSUS_TIMEOUT_MS = 10_000
+
+/**
+ * The window image owns its own budget too (#35043). Giving the census its own 10 s (#34892) let the
+ * census legally outlive the caller's paint deadline, and the image that followed was then handed a
+ * deadline already in the past: `command` refuses "deadline expired before invocation" before it
+ * spawns, so the collection died before grading a single cell. Anchored where the image runs, the
+ * 0.12 s a screencapture actually takes always fits.
+ */
+const DARWIN_IMAGE_TIMEOUT_MS = 10_000
 
 export interface DarwinWindow {
   id: number
@@ -64,6 +81,13 @@ export interface DarwinInstallCensus {
 
 type DarwinCensusRow = Omit<DarwinOwnedWindow, "disposition">
 
+/** Foreign, unclaimed windows still carry validated identities, without unrelated field decoding. */
+interface DarwinIdentityOnly {
+  id: number
+  ownerPid: number
+  identityOnly: true
+}
+
 const SCREENCAPTURE = "/usr/sbin/screencapture"
 const WINDOW_IMAGE_REFUSAL = "could not create image from window"
 
@@ -78,15 +102,28 @@ export function censusDarwinWindows(
   appPid: number,
   /** The window id the launch receipt recorded for THIS run, when the arm has one. */
   expectedWindowId?: number,
+  windowSelection: "largest" | "unique" = "largest",
 ): DarwinWindowCensus {
   if (!Number.isSafeInteger(appPid) || appPid < 2 || !Array.isArray(rows)) {
     throw new Error("Darwin owned window census requires a measured app PID and window list")
   }
-  const census: DarwinCensusRow[] = rows.map((row: unknown) => {
+  const census = rows.flatMap((row: unknown): DarwinCensusRow[] => {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw new Error("Darwin owned window census contains a non-object row")
     }
     const value = row as Record<string, unknown>
+    if (value.identityOnly === true) {
+      if (typeof value.id !== "number" || typeof value.ownerPid !== "number") {
+        throw new Error("Darwin owned window census contains malformed identity or point bounds")
+      }
+      const identity: DarwinIdentityOnly = { id: value.id, ownerPid: value.ownerPid, identityOnly: true }
+      if (identity.ownerPid === appPid || identity.id === expectedWindowId) {
+        throw new Error(
+          `Darwin census identity-only row matches an owned or claimed window: ${JSON.stringify(identity)}`,
+        )
+      }
+      return []
+    }
     const bounds = value.bounds
     if (!bounds || typeof bounds !== "object" || Array.isArray(bounds)) {
       throw new Error("Darwin owned window census row lacks point bounds")
@@ -103,22 +140,24 @@ export function censusDarwinWindows(
     ) {
       throw new Error("Darwin owned window census contains malformed identity or point bounds")
     }
-    return {
-      window: {
-        id: value.id,
-        ownerPid: value.ownerPid,
-        layer: value.layer,
-        bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+    return [
+      {
+        window: {
+          id: value.id,
+          ownerPid: value.ownerPid,
+          layer: value.layer,
+          bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+        },
+        alpha: typeof value.alpha === "number" ? value.alpha : null,
+        onscreen: typeof value.onscreen === "boolean" ? value.onscreen : null,
+        sharingState: typeof value.sharingState === "number" ? value.sharingState : null,
+        memoryUsage: typeof value.memoryUsage === "number" ? value.memoryUsage : null,
+        name: {
+          present: value.namePresent === true,
+          value: typeof value.name === "string" ? value.name : null,
+        },
       },
-      alpha: typeof value.alpha === "number" ? value.alpha : null,
-      onscreen: typeof value.onscreen === "boolean" ? value.onscreen : null,
-      sharingState: typeof value.sharingState === "number" ? value.sharingState : null,
-      memoryUsage: typeof value.memoryUsage === "number" ? value.memoryUsage : null,
-      name: {
-        present: value.namePresent === true,
-        value: typeof value.name === "string" ? value.name : null,
-      },
-    }
+    ]
   })
   const area = (row: DarwinCensusRow) => row.window.bounds.width * row.window.bounds.height
   const owned = census
@@ -165,7 +204,7 @@ export function censusDarwinWindows(
   // Two equal windows are indistinguishable only when nothing named one of them.
   const tied =
     expected === undefined && best !== undefined && visible.some((row) => row !== best && area(row) === area(best))
-  if (!best || tied) {
+  if (!best || tied || (expected === undefined && windowSelection === "unique" && visible.length !== 1)) {
     // The macOS workflow greps collector.log for this wording (30624; scripts/measurement-workflows.test.ts pins it).
     throw new Error(
       `Darwin capture requires one owned visible window for app PID ${appPid}; found ${visible.length} candidates (owned, layer 0, onscreen, alpha > 0)${tied ? " sharing the largest area" : ""}; owned layer-0 windows with point bounds, alpha, onscreen, sharingState and memoryUsage: ${JSON.stringify(owned)}`,
@@ -202,10 +241,14 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
 }
 
 /**
- * Every window the server knows (not only the onscreen ones), so a refusal names the windows that
- * were excluded and why: layer, alpha and the onscreen flag beside the identity and point bounds.
+ * Enumerate every window, retaining full fields for the measured app and the claimed window.
+ * Capture supplies scope as JSON and receives rows plus inner elapsed time; unscoped discovery
+ * keeps the full row-array result.
+ * Owned offscreen/transparent/layered rivals remain full rows for the existing selector and refusals.
  */
-export const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+export const CENSUS = `var censusStartedAt = Date.now();
+ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+var scope = typeof scope === 'undefined' ? null : scope;
 function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
 function bounds(dict) {
   var b = dict.objectForKey('kCGWindowBounds');
@@ -219,10 +262,15 @@ if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
 var rows = [], count = $.CFArrayGetCount(raw);
 for (var i = 0; i < count; i++) {
   var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+  var id = value(w, 'kCGWindowNumber'), ownerPid = value(w, 'kCGWindowOwnerPID');
+  if (scope !== null && ownerPid !== scope.appPid && id !== scope.expectedWindowId) {
+    rows.push({ id: id, ownerPid: ownerPid, identityOnly: true });
+    continue;
+  }
   var nameRef = w.objectForKey('kCGWindowName');
-  rows.push({ id: value(w, 'kCGWindowNumber'), ownerPid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), alpha: value(w, 'kCGWindowAlpha'), onscreen: onscreen(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage'), namePresent: nameRef ? true : false, name: nameRef ? nameRef.js : null });
+  rows.push({ id: id, ownerPid: ownerPid, layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), alpha: value(w, 'kCGWindowAlpha'), onscreen: onscreen(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage'), namePresent: nameRef ? true : false, name: nameRef ? nameRef.js : null });
 }
-JSON.stringify(rows);`
+JSON.stringify(scope === null ? rows : { rows: rows, innerMs: Date.now() - censusStartedAt });`
 
 interface ScreencaptureAttempt {
   file: string
@@ -239,8 +287,8 @@ export async function createDarwinCapture(
   directory: string,
   {
     appPid,
-    hostedAppId,
     expectedWindowId,
+    windowSelection,
     ownedHost,
     onRetained,
   }: {
@@ -250,46 +298,75 @@ export async function createDarwinCapture(
      * so a refused window image never falls back to a region of the screen (@cto 730017b6).
      */
     ownedHost?: boolean
-    /** The app identity the arm detected, so an arm that can have a rival window can name its own. */
-    hostedAppId?: string
     /** The launch receipt window id this run owns, when the caller already resolved it. */
     expectedWindowId?: number
+    /** PID-only routes that cannot prove one launch window require a unique visible owned window. */
+    windowSelection?: "largest" | "unique"
     onRetained: Parameters<typeof finishCapture>[0]["onRetained"]
   },
 ) {
-  const targetWindowId =
-    expectedWindowId ?? (hostedAppId === "terminal-app" ? readTerminalLaunchWindowId(dirname(directory)) : undefined)
+  const targetWindowId = expectedWindowId
   /**
    * `windowId` pins the selection to one identity instead of re-selecting by size: a measurement poll
    * that re-ran the size rule could follow a rival window that grew after install and record ITS name
    * beside this window's install census.
    */
-  const census = async (deadline?: number, windowId: number | undefined = targetWindowId) => {
-    const rows: unknown = JSON.parse(
-      (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
+  const census = async (
+    step: "window census" | "restore confirmation",
+    windowId: number | undefined = targetWindowId,
+  ) => {
+    const measured: unknown = JSON.parse(
+      (
+        await command(
+          "/usr/bin/osascript",
+          [
+            "-l",
+            "JavaScript",
+            "-e",
+            `var scope = ${JSON.stringify({ appPid, expectedWindowId: windowId ?? null })};\n${CENSUS}`,
+          ],
+          undefined,
+          Date.now() + DARWIN_CENSUS_TIMEOUT_MS,
+          undefined,
+          undefined,
+          { step, budgetMs: DARWIN_CENSUS_TIMEOUT_MS },
+        )
+      ).toString(),
     )
-    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid, windowId)
+    if (
+      typeof measured !== "object" ||
+      measured === null ||
+      !("rows" in measured) ||
+      !("innerMs" in measured) ||
+      typeof measured.innerMs !== "number" ||
+      !Number.isFinite(measured.innerMs) ||
+      measured.innerMs < 0
+    ) {
+      throw new Error("Darwin census returned invalid inner elapsed time")
+    }
+    const { selected, ownedWindows } = censusDarwinWindows(measured.rows, appPid, windowId, windowSelection)
     const { window, alpha, onscreen, sharingState, memoryUsage, name } = selected
     return {
       window,
       name,
+      innerMs: measured.innerMs,
       // Observations may change without changing window identity; null means the census did not return a value.
       observations: { sharingState, memoryUsage, alpha, onscreen },
       // Every owned layer-0 window and why only one was the target: the proof the frame shows the terminal (30685).
       ownedWindows,
     }
   }
-  const installed = await census()
-  const { name: _installedName, ...installedCensus } = installed
+  const installed = await census("window census")
+  const { name: _installedName, innerMs: _installedInnerMs, ...installedCensus } = installed
   const installCensus: DarwinInstallCensus = {
     ...installedCensus,
     takenAt: new Date().toISOString(),
   }
   const { window } = installed
-  await command("magick", ["-version"])
+  await converterIdentity()
   mkdirSync(directory, { recursive: true, mode: 0o700 })
-  const assertOwned = async (deadline?: number) => {
-    const current = await census(deadline)
+  const assertOwned = async (step: "window census" | "restore confirmation") => {
+    const current = await census(step)
     if (JSON.stringify(current.window) !== JSON.stringify(window)) {
       throw new Error(`Darwin owned window ${window.id} identity or bounds changed during capture`)
     }
@@ -311,8 +388,10 @@ export async function createDarwinCapture(
       cause: cause instanceof Error ? { name: cause.name, message: cause.message } : { message: String(cause) },
     }
   }
-  const acquire = async (deadline?: number) => {
-    const preCapture = await assertOwned(deadline)
+  const acquire = async (featureId: string, deadline?: number) => {
+    const censusStart = performance.now()
+    const preCapture = await assertOwned("window census")
+    const censusMs = Math.round(performance.now() - censusStart)
     const run = async (args: string[]): Promise<ScreencaptureAttempt> => {
       const outputPath = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
       const attempt: ScreencaptureAttempt = {
@@ -323,9 +402,22 @@ export async function createDarwinCapture(
         stderr: Buffer.alloc(0),
       }
       try {
-        attempt.stdout = await command(attempt.file, attempt.args, undefined, deadline, (output) => {
-          attempt.stderr = output
-        })
+        // #35043: never hand the image a deadline the census has already spent. The census owns its own
+        // budget (#34892) and may use all of it, so the caller's paint deadline can be in the past by the
+        // time this spawns; the image step takes its own budget from this moment, and a caller whose
+        // deadline is further out still bounds it.
+        const imageDeadline = Math.max(deadline ?? 0, Date.now() + DARWIN_IMAGE_TIMEOUT_MS)
+        attempt.stdout = await command(
+          attempt.file,
+          attempt.args,
+          undefined,
+          imageDeadline,
+          (output) => {
+            attempt.stderr = output
+          },
+          undefined,
+          { step: "window image", budgetMs: DARWIN_IMAGE_TIMEOUT_MS },
+        )
         attempt.bytes = readFileSync(outputPath)
       } catch (cause) {
         attempt.cause = cause
@@ -356,6 +448,7 @@ export async function createDarwinCapture(
       }
       throw error
     }
+    const imageStart = performance.now()
     const first = await run(windowArgs)
     // The window server refuses an image of a window it holds no backing store for (an Electron window
     // under the macOS 26 VM compositor, 30390); its point bounds are still on screen, so capture those.
@@ -380,12 +473,23 @@ export async function createDarwinCapture(
         producing,
         refused,
       )
+    const imageMs = Math.round(performance.now() - imageStart)
     const capturedAt = Date.now()
-    await assertOwned(deadline)
-    const pixels = capturePixels(
-      (await command("magick", ["png:-", "-format", "%wx%h", "info:"], bytes, deadline)).toString(),
-    )
-    requireDarwinScale(window, pixels)
+    const restoreStart = performance.now()
+    const postCapture = await assertOwned("restore confirmation")
+    const restoreMs = Math.round(performance.now() - restoreStart)
+    // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
+    // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
+    const convertStart = performance.now()
+    const { png, frame: decoded } = await convertCapture({
+      bytes,
+      format: "png",
+      retain: "original",
+      featureId,
+      deadline,
+    })
+    const convertMs = Math.round(performance.now() - convertStart)
+    requireDarwinScale(window, decoded)
     const trace = {
       platform: "darwin",
       window,
@@ -393,6 +497,17 @@ export async function createDarwinCapture(
       ownedWindows: preCapture.ownedWindows,
       measuredAppPid: appPid,
       scale: 1,
+      // Disjoint elapsed acquisition steps for this frame; image includes both attempts
+      // when the existing region fallback runs. Installation and conversion are separate.
+      censusMs,
+      // Inner JXA includes imports, CG enumeration and projection; the outer residual also
+      // contains process/transport/serialization work and is not an isolated startup measurement.
+      censusInnerMs: preCapture.innerMs,
+      imageMs,
+      restoreMs,
+      restoreInnerMs: postCapture.innerMs,
+      // The converter's wall time for this frame: extent query plus decode (#34549).
+      convertMs,
       captureCommand: [producing.file, ...producing.args.slice(0, -1)],
       ...(refused
         ? {
@@ -403,23 +518,22 @@ export async function createDarwinCapture(
           }
         : {}),
     }
-    return { source: { bytes, format: "png" as const, ...pixels, capturedAt }, trace }
+    const source = { bytes, format: "png" as const, width: decoded.width, height: decoded.height, capturedAt }
+    return { source, png, decoded, trace }
   }
   const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin | OriginResolver) => {
-    const { source, trace } = await acquire()
-    return finishCapture({ directory, onRetained, checkpoint, source, png: source.bytes, origin, trace })
+    const acquired = await acquire(checkpoint.featureId)
+    return finishCapture({ directory, onRetained, checkpoint, ...acquired, origin })
   }
   const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
-    const { source, trace } = await acquire(deadline)
-    const decoded = await decodeCapture({ source, featureId: checkpoint.featureId, deadline })
+    const { source, png, decoded, trace } = await acquire(checkpoint.featureId, deadline)
     const result = await finishCapture({
       directory,
       onRetained,
       checkpoint: { ...checkpoint, cells: undefined, controlCells: undefined, pixelGeometry: undefined },
       source,
-      png: source.bytes,
+      png,
       decoded,
-      ...(deadline === undefined ? {} : { deadline }),
       origin: () => {
         throw new Error("Darwin calibration raw capture cannot map cells before a named origin")
       },
@@ -427,7 +541,15 @@ export async function createDarwinCapture(
     })
     return { decoded, result }
   }
-  return { capture, captureRaw, installCensus }
+  const readTitle = async (): Promise<string> => {
+    const current = await assertOwned("window census")
+    if (!current.name.present) throw new Error("Darwin owned window title is unavailable: window name key withheld")
+    if (typeof current.name.value !== "string") {
+      throw new Error("Darwin owned window title is unavailable: window name is not a string")
+    }
+    return current.name.value
+  }
+  return { capture, captureRaw, installCensus, readTitle }
 }
 
 /**
@@ -436,33 +558,3 @@ export async function createDarwinCapture(
  * startup window at the same place, so a size-based census either ties and refuses or photographs a
  * window this run never created. An absent or foreign record refuses by name rather than falling back.
  */
-export function readTerminalLaunchWindowId(artifactDirectory: string): number {
-  const record = join(artifactDirectory, "terminal-launch.json")
-  if (!existsSync(record)) {
-    throw new Error(
-      `Terminal.app capture requires the launch receipt ${record} that names the owned window id; that record is absent`,
-    )
-  }
-  const raw = readFileSync(record, "utf8")
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch (cause) {
-    // A malformed receipt is the operator's evidence to read, never a bare parser error.
-    throw new Error(
-      `Terminal.app launch receipt ${record} is not JSON: ${cause instanceof Error ? cause.message : String(cause)}: ${raw}`,
-    )
-  }
-  const row = parsed as { appId?: unknown; terminalWindow?: { provider?: unknown; windowId?: unknown } }
-  const windowId = row.terminalWindow?.windowId
-  if (
-    row.appId !== "terminal-app" ||
-    row.terminalWindow?.provider !== "terminal-app" ||
-    typeof windowId !== "number" ||
-    !Number.isSafeInteger(windowId) ||
-    windowId < 1
-  ) {
-    throw new Error(`Terminal.app launch receipt ${record} names no owned window id: ${raw}`)
-  }
-  return windowId
-}

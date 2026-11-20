@@ -1,7 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import { createCallLog, withCallLog, readCallLog, snapshotCallLog, IncompleteReplay, type CallLog } from "viprobe"
+import {
+  callLogProgress,
+  createCallLog,
+  withCallLog,
+  readCallLog,
+  snapshotCallLog,
+  IncompleteReplay,
+  type CallLog,
+} from "viprobe"
 import type { TerminalQueryOutcome, Utf8DecodingReading, RenderedWidthResult } from "@terminfo/probe-defs"
 import {
   decrpmReplyPattern,
@@ -26,10 +34,13 @@ const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
 type TTYOperationLease = {
   active: boolean
   out: NodeJS.WriteStream
+  /** The run this operation belongs to; a client that leaves aborts every wait and write below (#34941). */
+  signal?: AbortSignal
   verify?: () => Promise<void>
   startResponseTimer?: () => void
 }
 const operationContext = new AsyncLocalStorage<TTYOperationLease>()
+const runAbort = new AsyncLocalStorage<AbortSignal | undefined>()
 const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
 
 /** Open the controlling terminal for CLI runs whose stdout carries JSON. */
@@ -71,7 +82,7 @@ const nativeTTYHost = {
   },
   matchResponse: matchResponseNative,
 }
-const queryTraceContext = new AsyncLocalStorage<{ host: typeof nativeTTYHost }>()
+const queryTraceContext = new AsyncLocalStorage<{ host: typeof nativeTTYHost; mark: () => TTYTraceMark }>()
 
 /** Standalone helpers intentionally use native I/O outside a recording/replay scope. */
 function ttyHost(): typeof nativeTTYHost {
@@ -172,6 +183,26 @@ function projectTTYLog(artifact: unknown): { queries: TTYQueryTrace[]; events: T
 export interface TTYTraceScope {
   /** Refuse this scope's later terminal I/O, and project the evidence settled before the wall. */
   abandon(): void
+  /** This scope's live position, for a bracket that must prove no terminal I/O began inside it (34645). */
+  mark(): TTYTraceMark
+}
+
+/**
+ * One row's live trace position (34645). `started` counts every recorded call and callback from the moment
+ * it began; `unsettled` the ones not finished. Two marks of the SAME scope with equal `started` and nothing
+ * unsettled at either end prove no TTY write or query began or was in flight between them. Replay appends
+ * nothing, so a replay mark proves nothing and says so by its mode.
+ */
+export interface TTYTraceMark {
+  readonly mode: "record" | "replay"
+  readonly started: number
+  readonly unsettled: number
+  readonly abandoned: boolean
+}
+
+/** The mark of the trace scope this code runs in, or undefined outside every scope (34645). */
+export function currentTTYTraceMark(): TTYTraceMark | undefined {
+  return queryTraceContext.getStore()?.mark()
 }
 
 /** Scope all direct and helper queries to the probe that initiated them. */
@@ -206,7 +237,9 @@ export async function withTTYQueryTrace<T>(
     events.push(...rows.events)
     projected = true
   }
+  const mark = (): TTYTraceMark => ({ mode, ...callLogProgress(log), abandoned })
   options?.onScope?.({
+    mark,
     abandon() {
       if (abandoned) return
       abandoned = true
@@ -215,7 +248,7 @@ export async function withTTYQueryTrace<T>(
     },
   })
   try {
-    return await queryTraceContext.run({ host: session.context }, fn)
+    return await queryTraceContext.run({ host: session.context, mark }, fn)
   } catch (error) {
     scopeFailed = true
     scopeFailure = error
@@ -238,6 +271,49 @@ export async function withTTYQueryTrace<T>(
   }
 }
 
+/**
+ * Bind one run's cancellation to every TTY operation it starts (#34941).
+ *
+ * The batch is one async tree, so the signal travels in context rather than through every call site.
+ * A caller that never binds one keeps the old behaviour: nothing is raced and no write is refused.
+ */
+export function withRunSignal<T>(signal: AbortSignal | undefined, fn: () => T): T {
+  return runAbort.run(signal, fn)
+}
+
+/** The cancellation error a wait or write raises once its run's client has left. */
+function abortedByClient(signal: AbortSignal): Error {
+  // `AbortSignal.reason` is `any` in the shared lib, so narrow it here rather than at each raiser.
+  const reason: unknown = signal.reason
+  const error =
+    reason instanceof Error
+      ? reason
+      : new Error("TTY operation abandoned: the probe client left before the run finished")
+  if (error.name !== "AbortError") {
+    error.name = "AbortError"
+    error.message = `TTY operation abandoned: the probe client left before the run finished (${error.message})`
+  }
+  return error
+}
+
+/** Settle with `work`, or promptly with the abort error once the run's client is gone. */
+async function withAbort<T>(signal: AbortSignal | undefined, work: Promise<T>): Promise<T> {
+  if (signal === undefined) return work
+  signal.throwIfAborted()
+  let onAbort: (() => void) | undefined
+  const abandoned = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(abortedByClient(signal))
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+  try {
+    return await Promise.race([work, abandoned])
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener("abort", onAbort)
+    // The loser keeps running so its own cleanup still happens; its outcome is the abort's, not a finding.
+    work.catch(() => {})
+  }
+}
+
 /** Drop a queued operation that will not finish, so the next probe is not stuck behind it. */
 export function releaseTTYQueue(): void {
   ttyOperations.set(process.stdin, Promise.resolve())
@@ -252,9 +328,9 @@ export function withTTYOperation<T>(
   const execute = (lease: TTYOperationLease) =>
     operationContext.run(lease, async () => {
       try {
-        await lease.verify?.()
+        await withAbort(lease.signal, lease.verify?.() ?? Promise.resolve())
         lease.startResponseTimer?.()
-        return await fn()
+        return await withAbort(lease.signal, fn())
       } finally {
         lease.active = false
       }
@@ -264,14 +340,26 @@ export function withTTYOperation<T>(
     if (out && out !== active.out) throw new Error("Nested TTY operation changed output stream")
     const check = verify ?? active.verify
     return check || active.startResponseTimer
-      ? execute({ active: true, out: active.out, verify: check, startResponseTimer: active.startResponseTimer })
+      ? execute({
+          active: true,
+          out: active.out,
+          ...(active.signal !== undefined && { signal: active.signal }),
+          verify: check,
+          startResponseTimer: active.startResponseTimer,
+        })
       : fn()
   }
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
   const current = previous
     .catch(() => {})
     .then(() => {
-      return execute({ active: true, out: out ?? process.stdout, ...(verify && { verify }) })
+      const signal = runAbort.getStore()
+      return execute({
+        active: true,
+        out: out ?? process.stdout,
+        ...(signal !== undefined && { signal }),
+        ...(verify && { verify }),
+      })
     })
   ttyOperations.set(
     process.stdin,
@@ -283,8 +371,21 @@ export function withTTYOperation<T>(
   return current
 }
 
+/**
+ * 34941's run abort edge as a predicate, for writers that reach the pane without entering the recorded write
+ * log (34959: the hosted cmux private writer carries a private URI, so recording it would leak the path the
+ * private route exists to keep out of the artifact). One predicate, two callers - never a second rule.
+ */
+export function assertWriteAllowed(): void {
+  const lease = operationContext.getStore()
+  const signal = lease?.signal ?? runAbort.getStore()
+  if (signal?.aborted) throw abortedByClient(signal)
+}
+
 function currentTTYOutput(): NodeJS.WriteStream {
   const lease = operationContext.getStore()
+  // 34941: a client that left stops the run's writes here, so no abandoned wait can paint a pane nobody reads.
+  assertWriteAllowed()
   return lease?.active ? lease.out : process.stdout
 }
 

@@ -150,20 +150,32 @@ export function supplementOf(subject: {
   return (LINUX_SUPPLEMENTS[subject.id] ?? []).find((supplement) =>
     subject.kind === "term"
       ? subject.permissions !== null && supplement.permissions?.[subject.id] === subject.permissions
-      : subject.config !== null && supplement.config?.[subject.id] === subject.config,
+      : subject.config !== null &&
+        (supplement.config?.[subject.id] === subject.config ||
+          // Retained set-titles runs predate focus qualification; their original label still identifies
+          // the same OSC22 supplement. This does not claim focus-events was enabled in those runs.
+          (subject.id === "tmux" &&
+            supplement === SET_TITLES_ON &&
+            subject.config === 'tmux: set-titles on; set-titles-string "#T"')),
   )
 }
 
 /**
  * A default context run of the same physical terminal: same kind, id, os, host and mux, with no permissions, not a
- * declared supplement, and for a mux the launcher's one default config (#33151, @cto 4a546051). The one matcher: the
+ * declared supplement, and for a mux the default config of its recorded regime (#33151, @cto 4a546051). The one matcher: the
  * selection joins a supplement to its default with it, and placement refuses a supplement without one (33550).
  */
 export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): boolean {
+  // Historical and focus-enabled runs are different contexts. A supplement keeps its recorded regime.
+  const defaultConfig =
+    supplement.id === "tmux" &&
+    (supplement.config === "tmux: focus-events on" || supplement.config === TMUX_SET_TITLES_CONFIG)
+      ? "tmux: focus-events on"
+      : MUX_DEFAULT_CONFIG
   return (
     candidate.permissions === null &&
     supplementOf(candidate) === undefined &&
-    (candidate.kind !== "mux" || candidate.config === MUX_DEFAULT_CONFIG) &&
+    (candidate.kind !== "mux" || candidate.config === defaultConfig) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
     candidate.os === supplement.os &&

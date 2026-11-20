@@ -9,13 +9,7 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes } from "./editing.ts"
-import {
-  awaitPaintWitness,
-  layoutSinceCalibration,
-  originFromSentinel,
-  witnessCellFor,
-  type RegionCapture,
-} from "./region-readback.ts"
+import { awaitPaintWitness, layoutSinceCalibration, originFromSentinel, type RegionCapture } from "./region-readback.ts"
 import type { CaptureLocated, CaptureRequest, ObservationFrame, TermProbeSource } from "./types.ts"
 
 const CELL = { width: 8, height: 16 }
@@ -46,12 +40,17 @@ function blockAt(dy: number): CaptureLocated {
  * glyph written, so editing.delete-chars reaches the same-cells reason; a locate request (no cells)
  * answers `located`.
  */
-function calibratedSource(located: Located | ((paintedCell: string) => Located)) {
+function calibratedSource(
+  located: Located | ((paintedCell: string) => Located),
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+) {
   const writes: string[] = []
   const locates: CaptureRequest[] = []
+  const cellReads: string[] = []
   let reads = 0
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     write: (sequence) => writes.push(sequence),
@@ -98,20 +97,36 @@ function calibratedSource(located: Located | ((paintedCell: string) => Located))
     }
     const region = request.cells!
     const key = `${region.top},${region.left},${region.bottom},${region.right}`
+    cellReads.push(request.label)
+    const witness = key === "3,1,3,1"
     const witnessWrite = writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1)
-    const content = key === "3,1,3,1" ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    const content = witness ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    // The guard's frame and the restore's frame read the same cell, so they agree unless the fixture
+    // says the clear did not reproduce it.
+    const afterRestore = request.label.endsWith("witness restored")
+    const digestContent = witness && afterRestore && fixture.restoreDiffers ? "damaged" : content
+    const inkCount = witness && fixture.witnessInk ? 12 : 0
     return {
       ...frame,
-      regionDigest: `sha256:${key}|${content}`,
-      pixelsDigest: `sha256:frame|${content}`,
+      regionDigest: `sha256:${key}|${digestContent}`,
+      pixelsDigest: `sha256:frame|${digestContent}`,
+      rendering: {
+        background: "#1a1a1a",
+        inkColour: inkCount > 0 ? "#ffffff" : "#1a1a1a",
+        inkCount,
+        contrast: inkCount > 0 ? 200 : 0,
+      },
       regionRectangle: crop(region),
     }
   }
-  return { context, writes, locates }
+  return { context, writes, locates, cellReads }
 }
 
-async function sameCellsNote(located: Located | ((paintedCell: string) => Located)) {
-  const source = calibratedSource(located)
+async function sameCellsNote(
+  located: Located | ((paintedCell: string) => Located),
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+) {
+  const source = calibratedSource(located, fixture)
   const probe = editingProbes.find((entry) => entry.id === "editing.delete-chars")!
   const result = await probe.term!(source.context)
   return { result, note: String(result.observation?.note), ...source }
@@ -132,40 +147,6 @@ test("a sentinel located on this frame gives the exact origin its crop must use 
   expect(originFromSentinel(nudged, { row: 3, col: 1 }, CELL)).toEqual({ x: ORIGIN.x + 1, y: ORIGIN.y + WARP_SHIFT })
 })
 
-test("the sentinel cell is one clear of every digested region, and a crowded grid refuses by name (33000)", () => {
-  const grid = { rows: 24, cols: 80 }
-  // The usual case: the cell directly above the compared region's first cell.
-  expect(witnessCellFor([{ top: 3, left: 1, bottom: 5, right: 10 }], grid)).toEqual({ row: 2, col: 1 })
-  // A region against the top row cannot use the cell above it, so the cell below wins instead.
-  expect(witnessCellFor([{ top: 1, left: 1, bottom: 4, right: 10 }], grid)).toEqual({ row: 5, col: 1 })
-  // The control region is digested from the same frame, so it is not a candidate either.
-  expect(
-    witnessCellFor(
-      [
-        { top: 3, left: 1, bottom: 5, right: 10 },
-        { top: 2, left: 1, bottom: 2, right: 80 },
-      ],
-      grid,
-    ),
-  ).toEqual({ row: 6, col: 1 })
-  // Every candidate taken: the read refuses rather than cropping from an unanchored frame.
-  expect(() => witnessCellFor([{ top: 1, left: 1, bottom: 24, right: 80 }], grid)).toThrow(
-    /No cell outside the digested region 1,1-24,80 in the 24x80 grid can carry calibration's sentinel/,
-  )
-  // No same-row candidate is offered (@dev/10 peer read): a neighbouring cell on the region's own
-  // row can split a wide glyph straddling its edge and change the frame being digested. So a region
-  // that starts on row 1 and runs to the last row has nowhere to put the sentinel.
-  expect(() =>
-    witnessCellFor(
-      [
-        { top: 1, left: 1, bottom: 22, right: 10 },
-        { top: 23, left: 1, bottom: 23, right: 10 },
-      ],
-      grid,
-    ),
-  ).toThrow(/No cell outside the digested region/)
-})
-
 test("a same-cells read on a window whose layout moved after calibration names the move (33000)", async () => {
   const { result, note, writes, locates } = await sameCellsNote(blockAt(WARP_SHIFT))
   expect(result.observation?.outcome).toBe("inconclusive")
@@ -178,6 +159,52 @@ test("a same-cells read on a window whose layout moved after calibration names t
   const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
   expect(paint).toBeGreaterThan(-1)
   expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+})
+
+test("a witness cell that already holds ink is not painted, and the reason says so (34243)", async () => {
+  // The witness cell is the probe's own output, so the old check painted over the glyph and then
+  // restored a blank: damage the reason never named. Now the cell is read first and the check declines.
+  const { result, note, writes, locates } = await sameCellsNote(blockAt(0), { witnessInk: true })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(note).toContain("layout not re-checked: the witness cell holds ink")
+  // Nothing was painted: no sentinel locate was asked for and no calibration paint or clear was written.
+  expect(locates).toEqual([])
+  expect(writes.some((entry) => entry.includes("\x1b[45m"))).toBe(false)
+})
+
+test("a witness cell the check painted is read back after the clear and restored byte-identically (34243)", async () => {
+  const { note, cellReads, writes } = await sameCellsNote(blockAt(WARP_SHIFT))
+  // The cell is read before the paint and again after the clear, so the restore is proved, not assumed.
+  expect(cellReads.filter((label) => label.includes("witness before paint"))).toHaveLength(1)
+  expect(cellReads.filter((label) => label.includes("witness restored"))).toHaveLength(1)
+  // The check itself still says what it said about the moved window.
+  expect(note).toContain("window layout moved since calibration")
+  const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+})
+
+test("the check writes no cursor-visibility sequence of its own: the capture lifecycle owns it (34243)", async () => {
+  // The run's lifecycle hides the cursor once before any crop and shows it once at the end. A second
+  // writer here could not see that state: hiding again is redundant, and showing it on return
+  // re-exposes the cursor for every capture the probe still has ahead (@dev/11 peer read).
+  const { writes } = await sameCellsNote(blockAt(WARP_SHIFT))
+  expect(writes.filter((entry) => entry === "\x1b[?25l")).toHaveLength(1)
+  expect(writes.filter((entry) => entry === "\x1b[?25h")).toHaveLength(1)
+})
+
+test("a failed locate skips the restore read: an unknown window cannot prove a restore (34243)", async () => {
+  // The restore comparison only means something on a window whose sentinel was found; after a failed
+  // locate the crop measures the move, not the clear, so the check spends no second shot on it.
+  const { note, cellReads } = await sameCellsNote(null)
+  expect(note).toContain("probe text not in view")
+  expect(cellReads.filter((label) => label.includes("witness before paint"))).toHaveLength(1)
+  expect(cellReads.filter((label) => label.includes("witness restored"))).toEqual([])
+}, 20_000)
+
+test("a witness cell that did not come back byte-identically is named, never assumed (34243)", async () => {
+  const { result, note } = await sameCellsNote(blockAt(0), { restoreDiffers: true })
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(note).toContain("was not restored byte-identically")
 })
 
 test("on a window that did not move, the same-cells sentence is today's, unchanged (33000 control)", async () => {
@@ -265,6 +292,77 @@ test("a run whose calibration recorded no sentinel runs no check and writes noth
   expect(writes).toEqual([])
 })
 
+// #34932 (@cto 34932-reverse-seam-ruling-2325 item 4): a layout check of a read taken under the reverse
+// screen mode repaints and looks for the sentinel calibration witnessed under that mode, and every frame it
+// takes asks for that mode. A run with no reverse witness says so instead of checking the normal colour.
+test("a reverse screen layout check without a witnessed reverse sentinel names that and takes nothing", async () => {
+  const writes: string[] = []
+  const clause = await layoutSinceCalibration({
+    ctx: {
+      write: (text) => writes.push(text),
+      capture: async () => {
+        throw new Error("no capture expected")
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+        sentinel: { form: "basic", rgb: [255, 0, 255] },
+      },
+    },
+    label: "fixture",
+    cell: { row: 3, col: 1 },
+    calibratedCrop: crop({ top: 3, left: 1, bottom: 3, right: 1 }),
+    timeoutMs: 10,
+    pollMs: 1,
+    screenMode: "reverse",
+  })
+  expect(clause).toBe("layout not re-checked: this run's calibration witnessed no reverse screen sentinel to repaint")
+  expect(writes).toEqual([])
+})
+
+test("a reverse screen layout check looks for the reverse sentinel, and every frame it takes asks for the mode", async () => {
+  const requests: Array<{ screenMode?: string; locate?: { rgb: readonly [number, number, number] } }> = []
+  const clause = await layoutSinceCalibration({
+    ctx: {
+      now: () => Date.now(),
+      write: () => {},
+      capture: async (request) => {
+        requests.push(request)
+        const frame = {
+          kind: "pixels",
+          role: request.role,
+          label: request.label,
+          capturedAt: 1,
+          ref: `sha256:${"0".repeat(64)}`,
+        }
+        return (
+          request.locate
+            ? { ...frame, located: null }
+            : { ...frame, regionDigest: "witness", rendering: { inkCount: 0, background: "0,0,0" } }
+        ) as never
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+        sentinel: { form: "basic", rgb: [255, 0, 255] },
+        reverseSentinel: { form: "basic", rgb: [10, 20, 30] },
+      },
+    },
+    label: "fixture",
+    cell: { row: 3, col: 1 },
+    calibratedCrop: crop({ top: 3, left: 1, bottom: 3, right: 1 }),
+    timeoutMs: 10,
+    pollMs: 1,
+    screenMode: "reverse",
+  })
+  expect(clause).toContain("probe text not in view")
+  expect(requests.length).toBeGreaterThan(1)
+  expect(requests.every((request) => request.screenMode === "reverse")).toBe(true)
+  expect(
+    requests.filter((request) => request.locate).every((request) => request.locate?.rgb.join() === "10,20,30"),
+  ).toBe(true)
+})
+
 /** A witness that never changes while the whole frame does: Warp's ticking header timer. */
 function stillWitness(frameMoves: boolean) {
   let reads = 0
@@ -285,6 +383,8 @@ test("a witness timeout while the frame moved takes the layout clause in place o
   const { baseline, read } = stillWitness(true)
   const options = {
     read,
+    // The helper is handed the live clock, as a live source's `now` is.
+    now: () => Date.now(),
     id: "charsets.dec-line-drawing",
     label: "charsets.dec-line-drawing: pre-edit seed",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },
@@ -315,6 +415,7 @@ test("the layout check never runs when the frame stood still or on a roundtrip r
   const still = stillWitness(false)
   await awaitPaintWitness({
     read: still.read,
+    now: () => Date.now(),
     id: "fixture",
     label: "fixture",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },
@@ -326,6 +427,7 @@ test("the layout check never runs when the frame stood still or on a roundtrip r
   const moving = stillWitness(true)
   await awaitPaintWitness({
     read: moving.read,
+    now: () => Date.now(),
     id: "fixture",
     label: "fixture",
     witnessCell: { top: 3, left: 1, bottom: 3, right: 1 },

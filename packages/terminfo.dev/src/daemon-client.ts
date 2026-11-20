@@ -17,13 +17,18 @@ import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
   parseProcessOwnerAssertion,
+  parseOwnedAppOwnerAssertion,
   parseTerminalAppOwner,
+  type OwnedAppOwnerAssertion,
   type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
 
-/** Exactly one owner claim: Terminal.app's window assertion, or the shared process proof. */
-export type DaemonOwnerRequest = { terminalApp: TerminalAppOwnerAssertion } | { process: ProcessOwnerAssertion }
+/** Exactly one owner claim: Terminal.app's window assertion, the shared process proof, or an owned app launch. */
+export type DaemonOwnerRequest =
+  | { terminalApp: TerminalAppOwnerAssertion }
+  | { process: ProcessOwnerAssertion }
+  | { ownedApp: OwnedAppOwnerAssertion }
 
 export interface DaemonRegistration {
   pid: number
@@ -45,10 +50,25 @@ export interface Run {
   scriptPath: string
 }
 
-export function createProbeRun(): Run {
+/** The one shape an externally supplied run id may take: the same 16 random bytes this module mints,
+ * spelled as lowercase hex. It is not a secret, but it is text that reaches a shell command line and a
+ * file name, so the alphabet is stated once here rather than assumed at each call site (34018). */
+export const RUN_ID_PATTERN = /^[0-9a-f]{32}$/
+
+export function createProbeRun(runId?: string): Run {
   // Darwin's per-user tmpdir can exceed an editor's Unix-socket budget once its run marker is appended.
   const directory = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "terminfo-run-"))
-  const id = randomBytes(16).toString("hex")
+  // #34018: an owned-app run carries the identity the composer handed it, so both sides name one run.
+  // A malformed id refuses by name instead of falling back to a fresh mint, which would silently
+  // reintroduce the mismatch this parameter exists to remove.
+  if (runId !== undefined && !RUN_ID_PATTERN.test(runId)) {
+    rmSync(directory, { recursive: true, force: true })
+    throw new Error(
+      `run id ${JSON.stringify(runId)} is not 32 lowercase hex characters; an owned-app run carries the ` +
+        `identity it was handed and never substitutes one of its own`,
+    )
+  }
+  const id = runId ?? randomBytes(16).toString("hex")
   // The script carries the run id: Ghostty's run file names it unquoted, scoped to this run (@cto D2).
   return { id, directory, scriptPath: join(directory, `serve-${id}.sh`) }
 }
@@ -155,6 +175,35 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
  */
 const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
 
+/**
+ * 34507 -> 34742 -> 34753: the documented bound is ONE signal, the 30 min AbortSignal on the request below, and a
+ * client needs no timer configuration to be correct. 34742 answered 34507 by raising undici's 300 s headers and
+ * body timers to 35 min on the Node path; 34753 removes that workaround because the daemon now streams real headers
+ * and a keepalive byte, so stock timers never see a silent socket. Bun keeps `timeout:false` (measured 34477: its
+ * own timer aborted a silent body at ~362 s and wins over AbortSignal.timeout).
+ *
+ * A response's socket timeout, whether Node surfaced it as a cause or undici raised it directly. Exported because
+ * 34753 proves the fault mapping without waiting out undici's real 300 s window in a unit run; the real window is
+ * covered by the stock-Node field run recorded on the issue.
+ */
+export function isHeadersTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const cause = (error as { cause?: { code?: unknown } }).cause
+  const code = cause?.code ?? (error as { code?: unknown }).code
+  return code === "UND_ERR_HEADERS_TIMEOUT"
+}
+
+/** 34753: the named fault for a daemon that answered no byte at all before undici's header window closed. */
+export function daemonNotStreamingError(port: number, elapsedMs: number, cause?: unknown): Error {
+  const message =
+    `Daemon on port ${port} sent no response byte within ${elapsedMs} ms, before the ` +
+    `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal: an admitted /probe flushes headers at once, so this ` +
+    `daemon is not streaming (a pre-34753 daemon, or one wedged before admission)`
+  return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), {
+    name: "DaemonNotStreaming" as const,
+  })
+}
+
 export async function requestDaemonProbe(
   daemon: DaemonRegistration,
   request?: DaemonOwnerRequest,
@@ -173,6 +222,12 @@ export async function requestDaemonProbe(
       throw new Error("Terminal.app owner assertion differs from the selected daemon")
     }
     body = { terminalAppOwner: owner }
+  } else if (request && "ownedApp" in request) {
+    const owner = parseOwnedAppOwnerAssertion(request.ownedApp)
+    if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid) {
+      throw new Error("owned-app owner assertion differs from the selected daemon")
+    }
+    body = { ownedAppOwner: owner }
   } else if (request) {
     const owner = parseProcessOwnerAssertion(request.process)
     if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid) {
@@ -183,23 +238,46 @@ export async function requestDaemonProbe(
   if (ids !== undefined) body = { ...body, ids }
   await verifyDaemonInfo(daemon)
   let response: Response
+  const started = Date.now()
   try {
-    response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
-      method: body ? "POST" : "GET",
-      headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
-      ...(body && { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS),
-    })
+    const url = `http://127.0.0.1:${daemon.port}/probe`
+    const method = body ? "POST" : "GET"
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${daemon.token}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    }
+    const signal = AbortSignal.timeout(DAEMON_PROBE_TIMEOUT_MS)
+    response =
+      typeof process.versions.bun === "string"
+        ? // Bun's own fetch timeout aborts a silent body at ~362s and wins over AbortSignal.timeout
+          // (34477 run 2328c7a7). timeout:false leaves the signal as the only bound.
+          await fetch(url, {
+            method,
+            headers,
+            ...(body && { body: JSON.stringify(body) }),
+            signal,
+            timeout: false,
+          })
+        : // 34753: stock Node/undici timers and no dispatcher. The daemon streams headers and a keepalive
+          // byte while collecting, so a long run never leaves the socket silent for 300 s.
+          await fetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}), signal })
   } catch (error) {
     // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
     if (error instanceof Error && error.name === "TimeoutError") {
+      const elapsed = Date.now() - started
+      const signalFired = elapsed >= DAEMON_PROBE_TIMEOUT_MS - 5_000
+      const bound = signalFired
+        ? `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`
+        : `${elapsed} ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal`
       throw Object.assign(
-        new Error(
-          `Daemon on port ${daemon.port} did not answer /probe within ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`,
-          { cause: error },
-        ),
+        new Error(`Daemon on port ${daemon.port} did not answer /probe within ${bound}`, { cause: error }),
         { name: "TimeoutError" },
       )
+    }
+    // 34753: an admitted probe streams real headers, so this timer can only fire when the daemon answered
+    // nothing at all for undici's 300 s header window. That is a daemon fault to name, not a run to wait out.
+    if (isHeadersTimeout(error)) {
+      throw daemonNotStreamingError(daemon.port, Date.now() - started, error)
     }
     throw error
   }
@@ -228,7 +306,71 @@ export async function requestDaemonProbe(
       },
     )
   }
+  probeDaemonPorts.set(response, daemon.port)
   return response
+}
+
+/**
+ * 34753: the daemon streams leading JSON whitespace (space, tab, LF, CR) as its keepalive, so an
+ * admitted /probe answer reaches a client with stock socket timers instead of none at all. Those
+ * bytes are transport, not payload: strip ONLY that leading run, at this one boundary, and never a
+ * BOM, interior whitespace, trailing bytes or anything after the first non-whitespace byte. The
+ * strict reader and the retained receipt hash therefore both see the payload the daemon meant to
+ * send (@cto 34753-probe-streaming-go.md condition 5).
+ */
+export function stripProbeKeepalivePrefix(bytes: Buffer): Buffer {
+  let at = 0
+  while (at < bytes.length) {
+    const byte = bytes[at]
+    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) break
+    at += 1
+  }
+  return at === 0 ? bytes : bytes.subarray(at)
+}
+
+/**
+ * Which daemon each live /probe response came from, so a body that ends after admission can name its
+ * daemon instead of surfacing whatever the runtime calls a reset. Set once in requestDaemonProbe.
+ */
+const probeDaemonPorts = new WeakMap<Response, number>()
+
+/**
+ * 34753 -> 34799: after admission the daemon streams, so a collection that fails afterwards ends the
+ * body instead of answering HTTP 500 (@cto 34753-probe-streaming-go.md condition 2). The bare runtime
+ * error ("terminated", "fetch failed") names nothing, so this one helper says which daemon ended the
+ * body, that it was admitted rather than refused, and where the daemon-side record lives.
+ */
+export function daemonStreamEndedError(port: number, cause?: unknown): Error {
+  const directory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
+  const message =
+    `Daemon on port ${port} ended the /probe body after admitting the run: the collection failed or was ` +
+    `cancelled before it could answer, so this response carries no run record. The reason is in that ` +
+    `daemon log, and any draft it reserved is under ${directory}`
+  return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), {
+    name: "DaemonStreamEnded" as const,
+  })
+}
+
+/** Read one whole /probe body, naming the daemon when it ends early instead of passing a bare reset up. */
+async function readProbeBody(response: Response): Promise<Buffer> {
+  try {
+    return Buffer.from(await response.arrayBuffer())
+  } catch (error) {
+    const port = probeDaemonPorts.get(response)
+    throw port === undefined ? error : daemonStreamEndedError(port, error)
+  }
+}
+
+function decodeProbeBytes(
+  bytes: Buffer,
+  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string },
+): ReturnType<typeof decodeCollectorDraft> {
+  const raw = decodeExactUtf8(stripProbeKeepalivePrefix(bytes), "daemon /probe")
+  const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
+  if (decoded.kind === "captured" && decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
+    throw new Error(`Daemon /probe subject kind ${decoded.run.subject.kind} is not term or mux`)
+  }
+  return decoded
 }
 
 /** Preserve and validate the exact HTTP bytes before any public save. */
@@ -236,12 +378,7 @@ export async function readRawDaemonProbeResponse(
   response: Response,
   receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
 ): Promise<ReturnType<typeof decodeCollectorDraft>> {
-  const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
-  const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
-  if (decoded.kind === "captured" && decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
-    throw new Error(`Daemon /probe subject kind ${decoded.run.subject.kind} is not term or mux`)
-  }
-  return decoded
+  return decodeProbeBytes(await readProbeBody(response), receipt)
 }
 
 /**
@@ -309,11 +446,13 @@ export async function readRetainedDaemonProbeResponse(
   | { kind: "captured"; run: CapturedRunDraft; path: string; sha256: string }
   | { kind: "empty-selection"; run: RunDraft; path: string; sha256: string }
 > {
-  const bytes = Buffer.from(await response.arrayBuffer())
+  const bytes = stripProbeKeepalivePrefix(await readProbeBody(response))
   const retained = retainDaemonResponseBytes(bytes, options.directory)
   let decoded: Awaited<ReturnType<typeof readRawDaemonProbeResponse>>
   try {
-    decoded = await readRawDaemonProbeResponse(new Response(bytes), options.receipt)
+    // The bytes are already the retained payload, so decode them directly instead of round-tripping
+    // through a second Response and a second strip.
+    decoded = decodeProbeBytes(bytes, options.receipt ?? getTrustedSuiteReceipt())
   } catch (cause) {
     throw Object.assign(
       new Error(

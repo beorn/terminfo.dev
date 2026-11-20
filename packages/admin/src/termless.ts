@@ -1,6 +1,7 @@
 /** Collect private v2 headless runs; each engine is resolved through Termless. */
 
-import { collectHeadlessRuns } from "../../probes/collect-headless.ts"
+import { collectHeadlessRuns, headlessReplaySuite } from "../../probes/collect-headless.ts"
+import { shadowCollectedRun } from "./collected-run.ts"
 
 export async function runTermlessProbes(
   selectors: string[],
@@ -8,6 +9,9 @@ export async function runTermlessProbes(
 ): Promise<void> {
   const collection = await collectHeadlessRuns(selectors, undefined, undefined, opts.probeIds)
   console.log(`Headless raw runs: ${collection.runs.length}; directory: ${collection.directory}`)
+  // #30932 S3: each saved run's private shadow report, awaited, before any refusal below is raised. The shadow never
+  // throws and never touches the run; a report it cannot write is named on stderr.
+  for (const run of collection.runs) await shadowCollectedRun(run, headlessReplaySuite)
   if (collection.failures.length) {
     throw new Error(
       `${collection.failures.length} headless engine(s) refused; successful raw runs remain private at ${collection.directory}:\n` +

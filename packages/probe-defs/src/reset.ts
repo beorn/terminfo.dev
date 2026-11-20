@@ -8,6 +8,7 @@ import {
   notTestedResult,
   parserStateResult,
   replyFailure,
+  methodUnavailable,
   probe,
   queryDecrpm,
   reviewResult,
@@ -16,19 +17,29 @@ import {
   sgrReadbackDecision,
   type DecrpmPs,
 } from "./helpers.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /**
  * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
  * homes the cursor there itself, and a cursor row is excluded from every compared region. Both
- * frames park the cursor on the last row and the witness cell sits on row 4. The expected frame is a
- * full grid of E written PLAINLY in the same run, which is exactly what ESC # 8 should leave behind.
+ * frames park the cursor on the last row and the witness cell sits on row 4. The expected frame is
+ * rows 1-4 of E written PLAINLY in the same run, which is what ESC # 8 leaves there.
+ *
+ * DECALN fills EVERY cell, and the read's sentinel pair needs blank cells to anchor on (33981), so a
+ * frame left as DECALN drew it can never be read (34546: "no blank cell exists ... because every cell
+ * carries ink" on Alacritty, WezTerm and xterm). Only rows 1-4 carry the evidence; the seed inks only
+ * them, and the edit erases from row 5 down right after ESC # 8. Rows 5 to the row above the cursor
+ * stay blank in every frame for the pair, and the compared rows still hold only what DECALN wrote.
  */
-function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixelGeometry"> | null {
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 5 || cols < 9) return null
+const DECALN_INKED_ROWS = 4
+export function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixelGeometry"> | null {
+  // Rows 1-4 of evidence, at least two blank rows for the sentinel pair, and the cursor's own last row.
+  const minRows = DECALN_INKED_ROWS + 3
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < 9) return null
   const park = `\x1b[${rows};1H`
   const screen = (line: string): string => {
     let writes = "\x1b[0m\x1b[2J\x1b[H"
-    for (let row = 1; row <= rows; row++) writes += `\x1b[${row};1H${line}`
+    for (let row = 1; row <= DECALN_INKED_ROWS; row++) writes += `\x1b[${row};1H${line}`
     return `${writes}${park}`
   }
   return {
@@ -36,11 +47,11 @@ function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixel
     sentinel: { row: 4, col: 1 },
     cursorRow: rows,
     seed: screen("AB".repeat(Math.ceil(cols / 2)).slice(0, cols)),
-    edit: `\x1b#8${park}`,
+    edit: `\x1b#8\x1b[${DECALN_INKED_ROWS + 1};1H\x1b[J${park}`,
     expected: screen("E".repeat(cols)),
     timeoutMs: 5000,
     pollMs: 250,
-    minRows: 5,
+    minRows,
     minCols: 9,
   }
 }
@@ -179,6 +190,12 @@ export const resetProbes: ProbeDefinition[] = [
             "no parsable cursor position reply; the public projection returned null and retained no bytes",
           )
         }
+        // 34698 (@cto 8df7c6d0): only a control that finished where the fixture puts it (CUP 1;1 then X: row 1,
+        // column 2) lost nothing but its pixel reading. A reply anywhere else is an independent failed control and
+        // keeps the ordinary note, never the capture-refused attribution.
+        if (pos.row === 1 && pos.col === 2) {
+          raiseRefusedCapture(ctx, "Cursor advance does not measure SGR styling after reset")
+        }
         return {
           pass: false,
           response: JSON.stringify(pos),
@@ -193,8 +210,8 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
-    // Hosted Mac run 42836445788 still had this callback running at 30s.
-    wallMs: 120_000,
+    // 35128: the owned Mac trace reaches 1.936 s/capture; 132 captures x1.20 headroom needs306.7 s.
+    wallMs: 315_000,
   },
 
   {
@@ -340,7 +357,7 @@ export const resetProbes: ProbeDefinition[] = [
             const enabled = await readUp()
             if (control !== "\x1b[Aa" || enabled !== "\x1bOAa") {
               return {
-                ...replyFailure(
+                ...methodUnavailable(
                   "Soft-reset setup did not read distinct normal/application Up encodings with plain-a delivery controls",
                 ),
                 response: JSON.stringify({ before, control, enabled }),
@@ -351,7 +368,7 @@ export const resetProbes: ProbeDefinition[] = [
             const response = JSON.stringify({ before, control, enabled, after })
             if (after !== "\x1b[Aa" && after !== "\x1bOAa") {
               return {
-                ...replyFailure(
+                ...methodUnavailable(
                   "Soft-reset target did not read an Up encoding followed by its plain-a delivery control",
                 ),
                 response,
@@ -452,6 +469,9 @@ export const resetProbes: ProbeDefinition[] = [
           // The verdict path owns this row wherever the run can map cells onto its own window.
           const verdict = await captureRegionCallbackResult(ctx, "reset.decaln", readback)
           if (verdict) return verdict
+        }
+        if (!capture && Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 2 && cols >= 2) {
+          raiseRefusedCapture(ctx, "DECALN pixel fixture needs capture")
         }
         if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           const note = `DECALN pixel fixture needs capture and measured 2x2 geometry; measured ${rows}x${cols}`

@@ -1,10 +1,13 @@
 /**
  * @failure Admin commands accept conflicting suite metadata or expose retired review dispatch.
  * @level l2
- * @consumer Admin CLI app, mux, and server probe actions.
+ * @consumer Admin CLI app, mux, and server probe actions; `terminfo report --reassert` modes and its term/mux path
+ * (#30932 S4, @cto 30932-s4-report-ruling-1818).
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { beforeAll, describe, expect, test, vi } from "vitest"
@@ -149,5 +152,82 @@ describe("headless CLI exact probe selection", () => {
       program.parseAsync(["probe", "termless", "xtermjs", "--probe-ids", value], { from: "user" }),
     ).rejects.toThrow()
     expect(collectHeadlessRuns).not.toHaveBeenCalled()
+  })
+})
+
+/** `terminfo report` through its real arguments, with the source launcher's variables absent unless given. */
+function report(args: string[], env: Record<string, string> = {}) {
+  const clean = { ...process.env }
+  delete clean.TERMINFO_PROBE_HASH
+  delete clean.TERMINFO_SOURCE_REVISION
+  return spawnSync(process.execPath, [entry, "report", ...args], {
+    cwd: root,
+    env: { ...clean, ...env },
+    encoding: "utf8",
+    timeout: 60_000,
+  })
+}
+
+describe("report --reassert (#30932 S4)", () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-reassert-"))
+  const saved = (name: string, subject: Record<string, unknown>) => {
+    const path = join(directory, name)
+    // A stored run bound to no suite this checkout has, whose only row is outside every replayed family.
+    const run = {
+      runId: "0".repeat(32),
+      suiteId: "000000000000",
+      sourceRevision: "f".repeat(40),
+      subject,
+      rawReplies: {},
+      results: [{ featureId: "cursor.move.home", status: "yes", tests: [], attempt: { scope: "full" } }],
+    }
+    writeFileSync(path, JSON.stringify(run))
+    return path
+  }
+
+  test("a term run is reasserted with the source launcher's suite set up by the command, and refused with zero rows by name", () => {
+    const run = saved("term.json", { kind: "term", id: "kitty", os: "linux" })
+    const { TERMINFO_PROBE_HASH, TERMINFO_SOURCE_REVISION } = sourceSuiteEnvironment()
+    const result = report(["--reassert", run])
+    expect(result.status, result.stderr).toBe(2)
+    expect(result.stdout).toContain(
+      `${run}: run ${"0".repeat(32)} (term kitty), suite 000000000000, source ${"f".repeat(40)}`,
+    )
+    // The receipt came from this checkout's source launcher, set up by the command itself: it named what it replays with.
+    expect(result.stdout).toContain(`replayed with suite ${TERMINFO_PROBE_HASH}, source ${TERMINFO_SOURCE_REVISION}`)
+    expect(result.stdout).toContain("  RUN REFUSED: ")
+    // A refused run with nothing in scope is still exit 2, never a vacuous agreement.
+    expect(result.stdout).toContain("  0 rows in scope: nothing was compared")
+    expect(result.stdout).toContain("  excluded, host-level log only (cursor.*): 1 rows (cursor.move.home)")
+    // A conflicting declared suite is refused before anything is replayed.
+    const conflicting = report(["--reassert", run], { TERMINFO_PROBE_HASH: "wrong-hash" })
+    expect(conflicting.status).toBe(2)
+    expect(conflicting.stdout).toContain(
+      "NOT REASSERTED (Error): TERMINFO_PROBE_HASH differs from the current source suite",
+    )
+  })
+
+  test("an unknown subject kind is refused by name, never replayed as a terminal", () => {
+    const run = saved("app.json", { kind: "app", id: "kitty" })
+    const result = report(["--reassert", run, "--json"])
+    expect(result.status).toBe(2)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      exitCode: 2,
+      inputs: [{ input: run, failure: { message: 'Stored run subject kind "app" is not lib, term or mux' } }],
+    })
+  })
+
+  test("modes are explicit: no operand, --scoreboard with --reassert, and --json alone are refused by name", () => {
+    const run = saved("none.json", { kind: "term", id: "kitty" })
+    const empty = report(["--reassert"])
+    expect(empty.status).not.toBe(0)
+    expect(empty.stderr).toMatch(/argument missing|missing/i)
+    const both = report(["--scoreboard", run, "--reassert", run])
+    expect(both.status).not.toBe(0)
+    expect(both.stderr).toContain("report takes --scoreboard or --reassert, not both")
+    const json = report(["--json"])
+    expect(json.status).not.toBe(0)
+    expect(json.stderr).toContain("report --json applies only to --reassert")
+    rmSync(directory, { recursive: true, force: true })
   })
 })

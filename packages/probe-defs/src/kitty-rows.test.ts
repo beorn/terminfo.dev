@@ -3,7 +3,7 @@
  *   published cell for animation or unicode placeholders claims a render nobody captured.
  * @level l1
  * @consumer The application and mux callbacks for extensions.kitty-graphics.animation and
- *   extensions.kitty-graphics.unicode-placeholders.
+ *   extensions.kitty-graphics.unicode-placeholders, and the display row's App pixel arm (#34932).
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -15,7 +15,13 @@ import { parseProbeResults } from "@terminfo/run-parser"
 import { extensionsProbes } from "./extensions.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION, KITTY_ROW_IMAGES } from "./kitty-capture.ts"
-import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
+import type {
+  CaptureLayoutGuard,
+  CaptureLayoutGuardRequest,
+  ObservationFrame,
+  TermProbeSource,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { finishCapture } from "../../terminfo.dev/src/capture-core.ts"
 
 const sha = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -34,8 +40,12 @@ interface Surface {
   readonly whole?: readonly string[]
   /** What the terminal answers a `_G` command with. */
   readonly ack?: "ok" | "silent"
+  /** An `a=p` placement answered by DA1 only, as WezTerm does (27915), while transfers still answer. */
+  readonly placement?: "silent"
   /** Cell digests for the placeholder readback pair, when this run reads cells at all. */
   readonly cells?: readonly string[]
+  /** The collector's answer to a guard capture that names `layoutGuard.against` (#34932). */
+  readonly guardComparison?: Omit<CaptureLayoutGuard, "against">
 }
 
 interface Capture {
@@ -45,6 +55,7 @@ interface Capture {
   /** How many writes had happened when this capture was taken. */
   readonly writesBefore: number
   readonly ref: string
+  readonly layoutGuard?: CaptureLayoutGuardRequest
 }
 
 function surface(options: Surface) {
@@ -55,6 +66,10 @@ function surface(options: Surface) {
   let wholeIndex = 0
   const ack = (sequence: string): TerminalQueryOutcome => {
     if (options.ack === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    if (options.placement === "silent" && sequence.startsWith("\x1b_Ga=p,")) {
+      const raw = "\x1b[?62;22c"
+      return { match: null, reason: "sentinel", raw, rawBase64: btoa(raw), sentinel: { atMs: 3, graceMs: 250 } }
+    }
     const imageNumber = /(?:,|_)I=(\d+)/.exec(sequence)?.[1]
     const raw = imageNumber ? `\x1b_Gi=1,I=${imageNumber};OK\x1b\\` : "\x1b_Gi=1;OK\x1b\\"
     if (imageNumber) {
@@ -65,6 +80,7 @@ function surface(options: Surface) {
   }
   const context: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: GEOMETRY,
@@ -86,10 +102,17 @@ function surface(options: Surface) {
       return ack(sequence)
     },
     queryMode: async () => null,
-    capture: async ({ role, label, cells }) => {
+    capture: async ({ role, label, cells, layoutGuard }) => {
       const index = captures.length + 1
       const ref = `sha256:${String(index).padStart(64, "0")}`
-      captures.push({ role, label, cells: cells !== undefined, writesBefore: writes.length, ref })
+      captures.push({
+        role,
+        label,
+        cells: cells !== undefined,
+        writesBefore: writes.length,
+        ref,
+        ...(layoutGuard === undefined ? {} : { layoutGuard }),
+      })
       if (cells !== undefined) {
         const isGuard =
           cells.top === KITTY_GUARD_REGION.top &&
@@ -110,6 +133,9 @@ function surface(options: Surface) {
           regionDigest: digest,
           pixelsDigest: `whole-${String(digest)}`,
           regionRectangle: { x: 20, y: 40, width: 20, height: 40 },
+          ...(layoutGuard?.against !== undefined && options.guardComparison !== undefined
+            ? { layoutGuardComparison: { against: layoutGuard.against, ...options.guardComparison } }
+            : {}),
         } satisfies ObservationFrame
       }
       const whole = options.whole?.[Math.min(wholeIndex, (options.whole?.length ?? 1) - 1)] ?? "whole-same"
@@ -374,6 +400,148 @@ test("a frame 2 that never gives way to frame 1 records unsupported from pixels"
   expect(JSON.parse(result.response!)).toMatchObject({
     digests: { reference: sha("red"), secondReference: sha("blue") },
   })
+})
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 5): the arm asks the collector to keep the with-image guard
+// crop and compare the image-deleted guard to it, and its verdict follows that comparison when the raw digests
+// differ. The test above uses equal guard digests, so it never reaches the bounded comparison.
+test("placeholders compare the two guard crops under the bounded rule and keep both raw digests", async () => {
+  const held = {
+    holds: true,
+    width: 39,
+    height: 87,
+    changedPixels: 18,
+    maxChannelDelta: 1,
+    alphaExact: true,
+    maskChangedPixels: 0,
+    backgroundMembers: 1,
+  }
+  const { context, captures } = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "shaded"],
+    guardComparison: held,
+  })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  const guards = captures.filter((capture) => capture.label.includes("Layout guard"))
+  expect(guards.map((capture) => capture.layoutGuard)).toEqual([{}, { against: guards[0]!.ref }])
+  expect(result.observation?.outcome).toBe("supported")
+  const evidence = JSON.parse(result.response!) as { guard: Record<string, unknown> }
+  expect(evidence.guard).toEqual({
+    withImage: "guard",
+    withoutImage: "shaded",
+    comparison: { against: guards[0]!.ref, ...held },
+  })
+
+  const failing = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "moved"],
+    guardComparison: {
+      ...held,
+      holds: false,
+      maskChangedPixels: 3,
+      reason: "3 coordinate(s) changed between background and ink",
+    },
+  })
+  const refused = await term("extensions.kitty-graphics.unicode-placeholders")(failing.context)
+  expect(refused.observation?.outcome).toBe("inconclusive")
+  expect(JSON.stringify(refused)).toContain("3 coordinate(s) changed between background and ink")
+})
+
+// #34932 (@cto 34932-five-criteria-ruling-2216 item 2): a controlled-silent display placement reads pixels.
+// Before this arm the same placement returned "not tested" with no capture at all, so no existing test
+// reaches a capture from the display row.
+const DISPLAY = "extensions.kitty-graphics.display"
+
+test("a silent display placement is Supported only by a stable block equal to the SGR reference", async () => {
+  const { context, writes, captures } = surface({
+    placement: "silent",
+    region: ["blank", "cyan", "cyan", "cyan"],
+  })
+  const result = await term(DISPLAY)(context)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
+  expect(captures.map((capture) => capture.role)).toEqual(["control", "target", "target", "control"])
+  // The placement goes to the block origin with the image this row allocated (i=1), and the cursor is
+  // parked before the first target capture.
+  const blockPlace = writes.findIndex((bytes) => bytes.startsWith("\x1b_Ga=p,i=1,c=") && !bytes.includes("c=2,r=1"))
+  expect(blockPlace).toBeGreaterThan(-1)
+  expect(captures[0]!.writesBefore).toBeLessThanOrEqual(blockPlace)
+  expect(captures[1]!.writesBefore).toBeGreaterThan(blockPlace + 1)
+  // The target is captured BEFORE the reference paint, and the reference is painted in the row's own colour.
+  const paint = writes.findIndex((bytes) => bytes === `\x1b[48;2;${KITTY_ROW_IMAGES[DISPLAY].image.join(";")}m`)
+  expect(paint).toBeGreaterThan(-1)
+  expect(captures[2]!.writesBefore).toBeLessThanOrEqual(paint)
+  expect(captures[3]!.writesBefore).toBeGreaterThan(paint)
+  // Placements are removed while the allocation is kept, and only the allocated image is freed.
+  expect(writes.filter((bytes) => bytes.includes("a=d,d=I,"))).toEqual(["\x1b_Ga=d,d=I,i=1,q=2\x1b\\"])
+  expect(writes.filter((bytes) => bytes.includes("a=d,d=i,i=1"))).toHaveLength(2)
+  const evidence = JSON.parse(result.response!) as Record<string, unknown>
+  expect(evidence).toMatchObject({ blank: "blank", target: ["cyan", "cyan"], reference: "cyan" })
+  expect(evidence.frames).toEqual(captures.map((capture) => capture.ref))
+})
+
+test.each([
+  ["a target that does not match the reference", ["blank", "cyan", "cyan", "teal"]],
+  ["an unstable target pair", ["blank", "cyan", "cyan-later", "cyan"]],
+  ["an unqualified SGR reference", ["blank", "blank", "blank", "blank"]],
+  ["a missing region digest", ["blank", undefined, undefined, "cyan"]],
+] as const)("a silent display placement with %s stays open, never Unsupported", async (decidedBy, region) => {
+  const { context } = surface({ placement: "silent", region })
+  const result = await term(DISPLAY)(context)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+  expect(result.observation?.note).toContain("Kitty image display:")
+  expect(JSON.stringify(result)).not.toContain('"unsupported"')
+  if (decidedBy === "a missing region digest") expect(result.tests).toMatchObject([{ status: "probe-todo" }])
+})
+
+test("an acknowledged display placement keeps its query-reply verdict and takes no capture", async () => {
+  const { context, captures } = surface({ region: ["unused"] })
+  const result = await term(DISPLAY)(context)
+  expect(captures).toHaveLength(0)
+  expect(result.observation?.assertionType).toBe("query_reply")
+})
+
+// @dev/6 peer F1 on #34932 (6b7e48cb): the display row declares no terminal geometry, so a source whose grid
+// accessors throw (as unified's source does for an undeclared row) still decides the protocol answer, and the
+// pixel branch sizes its block from the row's capture calibration alone.
+function withoutDeclaredGrid(context: TermProbeSource): TermProbeSource {
+  const undeclared = () => {
+    throw Object.assign(new Error("undeclared terminal geometry"), { name: "UndeclaredTerminalGeometry" })
+  }
+  return Object.defineProperties({ ...context }, { rows: { get: undeclared }, cols: { get: undeclared } })
+}
+
+test("the display row declares no geometry, and its acknowledgement decides without a grid", async () => {
+  expect(extensionsProbes.find((definition) => definition.id === DISPLAY)?.termNeedsGeometry).toBeUndefined()
+  const { context, captures } = surface({ region: ["unused"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid(context))
+  expect(captures).toHaveLength(0)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+})
+
+test("a silent display placement reads pixels from the calibrated grid when the row has no declared grid", async () => {
+  const { context, captures } = surface({ placement: "silent", region: ["blank", "cyan", "cyan", "cyan"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid(context))
+  expect(captures).toHaveLength(4)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+})
+
+test("a silent display placement with no capture calibration keeps the protocol result and takes no capture", async () => {
+  const { context, captures } = surface({ placement: "silent", region: ["unused"] })
+  const result = await term(DISPLAY)(withoutDeclaredGrid({ ...context, captureGeometry: undefined }))
+  expect(captures).toHaveLength(0)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+})
+
+test("a silent display placement on a text-cells run takes no pixel capture", async () => {
+  const { context, captures } = surface({ placement: "silent", region: ["unused"] })
+  const cellsRun = { ...context, captureKind: "text-cells" as const }
+  const result = await term(DISPLAY)(cellsRun)
+  expect(captures).toHaveLength(0)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.assertions).toBeUndefined()
 })
 
 test("placeholders decide from pixels, with a queried virtual transfer and an ordinary placement alive", async () => {

@@ -51,6 +51,80 @@ test("hosted Mac scripts parse and keep command-substitution comments compatible
   expect(checkedBodies).toBeGreaterThan(0)
 })
 
+// 34567: timeout-minutes went from 35 to 70, but the collect step kept its own JOB_LIMIT_S=35*60 and flushed
+// cursor and VS Code at ~31.6 min (run 44112785444). The poll budget is the job wall, counted from the first step.
+test("the hosted collector's poll budget is the job wall, measured from job start", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const job = workflow.jobs["measure-macos"] as { "timeout-minutes": number; steps: { name?: string; run?: string }[] }
+  const collect = job.steps.find(
+    (step) => step.name === "Launch, emit the receipt, and collect as the last mutating step",
+  )
+  const limit = /^\s*JOB_LIMIT_S=\$\(\((\d+) \* 60\)\)$/mu.exec(collect?.run ?? "")
+  expect(limit, "the collect step declares JOB_LIMIT_S as minutes * 60").not.toBeNull()
+  expect(Number(limit![1])).toBe(job["timeout-minutes"])
+  // The poll ends on the clock: each sleep-1 iteration took ~1.13 s on that run, so an iteration count would
+  // run ~5.6 min past a 70-minute wall and lose the flush (@dev/18, 34567).
+  expect(collect!.run).toMatch(/^\s*deadline=\$\(\( JOB_START_EPOCH \+ JOB_LIMIT_S - FLUSH_MARGIN_S \)\)$/mu)
+  expect(collect!.run).toMatch(/^\s*\[ "\$\(date \+%s\)" -lt "\$deadline" \] \|\| break$/mu)
+  expect(collect!.run).not.toMatch(/attempt<=poll_s/u)
+  expect(job.steps[0]!.run, "the first step records the job start the budget is measured from").toContain(
+    'printf \'JOB_START_EPOCH=%s\\n\' "$(date +%s)" >> "$GITHUB_ENV"',
+  )
+})
+
+// 34613: the first step recorded JOB_START_EPOCH after its three fetches and the receipt process, so bootstrap
+// time was never counted and came out of the 180 s flush reserve (a 180 s bootstrap left none). Run the real step
+// on a fake clock where each fetch and the receipt process take 60 s: the recorded start is the clock before them.
+test("a slow bootstrap spends the poll budget: the job clock starts before the first fetch", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const bootstrap = (workflow.jobs["measure-macos"].steps as { run?: string }[])[0]!.run
+  if (!bootstrap) throw new Error("The bootstrap step has no run script")
+  const directory = mkdtempSync(join(tmpdir(), "hosted-job-clock-"))
+  const clock = join(directory, "clock")
+  const githubEnv = join(directory, "github-env")
+  const START = 1_000_000
+  const STEP_S = 60
+  writeFileSync(clock, String(START))
+  writeFileSync(githubEnv, "")
+  const advance = `now=$(cat "$CLOCK"); printf '%s' "$((now + ${STEP_S}))" > "$CLOCK"`
+  writeFileSync(
+    join(directory, "date"),
+    '#!/bin/bash\nif [ "$1" = "+%s" ]; then cat "$CLOCK"; echo; else exec /bin/date "$@"; fi\n',
+    { mode: 0o755 },
+  )
+  writeFileSync(
+    join(directory, "curl"),
+    `#!/bin/bash\nwhile [ $# -gt 0 ]; do if [ "$1" = "--output" ]; then : > "$2"; fi; shift; done\n${advance}\n`,
+    { mode: 0o755 },
+  )
+  writeFileSync(join(directory, "node"), `#!/bin/bash\nprintf '{}' > "\${@: -1}"\n${advance}\n`, { mode: 0o755 })
+  try {
+    const result = spawnSync("/bin/bash", ["-c", bootstrap], {
+      cwd: directory,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        CLOCK: clock,
+        GITHUB_ENV: githubEnv,
+        RUNNER_TEMP: directory,
+        MEASURED_SHA: "a".repeat(40),
+        REQUESTED_SHA: "",
+        GH_TOKEN: "fixture-token",
+        GITHUB_API_URL: "http://127.0.0.1:9",
+        GITHUB_REPOSITORY: "fixture/repo",
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(Number(readFileSync(clock, "utf8")) - START, "three fetches and the receipt process ran").toBe(4 * STEP_S)
+    const recorded = /^JOB_START_EPOCH=(\d+)$/mu.exec(readFileSync(githubEnv, "utf8"))
+    expect(recorded, "the bootstrap recorded the job start").not.toBeNull()
+    expect(Number(recorded![1]), "the 4 min bootstrap is inside the budget, not after its start").toBe(START)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test("hosted collector build runs at background priority", () => {
   const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
   const build = workflow.jobs["measure-macos"].steps.find(
@@ -539,6 +613,10 @@ test.each([
   { appId: "com.microsoft.VSCode", missingLaunch: false, collectOutcome: "failure", expectedExit: 0 },
   { appId: "cursor", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
   { appId: "cursor", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
+  // 34597: VSCode's evidence capture (a 42-minute log window killed at its 20 s wall) failed run 44138709249's job
+  // after a successful collection; an editor's successful collection keeps its outcome, as Cursor's does.
+  { appId: "com.microsoft.VSCode", missingLaunch: true, collectOutcome: "failure", expectedExit: 1 },
+  { appId: "com.microsoft.VSCode", missingLaunch: true, collectOutcome: "success", expectedExit: 0 },
 ])(
   "$appId diagnostics preserve collection outcome (missing launch: $missingLaunch, collect: $collectOutcome)",
   ({ appId, missingLaunch, collectOutcome, expectedExit }) => {
@@ -578,6 +656,12 @@ test.each([
         executablePath: "/Applications/Editor.app/Contents/MacOS/Editor",
         marker: { flag: "--user-data-dir", value: "/fixture/owned-run/profile" },
         tty: "/dev/ttys001",
+        // 34597: the launcher's measured owner birth; failure evidence queries only this interval.
+        ownerBirth: {
+          pid: 4242,
+          startedAtEpochSeconds: Date.parse("2026-10-20T02:00:00Z") / 1000,
+          observedAt: "2026-10-20T02:00:12.255Z",
+        },
       },
     }
     if (!missingLaunch) writeFileSync(join(out, "editor-launch.json"), JSON.stringify(editorLaunch))
@@ -655,7 +739,18 @@ test.each([
       const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
       expect(log).toHaveProperty("argv", expect.arrayContaining(["2026-10-20 02:00:00+0000"]))
       expect(log).toHaveProperty("stdout.text", "[]")
-      if (editor && !missingLaunch) expect(summary).toHaveProperty("editorLaunch", editorLaunch)
+      if (editor && !missingLaunch) {
+        expect(summary).toHaveProperty("editorLaunch", editorLaunch)
+        // 34597: the log window is the owner's birth through its observation, never the whole collect step.
+        expect(summary).toHaveProperty("intervalSource", "editor-owner-birth-through-observation")
+        expect(log).toHaveProperty(
+          "argv",
+          expect.arrayContaining(["2026-10-20 02:00:00+0000", "2026-10-20 02:00:13+0000"]),
+        )
+      }
+      if (editor && missingLaunch) {
+        expect(summary).toHaveProperty("intervalSource", "collect-step-start-through-failure-evidence")
+      }
       if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
       if (terminal) {
         // Existing artifact transport retains ancestry and collector status; narrowing diagnostics
@@ -682,7 +777,7 @@ test.each([
         // This fixture deliberately has no collector ancestry; keep older diagnostics despite it.
         expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "native-state" })])
       } else expect(summary).toHaveProperty("failures", [])
-      // Cursor retains its title-timeout diagnostic even when the collector exits successfully.
+      // Editors and cmux retain hand-read evidence on both outcomes, before owned cleanup.
       // Evaluate the workflow's existing boolean expression with a successful collect step;
       // executing the body alone would miss a GitHub condition that skips all this evidence.
       expect(
@@ -692,7 +787,104 @@ test.each([
           matrix: { id: appId },
           steps: { collect: { outputs: { iterm_failure: "" } } },
         }),
-      ).toBe(terminal || appId === "cursor")
+      ).toBe(terminal || editor || appId === "cmux")
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// 34687: run 44178738960's cmux job measured all 273 rows, then went red because this always-run evidence step's
+// log show spanned the whole 44-minute collect step and was killed at its 20 s wall. The window now ends at the
+// measured receipt, and a capture killed at its wall after a successful collection is named, not fatal.
+test.each([
+  {
+    collectOutcome: "success",
+    screenFails: false,
+    censusHangs: false,
+    expectedExit: 0,
+    verdict: "non-fatal: the collection succeeded",
+  },
+  { collectOutcome: "failure", screenFails: false, censusHangs: false, expectedExit: 1, verdict: "fails this step" },
+  { collectOutcome: "success", screenFails: true, censusHangs: false, expectedExit: 1, verdict: "fails this step" },
+  // The window census is the owned-window evidence: its wall kill stays fatal even after a good collection.
+  { collectOutcome: "success", screenFails: false, censusHangs: true, expectedExit: 1, verdict: "fails this step" },
+])(
+  "cmux evidence bounds its log to the receipt and names a wall-killed capture (collect: $collectOutcome, screen fails: $screenFails, census hangs: $censusHangs)",
+  ({ collectOutcome, screenFails, censusHangs, expectedExit, verdict }) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+    const step = workflow.jobs["measure-macos"].steps.find(
+      (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
+    )
+    const source = (step.run as string).match(/^bun --eval '([\s\S]*)'\s*$/)?.[1]
+    expect(source).toBeDefined()
+    const directory = mkdtempSync(join(tmpdir(), "hosted-evidence-timeout-"))
+    const out = join(directory, "measurement-artifacts")
+    mkdirSync(out)
+    const summaryFile = join(directory, "step-summary.md")
+    writeFileSync(
+      join(out, "host-measured.json"),
+      JSON.stringify({
+        runId: "b".repeat(32),
+        collectedAt: "2026-11-17T21:53:07.735Z",
+        appLaunch: {
+          bundlePath: "/Applications/cmux.app",
+          executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
+        },
+      }),
+    )
+    const windows = [{ id: 37, ownerPid: 4242, layer: 0, bounds: { x: 0, y: 0, width: 460, height: 639 } }]
+    // The log command outlives its wall; the 10 s and 20 s walls are shortened so a kill happens inside the test.
+    const prelude = `const originalSpawn = Bun.spawn, originalTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms, ...rest) => originalTimeout(fn, ms >= 10000 ? 200 : ms, ...rest);
+    Bun.spawn = (argv, options) => {
+      const command = argv[0];
+      if (command.endsWith("log")) return originalSpawn(["/bin/sleep", "30"], options);
+      if (command.endsWith("osascript") && ${censusHangs}) return originalSpawn(["/bin/sleep", "30"], options);
+      if (command.endsWith("screencapture")) {
+        if (${screenFails}) return originalSpawn(["/bin/bash", "-c", "exit 1"], options);
+        require("node:fs").writeFileSync(argv.at(-1), "fixture image bytes");
+      }
+      const output = command.endsWith("osascript") ? ${JSON.stringify(JSON.stringify(windows))}
+        : command.endsWith("ps") ? "PID PPID PGID TTY COMM\\n4242 1 4242 ?? cmux\\n" : "";
+      return originalSpawn(["/bin/bash", "-c", "printf '%s' \\\"$1\\\"", "fixture", output], options);
+    };\n`
+    try {
+      const result = spawnSync(BUN, ["--eval", prelude + source], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          APP_ID: "cmux",
+          COLLECT_OUTCOME: collectOutcome,
+          RUNNER_TEMP: directory,
+          GITHUB_WORKSPACE: root,
+          GITHUB_STEP_SUMMARY: summaryFile,
+          COLLECT_STARTED_AT: "2026-11-17T21:52:58Z",
+          ITERM_LAUNCH_START: "",
+          ITERM_LAUNCH_END: "",
+        },
+      })
+      expect(result.status, result.stderr).toBe(expectedExit)
+      const log = JSON.parse(readFileSync(join(out, "cmux-log.json"), "utf8")) as { argv: string[] }
+      // Collect start through the measured receipt (whole final second included), not through this step.
+      expect(log.argv).toEqual(expect.arrayContaining(["2026-11-17 21:52:58+0000", "2026-11-17 21:53:08+0000"]))
+      expect(log).toHaveProperty("outerTimedOut", true)
+      const evidence = JSON.parse(readFileSync(join(out, "cmux-failure-evidence.json"), "utf8")) as {
+        failures: unknown[]
+      }
+      expect(evidence).toHaveProperty("intervalSource", "collect-step-start-through-measured-receipt")
+      expect(evidence.failures).toContainEqual({
+        label: "log",
+        error: "Error: log capture failed (killed at its 20000 ms wall)",
+        timedOut: true,
+      })
+      if (screenFails) expect(evidence.failures).toContainEqual(expect.objectContaining({ label: "screen" }))
+      if (censusHangs) {
+        expect(evidence.failures).toContainEqual(expect.objectContaining({ label: "windows", timedOut: true }))
+      }
+      const summary = readFileSync(summaryFile, "utf8")
+      expect(summary).toContain(`cmux launch evidence incomplete (${verdict})`)
+      expect(summary).toContain("log: Error: log capture failed (killed at its 20000 ms wall)")
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
@@ -851,7 +1043,7 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
   const retained = new Map<string, string>()
   const run = (app: string) =>
     runInNewContext(`(async () => {${source}\n})()`, {
-      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner" } },
+      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner", WARP_STABLE_VERSION: "v0.2026.10.14.08.27.stable_01" } },
       Bun: {
         spawn: (argv: string[]) => {
           launched.push(argv)
@@ -1041,6 +1233,10 @@ test.each([
   "snackbar-write-error",
   "snackbar-wrong-value",
   "snackbar-wrong-type",
+  // #34899: the block-chrome criterion run leaves SnackbarEnabled at stock and writes nothing.
+  "stock-chrome",
+  // #34899 setup refusal: a fresh runner has never run Warp, so SnackbarEnabled is absent and `read-type` exits 1.
+  "snackbar-absent",
   "existing-settings",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
@@ -1074,10 +1270,11 @@ else if (name === "defaults") {
   if (args[0] === "write") {
     if (scenario === "write-error" || (scenario === "restore-write-error" && key === "RestoreSession") || (scenario === "snackbar-write-error" && key === "SnackbarEnabled")) { console.error("fixture write denied"); process.exit(9); }
     fs.writeFileSync(marker, args[4]);
-  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled") ? "Type is boolean" : "Type is string");
+  } else if (args[0] === "read-type" && scenario === "snackbar-absent" && key === "SnackbarEnabled") { console.error("The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
+  else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled") ? "Type is boolean" : "Type is string");
   else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : (scenario === "restore-wrong-value" && key === "RestoreSession") || (scenario === "snackbar-wrong-value" && key === "SnackbarEnabled") ? "true" : fs.readFileSync(marker, "utf8"));
   else if (scenario === "existing-settings" && key === "SettingsFileMigrationComplete") console.log("true");
-  else if (scenario === "present") console.log("true");
+  else if (scenario === "present" || (scenario === "snackbar-wrong-type" && key === "SnackbarEnabled")) console.log("true");
   else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
 } else throw new Error("Unexpected platform shim " + name);
 `
@@ -1109,6 +1306,7 @@ childBoundary.spawn = (file, args, options) => {
         APP_BUNDLE: "/Applications/Warp.app",
         RUNNER_TEMP: directory,
         WARP_SETUP_SCENARIO: scenario,
+        WARP_BLOCK_CHROME: scenario === "stock-chrome" ? "true" : "",
         WARP_SETUP_HOME: home,
         WARP_SETUP_JOURNAL: journal,
         WARP_SETUP_BUN: BUN,
@@ -1125,6 +1323,14 @@ childBoundary.spawn = (file, args, options) => {
       prepared: boolean
       commands: Array<{ label: string; stdout: string }>
       settingsFile: { path: string; exists: boolean }
+      snackbar?: {
+        mode: string
+        written: boolean
+        absent: boolean | null
+        before: string | null
+        type: string | null
+        restore: { performed: boolean; action: string | null; reason: string | null }
+      }
     }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
@@ -1136,7 +1342,12 @@ childBoundary.spawn = (file, args, options) => {
           ),
       ),
     ).toBe(true)
-    if (scenario !== "success" && scenario !== "existing-settings") {
+    if (
+      scenario !== "success" &&
+      scenario !== "existing-settings" &&
+      scenario !== "stock-chrome" &&
+      scenario !== "snackbar-absent"
+    ) {
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain("Warp unattended setup failed")
       expect(launches).toHaveLength(0)
@@ -1166,21 +1377,44 @@ childBoundary.spawn = (file, args, options) => {
       expect(readFileSync(settingsPath, "utf8")).toBe("retained existing settings")
       expect(setup.commands.find((row) => row.label === "migration-marker")?.stdout.trim()).toBe("true")
     }
-    expect(preferenceCalls.map((row) => row.args)).toEqual([
-      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],
-      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
-      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
-      ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
-      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
-      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-      ["write", "dev.warp.Warp-Stable", "SnackbarEnabled", "-string", "false"],
-      ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-      ["read-type", "dev.warp.Warp-Stable", "SnackbarEnabled"],
-    ])
+    if (scenario === "stock-chrome") {
+      expect(setup.snackbar).toMatchObject({ mode: "stock", written: false })
+      expect(
+        preferenceCalls.filter((row) => row.args[0] === "write" && row.args[2] === "SnackbarEnabled"),
+      ).toHaveLength(0)
+      expect(preferenceCalls.filter((row) => row.args[0] === "read" && row.args[2] === "SnackbarEnabled")).toHaveLength(
+        1,
+      )
+    } else {
+      // 44405740954 died here: the absent key failed the whole setup in the mode that had never run in this shape.
+      if (scenario === "snackbar-absent") {
+        expect(setup.snackbar).toMatchObject({
+          mode: "hidden",
+          written: true,
+          absent: true,
+          before: null,
+          type: null,
+          restore: { performed: false, action: "delete" },
+        })
+        // The reason a human reads must say delete, not the generic "not restored", for an absent key.
+        expect(setup.snackbar?.restore.reason).toContain("defaults delete")
+      }
+      expect(preferenceCalls.map((row) => row.args)).toEqual([
+        ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],
+        ["read", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
+        ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+        ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
+        ["read", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
+        ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+        ["read-type", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+        ["write", "dev.warp.Warp-Stable", "SnackbarEnabled", "-string", "false"],
+        ["read", "dev.warp.Warp-Stable", "SnackbarEnabled"],
+      ])
+    }
     expect(JSON.stringify(setup)).toContain("does not exist")
     expect(readFileSync(join(out, "collect.command"), "utf8")).toBe("the actual generated command bytes")
     const yaml = readFileSync(join(out, "warp-launch.yaml"), "utf8")
@@ -1239,7 +1473,7 @@ test("hosted editor installer reports both digests before installing altered arc
         throw new Error(`Unexpected installer dependency: ${id}`)
       },
     }),
-  ).rejects.toThrow(`expected 03c6fb01e2200b17d2bf4259c7b66c08c9d505760d2a331e26ebfb3193bbf763, actual ${actual}`)
+  ).rejects.toThrow(`expected 090809041649da27b1235a7f3a9bdacdb35f20ae38fd0b6d6cf69f1918a145af, actual ${actual}`)
   expect(launched.map((argv) => argv[0])).toEqual(["curl"])
   expect(JSON.parse(retained.get("/runner/measurement-artifacts/editor-installer.json")!)).toMatchObject({
     actualSha256: actual,
@@ -1315,6 +1549,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   expect(cleanup, "the production owned close caller exists").toBeDefined()
   const closed: unknown[] = []
   const copies: string[] = []
+  const retainedFiles = new Map<string, string>()
   await runInNewContext(`(async () => {${cleanup}\n})()`, {
     process: { cwd: () => root, env: { RUNNER_TEMP: "/runner" } },
     console,
@@ -1326,11 +1561,13 @@ test("hosted editor caller writes the TTY command before launch and retains no i
       },
     },
     require: (id: string) => {
+      if (id === "node:crypto") return { createHash }
       if (id === "node:path") return { basename, join, dirname }
       if (id === "node:fs") {
         return {
           existsSync: () => true,
           readFileSync: () => JSON.stringify(retained),
+          writeFileSync: (path: string, content: string) => retainedFiles.set(path, content),
           mkdirSync: () => {},
           copyFileSync: (_source: string, target: string) => {
             copies.push(target)
@@ -1351,6 +1588,22 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   })
   expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/serve-fixture-id.sh")
   expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/cursor-profile/logs/exthost.log")
+  for (const path of [
+    "editor-activation.json",
+    "editor-request.json",
+    "editor-evaluations.jsonl",
+    "editor-reader-errors.jsonl",
+    "cursor-" + run.id + "/User/settings.json",
+  ]) {
+    expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/" + path)
+  }
+  const files = JSON.parse(retainedFiles.get("/runner/measurement-artifacts/editor-files.json") ?? "null") as {
+    files: Array<{ path: string; sha256: string }>
+  }
+  expect(files.files).toContainEqual({
+    path: "cursor-" + run.id + "/User/settings.json",
+    sha256: createHash("sha256").update(JSON.stringify(retained)).digest("hex"),
+  })
   expect(closed).toEqual([window])
   expect(events.at(-1)).toBe("close")
 })
@@ -1491,8 +1744,8 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 // 30729: @cto later found the LaunchServices route is not this job's: Terminal is driven by osascript
 // the job runs itself, so the responsible process is the hosted agent and Terminal needs an
 // Automation row too (run 42479488706's consent dialog named "hosted-compute-agent"). The route-B note
-// that forbade every Apple-event row is history; this test now requires the row for terminal-app and
-// its absence for every other self-responsible app.
+// that forbade every Apple-event row is history. 34601 moved that row into its own Automation step (tested
+// below), so the Screen Recording step now writes no Apple-event row for any app.
 test.each(["granted", "unreadable", "other-app"] as const)(
   "Screen Recording grant step for self-responsible apps: %s",
   (scenario) => {
@@ -1567,16 +1820,244 @@ test.each(["granted", "unreadable", "other-app"] as const)(
         expect(inserts.length).toBeGreaterThan(0)
         expect(new Set(inserts).size).toBe(1)
         expect(inserts[0]).toBe(17)
-        const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'com.apple.Terminal',X'${Buffer.from("csreq").toString("hex")}'`
-        if (scenario === "other-app") {
-          expect(calls).not.toContain("kTCCServiceAppleEvents")
-        } else {
-          expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES(${events}`)
-          expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES(${events}`)
-        }
+        expect(calls).not.toContain("kTCCServiceAppleEvents")
       }
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
   },
 )
+
+// 34601: the apps the job drives through Apple events (Terminal's own osascript; Ghostty's collector cwd read,
+// spawned from the job shell) need an Automation row for the hosted agent against the TARGET app's own bundle
+// id. Run 44146186014's Ghostty read timed out on the unanswered consent dialog because only Terminal had one.
+// This executes the step with the macOS commands as fixtures: it runs for exactly those two apps, before
+// collect, writes the 17-value row in both TCC databases, and fails the job when a row does not read back.
+test.each([
+  { app: "terminal-app", bundleId: "com.apple.Terminal", readsBack: true },
+  { app: "ghostty", bundleId: "com.mitchellh.ghostty", readsBack: true },
+  { app: "ghostty", bundleId: "com.mitchellh.ghostty", readsBack: false },
+])(
+  "Automation grant step for apps driven by Apple events: $app, reads back $readsBack",
+  ({ app, bundleId, readsBack }) => {
+    const steps = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")).jobs[
+      "measure-macos"
+    ].steps as { name?: string; id?: string; if?: string; env: Record<string, string>; run: string }[]
+    const grant = steps.find((step) => step.name?.startsWith("Grant Automation"))
+    if (!grant?.if) throw new Error("the macOS workflow has no Automation grant condition")
+    expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
+    for (const id of ["terminal-app", "ghostty"]) expect(runInNewContext(grant.if, { matrix: { id } })).toBe(true)
+    for (const id of ["alacritty", "wezterm", "warp", "iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+      expect(runInNewContext(grant.if, { matrix: { id } })).toBe(false)
+    }
+    const directory = mkdtempSync(join(tmpdir(), "automation-grant-"))
+    const bin = join(directory, "bin")
+    const journal = join(directory, "journal")
+    mkdirSync(bin)
+    const fixture = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/bin/bash\nprintf '%s\\0' ${name} "$@" >> ${shellQuote(journal)}\n${body}\n`, {
+        mode: 0o755,
+      })
+    try {
+      fixture("PlistBuddy", `echo ${bundleId}`)
+      fixture("codesign", `echo 'designated => identifier "${bundleId}"'`)
+      fixture("csreq", `cat > /dev/null; printf 'csreq' > "$3"`)
+      fixture("xxd", `od -An -tx1 "$2" | tr -d ' '`)
+      fixture("sudo", `exec "$@"`)
+      fixture("sqlite3", `case "$2" in SELECT*) ${readsBack ? "echo 2" : "true"} ;; esac`)
+      const run = spawnSync(
+        "/bin/bash",
+        ["-c", grant.run.replaceAll("/usr/libexec/PlistBuddy", join(bin, "PlistBuddy"))],
+        {
+          encoding: "utf8",
+          env: {
+            PATH: `${bin}:${process.env.PATH}`,
+            HOME: directory,
+            RUNNER_TEMP: directory,
+            ...Object.fromEntries(
+              Object.entries(grant.env).map(([key, expression]) => [
+                key,
+                runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+                  matrix: { id: app, bundle: "/Applications/Term.app" },
+                }),
+              ]),
+            ),
+          },
+        },
+      )
+      const calls = readFileSync(journal, "utf8").split("\0").join(" ")
+      const system = "/Library/Application Support/com.apple.TCC/TCC.db"
+      const user = `${directory}/Library/Application Support/com.apple.TCC/TCC.db`
+      const events = `'kTCCServiceAppleEvents','/opt/hca/hosted-compute-agent',1,2,4,1,NULL,NULL,0,'${bundleId}',X'${Buffer.from("csreq").toString("hex")}'`
+      expect(calls).toContain(`sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES(${events}`)
+      const inserts = [...calls.matchAll(/INSERT OR REPLACE INTO access VALUES\(([^)]*)\)/gu)].map(
+        (match) => (match[1] ?? "").split(",").length,
+      )
+      expect(new Set(inserts)).toEqual(new Set([17]))
+      expect(calls).not.toContain("kTCCServiceScreenCapture")
+      if (readsBack) {
+        expect(run.status, run.stderr).toBe(0)
+        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE INTO access VALUES(${events}`)
+      } else {
+        expect(run.status).toBe(1)
+        expect(run.stderr).toContain(
+          `Automation grant for /opt/hca/hosted-compute-agent to ${bundleId} did not read back from ${system}`,
+        )
+        expect(calls).not.toContain(`sqlite3 ${user}`)
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// 34562 (@chief 4e807612): the hosted macOS Ghostty run recorded intendedSubject {kind:"term"} with no id or
+// version, so no reviewed Ghostty 1.4.0 declaration could ever bind to it. The collect step's own export block
+// must name the app and its bundle version, and refuse an empty version loudly.
+// 34606: WezTerm.app's plist says 0.1.0, so its version is the bundled CLI's own `wezterm --version`; without
+// TERMINFO_TARGET_ID and that version the Darwin cwd reader refuses and osc633-p is never decided.
+test.each([
+  { app: "ghostty", plist: "1.4.0", cli: undefined, exit: 0, id: "ghostty", version: "1.4.0", error: "" },
+  // 34570: the hosted iTerm2 prompt reader binds to TERMINFO_TARGET_VERSION 3.6.11 (run 44133870892 refused without it).
+  { app: "iterm2", plist: "3.6.11", cli: undefined, exit: 0, id: "iterm2", version: "3.6.11", error: "" },
+  // 34870: the hosted Terminal.app cwd reader binds to TERMINFO_TARGET_VERSION 2.15 (run 44385516596 refused without it).
+  { app: "terminal-app", plist: "2.15", cli: undefined, exit: 0, id: "terminal-app", version: "2.15", error: "" },
+  {
+    app: "terminal-app",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "terminal-app bundle version is empty",
+  },
+  // 34666: runs 44138709249 and 44161536804 recorded the editors' intendedSubject with a version and no id, so a
+  // reviewed declaration could bind no app. The hosted Darwin receipt still selects the reader; this names the subject.
+  { app: "cursor", plist: "3.25.9", cli: undefined, exit: 0, id: "cursor", version: "3.25.9", error: "" },
+  {
+    app: "com.microsoft.VSCode",
+    plist: "1.142.0",
+    cli: undefined,
+    exit: 0,
+    id: "com.microsoft.VSCode",
+    version: "1.142.0",
+    error: "",
+  },
+  // 34672: nothing was exported for Warp, so its hosted record carried intendedSubject {kind:"term"} and no
+  // declaration could bind. Warp.app's plist says 0.2026.10.14.08.27.01 while the measured release is the channel
+  // string the DMG download uses, so the export names the channel version and refuses an empty one loudly.
+  {
+    app: "warp",
+    plist: "0.2026.10.14.08.27.01",
+    cli: undefined,
+    exit: 0,
+    id: "warp",
+    version: "v0.2026.10.14.08.27.stable_01",
+    error: "",
+  },
+  {
+    app: "warp",
+    plist: "0.2026.10.14.08.27.01",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "Warp channel version is empty",
+    warpVersion: "",
+  },
+  // cmux's id is out of 34666's scope, named there: version only until the declaration that touches it.
+  { app: "cmux", plist: "0.65.2", cli: undefined, exit: 0, id: "", version: "0.65.2", error: "" },
+  {
+    app: "cursor",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "cursor bundle version is empty",
+  },
+  {
+    app: "iterm2",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "iterm2 bundle version is empty",
+  },
+  {
+    app: "ghostty",
+    plist: "",
+    cli: undefined,
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "ghostty bundle version is empty",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "wezterm 20240203-110809-5046fc22", status: 0 },
+    exit: 0,
+    id: "wezterm",
+    version: "20240203-110809-5046fc22",
+    error: "",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "wezterm", status: 0 },
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "WezTerm binary --version has an unexpected shape",
+  },
+  {
+    app: "wezterm",
+    plist: "0.1.0",
+    cli: { out: "", status: 3 },
+    exit: 1,
+    id: undefined,
+    version: undefined,
+    error: "WezTerm binary --version failed (3)",
+  },
+])("hosted macOS $app export names the subject from bundle version '$plist' and CLI $cli.out", (row) => {
+  const { app, plist, cli, exit, id, version, error } = row
+  const warpVersion = "warpVersion" in row ? row.warpVersion : undefined
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect").run
+  const block = collect.match(/TARGET_VERSION_EXPORT=""\n[\s\S]*?\nfi\n/u)?.[0]
+  if (!block) throw new Error("The collect step's target export block is absent")
+  const directory = mkdtempSync(join(tmpdir(), "macos-target-export-"))
+  try {
+    const plistBuddy = join(directory, "PlistBuddy")
+    writeFileSync(plistBuddy, `#!/bin/bash\nprintf '%s' ${JSON.stringify(plist)}\n`, { mode: 0o755 })
+    const bundle = join(directory, `${app}.app`)
+    if (cli) {
+      mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true })
+      writeFileSync(
+        join(bundle, "Contents/MacOS", app),
+        `#!/bin/bash\ntest "$1" = --version || exit 9\nprintf '%s\\n' ${JSON.stringify(cli.out)}\nexit ${cli.status}\n`,
+        { mode: 0o755 },
+      )
+    }
+    const script = `set -euo pipefail\n${block.replaceAll("/usr/libexec/PlistBuddy", plistBuddy)}\neval "$TARGET_VERSION_EXPORT"\nprintf '%s\\n%s\\n' "\${TERMINFO_TARGET_ID:-}" "\${TERMINFO_TARGET_VERSION:-}"\n`
+    const result = spawnSync("/bin/bash", ["-c", script], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        APP_ID: app,
+        APP_BUNDLE: bundle,
+        WARP_STABLE_VERSION: warpVersion ?? "v0.2026.10.14.08.27.stable_01",
+      },
+    })
+    expect(result.status, result.stderr).toBe(exit)
+    if (exit === 0) {
+      expect(result.stdout.split("\n").slice(-3, -1)).toEqual([id, version])
+    } else {
+      expect(result.stderr).toContain(error)
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

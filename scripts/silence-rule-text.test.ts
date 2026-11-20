@@ -141,7 +141,14 @@ async function armSilences(probe: ProbeDefinition): Promise<ArmSilence[]> {
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }),
     query: async () => null,
-    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    // 34864: a DA1 asked alone is answered by the same DA1 the fenced outcomes carry (DECRQCRA's before/after controls,
+    // #34664); every other plain query stays a silent timeout. It is no fenced ask, so fencedAsks does not count it.
+    queryOutcome: async (sequence: string, pattern: RegExp) => {
+      const match = sequence === "\x1b[c" ? pattern.exec(DA1) : null
+      return match
+        ? { match, reason: "reply", raw: DA1, rawBase64: Buffer.from(DA1).toString("base64") }
+        : { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
     queryWithSentinel: async () => null,
     queryWithSentinelOutcome: async () => fencedOutcome(),
     queryMode: async () => null,

@@ -46,6 +46,7 @@ function poisonedSource(): { ctx: TermProbeSource; writes: string[]; requests: C
   firstRow[0] = "\ufffd"
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureKind: "text-cells",

@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
+import { classifyProjectionSetups, compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicContextSummary } from "./public-results.ts"
 import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts"
 import { statesFor } from "./selected-results.ts"
@@ -38,7 +38,11 @@ export interface FullProjectData {
   collected: number
   notCollected: number
   complete: boolean
+  /** Feature positions over current setups; older setups are published separately and reach no total here. */
   recordedPositions: number
+  olderPositions: number
+  /** Setup groups no order could settle, named; nothing in them was made older. */
+  undecidableSetups: readonly string[]
   /**
    * The internal preview's newest complete hourly re-measure run, raw and unreviewed, beside the reviewed answers.
    * Present only when TERMINFO_SITE_WORKING_RUNS_DIR is set; it feeds no count above.
@@ -75,12 +79,15 @@ export function loadFullProjectData(): FullProjectData {
     return candidate ? [candidate] : []
   })
   const published = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
+  const setups = classifyProjectionSetups(projection)
   const rows = buildFullProjectRows({
     census: fullContextCensus(contentDir).contexts,
     catalogIds: catalogIdsInDisplayOrder(),
     candidates,
     requiredSuiteId,
     projection,
+    standings: setups.standings,
+    undecidableSetups: setups.undecidable,
   })
   const evidenceContexts: Record<string, PublicContextSummary> = {}
   for (const row of rows.contexts) {
@@ -109,6 +116,8 @@ export function loadFullProjectData(): FullProjectData {
     notCollected: rows.notCollected,
     complete: rows.complete,
     recordedPositions: rows.recordedPositions,
+    olderPositions: rows.olderPositions,
+    undecidableSetups: rows.undecidableSetups,
     ...(working && { working }),
   }
 }

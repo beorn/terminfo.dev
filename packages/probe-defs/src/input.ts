@@ -20,6 +20,7 @@ import {
   probe,
   reportsDecidedOutcome,
   replyFailure,
+  methodUnavailable,
   validSize,
   withUnhandledModeReport,
 } from "./helpers.ts"
@@ -473,41 +474,48 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
 
 export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
-  const readInput = ctx.readInput
-  if (!input?.focusRoundTrip || !readInput) return xtestCoverage("owned focus roundtrip", inputMechanism(ctx))
+  const read = ctx.readInjected
+  if (!input?.focusRoundTrip || !read) return xtestCoverage("owned focus roundtrip with raw input", inputMechanism(ctx))
   const focusRoundTrip = input.focusRoundTrip.bind(input)
   const decrpm = await queryDecrpm(ctx, 1004)
-  const readArm = async () => {
+  const readEnabledArm = async () => {
     let focus: Awaited<ReturnType<typeof focusRoundTrip>> | undefined
-    const report =
-      (
-        await readInput(/^[\s\S]*a/, 1000, async () => {
-          focus = await focusRoundTrip()
-          await input.injectKey("a")
-        })
-      )?.[0] ?? null
-    return { report, focus }
+    const reports = await read(/^\x1b\[O\x1b\[I$/, 1000, async () => {
+      focus = await focusRoundTrip()
+    })
+    const key = await read(/^[\s\S]*a/, 1000, () => input.injectKey("a"))
+    return { reports: reports.raw, reportsBase64: reports.rawBase64, key: key.raw, keyBase64: key.rawBase64, focus }
   }
-  let enabledArm: Awaited<ReturnType<typeof readArm>>
-  let enableTimeRaw: string | null
+  const completeArm = (arm: Awaited<ReturnType<typeof readEnabledArm>>) =>
+    Boolean(arm.focus) && arm.reports === "\x1b[O\x1b[I" && arm.key === "a"
+  const enabledAttempts: Awaited<ReturnType<typeof readEnabledArm>>[] = []
+  let enabledArm: Awaited<ReturnType<typeof readEnabledArm>>
+  let enableTimeRaw: string
   try {
-    enableTimeRaw =
-      (
-        await readInput(/^[\s\S]*a/, 1000, async () => {
-          ctx.write("\x1b[?1004h")
-          await input.injectKey("a")
-        })
-      )?.[0] ?? null
-    enabledArm = await readArm()
+    // A full observation window keeps an idle-deferred enable report out of the next roundtrip.
+    const enableTime = await read(/(?!)/, 1000, async () => {
+      ctx.write("\x1b[?1004h")
+      await input.injectKey("a")
+    })
+    enableTimeRaw = enableTime.raw
+    do {
+      enabledArm = await readEnabledArm()
+      enabledAttempts.push(enabledArm)
+    } while (enabledAttempts.length < 3 && !completeArm(enabledArm))
   } finally {
     ctx.write("\x1b[?1004l")
   }
-  const resetArm = await readArm()
-  const enabled = enabledArm.report
-  const reset = resetArm.report
-  const enableTime = /^(\x1b\[[IO])?a$/.exec(enableTimeRaw ?? "")
-  const enableTimeReport = enableTime?.[1] ?? null
-  const roundTrip = enabled === "\x1b[O\x1b[Ia" ? "\x1b[O\x1b[I" : null
+  let resetFocus: Awaited<ReturnType<typeof focusRoundTrip>> | undefined
+  // A key echo cannot end the negative proof: retain late reset reports for the whole window.
+  const resetArm = await read(/(?!)/, 1000, async () => {
+    resetFocus = await focusRoundTrip()
+    await input.injectKey("a")
+  })
+  const enabled = enabledArm.reports + enabledArm.key
+  const reset = resetArm.raw
+  const enableTime = /^(?:(\x1b\[[IO])a|a(\x1b\[[IO])?)$/.exec(enableTimeRaw)
+  const enableTimeReport = enableTime?.[1] ?? enableTime?.[2] ?? null
+  const roundTrip = completeArm(enabledArm) ? "\x1b[O\x1b[I" : null
   const observed = {
     decrpm,
     enabled,
@@ -515,21 +523,19 @@ export async function focusTracking1004(ctx: TermProbeSource): Promise<ProbeCall
     enableTimeRaw,
     enableTimeReport,
     roundTrip,
-    focus: { enabled: enabledArm.focus, reset: resetArm.focus },
+    enabledAttempts,
+    focus: { enabled: enabledArm.focus, reset: resetFocus },
   }
-  if (!enabledArm.focus || !resetArm.focus) {
+  if (!enabledArm.focus || !resetFocus) {
     return invalidInteraction("Focus roundtrip did not retain its owned/helper/owned X focus witness", observed)
   }
   const expected =
-    "at most one separate enable-time report, then CSI O and CSI I before a with 1004 set; only a with 1004 reset"
+    "at most one separate enable-time report; one witnessed attempt reads CSI O then CSI I before a separate plain key; only a throughout the reset observation"
   if (reset === "a" && enableTime && roundTrip === "\x1b[O\x1b[I") {
     return interactionResult("focus-tracking:roundtrip", expected, observed)
   }
-  if (reset === "a" && enableTime && enabled === "a") {
-    return unsupportedInteraction("focus-tracking:roundtrip", expected, observed)
-  }
   return invalidInteraction(
-    "Focus roundtrip read a wrong focus report, no plain key, or a report with 1004 reset",
+    "Focus roundtrip lacked a complete isolated report/key pair within three attempts, had malformed enable-time input, or reported focus during the reset window",
     observed,
   )
 }
@@ -699,7 +705,9 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
 
 export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
-  if (!input || !readInput) return replyFailure("Mouse tracking effect needs owned click injection and input readback")
+  if (!input || !readInput) {
+    return methodUnavailable("Mouse tracking effect needs owned click injection and input readback")
+  }
   const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
   const readClick = async () =>
     (
@@ -722,13 +730,13 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
     const observed: Record<string, unknown> = { reset, set, resetAgain }
     if (!reset || !set || !resetAgain) {
       return {
-        ...replyFailure("Mouse tracking effect needs plain-a delivery in every arm"),
+        ...methodUnavailable("Mouse tracking effect needs plain-a delivery in every arm"),
         response: JSON.stringify(observed),
       }
     }
     if (X10_OR_SGR_MOUSE.test(reset) || X10_OR_SGR_MOUSE.test(resetAgain)) {
       return {
-        ...replyFailure("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
+        ...methodUnavailable("Mouse tracking reset arm emitted a report, so the set/reset contrast is unqualified"),
         response: JSON.stringify(observed),
       }
     }
@@ -747,7 +755,7 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
     observed.control = control
     if (!hasClick(control)) {
       return {
-        ...replyFailure("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
+        ...methodUnavailable("Mouse tracking negative lacks an independent 1003 left-click delivery control"),
         response: JSON.stringify(observed),
       }
     }
@@ -757,7 +765,7 @@ export async function mouseTracking1000(ctx: TermProbeSource): Promise<ProbeCall
 
 export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const { input, readInput } = ctx
-  if (!input || !readInput) return replyFailure("SGR mouse effect needs owned click injection and input readback")
+  if (!input || !readInput) return methodUnavailable("SGR mouse effect needs owned click injection and input readback")
   const untilKey = new RegExp(`^(?:${X10_OR_SGR_MOUSE.source})*a$`)
   // The 1002/1003 resets go BEFORE 1000 is set, as allMotion1003 does (#33058): Screen keeps one mouse mode,
   // so resetting 1002 after 1000h switched click reports off and every arm read a bare "a".
@@ -781,11 +789,11 @@ export async function sgrMouse1006(ctx: TermProbeSource): Promise<ProbeCallbackR
       bytes?.match(new RegExp(X10_OR_SGR_MOUSE.source, "g")),
     )
     if (!offReports?.length || !onReports?.length || !restoredReports?.length) {
-      return { ...replyFailure("SGR mouse effect needs click reports followed by plain a in every arm"), response }
+      return { ...methodUnavailable("SGR mouse effect needs click reports followed by plain a in every arm"), response }
     }
     if (!offReports.every(isX10Mouse) || !restoredReports.every(isX10Mouse)) {
       return {
-        ...replyFailure("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
+        ...methodUnavailable("SGR mouse reset arms did not restore X10 encoding, so the contrast is unqualified"),
         response,
       }
     }
@@ -800,7 +808,7 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
   const { input, readInput } = ctx
   const injectMove = input?.injectMove
   if (!input || !readInput || !injectMove) {
-    return replyFailure("All-motion effect needs owned buttonless movement and input readback")
+    return methodUnavailable("All-motion effect needs owned buttonless movement and input readback")
   }
   const geometry = ctx.captureGeometry?.geometry
   if (
@@ -829,7 +837,7 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
   try {
     const control = await withMouseModes(ctx, () => read(() => input.injectClick(1)))
     if (!control || !SGR_MOUSE.test(control)) {
-      return replyFailure("All-motion click control did not read a 1000 mouse report followed by injected plain a")
+      return methodUnavailable("All-motion click control did not read a 1000 mouse report followed by injected plain a")
     }
     ctx.write("\x1b[?1006h")
     const readMotion = async (enabled: boolean) => {
@@ -845,19 +853,19 @@ export async function allMotion1003(ctx: TermProbeSource): Promise<ProbeCallback
     const response = JSON.stringify(observed)
     if (!reset || !set || !resetAgain) {
       return {
-        ...replyFailure("All-motion effect did not read the ending plain-a delivery control in every arm"),
+        ...methodUnavailable("All-motion effect did not read the ending plain-a delivery control in every arm"),
         response,
       }
     }
     if (SGR_MOUSE.test(reset) || SGR_MOUSE.test(resetAgain)) {
       return {
-        ...replyFailure("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
+        ...methodUnavailable("All-motion reset arm emitted a mouse report, so the set/reset contrast is unqualified"),
         response,
       }
     }
     const reports = set.match(new RegExp(SGR_MOUSE.source, "g")) ?? []
     if (reports.some((report) => !isButtonEventMotion(report))) {
-      return { ...replyFailure("Buttonless all-motion injection emitted a non-motion mouse report"), response }
+      return { ...methodUnavailable("Buttonless all-motion injection emitted a non-motion mouse report"), response }
     }
     const expected =
       "buttonless movement reports only with 1003 set, after a measured 1000 click and with plain-a delivery in every arm"

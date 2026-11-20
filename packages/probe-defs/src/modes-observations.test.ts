@@ -28,99 +28,143 @@ import type {
   ProbeSuiteManifest,
 } from "./types.ts"
 
-// A DECRPM reply does not witness focus delivery. Both set/reset arms must run,
-// including when the enabled arm has no reports (the reviewed Screen reading).
-test("App focus tracking grades delivered set/reset input rather than DECRPM", async () => {
-  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
-  for (const [enableTime, enabled, reset, outcome] of [
-    ["", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[I", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["\x1b[O", "\x1b[O\x1b[Ia", "a", "supported"],
-    ["", "a", "a", "unsupported"],
-    ["\x1b[I", "a", "a", "unsupported"],
-    ["\x1b[O", "a", "a", "unsupported"],
-    ["", "\x1b[Oa", "a", "invalid"],
-    ["\x1b[O", "\x1b[Ia", "a", "invalid"],
-    ["\x1b[I\x1b[I", "\x1b[O\x1b[Ia", "a", "invalid"],
-    ["", "\x1b[I\x1b[Oa", "a", "invalid"],
-    ["", "\x1b[O\x1b[I", "a", "invalid"],
-    ["", "\x1b[O\x1b[Ia", "\x1b[O\x1b[Ia", "invalid"],
-  ] as const) {
-    let arm = 0
-    let bytes = ""
-    const input = {
+// The transport exposes immediate and later bytes separately. A matching read ends before later
+// bytes; a bounded absence read retains them. The final declared enabled frame repeats on retries.
+function focusFixture(options: {
+  enabled: readonly { report: string; late?: string }[]
+  enable?: string
+  enableLate?: string
+  resetLate?: string
+  noEnabledKey?: boolean
+  enabledKey?: string
+  missingWitness?: "enabled" | "reset"
+}) {
+  if (options.enabled.length === 0) throw new Error("Focus fixture needs an enabled stimulus")
+  let mode = false
+  let bytes = ""
+  let later = ""
+  let enabledTrips = 0
+  let resetTrips = 0
+  const readings: { raw: string; timeout: number }[] = []
+  const read: NonNullable<TermProbeSource["readInjected"]> = async (pattern, timeout, inject) => {
+    bytes = ""
+    later = ""
+    await inject()
+    let match = pattern.exec(bytes)
+    if (!match) {
+      bytes += later
+      match = pattern.exec(bytes)
+    }
+    readings.push({ raw: bytes, timeout })
+    return { match, reason: match ? "reply" : "timeout", raw: bytes, rawBase64: Buffer.from(bytes).toString("base64") }
+  }
+  const source = replayTermProbeSource(new Map(), {
+    input: {
       injectClick: async () => {
         throw new Error("Focus fixture received a click")
       },
+      injectKey: async () => {
+        if (!(mode && enabledTrips > 0 && options.noEnabledKey)) {
+          bytes += mode && enabledTrips > 0 ? (options.enabledKey ?? "a") : "a"
+        }
+      },
       focusRoundTrip: async () => {
-        bytes += arm++ === 0 ? enabled.replace(/a$/, "") : reset.replace(/a$/, "")
-        return {
+        if (mode) {
+          const frame = options.enabled[Math.min(enabledTrips++, options.enabled.length - 1)]!
+          bytes += frame.report
+          later += frame.late ?? ""
+        } else {
+          resetTrips++
+          later += options.resetLate ?? ""
+        }
+        const witness = {
           ownedWindowId: "42",
           helperWindowId: "543",
           focusedWindowIds: ["42", "543", "42"] as [string, string, string],
         }
+        return options.missingWitness === (mode ? "enabled" : "reset")
+          ? (undefined as unknown as typeof witness)
+          : witness
       },
-      injectKey: async () => {
-        if (arm === 0 || (arm === 1 ? enabled : reset).endsWith("a")) bytes += "a"
-      },
-    }
-    const source = replayTermProbeSource(new Map(), {
-      input,
-      write: (sequence) => {
-        if (sequence === "\x1b[?1004h") bytes += enableTime
-      },
-      readInput: async (pattern, _timeout, inject) => {
-        bytes = ""
-        await inject?.()
-        return pattern.exec(bytes)
-      },
-    })
-    const result = await definition.term!(source)
-    expect(arm, `${outcome}: both focus arms`).toBe(2)
-    if (outcome === "invalid") {
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
-    } else {
-      expect(result.observation?.outcome).toBe(outcome)
-    }
-  }
-})
-
-// Condition 2 of @cto 07d1c4d5 (#33305): the owned -> helper -> owned roundtrip IS the witness. An arm that
-// retains no witness is PROBE INVALID by name, so the reason names the helper step rather than a root window
-// the probe no longer visits (GTK reports no focus change to the display root).
-test("App focus tracking refuses a roundtrip that retained no X focus witness", async () => {
-  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
-  const witness = {
-    ownedWindowId: "42",
-    helperWindowId: "543",
-    focusedWindowIds: ["42", "543", "42"] as [string, string, string],
-  }
-  let arm = 0
-  let bytes = ""
-  const input: NonNullable<TermProbeSource["input"]> = {
-    injectClick: async () => {
-      throw new Error("Focus fixture received a click")
     },
-    focusRoundTrip: async () => (arm++ === 0 ? witness : (undefined as unknown as typeof witness)),
-    injectKey: async () => {
-      bytes += "a"
+    write: (sequence) => {
+      if (sequence === "\x1b[?1004h") {
+        mode = true
+        bytes += options.enable ?? ""
+        later += options.enableLate ?? ""
+      }
+      if (sequence === "\x1b[?1004l") mode = false
     },
-  }
-  const source = replayTermProbeSource(new Map(), {
-    input,
-    readInput: async (pattern, _timeout, inject) => {
-      bytes = ""
-      await inject?.()
-      return pattern.exec(bytes)
-    },
+    readInjected: read,
+    readInput: async (pattern, timeout, inject) =>
+      (
+        await read(pattern, timeout ?? 1000, async () => {
+          await inject?.()
+        })
+      ).match,
   })
-  const result = await definition.term!(source)
-  expect(arm, "both focus arms ran before the gate").toBe(2)
-  expect(result.tests).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned/helper/owned") }),
-    ]),
+  return {
+    source,
+    readings,
+    get enabledTrips() {
+      return enabledTrips
+    },
+    get resetTrips() {
+      return resetTrips
+    },
+    get enabled() {
+      return mode
+    },
+  }
+}
+
+const OI = "\x1b[O\x1b[I"
+test.each([
+  ["complete", { enabled: [{ report: OI }] }, "supported", 1],
+  ["enable-time I", { enabled: [{ report: OI }], enable: "\x1b[I" }, "supported", 1],
+  ["enable-time O", { enabled: [{ report: OI }], enable: "\x1b[O" }, "supported", 1],
+  ["late enable-time I", { enabled: [{ report: OI }], enableLate: "\x1b[I" }, "supported", 1],
+  ["idle-deferred I", { enabled: [{ report: "\x1b[O", late: "\x1b[I" }] }, "supported", 1],
+  ["raced partial O then complete", { enabled: [{ report: "\x1b[O" }, { report: OI }] }, "supported", 2],
+  ["raced bare key then complete", { enabled: [{ report: "" }, { report: OI }] }, "supported", 2],
+  ["absent reports", { enabled: [{ report: "" }] }, "invalid", 3],
+  ["enable-time report alone", { enabled: [{ report: "" }], enable: "\x1b[I" }, "invalid", 3],
+  ["enable-time O cannot complete I", { enabled: [{ report: "\x1b[I" }], enable: "\x1b[O" }, "invalid", 3],
+  ["key-phase I cannot complete O", { enabled: [{ report: "\x1b[O" }], enabledKey: "\x1b[Ia" }, "invalid", 3],
+  [
+    "no cross-attempt stitching",
+    { enabled: [{ report: "\x1b[O" }, { report: "\x1b[I" }, { report: "\x1b[O" }] },
+    "invalid",
+    3,
+  ],
+  ["wrong order", { enabled: [{ report: "\x1b[I\x1b[O" }] }, "invalid", 3],
+  ["extra enable-time reports", { enabled: [{ report: OI }], enable: "\x1b[I\x1b[I" }, "invalid", 1],
+  ["malformed enable-time input", { enabled: [{ report: OI }], enable: "x" }, "invalid", 1],
+  ["late reset report after key", { enabled: [{ report: OI }], resetLate: OI }, "invalid", 1],
+  ["missing enabled key", { enabled: [{ report: OI }], noEnabledKey: true }, "invalid", 3],
+  ["missing enabled witness", { enabled: [{ report: OI }], missingWitness: "enabled" }, "invalid", 3],
+  ["missing reset witness", { enabled: [{ report: OI }], missingWitness: "reset" }, "invalid", 1],
+] as const)("App focus tracking: %s", async (_name, options, outcome, attempts) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.focus-tracking")!
+  const fixture = focusFixture(options)
+  const result = await definition.term!(fixture.source)
+  if (outcome === "supported") expect(result.observation?.outcome).toBe("supported")
+  else expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(fixture.enabledTrips).toBe(attempts)
+  expect(fixture.resetTrips).toBe(1)
+  expect(fixture.enabled).toBe(false)
+  if (typeof result.response !== "string") throw new Error("Focus result did not retain its observations")
+  const observed = JSON.parse(result.response) as {
+    enabledAttempts: { reports: string; key: string; reportsBase64: string; keyBase64: string }[]
+  }
+  expect(observed.enabledAttempts).toHaveLength(attempts)
+  expect(observed.enabledAttempts.flatMap((arm) => [arm.reports, arm.key])).toEqual(
+    fixture.readings.slice(1, -1).map((read) => read.raw),
   )
+  for (const arm of observed.enabledAttempts) {
+    expect(Buffer.from(arm.reportsBase64, "base64").toString()).toBe(arm.reports)
+    expect(Buffer.from(arm.keyBase64, "base64").toString()).toBe(arm.key)
+  }
 })
 
 // Constructed pixel-equivalence planes are derived from the semantic parser's
@@ -210,6 +254,91 @@ test.each([null, 0] as const)("App reverse video reads controlled pixels after D
   }
   const missing = await definition.term(replayTermProbeSource(stored))
   expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+})
+
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 1, 4, 6): the row declares the reverse calibration, and
+// every read taken while DECSCNM is set (the target's baseline, paint witness, roundtrip and target) asks for
+// the reverse paint, while every read of a normal frame asks for nothing. A dropped field on any one of them
+// fails here, which a direct sentinel-read unit test cannot see.
+test("App reverse video selects the reverse screen paint on exactly the reads taken while DECSCNM is set", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  expect(definition.termScreenMode).toBe("reverse")
+  const cols = 20
+  const rows = 5
+  const surface = createSemanticSurface({ cols, rows })
+  let sequence = 0
+  const reads: Array<{ label: string; reversed: boolean; screenMode: CaptureRequest["screenMode"] }> = []
+  const plane = (rectangle: CaptureCells) => {
+    const cells: unknown[] = []
+    for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+      for (let col = rectangle.left; col <= rectangle.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        cells.push([cell.char, cell.inverse !== (surface.getMode("reverseVideo") === true)])
+      }
+    }
+    return JSON.stringify(cells)
+  }
+  const source = replayTermProbeSource(new Map(), {
+    cols,
+    rows,
+    captureKind: "pixels",
+    write: (text) => surface.feed(text),
+    queryCursorPosition: async () => {
+      const cursor = surface.getCursor()
+      return { row: cursor.y + 1, col: cursor.x + 1 }
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry, screenMode }) => {
+      if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+      reads.push({ label, reversed: surface.getMode("reverseVideo") === true, screenMode })
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+  })
+  vi.useFakeTimers()
+  let result: ProbeCallbackResult
+  try {
+    const pending = definition.term(source)
+    await vi.runAllTimersAsync()
+    result = await pending
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(result.observation?.outcome).toBe("supported")
+  const reversed = reads.filter((read) => read.reversed)
+  const normal = reads.filter((read) => !read.reversed)
+  // The target step's own baseline, paint witness, both roundtrip returns and the target itself.
+  expect(reversed.map((read) => read.label)).toEqual(
+    expect.arrayContaining([
+      "modes.reverse-video: post-sequence target — baseline",
+      "modes.reverse-video: post-sequence target — paint witness",
+      "modes.reverse-video: post-sequence target — space return — paint witness",
+      "modes.reverse-video: post-sequence target — glyph return — paint witness",
+      "modes.reverse-video: post-sequence target",
+    ]),
+  )
+  expect(reversed.every((read) => read.screenMode === "reverse")).toBe(true)
+  // Stability, seed, expected and ignored frames are normal, and say nothing.
+  expect(normal.length).toBeGreaterThan(reversed.length)
+  expect(normal.filter((read) => read.screenMode !== undefined)).toEqual([])
+  expect(surface.getMode("reverseVideo")).toBe(false)
 })
 
 // #33036: the DA sentinel answers in the same raw reply as the DECRPM 0, so the probe records
@@ -320,7 +449,7 @@ test.each([null, 0] as const)("App auto-wrap uses controlled effects after DECRP
   const inert = await definition.term(replayTermProbeSource(stored))
   expect(inert.observation?.outcome).not.toBe("supported")
   expect(inert.observation?.outcome).not.toBe("unsupported")
-  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termWrites).toBeUndefined()
 })
@@ -379,7 +508,7 @@ test.each([null, 0] as const)("App alternate-screen entry uses controlled effect
     expect(surface.getMode("altScreen")).toBe(false)
   }
   const missing = await definition.term(replayTermProbeSource(stored))
-  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termNeedsGeometry).toBe(true)
   expect(definition.termWrites).toBeUndefined()
@@ -421,7 +550,7 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
     if (mutation === "missing-up") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working DECCKM").toBe(mutation ? "unsupported" : "supported")
       expect(result.assertions).toEqual(
@@ -489,7 +618,7 @@ test.each([null, 0] as const)("App cursor keys use controlled effects after DECR
     expect(surface.getMode("applicationCursor")).toBe(false)
   }
   const inert = await definition.term(replayTermProbeSource(stored))
-  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(inert.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsDisposable).toBe(true)
   expect(definition.termWrites).toBeUndefined()
 })
@@ -534,7 +663,7 @@ test.each([null, 0] as const)("App all-motion mouse uses controlled effects afte
     if (mutation === "reset-reports" || mutation === "missing-a") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working 1003").toBe(mutation ? "unsupported" : "supported")
     }
@@ -615,7 +744,7 @@ test.each([null, 0] as const)("App mouse tracking uses controlled effects after 
     } else {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     }
     expect(surface.getMode("mouseTracking")).toBe(false)
     expect(surface.getMode("sgrMouse")).toBe(false)
@@ -669,7 +798,7 @@ test.each([null, 0] as const)("App SGR mouse uses controlled effects after DECRP
     if (mutation === "missing-click" || mutation === "missing-a" || mutation === "reset-sgr") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       const negative = mutation === "mouse-1006-noop"
       expect(result.observation?.outcome, mutation ?? "working 1006").toBe(negative ? "unsupported" : "supported")
@@ -792,6 +921,7 @@ function captureSource(
   const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
   const source: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows,
     cols,
     write: (bytes: string) => {
@@ -1085,7 +1215,7 @@ test.each([
     [2, null, null],
   ] as const) {
     const events: string[] = []
-    const replies = [snapshot, enabled]
+    const replies = [snapshot, enabled, 2]
     const context = captureSource(24, 80, [], [])
     context.write = (bytes) => {
       events.push(bytes)
@@ -1105,7 +1235,15 @@ test.each([
     if (missingReverseReader) context.capture = undefined
     const result = await definition.term!(context)
     expect(events).toEqual(
-      snapshot === 2 ? [`\x1b[?${mode}$p`, `\x1b[?${mode}h`, `\x1b[?${mode}$p`, `\x1b[?${mode}l`] : [`\x1b[?${mode}$p`],
+      snapshot === 2
+        ? [
+            `\x1b[?${mode}$p`,
+            `\x1b[?${mode}h`,
+            `\x1b[?${mode}$p`,
+            `\x1b[?${mode}l`,
+            ...(mode === 2026 ? [`\x1b[?${mode}$p`] : []),
+          ]
+        : [`\x1b[?${mode}$p`],
     )
     if (missingReverseReader) {
       expect(result.observation).toBeUndefined()
@@ -1116,7 +1254,7 @@ test.each([
       // The retained Alacritty after-set Ps 2 reply took 140 ms; it cannot witness the enabled update.
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(result.response).toBe('{"snapshot":2,"afterSet":2}')
+      expect(result.response).toBe('{"snapshot":2,"afterSet":2,"afterRestore":2}')
       expect(result.tests).toEqual([
         { id: "criterion", status: "probe-invalid", reason: expect.stringContaining("set-state control unobservable") },
       ])
@@ -1175,6 +1313,175 @@ test("a reset reply after DECSET 2026 names the capture wait when the run declar
   }
 })
 
+/**
+ * @failure WezTerm Linux withholds every in-band reply while mode 2026 is held (its mux buffers parsed actions until
+ *   reset), so the reply criterion reads "no DECRPM reply" and the row stays open with no rendered evidence, or a
+ *   capture that paints, queries or resets in-band while held reads its own released bytes as the hold (33628,
+ *   @cto ruling 1957).
+ * @level l1
+ * @consumer modes.synchronized-output App callback with the collector's syncOutputRenderedHold flag.
+ * @testonly none
+ */
+test.each(["holds", "ignores-hold", "never-releases", "control-dead", "restore-fails"] as const)(
+  "WezTerm's rendered hold is graded from colour-only frames, with nothing in-band while held: %s",
+  async (mode) => {
+    const definition = modesProbes.find((entry) => entry.id === "modes.synchronized-output")!
+    const context = captureSource(24, 80, [], [])
+    context.syncOutputRenderedHold = true
+    context.captureGeometry = { ...context.captureGeometry!, sentinel: { form: "basic", rgb: [181, 0, 181] } }
+    const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+    let held = false
+    let shown = false
+    let pending: boolean | undefined
+    const duringHold: string[] = []
+    let decrpm = 0
+    context.write = (bytes) => {
+      if (held && !bytes.includes("\x1b[?2026l")) duringHold.push(`write ${JSON.stringify(bytes)}`)
+      if (bytes.includes("\x1b[?2026h") && mode !== "ignores-hold") held = true
+      const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+      if (painted !== undefined && mode !== "control-dead") {
+        if (held) pending = painted
+        else shown = painted
+      }
+      if (bytes.includes("\x1b[?2026l")) {
+        held = false
+        if (pending !== undefined && mode !== "never-releases") shown = pending
+        pending = undefined
+        if (bytes.includes("\x1b[0m \x1b8") && mode !== "control-dead") shown = false
+      }
+    }
+    context.queryWithSentinel = async (sequence, pattern) => {
+      if (held) {
+        duringHold.push(`query ${JSON.stringify(sequence)}`)
+        return null
+      }
+      decrpm++
+      const ps = decrpm === 1 ? 2 : mode === "restore-fails" ? 1 : 2
+      return pattern.exec(`\x1b[?2026;${ps}$y`)
+    }
+    let shot = 0
+    context.capture = async (request: CaptureRequest) => {
+      expect(request.cells).toBeUndefined()
+      expect(request.locate).toEqual({ rgb: [181, 0, 181] })
+      shot++
+      return {
+        role: request.role,
+        label: request.label,
+        capturedAt: shot,
+        ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+        kind: "pixels",
+        pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+        located: shown ? box : null,
+      } satisfies ObservationFrame
+    }
+    let clock = 0
+    context.now = () => (clock += 5)
+    const result = await definition.term!(context)
+    expect(duringHold).toEqual([])
+    expect(held).toBe(false)
+    expect(shown).toBe(false)
+    if (mode === "holds") {
+      expect(result.pass).toBe(true)
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+      expect(result.note).toContain("tearing and scroll cadence unmeasured")
+      // #34961: run-parser requires the assertion itself to cite its deciding retained frame.
+      expect(result.assertions?.[0]?.observed).toContain(result.observation?.screenshotRef)
+      const response = JSON.parse(result.response!) as {
+        reads: { phase: string; located: unknown }[]
+        afterRestore: number
+      }
+      expect(response.afterRestore).toBe(2)
+      const phases = response.reads.map((r) => `${r.phase}:${r.located === null ? "absent" : "present"}`)
+      expect(phases[0]).toBe("baseline:absent")
+      expect(phases).toContain("control:present")
+      expect(phases.filter((p) => p.startsWith("held:"))).toEqual(
+        expect.arrayContaining(["held:absent", "held:absent"]),
+      )
+      expect(phases.filter((p) => p.startsWith("held:")).every((p) => p === "held:absent")).toBe(true)
+      expect(phases).toContain("released:present")
+      expect(phases.at(-1)).toBe("restored:absent")
+      return
+    }
+    // Every failure keeps the row open with its reason; this arm states no negative (@cto 1957).
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    const reason = {
+      "ignores-hold": /held paint appeared/,
+      "never-releases": /released frame did not show/,
+      "control-dead": /control frame did not show/,
+      "restore-fails": /DECRPM 2026 read 1 after the reset/,
+    }[mode]
+    expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(reason) }])
+  },
+)
+
+/**
+ * @failure The rendered hold ends on a held frame requested exactly the control's latency after DECSET 2026, which
+ *   the criterion ("requested later than the control took") does not accept (34938, @cto terminfo batch
+ *   2026-11-18 finding 2). The fixtures above advance the clock on every read, so no held request lands on the
+ *   boundary and none of them sees the equality.
+ * @level l1
+ * @consumer modes.synchronized-output App callback with the collector's syncOutputRenderedHold flag.
+ * @testonly none
+ */
+test("the rendered hold needs a held frame requested strictly later than the control's latency, never equal", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.synchronized-output")!
+  const context = captureSource(24, 80, [], [])
+  context.syncOutputRenderedHold = true
+  context.captureGeometry = { ...context.captureGeometry!, sentinel: { form: "basic", rgb: [181, 0, 181] } }
+  const box = { box: { x: 790, y: 0, width: 10, height: 20 }, pixels: 200 }
+  let held = false
+  let shown = false
+  let pending: boolean | undefined
+  context.write = (bytes) => {
+    if (bytes.includes("\x1b[?2026h")) held = true
+    const painted = bytes.includes("\x1b[45m ") ? true : bytes.includes("\x1b[0m \x1b8") ? false : undefined
+    if (painted !== undefined) {
+      if (held) pending = painted
+      else shown = painted
+    }
+    if (bytes.includes("\x1b[?2026l")) {
+      held = false
+      if (pending !== undefined) shown = pending
+      pending = undefined
+      if (bytes.includes("\x1b[0m \x1b8")) shown = false
+    }
+  }
+  context.queryWithSentinel = async (_sequence, pattern) => pattern.exec("\x1b[?2026;2$y")
+  // The clock moves only while a capture runs, 5 ms each: the control appears 5 ms after its write, the first held
+  // frame is requested 0 ms after DECSET 2026 and the second exactly 5 ms after it, on the boundary.
+  let clock = 0
+  context.now = () => clock
+  let shot = 0
+  context.capture = async (request: CaptureRequest) => {
+    clock += 5
+    shot++
+    return {
+      role: request.role,
+      label: request.label,
+      capturedAt: shot,
+      ref: `sha256:${shot.toString(16).padStart(64, "0")}`,
+      kind: "pixels",
+      pixelsDigest: shown ? "sha256:painted" : "sha256:blank",
+      located: shown ? box : null,
+    } satisfies ObservationFrame
+  }
+  const result = await definition.term!(context)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  const response = JSON.parse(result.response!) as {
+    writes: { phase: string; atMs: number }[]
+    reads: { phase: string; requestedMs: number; returnedMs: number }[]
+  }
+  const controlAt = response.writes.find((w) => w.phase === "control")!.atMs
+  const latency = response.reads.find((r) => r.phase === "control")!.returnedMs - controlAt
+  const heldAt = response.writes.find((w) => w.phase === "held")!.atMs
+  const since = response.reads.filter((r) => r.phase === "held").map((r) => r.requestedMs - heldAt)
+  expect(latency).toBe(5)
+  // The boundary sample is taken and is not enough: one more, strictly later, ends the held phase.
+  expect(since).toEqual([0, 5, 10])
+  expect(since.at(-1)!).toBeGreaterThan(latency)
+})
+
 // Ask 3: size replies or an owned width frame decide silent/Ps0 DECCOLM.
 // The protocol matrix never exercised either effect or its controls.
 test.each([null, 0] as const)("App DECCOLM reads controlled size replies after DECRPM %s", async (ps) => {
@@ -1207,7 +1514,7 @@ test.each([null, 0] as const)("App DECCOLM reads controlled size replies after D
     if (mutation === "reset-noop" || mutation === "missing-size") {
       expect(result.observation?.outcome).not.toBe("supported")
       expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
     } else {
       expect(result.observation?.outcome, mutation ?? "working width change").toBe(
         mutation ? "unsupported" : "supported",
@@ -1316,7 +1623,7 @@ test.each([null, 0] as const)("App DECCOLM reads controlled width frames after D
     if (ps === 0 && !mutation) expect(result.note).toContain("Ps 0")
   }
   const missing = await definition.term(replayTermProbeSource(stored))
-  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-invalid" })]))
+  expect(missing.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
   expect(definition.termNeedsGeometry).toBe(true)
 })
 
@@ -1754,6 +2061,7 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       cols: 80,
       rows: 24,
       write() {},
@@ -1792,6 +2100,7 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
     }
     const context: TermProbeSource = {
       kind: "live",
+      now: () => Date.now(),
       cols: 80,
       rows: 24,
       write: () => unexpected("write"),
@@ -1816,7 +2125,7 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toMatchObject([
-        expect.objectContaining({ status: "probe-invalid", reason: expect.stringContaining("owned width frame") }),
+        expect.objectContaining({ status: "probe-todo", reason: expect.stringContaining("owned width frame") }),
       ])
       if (ps === 0) expect(result.tests?.[0]?.reason).toContain("Ps 0")
     } else if (ps === 4) {
@@ -2670,7 +2979,18 @@ function stackStateSource(
   target: Record<string, string>,
   identicalReferences = false,
   fresh = true,
+  /** Each plane's glyph ink colour, so a frame carries rendering axes as a real pixel crop does (34547). */
+  ink?: Readonly<Record<string, string>>,
 ) {
+  const background = "#000000"
+  /** One glyph's worth of ink on every non-blank plane, the same coverage for each, in that plane's colour. */
+  const renderingOf = (plane: string) => {
+    if (ink === undefined) return {}
+    const inked = plane !== "blank"
+    const coverage = new Uint8Array(32).fill(inked ? 255 : 0)
+    const inkColour = inked ? (ink[plane] ?? "#808080") : background
+    return { rendering: { background, inkColour, inkCount: inked ? 32 : 0, contrast: inked ? 200 : 0, coverage } }
+  }
   const source = captureSource(24, 80, writes, frames, fresh)
   const witness = source.capture!
   source.capture = async (request) => {
@@ -2701,6 +3021,7 @@ function stackStateSource(
           kind: "pixels" as const,
           regionDigest: plane,
           pixelsDigest: `whole:${plane}`,
+          ...renderingOf(plane),
           regionRectangle: {
             x: (cells.left - 1) * pixelGeometry.cellWidth,
             y: (cells.top - 1) * pixelGeometry.cellHeight,
@@ -2788,6 +3109,29 @@ test.each(
     }
   },
 )
+
+// 34547: on real pixels a no-op color stack's PUSH fixture leaves green Y where the earlier-contrast read
+// expects magenta and contrasts blue. The oracle grades that third colour unsupported (colour-only), and the
+// stack read took every unsupported as "matched the contrast", so it recorded "earlier" and Alacritty and
+// WezTerm stayed "POP fixture persisted, PUSH fixture earlier" forever. Only a target equal to the ignored
+// frame is the contrast; the persisted contrast is then measured and both rows are decided negative.
+test("a no-op color stack is decided negative when the earlier contrast reads as a third colour", async () => {
+  const target = { "POP fixture": "persisted", "PUSH fixture": "persisted" }
+  const ink = { restored: "#ff00ff", earlier: "#0000ff", persisted: "#00ff00" }
+  for (const id of ["modes.xtpushcolors", "modes.xtpopcolors"]) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(stackStateSource([], frames, target, false, true, ink))
+    expect(result.observation?.note, id).toContain("push then pop restored no earlier state")
+    expect(result.observation?.outcome, id).toBe("unsupported")
+    expect(JSON.parse(String(result.response)), id).toMatchObject({ pop: "persisted", push: "persisted" })
+    expect(
+      frames.some(({ label }) => label.includes("PUSH fixture (persisted contrast)")),
+      `${id} measures the persisted contrast`,
+    ).toBe(true)
+  }
+})
 
 // #31742: only a painted, unchanged palette has no setup; failed paint and SGR stay Open.
 test.each(
@@ -3275,6 +3619,17 @@ test("modes.decsscls names a refused capture geometry instead of claiming the ru
   const context = captureSource(24, 80, writes, frames)
   context.captureGeometryRefusal = "cell-to-pixel calibration answered no DA1 reply"
   context.captureGeometry = undefined
+  // 34675 (@cto go-r2-1341): on a pixel run the refused geometry is the missing reading, so the row raises the named
+  // FrameUnavailable diagnostic for the collector to record as capture-refused; it writes nothing first.
+  await expect(decsscls().term!(context)).rejects.toMatchObject({
+    name: "FrameUnavailable",
+    message: expect.stringContaining(
+      "this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply",
+    ),
+  })
+  expect(writes).toEqual([])
+  // A text-cells run keeps the in-band note: pixels were never this run's reading.
+  context.runCaptureKind = "text-cells"
   const result = await decsscls().term!(context)
   expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   expect(result.note).toContain("this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply")
@@ -3292,9 +3647,33 @@ test("modes.decsscls does not grade unsupported when an honoring first frame lan
       }),
     )
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
-    // 24 rows leave 17 scrolled lines: ceil(17 / 9 * 1000) = 1889 ms, so 1.5 s is inside it.
-    expect(result.response).toContain('"timingBoundMs":1739')
+    // 24 rows leave 35 scrolled lines: ceil(35 / 9 * 1000) = 3889 ms, bound 3739 ms, so 1.5 s is inside it.
+    expect(result.response).toContain('"timingBoundMs":3739')
   })
+})
+
+test("modes.decsscls decides when the target band arrives at the slowest measured editor latency (34722)", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  // 2155 ms is what Cursor actually took to read the target band on the 2026-11-17 image (run 44200861479:
+  // cmux 1932, VS Code 2001, Cursor 2155). Under the 1889 ms window this row went probe-invalid on all three
+  // arms and a decided `unsupported` was lost; the window must outlast the reading, not the other way round.
+  await withDecssclsClock(
+    40,
+    1500,
+    async () => {
+      const result = await decsscls().term!(
+        decssclsSource(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+          cells: ["jump", "jump", "slow-t0", "slow-t1"],
+          band: ["present", "present", "absent", "present"],
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+      expect(result.response).toContain('"targetFirstBandElapsedMs":2155')
+      expect(result.response).not.toContain("outside the")
+    },
+    2155,
+  )
 })
 
 test("modes.decsscls stays inconclusive when only the target band capture lands outside the throttled window", async () => {
@@ -3315,14 +3694,16 @@ test("modes.decsscls stays inconclusive when only the target band capture lands 
         reason: "insufficient-evidence",
         assertionType: "screenshot",
       })
-      expect(result.observation?.note).toContain("outside the 1889 ms throttled window")
+      expect(result.observation?.note).toContain("outside the 3889 ms throttled window")
       // The witness frame landed early; only the band capture is late, so a band present there
       // cannot be placed inside the window and must not grade unsupported on the earlier time.
       expect(result.response).toContain('"targetFirstElapsedMs":40')
-      expect(result.response).toContain('"targetFirstBandElapsedMs":2400')
+      expect(result.response).toContain('"targetFirstBandElapsedMs":3800')
       expect(result.assertions).toBeUndefined()
     },
-    2400,
+    // 3800 sits between the 3739 ms bound and the 3889 ms window: late enough that the band cannot be
+    // placed inside the window, early enough that the phase still ends before the throttle does (34722).
+    3800,
   )
 })
 

@@ -254,7 +254,11 @@ it.each([
     }
     fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
     fixtures.raw = JSON.stringify(run)
-    vi.spyOn(collection, "writeCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
+    vi.spyOn(collection, "writeCollectedRun").mockReturnValue({
+      retained: join(fixtures.home!, "private.draft.json"),
+      placed: join(fixtures.home!, "placed.json"),
+    })
+    vi.spyOn(collection, "shadowCollectedRun").mockResolvedValue(undefined)
     vi.spyOn(sourceEnvironment, "ensureSourceSuiteEnvironment").mockReturnValue({
       TERMINFO_PROBE_HASH: manifest.probeHash,
       TERMINFO_SOURCE_REVISION: manifest.sourceRevision,

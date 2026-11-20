@@ -21,16 +21,47 @@ const array = (value: unknown, label: string): unknown[] => {
   return value
 }
 
-/** Official api.proto framing over the literal Unix socket; no SDK or logical JXA fallback. */
-export async function readITermCells(options: {
-  tty: string
-  cols: number
-  rows: number
-  /** Original server frames, before decoding; never authentication headers or cookie output. */
-  onReply?: (bytes: Uint8Array) => void
-}): Promise<TerminalTextRead> {
+type Rpc = (
+  request: string,
+  body: Record<string, unknown>,
+  response: string,
+  options?: RpcOptions,
+) => Promise<Record<string, unknown>>
+interface RpcOptions {
+  /**
+   * Nonzero statuses this caller decides itself; any other nonzero status still throws. A status the
+   * caller accepts is returned in `result.status`, never folded into a generic refusal (34570).
+   */
+  acceptStatus?: readonly number[]
+  /**
+   * Decode without proto2 defaults, so an absent optional field stays absent instead of reading as its
+   * default (an absent prompt_state is not EDITING). An absent `status` then means its declared default OK.
+   */
+  presence?: boolean
+}
+
+/** One authenticated API connection bound to the single session whose TTY is the measured owner's. */
+interface ITermApiSession {
+  rpc: Rpc
+  /** The matched session's unique identifier. */
+  session: string
+  /** The list_sessions record of the matched session. */
+  match: Record<string, unknown>
+  /** One session variable, decoded from its JSON value. */
+  variable: (session: string, name: string) => Promise<unknown>
+}
+
+/**
+ * Authenticate, open the literal Unix socket, and resolve exactly one session by the owned TTY, then run
+ * `work` on that session and close the socket. Extracted from readITermCells unchanged (34570), so the
+ * cell read and the prompt-mark read share one auth path, one socket owner and one session resolver.
+ */
+async function withITermApiSession<T>(
+  options: { tty: string; onReply?: (bytes: Uint8Array) => void; deadlineMs: number },
+  work: (api: ITermApiSession) => Promise<T>,
+): Promise<T> {
   let socket: WebSocketType | undefined
-  const deadline = Date.now() + 5000
+  const deadline = Date.now() + options.deadlineMs
   const remaining = () => {
     const time = deadline - Date.now()
     if (time <= 0) throw new Error("API read deadline exceeded")
@@ -126,11 +157,7 @@ end tell`,
       ws.onclose = () => finish(new Error("API Unix WebSocket closed before opening"))
     })
     let nextId = 0
-    const rpc = (
-      request: string,
-      body: Record<string, unknown>,
-      response: string,
-    ): Promise<Record<string, unknown>> => {
+    const rpc: Rpc = (request, body, response, rpcOptions = {}) => {
       const id = ++nextId
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => finish(new Error(`${response} deadline exceeded`)), remaining())
@@ -150,11 +177,18 @@ end tell`,
             if (!(event.data instanceof ArrayBuffer)) throw new Error("API returned a nonbinary message")
             const bytes = new Uint8Array(event.data)
             options.onReply?.(bytes)
-            const reply = server.toObject(server.decode(bytes), { defaults: true, longs: String })
+            const reply = server.toObject(
+              server.decode(bytes),
+              rpcOptions.presence ? { longs: String } : { defaults: true, longs: String },
+            )
             // Notifications have no matching request ID and are retained, but are not this RPC's result.
             if (String(reply.id) !== String(id)) return
             const result = object(reply[response], response)
-            if (result.status !== undefined && result.status !== 0) {
+            if (
+              result.status !== undefined &&
+              result.status !== 0 &&
+              !rpcOptions.acceptStatus?.includes(Number(result.status))
+            ) {
               throw new Error(`${response} status ${String(result.status)}`)
             }
             finish(undefined, result)
@@ -183,14 +217,15 @@ end tell`,
       const window = object(value, "window")
       for (const value of array(window.tabs, "tabs")) walk(object(value, "tab").root)
     }
-    const tty = async (session: string) => {
-      const response = await rpc("variable_request", { session_id: session, get: ["tty"] }, "variable_response")
-      const values = array(response.values, "TTY variable values")
+    const variable = async (session: string, name: string) => {
+      const response = await rpc("variable_request", { session_id: session, get: [name] }, "variable_response")
+      const values = array(response.values, `${name === "tty" ? "TTY" : name} variable values`)
       if (values.length !== 1 || typeof values[0] !== "string") {
-        throw new Error(`TTY variable did not return one JSON value: got ${values.length}`)
+        throw new Error(`${name === "tty" ? "TTY" : name} variable did not return one JSON value: got ${values.length}`)
       }
       return JSON.parse(values[0]) as unknown
     }
+    const tty = (session: string) => variable(session, "tty")
     const matches: Record<string, unknown>[] = []
     for (const session of sessions) {
       if (typeof session.unique_identifier !== "string" || !session.unique_identifier) {
@@ -201,50 +236,215 @@ end tell`,
     if (matches.length !== 1) throw new Error(`owned TTY ${options.tty} matches ${matches.length} API sessions`)
     const match = matches[0]
     if (!match) throw new Error("The matched TTY session is absent")
-    const session = String(match.unique_identifier)
-    const checkGrid = (value: unknown, source: string) => {
-      const size = object(value, "session grid")
-      if (size.width !== options.cols || size.height !== options.rows) {
+    return await work({ rpc, session: String(match.unique_identifier), match, variable })
+  } finally {
+    socket?.close()
+  }
+}
+
+/** Official api.proto framing over the literal Unix socket; no SDK or logical JXA fallback. */
+export async function readITermCells(options: {
+  tty: string
+  cols: number
+  rows: number
+  /** Original server frames, before decoding; never authentication headers or cookie output. */
+  onReply?: (bytes: Uint8Array) => void
+}): Promise<TerminalTextRead> {
+  try {
+    return await withITermApiSession({ ...options, deadlineMs: 5000 }, async ({ rpc, session, match, variable }) => {
+      const tty = (session: string) => variable(session, "tty")
+      const checkGrid = (value: unknown, source: string) => {
+        const size = object(value, "session grid")
+        if (size.width !== options.cols || size.height !== options.rows) {
+          throw new Error(
+            `API session grid from ${source} is ${String(size.width)}x${String(size.height)}, measured grid is ${options.cols}x${options.rows}`,
+          )
+        }
+      }
+      checkGrid(match.grid_size, "list_sessions")
+      const buffer = await rpc(
+        "get_buffer_request",
+        { session, line_range: { screen_contents_only: true }, include_styles: true },
+        "get_buffer_response",
+      )
+      const reread = await tty(session)
+      if (reread !== options.tty) {
         throw new Error(
-          `API session grid from ${source} is ${String(size.width)}x${String(size.height)}, measured grid is ${options.cols}x${options.rows}`,
+          `API session TTY changed during the physical read: expected ${options.tty}, now ${String(reread)}`,
         )
       }
-    }
-    checkGrid(match.grid_size, "list_sessions")
-    const buffer = await rpc(
-      "get_buffer_request",
-      { session, line_range: { screen_contents_only: true }, include_styles: true },
-      "get_buffer_response",
-    )
-    const reread = await tty(session)
-    if (reread !== options.tty) {
-      throw new Error(
-        `API session TTY changed during the physical read: expected ${options.tty}, now ${String(reread)}`,
+      const grid = await rpc(
+        "get_property_request",
+        { session_id: session, name: "grid_size" },
+        "get_property_response",
       )
-    }
-    const grid = await rpc("get_property_request", { session_id: session, name: "grid_size" }, "get_property_response")
-    if (typeof grid.json_value !== "string") {
-      throw new Error(`API grid property is not JSON: got ${typeof grid.json_value}`)
-    }
-    // The `grid_size` property is zero-based inclusive: iTermAPIHelper.m getGridSize answers
-    // session.screen.width - 1 and session.screen.height - 1 (v3.6.11), one less than the
-    // list_sessions value checked above. Restore those extents here and keep the check exact, so a
-    // session that really changed geometry still refuses.
-    const property = object(JSON.parse(grid.json_value), "session grid property")
-    checkGrid(
-      { width: Number(property.width) + 1, height: Number(property.height) + 1 },
-      `grid_size property ${String(property.width)}x${String(property.height)} plus 1`,
-    )
-    // The official decoder supplies proto2 defaults and repeated arrays from the pinned schema.
-    const contents = array(buffer.contents, "get_buffer_response.contents") as ITermLineContents[]
-    const cells = mapITermBufferToCells(contents, options.cols, options.rows)
-    return typeof cells === "string" ? { status: "refused", reason: cells } : { status: "read", app: "iterm2", cells }
+      if (typeof grid.json_value !== "string") {
+        throw new Error(`API grid property is not JSON: got ${typeof grid.json_value}`)
+      }
+      // The `grid_size` property is zero-based inclusive: iTermAPIHelper.m getGridSize answers
+      // session.screen.width - 1 and session.screen.height - 1 (v3.6.11), one less than the
+      // list_sessions value checked above. Restore those extents here and keep the check exact, so a
+      // session that really changed geometry still refuses.
+      const property = object(JSON.parse(grid.json_value), "session grid property")
+      checkGrid(
+        { width: Number(property.width) + 1, height: Number(property.height) + 1 },
+        `grid_size property ${String(property.width)}x${String(property.height)} plus 1`,
+      )
+      // The official decoder supplies proto2 defaults and repeated arrays from the pinned schema.
+      const contents = array(buffer.contents, "get_buffer_response.contents") as ITermLineContents[]
+      const cells = mapITermBufferToCells(contents, options.cols, options.rows)
+      return typeof cells === "string" ? { status: "refused", reason: cells } : { status: "read", app: "iterm2", cells }
+    })
   } catch (cause) {
     return {
       status: "refused",
       reason: `iTerm2 physical read: ${cause instanceof Error ? cause.message : String(cause)}`,
     }
-  } finally {
-    socket?.close()
   }
+}
+
+/** One iTerm2 Coord as the API returns it; `y` is an int64 decoded as a decimal string. */
+export interface ITermCoordRange {
+  start: { x: number; y: string }
+  end: { x: number; y: string }
+}
+
+/**
+ * The fields of one GetPromptResponse exactly as present on the wire (34570). Every field is optional
+ * because proto2 presence is kept: an absent prompt_state is absent, never the EDITING default, and an
+ * absent unique_prompt_id is never synthesised (v3.6.11 prompt.py checks HasField for both).
+ */
+export interface ITermPromptMark {
+  promptState?: "EDITING" | "RUNNING" | "FINISHED" | `unknown-${number}`
+  uniquePromptId?: string
+  promptRange?: ITermCoordRange
+  commandRange?: ITermCoordRange
+  outputRange?: ITermCoordRange
+  exitStatus?: number
+  /** The mark's command, or the current command line (v3.6.11 PTYSession GetPrompt). Empty text is kept, never absent. */
+  command?: string
+  /** The directory recorded at the prompt line, or the session's last directory. A path, passed through unchanged. */
+  workingDirectory?: string
+}
+
+/**
+ * A prompt read: the mark, or the API's own PROMPT_UNAVAILABLE (status 3), which v3.6.11 answers when the
+ * session has no prompt mark at all. That is not proof shell integration is absent (@cto R4). The other
+ * nonzero statuses, SESSION_NOT_FOUND (1) and REQUEST_MALFORMED (2), and every transport failure throw,
+ * each under its own name.
+ */
+export type ITermPromptRead = { status: "mark"; mark: ITermPromptMark } | { status: "prompt-unavailable" }
+
+/** The reads a prompt-mark row needs on the owned session, over one authenticated socket. */
+export interface ITermPromptSession {
+  /** The session's last prompt mark, or the mark with this unique id (GetPromptRequest.unique_prompt_id). */
+  readPrompt: (uniquePromptId?: string) => Promise<ITermPromptRead>
+  /** Every prompt mark id the session holds, oldest first (ListPromptsRequest); SESSION_NOT_FOUND throws. */
+  listPrompts: () => Promise<string[]>
+  /** A `user.<name>` session variable set by OSC 1337 SetUserVar; the write-order fence of each phase. */
+  readUserVariable: (name: string) => Promise<unknown>
+}
+
+const PROMPT_STATES = ["EDITING", "RUNNING", "FINISHED"] as const
+const PROMPT_STATUS_NAMES: Record<number, string> = { 1: "SESSION_NOT_FOUND", 2: "REQUEST_MALFORMED" }
+
+function coordRange(value: unknown, label: string): ITermCoordRange {
+  const range = object(value, label)
+  const coord = (point: unknown, side: string) => {
+    const c = object(point, `${label}.${side}`)
+    if (!Number.isSafeInteger(c.x) || typeof c.y !== "string" || !/^-?\d+$/.test(c.y)) {
+      throw new Error(`${label}.${side} is not an API coordinate`)
+    }
+    return { x: c.x as number, y: c.y }
+  }
+  return { start: coord(range.start, "start"), end: coord(range.end, "end") }
+}
+
+/** Map one decoded GetPromptResponse, keeping field presence. */
+function iTermPromptReadOf(response: Record<string, unknown>): ITermPromptRead {
+  const status = response.status === undefined ? 0 : Number(response.status)
+  if (status === 3) return { status: "prompt-unavailable" }
+  if (status !== 0) {
+    throw new Error(`get_prompt_response ${PROMPT_STATUS_NAMES[status] ?? "unknown status"} (status ${String(status)})`)
+  }
+  const mark: ITermPromptMark = {}
+  if (response.prompt_state !== undefined) {
+    const state = Number(response.prompt_state)
+    mark.promptState = PROMPT_STATES[state] ?? `unknown-${state}`
+  }
+  if (response.unique_prompt_id !== undefined) {
+    if (typeof response.unique_prompt_id !== "string") {
+      throw new Error("get_prompt_response unique_prompt_id is not text")
+    }
+    mark.uniquePromptId = response.unique_prompt_id
+  }
+  if (response.prompt_range !== undefined) mark.promptRange = coordRange(response.prompt_range, "prompt_range")
+  if (response.command_range !== undefined) mark.commandRange = coordRange(response.command_range, "command_range")
+  if (response.output_range !== undefined) mark.outputRange = coordRange(response.output_range, "output_range")
+  if (response.exit_status !== undefined) {
+    if (!Number.isSafeInteger(response.exit_status)) {
+      throw new Error("get_prompt_response exit_status is not an integer")
+    }
+    mark.exitStatus = response.exit_status as number
+  }
+  // 34866 (@cto 34866-osc633-controls-r1 item 2): command and working_directory keep presence too.
+  for (const [wire, field] of [
+    ["command", "command"],
+    ["working_directory", "workingDirectory"],
+  ] as const) {
+    const value = response[wire]
+    if (value === undefined) continue
+    if (typeof value !== "string") throw new Error(`get_prompt_response ${wire} is not text`)
+    mark[field] = value
+  }
+  return { status: "mark", mark }
+}
+
+/**
+ * Run `work` against the owned session's prompt mark and user variables over one authenticated socket,
+ * resolved by the same TTY match as readITermCells (34570, @cto R1). A prompt row takes several fenced
+ * phases, so its deadline is the row's, not the single cell read's 5 s.
+ */
+export async function withITermPromptSession<T>(
+  options: { tty: string; onReply?: (bytes: Uint8Array) => void; deadlineMs: number },
+  work: (session: ITermPromptSession) => Promise<T>,
+): Promise<T> {
+  return withITermApiSession(options, async ({ rpc, session, variable }) => {
+    const result = await work({
+      readPrompt: async (uniquePromptId) =>
+        iTermPromptReadOf(
+          await rpc(
+            "get_prompt_request",
+            uniquePromptId === undefined ? { session } : { session, unique_prompt_id: uniquePromptId },
+            "get_prompt_response",
+            { presence: true, acceptStatus: [1, 2, 3] },
+          ),
+        ),
+      listPrompts: async () => {
+        const response = await rpc("list_prompts_request", { session }, "list_prompts_response", {
+          presence: true,
+          acceptStatus: [1],
+        })
+        const status = response.status === undefined ? 0 : Number(response.status)
+        if (status !== 0) {
+          const name = status === 1 ? "SESSION_NOT_FOUND" : "unknown status"
+          throw new Error(`list_prompts_response ${name} (status ${String(status)})`)
+        }
+        const ids = response.unique_prompt_id ?? []
+        if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+          throw new Error("list_prompts_response unique_prompt_id is not a list of text")
+        }
+        return ids as string[]
+      },
+      readUserVariable: (name) => {
+        if (!/^[A-Za-z0-9_]+$/.test(name)) throw new Error(`user variable name ${JSON.stringify(name)} is not plain`)
+        return variable(session, `user.${name}`)
+      },
+    })
+    const reread = await variable(session, "tty")
+    if (reread !== options.tty) {
+      throw new Error(`API session TTY changed during the prompt read: expected ${options.tty}, now ${String(reread)}`)
+    }
+    return result
+  })
 }

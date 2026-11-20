@@ -446,7 +446,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent and its effect co
   expect(result?.assertions).toBeUndefined()
   expect(result?.tests).toMatchObject([
     expect.objectContaining({
-      status: "probe-invalid",
+      status: "probe-todo",
       reason: "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
     }),
   ])

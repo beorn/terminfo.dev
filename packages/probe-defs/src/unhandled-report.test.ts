@@ -186,7 +186,21 @@ test.each([
     ...recordsCsi(feed),
     code: { kind: "csi" as const, code },
   }))
-  const result = sgr(id).lib!(reportingSource({ records }))
+  const sourceWithColour = (exposed: boolean, spec: Parameters<typeof reportingSource>[0] = { records }) => {
+    const source = reportingSource(spec)
+    const getCell = source.getCell
+    source.getCell = (row, col) => ({
+      ...getCell(row, col),
+      char: (id === "sgr.underline-color-indexed" ? "AXBY" : "ABX")[col] ?? " ",
+      underline: true,
+      underlineColor: exposed ? { r: 7, g: 7, b: 7 } : null,
+      fg: (id === "sgr.underline-color-indexed" ? col < 2 : col === 0)
+        ? { r: 0, g: 0, b: 255 }
+        : { r: 0, g: 255, b: 0 },
+    })
+    return source
+  }
+  const result = sgr(id).lib!(sourceWithColour(false))
   expect(result.observation?.outcome).toBe("unsupported")
   expect(JSON.parse(result.response!)).toHaveProperty(
     "unhandled.added",
@@ -194,12 +208,27 @@ test.each([
   )
   expect(result.observation?.note).toContain("measured: library reported the code unhandled")
 
+  // CTO R1: reports are a fallback only for an unexposed colour. These exposed defaults do
+  // not calibrate a negative, so a reported rejection cannot replace their unresolved result.
+  const uncalibrated = sgr(id).lib!(sourceWithColour(true))
+  expect(uncalibrated.observation?.outcome).toBe("inconclusive")
+  expect(uncalibrated.note).toContain("not calibrated for a negative")
+  expect(uncalibrated.assertions).toBeUndefined()
+
   for (const source of [
-    reportingSource({ records: [] }),
-    reportingSource({ records: records.map((record) => ({ ...record, code: { kind: "csi", code: "otherm" } })) }),
-    reportingSource({ records: [...records, records[0]!] }),
-    reportingSource({ records, boldApplies: false }),
-    { ...reportingSource({ records }), getUnhandledSequences: undefined },
+    sourceWithColour(false, { records: [] }),
+    sourceWithColour(false, {
+      records: records.map((record) => ({ ...record, code: { kind: "csi", code: "otherm" } })),
+    }),
+    sourceWithColour(false, { records: [...records, records[0]!] }),
+    sourceWithColour(false, { records, boldApplies: false }),
+    { ...sourceWithColour(false), getUnhandledSequences: undefined },
+    ...(records.length > 1
+      ? [
+          sourceWithColour(false, { records: records.slice(0, -1) }),
+          sourceWithColour(false, { records: [...records].reverse() }),
+        ]
+      : []),
   ]) {
     const unresolved = sgr(id).lib!(source)
     expect(unresolved.observation?.outcome).not.toBe("unsupported")

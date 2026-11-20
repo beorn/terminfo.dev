@@ -235,13 +235,24 @@ describe("loadReopenedCells", () => {
   // Of the three remeasured sgr.blink rows, alacritty and ghostty exited on 2026-11-11: each cell was measured again
   // under suite 91038808c439 and its row was deleted in the placement commit that carried the deciding run (#33117).
   // iTerm2's row stays: its same-night run is open/capture-too-slow and decides nothing.
-  it("the committed file holds the 12 re-keyed multiplexer rows and the 1 remeasured row, all current", async () => {
+  it("the committed file holds the 6 remaining multiplexer rows and the 1 remeasured row, all current (#34674 retired six tmux rows whose exit was met)", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(13)
+    expect(rows).toHaveLength(7)
+    // The set, not only the count: a wrong swap keeps 7 rows, one kind, one os and one reason, so the count
+    // alone would stay green while the file names different cells (@dev/11 carve-out on the 34674 GO).
+    expect(rows.map((row) => `${row.kind}/${row.id}/${row.os}/${row.featureId}`)).toEqual([
+      "mux/screen/linux/editing.decrqcra",
+      "mux/screen/linux/extensions.kitty-graphics",
+      "mux/screen/linux/extensions.osc702-version",
+      "mux/screen/linux/extensions.osc701-locale",
+      "mux/screen/linux/extensions.osc776-cell-size",
+      "mux/screen/linux/extensions.osc7770-font-size",
+      "term/iterm2/macos/sgr.blink",
+    ])
     const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
-    expect(criterion).toHaveLength(12)
+    expect(criterion).toHaveLength(6)
     expect(new Set(criterion.map((row) => row.kind))).toEqual(new Set(["mux"]))
     expect(new Set(criterion.map((row) => row.reason))).toEqual(
       new Set(["multiplexer: silence may have stopped at the hop"]),

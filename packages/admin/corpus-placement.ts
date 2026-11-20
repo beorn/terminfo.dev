@@ -84,17 +84,21 @@ function storedRunReader(path: string, runId: string, sha256: string): () => Run
   }
 }
 
-/** One corpus read; a projection may retain compact facts while each validated raw run is still local. */
+/**
+ * One corpus read; a projection may retain compact facts while each validated raw run is still local.
+ * The suites map is the only read of the retained suite directory (#34868): a projection that needs a
+ * suite's declared cohort takes it from this argument instead of rescanning `suites/` itself.
+ */
 export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project: (run: LoadedRun, reread: () => RunTraceFacts) => T,
+  project: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
 ): T[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
-  project?: (run: LoadedRun, reread: () => RunTraceFacts) => T,
+  project?: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
 ): Array<LoadedRun | T> {
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
@@ -119,14 +123,19 @@ export function loadStoredRuns<T>(
       .sort()) {
       const runPath = join(path, file)
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
-      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256)) : run)
-      if (project || runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
+      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256), suites) : run)
+      if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
     }
   }
+  // A projecting load holds only the compact facts its project returns, so a collection at this boundary reclaims
+  // the last batch's parsed runs before the caller projects, verifies and renders on top of them. #34946: collecting
+  // after EVERY projected run bought no peak (the projection phase is not this process's high-water) and cost 24-33%
+  // of the load, so the projected and raw-retaining reads now share the one cadence above and this single boundary.
+  if (project) collectGarbage()
   return runs
 }
 
-interface MeasuredIdentity {
+export interface MeasuredIdentity {
   rule: string
   da1?: string
   xtversion?: string
@@ -145,7 +154,7 @@ type ReceiptRefusalCode =
   | "ownership-receipt-app-launch-mismatch"
   | "ownership-receipt-run-required"
 
-type PlacementRefusalCode =
+export type PlacementRefusalCode =
   | ReceiptRefusalCode
   | "identity-disputed"
   | "runtime-identity-unverified"
@@ -351,6 +360,52 @@ function identityDecision(run: LoadedRun, identity: MeasuredIdentity | null): Pl
   return identity ? null : "identity-replies-mismatch"
 }
 
+/**
+ * The identity subcheck of placement, exposed alone (#34617, @cto 34617-current-rule-contract-go-1347): this
+ * build's identity rule run against a run's retained evidence. A match is not historical admission:
+ * provenance, custody, completion and artifacts keep their own owners. Pure; no file is read here.
+ */
+export function currentIdentityRuleCheck(
+  run: LoadedRun,
+): { matched: MeasuredIdentity } | { refused: PlacementRefusalCode } {
+  const identity = identityMatch(run)
+  const refused = identityDecision(run, identity)
+  if (refused !== null) return { refused }
+  if (identity === null) throw new Error(`run ${run.runId}: identity rule passed without a measured identity`)
+  return { matched: identity }
+}
+
+/** The source files whose bytes decide `currentIdentityRuleCheck`, in a fixed order (#34617 amendment 1). */
+export const IDENTITY_RULE_SOURCES = [
+  "admin/corpus-placement.ts",
+  "terminfo.dev/src/identity-guard.ts",
+  "run-parser/src/index.ts",
+  "terminfo.dev/src/windows-process-ancestry.ts",
+] as const
+
+let identityRuleRevisionMemo: string | undefined
+
+/**
+ * A stable 12-hex fingerprint of the identity rule's source closure under `packagesDir`. It names which rule
+ * bytes a build ran, not the build's source commit, and it is no security receipt. Each file is framed by its
+ * package-relative path and byte length so a move or a split changes it.
+ */
+export function identityRuleSourceRevision(packagesDir: string): string {
+  const hash = createHash("sha256")
+  for (const relative of IDENTITY_RULE_SOURCES) {
+    const bytes = readFileSync(join(packagesDir, relative))
+    hash.update(`${relative}\0${bytes.length}\0`)
+    hash.update(bytes)
+  }
+  return hash.digest("hex").slice(0, 12)
+}
+
+/** This build's identity-rule revision, computed once per process from the packages this module ships in. */
+export function identityRuleRevision(): string {
+  identityRuleRevisionMemo ??= identityRuleSourceRevision(join(dirname(fileURLToPath(import.meta.url)), ".."))
+  return identityRuleRevisionMemo
+}
+
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
   // Darwin joins against its own owner launch record (§D4.6); Linux against the clipboard fixture.
@@ -501,9 +556,10 @@ function suiteManifestFile(manifest: ProbeSuiteManifest, contentDir: string): { 
 
 /**
  * Write this tree's suite manifest into content/suites through placement's own writer (33109, @cto 0e10dc13,
- * d05d6b32). A suite's manifest is a pure function of the tree that defines it; scripts/write-suite-manifest.ts runs
- * this on main after a definition batch's final merge, so working runs at main's suite stay readable without anyone
- * placing a run. Identical existing bytes are a no-op ("existing"); different bytes under the same suite id refuse.
+ * d05d6b32, 70719828). A suite's manifest is a pure function of the tree that defines it, and placement writes it in
+ * the change that places that suite's first run; there is no standalone step, and a tree that has placed no run needs
+ * no file because readers derive the live suite. Identical existing bytes are a no-op ("existing"); different bytes
+ * under the same suite id refuse.
  */
 export function placeSuiteManifest(
   contentDir: string = CONTENT_DIR,
@@ -514,6 +570,31 @@ export function placeSuiteManifest(
   verifySuiteManifest(file.path, snapshot, file.bytes.toString("utf8"))
   const outcome = placeExclusive(file.path, file.bytes, "collection suite manifest")
   return { suiteId: snapshot.probeHash, path: file.path, outcome }
+}
+
+/** #34885: rows the run refused to capture are not measurements, whatever the record claims. */
+const REFUSED_CAPTURE_REASON_LIMIT = 200
+
+/**
+ * A record carrying rows the run refused to capture is an incomplete reading and must not be placed.
+ * On 2026-11-18 the wezterm/macos context of run 44267909484 carried 71 such rows and 162 screenshots
+ * against 1,481-2,319 for every other context in the run; its declared selection covered what the site
+ * counts as the suite, so the refusal cannot be inferred from coverage, and it was placed as a complete
+ * reading, took the primary from a complete run, and reopened 83 decided cells until withdrawn.
+ */
+export function refusedCaptureRows(loaded: LoadedRun): string | null {
+  const results = loaded.results ?? []
+  const refused = results.filter((result) => result.harnessOutcome === "capture-refused")
+  if (refused.length === 0) return null
+  const [first] = refused
+  const reason = (first?.reason ?? "no reason recorded")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, REFUSED_CAPTURE_REASON_LIMIT)
+  return (
+    `${refused.length} of ${results.length} rows refused capture geometry ` +
+    `(first ${first?.featureId ?? "unknown"}: ${reason})`
+  )
 }
 
 /** Place one collected record after all factual checks, using its own subject and run identity. */
@@ -545,12 +626,17 @@ export function placeCollectedRun(
     Object.keys(loadFeatures(contentDir)),
     new Map([[manifest.probeHash, manifest]]),
   )
+  const refusedCapture = refusedCaptureRows(loaded)
+  if (refusedCapture !== null) {
+    throw new Error(`${source}: ${refusedCapture}; fix the capture and collect the run again`)
+  }
   const { kind, id, version } = loaded.subject
   const os = loaded.subject.os ?? "unknown"
   for (const [label, value] of Object.entries({ id, version, os, runId: loaded.runId })) {
     if (!SAFE_COMPONENT.test(value)) throw new Error(`${source}: unsafe collected ${label}: ${value}`)
   }
-  const refusal = identityDecision(loaded, identityMatch(loaded)) ?? provenanceDecision(loaded)
+  const identityCheck = currentIdentityRuleCheck(loaded)
+  const refusal = ("refused" in identityCheck ? identityCheck.refused : null) ?? provenanceDecision(loaded)
   if (refusal !== null) throw new Error(`${source}: ${refusal}`)
   preflightOwnershipReceipt(
     source,

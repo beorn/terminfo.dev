@@ -60,6 +60,17 @@ export function cellLabel(row: Pick<ReopenedCell, "kind" | "id" | "os" | "featur
   return `${row.kind}:${row.id}/${row.os}/${row.featureId}`
 }
 
+/**
+ * The one check on a sentence a correction table publishes: it names no seat, hex id or issue number, which stay in
+ * the row's `ruling`. Shared by reopened-cells and declared-untestable, so both tables refuse the same words.
+ */
+export function checkPublicText(text: string, where: string, field: string): string {
+  if (/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/.test(text)) {
+    throw new Error(`${where}: the public ${field} names a seat, an id or an issue number; keep those in ruling`)
+  }
+  return text
+}
+
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex")
 
 /**
@@ -103,10 +114,7 @@ function checkRow(value: unknown, where: string): ReopenedCell {
     return field
   }
   if (row.kind !== "term" && row.kind !== "mux") throw new Error(`${where}: kind must be term or mux`)
-  const reason = text("reason")
-  if (/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/.test(reason)) {
-    throw new Error(`${where}: the public reason names a seat, an id or an issue number; keep those in ruling`)
-  }
+  const reason = checkPublicText(text("reason"), where, "reason")
   const reopenedOn = row.reopenedOn
   if (reopenedOn === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(reopenedOn)) {
     throw new Error(`${where}: reopenedOn must be YYYY-MM-DD`)

@@ -13,6 +13,7 @@ import { CONTENT_DIR, loadStoredRuns } from "../packages/admin/corpus-placement.
 import { probeHash } from "../packages/admin/versions.ts"
 import { applyOuterAbsent } from "../docs/data/mux-outer-demotion.ts"
 import { projectResults, type SelectedContextCell } from "../docs/data/selected-results.ts"
+import { supplementOf } from "../docs/data/context-supplements.ts"
 
 // The placed tmux run #33304 closed on (measured 2026-11-11T12:47:51Z) and the placed Kitty 0.49.2 runs beside it.
 const TMUX_RUN = "fb5ebbe99ab6bbf784f279a1d5d99301"
@@ -24,11 +25,20 @@ const FIVE = [
   "modes.application-keypad",
 ]
 
-const placed = loadStoredRuns(CONTENT_DIR, Object.keys(loadFeatures(CONTENT_DIR)))
+// 34760: keep only the runs this file asserts on. Retaining the whole parsed corpus peaked at 3.7 GiB in one
+// worker, above the 3 GiB worker RSS cap, so the watchdog SIGKILLed the file; the projecting form drops every
+// other run as soon as it is parsed.
+const placed = loadStoredRuns(CONTENT_DIR, Object.keys(loadFeatures(CONTENT_DIR)), (run) =>
+  run.runId === TMUX_RUN || (run.subject.kind === "term" && run.subject.id === "kitty" && run.subject.os === "linux")
+    ? run
+    : null,
+).filter((run): run is LoadedRun => run !== null)
 const tmux = placed.find((run) => run.runId === TMUX_RUN)
 const kitty = placed.filter(
   (run) => run.subject.kind === "term" && run.subject.id === "kitty" && run.subject.os === "linux",
 )
+// The direct rule receives default outer runs, as the production projection does.
+const kittyBaselines = kitty.filter((run) => supplementOf(run.subject) === undefined)
 
 /** One context's cells as composition leaves them before the demotion: each result graded as measured. */
 function cellsOf(run: LoadedRun): Record<string, SelectedContextCell> {
@@ -57,11 +67,11 @@ test("the placed tmux run's five input rows read Untestable beside outer Kitty, 
   expect(tmux.outerApp?.subject.version).toBe("0.49.2")
   const cells = cellsOf(tmux)
   const before = Object.fromEntries(Object.entries(cells).map(([id, cell]) => [id, cell.featureResult?.status]))
-  expect(applyOuterAbsent("mux:tmux", cells, placed)).toEqual([])
+  expect(applyOuterAbsent("mux:tmux", cells, kittyBaselines)).toEqual([])
   const demoted = Object.keys(cells).filter((id) => cells[id]?.outerAbsent !== undefined)
   expect(demoted.sort()).toEqual(FIVE)
   // The outer run is the newest placed Kitty at the version the tmux run recorded.
-  const outer = kitty
+  const outer = kittyBaselines
     .filter((run) => run.subject.version === "0.49.2")
     .sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0]!
   for (const id of FIVE) {

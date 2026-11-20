@@ -21,6 +21,7 @@
 import type { ProbeDefinition, LibProbeSource } from "./types.ts"
 import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { isBlank, parserStateResult } from "./helpers.ts"
+import { raiseRefusedCapture } from "./refused-capture.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
 export interface RegionReadbackStep {
@@ -789,6 +790,10 @@ export function regionReadbackProbe(
     async term(ctx) {
       const decided = await captureRegionCallbackResult(ctx, row.id, readback)
       if (decided) return decided
+      raiseRefusedCapture(
+        ctx,
+        `${row.id}: this run installs no capture adapter, so the region fixture cannot be read back`,
+      )
       // No adapter and a REFUSED calibration both leave `ctx.capture` absent, so the row tells them
       // apart by the one fact the collector recorded: the refusal is named here, in the note that
       // already exists, so a refused run says why instead of only that no adapter is installed

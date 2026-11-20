@@ -50,6 +50,15 @@ export const MAC_ALACRITTY_LAUNCH_DEVIATION =
 export const MAC_WARP_LAUNCH_DEVIATION =
   "sticky command header turned off (Warp preference SnackbarEnabled=false) instead of stock on, so it does not cover the top grid rows the capture reads"
 
+/**
+ * #34899 (@cto REVISE 1, 2026-11-18): a run that reads Warp's block chrome leaves SnackbarEnabled at its stock value
+ * instead of writing it false, so the sticky command header renders and the measured frame can carry the chrome an
+ * A/B/C/D criterion reads. Nothing is written, so there is nothing to restore; the receipt states why this run differs
+ * from every other Warp run, and the run's own calibration remains the only proof of which rows are readable.
+ */
+export const MAC_WARP_STOCK_HEADER_DEVIATION =
+  "sticky command header left at its stock setting instead of turned off, for the prompt-mark block-chrome criterion; rows 1-3 may be covered and this run's own calibration is the only proof of what is readable"
+
 /** Matches `alacritty <semver> (<rev>)` from `alacritty --version` stdout. */
 export const ALACRITTY_VERSION_PATTERN =
   /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i

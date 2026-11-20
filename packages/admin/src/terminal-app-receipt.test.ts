@@ -305,6 +305,14 @@ test.each([
   const owner = {
     provider: "cli-process" as const,
     ownerPid: 777,
+    ownerBirth: {
+      pid: 777,
+      startedAtEpochSeconds: 1794674011,
+      rawLstart: "Sat Nov 14 16:33:31 2026\n",
+      observedAt: "2026-11-15T00:34:00.000Z",
+      observedByUid: 501,
+      observedOnHost: "owned-mac",
+    },
     tty: "/dev/ttys003",
     executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     marker: { flag: "--config-file", value: "/private/run/ghostty-run" },
@@ -369,6 +377,15 @@ test.each([
     return
   }
   const result = capture()
+  expect(result.trace).toMatchObject({
+    ownerPid: 777,
+    ownerBirthPid: 777,
+    ownerBirthRawLstart: owner.ownerBirth.rawLstart,
+    ownerBirthStartedAtEpochSeconds: 1794674011,
+    ownerBirthObservedAt: owner.ownerBirth.observedAt,
+    ownerBirthObservedByUid: 501,
+    ownerBirthObservedOnHost: "owned-mac",
+  })
   const commands = JSON.parse(String(result.trace.codesignCommandsRaw)) as { argv: string[] }[]
   expect(commands[0]).toMatchObject({
     command: "codesign",

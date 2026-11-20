@@ -8,7 +8,7 @@ import { expect, test, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { inflateSync } from "node:zlib"
 import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
-import type { CapturedFrame } from "./capture-core.ts"
+import { command, type CapturedFrame } from "./capture-core.ts"
 import type { TermProbeSource, TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 const geometry = { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 }
@@ -110,13 +110,21 @@ test.each(["basic", "reverse", "neither"] as const)(
 )
 
 // The late 3px/1px pair has the same outer width and evades a two-cell sample.
-function rasterFrame(stage: "solid" | "columns" | "rows", uneven = false): CapturedFrame {
+function rasterFrame(
+  stage: "solid" | "columns" | "rows",
+  uneven = false,
+  paint?: readonly [number, number, number],
+): CapturedFrame {
   const result = frame()
   const edges = uneven ? [2, 4, 6, 9, 10] : [2, 4, 6, 8, 10]
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
       const rgb =
-        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? col : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+        stage === "solid"
+          ? (paint ?? [255, 0, 255])
+          : (stage === "columns" ? col : row) % 2 === 0
+            ? (paint ?? [255, 0, 0])
+            : [0, 0, 0]
       for (let y = 2 + row * 2; y < 4 + row * 2; y++) {
         for (let x = edges[col]!; x < edges[col + 1]!; x++) result.rgba.set([...rgb, 255], (y * 12 + x) * 4)
       }
@@ -166,9 +174,30 @@ function gridFrame(
   return { width: size, height: size, rgba }
 }
 
-type Stage = "before grid paint" | "solid grid paint" | "column edge paint" | "row edge paint" | "restore grid paint"
+type Stage =
+  | "before grid paint"
+  | "solid grid paint"
+  | "column edge paint"
+  | "row edge paint"
+  | "reverse screen blank"
+  | "reverse screen solid paint"
+  | "reverse screen return"
+  | "restore grid paint"
+
+/** `source` with every pixel of the blank canvas colour (black) repainted `rgb`: the same paint on a reversed screen. */
+function onCanvas(source: CapturedFrame, rgb: readonly [number, number, number]): CapturedFrame {
+  const rgba = new Uint8Array(source.rgba)
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    if (rgba[offset] === 0 && rgba[offset + 1] === 0 && rgba[offset + 2] === 0) rgba.set(rgb, offset)
+  }
+  return { width: source.width, height: source.height, rgba }
+}
+const REVERSED_CANVAS = [250, 250, 250] as const
+const reversedBlank = onCanvas(blank, REVERSED_CANVAS)
+
 function calibration(
   options: {
+    screenMode?: "reverse"
     geometry?: typeof geometry
     rows?: number
     cols?: number
@@ -183,6 +212,9 @@ function calibration(
     "solid grid paint": rasterFrame("solid"),
     "column edge paint": rasterFrame("columns"),
     "row edge paint": rasterFrame("rows"),
+    "reverse screen blank": reversedBlank,
+    "reverse screen solid paint": onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS),
+    "reverse screen return": rasterFrame("solid"),
     "restore grid paint": blank,
   }
   const reads = new Map<Stage, number>()
@@ -214,6 +246,7 @@ function calibration(
     pixelGeometry: options.geometry,
     collectorLaunched: options.collectorLaunched,
     chromeBand: options.chromeBand,
+    ...(options.screenMode === undefined ? {} : { screenMode: options.screenMode }),
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
       options.beforeCapture?.(label, writes)
@@ -899,6 +932,54 @@ for (const [edge, line] of [
   })
 }
 
+// Requirement: each pixel can prove a fractional blend even when one RGB component
+// rounds to an endpoint. Existing red/magenta fixtures have no such component.
+// The second palette puts that endpoint before the informative channel (076 run).
+test.each([{ paint: [241, 77, 212] as const }, { paint: [77, 241, 212] as const }])(
+  "a quantized edge component calibrates with paint $paint",
+  async ({ paint }) => {
+    const solid = blendEdge(rasterFrame("solid", false, paint), "bottom", 240 / 241)
+    const columns = blendEdge(rasterFrame("columns", false, paint), "bottom", 240 / 241)
+    const rows = blendEdge(rasterFrame("rows", false, paint), "bottom", 240 / 241)
+    const run = calibration({
+      geometry,
+      frames: {
+        "solid grid paint": [solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rows, rows],
+      },
+    })
+    const measured = await run.promise
+    expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+    expect(measured.basis).toContain("edge blend solid bottom y=10")
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
+
+// Requirement: a global alpha cannot excuse one wholly full-paint or unchanged
+// informative pixel. Existing alpha-1/partial-line cases do not cover these
+// near-endpoint pixels once another pixel has supplied a valid fractional alpha.
+test.each([
+  { pixel: "full paint", alpha: 240 / 241 },
+  { pixel: "unchanged", alpha: 1 / 241 },
+])("a quantized edge still refuses one $pixel pixel", async ({ pixel, alpha }) => {
+  const paint = [77, 241, 212] as const
+  const solid = rasterFrame("solid", false, paint)
+  const columns = blendEdge(rasterFrame("columns", false, paint), "bottom", alpha)
+  const rows = rasterFrame("rows", false, paint)
+  columns.rgba.set([...(pixel === "full paint" ? paint : [0, 0, 0]), 255], (10 * 12 + 3) * 4)
+  const run = calibration({
+    frames: {
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rows, rows],
+    },
+  })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+  expect(run.reads.get("column edge paint")).toBe(2)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
 test("a blend pixel 2 levels off the line's alpha refuses", async () => {
   // 219 is alpha 0.859, inside the 0.01 alpha window but 2 levels from the line's 217.
   const solid = blendTop(rasterFrame("solid"))
@@ -1201,8 +1282,8 @@ const WARP_FRAMES: Record<string, string> = {
 }
 
 /** Decode one retained 8-bit RGBA, non-interlaced PNG (the collector's own frame format) without magick. */
-function retainedFrame(name: string): CapturedFrame {
-  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${WARP_FRAMES[name]}.png`, import.meta.url))
+function retainedFrame(name: string, frames: Record<string, string> = WARP_FRAMES): CapturedFrame {
+  const png = readFileSync(new URL(`../../../test-fixtures/artifacts/${frames[name]}.png`, import.meta.url))
   let offset = 8
   let width = 0
   let height = 0
@@ -1244,7 +1325,9 @@ function retainedFrame(name: string): CapturedFrame {
 // retained these five frames; the pill is 797 px at x 835-925, y 6-29 on the row and restore frames only.
 const WARP_TITLE_BAR: CaptureChromeBand = { y: 0, height: 40, reason: "Warp title bar" }
 function warpRun(chromeBand?: CaptureChromeBand) {
-  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map(retainedFrame)
+  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map((name) =>
+    retainedFrame(name),
+  )
   return calibration({
     rows: 39,
     cols: 123,
@@ -1285,4 +1368,674 @@ test("a change outside both the grid and the declared band still refuses", async
 test("a declared band that reaches the grid is refused", async () => {
   const run = calibration({ chromeBand: { y: 0, height: 2, reason: "test strip" } })
   await expect(run.promise).rejects.toThrow(/chrome band y 0..1 overlaps the witnessed grid rows 2..9/)
+})
+
+// 34664: hosted iTerm2 3.6.11 run 44161536804 retained these calibration frames. Its rounded window corner is drawn in
+// alpha: the bottom-left rim is alpha 0, 4, 70, 207 with the paint's RGB, so an RGB-only class counted the alpha-4
+// pixel as paint, split the corner cut, and refused "non-solid grid: 203837 pixels in 560x364".
+const ITERM2_FRAMES: Record<string, string> = {
+  before: "1a21d43f55843b2466ba495fe9148e3d6851541c44914ac9563e194ef347d691",
+  solid: "e9c56d4324b725634f54cea7130cc509602c37f91aaf65a50db2bcfce9b9c02d",
+}
+
+function iterm2SolidRun(solid = retainedFrame("solid", ITERM2_FRAMES)) {
+  const before = retainedFrame("before", ITERM2_FRAMES)
+  return calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: { "before grid paint": [before, before], "solid grid paint": [solid, solid] },
+  })
+}
+
+test("the retained iTerm2 transparent corner rim joins the fillet instead of splitting the grid", async () => {
+  // These frames were taken under iTerm2's 61 pt "clear scrollback history?" strip, raised by the run's own CSI 3 J,
+  // whose shadow darkens rows 94..97 just above the grid in both frames. With the rim no longer splitting the corner,
+  // calibration gets past the solid-grid check and refuses on that shadow instead, which is the next stage's
+  // refusal. The hosted launch now sets PreventEscapeSequenceFromClearingHistory, so the strip is never raised.
+  await expect(iterm2SolidRun().promise).rejects.toThrow(
+    /^(?!.*non-solid grid).*paint changed pixels outside the witnessed grid/s,
+  )
+})
+
+test("a translucent pixel inside the retained iTerm2 grid is still an interior hole", async () => {
+  const solid = retainedFrame("solid", ITERM2_FRAMES)
+  // The paint's own RGB at alpha 4, well inside the grid: a hole no corner reaches.
+  solid.rgba[(300 * solid.width + 300) * 4 + 3] = 4
+  await expect(iterm2SolidRun(solid).promise).rejects.toThrow(/holes or separate patches/)
+})
+
+// 34664: hosted iTerm2 3.6.11 run 44178738960 (suite eddeab8ab928), with no clear-scrollback strip. Every stage changes
+// only the 560x425 grid at x 5..564, y 35..459, and the restore frame equals the before frame; six pixels of the rounded
+// bottom-left corner are translucent (alpha 4 to 207) and take each stage's colour at their own alpha.
+const ITERM2_RUN2_FRAMES: Record<string, string> = {
+  firstBefore: "23c43a4df0e2a6c8403328b520b17be3641b04c7d6a4824bdeaae49848f715c1",
+  before: "f2e561f72d5d8f8d87569a0beaac845122e9effd8caf23cbda8c50f3eb55e5b0",
+  solid: "7ccdc0222c95134e45610327fce648675a98c81deda3e2fb8d8628da311caddc",
+  columns: "ca266edce439840d0977e688c30dfc8fe3ed77718b540dbe594d5322705e1ad5",
+  rows: "b74946be6e957f3b807853cdc7b92afcda8e37832832af7d65fb6cdd659ced97",
+}
+
+test("the retained strip-free iTerm2 calibration measures its 80x25 grid at 7x17 through a translucent corner", async () => {
+  const frame = (name: string) => retainedFrame(name, ITERM2_RUN2_FRAMES)
+  const run = calibration({
+    rows: 25,
+    cols: 80,
+    collectorLaunched: true,
+    frames: {
+      // The run's own order: the first before capture still shows a title-bar button settling, the confirmations do not.
+      "before grid paint": [frame("firstBefore"), frame("before"), frame("before"), frame("before")],
+      "solid grid paint": Array.from({ length: 4 }, () => frame("solid")),
+      "column edge paint": Array.from({ length: 4 }, () => frame("columns")),
+      "row edge paint": Array.from({ length: 4 }, () => frame("rows")),
+      "restore grid paint": Array.from({ length: 4 }, () => frame("before")),
+    },
+  })
+  const measured = await run.promise
+  expect(measured.basis).toMatch(/80 columns x 25 rows/)
+  expect(measured.basis).toMatch(/7x17/)
+})
+
+test("a translucent window has no opaque paint and refuses where the opaque window calibrates", async () => {
+  // The same frames at alpha 128 throughout: identical RGB, but no pixel the window covers opaquely.
+  const translucent = (source: CapturedFrame): CapturedFrame => ({
+    ...source,
+    rgba: source.rgba.map((value, index) => (index % 4 === 3 ? 128 : value)),
+  })
+  // Scripted frames past their list's end advance the clock, so each stage repeats enough for the whole run.
+  const repeated = (source: CapturedFrame) => Array.from({ length: 16 }, () => translucent(source))
+  await expect(calibration().promise).resolves.toBeDefined()
+  const run = calibration({
+    frames: {
+      "before grid paint": repeated(blank),
+      "solid grid paint": repeated(rasterFrame("solid")),
+      "column edge paint": repeated(rasterFrame("columns")),
+      "row edge paint": repeated(rasterFrame("rows")),
+      "restore grid paint": repeated(blank),
+    },
+  })
+  const message = await run.promise.then(
+    () => "calibrated",
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  )
+  expect(message).toMatch(/^Capture calibration/)
+  expect(message).not.toMatch(/timed out|deadline/i)
+})
+
+// 34480 (@cto 34480-fresh-owner-contract-go-2141): deterministic +-1-code content-coordinate ordered dither
+// (26 occupied triples in the 3x3x3 L_infinity ball around each paint mode, period 32x32) modeled from the
+// retained Terminal.app 2.15 macOS specimen (860x499 window, 840x450 grid at 10,39 for 120x30 cells, 7x15 pitch).
+const DITHER_DELTAS_26: ReadonlyArray<readonly [number, number, number]> = (() => {
+  const out: Array<readonly [number, number, number]> = []
+  for (const dr of [0, -1, 1]) {
+    for (const dg of [0, -1, 1]) {
+      for (const db of [0, -1, 1]) {
+        if (dr === -1 && dg === -1 && db === -1) continue // 26 of 27 triples in B_inf(mode, 1)
+        out.push([dr, dg, db])
+      }
+    }
+  }
+  return out
+})()
+
+function ditherDeltaAt(x: number, y: number, scale = 1): readonly [number, number, number] {
+  const tileX = x & 31
+  const tileY = y & 31
+  const index = (tileY * 32 + tileX) % 64
+  // ~40.6% modal (0,0,0), remainder distributed across the other 25 triples of DITHER_DELTAS_26
+  const delta = index < 26 ? DITHER_DELTAS_26[index]! : [0, 0, 0]
+  return [delta[0] * scale, delta[1] * scale, delta[2] * scale]
+}
+
+function clampByte(value: number): number {
+  return Math.max(0, Math.min(255, value))
+}
+
+function applyDitherRect(
+  source: CapturedFrame,
+  rect: { x: number; y: number; width: number; height: number },
+  scale = 1,
+): CapturedFrame {
+  const rgba = new Uint8Array(source.rgba)
+  for (let y = rect.y; y < rect.y + rect.height; y++) {
+    for (let x = rect.x; x < rect.x + rect.width; x++) {
+      const offset = (y * source.width + x) * 4
+      const [dr, dg, db] = ditherDeltaAt(x, y, scale)
+      rgba[offset] = clampByte(rgba[offset]! + dr)
+      rgba[offset + 1] = clampByte(rgba[offset + 1]! + dg)
+      rgba[offset + 2] = clampByte(rgba[offset + 2]! + db)
+    }
+  }
+  return { width: source.width, height: source.height, rgba }
+}
+
+function ditheredBaseFrame(
+  width = 12,
+  height = 12,
+  base: readonly [number, number, number] = [32, 35, 45],
+): CapturedFrame {
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    rgba.set([base[0], base[1], base[2], 255], offset)
+  }
+  return applyDitherRect({ width, height, rgba }, { x: 0, y: 0, width, height }, 1)
+}
+
+function ditheredStageFrame(
+  beforeFrame: CapturedFrame,
+  stage: "solid" | "columns" | "rows",
+  options: {
+    columnEdges?: readonly number[]
+    rowEdges?: readonly number[]
+    form?: "basic" | "reverse"
+    scale?: number
+    solidMode?: readonly [number, number, number]
+    calMode?: readonly [number, number, number]
+    blankMode?: readonly [number, number, number]
+  } = {},
+): CapturedFrame {
+  const columnEdges = options.columnEdges ?? [2, 4, 6, 8, 10]
+  const rowEdges = options.rowEdges ?? [2, 4, 6, 8, 10]
+  const form = options.form ?? "basic"
+  const scale = options.scale ?? 1
+  const solidMode = options.solidMode ?? [163, 117, 196]
+  const calMode = options.calMode ?? (form === "reverse" ? solidMode : [180, 55, 55])
+  const blankMode = options.blankMode ?? [25, 28, 36]
+  const rgba = new Uint8Array(beforeFrame.rgba)
+  for (let row = 0; row < rowEdges.length - 1; row++) {
+    for (let col = 0; col < columnEdges.length - 1; col++) {
+      const on = stage === "solid" || (stage === "columns" ? col : row) % 2 === 0
+      for (let y = rowEdges[row]!; y < rowEdges[row + 1]!; y++) {
+        for (let x = columnEdges[col]!; x < columnEdges[col + 1]!; x++) {
+          const offset = (y * beforeFrame.width + x) * 4
+          if (!on && form === "reverse" && options.blankMode === undefined) {
+            // In reverse mode (`\x1b[27m`), blank cells keep the exact dithered baseline pixels from `beforeFrame`.
+            continue
+          }
+          const mode = stage === "solid" ? solidMode : on ? calMode : blankMode
+          const [dr, dg, db] = ditherDeltaAt(x, y, scale)
+          rgba.set([clampByte(mode[0] + dr), clampByte(mode[1] + dg), clampByte(mode[2] + db), 255], offset)
+        }
+      }
+    }
+  }
+  return { width: beforeFrame.width, height: beforeFrame.height, rgba }
+}
+
+test.each(["basic", "reverse"] as const)(
+  "R=1 occupied-member paint classes calibrate a dithered Terminal.app 2.15 120x30 specimen in %s form and record the class basis (34480)",
+  async (form) => {
+    const width = 860
+    const height = 499
+    const cols = 120
+    const rows = 30
+    const columnEdges = Array.from({ length: cols + 1 }, (_, index) => 10 + index * 7)
+    const rowEdges = Array.from({ length: rows + 1 }, (_, index) => 39 + index * 15)
+    const before = ditheredBaseFrame(width, height, [32, 35, 45])
+    const solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges, form })
+    const columns = ditheredStageFrame(before, "columns", { columnEdges, rowEdges, form })
+    const rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges, form })
+    const run = calibration({
+      rows,
+      cols,
+      geometry: { cellWidth: 7, cellHeight: 15, textWidth: 840, textHeight: 450 },
+      frames: {
+        "before grid paint": [before, before],
+        "solid grid paint": form === "basic" ? [solid, solid] : [before, before, solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rowsFrame, rowsFrame],
+        "restore grid paint": [before, before],
+      },
+      beforeCapture: (label) => {
+        if (form === "reverse" && label === "collector raster calibration: solid grid paint basic confirmation") {
+          throw Object.assign(new Error("Capture calibration solid grid paint basic: paint witness timeout"), {
+            name: "CapturePaintTimeout",
+          })
+        }
+      },
+    })
+    const measured = await run.promise
+    expect(measured.origin).toEqual({ x: 10, y: 39 })
+    expect(measured.pixelGeometry).toEqual({ cellWidth: 7, cellHeight: 15, textWidth: 840, textHeight: 450 })
+    expect(measured.sentinel).toEqual({ form, rgb: [163, 117, 196] })
+    expect(measured.basis).toContain(`paint classes R<=1 G>=16 (solid 26, columns 26/26, rows 26/26 occupied triples)`)
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
+
+test("R=1 occupied-member classes calibrate a dithered 4x4 grid with clipped last row and inherited row anchors (34480)", async () => {
+  const before = ditheredBaseFrame(12, 12)
+  const columnEdges = [2, 4, 6, 8, 10]
+  const rowEdges = [2, 4, 6, 8, 9]
+  const solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges })
+  const columns = ditheredStageFrame(before, "columns", { columnEdges, rowEdges })
+  const rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges })
+  const run = calibration({
+    rows: 4,
+    cols: 4,
+    geometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({
+    origin: { x: 2, y: 2 },
+    pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+    visible: { width: 8, height: 7 },
+  })
+  expect(measured.basis).toMatch(/rows clipped 1 px at the far edge/)
+  expect(measured.basis).toMatch(/paint classes R<=1 G>=16/)
+})
+
+test.each([
+  "plus-or-minus-2 code spread outside R=1",
+  "1-code-step drift chain reaching +2..+6 from mode",
+  "antialiased foreign ramp across solid paint",
+  "hole reusing existing baseline dither triple",
+  "extra stripe reusing calibration paint class",
+  "missing column edge reusing blank paint class",
+  "fractional pitch reusing the two dithered stripe classes",
+  "one column scanline shifted in dithered class",
+  "wrong-class pixel on corner-fillet scanline",
+  "columns stripe classes closer than G=16",
+  "rows stripe classes closer than G=16",
+] as const)("R=1 calibration refuses %s and still confirms baseline restoration (34480)", async (fault) => {
+  const isWide = fault === "extra stripe reusing calibration paint class"
+  const size = isWide ? 20 : 12
+  const before = ditheredBaseFrame(size, size)
+  const scale = fault === "plus-or-minus-2 code spread outside R=1" ? 2 : 1
+  const columnEdges = isWide
+    ? [2, 6, 10, 14, 18]
+    : fault === "fractional pitch reusing the two dithered stripe classes"
+      ? [2, 4, 6, 9, 10]
+      : [2, 4, 6, 8, 10]
+  const rowEdges = isWide ? [2, 6, 10, 14, 18] : [2, 4, 6, 8, 10]
+  let solid = ditheredStageFrame(before, "solid", { columnEdges, rowEdges, scale })
+  let columns = ditheredStageFrame(before, "columns", {
+    columnEdges,
+    rowEdges,
+    scale,
+    ...(fault === "columns stripe classes closer than G=16" ? { blankMode: [170, 55, 55] } : {}),
+  })
+  let rowsFrame = ditheredStageFrame(before, "rows", { columnEdges, rowEdges, scale })
+
+  if (fault === "1-code-step drift chain reaching +2..+6 from mode") {
+    for (let dx = 0; dx < 6; dx++) {
+      const offset = (5 * 12 + (3 + dx)) * 4
+      solid.rgba.set([163, 117, 196 + dx + 1, 255], offset)
+    }
+  } else if (fault === "antialiased foreign ramp across solid paint") {
+    for (let dx = 0; dx < 6; dx++) {
+      const t = (dx + 1) / 6
+      const offset = (5 * 12 + (3 + dx)) * 4
+      solid.rgba.set(
+        [Math.round(163 + t * (32 - 163)), Math.round(117 + t * (35 - 117)), Math.round(196 + t * (45 - 196)), 255],
+        offset,
+      )
+    }
+  } else if (fault === "hole reusing existing baseline dither triple") {
+    const offset = (5 * 12 + 5) * 4
+    solid.rgba.set(before.rgba.slice(offset, offset + 4), offset)
+  } else if (fault === "extra stripe reusing calibration paint class") {
+    // Paint x=7..8 inside blank column 1 (x=6..9) with column 0's calibration triples so scanline sees 6 stripes
+    for (let y = 2; y < 18; y++) {
+      for (let x = 7; x <= 8; x++) {
+        const src = (y * size + (x - 4)) * 4
+        const dst = (y * size + x) * 4
+        columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+      }
+    }
+  } else if (fault === "missing column edge reusing blank paint class") {
+    for (let y = 2; y < 10; y++) {
+      for (let x = 6; x < 8; x++) {
+        const src = (y * 12 + (x - 2)) * 4
+        const dst = (y * 12 + x) * 4
+        columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+      }
+    }
+  } else if (fault === "one column scanline shifted in dithered class") {
+    const src = (9 * 12 + 6) * 4
+    const dst = (9 * 12 + 8) * 4
+    columns.rgba.set(columns.rgba.slice(src, src + 4), dst)
+  } else if (fault === "wrong-class pixel on corner-fillet scanline") {
+    const corners: ReadonlyArray<readonly [number, number]> = [
+      [2, 2],
+      [9, 2],
+      [2, 9],
+      [9, 9],
+    ]
+    const cutToBefore = (source: CapturedFrame): CapturedFrame => {
+      const out = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+      for (const [x, y] of corners) {
+        const off = (y * out.width + x) * 4
+        out.rgba.set(before.rgba.slice(off, off + 4), off)
+      }
+      return out
+    }
+    solid = cutToBefore(solid)
+    columns = cutToBefore(columns)
+    rowsFrame = cutToBefore(rowsFrame)
+    const calSrc = (4 * 12 + 2) * 4
+    const blankDst = (2 * 12 + 5) * 4
+    columns.rgba.set(columns.rgba.slice(calSrc, calSrc + 4), blankDst)
+  } else if (fault === "rows stripe classes closer than G=16") {
+    // Columns have modes (180,55,55) and (180,55,72) at distance 17 >= 16 with 0 spread, while rows have +-1 spread so distance drops to 15 < 16.
+    columns = ditheredStageFrame(before, "columns", { calMode: [180, 55, 55], blankMode: [180, 55, 72], scale: 0 })
+    rowsFrame = ditheredStageFrame(before, "rows", { calMode: [180, 55, 55], blankMode: [180, 55, 72], scale: 1 })
+  }
+
+  const run = calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  const expectedPattern =
+    fault === "plus-or-minus-2 code spread outside R=1" ||
+    fault === "1-code-step drift chain reaching +2..+6 from mode" ||
+    fault === "antialiased foreign ramp across solid paint" ||
+    fault === "hole reusing existing baseline dither triple"
+      ? /non-solid grid/
+      : fault === "extra stripe reusing calibration paint class" ||
+          fault === "missing column edge reusing blank paint class"
+        ? /missing or extra grid edge/
+        : fault === "fractional pitch reusing the two dithered stripe classes"
+          ? /fractional pitch/
+          : fault === "one column scanline shifted in dithered class"
+            ? /nonuniform columns/
+            : fault === "wrong-class pixel on corner-fillet scanline"
+              ? /at 5,2 on cell 2/
+              : /separated by \d+ < 16 codes/
+  await expect(run.promise).rejects.toThrow(expectedPattern)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test.each(["flat dithered solid frame", "1-code change at 1 pixel inside before's own dither class"] as const)(
+  "relational restore refuses %s even when calibration stages pass at R=1 (34480)",
+  async (restoreFault) => {
+    const before = ditheredBaseFrame(12, 12)
+    const solid = ditheredStageFrame(before, "solid")
+    const columns = ditheredStageFrame(before, "columns")
+    const rowsFrame = ditheredStageFrame(before, "rows")
+    const badRestore =
+      restoreFault === "flat dithered solid frame"
+        ? solid
+        : (() => {
+            const copy = { width: before.width, height: before.height, rgba: new Uint8Array(before.rgba) }
+            const offset = (5 * 12 + 5) * 4
+            copy.rgba[offset + 2] = copy.rgba[offset + 2] === 45 ? 44 : 45
+            return copy
+          })()
+    const run = calibration({
+      rows: 4,
+      cols: 4,
+      frames: {
+        "before grid paint": [before, before],
+        "solid grid paint": [solid, solid],
+        "column edge paint": [columns, columns],
+        "row edge paint": [rowsFrame, rowsFrame],
+        "restore grid paint": [badRestore, badRestore],
+      },
+    })
+    await expect(run.promise).rejects.toMatchObject({
+      name: "CaptureRestoreFailed",
+      message: expect.stringMatching(/restore grid paint.*timeout/),
+    })
+  },
+)
+
+test("calibration returns collector-local occupied background and sentinel paintClasses and refuses when their classes are closer than G=16 (34480)", async () => {
+  const before = ditheredBaseFrame(12, 12)
+  const solid = ditheredStageFrame(before, "solid")
+  const columns = ditheredStageFrame(before, "columns")
+  const rowsFrame = ditheredStageFrame(before, "rows")
+  // Chrome outside the 8x8 grid at (2,2) carries a distinct title-bar colour (30,30,30) that must NOT enter background.members.
+  before.rgba.set([30, 30, 30, 255], 0)
+  solid.rgba.set([30, 30, 30, 255], 0)
+  columns.rgba.set([30, 30, 30, 255], 0)
+  rowsFrame.rgba.set([30, 30, 30, 255], 0)
+  const ok = await calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  }).promise
+  expect(ok.paintClasses).toBeDefined()
+  expect(ok.paintClasses?.background.anchor).toEqual([32, 35, 45])
+  expect(ok.paintClasses?.sentinel.anchor).toEqual([163, 117, 196])
+  expect(ok.paintClasses?.background.members.has((30 << 16) | (30 << 8) | 30)).toBe(false)
+  expect(ok.paintClasses?.background.members.has((32 << 16) | (35 << 8) | 45)).toBe(true)
+  expect(ok.paintClasses?.sentinel.members.has((163 << 16) | (117 << 8) | 196)).toBe(true)
+
+  // A solid witness whose occupied R=1 class is separated from the unmasked before background class by 15 < 16 codes refuses.
+  const closeSolid = ditheredStageFrame(before, "solid", { solidMode: [32, 35, 62] })
+  const closeRun = calibration({
+    rows: 4,
+    cols: 4,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [closeSolid, closeSolid],
+      "column edge paint": [columns, columns],
+      "row edge paint": [rowsFrame, rowsFrame],
+      "restore grid paint": [before, before],
+    },
+  })
+  await expect(closeRun.promise).rejects.toThrow(
+    /background class .* and witness class .* are separated by 15 < 16 codes/,
+  )
+})
+
+// #34932 (@cto 34932-reverse-seam-ruling-2325 items 2, 3, 6): with the reverse screen mode requested, the
+// same canvas and lifetime witnesses normal -> reverse -> normal. No existing case sets DECSCNM at all, so
+// none of them can see a witness that is synthesized, skipped, kept after a failed return, or left set.
+const DECSCNM_SET = "\x1b[?5h"
+const DECSCNM_RESET = "\x1b[?5l"
+
+test("an undeclared calibration never sets the reverse screen mode and returns no reverse witness", async () => {
+  const run = calibration()
+  const result = await run.promise
+  expect(result.reverseScreen).toBeUndefined()
+  expect(run.writes.join("")).not.toContain(DECSCNM_SET)
+  expect(run.reads.get("reverse screen blank")).toBeUndefined()
+})
+
+test("a working inversion witnesses the reverse background and the sentinel paint actually seen under it", async () => {
+  const run = calibration({ screenMode: "reverse" })
+  const result = await run.promise
+  // The normal reading is unchanged by the extra witness.
+  expect(result).toMatchObject({ pixelGeometry: geometry, sentinel: { form: "basic", rgb: [255, 0, 255] } })
+  expect(result.reverseScreen).toMatchObject({
+    status: "witnessed",
+    sentinel: { form: "basic", rgb: [10, 20, 30] },
+    paintClasses: { background: { anchor: [250, 250, 250] }, sentinel: { anchor: [10, 20, 30] } },
+  })
+  // Normal -> reverse -> normal on one canvas: set after the row stage, reset before the return is proven.
+  const all = run.writes.join("")
+  const set = all.indexOf(DECSCNM_SET)
+  const reset = all.indexOf(DECSCNM_RESET, set)
+  expect(set).toBeGreaterThan(all.indexOf("\x1b[41m"))
+  expect(reset).toBeGreaterThan(set)
+  expect(run.reads.get("reverse screen return")).toBe(2)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+})
+
+test("a sentinel paint the mode leaves unchanged is still the witnessed reverse pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen solid paint": Array(2).fill(onCanvas(rasterFrame("solid"), REVERSED_CANVAS)) },
+  })
+  const result = await run.promise
+  // Same sentinel colour as the normal paint, but measured on the reversed canvas: its background is the
+  // reverse one, which no copy of the normal pair could carry.
+  expect(result.reverseScreen).toMatchObject({
+    status: "witnessed",
+    sentinel: { rgb: [255, 0, 255] },
+    paintClasses: { background: { anchor: [250, 250, 250] }, sentinel: { anchor: [255, 0, 255] } },
+  })
+})
+
+// #34932 (@cpo/term 167a05b6; @cto 34932-equal-paint-amendment-0443): Alacritty on Linux ignores DECSCNM. An
+// unavailable witness refused every read under the mode, so modes.reverse-video went from Unsupported (its pixel read
+// saw no change) to PROBE INVALID. A current blank and a fresh sentinel paint, both confirmed under the mode and
+// equal to the normal pair, are a witness; the probe, not calibration, still decides the feature.
+test("an ignored reverse screen mode is witnessed with the measured paint, which equals the normal pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: {
+      "reverse screen blank": [blank, blank],
+      "reverse screen solid paint": Array(2).fill(rasterFrame("solid")),
+    },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen?.status).toBe("witnessed")
+  if (result.reverseScreen?.status !== "witnessed") throw new Error("expected a witnessed reverse screen")
+  expect(result.reverseScreen.paintClasses).toEqual(result.paintClasses)
+  expect(result.basis).toContain("reverse screen paint measured under DECSCNM stayed equal to the normal pair")
+  // Measured under the mode, never copied: both reverse stages were read.
+  expect(run.reads.get("reverse screen blank")).toBe(2)
+  expect(run.reads.get("reverse screen solid paint")).toBe(2)
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("a reversing terminal's witness does not claim paint equal to the normal pair", async () => {
+  const result = await calibration({ screenMode: "reverse" }).promise
+  expect(result.reverseScreen?.status).toBe("witnessed")
+  expect(result.basis).not.toContain("stayed equal to the normal pair")
+})
+
+test("a sentinel that differs from the normal pair on an equal reverse blank is a named unavailable witness", async () => {
+  const other = rasterFrame("solid", false, [10, 20, 30])
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, blank], "reverse screen solid paint": [other, other] },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason:
+      "reverse screen blank stayed equal to the normal blank, but its measured sentinel paint classes differ from the normal pair",
+  })
+  expect(result.basis).not.toContain("stayed equal to the normal pair")
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("an ignored mode whose sentinel paint never shows is a named unavailable witness, never the normal pair", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, blank], "reverse screen solid paint": [blank, blank, blank, blank] },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toMatchObject({
+    status: "unavailable",
+    reason: expect.stringContaining("was not observed on the reversed blank canvas"),
+  })
+})
+
+test("an ambiguous reverse witness is a named unavailable outcome", async () => {
+  const holed = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
+  holed.rgba.set([...REVERSED_CANVAS, 255], (5 * 12 + 5) * 4)
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen solid paint": [holed, holed] } })
+  const result = await run.promise
+  expect(result.reverseScreen).toMatchObject({
+    status: "unavailable",
+    reason: expect.stringContaining("reverse screen witness ambiguous: Capture calibration non-solid grid"),
+  })
+})
+
+// #35058: kitty 0.49.2 on Linux. Its sentinel paint never showed on the reversed blank canvas, so the stage
+// kept capturing until its deadline, and the last capture's own xdotool step then refused "deadline expired
+// before invocation" inside the capture. That is the unseen-paint outcome the stage already names; it was
+// rethrown as an apparatus error instead, so calibration failed and every row of the batch with it
+// (run 2026-11-19T11-06-01-457Z-d1ff1d7e06b2: 264 of 273 rows probe-invalid, no capture returned).
+test("an unseen reverse paint whose stage deadline expires inside a capture is a named unavailable witness", async () => {
+  // The error the collector's own command step raises once the stage deadline handed to it has passed.
+  const expired: unknown = await command("true", [], undefined, Date.now() - 1).catch((error: unknown) => error)
+  expect(expired).toMatchObject({ message: "Capture command true deadline expired before invocation" })
+  let solidReads = 0
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen solid paint": [reversedBlank, reversedBlank, reversedBlank] },
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint") && ++solidReads === 3) throw expired
+    },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason: "reverse screen sentinel paint (basic) was not observed on the reversed blank canvas",
+  })
+  // The mode is still reset and the normal paint proven before the result is returned.
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+// #35058: the same expiry can land in the blank stage (GNU screen, run 2026-11-19T11-36-03-419Z-a1cb26f9ea61, before
+// an unchanged blank was accepted); here the blank never settles, so the stage runs out inside a capture.
+test("a reverse blank whose stage deadline expires inside a capture is a named unavailable witness", async () => {
+  const expired: unknown = await command("true", [], undefined, Date.now() - 1).catch((error: unknown) => error)
+  let blankReads = 0
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen blank": [blank, reversedBlank, blank] },
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen blank") && ++blankReads === 3) throw expired
+    },
+  })
+  const result = await run.promise
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason: "reverse screen blank canvas was not confirmed after DECSCNM was set",
+  })
+  expect(run.reads.get("reverse screen solid paint")).toBeUndefined()
+  expect(run.reads.get("reverse screen return")).toBe(2)
+})
+
+test("an apparatus error inside a reverse capture before its stage deadline stays fatal", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint")) throw new Error("adapter I/O")
+    },
+  })
+  await expect(run.promise).rejects.toThrow("adapter I/O")
+})
+
+test("a failed return to the normal paint invalidates the whole calibration", async () => {
+  const stuck = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen return": [stuck] } })
+  await expect(run.promise).rejects.toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  // The established restore still runs and is witnessed after the refusal.
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("an error while reversed still resets the mode before the restore is witnessed", async () => {
+  const run = calibration({
+    screenMode: "reverse",
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint")) throw new Error("fixture capture lost")
+    },
+  })
+  await expect(run.promise).rejects.toThrow("fixture capture lost")
+  const restoreWrite = run.writes.findLastIndex((write) => write.includes(DECSCNM_RESET))
+  expect(restoreWrite).toBeGreaterThan(run.writes.findLastIndex((write) => write.includes(DECSCNM_SET)))
+  expect(run.writes[restoreWrite]).toMatch(/^\x1b\[0m\x1b\[\?5l/)
+  expect(run.reads.get("restore grid paint")).toBe(2)
 })

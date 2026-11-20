@@ -21,6 +21,7 @@ import {
 } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
+import { modesProbes } from "./modes.ts"
 import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
 
 /**
@@ -1337,6 +1338,64 @@ test("cursor movement binds measured positions and parser state, never a missing
   expect(parserCursor.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(parserCursor.response ?? "")).toMatchObject({ final: { x: 9, y: 4 } })
   expect(parserCursor.assertions).toMatchObject([{ kind: "positive", observed: parserCursor.response }])
+})
+
+// @failure A synchronized-output timeout sends cleanup but records no measured restoration.
+// @level l0
+// @consumer Actual modes.synchronized-output App callback, including its timeout cleanup.
+test.each([
+  { afterSet: 1, afterRestore: 2 },
+  { afterSet: null, afterRestore: 2 },
+  { afterSet: null, afterRestore: null },
+  { afterSet: 1, afterRestore: 1 },
+] as const)(
+  "synchronized-output retains restoration after set-state $afterSet and cleanup-state $afterRestore",
+  async ({ afterSet, afterRestore }) => {
+    const probe = modesProbes.find((entry) => entry.id === "modes.synchronized-output")
+    if (!probe?.term) throw new Error("Missing synchronized-output App callback")
+    const events: string[] = []
+    const replies: (DecrpmPs | null)[] = [2, afterSet, afterRestore]
+    const result = await probe.term(
+      terminal({
+        write(sequence) {
+          events.push(sequence)
+        },
+        queryWithSentinel: async (sequence, pattern) => {
+          events.push(sequence)
+          const reply = replies.shift()
+          if (reply === undefined) throw new Error("Unexpected additional mode query")
+          return reply === null ? null : pattern.exec(`\x1b[?2026;${reply}$y`)
+        },
+      }),
+    )
+    expect(events).toEqual(["\x1b[?2026$p", "\x1b[?2026h", "\x1b[?2026$p", "\x1b[?2026l", "\x1b[?2026$p"])
+    expect(JSON.parse(result.response ?? "null")).toEqual({ snapshot: 2, afterSet, afterRestore })
+    if (afterSet === null) {
+      expect(result.tests).toContainEqual(expect.objectContaining({ status: "probe-todo", reason: "no DECRPM reply" }))
+      expect(result.observation).toBeUndefined()
+    } else {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    }
+  },
+)
+
+test.each([0, 1, 3, 4, null] as const)("synchronized-output leaves initial state %s alone", async (snapshot) => {
+  const probe = modesProbes.find((entry) => entry.id === "modes.synchronized-output")
+  if (!probe?.term) throw new Error("Missing synchronized-output App callback")
+  const events: string[] = []
+  const result = await probe.term(
+    terminal({
+      write(sequence) {
+        events.push(sequence)
+      },
+      queryWithSentinel: async (sequence, pattern) => {
+        events.push(sequence)
+        return snapshot === null ? null : pattern.exec(`\x1b[?2026;${snapshot}$y`)
+      },
+    }),
+  )
+  expect(events).toEqual(["\x1b[?2026$p"])
+  expect(JSON.parse(result.response ?? "null")).toEqual({ snapshot })
 })
 
 test("DECRPM recognizes explicit set/reset/unknown without changing an existing mode", async () => {

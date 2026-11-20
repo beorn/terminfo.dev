@@ -1,45 +1,33 @@
 /** Host validation of the existing immutable schema-4 capture before offline erase execution. */
-import { createHash } from "node:crypto"
-import { readFileSync, realpathSync } from "node:fs"
-import { isAbsolute, join, relative } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { RunDraft, ProbeSubject, HeadlessRuntimeIdentity, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseJsonStrict } from "@terminfo/run-parser"
-import { readCallLog, IncompleteReplay } from "viprobe"
+import { readCallLog, withCallLog, IncompleteReplay, type CallLog } from "viprobe"
+import {
+  CAPTURE_BINDING_SUFFIX,
+  CaptureBindingMalformed,
+  parseCaptureBinding,
+  type CaptureBinding,
+} from "@terminfo/probe-defs"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
+import { resolveRetained, RetainedStoreError, type RetainedResolution } from "../terminfo.dev/src/capture-core.ts"
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-export function readReference(directory: string, reference: unknown): Buffer {
-  if (
-    !object(reference) ||
-    Object.keys(reference).sort().join(",") !== "path,sha256" ||
-    typeof reference.path !== "string" ||
-    !reference.path ||
-    isAbsolute(reference.path) ||
-    /^[a-z]:/i.test(reference.path) ||
-    reference.path.includes("\\") ||
-    reference.path.includes("\0") ||
-    reference.path.split("/").includes("..") ||
-    typeof reference.sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(reference.sha256)
-  ) {
-    throw new IncompleteReplay("Replay artifact requires a relative path and SHA256")
+/**
+ * One retained reference through the retention owner (#34769): the exact present file, or an absent
+ * original its directory's receipt maps to an encoded file. Refusals keep the replay error type.
+ */
+export function resolveReference(directory: string, reference: unknown): RetainedResolution {
+  try {
+    return resolveRetained(directory, reference)
+  } catch (error) {
+    if (error instanceof RetainedStoreError) throw new IncompleteReplay(error.message)
+    throw error
   }
-  const root = realpathSync(directory)
-  const path = realpathSync(join(root, reference.path))
-  const contained = relative(root, path)
-  if (contained === ".." || contained.startsWith("../") || isAbsolute(contained)) {
-    throw new IncompleteReplay("Replay artifact resolves outside its store: " + reference.path)
-  }
-  const bytes = readFileSync(path)
-  if (createHash("sha256").update(bytes).digest("hex") !== reference.sha256) {
-    throw new IncompleteReplay("Replay artifact SHA256 differs: " + reference.path)
-  }
-  return bytes
 }
 
 /** Shared private schema-4 artifact binding; family-specific checks follow this read. */
@@ -53,7 +41,8 @@ export function readProbeCapture(
     runtimeIdentity?: HeadlessRuntimeIdentity
   },
 ) {
-  const bytes = readReference(directory, source.trace).toString("utf8")
+  const trace = resolveReference(directory, source.trace)
+  const bytes = trace.bytes.toString("utf8")
   const capture = parseRun(
     source.trace.path,
     bytes,
@@ -73,7 +62,8 @@ export function readProbeCapture(
   ) {
     throw new IncompleteReplay("Capture run, suite, source, subject or loaded runtime binding differs")
   }
-  const files = [join(directory, source.trace.path)]
+  // Physical dependencies, as the retention owner resolved them; a receipt serving many blobs is listed once.
+  const files = [...trace.files]
   const references = [...capture.screenshotRefs, ...capture.textSnapshotRefs]
   // These are dependency slots, not a second observation/result parser. Parsed frames
   // already have semantic validation; raw traces need only their binding checked here.
@@ -115,14 +105,19 @@ export function readProbeCapture(
   for (const result of capture.results ?? []) {
     const key = result.featureId + ".callLog"
     const raw = capture.rawReplies[key]
-    if (raw === undefined) continue
-    readCallLog(parseJsonStrict(key, raw), {
+    if (raw === undefined) {
+      // A row with no call log still has its association checked against the installation records.
+      readCaptureBinding(capture.rawReplies, result.featureId)
+      continue
+    }
+    const log = readCallLog(parseJsonStrict(key, raw), {
       onOperation(operation) {
         if (operation.path === "context.capture" && "value" in operation.outcome) {
           frameReference(operation.outcome.value)
         }
       },
     })
+    checkCaptureBinding(capture.rawReplies, result.featureId, log)
   }
   const manifestRaw = capture.rawReplies["collector.traceManifest"]
   if (manifestRaw !== undefined || references.length) {
@@ -134,13 +129,13 @@ export function readProbeCapture(
     const blobPaths = new Set<string>()
     const blobDigests = new Set<string>()
     for (const blob of manifest.blobs) {
-      readReference(directory, blob)
+      const resolved = resolveReference(directory, blob)
       if (!object(blob) || typeof blob.path !== "string" || blobPaths.has(blob.path)) {
         throw new IncompleteReplay("Capture contains duplicate blob references")
       }
       blobPaths.add(blob.path)
       blobDigests.add("sha256:" + blob.sha256)
-      files.push(join(directory, blob.path))
+      for (const file of resolved.files) if (!files.includes(file)) files.push(file)
     }
     for (const path of references) {
       if (!blobDigests.has(path)) throw new IncompleteReplay("Capture has an unbound blob: " + path)
@@ -200,4 +195,131 @@ export function readEraseCapture(
     throw new IncompleteReplay("Erase capture does not contain the selected eleven-probe family")
   }
   return { capture, log }
+}
+
+/** One installation's own record, read from its `.trace`: the row it was prepared for and what it handed. */
+type RecordedInstallation = {
+  preparedAt: { row: string; index: number }
+  refusal: string | undefined
+  captureGeometry: unknown
+}
+
+function recordedInstallation(
+  rawReplies: Readonly<Record<string, string>>,
+  calibrationId: string,
+  featureId: string,
+): RecordedInstallation | undefined {
+  const raw = rawReplies[calibrationId + ".trace"]
+  if (raw === undefined) return undefined
+  const trace = parseJsonStrict(calibrationId + ".trace", raw)
+  const preparedAt = object(trace) ? trace.preparedAt : undefined
+  if (
+    !object(trace) ||
+    !object(preparedAt) ||
+    typeof preparedAt.row !== "string" ||
+    typeof preparedAt.index !== "number" ||
+    !Number.isSafeInteger(preparedAt.index)
+  ) {
+    throw new IncompleteReplay(
+      `replay-incomplete: ${calibrationId} records no preparing row (run predates it) (${featureId})`,
+    )
+  }
+  return {
+    preparedAt: { row: preparedAt.row, index: preparedAt.index },
+    refusal: typeof trace.refusal === "string" ? trace.refusal : undefined,
+    captureGeometry: trace.captureGeometry,
+  }
+}
+
+/** Installations are numbered in run order: the first, then `renewal.1`, `renewal.2`, and so on. */
+function nextCalibrationId(calibrationId: string): string {
+  const renewal = /\.renewal\.([1-9][0-9]*)$/.exec(calibrationId)
+  return `collector.captureCalibration.renewal.${renewal ? Number(renewal[1]) + 1 : 1}`
+}
+
+/**
+ * #30932 S1: one row's stored association to the capture installation it was handed, validated, or
+ * undefined when the row has none. It is checked against the NAMED installation's own record: the row
+ * runs at or after that installation's preparing row and before the next installation's, and the
+ * geometry or refusal it carries is the one that installation recorded. Any failure is a named
+ * incomplete replay; the stored status of the row is never touched here.
+ */
+export function readCaptureBinding(
+  rawReplies: Readonly<Record<string, string>>,
+  featureId: string,
+): CaptureBinding | undefined {
+  const raw = rawReplies[featureId + CAPTURE_BINDING_SUFFIX]
+  if (raw === undefined) return undefined
+  let binding: CaptureBinding
+  try {
+    binding = parseCaptureBinding(parseJsonStrict(featureId + CAPTURE_BINDING_SUFFIX, raw))
+  } catch (error) {
+    if (error instanceof CaptureBindingMalformed) {
+      throw new IncompleteReplay(`replay-incomplete: ${error.message} (${featureId})`)
+    }
+    throw error
+  }
+  const id = binding.calibrationId
+  const incomplete = (reason: string): never => {
+    throw new IncompleteReplay(`replay-incomplete: capture binding names ${id}, ${reason} (${featureId})`)
+  }
+  // Every preparation retains its `.trace`, refused ones included; its paint `.callLog` exists only
+  // when the traced scope finished, so the trace is the installation's record.
+  const installation = recordedInstallation(rawReplies, id, featureId) ?? incomplete("which this run did not record")
+  const { preparedAt } = installation
+  if (binding.rowIndex < preparedAt.index) incomplete(`installed at row ${preparedAt.row}, after this row ran`)
+  if (featureId === preparedAt.row && binding.rowIndex !== preparedAt.index) {
+    incomplete("whose preparing row is this row at another run position")
+  }
+  const next = nextCalibrationId(id)
+  const following = recordedInstallation(rawReplies, next, featureId)
+  if (following !== undefined && following.preparedAt.index <= binding.rowIndex) {
+    incomplete(`but ${next} was installed at row ${following.preparedAt.row}, before this row ran`)
+  }
+  // The row a preparation ran for is recorded by that installation alone, so a row that prepared one
+  // installation can never be associated with another, wherever its stored run position says it was.
+  for (let other = "collector.captureCalibration"; ; other = nextCalibrationId(other)) {
+    const recorded = other === id ? installation : recordedInstallation(rawReplies, other, featureId)
+    if (recorded === undefined) break
+    if (other !== id && recorded.preparedAt.row === featureId) incomplete(`but this row prepared ${other}`)
+  }
+  if (binding.outcome === "installed") {
+    if (!isDeepStrictEqual(binding.captureGeometry, installation.captureGeometry)) {
+      incomplete("whose recorded geometry differs from the one this row carries")
+    }
+  } else if (installation.captureGeometry !== undefined || installation.refusal !== binding.refusal) {
+    incomplete("whose recorded refusal differs from the one this row carries")
+  }
+  return binding
+}
+
+/** The capture geometry the recorded callback context was handed, read without consuming a call. */
+function recordedCaptureGeometry(log: CallLog): unknown {
+  const session = withCallLog<{ captureGeometry?: unknown }>(null, { mode: "replay", log })
+  try {
+    const recorded = session.context.captureGeometry
+    return recorded === undefined ? undefined : JSON.parse(JSON.stringify(recorded))
+  } finally {
+    session.abandon()
+  }
+}
+
+/**
+ * A recorded callback that was handed measured geometry must name the installation it came from, and
+ * the two must agree: the association is evidence beside the context, never a second value for it.
+ */
+function checkCaptureBinding(rawReplies: Readonly<Record<string, string>>, featureId: string, log: CallLog): void {
+  const binding = readCaptureBinding(rawReplies, featureId)
+  const recorded = recordedCaptureGeometry(log)
+  // A TTY-only log records no callback context; its row's association is validated above and the
+  // geometry comparison applies only where a context was recorded.
+  if (recorded === undefined) return
+  if (binding === undefined) {
+    throw new IncompleteReplay(`replay-incomplete: no capture binding recorded (run predates it) (${featureId})`)
+  }
+  if (binding.outcome !== "installed" || !isDeepStrictEqual(binding.captureGeometry, recorded)) {
+    throw new IncompleteReplay(
+      `replay-incomplete: capture binding differs from the geometry the recorded callback was handed (${featureId})`,
+    )
+  }
 }

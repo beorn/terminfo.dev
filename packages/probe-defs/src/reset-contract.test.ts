@@ -73,7 +73,7 @@ test.each([null, 0] as const)("App soft reset reads its controlled input effect 
       assertions,
     })
     expect(recorded.status, mutation ?? "working DECSTR").toBe(
-      mutation === "decstr-noop" ? "unsupported" : mutation ? "probe-invalid" : "supported",
+      mutation === "decstr-noop" ? "unsupported" : mutation ? "probe-todo" : "supported",
     )
     // Callback outcomes alone missed input assertions that the native run reader refuses.
     // Keep the producer's performed actions; this fixture must not supply missing evidence.

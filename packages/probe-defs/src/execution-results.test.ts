@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   replyFailure,
+  methodUnavailable,
   decrpmResult,
   unmeasuredCellResult,
   withReplyFailureEvidence,
@@ -388,8 +389,26 @@ it.each([
     expect(callback.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
   }
   const missingOsc0State = kind === "lib" && id === "extensions.osc0-icon-title"
+  // @cto 2026-11-13: a term OSC 52 read with no reply and no cited read-default is probe-todo,
+  // not a reply failure. The cursor control answered, so silence is ungraded. #34932 (@cto scope ruling Nov 18): the
+  // combined row whose write the fixture saw takes that same read decision, so its silence is ungraded the same way.
+  const osc52ReadSilence =
+    kind === "term" && (id === "extensions.osc52-read" || id === "extensions.osc52-clipboard") && !rawOverride
   const expectedReplyFailure =
-    (!rawOverride || id === "extensions.osc0-icon-title") && !highlightZeroReply && !missingOsc0State
+    (!rawOverride || id === "extensions.osc0-icon-title") &&
+    !highlightZeroReply &&
+    !missingOsc0State &&
+    !osc52ReadSilence
+  if (osc52ReadSilence) {
+    expect(callback.tests).toEqual([
+      expect.objectContaining({
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringContaining("default not established"),
+      }),
+    ])
+    expect(callback.observation).toBeUndefined()
+  }
   if (expectedReplyFailure) expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   else expect(callback).not.toHaveProperty("replyFailureTestIds")
   const result =
@@ -403,12 +422,15 @@ it.each([
           attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
         })
   const stored = record(result)
+  // #34012 slice 3 (@cto 1676cf8a Q3): on the term arm the OSC 0 target queries are the read-back instrument,
+  // so a measured silence is an open row that still carries its attempt evidence, not a reply failure.
+  const measuredSilenceOsc0Term = kind === "term" && id === "extensions.osc0-icon-title" && !rawOverride
   if (!expectedReplyFailure) {
     expect(result).toBe(callback)
     expect(stored).toEqual(record(callback))
     return
   }
-  expect(stored.status).toBe("probe-invalid")
+  expect(stored.status).toBe(measuredSilenceOsc0Term ? "probe-todo" : "probe-invalid")
   for (const entry of captures) {
     expect(stored.reason).toContain(
       `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
@@ -567,7 +589,7 @@ it("retains erased DECAWM evidence when wrap cursor controls cannot qualify", as
       attempts: [{ sequence: "\x1b[?7$p", received: "\x1b?", timeoutMs: 37, match: null, reason: "timeout" }],
     }),
   )
-  expect(stored.status).toBe("probe-invalid")
+  expect(stored.status).toBe("probe-todo")
   expect(stored.reason).toContain("Auto-wrap cursor control did not measure home and ordinary text")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
@@ -718,18 +740,15 @@ it.each([
 })
 
 it("names a callback defect instead of ignoring an invalid reply marker", () => {
-  const callback = replyFailure("No cursor reply")
-  callback.tests[0].status = "probe-todo"
-  expect(() => withReplyFailureEvidence("cursor.position-report", callback, { producer: "TTY", attempts: [] })).toThrow(
-    /cursor\.position-report.*criterion.*probe-invalid/,
-  )
+  // An execution-only callback can only name an open or invalid test, so the marker check is proved through a
+  // measured result that carries no tests at all: the marker must name a row that exists.
   const measured = {
     pass: false,
     observation: { outcome: "inconclusive" as const, assertionType: "query_reply" as const },
     replyFailureTestIds: ["criterion"],
   }
   expect(() => withReplyFailureEvidence("device.geometry", measured, { producer: "TTY", attempts: [] })).toThrow(
-    /device\.geometry.*criterion.*probe-invalid/,
+    /device\.geometry.*criterion.*open or invalid/,
   )
   const markedCoverage = {
     pass: false,
@@ -739,6 +758,36 @@ it("names a callback defect instead of ignoring an invalid reply marker", () => 
   // @ts-expect-error Coverage cannot carry failure-evidence intent, even via structural assignment.
   const forbiddenCoverage: NotTestedCoverageResult = markedCoverage
   void forbiddenCoverage
+})
+
+// An unavailable read method stays open (@cto 91ec1211): the probe ran and nothing was readable here, so the row
+// must not count as a broken probe. The formatter still attaches the producer's evidence, and fixture breakage
+// keeps probe-invalid, so the two classes never merge.
+it("keeps a read-method gap open while a broken fixture stays invalid", () => {
+  const gap = withReplyFailureEvidence(
+    "input.mouse-1000",
+    methodUnavailable("Mouse tracking effect needs owned click injection and input readback"),
+    {
+      producer: "TTY",
+      attempts: [{ sequence: "\x1b[?1000h", received: "", timeoutMs: 37, match: null, reason: "timeout" }],
+    },
+  )
+  const open = recordExecutedProbe({
+    featureId: "input.mouse-1000",
+    assertions: [],
+    tests: gap.tests,
+    attempt: { scope: "probe", startedAt: "2026-11-13T00:00:00.000Z" },
+  })
+  expect(open.status).toBe("probe-todo")
+  expect(open.reason).toContain("needs owned click injection")
+  expect(open.reason).toContain('sent "\\u001b[?1000h"; received ""; timeout 37 ms')
+  const broken = recordExecutedProbe({
+    featureId: "input.mouse-1000",
+    assertions: [],
+    tests: replyFailure("Cursor shape fixture CPR did not locate row 2 column 3").tests,
+    attempt: { scope: "probe", startedAt: "2026-11-13T00:00:00.000Z" },
+  })
+  expect(broken.status).toBe("probe-invalid")
 })
 
 // CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.
@@ -916,23 +965,66 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     ),
     ["reset.sgr", "Cursor advance does not measure SGR styling after reset", 2],
   ] as const
+  // 34675 (@cto go-r2-1341): on a pixel run, an arm whose own pixel reading is the missing one now raises the named
+  // FrameUnavailable diagnostic instead of returning the note. A text-cells run, and the arms whose missing reading
+  // is not pixels (OSC 720 viewport, OSC 8 click), keep the note exactly as before.
+  const notPixelCaused = new Set(["extensions.osc720-scroll-up", "extensions.osc8"])
   for (const [id, priorNote, col] of cases) {
     const term = rows.find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
-    for (const refusal of [undefined, "", "calibration G"]) {
-      const callback = await term({
-        rows: 24,
-        cols: 80,
-        write() {},
-        captureGeometryRefusal: refusal,
-        queryCursorPosition: async () => ({ row: 1, col }),
-        queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
-      } as unknown as TermProbeSource)
-      expect(record(callback).reason, `${id}: ${String(refusal)}`).toBe(
-        `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
-      )
-      expect(record(callback).status, id).toBe("probe-todo")
-      expect(callback.observation, id).toBeUndefined()
+    for (const runCaptureKind of [undefined, "pixels", "text-cells"] as const) {
+      for (const refusal of [undefined, "", "calibration G"]) {
+        const label = `${id}: ${String(refusal)} ${String(runCaptureKind)}`
+        const run = term({
+          rows: 24,
+          cols: 80,
+          write() {},
+          captureGeometryRefusal: refusal,
+          runCaptureKind,
+          queryCursorPosition: async () => ({ row: 1, col }),
+          queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+        } as unknown as TermProbeSource)
+        if (refusal && runCaptureKind !== "text-cells" && !notPixelCaused.has(id)) {
+          await expect(run, label).rejects.toMatchObject({
+            name: "FrameUnavailable",
+            message: expect.stringContaining(`this run refused capture geometry: ${refusal}`),
+          })
+          continue
+        }
+        const callback = await run
+        expect(record(callback).reason, label).toBe(
+          `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
+        )
+        expect(record(callback).status, id).toBe("probe-todo")
+        expect(callback.observation, id).toBeUndefined()
+      }
+    }
+  }
+  // 34698 (@cto 8df7c6d0): reset.sgr's control must finish at row 1, column 2. A reply at the wrong row or column
+  // is an independent failed control: it keeps the ordinary note and never takes the capture-refused attribution,
+  // whether or not this run refused capture geometry.
+  const resetTerm = rows.find((row) => row.id === "reset.sgr")!.term!
+  for (const wrongAt of [
+    { row: 1, col: 9 },
+    { row: 9, col: 2 },
+  ]) {
+    for (const runCaptureKind of [undefined, "pixels", "text-cells"] as const) {
+      for (const refusal of [undefined, "calibration G"]) {
+        const label = `reset.sgr at ${wrongAt.row};${wrongAt.col}: ${String(refusal)} ${String(runCaptureKind)}`
+        const callback = await resetTerm({
+          rows: 24,
+          cols: 80,
+          write() {},
+          captureGeometryRefusal: refusal,
+          runCaptureKind,
+          queryCursorPosition: async () => wrongAt,
+          queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+        } as unknown as TermProbeSource)
+        expect(record(callback), label).toMatchObject({
+          status: "probe-todo",
+          reason: `Cursor advance does not measure SGR styling after reset${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
+        })
+      }
     }
   }
   const term = sgrProbes.find((row) => row.id === "sgr.underline-color-indexed")!.term!
@@ -1148,14 +1240,109 @@ it("preserves explicit tab and checksum reply failures", async () => {
   const checksum = editingProbes.find((row) => row.id === "editing.decrqcra")!
   const native = await checksum.term!({
     write() {},
+    queryOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
     queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
   } as unknown as TermProbeSource)
   expect(record(native)).toMatchObject({
     status: "probe-invalid",
-    reason: "no usable checksum reply",
+    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
   })
   const lib = await checksum.lib!({ feed() {}, feedCapture: () => "" } as unknown as LibProbeSource)
   expect(record(lib)).toMatchObject({ status: "probe-invalid", reason: "no usable checksum reply" })
+})
+// 34664 (@cto f5e2b27c): iTerm2 3.6.11 in run 44178738960 answered neither the checksum request nor the DA1 written
+// beside it (sent "\x1b[1;1;1;1;1;5*y\x1b[c", received "", timeout 2000 ms), and the row read "no usable checksum
+// reply" whatever the terminal did. Each graded request now gets a DA1 asked alone just before it, and a request that
+// drew no byte gets one just after it; these drive the live arm and the recorder over each outcome of those controls.
+const DA1_REPLY = "\x1b[?62;4;22c"
+const TIMED_OUT = { reason: "timeout", raw: "", match: null }
+const da1 = (raw: string | null) =>
+  raw === null
+    ? TIMED_OUT
+    : { reason: "reply", raw, match: /\x1b\[\?[0-9;]+c/.exec(raw) ? [/\x1b\[\?[0-9;]+c/.exec(raw)![0]] : null }
+const checksum = (raw: string) => ({ reason: "reply", raw, match: [raw] })
+const runChecksum = async (alone: readonly (string | null)[], pair: readonly object[]) => {
+  const order: string[] = []
+  let a = 0
+  let p = 0
+  const result = await editingProbes.find((row) => row.id === "editing.decrqcra")!.term!({
+    write() {},
+    queryOutcome: async (sequence: string) => {
+      order.push(`alone ${JSON.stringify(sequence)}`)
+      return da1(alone[a++] ?? null)
+    },
+    queryWithSentinelOutcome: async () => {
+      order.push("request")
+      return pair[p++] ?? TIMED_OUT
+    },
+  } as unknown as TermProbeSource)
+  return { order, result }
+}
+it("brackets a checksum request that drew no byte with DA1 asked alone, and grades only on both controls", async () => {
+  // Both controls answered alone: the fenced silence, graded by the row's rule (none declared: Unsupported).
+  const inert = await runChecksum([DA1_REPLY, DA1_REPLY], [])
+  expect(inert.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(inert.result.response).toBe(
+    JSON.stringify({ request: 1, sent: "\x1b[1;1;1;1;1;5*y\x1b[c", da1Before: DA1_REPLY, da1After: DA1_REPLY }),
+  )
+  expect(inert.result.observation).toMatchObject({ outcome: "inconclusive", reason: "fenced-silence" })
+  expect(record(inert.result)).toMatchObject({ status: "unsupported" })
+
+  // The control before went unanswered: its own measured failure.
+  const noBefore = await runChecksum([null], [])
+  expect(noBefore.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(record(noBefore.result)).toMatchObject({
+    status: "probe-invalid",
+    reason: "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms",
+  })
+
+  // The control after went unanswered: named as that, never as proof the terminal stopped for good.
+  const noAfter = await runChecksum([DA1_REPLY, null], [])
+  expect(record(noAfter.result)).toMatchObject({
+    status: "probe-invalid",
+    reason:
+      "no usable checksum reply; the DA1 asked alone just before request 1 answered, and the one asked after it got no answer within 2000 ms",
+  })
+
+  // A late checksum frame, or any other bytes, beside the control after: unattributed, so inconclusive.
+  for (const after of [`\x1bP1!~014F\x1b\\${DA1_REPLY}`, "\x1bP1!~01"]) {
+    const late = await runChecksum([DA1_REPLY, after], [])
+    expect(late.result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    expect(record(late.result).status).not.toBe("unsupported")
+  }
+})
+// 34664 (@cto d0b31f18): the request's own DA1 answering alone through its window is the sentinel negative, and it
+// used to grade Unsupported before the control asked just before it was consulted. A control that went unanswered
+// keeps the row invalid on that branch too (f5e2b27c); a control that answered still lets the window decide.
+it("grades a sentinel-only checksum request only when the DA1 asked alone before it answered", async () => {
+  const sentinelOnly = { reason: "reply", raw: DA1_REPLY, match: null, sentinel: { atMs: 12, graceMs: 250 } }
+  const healthy = await runChecksum([DA1_REPLY], [sentinelOnly])
+  expect(healthy.order).toEqual(['alone "\\u001b[c"', "request"])
+  expect(record(healthy.result)).toMatchObject({ status: "unsupported" })
+
+  const failed = await runChecksum([null], [sentinelOnly])
+  expect(failed.order).toEqual(['alone "\\u001b[c"', "request"])
+  expect(failed.result.response).toBe(
+    JSON.stringify({ request: 1, sent: "\x1b[1;1;1;1;1;5*y\x1b[c", da1Before: "", reply: DA1_REPLY }),
+  )
+  expect(record(failed.result)).toMatchObject({
+    status: "probe-invalid",
+    reason:
+      "no usable checksum reply; the DA1 asked alone just before request 1 got no lone DA1 answer within 2000 ms; the DA1 written with the request did answer",
+  })
+})
+it("takes the DA1 baseline before each graded request, so a silent second request is judged by its own", async () => {
+  const second = await runChecksum([DA1_REPLY, DA1_REPLY, DA1_REPLY], [checksum("\x1bP1!~014F\x1b\\")])
+  expect(second.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"', "request", 'alone "\\u001b[c"'])
+  expect(JSON.parse(second.result.response as string)).toMatchObject({ request: 2 })
+  expect(record(second.result)).toMatchObject({ status: "unsupported" })
+
+  const working = await runChecksum(
+    [DA1_REPLY, DA1_REPLY],
+    [checksum("\x1bP1!~014F\x1b\\"), checksum("\x1bP1!~0150\x1b\\")],
+  )
+  expect(working.order).toEqual(['alone "\\u001b[c"', "request", 'alone "\\u001b[c"', "request"])
+  expect(working.result).toMatchObject({ pass: true })
 })
 // Prior tests only inspected the retained frames/inconclusive observation. These exercise both real
 // callback branches through the production result recorder and seal boundary, where the bug lived.

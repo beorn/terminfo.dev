@@ -10,11 +10,12 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { expect, test } from "vitest"
+import { describe, expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
   captureRegionGeometry,
   captureRegionCallbackResult,
+  colourOnlyAttempts,
   queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
@@ -26,8 +27,10 @@ import type {
   CaptureCells,
   CapturePixelGeometry,
   CaptureRectangle,
+  CaptureRenderingAxes,
   MeasuredProbeCallbackResult,
   ObservationFrame,
+  PixelCellCrop,
   PixelObservationFrame,
   ProbeCallbackResult,
   ProbeSuiteManifest,
@@ -39,6 +42,7 @@ import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
 import { initializeRunDraft, recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 import { decodeCollectorDraft } from "../../run-parser/src/index.ts"
+import { readThroughSentinel } from "../../terminfo.dev/src/sentinel-read.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -109,6 +113,17 @@ function ownedWindow(options: {
    * hand-built read; the collector-backed reader always carries one with the region digest.
    */
   cropFor?: (label: string) => CaptureRectangle | undefined
+  /**
+   * The rendering axes and coverage each read reports for its own crop, keyed by that read's own
+   * label. Absent models a capture adapter that records digests only, which is every frame written
+   * before osc104.
+   */
+  renderingFor?: (label: string) => CaptureRenderingAxes | undefined
+  /**
+   * What the capture measured about the grid behind each read's rectangle, keyed by label (33982).
+   * Absent models a pre-change or hand-built frame, which cannot be exempted.
+   */
+  cellCropFor?: (label: string) => PixelCellCrop | undefined
 }): Fake {
   const sentinelAnswers = options.sentinelAnswers ?? true
   let screen = options.regionDigest([])
@@ -121,6 +136,7 @@ function ownedWindow(options: {
   const requests: Fake["requests"] = []
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
     rows: options.rows ?? 24,
     cols: options.cols ?? 80,
     write(sequence) {
@@ -153,12 +169,14 @@ function ownedWindow(options: {
       }
     }
     const regionRectangle = options.cropFor?.(label)
+    const cellCrop = options.cellCropFor?.(label)
     const frame: ObservationFrame = {
       role,
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
       ...(regionRectangle ? { regionRectangle } : {}),
+      ...(cellCrop ? { cellCrop } : {}),
     }
     const cell = key(region)
     const content = cell === SENTINEL_CELL ? glyph : screen
@@ -172,6 +190,8 @@ function ownedWindow(options: {
     if (options.pixelMetadata) {
       Object.assign(frame, { kind: "pixels", regionDigest: capture.regionDigest, pixelsDigest: capture.pixelsDigest })
     }
+    const rendering = options.renderingFor?.(label)
+    if (rendering) capture.rendering = rendering
     return capture
   }
   return { ctx, read, writes, timeline, requests }
@@ -275,6 +295,231 @@ test("an edit that is a third distinct frame is inconclusive, stating the observ
   expect(result.observation.note).toContain("compared frames: seed, expected")
   expect(result.observation.note).not.toContain("matched none of the compared frames")
   expect(result.observation.note).not.toContain("simply")
+})
+
+// osc104 (@cto plan GO, then coverage rule ±2 with floors): a pair whose target frame is the
+// expected frame's own background and glyph coverage in a different INK COLOUR is a MEASURED colour
+// result — graded negative, with both raw colours named — instead of the "a third distinct frame"
+// refusal. Every guard below refuses exactly as before.
+const coverage = (values: number[]) => Uint8Array.from(values)
+// 16 ink pixels rising through every level, the shape a glyph edge makes.
+const glyph = coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 255])
+const axes = (
+  inkColour: string,
+  options: { coverage?: Uint8Array; background?: string; inkCount?: number; contrast?: number } = {},
+) => ({
+  background: options.background ?? "#050505",
+  inkColour,
+  inkCount: options.inkCount ?? glyph.length,
+  contrast: options.contrast ?? 191,
+  coverage: options.coverage ?? glyph,
+})
+
+test("the expected coverage in a different ink colour is graded unsupported and names both colours", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("pre-edit seed")
+        ? axes("#616161")
+        : label.endsWith("post-sequence target")
+          ? axes("#123456")
+          : label.endsWith("expected frame")
+            ? axes("#c1e3fe")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.observation.note).toContain("same geometry in a different ink colour")
+  expect(result.observation.note).toContain("#123456")
+  expect(result.observation.note).toContain("#c1e3fe")
+  expect(result.observation.note).toContain("#616161")
+  expect(result.observation.note).toContain("paints a third colour")
+  expect(result.observation.note).toContain("within 0 of 255")
+  expect(result.observation.note).not.toContain("third distinct frame")
+})
+
+test("a target that paints the seed's own colour is named as no change, not as a third colour", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target") || label.endsWith("pre-edit seed")
+        ? axes("#616161")
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.observation.note).toContain("paints the seed's own colour")
+  expect(result.observation.note).toContain("changed nothing in this region")
+})
+
+test("one or two levels of coverage rounding still fire, three levels refuse", async () => {
+  const fire = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", {
+            coverage: coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 253]),
+          })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const fired = await decide(fire)
+  expect(fired.observation.outcome).toBe("unsupported")
+  expect(fired.observation.note).toContain("within 2 of 255")
+
+  const refuse = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", {
+            coverage: coverage([255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8, 252]),
+          })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const refused = await decide(refuse)
+  expect(refused.observation.outcome).toBe("inconclusive")
+  expect(refused.observation.note).toContain("a third distinct frame")
+})
+
+test("a one-cell layout shift keeps today's third-distinct-frame refusal", async () => {
+  const shifted = coverage([0, 255, 240, 200, 160, 128, 96, 64, 32, 16, 0, 248, 192, 112, 48, 8])
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", { coverage: shifted })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.note).toContain("a third distinct frame")
+  expect(result.observation.note).not.toContain("same geometry in a different ink colour")
+})
+
+test("a low-contrast or nearly empty frame refuses, so rounding noise never reads as agreement", async () => {
+  for (const weak of [{ contrast: 20 }, { inkCount: 4 }]) {
+    const fake = ownedWindow({
+      repaintAfterPolls: 1,
+      regionDigest: painter({ applied: "other" }),
+      pixelMetadata: true,
+      renderingFor: (label) =>
+        label.endsWith("post-sequence target")
+          ? axes("#123456", weak)
+          : label.endsWith("expected frame")
+            ? axes("#c1e3fe")
+            : label.endsWith("pre-edit seed")
+              ? axes("#616161")
+              : undefined,
+    })
+    const result = await decide(fake)
+    expect(result.observation.outcome, JSON.stringify(weak)).toBe("inconclusive")
+    expect(result.observation.note).toContain("a third distinct frame")
+  }
+})
+
+test("a different background keeps today's third-distinct-frame refusal", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "other" }),
+    pixelMetadata: true,
+    renderingFor: (label) =>
+      label.endsWith("post-sequence target")
+        ? axes("#123456", { background: "#101010" })
+        : label.endsWith("expected frame")
+          ? axes("#c1e3fe")
+          : label.endsWith("pre-edit seed")
+            ? axes("#616161")
+            : undefined,
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.note).toContain("a third distinct frame")
+})
+
+const attempt = (afterInk: string, expectedInk = "#c1e3fe", suffix = "") => [
+  {
+    kind: "pixels" as const,
+    role: "control" as const,
+    label: "extensions.osc104" + suffix + ": pre-edit seed",
+    ref: "sha256:" + suffix + "seed",
+    capturedAt: 0,
+    rendering: axes("#616161"),
+  },
+  {
+    kind: "pixels" as const,
+    role: "target" as const,
+    label: "extensions.osc104" + suffix + ": post-sequence target",
+    ref: "sha256:" + suffix + "after",
+    capturedAt: 1,
+    rendering: axes(afterInk),
+  },
+  {
+    kind: "pixels" as const,
+    role: "control" as const,
+    label: "extensions.osc104" + suffix + ": expected frame",
+    ref: "sha256:" + suffix + "expected",
+    capturedAt: 2,
+    rendering: axes(expectedInk),
+  },
+]
+
+test("two attempts that both fire keep the grade and name both after colours", () => {
+  const frames = [...attempt("#616161", "#c1e3fe", "-a"), ...attempt("#123456", "#c1e3fe", "-b")]
+  const verdict = colourOnlyAttempts("extensions.osc104-reset-palette", frames as never)
+  expect(verdict).toBeDefined()
+  expect(verdict && "rounds" in verdict ? verdict.rounds : 0).toBe(2)
+  const note = verdict && "note" in verdict ? verdict.note : ""
+  expect(note).toContain("after colour differed between attempts")
+  expect(note).toContain("#616161")
+  expect(note).toContain("#123456")
+  expect(note).toContain("no-effect")
+  expect(note).toContain("third-colour")
+  expect(note).toContain("not published as the terminal's behaviour")
+})
+
+test("an attempt that matches the expected ink refuses with a named attempts-disagree reason", () => {
+  const frames = [...attempt("#123456", "#c1e3fe", "-a"), ...attempt("#c1e3fe", "#c1e3fe", "-b")]
+  const verdict = colourOnlyAttempts("extensions.osc104-reset-palette", frames as never)
+  expect(verdict && "disagreement" in verdict ? verdict.disagreement : "").toContain("attempts disagree")
+})
+
+test("one attempt alone decides nothing extra: the reader's own verdict stands", () => {
+  expect(colourOnlyAttempts("extensions.osc104-reset-palette", attempt("#123456") as never)).toBeUndefined()
+})
+
+test("a match still grades supported when the frames carry rendering axes", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    pixelMetadata: true,
+    renderingFor: (label) => (label.endsWith("post-sequence target") ? axes("#c1e3fe") : undefined),
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
+  expect(result.assertions?.[0]?.kind).toBe("positive")
 })
 
 // 28752: a row whose expected frame is written PLAINLY assumes the run decodes plain UTF-8. The
@@ -973,6 +1218,116 @@ test("region rows consume the same calibrated run geometry without re-dividing w
   expect(fake.requests.every((request) => request.pixelGeometry === reading.geometry)).toBe(true)
 })
 
+/**
+ * @failure A frame that writes RIS re-lays-out a block terminal's window (Warp: every absolute row 35
+ *   lower, footprint unchanged), and the row refuses "the frame moved after cells ... were chosen"
+ *   with no way to ask for the origin again — so six reset-family rows stay probe-invalid forever.
+ * @level l1
+ * @consumer packages/probes/* (the reset-family and SGR rows whose expected frame carries RIS)
+ * @source-grep Warp runs 43285337469 and 43597976383: "the frame moved after cells 1,2 and 2,1 were
+ *   chosen at 17,46 — the pair landed 0,560 px from it"; 560 px is exactly 35 rows of a 16 px cell.
+ * @testonly none
+ */
+test("a RIS-bearing frame asks for the origin again and is written again after it (33774)", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const GEOMETRY_AFTER_MOVE: PixelGeometry = { ...GEOMETRY, textHeight: GEOMETRY.textHeight + 560 }
+  const RIS_FRAME = `${EXPECTED}\x1bc\x1b[?25l`
+  let renewed = 0
+  fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    // A marker in the harness's own order log: the write that follows it is the frame's second write.
+    fake.timeline.push("renew")
+    const reading = { geometry: GEOMETRY_AFTER_MOVE, source: "measured by complete raster calibration" as const }
+    fake.ctx.captureGeometry = reading
+    return reading
+  }
+  await decide(fake, { expected: RIS_FRAME })
+  // Calibration paints the whole grid, so the frame is written once by the row and once after the
+  // renewal; without the second write the read would compare the calibration pattern.
+  expect(renewed).toBeGreaterThan(0)
+  expect(fake.writes.filter((entry) => entry === RIS_FRAME)).toHaveLength(renewed + 1)
+  const renewalAt = fake.timeline.indexOf("renew")
+  expect(renewalAt, "the frame's own RIS is what asks for the origin again").toBeGreaterThanOrEqual(0)
+  // The order is the contract, not the count: a frame written again BEFORE the renewal would land on the
+  // old window, and the read below would compare calibration's paint at the moved origin.
+  expect(fake.timeline[renewalAt + 1], "the frame is written again after the renewal returns").toBe(
+    `write:${RIS_FRAME}`,
+  )
+  // Every read taken after the renewal reads at the origin the collector just measured.
+  expect(fake.requests.at(-1)?.pixelGeometry).toBe(GEOMETRY_AFTER_MOVE)
+}, 30_000)
+
+test("a row whose frames carry no RIS never asks for the origin again (33774)", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  let renewed = 0
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    return undefined
+  }
+  await decide(fake)
+  expect(renewed).toBe(0)
+})
+
+/**
+ * @failure A run that renewed the origin left its later rows graded against an origin the artifact
+ *   never names: the renewal was told to the row that asked, and nothing said which origin the rows
+ *   after it were read at, so a frame read at the moved origin looked like one read at the pre-flight
+ *   origin to anyone reading the run later.
+ * @level l1
+ * @consumer packages/terminfo.dev/src/serve.ts (collector.captureCalibration.renewals, #34306 AC1)
+ * @source-grep 34306 AC1 as amended 2026-11-14: "a row whose read renewed the origin records the
+ *   origin it was read at, and a run that renewed the origin states each renewal"
+ * @testonly none
+ */
+test("a later row with no RIS is read at the renewed origin and asks for nothing (34306 AC1)", async () => {
+  // The renewed window is 59 rows tall (a Warp RIS moves every row 560 px = 35 rows down), so the
+  // grid has to agree with the origin this row is read at, exactly as it does after a real renewal.
+  const fake = ownedWindow({
+    rows: 59,
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: () => ({ x: 10, y: 64, width: 64, height: 16 }),
+  })
+  // The origin a renewal installed is the one the rest of the run reads at. This row carries no RIS,
+  // so it neither renews nor is allowed to fall back to the pre-flight reading.
+  const renewedReading = {
+    geometry: { ...GEOMETRY, textHeight: GEOMETRY.textHeight + 560 },
+    source: "measured by complete raster calibration" as const,
+  }
+  Object.assign(fake.ctx, { captureGeometry: renewedReading })
+  let renewed = 0
+  fake.ctx.renewCaptureGeometry = async () => {
+    renewed += 1
+    return renewedReading
+  }
+  fake.ctx.capture = async (request) => {
+    if (!request.cells || !request.pixelGeometry) throw new Error("Region request lacks its calibrated geometry")
+    const captured = await fake.read({
+      role: request.role,
+      label: request.label,
+      region: request.cells,
+      pixelGeometry: request.pixelGeometry,
+    })
+    return {
+      kind: "pixels" as const,
+      role: captured.frame.role,
+      label: captured.frame.label,
+      capturedAt: captured.frame.capturedAt,
+      ref: captured.frame.ref,
+      ...(captured.frame.sourceRef ? { sourceRef: captured.frame.sourceRef } : {}),
+      regionDigest: captured.regionDigest,
+      pixelsDigest: captured.pixelsDigest,
+      ...(captured.regionRectangle ? { regionRectangle: captured.regionRectangle } : {}),
+    }
+  }
+  const result = await captureRegionCallbackResult(fake.ctx, "editing.delete-chars", spec())
+  expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(renewed).toBe(0)
+  expect(fake.requests.length).toBeGreaterThan(0)
+  expect(fake.requests.every(({ pixelGeometry }) => pixelGeometry === renewedReading.geometry)).toBe(true)
+}, 30_000)
+
 test("region rows refuse a calibrated footprint that no longer covers the current grid before paint", async () => {
   const fake = ownedWindow({ rows: 30, cols: 120, repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
@@ -1127,6 +1482,7 @@ function familyTerminal(applied: string): TermProbeSource {
   }
   return {
     kind: "live",
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
@@ -1315,10 +1671,17 @@ interface StatefulTerminal {
   /** Every sequence it was queried with, in order. */
   queries: string[]
   captures: string[]
+  /** The background the last whole-screen erase left on every cell, when the terminal erases with its pen. */
+  screenBackground: () => string | undefined
 }
 
 interface StatefulOptions {
   ris?: boolean
+  /**
+   * ED and RIS erase the screen with the ACTIVE background before RIS resets the pen (iTerm2 3.6.11,
+   * run 44209743576, 34712): an erase sent while SGR 42 is set leaves every cell green.
+   */
+  eraseUsesActiveBackground?: boolean
   initial?: readonly SgrAttr[]
   restoreRetains?: readonly SgrAttr[]
   invisible?: readonly SgrAttr[]
@@ -1326,8 +1689,12 @@ interface StatefulOptions {
   resetAddsUnderline?: boolean
   resetDropsItalic?: boolean
   hideBoldWithItalic?: boolean
+  /** Italic paints nothing while bold is set, so bold+italic reads as bold (@cto batch finding 52df21a4). */
+  hideItalicWithBold?: boolean
   /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
+  /** Attributes and colours SGR 0 alone does NOT clear, independently of the reset under test (34712). */
+  sgr0Retains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
   /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
   resetMisses?: readonly (SgrAttr | SgrColor)[]
@@ -1350,10 +1717,12 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   let col = 1
   let reads = 0
   let saved: { state: typeof state; color: typeof color; row: number; col: number } | undefined
+  let screenBackground: string | undefined
   const visible = (attribute: SgrAttr) =>
     state[attribute] &&
     !options.invisible?.includes(attribute) &&
-    !(attribute === "bold" && options.hideBoldWithItalic && state.italic)
+    !(attribute === "bold" && options.hideBoldWithItalic && state.italic) &&
+    !(attribute === "italic" && options.hideItalicWithBold && state.bold)
   const paint = (char: string) =>
     cells.set(
       `${row},${col}`,
@@ -1372,10 +1741,9 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       const code = codes[index]!
       if (code === 0) {
         // A cleared attribute goes to false; one the terminal fails to clear KEEPS whatever it was.
-        for (const attribute of SGR_ATTRS) clear(attribute)
-        clearColour("fg")
-        clearColour("bg")
-        clearColour("uc")
+        const sgr0Keeps = new Set<SgrAttr | SgrColor>(options.sgr0Retains ?? [])
+        for (const attribute of SGR_ATTRS) if (!sgr0Keeps.has(attribute)) clear(attribute)
+        for (const colour of ["fg", "bg", "uc"] as const) if (!sgr0Keeps.has(colour)) clearColour(colour)
         if (options.resetAddsUnderline) state.underline = true
       } else if (code === 1) {
         if (options.ignoreBold !== "always" && !(options.ignoreBold === "combined" && codes.length > 1)) {
@@ -1438,6 +1806,8 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       if (char === "\x1b" && sequence[index + 1] === "c") {
         // A terminal that ignores RIS leaves both the cells and the SGR state exactly as they were.
         if (options.ris !== false) {
+          // The erase happens first, under the pen still set, and only then is the pen reset.
+          if (options.eraseUsesActiveBackground && options.risClearsCells !== false) screenBackground = color.bg
           const keep = new Set<SgrAttr | SgrColor>(options.risRetains ?? [])
           for (const attribute of SGR_ATTRS) if (!keep.has(attribute)) state[attribute] = false
           if (!keep.has("fg")) color.fg = undefined
@@ -1468,7 +1838,10 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         else if (final === "H") {
           row = params[0] ?? 1
           col = params[1] ?? 1
-        } else if (final === "J") cells.clear()
+        } else if (final === "J") {
+          cells.clear()
+          if (options.eraseUsesActiveBackground) screenBackground = color.bg
+        }
         index = end + 1
         continue
       }
@@ -1478,6 +1851,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     }
   }
   const ctx = {
+    now: () => Date.now(),
     rows: 24,
     cols: 80,
     captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
@@ -1527,10 +1901,110 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     },
     queryMode: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, cells, snapshot, writes, queries, captures }
+  return { ctx, cells, snapshot, writes, queries, captures, screenBackground: () => screenBackground }
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+// #34276 / CTO52218a6e: existing recipe fixtures omit the observer's bytes, so they miss its
+// overwriting the recipe's immutable N. This composes the actual writer with the existing terminal;
+// the callback intentionally bypasses origin resolution, which sentinel-read.test.ts owns.
+function observeThroughSentinel(
+  terminal: StatefulTerminal,
+  captureFailure?: Error | "timeout",
+  /**
+   * 34712: read under the run's calibrated background (white), so the observer qualifies each
+   * pre-paint frame against it. The frame is white unless the last erase left a background colour
+   * on the screen, which paints the whole frame that colour (green for SGR 42, as iTerm2 showed).
+   */
+  calibrated = false,
+): void {
+  const capture = terminal.ctx.capture!
+  const screen = () => {
+    const background = terminal.screenBackground()
+    const rgb: readonly [number, number, number] =
+      background === undefined ? [255, 255, 255] : background === "42" ? [0, 194, 0] : [128, 128, 128]
+    const rgba = new Uint8Array(terminal.ctx.cols * terminal.ctx.rows * 4)
+    for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([...rgb, 255], offset)
+    return { width: terminal.ctx.cols, height: terminal.ctx.rows, rgba }
+  }
+  const settled = calibrated
+    ? {
+        settled: {
+          origin: { x: 0, y: 0 },
+          basis: "measured by complete raster calibration",
+          basisKind: "complete raster calibration",
+          pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: terminal.ctx.cols, textHeight: terminal.ctx.rows },
+          paintClasses: {
+            background: { anchor: [255, 255, 255] as const, members: new Set([0xffffff]) },
+            sentinel: { anchor: [255, 136, 255] as const, members: new Set([0xff88ff]) },
+          },
+        },
+      }
+    : {}
+  const blank = {
+    width: terminal.ctx.cols,
+    height: terminal.ctx.rows,
+    rgba: new Uint8Array(terminal.ctx.cols * terminal.ctx.rows * 4).fill(255),
+  }
+  terminal.ctx.capture = (request) => {
+    if (!request.cells) throw new Error("saved reference fixture requires a cell region")
+    return readThroughSentinel({
+      ...request,
+      source: terminal.ctx,
+      prePaint: async () => (calibrated ? screen() : blank),
+      ...settled,
+      capture: async (resolve) => {
+        if (captureFailure && request.label.includes("subset SGR 1")) {
+          if (captureFailure === "timeout") {
+            resolve({
+              frame: blank,
+              pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: blank.width, textHeight: blank.height },
+            })
+            throw new Error("Blank timeout fixture unexpectedly anchored")
+          }
+          throw captureFailure
+        }
+        return capture(request)
+      },
+      sentinel: { form: "basic", rgb: [255, 136, 255] },
+      regions: [request.cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 1, height: 1 },
+      deadline: captureFailure === "timeout" ? Date.now() - 1 : Date.now() + 5_000,
+    })
+  }
+}
+
+test.each(["throw", "timeout", "recipe-cleanup"])(
+  "nested capture %s restores N through observer and recipe cleanup",
+  async (fault) => {
+    const terminal = statefulTerminal(ALL_ATTRS)
+    const failure = new Error("owned capture failed")
+    const cleanupFailure = new Error("recipe cleanup failed")
+    if (fault === "recipe-cleanup") {
+      const write = terminal.ctx.write
+      terminal.ctx.write = (text) => {
+        write(text)
+        if (text === "\x1b8\x1b[2J\x1b[H") throw cleanupFailure
+      }
+    }
+    observeThroughSentinel(terminal, fault === "timeout" ? "timeout" : failure)
+    const operation = resetProbes.find((probe) => probe.id === "reset.sgr")!.term!(terminal.ctx)
+    if (fault === "recipe-cleanup") {
+      await expect(operation).rejects.toMatchObject({
+        name: "AggregateError",
+        cause: failure,
+        errors: [failure, cleanupFailure],
+      })
+    } else if (fault === "timeout") {
+      await expect(operation).rejects.toThrow(/did not settle before this read's deadline/)
+    } else await expect(operation).rejects.toBe(failure)
+    expect(terminal.snapshot()).toEqual(new Set())
+    expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
+    expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+  },
+)
 
 // #32590: the immutable pre-setter reference must distinguish a complete reset from every
 // retained subset. The old tests only refused these captures and never exercised restoration.
@@ -1542,11 +2016,17 @@ test.each(
   "$id saved reset reference grades the retained subset $retained and survives the daemon decoder",
   async ({ id, retained }) => {
     const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained, risRetains: retained })
+    observeThroughSentinel(terminal)
     const capture = terminal.ctx.capture!
     const capturedWrites: Array<{ role: ObservationFrame["role"]; label: string; writes: string }> = []
     terminal.ctx.capture = async (request) => {
       if (request.cells?.top === 3 && request.cells.left === 5) {
-        capturedWrites.push({ role: request.role, label: request.label, writes: terminal.writes.join("") })
+        capturedWrites.push({
+          role: request.role,
+          label: request.label,
+          // Observer paints contain SGR0 but never paint YY. Only fixture writes can send the target.
+          writes: terminal.writes.filter((write) => write.includes("YY")).join(""),
+        })
       }
       return capture(request)
     }
@@ -1571,11 +2051,14 @@ test.each(
     const baseline = checks[0]!.digest
     const styled = checks.filter((check) => check.phase === "styled")
     expect(styled).toHaveLength(7)
+    expect(terminal.snapshot()).toEqual(new Set())
     expect(styled.every((check) => check.digest !== baseline)).toBe(true)
     const restored = checks.filter((check) => check.phase === "restored")
     expect(restored).toHaveLength(7)
     expect(restored.every((check) => check.digest === baseline)).toBe(true)
-    expect(terminal.writes.join("").match(/\x1b7/g)).toHaveLength(1)
+    const savedN = terminal.writes.indexOf("\x1b[4;1H\x1b7")
+    expect(savedN).toBeGreaterThanOrEqual(0)
+    expect(terminal.writes.slice(savedN + 1).some((write) => write.includes("\x1b7"))).toBe(false)
     expect(terminal.writes.at(-2)).toBe("\x1b[?25h")
     expect(terminal.writes.at(-1)).toBe("\x1b8\x1b[2J\x1b[H")
     // This is the exact strict decoder used by the daemon client. A prior feature assertion
@@ -1670,13 +2153,14 @@ test.each([
   "SGR22 clears both intensities while preserving italic, retained $retained",
   async ({ retained }) => {
     const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: retained })
+    observeThroughSentinel(terminal)
     const id = "sgr.selective-reset.bold"
     const result = await sgrProbes.find((candidate) => candidate.id === id)!.term!(terminal.ctx)
     const status = retained.length ? "unsupported" : "supported"
     expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
     expect(result.tests).toMatchObject([{ id: "criterion", status, assertionRefs: [0] }])
     expect(terminal.queries).toEqual([])
-    expect(terminal.writes.join("")).not.toContain("\x1b[0m")
+    expect(terminal.writes.filter((write) => write.includes("YY")).join("")).not.toContain("\x1b[0m")
     expect(terminal.writes.join("")).not.toContain("\x1bc")
     expect(decodeResetCallback(result, terminal, id).run.results[0]).toMatchObject({ status })
   },
@@ -1687,6 +2171,98 @@ test("SGR22 clearing the preserved italic is a measured negative", async () => {
   const result = await sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!.term!(terminal.ctx)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
   expect(terminal.queries).toEqual([])
+})
+
+// #34932 (@cto 34932-observed-reset-scope-2136): an app that paints no faint (xterm 412) is graded on the facets it
+// shows. The full-branch tests above assume all seven subsets qualify, so they cannot see this branch, nor a measured
+// faint failure escaping through it.
+describe("SGR22 when the faint attempt paints exactly N", () => {
+  const selectiveReset = () => sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.bold")!
+  const evidence = (result: ProbeCallbackResult) =>
+    (
+      JSON.parse(result.response!) as {
+        resetReference: { unobserved?: string; checks: Array<{ phase: string; subset?: string; digest: string }> }
+      }
+    ).resetReference
+
+  test.each([
+    { name: "a correct reduced reset", options: {}, status: "supported" },
+    { name: "an ignored SGR 22", options: { resetMisses: ["bold"] }, status: "unsupported", retains: "SGR 1;3" },
+    { name: "a reset that loses italic", options: { resetDropsItalic: true }, status: "unsupported" },
+  ] satisfies Array<{ name: string; options: StatefulOptions; status: string; retains?: string }>)(
+    "$name is graded on bold reset and italic preservation, naming faint as not observed",
+    async ({ options, status, retains }) => {
+      const terminal = statefulTerminal(ALL_ATTRS, { ...options, invisible: ["faint"] })
+      const result = await selectiveReset().term!(terminal.ctx)
+      expect(result.criterionBranch).toBe("sgr-selective-reset-saved-rendition")
+      expect(result.tests).toMatchObject([{ id: "criterion", status }])
+      expect(result.observation).toMatchObject({ outcome: status, assertionType: "screenshot" })
+      expect(result.observation?.note).toContain("faint was not observable in this run")
+      if (retains) expect(result.observation?.note).toContain(`subset ${retains}`)
+      expect(result.assertions?.[0]?.expected).toContain("SGR 22 graded on clearing bold while keeping italic")
+      expect(terminal.queries).toEqual([])
+      const reference = evidence(result)
+      expect(reference.unobserved).toBe("faint")
+      const baseline = reference.checks[0]!.digest
+      expect(reference.checks.filter((check) => check.phase === "unobserved")).toMatchObject([
+        { subset: "SGR 2", digest: baseline },
+      ])
+      expect(reference.checks.filter((check) => check.phase === "styled").map((check) => check.subset)).toEqual([
+        "SGR 1",
+        "SGR 3",
+        "SGR 1;3",
+      ])
+      expect(reference.checks.filter((check) => check.phase === "restored")).toHaveLength(4)
+      // The faint combinations are never painted, and the setup is the qualified bold+italic, not 1;2;3.
+      const painted = terminal.writes.join("")
+      for (const omitted of ["\x1b[1;2m", "\x1b[2;3m", "\x1b[1;2;3m"]) expect(painted).not.toContain(omitted)
+      // Bold+italic is painted twice: its own subset, then as the repeated setup the SGR 99 control and SGR 22 follow.
+      const setups = terminal.writes.flatMap((write, at) =>
+        write.startsWith("\x1b[1;3m") && write.includes("YY") ? [at] : [],
+      )
+      expect(setups).toHaveLength(2)
+      const control = terminal.writes.findIndex((write) => write.startsWith("\x1b[99m"))
+      const target = terminal.writes.findIndex((write) => write.startsWith("\x1b[22m"))
+      expect(setups[1]).toBeLessThan(control)
+      expect(control).toBeLessThan(target)
+    },
+  )
+
+  test.each([
+    { name: "bold paints nothing", options: { invisible: ["faint", "bold"] }, failed: /subset SGR 1:/ },
+    {
+      name: "a restore keeps italic",
+      options: { invisible: ["faint"], restoreRetains: ["italic"] },
+      failed: /restored.*3/,
+    },
+    // @cto batch finding 52df21a4: bold == bold+italic left two distinct crops yet qualified and read Supported.
+    // hideBoldWithItalic below is the opposite collision, which the expected-subset check already refuses.
+    {
+      name: "italic hidden while bold is set",
+      options: { invisible: ["faint"], hideItalicWithBold: true },
+      failed: /reduced branch's styled controls are not pairwise distinct: SGR 1 and SGR 1;3 read the same cells/,
+    },
+  ] satisfies Array<{ name: string; options: StatefulOptions; failed: RegExp }>)(
+    "$name: the reduced branch does not qualify and no SGR 22 is sent",
+    async ({ options, failed }) => {
+      const terminal = statefulTerminal(ALL_ATTRS, options)
+      const result = await selectiveReset().term!(terminal.ctx)
+      expect(result.observation).toBeUndefined()
+      expect(result.tests?.[0]?.reason).toMatch(failed)
+      expect(terminal.captures.some((label) => label.includes("reset target"))).toBe(false)
+    },
+  )
+
+  test("a painted faint that SGR 22 leaves behind stays a full-branch negative", async () => {
+    const terminal = statefulTerminal(ALL_ATTRS, { resetMisses: ["faint"] })
+    const result = await selectiveReset().term!(terminal.ctx)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+    expect(result.observation?.note ?? "").not.toContain("not observable")
+    const reference = evidence(result)
+    expect(reference.unobserved).toBeUndefined()
+    expect(reference.checks.filter((check) => check.phase === "styled")).toHaveLength(7)
+    expect(terminal.writes.join("")).toContain("\x1b[1;2;3m")
+  })
 })
 
 test("SGR22 rejects an expected/wrong-subset collision before sending the target", async () => {
@@ -1761,6 +2337,7 @@ test.each([
   "saved reset reference invalidates a corrupt measurement without querying: $name",
   async ({ options, reason, target }) => {
     const terminal = statefulTerminal(ALL_ATTRS, options)
+    observeThroughSentinel(terminal)
     const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
     expect(result.tests).toMatchObject([{ status: "probe-invalid", reason: expect.stringMatching(reason) }])
     expect(result.assertions ?? []).toEqual([])
@@ -1839,6 +2416,27 @@ test.each(GRADED_ROWS)(
     expect(result.response).toContain('"setup":"0"')
     expect(result.observation?.note).toContain("independent capture oracle")
     expect(terminal.writes.at(-1)).toBe("\x1b[0m")
+  },
+)
+
+// 34712 (@cto 8d123098): iTerm2 3.6.11 erases the screen on RIS with the background still set, and only
+// then resets the pen. The expected frame pre-paints XX/YY with the row's setup, so for sgr.bg.default
+// SGR 42 was active at its RIS and the whole reference frame came back green (run 44209743576), which
+// the observer's calibrated-background qualification refuses. The doubles before this cleared cells
+// without keeping the colour they were erased with, so they could not show it.
+test.each(GRADED_ROWS)(
+  "%s builds its expected frame on a terminal whose RIS erases with the active background (34712)",
+  async (id) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, eraseUsesActiveBackground: true, replies: ["0", "0"] })
+    observeThroughSentinel(terminal, undefined, true)
+    const probe = [...sgrProbes, ...resetProbes].find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result = await probe.term(terminal.ctx)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    // The reference clears the pen itself before its RIS, so the erase leaves the default background.
+    const reference = terminal.writes.find((write) => write.includes("\x1bc"))
+    expect(reference, id).toContain("\x1b[0m\x1bc")
+    expect(terminal.screenBackground(), id).toBeUndefined()
   },
 )
 
@@ -2009,9 +2607,13 @@ test("the bold row's faint case is the third no-reference row", async () => {
 
 test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
   // Every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
-  // (what the reset under test misses) x every subset of its SETUP (what RIS keeps), with the cleared
-  // set computed from this model rather than a hand-picked list.
+  // (what the reset under test misses) x every subset of its SETUP (what the reference keeps), with the
+  // cleared set computed from this model rather than a hand-picked list. The six graded rows' reference
+  // is SGR 0 then RIS (34712), so the reference keeps an attribute only when BOTH keep it: each case
+  // runs with RIS broken, SGR 0 broken, and both broken. The no-reference rows test SGR 0 or 22
+  // themselves, so their SGR 0 is the reset under test and only RIS is broken separately.
   for (const id of RESET_FAMILY_ROWS) {
+    const graded = (GRADED_ROWS as readonly string[]).includes(id)
     const row = familyRow(id)
     const probe = statefulTerminal(ALL_ATTRS, { ris: true })
     probe.ctx.write(row.seed)
@@ -2021,26 +2623,32 @@ test("no combination of a missed cleared attribute and a retained reference attr
     const cleared = setup.filter((attribute) => !afterReset.has(attribute))
     for (const misses of subsets(cleared)) {
       for (const keeps of subsets(setup)) {
-        const terminal = statefulTerminal(ALL_ATTRS, {
-          ris: true,
-          resetMisses: misses as Array<SgrAttr | SgrColor>,
-          risRetains: keeps as Array<SgrAttr | SgrColor>,
-        })
-        const result = await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
-        const outcome = result?.observation?.outcome
-        const label = `${id}: reset misses [${misses.join("+")}] and RIS keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
-        if (outcome === "supported") {
-          expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
-        }
-        const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
-        if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
-          if (keeps.length > 0) {
-            // A retained companion contaminates the neutral negative reference. It then equals
-            // the expected preserved companion, so even a correct reset lacks a discriminator.
-            expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
-            expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
-          } else {
-            expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+        for (const broken of graded ? (["ris", "sgr0", "both"] as const) : (["ris"] as const)) {
+          const kept = keeps as Array<SgrAttr | SgrColor>
+          const terminal = statefulTerminal(ALL_ATTRS, {
+            ris: true,
+            resetMisses: misses as Array<SgrAttr | SgrColor>,
+            risRetains: broken === "sgr0" ? [] : kept,
+            sgr0Retains: broken === "ris" ? [] : kept,
+          })
+          const result = await captureRegionCallbackResult(terminal.ctx, id, familyRow(id))
+          const outcome = result?.observation?.outcome
+          const label = `${id}: reset misses [${misses.join("+")}] and the reference (${broken} broken) keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
+          if (outcome === "supported") {
+            expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
+          }
+          const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
+          // Only a reference whose SGR 0 and RIS both keep the companion is contaminated by it.
+          const referenceKeeps = broken === "both" ? keeps : []
+          if (misses.length === 0 && keepsOnlyResidual && graded) {
+            if (referenceKeeps.length > 0) {
+              // A retained companion contaminates the neutral negative reference. It then equals
+              // the expected preserved companion, so even a correct reset lacks a discriminator.
+              expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
+              expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
+            } else {
+              expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+            }
           }
         }
       }
@@ -2377,4 +2985,39 @@ test("declared visual crop movement alone cannot witness target freshness", asyn
     { x: 1, y: 32, width: 8, height: 16 },
   ])
   expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+})
+
+/**
+ * 33982, through the path the real rows run: `captureRegionReadbackDecision`. Warp repaints its text
+ * area 35 rows lower when a probe sends RIS, so the seed and post-sequence frames stay at one place
+ * while the expected and ignored-attribute frames are cropped 560 px lower. The exemption must read
+ * that as one grid move and decide the row, not as two crops of unrelated cells.
+ */
+function rowsMovedCellCrop(originY: number): PixelCellCrop {
+  return {
+    origin: { x: 49, y: originY },
+    basis: "sentinel pair located by frame difference",
+    basisDetail: "sentinel re-located by frame difference at cells 1,2 and 2,1 (33000, 33981)",
+    cell: { width: 16, height: 16 },
+    grid: { columns: 123, rows: 39 },
+    image: { width: 2000, height: 1400 },
+    witness: {
+      a: { cell: { row: 1, col: 2 }, box: { x: 65, y: originY } },
+      b: { cell: { row: 2, col: 1 }, box: { x: 49, y: originY + 16 } },
+    },
+  }
+}
+
+test("a grid that moves 35 rows between the seed and the expected frame is decided, not refused (#33982)", async () => {
+  const movedAfter = new Set(["editing.delete-chars: expected frame"])
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: (label) => ({ x: 49, y: movedAfter.has(label) ? 638 : 78, width: 48, height: 16 }),
+    cellCropFor: (label) => rowsMovedCellCrop(movedAfter.has(label) ? 606 : 46),
+  })
+  const result = await decide(fake)
+  // Decided, not refused: the exemption turns what used to be a tool-invalid row into a verdict.
+  expect(result.observation.outcome).toBe("supported")
+  expect(JSON.stringify(result.observation)).not.toMatch(/cropped from different positions/)
 })

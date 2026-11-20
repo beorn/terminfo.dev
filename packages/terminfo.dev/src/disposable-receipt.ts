@@ -713,7 +713,7 @@ export const SCREEN_TRUECOLOR_CONFIG = "screen: defscrollback 1000; truecolor on
  * reach the outer command record through tmux. `set-titles-string "#T"` sends the pane title itself, so the outer
  * record carries the bare nonce the reader scans for instead of tmux's default "#S:#I:#W - ..." wrapper.
  */
-export const TMUX_SET_TITLES_CONFIG = 'tmux: set-titles on; set-titles-string "#T"'
+export const TMUX_SET_TITLES_CONFIG = 'tmux: focus-events on; set-titles on; set-titles-string "#T"'
 
 /**
  * Per recorded mux profile config, the mux it belongs to and the exact bytes the launcher starts that mux with
@@ -721,8 +721,12 @@ export const TMUX_SET_TITLES_CONFIG = 'tmux: set-titles on; set-titles-string "#
  * records the config file's own path, so it needs no row here.
  */
 export const MUX_PROFILE_CONFIG_FILES: Readonly<Record<string, { readonly mux: string; readonly content: string }>> = {
+  "tmux: focus-events on": { mux: "tmux", content: 'set -g status-right ""\nset -g focus-events on\n' },
   [SCREEN_TRUECOLOR_CONFIG]: { mux: "screen", content: "defscrollback 1000\ntruecolor on\n" },
-  [TMUX_SET_TITLES_CONFIG]: { mux: "tmux", content: 'set -g set-titles on\nset -g set-titles-string "#T"\n' },
+  [TMUX_SET_TITLES_CONFIG]: {
+    mux: "tmux",
+    content: 'set -g status-right ""\nset -g focus-events on\nset -g set-titles on\nset -g set-titles-string "#T"\n',
+  },
 }
 
 /**

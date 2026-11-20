@@ -16,12 +16,11 @@
  * NO SILENT ERRORS: a missing file, malformed JSON, a header without its identity, an unknown suite, a suite id that
  * disagrees with its manifest, or a capture without recorded results each throw with the path and the cause.
  */
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
-import { readExplicitSuiteTarget, readSuiteManifestFile } from "./suite-manifest.ts"
-import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
+import { MissingSuiteManifestError, readExplicitSuiteTarget, readSuiteManifestFile } from "./suite-manifest.ts"
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -40,9 +39,9 @@ export class UntrustedSuiteError extends Error {
   ) {
     super(
       `${path}: suite ${suiteId} has no committed manifest under ${join(root, "content", "suites")} and is not this ` +
-        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: on a ` +
-        `tree at that suite run \`bun scripts/write-suite-manifest.ts\` and submit the file it writes (the definition ` +
-        `batch's last step), or place a run at that suite`,
+        `tree's suite ${treeSuiteId}; the raw capture cannot be read against a trusted declaration. Cure: placing a ` +
+        `run at that suite writes its manifest (placement is the only writer; there is no standalone step). A ` +
+        `capture at a suite that is neither this tree's nor placed cannot be read here.`,
     )
     this.name = "UntrustedSuiteError"
   }
@@ -50,12 +49,14 @@ export class UntrustedSuiteError extends Error {
 
 /** The trusted manifest a capture on `suiteId` is read against, or a loud refusal naming why none exists. */
 function trustedManifest(path: string, root: string, suiteId: string): ProbeSuiteManifest {
-  if (existsSync(join(root, "content", "suites", `${suiteId}.json`))) {
+  try {
     return readExplicitSuiteTarget(root, suiteId).manifest
+  } catch (cause) {
+    if (cause instanceof MissingSuiteManifestError) {
+      throw new UntrustedSuiteError(path, cause.suiteId, cause.treeSuiteId, root)
+    }
+    throw cause
   }
-  const tree = probeSuiteSnapshot()
-  if (tree.probeHash === suiteId) return derivedSuiteManifest(tree)
-  throw new UntrustedSuiteError(path, suiteId, tree.probeHash, root)
 }
 
 /**
@@ -66,6 +67,14 @@ export function loadRawCapture(
   path: string,
   options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
 ): LoadedRun {
+  return loadRawCaptureWithManifest(path, options).run
+}
+
+/** `loadRawCapture`, also returning the manifest the capture was validated against (34953: its entry hashes). */
+export function loadRawCaptureWithManifest(
+  path: string,
+  options: { root: string; catalogIds: readonly string[]; bytes?: string; manifestPath?: string },
+): { run: LoadedRun; manifest: ProbeSuiteManifest } {
   let bytes = options.bytes
   if (bytes === undefined) {
     try {
@@ -94,5 +103,5 @@ export function loadRawCapture(
   }
   const run = parseRun(path, bytes, options.catalogIds, new Map([[manifest.probeHash, manifest]]))
   if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
-  return run
+  return { run, manifest }
 }

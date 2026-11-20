@@ -1,0 +1,31 @@
+{
+  "about": "Open app cells no observable probe can answer, each reviewed by a second person (docs/data/declared-untestable.ts). Rows are added one reviewed batch at a time; a cell that later gets any probe result stops the build until its row is removed.",
+  "rows": [
+    {
+      "kind": "term",
+      "id": "cmux",
+      "os": "macos",
+      "featureId": "device.term-features",
+      "reason": "Our current capture route attaches to an already running app, so it cannot establish whether this terminal exported TERM_FEATURES into a fresh child for this run.",
+      "testableIf": "the capture route starts the app with a clean environment and verifies the run's marker in its child.",
+      "declaredBy": "@dev/8",
+      "declaredOn": "2026-11-18",
+      "reviewedBy": "@cto",
+      "reviewedOn": "2026-11-18",
+      "ruling": "@cto 2026-11-18 (message 4a09840f, packet do-20261114T1623/34803-route-untestable-go-1739.md): GO for the current cmux/macOS and Alacritty/macOS TERM_FEATURES cells declared by review under the collector-only route limitation; @cpo/term owns the public wording."
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "macos",
+      "featureId": "device.term-features",
+      "reason": "Our current capture route attaches to an already running app, so it cannot establish whether this terminal exported TERM_FEATURES into a fresh child for this run.",
+      "testableIf": "the capture route starts the app with a clean environment and verifies the run's marker in its child.",
+      "declaredBy": "@dev/8",
+      "declaredOn": "2026-11-18",
+      "reviewedBy": "@cto",
+      "reviewedOn": "2026-11-18",
+      "ruling": "@cto 2026-11-18 (message 4a09840f, packet do-20261114T1623/34803-route-untestable-go-1739.md): GO for the current cmux/macOS and Alacritty/macOS TERM_FEATURES cells declared by review under the collector-only route limitation; @cpo/term owns the public wording."
+    }
+  ]
+}
