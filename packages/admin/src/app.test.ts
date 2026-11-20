@@ -1129,6 +1129,7 @@ test.each([
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,
         "workbench.panel.opensMaximized": "always",
+        "terminal.integrated.tabs.title": "${sequence}",
       })
       expect(DatabaseSync).not.toHaveBeenCalled()
     } else {
@@ -1137,6 +1138,7 @@ test.each([
       expect(JSON.parse(String(settings?.[1]))).toEqual({
         "update.mode": "none",
         "workbench.panel.opensMaximized": "always",
+        "terminal.integrated.tabs.title": "${sequence}",
       })
       // Application storage records the command-line prompt as dismissed, so it never schedules.
       expect(DatabaseSync).toHaveBeenCalledWith("/private/run/cursor-private-run/User/globalStorage/state.vscdb")
@@ -1486,7 +1488,6 @@ test.each(["vscode", "cursor"] as const)(
       })
       await exported.activate!({ subscriptions })
       expect(createTerminal).toHaveBeenCalledWith({
-        name: "terminfo-private-run",
         shellPath: "/bin/bash",
         shellArgs: ["-p", join(directory, "serve.sh")],
         cwd: directory,

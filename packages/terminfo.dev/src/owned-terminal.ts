@@ -26,6 +26,7 @@ import type {
 import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
 import {
   ITERM_PROMPT_FEATURES,
+  createNativeEditorTitleReader,
   readAppSemanticState,
   readITermPromptMarks,
   readWezTermCwd,
@@ -2066,7 +2067,7 @@ export async function createOwnedTerminal(options: {
       darwinWindowTitle && hostedApp?.titleRead === "none"
         ? (hostedApp.titleUnavailable ?? "Hosted Darwin title read does not use System Events")
         : undefined
-    const readTitle = darwinWindowTitle
+    const windowTitleReader = darwinWindowTitle
       ? options.readDarwinTitle
       : terminalApp
         ? undefined
@@ -2106,6 +2107,10 @@ export async function createOwnedTerminal(options: {
         throw new Error(`Native terminal pid ${pid} is not an ancestor of this collector`)
       }
     }
+    const readTitle =
+      nativeEditorId === undefined
+        ? windowTitleReader
+        : createNativeEditorTitleReader({ runId: expectedLaunchRunId, assertProcess: assertNativeEditorProcess })
     // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the
     // launcher variable exactly as before: it is a Linux-arm ownership proof and never a Darwin one (8c084f05).
     const appClipboard =
@@ -2607,7 +2612,7 @@ export async function createOwnedTerminal(options: {
       ...((readTitle || darwinTitleRefusal !== undefined) && {
         async readTitle() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
-          if (darwinTitleRefusal !== undefined) throw new Error(darwinTitleRefusal)
+          if (nativeEditorId === undefined && darwinTitleRefusal !== undefined) throw new Error(darwinTitleRefusal)
           if (!readTitle) throw new Error("Owned title read has no installed reader")
           if (!darwinWindowTitle) return readTitle()
           assertDarwinTitleOwner()

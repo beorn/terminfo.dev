@@ -23,6 +23,7 @@ import {
   type AppSemanticReading,
   type LinuxMuxAttachmentProof,
   type ProbeSubject,
+  type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import type { LinuxClipboardAdapter } from "./linux-clipboard.ts"
@@ -2498,13 +2499,19 @@ function redactNativeEditorPaths(text: string) {
   return redacted
 }
 
-/** Native API replies from the single Terminal object held by this run's generated extension. */
-async function readNativeEditorState(input: {
+/** One native exchange owner shared by semantic observations and the exact Terminal's title. */
+async function createNativeEditorExchange(input: {
   featureId: string
   runId: string
-  write: (text: string) => void
-  editor: NativeEditorSource
-}): Promise<AppSemanticReading> {
+  editor: Pick<NativeEditorSource, "assertProcess">
+}) {
+  if (
+    process.env.TERMINFO_RUN_ID !== input.runId ||
+    !/^[0-9a-f]{32}$/.test(input.runId) ||
+    process.env.TERMINFO_MUX_KIND
+  ) {
+    throw new Error("Native editor read has no matching unmultiplexed launch run")
+  }
   const detail: {
     identity?: object
     /** A digest of each native reply: the committed record never carries its bytes (terminal name, paths, PID,
@@ -2559,7 +2566,7 @@ async function readNativeEditorState(input: {
     evidenceLimit: "Same-user files prove correlation with this activation, not which process wrote them",
   }
   let lastSequence = 0
-  let unavailableReason: string | undefined
+  const availability: { reason?: string } = {}
   const exchange = async (
     phase: string,
     options: { expectedCwd?: string; awaitEvent?: "start" | "end"; deadlineMs?: number } = {},
@@ -2627,8 +2634,8 @@ async function readNativeEditorState(input: {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
         detail.nativeFailure = { diagnostic: "No native reader error record was created before the reply deadline" }
       }
-      unavailableReason = "Native editor reply deadline expired; no fresh API observation"
-      throw new Error(unavailableReason)
+      availability.reason = "Native editor reply deadline expired; no fresh API observation"
+      throw new Error(availability.reason)
     }
     const reply = JSON.parse(retained.text) as NativeEditorReply
     if (
@@ -2661,8 +2668,8 @@ async function readNativeEditorState(input: {
       nativePid.reason !== "" &&
       !("value" in nativePid)
     ) {
-      unavailableReason = `Native editor terminal.processId is unavailable: ${nativePid.reason}`
-      throw new Error(unavailableReason)
+      availability.reason = `Native editor terminal.processId is unavailable: ${nativePid.reason}`
+      throw new Error(availability.reason)
     }
     if (
       nativePid?.present !== true ||
@@ -2685,12 +2692,40 @@ async function readNativeEditorState(input: {
     }
     return reply
   }
+  return { exchange, detail, availability }
+}
+
+/** Private owner wiring: replies come from its held Terminal, never the requested title or activeTerminal. */
+export function createNativeEditorTitleReader(input: {
+  runId: string
+  assertProcess: NativeEditorSource["assertProcess"]
+}): NonNullable<TermProbeSource["readTitle"]> {
+  let source: ReturnType<typeof createNativeEditorExchange> | undefined
+  return async () => {
+    source ??= createNativeEditorExchange({
+      featureId: "collector.owned-editor-title",
+      runId: input.runId,
+      editor: { assertProcess: input.assertProcess },
+    })
+    const { exchange } = await source
+    return (await exchange("title")).terminal.name
+  }
+}
+
+/** Native API replies from the single Terminal object held by this run's generated extension. */
+async function readNativeEditorState(input: {
+  featureId: string
+  runId: string
+  write: (text: string) => void
+  editor: NativeEditorSource
+}): Promise<AppSemanticReading> {
+  const { exchange, detail, availability } = await createNativeEditorExchange(input)
   const sample = async (phase: string, expectedCwd?: string): Promise<string | undefined> => {
     const cwd = (await exchange(phase, { expectedCwd })).terminal.shellIntegrationCwd
     if (expectedCwd !== undefined && (!cwd.present || cwd.value !== expectedCwd)) {
-      unavailableReason =
+      availability.reason =
         "Native editor did not observe the expected CWD; unchanged or absent state does not decide support"
-      throw new Error(unavailableReason)
+      throw new Error(availability.reason)
     }
     return cwd.present ? cwd.value : undefined
   }
@@ -2709,8 +2744,8 @@ async function readNativeEditorState(input: {
       for (const kind of ["start", "end"] as const) {
         const api = reply.executionApi?.[kind]
         if (api?.present === false && typeof api.reason === "string" && api.reason !== "") {
-          unavailableReason = `Native editor execution event API is unavailable: ${api.reason}`
-          throw new Error(unavailableReason)
+          availability.reason = `Native editor execution event API is unavailable: ${api.reason}`
+          throw new Error(availability.reason)
         }
         if (api?.present !== true) throw new Error("Native editor reply has no execution event API record")
       }
@@ -3008,17 +3043,17 @@ async function readNativeEditorState(input: {
         unknown.before === unknown.after && handled.before !== handled.expected && handled.after === handled.expected
       if (positive && qualified) {
         detail.executionStates = { unknown, handled, target }
-        unavailableReason =
+        availability.reason =
           row.mark === "b"
             ? "Native editor started one execution after the target B with qualified controls; the execution API shows neither the mark's exact position nor earlier history, so the positive branch stays PROBE TODO"
             : "Native editor read Medium command-line confidence after the target with qualified controls; the execution API shows neither exact prompt positions nor earlier history, so the positive branch stays PROBE TODO"
-        executionReading = { status: "unavailable", reason: unavailableReason, detail }
+        executionReading = { status: "unavailable", reason: availability.reason, detail }
       } else {
         executionReading = { status: "measured", reader: "state", runId: input.runId, unknown, handled, target, detail }
       }
     } catch (error) {
       executionReading = {
-        status: unavailableReason === undefined ? "invalid" : "unavailable",
+        status: availability.reason === undefined ? "invalid" : "unavailable",
         reason: redactNativeEditorPaths(error instanceof Error ? error.message : String(error)),
         detail,
       }
@@ -3049,8 +3084,8 @@ async function readNativeEditorState(input: {
   try {
     const original = await sample("initial")
     if (input.featureId !== "extensions.osc633-p") {
-      unavailableReason = "Native editor API supplies no typed observable for this row"
-      throw new Error(unavailableReason)
+      availability.reason = "Native editor API supplies no typed observable for this row"
+      throw new Error(availability.reason)
     }
     if (original !== undefined) restore = fileURLToPath(original)
     const baseline = `/terminfo-fixture-${randomUUID()}`
@@ -3085,8 +3120,8 @@ async function readNativeEditorState(input: {
       targetBefore === undefined ||
       targetAfter === undefined
     ) {
-      unavailableReason = "Native editor CWD controls contain an absent API value"
-      throw new Error(unavailableReason)
+      availability.reason = "Native editor CWD controls contain an absent API value"
+      throw new Error(availability.reason)
     }
     reading = {
       status: "measured",
@@ -3099,7 +3134,7 @@ async function readNativeEditorState(input: {
     }
   } catch (error) {
     reading = {
-      status: unavailableReason === undefined ? "invalid" : "unavailable",
+      status: availability.reason === undefined ? "invalid" : "unavailable",
       reason: redactNativeEditorPaths(error instanceof Error ? error.message : String(error)),
       detail,
     }

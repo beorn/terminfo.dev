@@ -143,7 +143,6 @@ function prepareEditorFixture(run: Run, markerValue: string, prefix: "cursor" | 
     { flag: "wx", mode: 0o600 },
   )
   const terminal = {
-    name: `terminfo-${run.id}`,
     shellPath: "/bin/bash",
     shellArgs: ["-p", run.scriptPath],
     cwd: run.directory,
@@ -443,6 +442,8 @@ const APPS: AppDef[] = [
           JSON.stringify({
             "update.mode": "none",
             "workbench.panel.opensMaximized": "always",
+            // Keep this disposable fixture's tab on the process's OSC title, not a fixed launch name.
+            "terminal.integrated.tabs.title": "${sequence}",
           }),
           { flag: "wx", mode: 0o600 },
         )
@@ -491,6 +492,7 @@ const APPS: AppDef[] = [
             "workbench.startupEditor": "none",
             "workbench.welcomePage.experimentalOnboarding": false,
             "workbench.panel.opensMaximized": "always",
+            "terminal.integrated.tabs.title": "${sequence}",
           }),
           { flag: "wx", mode: 0o600 },
         )

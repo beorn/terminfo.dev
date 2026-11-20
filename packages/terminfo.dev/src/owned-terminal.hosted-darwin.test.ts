@@ -38,6 +38,8 @@ const ids = {
 test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"])(
   "hosted %s selects its own native read",
   (app) => {
+    const editorDirectory = mkdtempSync(join(tmpdir(), "terminfo-editor-title-"))
+    directories.push(editorDirectory)
     const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
@@ -53,6 +55,7 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
       ghostty: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     }[app]
     const editor = app === "cursor" || app === "com.microsoft.VSCode"
+    const editorDirectory = ${JSON.stringify(editorDirectory)}
     let appPid = 4242
     const nativeReads = [], captures = []
     let titleReads = 0
@@ -68,7 +71,9 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
     Object.defineProperty(process, "platform", { value: "darwin" })
     let pasteboard = ""
     const device = { dev: 7n, rdev: 9n, ino: 11n }
-    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device, statSync: () => device }))
+    const realStat = fs.statSync
+    mock.module("node:fs", () => ({ ...fs, fstatSync: () => device,
+      statSync: (path, ...args) => String(path).startsWith("/dev/") ? device : realStat(path, ...args) }))
     mock.module("node:tty", () => ({ ...tty, isatty: () => true }))
     mock.module("node:child_process", () => ({ ...cp,
       execFileSync: (command, args) => {
@@ -109,16 +114,47 @@ test.each(["iterm2", "terminal-app", "cursor", "com.microsoft.VSCode", "ghostty"
     }))
     const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     process.env.TERMINFO_TARGET_ID = "foreign-launcher-value"
+    process.env.TERMINFO_RUN_ID = "b".repeat(32)
+    let nativeTitle = "owned terminal sequence one", producer
+    if (editor) {
+      const { join } = await import("node:path")
+      const { randomUUID } = await import("node:crypto")
+      const capture = join(editorDirectory, "artifacts"), replies = join(editorDirectory, "replies")
+      fs.mkdirSync(capture); fs.mkdirSync(replies)
+      process.env.TERMINFO_CAPTURE_DIRECTORY = capture
+      process.env.TERMINFO_EDITOR_RUN_DIRECTORY = editorDirectory
+      const activation = { runId: "b".repeat(32), activationNonce: randomUUID(), extensionPid: 7777,
+        activatedAt: Date.now(), app: { name: app, version: "fixture" },
+        requestPath: join(editorDirectory, "editor-request.json"), replyDirectory: replies }
+      fs.writeFileSync(join(editorDirectory, "editor-activation.json"), JSON.stringify(activation))
+      let sequence = 0
+      producer = setInterval(() => {
+        if (!fs.existsSync(activation.requestPath)) return
+        const request = JSON.parse(fs.readFileSync(activation.requestPath, "utf8"))
+        const path = join(replies, request.nonce + ".json")
+        if (fs.existsSync(path)) return
+        fs.writeFileSync(path, JSON.stringify({ ...request, ...activation, evaluatedAt: Date.now(),
+          sequence: ++sequence, status: "observed", delivery: "interval",
+          terminal: { name: nativeTitle, processId: { present: true, value: 5488 },
+            shellIntegrationCwd: { present: false, reason: "Not needed by title reader" } } }))
+      }, 5)
+    }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" },
       readDarwinTitle: async () => { titleReads++; return "fresh hosted title " + titleReads },
       appSemanticCapture: async (featureId, phase) => { captures.push({ featureId, phase }); return { retained: true } } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
-    if (app === "iterm2" || editor) {
-      await assert.rejects(owner.readTitle(), app === "iterm2"
-        ? /Hosted Darwin title read does not use System Events/
-        : /Hosted Darwin title read unavailable/)
+    if (editor) {
+      // 35140: native title replies must win over the unrelated OS caption and its hosted refusal.
+      try {
+        assert.equal(await owner.readTitle(), nativeTitle)
+        nativeTitle = "owned terminal sequence two"
+        assert.equal(await owner.readTitle(), nativeTitle)
+        assert.equal(titleReads, 0, "editor title must never consult the CG window caption")
+      } finally { clearInterval(producer) }
+    } else if (app === "iterm2") {
+      await assert.rejects(owner.readTitle(), /Hosted Darwin title read does not use System Events/)
       assert.equal(titleReads, 0, "a declared refusal must not consult the CG reader")
     } else {
       assert.equal(await owner.readTitle(), "fresh hosted title 1")
