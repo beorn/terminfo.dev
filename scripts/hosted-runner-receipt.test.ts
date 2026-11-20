@@ -133,6 +133,9 @@ console.log(value);
     await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     const emitted = await run("emit", start, receipt)
     const bytes = await readFile(receipt, "utf8")
+    // 32555: the launch helper's run-id mode names, from the job-start sample alone, the id the receipt carries.
+    expect((await run("run-id", start)).stdout.trim()).toBe((JSON.parse(bytes) as { runId: string }).runId)
+    await expect(run("run-id", join(dir, "absent-start.json"))).rejects.toThrow(/cannot read job-start sample/)
     expect(parseDisposableReceipt(bytes).kind).toBe("github-hosted-runner")
     const decoded = JSON.parse(bytes) as {
       job: { jobId: string }

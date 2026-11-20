@@ -470,6 +470,24 @@ jobs:
           printf '%s\n' "\$status" > "$OUT/collector-exit"
           SCRIPT
           chmod +x "$COMMAND_PATH"
+          # 32555 (@cto c8b7704b): the TERM_FEATURES clean-launch marker, one helper for every direct-binary arm
+          # (Ghostty, WezTerm, Warp). This job's receipt run id, read from the job-start sample and refused when
+          # absent, goes into the app's own launch environment with TERM_FEATURES removed; an app already running
+          # from this bundle is refused, because a reused process cannot carry this run's marker. The child reader
+          # (terminal-child-environment.ts) measures only when both variables equal the run id. Terminal.app and
+          # iTerm2 open windows inside an existing app process and keep their named PROBE TODO.
+          term_features_launch_env() {
+            local run_id
+            run_id="$(node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" run-id "$OUT/job-start.json")" || {
+              echo "TERM_FEATURES marker: no receipt run id from $OUT/job-start.json; launch refused" >&2
+              return 1
+            }
+            if pgrep -f -- "^$APP_BUNDLE/Contents/MacOS/" > /dev/null; then
+              echo "TERM_FEATURES marker: a process from $APP_BUNDLE is already running; a reused process cannot carry this run's marker; launch refused" >&2
+              return 1
+            fi
+            TERM_FEATURES_LAUNCH_ENV=(env -u TERM_FEATURES "TERMINFO_TERM_FEATURES_LAUNCH=$run_id" "TERMINFO_RUN_ID=$run_id")
+          }
           case "$APP_ID" in
             terminal-app)
               COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_TERMINAL_LAUNCH'
@@ -562,7 +580,8 @@ jobs:
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
               APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
-              nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              term_features_launch_env || exit 1
+              "${TERM_FEATURES_LAUNCH_ENV[@]}" nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             wezterm)
               # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
@@ -583,7 +602,8 @@ jobs:
               # so the front end named here is WebGpu, which uses Metal instead of the deprecated GL path.
               APP_ARGV=("$APP_BUNDLE/Contents/MacOS/wezterm" --config 'front_end="WebGpu"' start --always-new-process -- /bin/bash "$COMMAND_PATH")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
-              nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              term_features_launch_env || exit 1
+              "${TERM_FEATURES_LAUNCH_ENV[@]}" nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
               # 33601 (@cto e2ce2090, 5cffb5d6): request 1 px padding per side to move cells off the shaded edge.
@@ -594,7 +614,10 @@ jobs:
               "${APP_ARGV[@]}" > "$OUT/launcher.log" 2>&1 &
               ;;
             warp)
-              COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_WARP_START'
+              # Warp's stable binary inherits this bun process's environment (spawn without env); whether Warp
+              # hands it to its child shell is what the first hosted run proves (@cto c8b7704b point 2).
+              term_features_launch_env || exit 1
+              COMMAND_PATH="$COMMAND_PATH" "${TERM_FEATURES_LAUNCH_ENV[@]}" bun --eval "$(cat <<'HOSTED_WARP_START'
           const { mkdirSync, writeFileSync, copyFileSync, statSync, constants } = require("node:fs");
           const { join } = require("node:path");
           const { homedir } = require("node:os");

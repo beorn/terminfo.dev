@@ -284,6 +284,7 @@ test.each(["1", "0"])("iTerm API preference readback %s controls launch after th
 
 // The actual shell must launch and record one array. Parser fixtures cannot catch a
 // workflow that records a parallel recipe or never writes the uploaded handoff.
+const MARKER = "0123456789abcdef0123456789abcdef"
 test.each([
   ["macos", "ghostty"],
   ["macos", "wezterm"],
@@ -313,11 +314,19 @@ test.each([
       mkdirSync(dirname(binary), { recursive: true })
       writeFileSync(
         binary,
-        `#!/usr/bin/env node\nif (process.argv[2] === '--version') console.log('fixture 1.0'); else require('node:fs').writeFileSync(process.env.INVOKED, JSON.stringify(process.argv.slice(1)));\n`,
+        `#!/usr/bin/env node\nif (process.argv[2] === '--version') console.log('fixture 1.0'); else { require('node:fs').writeFileSync(process.env.INVOKED, JSON.stringify(process.argv.slice(1))); require('node:fs').writeFileSync(process.env.INVOKED + '.env', JSON.stringify({ marker: process.env.TERMINFO_TERM_FEATURES_LAUNCH ?? null, runId: process.env.TERMINFO_RUN_ID ?? null, termFeatures: process.env.TERM_FEATURES ?? null })) }\n`,
         { mode: 0o755 },
       )
     }
-    const result = spawnSync("/bin/bash", ["-e", "-c", `cygpath() { printf '%s' "$2"; };\n${arm![1]}\nwait`], {
+    // 32555: the macOS direct-binary arms call the workflow's marker helper; it runs here as written, with only the
+    // receipt run-id read and the already-running check stubbed, so the launched binary must inherit the marker.
+    const helper = os === "macos" ? /^term_features_launch_env\(\) \{\n[\s\S]*?\n\}\n/mu.exec(collect)?.[0] : ""
+    if (os === "macos") expect(helper, "the launch step defines the marker helper").toBeDefined()
+    const stubs =
+      os === "macos"
+        ? `node() { if [ "$3" = run-id ]; then echo ${MARKER}; else command node "$@"; fi; }\npgrep() { return 1; }\n${helper}`
+        : ""
+    const result = spawnSync("/bin/bash", ["-e", "-c", `cygpath() { printf '%s' "$2"; };\n${stubs}${arm![1]}\nwait`], {
       encoding: "utf8",
       env: {
         ...process.env,
@@ -327,6 +336,7 @@ test.each([
         APPARATUS: root,
         OUT: out,
         INVOKED: launched,
+        TERM_FEATURES: "inherited-from-runner",
         WIN_OUT: "C:\\run with spaces",
         WIN_COMMAND: "C:\\run with spaces\\serve.ps1",
         COMMAND_PATH: join(directory, "serve with spaces.command"),
@@ -336,6 +346,16 @@ test.each([
     const actual = JSON.parse(readFileSync(launched, "utf8"))
     expect(actual).toEqual(expect.arrayContaining([expect.any(String)]))
     expect(JSON.parse(readFileSync(join(out, "app-argv.json"), "utf8"))).toEqual(actual)
+    if (os === "macos" && app !== "alacritty") {
+      expect(
+        JSON.parse(readFileSync(`${launched}.env`, "utf8")),
+        "the app inherits this run's marker, TERM_FEATURES removed",
+      ).toEqual({
+        marker: MARKER,
+        runId: MARKER,
+        termFeatures: null,
+      })
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -2061,5 +2081,75 @@ test.each([
     }
   } finally {
     rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// 32555 (@cto c8b7704b): the direct-binary arms launch under one helper that names this job's receipt run id as
+// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process; Terminal.app and
+// iTerm2 keep their named PROBE TODO. The helper is read out of the workflow and run with stubbed node and pgrep.
+test("the direct-binary arms launch under the TERM_FEATURES marker helper, which refuses a missing id or a reused app", () => {
+  const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const helper = /^ {10}term_features_launch_env\(\) \{\n[\s\S]*?\n {10}\}\n/mu.exec(macos)?.[0]
+  expect(helper, "one helper in the launch step").toBeDefined()
+  expect(macos.match(/term_features_launch_env\(\) \{/gu)).toHaveLength(1)
+  const arms = new Map<string, string>()
+  const collect = (parse(macos).jobs["measure-macos"].steps as { id?: string; run?: string }[]).find(
+    (step) => step.id === "collect",
+  )!.run!
+  for (const m of collect.matchAll(/^ {2}([a-z0-9.|-]+)\)\n([\s\S]*?)\n {4};;$/gmu)) arms.set(m[1]!, m[2]!)
+  for (const app of ["ghostty", "wezterm", "warp"]) {
+    expect(arms.get(app), `${app} arm`).toMatch(
+      /term_features_launch_env \|\| exit 1\n.*"\$\{TERM_FEATURES_LAUNCH_ENV\[@\]\}"/u,
+    )
+  }
+  for (const app of ["terminal-app", "iterm2"]) {
+    expect(arms.get(app), `${app} arm`).not.toContain("term_features_launch_env")
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), "tf-marker-"))
+  try {
+    const bin = join(dir, "bin")
+    mkdirSync(bin)
+    writeFileSync(
+      join(bin, "node"),
+      '#!/bin/bash\n[ "$3" = run-id ] && [ "$4" = /out/job-start.json ] || exit 2\n[ -n "$NODE_FAIL" ] && exit 1\necho 0123456789abcdef0123456789abcdef\n',
+      { mode: 0o755 },
+    )
+    writeFileSync(
+      join(bin, "pgrep"),
+      '#!/bin/bash\n[ "$3" = "^/Applications/Ghostty.app/Contents/MacOS/" ] || exit 2\n[ -n "$RUNNING" ]\n',
+      {
+        mode: 0o755,
+      },
+    )
+    const script = `${helper}\nterm_features_launch_env || exit 7\nprintf '%s\\n' "\${TERM_FEATURES_LAUNCH_ENV[@]}"`
+    const run = (env: Record<string, string>) =>
+      spawnSync("/bin/bash", ["-c", script], {
+        encoding: "utf8",
+        env: {
+          PATH: `${bin}:/usr/bin:/bin`,
+          APPARATUS: "/apparatus",
+          OUT: "/out",
+          APP_BUNDLE: "/Applications/Ghostty.app",
+          ...env,
+        },
+      })
+    const ok = run({})
+    expect(ok.status, ok.stderr).toBe(0)
+    expect(ok.stdout.trim().split("\n")).toEqual([
+      "env",
+      "-u",
+      "TERM_FEATURES",
+      "TERMINFO_TERM_FEATURES_LAUNCH=0123456789abcdef0123456789abcdef",
+      "TERMINFO_RUN_ID=0123456789abcdef0123456789abcdef",
+    ])
+    const noId = run({ NODE_FAIL: "1" })
+    expect(noId.status).toBe(7)
+    expect(noId.stderr).toMatch(/no receipt run id from \/out\/job-start\.json; launch refused/u)
+    const reused = run({ RUNNING: "1" })
+    expect(reused.status).toBe(7)
+    expect(reused.stderr).toMatch(/already running; a reused process cannot carry this run's marker; launch refused/u)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
