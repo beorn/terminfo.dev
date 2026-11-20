@@ -2031,6 +2031,44 @@ test("an ignored mode whose sentinel paint never shows is a named unavailable wi
   })
 })
 
+// #37240 (@cto 29fc67ff): WezTerm 20240203 on macOS (run 44826251291) and its Linux build (a60913e4) swap each
+// cell's colours under DECSCNM, so the basic sentinel (a background-only SGR 45 space) shows the default foreground:
+// every "reverse screen solid paint" confirmation equalled the grey reversed blank. The reverse stage now runs the
+// same candidate loop as the normal stage, so the SGR 7 form is tried next and its measured paint is the witness.
+test("a reverse screen that hides the basic sentinel witnesses the reverse form, named in the basis", async () => {
+  const shown = onCanvas(rasterFrame("solid", false, [32, 32, 32]), REVERSED_CANVAS)
+  const labels: string[] = []
+  const run = calibration({
+    screenMode: "reverse",
+    frames: { "reverse screen solid paint": [shown, shown] },
+    beforeCapture: (label) => {
+      labels.push(label)
+      if (label.includes("reverse screen solid paint basic")) {
+        throw Object.assign(new Error("Capture calibration reverse screen solid paint basic: paint witness timeout"), {
+          name: "CapturePaintTimeout",
+        })
+      }
+    },
+  })
+  const result = await run.promise
+  // The normal sentinel is unchanged; only the witness under the mode takes the next form.
+  expect(result.sentinel).toMatchObject({ form: "basic" })
+  expect(result.reverseScreen).toMatchObject({
+    status: "witnessed",
+    sentinel: { form: "reverse", rgb: [32, 32, 32] },
+    paintClasses: { background: { anchor: [250, 250, 250] }, sentinel: { anchor: [32, 32, 32] } },
+  })
+  expect(result.basis).toContain(
+    "reverse screen sentinel reverse (basic: not observed, reverse: observed) rgb 32,32,32 on reversed canvas 250,250,250",
+  )
+  expect(labels.some((label) => label.includes("reverse screen solid paint reverse"))).toBe(true)
+  // The reverse form was painted under the mode, after DECSCNM was set and before it was reset.
+  const all = run.writes.join("")
+  const set = all.indexOf(DECSCNM_SET)
+  expect(all.indexOf("\x1b[7m", set)).toBeGreaterThan(set)
+  expect(all.indexOf("\x1b[7m", set)).toBeLessThan(all.indexOf(DECSCNM_RESET, set))
+})
+
 test("an ambiguous reverse witness is a named unavailable outcome", async () => {
   const holed = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
   holed.rgba.set([...REVERSED_CANVAS, 255], (5 * 12 + 5) * 4)
@@ -2062,7 +2100,9 @@ test("an unseen reverse paint whose stage deadline expires inside a capture is a
   const result = await run.promise
   expect(result.reverseScreen).toEqual({
     status: "unavailable",
-    reason: "reverse screen sentinel paint (basic) was not observed on the reversed blank canvas",
+    // #37240: both sentinel forms were tried under the mode before the witness is called unavailable.
+    reason:
+      "reverse screen sentinel paint (basic: not observed, reverse: not observed) was not observed on the reversed blank canvas",
   })
   // The mode is still reset and the normal paint proven before the result is returned.
   expect(run.reads.get("reverse screen return")).toBe(2)

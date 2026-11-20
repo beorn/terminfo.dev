@@ -946,6 +946,38 @@ export async function calibrateCaptureOrigin({
     }
     ctx.write(text)
   }
+  /**
+   * Paint the solid grid in each sentinel form in turn until one is confirmed as changed from `reference`.
+   * The ONE candidate loop: the normal stage and the reverse screen stage both call it (#37240, @cto
+   * 29fc67ff), so a form the mode hides (WezTerm's DECSCNM swaps each cell's colours, so a background-only
+   * SGR 45 space shows the default foreground) is answered by the next form, never by a copied loop.
+   */
+  const solidPaintCandidates = async (
+    label: (candidate: "basic" | "reverse") => string,
+    reference: CapturedFrame,
+    timedOut: (cause: unknown) => boolean,
+  ): Promise<{
+    observed?: { frame: CapturedFrame; form: "basic" | "reverse" }
+    attempts: string[]
+    lastTimeout?: Error
+  }> => {
+    const attempts: string[] = []
+    let lastTimeout: Error | undefined
+    for (const candidate of ["basic", "reverse"] as const) {
+      ctx.write("\x1b[0m")
+      paintGrid("solid", candidate)
+      try {
+        const frame = await confirmedFrame(label(candidate), () => true, reference)
+        attempts.push(`${candidate}: observed`)
+        return { observed: { frame, form: candidate }, attempts }
+      } catch (cause) {
+        if (!timedOut(cause)) throw cause
+        if (cause instanceof Error) lastTimeout = cause
+        attempts.push(`${candidate}: not observed`)
+      }
+    }
+    return { attempts, ...(lastTimeout === undefined ? {} : { lastTimeout }) }
+  }
   let baseline: CapturedFrame | undefined
   let observedPaint: CapturedFrame | undefined
   let failure: unknown
@@ -996,26 +1028,18 @@ export async function calibrateCaptureOrigin({
     ctx.write(eraseVisibleGrid)
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
-    let solid: CapturedFrame | undefined
-    let form: "basic" | "reverse" = "basic"
-    const attempts: string[] = []
-    let lastTimeout: Error | undefined
-    for (const candidate of ["basic", "reverse"] as const) {
-      ctx.write("\x1b[0m")
-      paintGrid("solid", candidate)
-      try {
-        solid = await confirmedFrame(`solid grid paint ${candidate}`, () => true, baseline)
-        observedPaint = solid
-        form = candidate
-        attempts.push(`${candidate}: observed`)
-        break
-      } catch (cause) {
-        if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
-        lastTimeout = cause
-        attempts.push(`${candidate}: not observed`)
-      }
+    const normalPaint = await solidPaintCandidates(
+      (candidate) => `solid grid paint ${candidate}`,
+      baseline,
+      (cause) => cause instanceof Error && cause.name === "CapturePaintTimeout",
+    )
+    const { attempts } = normalPaint
+    if (!normalPaint.observed) {
+      throw refusal(`Capture calibration paint not observed: ${attempts.join("; ")}`, normalPaint.lastTimeout)
     }
-    if (!solid) throw refusal(`Capture calibration paint not observed: ${attempts.join("; ")}`, lastTimeout)
+    const solid = normalPaint.observed.frame
+    const form = normalPaint.observed.form
+    observedPaint = solid
     const { witness, witnessClass } = findSolidWitnessClass(before, solid)
     const [red, green, blue] = witness
     const solidFrame = solid
@@ -1139,6 +1163,8 @@ export async function calibrateCaptureOrigin({
     // invalidates the whole calibration.
     let reverseScreen: ReverseScreenWitness | undefined
     let reversePaintEqual = false
+    let reverseAttempts: string[] = []
+    let reverseTrace = ""
     if (screenMode === "reverse") {
       const rowsFrame = rows
       reverseSet = true
@@ -1155,17 +1181,20 @@ export async function calibrateCaptureOrigin({
           }
         }
         const canvasUnchanged = equal(reverseBlank, before)
-        paintGrid("solid", form)
-        let reverseSolid: CapturedFrame
-        try {
-          reverseSolid = await confirmedFrame("reverse screen solid paint", () => true, reverseBlank)
-        } catch (cause) {
-          if (!reverseStageTimedOut(cause)) throw cause
+        const reversePaint = await solidPaintCandidates(
+          (candidate) => `reverse screen solid paint ${candidate}`,
+          reverseBlank,
+          reverseStageTimedOut,
+        )
+        reverseAttempts = reversePaint.attempts
+        if (!reversePaint.observed) {
           return {
             status: "unavailable",
-            reason: `reverse screen sentinel paint (${form}) was not observed on the reversed blank canvas`,
+            reason: `reverse screen sentinel paint (${reversePaint.attempts.join(", ")}) was not observed on the reversed blank canvas`,
           }
         }
+        const reverseSolid = reversePaint.observed.frame
+        const reverseForm = reversePaint.observed.form
         try {
           const reversed = findSolidWitnessClass(reverseBlank, reverseSolid)
           const painted = reverseSolid
@@ -1207,9 +1236,10 @@ export async function calibrateCaptureOrigin({
             }
             reversePaintEqual = true
           }
+          reverseTrace = `; reverse screen sentinel ${reverseForm} (${reverseAttempts.join(", ")}) rgb ${r},${g},${b} on reversed canvas ${background.anchor.join(",")}`
           return {
             status: "witnessed",
-            sentinel: { form, rgb: [r, g, b] },
+            sentinel: { form: reverseForm, rgb: [r, g, b] },
             paintClasses: {
               background: { anchor: background.anchor, members: background.members },
               sentinel: { anchor: reversed.witnessClass.anchor, members: reversed.witnessClass.members },
@@ -1294,7 +1324,7 @@ export async function calibrateCaptureOrigin({
       },
       ...(reverseScreen === undefined ? {} : { reverseScreen }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reverseTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {
