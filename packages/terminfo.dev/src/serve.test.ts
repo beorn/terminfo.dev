@@ -2379,6 +2379,109 @@ describe("private finite daemon startup", () => {
     // Keep the child's limit below the outer test so a wedged child leaves its diagnostic result.
   }, 420_000)
 
+  // @cto 0df0bf30 condition, driven per @cto 4cff86e5: a read taken as a plain crop after the
+  // sentinel was retired must stay visibly so WHERE RESULTS ARE GRADED, per row, not only on the
+  // run. Four rows in one fixture: a parser row that paints no sentinel, then a row whose second
+  // sentinel read throws the same wide verdict sentinel-read.test.ts drives, then a later anchored
+  // row, then another parser row. The same ids run twice - once clean (green control) and once with
+  // the wide read (red) - so the keys are shown to follow the retirement and not the row list.
+  it("names every row whose crop fell back to a plain read after the sentinel was retired (33981)", () => {
+    const result = runHostedDarwinFixture(
+      `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      Object.defineProperty(process, "platform", { value: "darwin" })
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
+      const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      const timings = { censusMs: 1, censusInnerMs: 1, imageMs: 1, restoreMs: 1, restoreInnerMs: 1, convertMs: 1 }
+      const sentinelRead = await import("./packages/terminfo.dev/src/sentinel-read.ts")
+      // throwOn is the 1-based sentinel read that retires the anchor; 0 serves every read.
+      let throwOn = 0
+      const served = []
+      mock.module("./packages/terminfo.dev/src/sentinel-read.ts", () => ({ ...sentinelRead,
+        readThroughSentinel: async input => {
+          served.push(input.label)
+          if (served.length === throwOn)
+            throw new sentinelRead.SentinelPaintWiderThanCell(
+              input.label + ": every region that changed is wider than one cell — one changed region, 16 px in a 4x4 box at 0,0 against a 2x2 cell. Either the terminal drew U+2588 across two columns, or this frame changed over a wide area rather than at the pair; both make the pair unusable as an anchor, so this run stops anchoring its reads on the sentinel")
+          await input.prePaint()
+          return input.capture(() => ({ origin: input.reading, basis: "fixture sentinel" }))
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", appPid: 42, hostedAppId: "alacritty",
+          summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
+      }))
+      mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async (cb) => cb(), drainStdin: async () => {},
+        query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" } as const),
+        measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const reply = sequence === "\\x1b[16t" ? "\\x1b[?6c"
+            : sequence === "\\x1b[14t" ? "\\x1b[4;598;798t"
+            : sequence === "\\x1b[18t" ? "\\x1b[8;46;133t"
+            : "\\x1bP>|alacritty 0.17.0\\x1b\\\\"
+          return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: pattern.test(reply) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
+        capture: async (checkpoint) => ({ frame: { role: checkpoint.role, ref: "sha256:" + "a".repeat(64), capturedAt: 1,
+          label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture", ...timings } }),
+        captureRaw: async (checkpoint) => ({ result: { frame: { role: checkpoint.role, ref: "sha256:" + "f".repeat(64), capturedAt: 1,
+          label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) },
+          trace: { captureCommand: "fixture", ...timings } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } })
+      }) }))
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => ({
+        origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 },
+        basis: "fixture complete raster", sentinel: { form: "basic", rgb: [255, 0, 255] } }) }))
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
+        probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      // Row order: a parser row that paints no sentinel, then the row whose second read is the read
+      // that retires the anchor, then a later anchored row, then another sentinel-free row.
+      const ids = ["cursor.move.absolute", "editing.decsace", "cursor.hide", "cursor.move.home"]
+      const controlRun = await collectProbeRun({ ids })
+      const controlServed = [...served]
+      served.length = 0
+      throwOn = 2
+      const fallbackRun = await collectProbeRun({ ids })
+      // GREEN control: nothing is wider than a cell, so row 2 anchors on both of its seed reads and
+      // the later anchored row on all three. Neither parser row reaches a sentinel read at all.
+      assert.equal(controlServed.length, 5, "control: row 2 anchors twice and the later anchored row three times")
+      assert.equal(controlRun.rawReplies["collector.sentinelFallback"], undefined, "control: a run that saw no wide frame records no fallback")
+      // RED: the second read throws the same wide verdict sentinel-read.test.ts drives.
+      assert.equal(served.length, 2, "the run stops anchoring at the read that retired the sentinel")
+      assert.ok(served[0].startsWith("editing.decsace"), "the reads that anchored before the fallback belong to row 2, never row 1")
+      const fact = fallbackRun.rawReplies["collector.sentinelFallback"]
+      assert.ok(fact && fact.includes("wider than one cell"), "the run carries the verdict")
+      const keyed = Object.keys(fallbackRun.rawReplies).filter((key) => key.endsWith(".sentinelFallback") && key !== "collector.sentinelFallback").map((key) => key.slice(0, -".sentinelFallback".length)).sort()
+      // Row 2 fell back mid-read; the later anchored row was diverted before its first read; the row
+      // before row 2 and the sentinel-free row after it were never going to anchor.
+      assert.deepEqual(keyed, ["cursor.hide", "editing.decsace"], "exactly row 2 and the later anchored row carry the fallback")
+      const rowIds = new Set(fallbackRun.results.map((row) => row.featureId))
+      for (const id of keyed) {
+        assert.ok(rowIds.has(id), id + " names a real row")
+        assert.equal(fallbackRun.rawReplies[id + ".sentinelFallback"], fact, id + " carries the run's own fact")
+      }
+      for (const id of ["cursor.move.absolute", "cursor.move.home"])
+        assert.equal(id + ".sentinelFallback" in fallbackRun.rawReplies, false, id + " paints no sentinel, so no fallback is charged to it")
+    `,
+      120_000,
+    )
+    expect(stderrWithoutInputInstall(result.stderr)).toEqual([])
+    expect(result.status).toBe(0)
+  })
+
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
   // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
   // the run aborts by name carrying the replies it read. A sentinel is DA1 answered and then
