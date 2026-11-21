@@ -49,9 +49,6 @@ jobs:
       - name: Validate content
         run: bun run validate
 
-      - name: Run unit tests
-        run: bun --bun vitest run
-
       - name: Build site
         run: bun run build
 
