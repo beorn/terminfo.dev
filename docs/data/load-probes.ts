@@ -11,6 +11,7 @@ import { loadFeatures, type FeatureRecord } from "@terminfo/catalog"
 import { loadFullProbes } from "./probes.data"
 import type { ProbeData } from "./probes.data"
 import { loadCategories } from "./categories.ts"
+import { publicFeatures } from "./public-features.ts"
 import { generateAnalysis, type AnalysisEntry } from "../../scripts/generate-analysis.ts"
 export type { AnalysisEntry } from "../../scripts/generate-analysis.ts"
 
@@ -45,9 +46,14 @@ function features(): Record<string, FeatureRecord> {
   return loadFeatures(contentDir)
 }
 
+/** What tag pages list: the public catalogue, without the environment positions (Q2). */
+function listedFeatures(): Record<string, FeatureRecord> {
+  return publicFeatures(features())
+}
+
 /** Get all unique tags from features.json, validating against standards.json */
 export function getAllTags(): string[] {
-  const meta = features()
+  const meta = listedFeatures()
   const standards = loadStandards()
   const validTags = new Set(Object.keys(standards))
   const tags = new Set<string>()
@@ -67,13 +73,16 @@ export function getAllTags(): string[] {
 
 /** Get feature IDs that have a given tag */
 export function getFeaturesForTag(tag: string): string[] {
-  const meta = features()
+  const meta = listedFeatures()
   return Object.entries(meta)
     .filter(([_, entry]) => entry.tags?.includes(tag))
     .map(([id]) => id)
 }
 
-/** Convert feature dot-path ID to URL slug, using features.json slug if available */
+/**
+ * Convert feature dot-path ID to URL slug, using features.json slug if available. A per-id lookup over the whole
+ * catalogue: the hidden features' old page URLs (docs/public/_redirects) are derived through it.
+ */
 export function featureSlug(id: string): string {
   const meta = features()
   return meta[id]?.slug ?? id.replaceAll(".", "-")

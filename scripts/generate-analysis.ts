@@ -33,6 +33,7 @@ import {
   subjectLabel,
 } from "@terminfo/catalog"
 import { siteAnalysisPath } from "./site-out.ts"
+import { publicFeatures } from "../docs/data/public-features.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -1224,7 +1225,9 @@ function escapeHtmlAttr(s: string): string {
 // --- Main ---
 
 function loadAllData() {
-  const features = loadFeatures()
+  const catalog = loadFeatures()
+  // Q2: the analysis counts, lists and links the public catalogue; the cross-check below reads the whole one.
+  const features = publicFeatures(catalog)
   const terminals = loadTerminals()
   const categories = loadCategories(contentDir)
   const standards = loadStandards()
@@ -1236,7 +1239,7 @@ function loadAllData() {
   const resultMap = buildTerminalResultMap()
 
   // Cross-validate
-  crossValidate(features, terminals, resultMap)
+  crossValidate(catalog, terminals, resultMap)
 
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }

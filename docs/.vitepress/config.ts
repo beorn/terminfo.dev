@@ -10,6 +10,7 @@ import { NOT_MEASURED_TEXT } from "../data/release-scope"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
+import { publicFeatures } from "../data/public-features.ts"
 
 function stripHtml(html: string): string {
   return html
@@ -42,9 +43,10 @@ function loadPlatformItems(): Array<{ text: string; link: string }> {
 function buildSidebar() {
   // Both catalogs come through their one loader (@terminfo/catalog); the per-field validation this
   // function used to repeat now lives there. `terminalsData` keeps its historical/intermediary
-  // fields, and `featuresData` its tags, through the same records the rest of the site reads.
+  // fields, and `featuresData` its tags, through the same records the rest of the site reads. The sidebar and nav
+  // list the public catalogue (Q2): no link to an environment position's page.
   const terminalsData: Record<string, TerminalRecord> = loadTerminals(contentDir)
-  const featuresData: Record<string, FeatureRecord> = loadFeatures(contentDir)
+  const featuresData: Record<string, FeatureRecord> = publicFeatures(loadFeatures(contentDir))
   const tags = new Set<string>()
   for (const entry of Object.values(featuresData)) {
     for (const tag of entry.tags ?? []) tags.add(tag)

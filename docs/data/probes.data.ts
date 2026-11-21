@@ -21,6 +21,7 @@ import {
   type PublicRunMetadata,
 } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
+import { publicFeatures } from "./public-features.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
@@ -90,7 +91,7 @@ export interface ProbeData {
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string }>
-  /** feature id -> { name, url? } from features.json */
+  /** feature id -> { name, url? } from features.json: the public catalogue, without the environment positions (Q2) */
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
@@ -264,7 +265,10 @@ export function loadFullProbes(): ProbeData {
   const joined = joinedAppCells(projection, subjects, contentDir)
   const published = publicResults(projection, subjects, joined)
   const bySubject = new Map(Object.entries(published.selectedByBackend))
-  const featureDescriptions = loadFeatureDescriptions()
+  // Q2 (@cpo/term f16a5a52): pages list the public catalogue, so the nine environment positions leave features,
+  // categories, the client payload, results, notes and baselines here. No count moves: the folds grade the graded
+  // ids only, and the stats and bars below still read each run's full recorded catalogIds.
+  const featureDescriptions = publicFeatures(loadFeatureDescriptions())
   const features: FeatureResult[] = Object.entries(featureDescriptions)
     .filter(([id]) => !id.startsWith("$"))
     .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
@@ -325,14 +329,15 @@ export function loadFullProbes(): ProbeData {
     })
     const app = joined.get(key)
     results[key] = Object.fromEntries(
-      selected.catalogIds.map((id) => [
-        id,
-        app?.cells[id]?.status ?? selected.featureResults[id]?.status ?? "probe-todo",
-      ]),
+      selected.catalogIds
+        .filter((id) => Object.hasOwn(featureDescriptions, id))
+        .map((id) => [id, app?.cells[id]?.status ?? selected.featureResults[id]?.status ?? "probe-todo"]),
     )
     notes[key] = Object.fromEntries(
       Object.values(selected.featureResults).flatMap((result) =>
-        result.reason ? [[result.featureId, result.reason]] : [],
+        result.reason && Object.hasOwn(featureDescriptions, result.featureId)
+          ? [[result.featureId, result.reason]]
+          : [],
       ),
     )
     stats[key] = subjectStats(selected, app)

@@ -1,3 +1,14 @@
 # Redirect old /terminal/ URLs to /terminals/ (renamed 2026-03-26)
 /terminal     /terminals     301
 /terminal/*   /terminals/:splat   301
+
+# The nine environment feature pages are not built (2.7.4); old links land on the device category page
+/device/env-term           /device   301
+/device/env-colorterm      /device   301
+/device/env-term-program   /device   301
+/device/env-lc-terminal    /device   301
+/device/env-vte-version    /device   301
+/device/env-kitty          /device   301
+/device/env-wezterm        /device   301
+/device/env-wt-session     /device   301
+/device/env-no-color       /device   301
