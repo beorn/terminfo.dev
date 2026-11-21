@@ -22,6 +22,7 @@ import {
 } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { publicFeatures } from "./public-features.ts"
+import { displayVersions } from "../.vitepress/theme/display-version.ts"
 import { siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
@@ -322,7 +323,7 @@ export function loadFullProbes(): ProbeData {
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
       name: key,
-      versions: [...new Set(Object.values(selected.sources).map((source) => source.subject.version))],
+      versions: displayVersions(Object.values(selected.sources)),
       engine: "",
       type: kind,
       ...(os && { platforms: [os] }),

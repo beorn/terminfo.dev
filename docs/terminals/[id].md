@@ -12,6 +12,7 @@ import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, sta
 import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
 import { refusalSummarySentence } from '../data/prior-decision.ts'
+import { displayVersion, displayVersions } from '../.vitepress/theme/display-version.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -35,7 +36,7 @@ const historySubjects = JSON.parse(p.historySubjects || '[]')
 const runSha = ref('')
 const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun)
 const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
-const sourceVersions = computed(() => [...new Set(sourceRuns.value.map(run => run.subject.version))].join(', '))
+const sourceVersions = computed(() => displayVersions(sourceRuns.value).join(', '))
 const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
@@ -66,7 +67,7 @@ function featureNote(id) {
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
 const staleText = computed(() => stale.value ? sourceRuns.value.map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; ') : '')
 function runLabel(run) {
-  return `${run.subject.version} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
+  return `${displayVersion(run.subject.version)} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
 
 function featureTooltip(f) {
@@ -175,7 +176,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && !isCurrentApp && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
-  <span v-if="selectedRun || p.version"> · v{{ sourceVersions || p.version }}</span>
+  <span v-if="selectedRun || p.version"> · {{ sourceVersions || p.version }}</span>
 </div>
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
@@ -196,7 +197,7 @@ const breadcrumbParent = (() => {
       <tr><th>Supported share</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }}</td></tr>
       <tr><th>Coverage</th><td v-for="column in osColumns" :key="column.name">{{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
       <tr v-if="osColumns.some(column => column.refusalLines.length)"><th>Refused</th><td v-for="column in osColumns" :key="column.name"><p v-for="line in column.refusalLines" :key="line">{{ line }}</p></td></tr>
-      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ [...new Set(column.sources.map(run => run.subject.version))].join(', ') }}</td></tr>
+      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ displayVersions(column.sources).join(', ') }}</td></tr>
       <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in column.sources" :key="run.runId">{{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
     </tbody>
   </table>
@@ -236,7 +237,7 @@ const breadcrumbParent = (() => {
   </div>
 
   <ul>
-    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ run.subject.version }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
+    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
   </ul>
   <dl>
     <dt>Subject</dt><dd>{{ selectedRun.subject?.kind }} · {{ selectedRun.subject?.id }}</dd>

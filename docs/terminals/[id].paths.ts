@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url"
 import { loadTerminals as loadTerminalCatalog, subjectLabel, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
+import { displayVersion } from "../.vitepress/theme/display-version"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -16,7 +17,7 @@ interface VersionInfo {
 }
 
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
-function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
+export function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
   const current = data.selectedByBackend[backendName]
   if (!current?.selected.subject) return []
   const subject = current.selected.subject
@@ -30,7 +31,10 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
       suiteFreshness: selected.suiteFreshness,
       pct: selected.score.all > 0 ? Math.round((selected.score.supported / selected.score.all) * 100) : null,
     }))
-  return versions.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+  // Ordered by the stored version; only the printed copy reads "dev snapshot" (Q3).
+  return versions
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+    .map((row) => ({ ...row, version: displayVersion(row.version) }))
 }
 
 export default {

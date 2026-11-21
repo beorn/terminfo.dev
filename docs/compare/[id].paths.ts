@@ -5,6 +5,7 @@ import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-pr
 import type { PublicContextSummary } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
 import type { AppCellStatus } from "../data/app-cells"
+import { displayVersions } from "../.vitepress/theme/display-version"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -197,8 +198,8 @@ export default {
             termBType: b.type,
             termAKind: subjectA.kind,
             termBKind: subjectB.kind,
-            termAVersion: [...new Set(Object.values(a.selected.sources).map((run) => run.subject.version))].join(", "),
-            termBVersion: [...new Set(Object.values(b.selected.sources).map((run) => run.subject.version))].join(", "),
+            termAVersion: displayVersions(Object.values(a.selected.sources)).join(", "),
+            termBVersion: displayVersions(Object.values(b.selected.sources)).join(", "),
             termAOs: subjectA.os ?? "Not recorded",
             termBOs: subjectB.os ?? "Not recorded",
             termAOsVersion: subjectA.osVersion ?? "Not recorded",

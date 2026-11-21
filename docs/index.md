@@ -21,6 +21,7 @@ import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 import { homeBaselineRow } from './data/baseline-readouts.ts'
+import { displayVersion } from './.vitepress/theme/display-version.ts'
 // The deep source path, not the package root: the root re-exports probe extensions that import
 // node:crypto, which Vite's browser build cannot resolve (measured 2026-10-23 on this branch).
 import { isEnvironmentGroup } from '../packages/probe-defs/src/environment-groups.ts'
@@ -230,7 +231,7 @@ function backendTooltip(name, version) {
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Source versions: ${version}`)
   const sources = Object.values(displayedSelections[name]?.selected.sources ?? {})
-  for (const source of sources) parts.push(`Source ${source.runId}: ${source.subject.version} · ${source.measuredAt} · suite ${source.suiteId}`)
+  for (const source of sources) parts.push(`Source ${source.runId}: ${displayVersion(source.subject.version)} · ${source.measuredAt} · suite ${source.suiteId}`)
   if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
