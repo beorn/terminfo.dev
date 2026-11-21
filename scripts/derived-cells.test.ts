@@ -178,7 +178,8 @@ describe("unsupported, derived (33019)", () => {
     const bar = aggregateCurrentResults(rollupInputs("term:xterm", published), published.catalogIds)
     expect(bar.counts.unsupported).toBe(2)
     expect(bar.derived).toBe(1)
-    expect(currentCoverageSentence(bar)).toContain("2 Unsupported (of which derived: 1)")
+    // #37341 D2: the readout is two counts; the derived split stays on the aggregate, not in the sentence.
+    expect(currentCoverageSentence(bar, published.catalogIds)).toBe("3 of 3 tested")
     expect(runDecidedNothing(bar.counts, bar.derived)).toBe(false)
   })
 

@@ -7,8 +7,8 @@
  * @consumer terminfo.dev result pages (docs/.vitepress/theme/ResultEvidenceCell.vue)
  * @source-grep the reason is computed by ungraded-explanation.ts and only rendered by the component,
  *   so the sentence itself is the contract and this pins it for both arms.
- * @failure A retained source-answer cell reaches the site as a graded or source-captioned result instead of PROBE TODO
- *   (operator 2026-11-03, #32246).
+ * @failure A retained source-answer cell reaches the site as a graded or source-captioned result instead of no result
+ *   (operator 2026-11-03, #32246; since #37341 Q4 an undecided cell is not published at all).
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
@@ -27,8 +27,9 @@ import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-expla
 const SAMPLE_SHA256 = "a".repeat(64)
 
 // No result is graded from source (operator 2026-11-03, #32246): a retained cell its kept source answer used to
-// decide must reach the site/API readers as PROBE TODO, with no source caption, while the stored capture, its
-// status in the file and its measuredAt stay byte-unchanged. Pure reader tests cannot prove this handoff.
+// decide stays PROBE TODO in the projection, and so (#37341 Q4) reaches the site/API readers as no result at all, with
+// no source caption, while the stored capture, its status in the file and its measuredAt stay byte-unchanged. Pure
+// reader tests cannot prove this handoff.
 it.each([
   {
     name: "a retained Alacritty screenshot review",
@@ -37,7 +38,6 @@ it.each([
     context: "term:alacritty",
     featureId: "extensions.iterm2-images",
     reason: STORED_VISUAL_REVIEW_RETIRED_REASON,
-    publicReason: "needs a same-run pixel check",
   },
   {
     name: "a real disputed Ghostty cell",
@@ -46,11 +46,10 @@ it.each([
     context: "lib:ghostty",
     featureId: "extensions.kitty-graphics",
     reason: SOURCE_ANSWER_RETIRED_REASON,
-    publicReason: "no qualified probe observation in this run",
   },
 ])(
-  "reads $name as PROBE TODO and publishes no source caption or private detail",
-  ({ file, suite, context, featureId, reason, publicReason }) => {
+  "reads $name as PROBE TODO, publishes no result for it, and no source caption or private detail",
+  ({ file, suite, context, featureId, reason }) => {
     const path = new URL(file, import.meta.url)
     const bytes = readFileSync(path, "utf8")
     const manifestPath = new URL(suite, import.meta.url)
@@ -65,27 +64,29 @@ it.each([
     const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
     const selected = projection.history[context]?.[0]
     expect(selected?.measuredAt).toBe(run.measuredAt)
-    const published = publicResults(projection, new Map()).projection.contexts[context]?.featureResults[featureId]
-    expect(published?.status).toBe("probe-todo")
-    expect(published?.reason).toBe(publicReason)
-    const publicBytes = JSON.stringify(published)
+    expect(projection.contexts[context]?.cells[featureId]?.featureResult?.status).toBe("probe-todo")
+    const mapped = publicResults(projection, new Map())
+    expect(mapped.projection.contexts[context]?.featureResults[featureId]).toBeUndefined()
+    const publicBytes = [JSON.stringify(mapped.projection), ...[...mapped.documents.values()].map((doc) => doc.bytes)].join(
+      "\n",
+    )
+    expect(publicBytes).not.toContain(reason)
     expect(publicBytes).not.toContain("not re-verified")
     expect(publicBytes).not.toContain("kept answers disagree")
     expect(publicBytes).not.toContain("kept originals")
     expect(publicBytes).not.toContain("@dev/")
     expect(publicBytes).not.toContain("reply-path-audit")
     expect(publicBytes).not.toContain("operator")
-    expect(published?.reason).not.toContain("2026-11-03")
     expect(publicBytes).not.toContain("not re-admitted")
     expect(publicBytes).not.toContain("source answer")
-    expect(published?.presentation.state).toBe("not-reviewed")
-    expect(published?.record).toBeUndefined()
     expect(run).toEqual(original)
     expect(readFileSync(path, "utf8")).toBe(bytes)
   },
 )
 
-it("publishes short reader-safe missing-evidence reasons on probe-todo cells while stripping raw diagnostic tails and private paths", () => {
+// #37341 Q4 (@cto 760e9219) supersedes the short reader-safe reason a PROBE TODO cell used to publish: the cell is not
+// published, so neither its reason nor any raw diagnostic tail or private path reaches the site or the API.
+it("publishes no probe-todo cell and none of its reason, raw diagnostic tail or private path", () => {
   const path = new URL(
     "../content/probes-libs/ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json",
     import.meta.url,
@@ -102,16 +103,26 @@ it("publishes short reader-safe missing-evidence reasons on probe-todo cells whi
   byFeature.get("sgr.bold")!.status = "probe-todo"
   byFeature.get("sgr.bold")!.reason = "unchecked collector note /home/fixture/private"
   const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
-  const features = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.featureResults
-  expect(features?.["extensions.osc176-app-id"]?.reason).toBe(
-    "OSC 176 app-id: no library target readback at this runtime",
+  const mapped = publicResults(projection, new Map())
+  const features = mapped.projection.contexts["lib:ghostty"]?.featureResults
+  expect(features).toBeDefined()
+  for (const id of ["extensions.osc176-app-id", "input.kitty-click-events", "sgr.bg.256", "sgr.bold"]) {
+    expect(byFeature.get(id)?.status, id).toBe("probe-todo")
+    expect(features?.[id], id).toBeUndefined()
+  }
+  const publicBytes = [JSON.stringify(mapped.projection), ...[...mapped.documents.values()].map((doc) => doc.bytes)].join(
+    "\n",
   )
-  expect(features?.["input.kitty-click-events"]?.reason).toBe("shared core encoder carries no prompt state")
-  expect(features?.["sgr.bg.256"]?.reason).toBe("Cursor advance does not verify SGR styling")
-  expect(features?.["sgr.bold"]?.reason).toBeUndefined()
-  expect(JSON.stringify(features)).not.toContain("/home/fixture/private")
-  expect(JSON.stringify(features)).not.toContain("Capture calibration")
-  expect(JSON.stringify(features)).not.toContain("src/terminal/osc.zig")
+  for (const text of [
+    "no library target readback",
+    "shared core encoder carries no prompt state",
+    "Cursor advance does not verify SGR styling",
+    "/home/fixture/private",
+    "Capture calibration",
+    "src/terminal/osc.zig",
+  ]) {
+    expect(publicBytes).not.toContain(text)
+  }
 })
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {

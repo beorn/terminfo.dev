@@ -6,7 +6,7 @@ outline: [2, 3]
 
 ## Current results
 
-**`GET /api/v3/data.json`** returns the current five-status contract. Composed contexts retain cells from original stored schema-4 runs.
+**`GET /api/v3/data.json`** returns the current decided results. Composed contexts retain cells from original stored schema-4 runs.
 
 [View current data](/api/v3/data.json) · [Frozen v1](/api/v1/data.json)
 
@@ -27,28 +27,23 @@ Each `featureResults[featureId]` retains `origin: { runId, resultId }`, `measure
 
 Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutputIds`. Private selection, outcome and error objects remain in the canonical private projection. A later attempt without output does not replace an earlier measured cell.
 
-## Five recorded statuses
+## Published statuses {#five-recorded-statuses}
 
-| Stored value    | Display label | Meaning                                                         |
-| --------------- | ------------- | --------------------------------------------------------------- |
-| `supported`     | Supported     | The recorded criterion was satisfied                            |
-| `unsupported`   | Unsupported   | The functioning test obtained the defined negative result       |
-| `untestable`    | Untestable    | No current route; no result reaches it                          |
-| `probe-todo`    | PROBE TODO    | Required work remains; feature support is not decided           |
-| `probe-invalid` | PROBE INVALID | An attempted test or collection failed to obtain a valid result |
+| Value         | Display label | Meaning                                                   |
+| ------------- | ------------- | --------------------------------------------------------- |
+| `supported`   | Supported     | The recorded criterion was satisfied                      |
+| `unsupported` | Unsupported   | The functioning test obtained the defined negative result |
+| `untestable`  | Untestable    | No current route; no result reaches it                    |
 
-Each stored run has exactly one result per catalog ID. Original raw run documents are immutable and served verbatim. Older stored runs retain `test-todo` and `test-failure`; current readers map those words one to one to `probe-todo` and `probe-invalid`. Supported, Unsupported and Untestable retain their meanings. This is a vocabulary rename, not a re-grade or a rewrite of stored content.
+A result we haven't decided is left blank: it is absent from every published document, and the site shows "—".
 
-A composed `featureResults[featureId]` also carries `strength` and `conflictingProbes`. When supported and unsupported probes disagree, its feature-only status is `probe-conflict` (PROBE CONFLICT); individual probes and their tests still use only the five statuses above. Conflict prevents completion.
+Each published run has at most one result per catalog ID; an undecided one is absent. The stored run itself is not changed.
 
-`score.supported / score.all` is Supported divided by the **term features** (264 for a current
-273-row run). Untestable, PROBE TODO and PROBE INVALID remain in that denominator. The nine environment
-groups (`device.env-*`) are recorded in `results` and in the catalogue membership check, but are
-**manual by design (catalogue)** and excluded from the score. Stored results remain visible;
-only a stored PROBE TODO is displayed as **NOT MEASURED**.
+A composed `featureResults[featureId]` also carries `strength` and `conflictingProbes`. A cell whose probes disagree is not decided, so it is absent too, and the context is not complete.
 
-A context's `complete` is true only when its PROBE TODO, PROBE INVALID and PROBE CONFLICT counts among the term
-features are all zero. Completion does not imply full support.
+`score.supported` counts the Supported results; `score.all` is the number of graded features (264 for a current 273-row run). A context is **tested** for a feature when it has a decided result for it, so tested is `supported + unsupported + untestable` from its `counts`, and the site shows "S supported · T of 264 tested".
+
+A context's `complete` is true when every graded feature has a decided result. Completion does not imply full support.
 
 An absent current context cannot count as complete.
 
@@ -89,7 +84,7 @@ Each run's evidence document keys its approved cells under `cells[featureId]` an
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
-Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every result without a presentation decision, keyed by feature ID under `featureResults[featureId]`:
+Each contributing original source carries `trace`: the URL and the **public trace digest** (the SHA-256 of the served trace bytes) of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every decided result without a presentation decision, keyed by feature ID under `featureResults[featureId]`; a result we haven't decided is absent, so the public trace digest covers exactly what is served:
 
 - the outcome or status, the assertion type and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;
@@ -97,6 +92,12 @@ Each contributing original source carries `trace`: the URL and SHA-256 receipt o
 - each assertion's kind and expected text.
 
 A live terminal's reply (a query's `match`, an assertion's `observed`) appears only for features whose replies use a closed grammar, such as numeric reports. Other stored reply content, such as screen state or a clipboard, does not appear; a result whose stored reply the trace leaves out says `replyWithheld: true`. Notes, actions, diagnostics, captures, raw read windows and paths never appear in a trace.
+
+A card for a cell derived from its parent cites the parent's entry, which is what decided it. A cell declared untestable by review cites its review: its `reason` states it, and its trace has no entry for it.
+
+## Changes
+
+- 2026-11-21: Results we haven't decided are absent from `data.json`, `runs/*.json` and `traces/*.json`, and so are tests we haven't decided inside a decided result. Count objects no longer carry the keys `probe-todo`, `probe-invalid` and `probe-conflict`; `methodology.statuses` lists `supported`, `unsupported` and `untestable`. A context's `refusals` and a cell's `priorDecision` are gone, and a derived cell's `derived` no longer carries `ownStatus` or `ownReason`. Each trace receipt's `sha256` is now the public trace digest, computed over the published trace; the stored run and its own `sha256` are unchanged.
 
 ## Frozen v1 {#historical-v1-and-v2}
 

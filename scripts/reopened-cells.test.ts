@@ -158,12 +158,15 @@ describe("reopened cells (33164)", () => {
     expect(after.cells[VERSION]!.featureResult!.status).toBe("probe-todo")
   })
 
-  it("shows the reason and the date in words on the published cell, never the ruling's seat, ids or issue", () => {
+  // #37341 Q4, D3 (@cpo/term bfbbc644) supersede the published reopen reason: a reopened cell is undecided, so the
+  // public projection carries neither the cell nor its reason, and still never the ruling's seat, ids or issue.
+  it("publishes no reopened cell and no reopen reason, and never the ruling's seat, ids or issue", () => {
     const projection = project([first], [silenceRow()])
-    const cell = publicResults(projection, new Map()).projection.contexts["term:xterm"]!.featureResults[VERSION]!
-    expect(cell.status).toBe("probe-todo")
-    expect(cell.reason).toBe("reopened 2026-11-10: the criterion text does not say a silent terminal is Unsupported")
-    expect(JSON.stringify(cell)).not.toMatch(/@|0a45cb8b|33164/)
+    expect(projection.contexts["term:xterm"]!.cells[VERSION]!.featureResult!.status).toBe("probe-todo")
+    const published = publicResults(projection, new Map()).projection
+    expect(published.contexts["term:xterm"]!.featureResults[VERSION]).toBeUndefined()
+    expect(JSON.stringify(published)).not.toContain("the criterion text does not say a silent terminal is Unsupported")
+    expect(JSON.stringify(published)).not.toMatch(/0a45cb8b|33164/)
   })
 
   it("reopens a remeasured cell only under the suites it names; a later suite's grade makes the row throw", () => {

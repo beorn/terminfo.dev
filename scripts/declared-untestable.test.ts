@@ -156,9 +156,9 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
     expect(now.counts.unsupported).toBe(was.counts.unsupported)
     expect(now.supported).toBe(was.supported)
     expect(now.derived).toBe(was.derived)
-    expect(currentCoverageSentence(now)).toContain("1 Untestable (1 by review) · 0 PROBE TODO")
-    // A bar with no declared cell prints exactly what it printed before the table existed.
-    expect(currentCoverageSentence(was)).toContain("0 Untestable · 1 PROBE TODO")
+    // #37341 D2: the declared cell moves one feature into tested; the by-review split stays on the aggregate.
+    expect(currentCoverageSentence(now)).toBe("3 of 3 tested")
+    expect(currentCoverageSentence(was)).toBe("2 of 3 tested")
     // Condition 3: the build output lists every cell a row changed.
     expect(lines).toContain(
       "declared untestable by review: term:alacritty/extensions.osc133-marks (row term:alacritty/linux/extensions.osc133-marks)",
@@ -184,15 +184,16 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
     expect(declaredContext.byReview).toBe(1)
     const os = subjectStats(declaredContext, undefined)
     expect(os.byReview).toBe(1)
-    expect(currentCoverageSentence(os)).toContain("1 Untestable (1 by review)")
+    // #37341 D2: the coverage line counts the declared cell as tested and prints no breakdown.
+    expect(currentCoverageSentence(os)).toBe("3 of 3 tested")
     const baseline = baselineStat("alacritty", declaredContext, [MARKS, BLINK])
     expect(baseline.byReview).toBe(1)
-    expect(currentCoverageSentence(baseline)).toContain("1 Untestable (1 by review)")
+    expect(currentCoverageSentence(baseline)).toBe("2 of 2 tested")
     // A feature group without the declared cell counts none by review.
     expect(baselineStat("alacritty", declaredContext, [BLINK]).byReview).toBe(0)
     const plain = published([])
     expect(subjectStats(plain, undefined).byReview).toBe(0)
-    expect(currentCoverageSentence(subjectStats(plain, undefined))).not.toContain("by review")
+    expect(currentCoverageSentence(subjectStats(plain, undefined))).toBe("2 of 3 tested")
   })
 
   it("a probe result beats a declaration: a measured, reopened or missing cell throws naming the row to remove", () => {

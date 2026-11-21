@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { publicResults } from "../docs/data/public-results.ts"
+import { publicCounts, publicResults } from "../docs/data/public-results.ts"
 import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 import {
@@ -18,11 +18,11 @@ import {
   projectResults,
   statesFor,
   maskRunnerStorePath,
+  originalRunFor,
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
-import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
+import { aggregateCurrentResults, currentCoverageSentence, rollupInputs } from "../docs/data/release-scope.ts"
 import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
-import { priorDecisionSentence, refusalSummarySentence } from "../docs/data/prior-decision.ts"
 import {
   candidateFromSelected,
   measuresSelectionOnly,
@@ -188,9 +188,8 @@ it.each([false, true])("composes current methods without losing conflicts (selec
   expect(cell.result).toBe(interaction.results?.[0])
   expect(cell.run.readRaw()).toBe(interaction)
   expect(conflicted.contexts["term:kitty"]?.contributingRunIds).toEqual([output.runId, interaction.runId])
-  expect(
-    publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId]?.status,
-  ).toBe("probe-conflict")
+  // #37341 Q4: a conflict is not decided, so the public projection publishes no cell for it.
+  expect(publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId]).toBeUndefined()
   const agreeing = compose([output, interaction, rerun]).contexts["term:kitty"]!.cells[featureId]!
   expect(agreeing.featureResult).toMatchObject({
     status: "supported",
@@ -334,11 +333,13 @@ it("decides suite coverage by set membership against the declared cohort, never 
 // Current selection reads the stored five statuses and frozen denominator
 // without applying later interpretations.
 describe("current execution projection", () => {
-  // #31713 AC1/AC2: a public cell must explain explicit nonselection without claiming an attempted test.
-  // Existing subset cases protect prior results and scores, but never inspect an untouched cell's explanation.
-  // @failure Unselected and selected-but-unstarted cells both lose their scheduling distinction in site/API output.
+  // #31713 AC1/AC2 kept the scheduling distinction between an unselected and a selected-but-unstarted cell in the
+  // public output. #37341 Q4 (@cpo/term f16a5a52) supersedes it there: neither is decided, so neither is published;
+  // the distinction stays in the stored run and the private projection.
+  // @failure An undecided cell, or its scheduling explanation, reaches the site/API output; or the private projection
+  //   loses the run's recorded selection.
   // @level l2 @consumer publicResults shared site/API mapping; no new production seam.
-  it("explains an unselected row separately from a selected but unstarted row", () => {
+  it("publishes neither an unselected row nor a selected but unstarted row, and keeps the selection private", () => {
     const results = todos().map((result) => ({ ...result, reason: "Required probe test has not started" }))
     const value = raw(results)
     const selectedIds = [ids[0]!, ids[2]!]
@@ -360,23 +361,18 @@ describe("current execution projection", () => {
     const published = mapped.projection.contexts["term:kitty"]!
     // API v3 names the public feature map without leaking the private selected cells.
     expect(published).not.toHaveProperty("cells")
-    expect(Object.keys(published.featureResults)).toEqual(ids)
+    expect(Object.keys(published.featureResults)).toEqual([])
+    // D5: a run with no decided result keeps its trace receipt, and the trace holds no entry.
     const traceReceipt = published.sources[run.runId]!.trace!
     const trace = JSON.parse(mapped.documents.get(traceReceipt.url)!.bytes) as {
       featureResults: Record<string, { status: string }>
     }
     expect(trace).not.toHaveProperty("cells")
-    expect(trace.featureResults[ids[1]!]).toMatchObject({ status: "probe-todo" })
-    expect(published.featureResults[ids[1]!]!.attempt).toEqual({ scope: "none" })
-    expect(published.featureResults[ids[1]!]!.status).toBe("probe-todo")
-    expect(published.featureResults[ids[2]!]!.reason ?? "").not.toMatch(/not selected/i)
+    expect(trace.featureResults).toEqual({})
+    expect(JSON.stringify(mapped.projection)).not.toMatch(/not selected|has not started/i)
     expect(JSON.stringify(run.results)).toBe(retained)
-    expect(published.featureResults[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
-    expect(published.featureResults[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
-    const withoutSelection = parse(value)
-    const unselectedProjection = projectResults([withoutSelection], ids, { currentProbeHash: suite.probeHash }, [])
-    const unselectedPublic = publicResults(unselectedProjection, new Map()).projection.contexts["term:kitty"]!
-    expect(unselectedPublic.featureResults[ids[1]!]!.reason).toBeUndefined()
+    // The stored run and the private projection keep the selection that tells the two rows apart.
+    expect(originalRunFor(projection, "term:kitty", run.runId).selection?.ids).toEqual(selectedIds)
   })
 
   // The reviewed-context replacement orders original evidence, never newer no-output attempts.
@@ -652,8 +648,11 @@ describe("current execution projection", () => {
       expect(published.featureResults[ids[1]!]!.status).toBe("supported")
       expect(published.featureResults[ids[2]!]!.status).toBe("supported")
       expect(published.contributingRunIds).toEqual([prior.runId, latest.runId])
-      expect(published.counts).toEqual(current.counts)
-      expect(published.featureResults[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
+      // #37341 D6: the published counts carry the decided buckets of the same fold.
+      expect(published.counts).toEqual(publicCounts(current.counts))
+      // #37341 Q4: the selected cell the latest run left undecided is not published; the decided ones keep their origin.
+      expect(published.featureResults[ids[0]!]).toBeUndefined()
+      expect(published.featureResults[ids[3]!]).toBeUndefined()
       expect(published.featureResults[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
       expect(published.featureResults[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
       expect(published.attempts).toEqual([
@@ -1485,7 +1484,8 @@ it("the parser refuses an unknown harness outcome", () => {
 //   grade; repeated refusals lose or move it; a version change, a real result or a same-suite keep shows one; or the
 //   history reaches a status, total or rollup (34691, @cto history-reframe-scope-1754).
 // @level l1
-// @consumer projectResults priorDecisionOf -> publicResults featureResults[id].priorDecision -> aggregateCurrentResults.
+// @consumer projectResults priorDecisionOf -> aggregateCurrentResults; publicResults publishes neither the open cell nor
+//   its history (#37341 Q4, D3).
 describe("a cross-suite refusal keeps the older decision only as dated history (34691)", () => {
   const featureId = ids[0]!
   const newer: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -1560,23 +1560,14 @@ describe("a cross-suite refusal keeps the older decision only as dated history (
       suiteId: prior.suiteId,
       measuredAt: prior.measuredAt,
     })
-    const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults
-    expect(published[featureId]).toMatchObject({
-      status: "probe-todo",
-      reason: "refused",
-      origin: { runId: "refusal-run" },
-      priorDecision: {
-        origin: { runId: prior.runId, resultId: featureId },
-        status: "supported",
-        version: "0.46.2",
-        suiteId: prior.suiteId,
-        measuredAt: prior.measuredAt,
-      },
-    })
+    // #37341 Q4, D3: the refused cell is undecided, so the public projection carries neither it nor its history.
+    const publishedContext = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
+    const published = publishedContext.featureResults
+    expect(published[featureId]).toBeUndefined()
     // B5: history reaches no total; the rollup counts the cell open, and every other output equals the marker-free one.
-    const rows = Object.entries(published).map(([id, result]) => ({ featureId: id, status: result.status }))
-    const rollup = aggregateCurrentResults(rows, ids)
+    const rollup = aggregateCurrentResults(rollupInputs("term:kitty", publishedContext), ids)
     expect(rollup.idsByState.supported).not.toContain(featureId)
+    expect(rollup.idsByState["probe-todo"]).toContain(featureId)
     expect(rollup.supported).toBe(3)
     const context = projection.contexts["term:kitty"]!
     const { priorDecision: _dropped, ...bare } = context.cells[featureId]!
@@ -1589,25 +1580,10 @@ describe("a cross-suite refusal keeps the older decision only as dated history (
     }
     const without = publicResults(stripped, new Map()).projection
     const withMarker = publicResults(projection, new Map()).projection
-    const { priorDecision: _shown, ...shownBare } = withMarker.contexts["term:kitty"]!.featureResults[featureId]!
-    expect(shownBare).toEqual(without.contexts["term:kitty"]!.featureResults[featureId])
-    const shownContext = withMarker.contexts["term:kitty"]!
-    const bareContext = without.contexts["term:kitty"]!
-    expect({ ...shownContext, featureResults: {}, refusals: [] }).toEqual({
-      ...bareContext,
-      featureResults: {},
-      refusals: [],
-    })
-    // B4: the summary counts the refused cell once under its suite; the historical subset M stays apart from N.
-    const summary = { suiteId: first.suiteId, open: 1, reasons: [{ reason: "refused", cells: 1 }] }
-    expect(shownContext.refusals).toEqual([{ ...summary, withPriorDecision: 1 }])
-    expect(bareContext.refusals).toEqual([{ ...summary, withPriorDecision: 0 }])
-    expect(refusalSummarySentence(shownContext.refusals![0]!)).toBe(
-      `Suite ${first.suiteId}: 1 cell open because the harness refused the attempt (refused: 1). 1 of them had an earlier decision under another suite, shown on its row as not current.`,
-    )
-    expect(priorDecisionSentence(shownContext.featureResults[featureId]!.priorDecision!)).toBe(
-      `Not current: suite ${prior.suiteId} read Supported on ${prior.measuredAt.slice(0, 10)} for version 0.46.2. The newer suite has not measured it yet.`,
-    )
+    // D3: the marker reaches no public field at all: no refusal summary, no earlier-result line.
+    expect(withMarker.contexts).toEqual(without.contexts)
+    expect(withMarker.contexts["term:kitty"]).not.toHaveProperty("refusals")
+    expect(JSON.stringify(withMarker)).not.toContain("priorDecision")
     expect(withMarker.versions).toEqual(without.versions)
   })
 
@@ -1734,16 +1710,9 @@ describe("a cross-suite refusal keeps the older decision only as dated history (
       status: "supported",
       reopened: { reopenedOn: "2026-10-22", reason: "The criterion was wrong; the grade waits for a re-measurement." },
     })
-    expect(
-      publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!.priorDecision,
-    ).toMatchObject({ reopened: { reopenedOn: "2026-10-22" } })
-    expect(
-      priorDecisionSentence(
-        publicResults(projection, new Map()).projection.contexts["term:kitty"]!.featureResults[featureId]!
-          .priorDecision!,
-      ),
-    ).toMatch(
-      /^Not current, and that grade was withdrawn on 2026-10-22 \(The criterion was wrong; the grade waits for a re-measurement\.\): suite /,
-    )
+    // #37341 Q4, D3: the open cell, its withdrawn history and the reopen reason reach no public page.
+    const published = publicResults(projection, new Map()).projection
+    expect(published.contexts["term:kitty"]!.featureResults[featureId]).toBeUndefined()
+    expect(JSON.stringify(published)).not.toContain("The criterion was wrong")
   })
 })

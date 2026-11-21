@@ -29,7 +29,6 @@ import {
   currentSupportedShare,
   rollupInputs,
   hasCurrentSource,
-  runDecidedNothing,
   staleCaption,
   type CurrentAggregate,
   type RollupCounts,
@@ -80,11 +79,14 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Current terminal id -> feature id -> the joined feature status, which may read differs-by-context. */
+  /**
+   * Current terminal id -> feature id -> the published (decided) feature status, which may read differs-by-context. A
+   * feature with no decided result is absent (#37341 Q1).
+   */
   results: Record<string, Record<string, AppCellStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
-  /** Current scores use Supported/all positions, independently of completion. */
+  /** Current counts: Supported and tested of the graded positions, independently of completion (#37341 D2). */
   stats: Record<string, CurrentStats>
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
@@ -121,6 +123,7 @@ export interface ProbeData {
 
 interface CurrentStats {
   score: { supported: number; all: number }
+  /** Every bucket over the graded positions, folded from the published cells; an absent cell folds as open. */
   counts: CurrentAggregate["counts"]
   /** Cells whose same-suite contexts disagree: decided, but never counted as Supported or Unsupported (@cto d321729a). */
   differs: number
@@ -129,6 +132,7 @@ interface CurrentStats {
   /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
   byReview: number
   complete: boolean
+  /** Supported of the graded positions, for a bar's width only; never printed (#37341 D2). Null with no graded position. */
   pct: number | null
 }
 
@@ -142,9 +146,11 @@ type JoinedApp = NonNullable<ReturnType<ReturnType<typeof joinedAppCells>["get"]
 export function subjectStats(selected: PublicCurrentResult["selected"], app: JoinedApp | undefined): CurrentStats {
   // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
   // bucket here, and a disagreement lands in its own `differs-by-context` bucket instead of Supported or
-  // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets; a stored-only context
-  // has no disagreement, and its reader supplies that bucket at zero.
-  const counts: RollupCounts = app ? { ...app.counts } : selected.counts
+  // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets. A stored-only context's
+  // published counts carry its decided buckets only (#37341 Q4), so its cells are folded again over its catalogue.
+  const counts: RollupCounts = app
+    ? { ...app.counts }
+    : aggregateCurrentResults(rollupInputs(selected.contextKey, selected), selected.catalogIds).counts
   const supported = app ? app.counts.supported : selected.score.supported
   const byReview = scoredFeatureIds(selected.catalogIds).filter(
     (id) =>
@@ -158,11 +164,7 @@ export function subjectStats(selected: PublicCurrentResult["selected"], app: Joi
     derived: selected.derivedIds.length,
     byReview,
     complete: selected.complete,
-    // #30784: a run that decided nothing has no percentage to print; every reader shows the
-    // not-measured words instead of a measured-looking 0%.
-    pct: runDecidedNothing(counts, selected.derivedIds.length)
-      ? null
-      : Math.round((100 * supported) / selected.score.all),
+    pct: selected.score.all === 0 ? null : Math.round((100 * supported) / selected.score.all),
   }
 }
 
@@ -184,7 +186,7 @@ export function baselineStat(
     derived: bar.derived,
     byReview: bar.byReview,
     complete: bar.complete,
-    pct: Math.round((100 * bar.supported) / bar.denominator),
+    pct: bar.denominator === 0 ? null : Math.round((100 * bar.supported) / bar.denominator),
   }
 }
 
@@ -324,12 +326,8 @@ export function loadFullProbes(): ProbeData {
       ...(os && { platforms: [os] }),
     })
     const app = joined.get(key)
-    results[key] = Object.fromEntries(
-      selected.catalogIds.map((id) => [
-        id,
-        app?.cells[id]?.status ?? selected.featureResults[id]?.status ?? "probe-todo",
-      ]),
-    )
+    // #37341 Q1: the published cells only; publicResults left out every result we haven't decided.
+    results[key] = Object.fromEntries(Object.values(selected.featureResults).map((result) => [result.featureId, result.status]))
     notes[key] = Object.fromEntries(
       Object.values(selected.featureResults).flatMap((result) =>
         result.reason ? [[result.featureId, result.reason]] : [],
