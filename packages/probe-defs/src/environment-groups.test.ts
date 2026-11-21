@@ -17,7 +17,9 @@ import { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./e
  * - the named-unavailable viewport position is NOT one of the nine;
  * - the union of graded + environment is the recorded 273 ids, and the two sets are disjoint.
  */
-const MANUAL_REASON = "manual by design: no automatable probe exists for this feature"
+// 37341 (d388a6841) put these status reasons in plain words for the public page; this test pins
+// the recorded text, so a reword must move both together.
+const MANUAL_REASON = "no automatic test exists for this feature; it is checked by hand"
 
 const features = JSON.parse(readFileSync(new URL("../../../content/features.json", import.meta.url), "utf8")) as Record<
   string,
@@ -39,7 +41,7 @@ describe("environment-group partition (D132 B)", () => {
   it("keeps partially measured viewport hold out of the environment group", () => {
     expect(features["scrollback.viewport-hold-output"]?.probeStatus).toBe("partial")
     expect(features["scrollback.viewport-hold-output"]?.probeStatusReason).toBe(
-      "partial: library arm unchanged; qualified owned Linux Alacritty 0.17.0 and xterm 411/412 routes reuse the held-viewport reader with processed-output witness and observed references; other app routes retain named PROBE TODO",
+      "partial: the library test is unchanged; on Linux, Alacritty 0.17.0 and xterm 411/412 reuse the held-viewport reader, checking the processed output against observed references; other apps have no result yet",
     )
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })
