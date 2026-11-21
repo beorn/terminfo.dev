@@ -111,25 +111,61 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Pages switches the production domain over seconds after Wrangler returns: run 44865328154 read 404
+          # 0.26 s after "Deployment complete", and a later release reads the previous build's build.json. The
+          # compare is unchanged and only an identical read passes; a 404 or another build waits for the next
+          # cache-busting try, and the window ends loudly (#37315, @cto 5c47f401).
+          tries=18
+          interval=10
           readback_file=$(mktemp)
-          trap 'rm -f "$readback_file"' EXIT
-          curl --fail --show-error --silent --connect-timeout 10 --max-time 30 \
-            -H 'Cache-Control: no-cache' \
-            "https://terminfo.dev/build.json?run=$GITHUB_RUN_ID&attempt=$GITHUB_RUN_ATTEMPT" -o "$readback_file"
-          python3 - "$readback_file" <<'PY'
+          compare_script=$(mktemp)
+          trap 'rm -f "$readback_file" "$compare_script"' EXIT
+          cat > "$compare_script" <<'PY'
           import json, os, sys
           try:
               with open("docs/.vitepress/dist/build.json") as archive:
                   expected = json.load(archive)
-              with open(sys.argv[1]) as response:
-                  actual = json.load(response)
               if (expected["sourceCommit"] != os.environ["GITHUB_SHA"]
                       or expected["githubRun"]["id"] != os.environ["GITHUB_RUN_ID"]
                       or expected["dirty"] is not False or expected["context"] != "github"):
                   raise ValueError("Validated archive is not this clean GitHub build")
-              if json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
-                  raise ValueError("Live build identity differs from validated archive")
           except (OSError, ValueError, KeyError, TypeError) as error:
-              sys.exit(f"Cannot verify live build identity: {error}")
-          print("Verified live build identity against validated archive and GitHub run")
+              print(f"Cannot verify live build identity: {error}")
+              sys.exit(2)
+          if sys.argv[2] != "200":
+              print("not matched")
+              sys.exit(1)
+          try:
+              with open(sys.argv[1]) as response:
+                  actual = json.load(response)
+          except (OSError, ValueError) as error:
+              print(f"not matched: the response is not build.json ({error.__class__.__name__})")
+              sys.exit(1)
+          if json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
+              print("not matched: live build identity differs from validated archive")
+              sys.exit(1)
+          print("matched")
           PY
+          status=none
+          for try in $(seq 1 "$tries"); do
+            : > "$readback_file"
+            status=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              -H 'Cache-Control: no-cache' -o "$readback_file" -w '%{http_code}' \
+              "https://terminfo.dev/build.json?run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$try") || status="curl exit $?"
+            verdict=0
+            reason=$(python3 "$compare_script" "$readback_file" "$status") || verdict=$?
+            echo "try $try/$tries: HTTP $status, $reason"
+            if [ "$verdict" -eq 0 ]; then
+              echo "Verified live build identity against validated archive and GitHub run"
+              exit 0
+            fi
+            if [ "$verdict" -eq 2 ]; then
+              exit 1
+            fi
+            if [ "$try" -lt "$tries" ]; then
+              sleep "$interval"
+            fi
+          done
+          body_hash=$(sha256sum "$readback_file" | cut -d' ' -f1)
+          echo "::error::Cannot verify live build identity after $tries tries $interval s apart: last HTTP $status, body sha256 $body_hash, expected sourceCommit $GITHUB_SHA"
+          exit 1

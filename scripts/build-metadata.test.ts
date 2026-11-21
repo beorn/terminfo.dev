@@ -78,9 +78,14 @@ describe("website build identity", () => {
     mkdirSync(dist, { recursive: true })
     let response = JSON.stringify(metadata)
     let status = 200
+    // A retry case serves `first` to the first read only, as Pages does before the production switch (#37315).
+    let first: { status: number; body: string } | undefined
+    let reads = 0
     const server = createServer((_request, reply) => {
-      reply.writeHead(status, { "content-type": "application/json" })
-      reply.end(response)
+      const served = first && reads === 0 ? first : { status, body: response }
+      reads += 1
+      reply.writeHead(served.status, { "content-type": "application/json" })
+      reply.end(served.body)
     })
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
     try {
@@ -89,6 +94,9 @@ describe("website build identity", () => {
       const shell = block!
         .replace(/^          /gm, "")
         .replace("https://terminfo.dev/build.json", `http://127.0.0.1:${address.port}/build.json`)
+        .replace(/^tries=18$/m, "tries=2")
+        .replace(/^interval=10$/m, "interval=0")
+      expect(shell, "the fixture shrinks the retry window").toContain("tries=2\ninterval=0")
       const cases = [
         ["matching", metadata, 200, "Verified live build identity", false],
         ["rerun", metadata, 200, "Verified live build identity", false],
@@ -105,11 +113,19 @@ describe("website build identity", () => {
         ["dirty", { ...metadata, dirty: true }, 200, "not this clean GitHub build", true],
         ["context", { ...metadata, context: "local" }, 200, "not this clean GitHub build", true],
         ["malformed", "{", 200, "Cannot verify live build identity", false],
-        ["HTTP404", metadata, 404, "404", false],
+        ["HTTP404", metadata, 404, "last HTTP 404, body sha256", false],
+        ["late switch", metadata, 200, "try 1/2: HTTP 404, not matched", false],
+        ["previous build", metadata, 200, "try 1/2: HTTP 200, not matched: live build identity differs", false],
       ] as const
+      const firstReads: Record<string, { status: number; body: string }> = {
+        "late switch": { status: 404, body: "not found" },
+        "previous build": { status: 200, body: JSON.stringify({ ...metadata, sourceCommit: "1".repeat(40) }) },
+      }
       for (const [name, value, code, diagnostic, invalidArchive] of cases) {
         response = typeof value === "string" ? value : JSON.stringify(value)
         status = code
+        first = firstReads[name]
+        reads = 0
         writeFileSync(join(dist, "build.json"), JSON.stringify(invalidArchive ? value : metadata))
         let exitCode = 0
         let output = ""
@@ -130,9 +146,13 @@ describe("website build identity", () => {
           exitCode = failure.code
           output = failure.stdout + failure.stderr
         }
-        if (name === "matching" || name === "rerun") expect(exitCode, name).toBe(0)
+        const passes = ["matching", "rerun", "late switch", "previous build"].includes(name)
+        if (passes) expect(exitCode, name).toBe(0)
         else expect(exitCode, name).not.toBe(0)
         expect(output, name).toContain(diagnostic)
+        if (passes) expect(output, name).toContain("Verified live build identity")
+        if (name === "HTTP404") expect(output, name).toContain(`expected sourceCommit ${sha}`)
+        if (name === "late switch" || name === "previous build") expect(reads, name).toBe(2)
       }
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
