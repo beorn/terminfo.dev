@@ -5,10 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import {
-  ALACRITTY_0_17_VIEWPORT_ROUTE,
-  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
-} from "@terminfo/probe-defs"
+import { ALACRITTY_0_17_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE } from "@terminfo/probe-defs"
 import {
   createOwnedTerminal,
   gatedPrivateWrite,
