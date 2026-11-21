@@ -7,9 +7,7 @@ import type {
   PublicRunMetadata,
   PublicContextSummary,
   PublicFeatureResult,
-  PublicPriorDecision,
 } from "../../data/public-results"
-import { priorDecisionSentence } from "../../data/prior-decision"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -21,7 +19,7 @@ import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSour
 import { textEvidenceExplanation } from "./ungraded-explanation"
 import { contextLabel } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
-import { evidenceStatus } from "./evidence-status"
+import { evidenceStatus, NO_RESULT_STATUS } from "./evidence-status"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -78,8 +76,7 @@ const tooltipId = `${id}-preview`
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
 // Composed and original-run views both retain the cell's recorded status.
-// The rule itself is evidence-status.ts, where it is testable; only a stored PROBE TODO on an
-// environment position becomes the manual-by-design words (@cto 98cd142b D1).
+// The rule itself is evidence-status.ts, where it is testable; a result we haven't decided is left blank (#37341 Q1).
 // #33019: a cell derived from a refused parent says so in its label.
 const derived = computed(() => currentResult.value !== undefined && "derived" in currentResult.value)
 // A joined cell reads the verdict across every context that measured the same release (@cto d321729a);
@@ -88,6 +85,8 @@ const joined = computed(() => (props.cell && "joined" in props.cell ? props.cell
 const status = computed(() =>
   evidenceStatus(props.featureId, joined.value?.status ?? currentResult.value?.status, derived.value),
 )
+// #37341 D3: a blank cell has nothing to show, so it is a plain dash with its hover words, never a button.
+const blank = computed(() => status.value === NO_RESULT_STATUS)
 const STATUS_WORD: Record<string, string> = {
   supported: "Supported",
   unsupported: "Unsupported",
@@ -154,23 +153,12 @@ const compactCause = computed(() => {
   return reasonExplanation.value ?? "No retained result for this selection."
 })
 
-/**
- * The stored status keyword the step table grades against.
- */
-const STEP_STATUS: Record<string, string> = {
-  Supported: "supported",
-  Unsupported: "unsupported",
-  Untestable: "untestable",
-  "PROBE TODO": "probe-todo",
-  "PROBE INVALID": "probe-invalid",
-  "PROBE CONFLICT": "probe-conflict",
-  "Differs by context": DIFFERS_BY_CONTEXT,
-}
 const stepSource = computed<StepSource | undefined>(() => {
   const screen = sourceRun.value?.screen
-  const statusKeyword = currentResult.value?.status ?? STEP_STATUS[status.value.text] ?? "untestable"
+  // The step table grades against the cell's own status value, never against the words its badge prints.
+  const statusKeyword = currentResult.value?.status
   const cell = cellTrace.value?.cell
-  if (cell) {
+  if (cell && statusKeyword !== undefined) {
     return {
       status: statusKeyword,
       assertions: cell.assertions ?? [],
@@ -185,22 +173,14 @@ const stepSource = computed<StepSource | undefined>(() => {
 const stepTable = computed(() => (stepSource.value ? describeStepTable(stepSource.value) : undefined))
 const sentBytes = computed(() => (stepSource.value ? describeSentBytes(stepSource.value) : undefined))
 const replyBytes = computed(() => (stepSource.value ? describeReplyBytes(stepSource.value) : undefined))
-/** The one sentence under the badge: what happened, or the stored reason when the verdict is held or absent. */
-// 34691: an older decision a newer suite's refusal replaced; shown under the current reading, never as the grade.
-const priorDecisionLine = computed(() => {
-  const prior =
-    props.cell && "priorDecision" in props.cell
-      ? (props.cell as { priorDecision?: PublicPriorDecision }).priorDecision
-      : undefined
-  return prior ? priorDecisionSentence(prior) : undefined
-})
+/** The one sentence under the badge: what happened, or the stored reason when the verdict is held. */
+// #37341 D3: a blank cell prints "No result yet" and never a reason; no public card reads an undecided reason.
 const plainResult = computed(() => {
+  if (blank.value) return NO_RESULT_STATUS.title
   const reason = readerSafeExplanation(currentResult.value?.reason ?? currentResult.value?.hold)
   const table = stepTable.value
   const held = table?.rows.some((row) => row.result === "held")
-  if (held || status.value.tone === "unknown" || status.value.tone === "error") {
-    return reason ? `${status.value.text}: ${reason}` : reason
-  }
+  if (held) return reason ? `${status.value.text}: ${reason}` : reason
   return table?.summary ?? reason
 })
 
@@ -209,7 +189,7 @@ const actionLabel = computed(() =>
 )
 const accessibleName = computed(
   () =>
-    `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
+    `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}`,
 )
 const evidenceIdentity = computed(() => {
   return JSON.stringify([
@@ -257,7 +237,8 @@ async function loadEvidence(): Promise<void> {
   if (evidenceLoading.value || cellTrace.value) return
   const version = sourceRun.value
   const cell = props.cell
-  if (!version || !cell) return
+  // #37341 D5: a cell declared untestable by review cites its review, which its reason states; it has no trace entry.
+  if (!version || !cell || ("declared" in cell && cell.declared)) return
   {
     const traceReceipt = version.trace
     if (!traceReceipt) {
@@ -406,7 +387,11 @@ onBeforeUnmount(() => {
 
 <template>
   <span class="result-evidence" :class="`result-evidence--${display}`">
+    <span v-if="blank" class="result-evidence__blank" role="img" :title="status.title" :aria-label="accessibleName"
+      >{{ status.icon }}</span
+    >
     <button
+      v-else
       ref="trigger"
       type="button"
       class="result-evidence__trigger"
@@ -424,7 +409,7 @@ onBeforeUnmount(() => {
       <span v-if="display === 'text'" class="result-evidence__label">{{ shortLabel }}</span>
     </button>
 
-    <Teleport to="body">
+    <Teleport v-if="!blank" to="body">
       <div
         v-if="previewVisible"
         ref="preview"
@@ -455,7 +440,6 @@ onBeforeUnmount(() => {
           }}<template v-if="sourceRun"> · {{ sourceRun.subject.version }} · {{ sourceRun.subject.os }}</template></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
-        <p v-if="priorDecisionLine" class="result-evidence__prior">{{ priorDecisionLine }}</p>
         <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
         <section v-if="stepTable" class="result-evidence__evidence">
           <h4>Evidence</h4>
@@ -557,13 +541,6 @@ onBeforeUnmount(() => {
   margin: 4px 0 0;
   font-size: 0.72rem;
   line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.result-evidence__prior {
-  margin: 3px 0 0;
-  font-size: 0.66rem;
-  line-height: 1.4;
-  color: var(--vp-c-text-2);
   overflow-wrap: anywhere;
 }
 .result-evidence__evidence {

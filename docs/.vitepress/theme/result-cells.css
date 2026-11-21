@@ -82,6 +82,17 @@
   cursor: pointer;
 }
 
+/* #37341 D3: a result we haven't decided is a plain dash with no badge colour and nothing to click. */
+.result-evidence__blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  color: var(--vp-c-text-3);
+  cursor: default;
+}
+
 .result-evidence--text .result-evidence__trigger {
   min-width: 12ch;
   justify-content: flex-start;

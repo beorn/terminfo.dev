@@ -2,7 +2,8 @@
 import { computed, ref } from "vue"
 import type { WorkingContext } from "../../data/working-runs"
 import type { ClientProbeData, ClientWorkingView } from "../../data/probes.data"
-import { evidenceStatus } from "./evidence-status"
+import { evidenceStatus, evidenceStatusWords } from "./evidence-status"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
 
 const props = defineProps<{
   history: ClientWorkingView[]
@@ -11,6 +12,9 @@ const props = defineProps<{
   featureId?: string
   subjects?: Array<Pick<WorkingContext, "engine" | "kind">>
 }>()
+// #37341 Q1: the working view prints a status in the cell's own words; an undecided one reads "No result yet".
+const statusWords = (featureId: string, status: FeatureResultStatus) =>
+  evidenceStatusWords(evidenceStatus(featureId, status))
 const matches = (row: Pick<WorkingContext, "engine" | "kind">) =>
   !props.subjects || props.subjects.some((subject) => subject.engine === row.engine && subject.kind === row.kind)
 const originalEntries = computed(() =>
@@ -108,7 +112,7 @@ const gaps = computed(() =>
       <p>Comparison unavailable: the selected-original projection does not retain qualified runtime identity.</p>
       <table v-if="originalCells.length">
         <thead><tr><th>Probe</th><th>Stored status</th></tr></thead>
-        <tbody><tr v-for="cell in originalCells" :key="cell[0]"><td><code>{{ cell[0] }}</code></td><td>{{ evidenceStatus(cell[0], cell[1]).text }}</td></tr></tbody>
+        <tbody><tr v-for="cell in originalCells" :key="cell[0]"><td><code>{{ cell[0] }}</code></td><td>{{ statusWords(cell[0], cell[1]) }}</td></tr></tbody>
       </table>
       <p v-else>No probe result is recorded for this feature in this original.</p>
     </template>
@@ -146,7 +150,7 @@ const gaps = computed(() =>
           <thead><tr><th>Probe</th><th>Recorded status</th><th>Recorded change from baseline</th></tr></thead>
           <tbody><tr v-for="cell in cells" :key="cell[0]">
             <td><code>{{ cell[0] }}</code></td>
-            <td>{{ evidenceStatus(cell[0], cell[1]).text }}</td>
+            <td>{{ statusWords(cell[0], cell[1]) }}</td>
             <td>{{ context.changes === undefined ? 'Comparison unavailable' : context.changes[cell[0]] ?? 'No recorded status change' }}</td>
           </tr></tbody>
         </table>
