@@ -221,7 +221,11 @@ export function scanSitemap(distDir: string): Violation[] {
  * popovers that never reach the static HTML. Version strings are page text only: the bundled data holds the
  * measured package version, which is a fact, not a rendering.
  */
-export const INTERNAL_STATE_TEXT: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp; readonly inScripts: boolean }> = [
+export const INTERNAL_STATE_TEXT: ReadonlyArray<{
+  readonly name: string
+  readonly pattern: RegExp
+  readonly inScripts: boolean
+}> = [
   { name: "PROBE TODO", pattern: /PROBE TODO/g, inScripts: true },
   { name: "PROBE INVALID", pattern: /PROBE INVALID/g, inScripts: true },
   { name: "PROBE CONFLICT", pattern: /PROBE CONFLICT/g, inScripts: true },
@@ -237,7 +241,15 @@ export const UNDECIDED_JSON_STATUS = /"probe-(?:todo|invalid|conflict)"/g
 
 const SCRIPT_OR_STYLE = /<(script|style)\b[\s\S]*?<\/\1>/gi
 const TAG = /<[^>]+>/g
-const ENTITY: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'", nbsp: " " }
+const ENTITY: Readonly<Record<string, string>> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  "#39": "'",
+  apos: "'",
+  nbsp: " ",
+}
 
 /**
  * Attributes whose values a reader meets: hover text (title, and data-tooltip, which summary-bars.css shows on

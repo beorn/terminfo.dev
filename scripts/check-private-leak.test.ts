@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { checkPrivateLeak, scanDist, scanRendered, scanSitemap, scanSources, visibleText } from "./check-private-leak.ts"
+import {
+  checkPrivateLeak,
+  scanDist,
+  scanRendered,
+  scanSitemap,
+  scanSources,
+  visibleText,
+} from "./check-private-leak.ts"
 
 let docs: string
 
