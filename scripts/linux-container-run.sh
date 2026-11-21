@@ -1800,6 +1800,20 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
+# 37384: a death between create and the explicit rm below (a signal, a failing step under `set -e`) leaves an exited
+# container referencing the probe image, which every later image-cache sweep must work around. Remove only this run's
+# own container; the explicit rm clears the variable, so the normal path stays quiet.
+container_cleanup() {
+  local status=$?
+  trap - EXIT
+  if [[ -n "$container_id" ]]; then
+    docker stop --time 5 "$container_id" >/dev/null 2>&1 || true
+    docker rm "$container_id" > "$prep/docker-rm-trap.txt" 2>&1 ||
+      echo "Could not remove owned container $container_id; see $prep/docker-rm-trap.txt" >&2
+  fi
+  exit "$status"
+}
+trap container_cleanup EXIT
 if ! timeout "$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
   if [[ "$(docker inspect "$container_id" --format '{{.State.Running}}')" == true ]]; then
     if ! docker stop --time 5 "$container_id" > "$prep/stop.txt" 2>&1; then
@@ -1812,6 +1826,7 @@ exit_code=$(jq -er '.[0].State.ExitCode' "$prep/container-inspect.json")
 logs_status=0
 docker logs "$container_id" > "$prep/docker-stdout.log" 2>"$prep/docker-stderr.log" || logs_status=$?
 docker rm "$container_id" > "$prep/docker-rm.txt"
+container_id=
 [[ "$logs_status" == 0 ]] || {
   echo "Could not preserve Docker logs for $container_id (status $logs_status)" >&2
   exit 2
