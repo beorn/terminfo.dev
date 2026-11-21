@@ -2072,6 +2072,72 @@ test("an ambiguous reverse witness is a named unavailable outcome", async () => 
   })
 })
 
+/** Kitty 0.49.2's 800x600 Linux window: a 61x20 grid of 13x29 cells at 3,10 painted `paint`, black padding. */
+function kittyWindow(paint: (column: number, row: number) => readonly [number, number, number]): CapturedFrame {
+  const rgba = new Uint8Array(800 * 600 * 4)
+  for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = 255
+  for (let row = 0; row < 20; row++) {
+    for (let column = 0; column < 61; column++) {
+      const rgb = paint(column, row)
+      for (let y = 10 + row * 29; y < 10 + (row + 1) * 29; y++) {
+        for (let x = 3 + column * 13; x < 3 + (column + 1) * 13; x++) rgba.set(rgb, (y * 800 + x) * 4)
+      }
+    }
+  }
+  return { width: 800, height: 600, rgba }
+}
+
+// #37278: kitty 0.49.2 on Linux (runs 2026-11-20T23-06-02-435Z-9469f807a970 and 2026-11-21T00-43-55-159Z-fa970343b55d)
+// leaves its window padding black under DECSCNM and reverses only the cells (grey 221). The basic sentinel never shows
+// under the mode (#35058), so the shared loop paints the SGR 7 form next, and that double inversion shows the black
+// starting blank again (trace captures 28-29 equal capture 0, digest a7aff0f8e). Black was already visible in the
+// padding: an ambiguous witness, the stage's named unavailable outcome. It was thrown as a plain error instead, so the
+// calibration failed and all 264 rows with it, where the run before #37240 had installed it with the mode unavailable.
+test("a reverse form that shows only the colour already in the window's padding is a named unavailable witness", async () => {
+  const before = kittyWindow(() => [0, 0, 0])
+  const solid = kittyWindow(() => [203, 30, 209])
+  const run = calibration({
+    screenMode: "reverse",
+    rows: 20,
+    cols: 61,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [solid, solid],
+      "column edge paint": Array(2).fill(kittyWindow((column) => (column % 2 === 0 ? [204, 4, 3] : [0, 0, 0]))),
+      "row edge paint": Array(2).fill(kittyWindow((_column, row) => (row % 2 === 0 ? [204, 4, 3] : [0, 0, 0]))),
+      "reverse screen blank": Array(2).fill(kittyWindow(() => [221, 221, 221])),
+      "reverse screen solid paint": [before, before],
+      "reverse screen return": [solid, solid],
+      "restore grid paint": [before, before],
+    },
+    beforeCapture: (label) => {
+      if (label.includes("reverse screen solid paint basic")) {
+        throw Object.assign(new Error(`Capture calibration ${label}: paint witness timeout`), {
+          name: "CapturePaintTimeout",
+        })
+      }
+    },
+  })
+  const result = await run.promise
+  expect(result).toMatchObject({
+    origin: { x: 3, y: 10 },
+    pixelGeometry: { cellWidth: 13, cellHeight: 29, textWidth: 793, textHeight: 580 },
+    sentinel: { form: "basic", rgb: [203, 30, 209] },
+  })
+  expect(result.reverseScreen).toEqual({
+    status: "unavailable",
+    reason:
+      "reverse screen witness ambiguous: Capture calibration grid witness colour was already visible before the requested paint",
+  })
+  // The SGR 7 form was the one painted under the mode, and the normal paint was still proven back.
+  const all = run.writes.join("")
+  const set = all.indexOf(DECSCNM_SET)
+  expect(all.indexOf("\x1b[7m", set)).toBeGreaterThan(set)
+  expect(all.indexOf("\x1b[7m", set)).toBeLessThan(all.indexOf(DECSCNM_RESET, set))
+  expect(run.reads.get("reverse screen return")).toBe(2)
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
 // #35058: kitty 0.49.2 on Linux. Its sentinel paint never showed on the reversed blank canvas, so the stage
 // kept capturing until its deadline, and the last capture's own xdotool step then refused "deadline expired
 // before invocation" inside the capture. That is the unseen-paint outcome the stage already names; it was

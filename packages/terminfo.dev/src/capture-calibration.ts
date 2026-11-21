@@ -727,7 +727,9 @@ const findSolidWitnessClass = (
   const witnessClass = buildPaintColorClass(colorsByCount, witness)
   for (let offset = 0; offset < before.rgba.length; offset += 4) {
     if (inColorClass(before, offset, witnessClass)) {
-      throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
+      // A named refusal like every other ambiguous witness, so the reverse screen stage names it unavailable (#37278:
+      // kitty's SGR 7 form under DECSCNM shows only the black of its unreversed padding).
+      throw refusal("Capture calibration grid witness colour was already visible before the requested paint")
     }
   }
   return { witness, witnessClass }
