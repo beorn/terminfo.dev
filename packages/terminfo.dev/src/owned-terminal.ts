@@ -77,7 +77,6 @@ import {
   ALACRITTY_0_17_VIEWPORT_ROUTE,
   GHOSTTY_1_4_VIEWPORT_ROUTE,
   LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
-  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
   XTERM_411_VIEWPORT_ROUTE,
   ScrollbackReadingUnavailable,
   type InputFixture,
@@ -704,19 +703,6 @@ export const ALACRITTY_0_17_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>
 })
 
 /**
- * Ghostty 1.4.0's default viewport bindings on Linux (#37249): src/config/Config.zig:6954-6973 at v1.4.0, inside
- * the `!isDarwin()` branch opened at 6826, binds shift+Home scroll_to_top, shift+End scroll_to_bottom,
- * shift+Page_Up scroll_page_up and shift+Page_Down scroll_page_down. The same keys as Alacritty's, kept as their
- * own constant because they come from another source. Source, not a delivery proof (34313).
- */
-export const LINUX_GHOSTTY_1_4_VIEWPORT_KEYS: Readonly<Record<ViewportStep, string>> = Object.freeze({
-  pageUp: "shift+Page_Up",
-  pageDown: "shift+Page_Down",
-  top: "shift+Home",
-  bottom: "shift+End",
-})
-
-/**
  * xterm 411's viewport steps on this Linux arm (#34632). xterm binds shift+Prior and shift+Next outside the
  * alternate screen but binds nothing to scroll-to-top/bottom, so the container script declares both through its
  * own launch (`XTerm*VT100.Translations: #override Shift<Key>Home: scroll-back(9999,line); Shift<Key>End:
@@ -824,11 +810,9 @@ export function linuxViewportKeys(subject: {
   if (subject.appId === "alacritty" && subject.targetVersion === "0.17.0") {
     return { viewportKeys: { route: LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE, keys: ALACRITTY_0_17_VIEWPORT_KEYS } }
   }
-  // #37249 (@cto f584ccea): Ghostty 1.4.0's own default bindings through XTEST. The container launches it in a
-  // fresh private HOME with no config file, and the run records that (linux-container-run.sh).
-  if (subject.appId === "ghostty" && subject.targetVersion === "1.4.0") {
-    return { viewportKeys: { route: LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE, keys: LINUX_GHOSTTY_1_4_VIEWPORT_KEYS } }
-  }
+  // Linux Ghostty has no route (#37276). Pressing its viewport keys left a 1 px x 9-row strip in the window's
+  // bottom-right corner (its overlay scrollbar), so the next calibration renewal refused the grid and every probe
+  // after it (runs 2026-11-21T00-21-49Z and 00-34-20Z). A route returns only once that renewal is proven clean.
   return undefined
 }
 
