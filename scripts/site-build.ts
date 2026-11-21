@@ -15,7 +15,8 @@
  */
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs"
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { build } from "vitepress"
 import {
   installRenderPhaseHook,
@@ -25,7 +26,8 @@ import {
   phasePeaksMessage,
   startPeakGuard,
 } from "./build-peak-guard.ts"
-import { siteDistDir, siteTempDir } from "./site-out.ts"
+import { siteDistDir, siteProbesPath, siteTempDir } from "./site-out.ts"
+import { pinSiteWorkingRun } from "../docs/data/working-runs.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { probeStatusSummary } from "../docs/data/probe-status.ts"
 
@@ -116,6 +118,11 @@ function reportProbeStatus(): void {
       `gated (reviewed over a settled derivation): ${summary.gated.length} — ${gated}`,
   )
 }
+
+// #35110: bundle the working run the probe snapshot was cut from, even if a newer run completed since `bun analysis`.
+const probesPath = siteProbesPath(repoRoot)
+const probes = parseJsonStrict(probesPath, readFileSync(probesPath, "utf8")) as { workingRunId?: string | null } | null
+pinSiteWorkingRun(probes?.workingRunId ?? null)
 
 try {
   await build(join(repoRoot, "docs"), {

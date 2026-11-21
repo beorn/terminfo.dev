@@ -375,7 +375,7 @@ function analysisSources(context: SelectedContextSummary) {
   }))
 }
 
-import probesLoader from "../docs/data/probes.data.ts"
+import { loadClientProbes } from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
 import * as probeData from "../docs/data/load-probes.ts"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
@@ -408,7 +408,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import { join } from "node:path";
       import { loadCurrentResults, compatibilitySubjects } from ${entry("docs/data/current-results.ts")};
       import { loadFullProbes } from ${entry("docs/data/probes.data.ts")};
-      import probesLoader from ${entry("docs/data/probes.data.ts")};
+      import { loadClientProbes } from ${entry("docs/data/probes.data.ts")};
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
       import { generateApi, storedDocument } from ${entry("scripts/generate-api.ts")};
       import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
@@ -422,7 +422,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       Bun.gc(true);
       const compatibility = compatibilitySubjects(projection, content);
       const site = loadFullProbes();
-      const matrix = probesLoader.load();
+      const matrix = loadClientProbes();
       const pages = terminalPaths.paths();
       const analyses = generateAnalysis();
       generateApi(out);
@@ -622,31 +622,50 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
   }
 }, 610_000)
 
+// Keep the producer rooted in its fixture, including the client snapshot and source identity.
+function prepareAnalysisFixture(out: string): string {
+  const sourceRoot = join(import.meta.dirname, "..")
+  mkdirSync(join(out, "scripts"))
+  mkdirSync(join(out, "content"))
+  for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
+  mkdirSync(join(out, "docs"))
+  cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+  for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+  const script = join(out, "scripts", "generate-analysis.ts")
+  cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+  cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
+  cpSync(join(import.meta.dirname, "build-metadata.ts"), join(out, "scripts", "build-metadata.ts"))
+  for (const name of [
+    "features",
+    "terminals",
+    "categories",
+    "standards",
+    "baselines",
+    "frameworks",
+    "glossary",
+    "annotations",
+    "platforms",
+    "released-v1-keys",
+  ]) {
+    cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
+  }
+  cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
+  cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+  for (const args of [
+    ["init", "--quiet"],
+    ["add", "scripts", "content"],
+    ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"],
+  ]) {
+    const initialized = spawnSync("git", args, { cwd: out, encoding: "utf8" })
+    expect(initialized.status, initialized.stderr).toBe(0)
+  }
+  return script
+}
+
 it("analysis rejects malformed required catalogs before replacing its output", () => {
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))
   try {
-    const sourceRoot = join(import.meta.dirname, "..")
-    mkdirSync(join(out, "scripts"))
-    mkdirSync(join(out, "content"))
-    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
-    const script = join(out, "scripts", "generate-analysis.ts")
-    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
-    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
-    for (const name of [
-      "features",
-      "terminals",
-      "categories",
-      "standards",
-      "baselines",
-      "frameworks",
-      "glossary",
-      "annotations",
-    ]) {
-      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
-    }
-    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
-    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+    const script = prepareAnalysisFixture(out)
     const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
     expect(control.error).toBeUndefined()
     expect(control.status, control.stderr).toBe(0)
@@ -681,28 +700,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
   // --validate must prove current values, not merely presence; existing catalog-refusal coverage cannot detect this.
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-validation-"))
   try {
-    const sourceRoot = join(import.meta.dirname, "..")
-    mkdirSync(join(out, "scripts"))
-    mkdirSync(join(out, "content"))
-    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
-    const script = join(out, "scripts", "generate-analysis.ts")
-    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
-    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
-    for (const name of [
-      "features",
-      "terminals",
-      "categories",
-      "standards",
-      "baselines",
-      "frameworks",
-      "glossary",
-      "annotations",
-    ]) {
-      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
-    }
-    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
-    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
+    const script = prepareAnalysisFixture(out)
     const run = (args: string[]) =>
       spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
     const generated = run([])
@@ -945,7 +943,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("ships current cells without the build-time selection payload", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     expect(Object.hasOwn(site, "selected")).toBe(false)
     // #30759 AC3: the projection no longer carries a historical reader at all, so there is no
     // second, legacy selection payload that could ride along with the site's current rows.
@@ -956,7 +954,7 @@ describe("selected-run consumer parity", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
     try {
-      const site = probesLoader.load()
+      const site = loadClientProbes()
       generateApi(out)
       const v3 = readFileSync(join(out, "api", "v3", "data.json"), "utf8")
       for (const serialized of [JSON.stringify(site), v3]) {
@@ -1131,7 +1129,7 @@ describe("selected-run consumer parity", () => {
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-parity-"))
     try {
-      const site = probesLoader.load()
+      const site = loadClientProbes()
       const terminal = terminalPaths.paths().find((page) => page.params.id === "kitty")
       const analyses = generateAnalysis()
       const analysis = analyses["terminals/kitty"]
@@ -1253,7 +1251,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("keeps a mixed-suite subject visible with one retained original cell", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
@@ -1414,7 +1412,7 @@ describe("selected-run consumer parity", () => {
   })
 
   it("scores baseline support over the full catalog and exposes test failures", () => {
-    const site = probesLoader.load()
+    const site = loadClientProbes()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
     // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
@@ -1443,7 +1441,7 @@ describe("selected-run consumer parity", () => {
     try {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
-      expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
+      expect(loadClientProbes().baselineStats.screen?.core).toMatchObject({
         counts: { "probe-invalid": 1, "probe-todo": graded - 1 },
         score: { all: graded, supported: 0 },
       })

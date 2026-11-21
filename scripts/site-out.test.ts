@@ -1,14 +1,14 @@
 /**
- * @failure A site build run from a read-only hab landing writes into the landing's own checkout, or `TERMINFO_SITE_OUT_DIR` changes the paths of an unset build.
+ * @failure A site build writes into its read-only landing, or its client loader recomputes the corpus instead of reading that build's prepared probe data.
  * @level l2
  * @consumer The terminfo-site resident's landed serve and `bun run build`.
  * @testonly none
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   siteAnalysisPath,
   siteCacheDir,
@@ -39,6 +39,61 @@ it("roots every build write under TERMINFO_SITE_OUT_DIR when it is set", () => {
   expect(siteAnalysisPath(repoRoot, env)).toBe(join("/var/terminfo-site", "content", "analysis.json"))
 })
 
+it("the client loader reads only its own landing's prepared probe data", async () => {
+  // AC1: analysis-path tests cannot detect VitePress recomputing the expensive corpus.
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-client-probes-"))
+  const first = join(directory, "first")
+  const second = join(directory, "second")
+  const sourceCommit = "a".repeat(40)
+  let workingRunId: string | null = null
+  vi.doMock("../docs/data/current-results.ts", async (original) => ({
+    ...(await original<typeof import("../docs/data/current-results.ts")>()),
+    loadCurrentResults() {
+      throw new Error("client loader requested corpus after pre-build")
+    },
+  }))
+  vi.doMock("./build-metadata.ts", () => ({ createBuildMetadata: () => ({ sourceCommit }) }))
+  vi.doMock("../docs/data/working-runs.ts", async (original) => ({
+    ...(await original<typeof import("../docs/data/working-runs.ts")>()),
+    selectedSiteWorkingRun: () => (workingRunId === null ? null : { id: workingRunId }),
+  }))
+  vi.resetModules()
+  try {
+    for (const [root, generated] of [
+      [first, "first landing"],
+      [second, "second landing"],
+    ]) {
+      mkdirSync(join(root!, "content"), { recursive: true })
+      writeFileSync(join(root!, "content", "probes.json"), JSON.stringify({ sourceCommit, data: { generated } }))
+    }
+    const loader = (await import("../docs/data/probes.data.ts")).default
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", first)
+    expect(loader.load()).toEqual({ generated: "first landing" })
+    vi.stubEnv("TERMINFO_SITE_OUT_DIR", second)
+    expect(loader.load()).toEqual({ generated: "second landing" })
+    const path = join(second, "content", "probes.json")
+    writeFileSync(path, JSON.stringify({ sourceCommit: "b".repeat(40), data: { generated: "stale" } }))
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    workingRunId = "new working run"
+    writeFileSync(path, JSON.stringify({ sourceCommit, workingRunId: null, data: { generated: "old run" } }))
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    writeFileSync(path, JSON.stringify({ sourceCommit, workingRunId, data: { generated: "new run" } }))
+    expect(loader.load()).toEqual({ generated: "new run" })
+    writeFileSync(path, "{")
+    expect(() => loader.load()).toThrow(/probes\.json/)
+    rmSync(path)
+    expect(() => loader.load()).toThrow(/probes\.json/)
+  } finally {
+    vi.unstubAllEnvs()
+    vi.doUnmock("../docs/data/current-results.ts")
+    vi.doUnmock("./build-metadata.ts")
+    vi.doUnmock("../docs/data/working-runs.ts")
+    vi.resetModules()
+    // raw-delete-allow: only this test's own mkdtemp fixture; standalone CI has no removely dependency.
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 it("analysis generation writes under the override and leaves the source tree alone", () => {
   // 28268 AC4: a landing is write-once, so the analysis step must not write content/analysis.json in its checkout.
   const out = mkdtempSync(join(tmpdir(), "terminfo-site-out-"))
@@ -48,7 +103,9 @@ it("analysis generation writes under the override and leaves the source tree alo
     mkdirSync(join(out, "scripts"))
     mkdirSync(join(out, "content"))
     for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
-    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+    mkdirSync(join(out, "docs"))
+    cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+    for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
     for (const name of [
       "features",
       "terminals",
@@ -58,13 +115,23 @@ it("analysis generation writes under the override and leaves the source tree alo
       "frameworks",
       "glossary",
       "annotations",
+      "platforms",
+      "released-v1-keys",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
     cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
-    for (const name of ["generate-analysis.ts", "site-out.ts"]) {
+    for (const name of ["generate-analysis.ts", "site-out.ts", "build-metadata.ts"]) {
       cpSync(join(sourceRoot, "scripts", name), join(out, "scripts", name))
+    }
+    for (const args of [
+      ["init", "--quiet"],
+      ["add", "scripts", "content"],
+      ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"],
+    ]) {
+      const initialized = spawnSync("git", args, { cwd: out, encoding: "utf8" })
+      expect(initialized.status, initialized.stderr).toBe(0)
     }
     const result = spawnSync(process.execPath, [join(out, "scripts", "generate-analysis.ts")], {
       cwd: out,
@@ -78,6 +145,11 @@ it("analysis generation writes under the override and leaves the source tree alo
     expect(existsSync(redirected)).toBe(true)
     expect(existsSync(join(out, "content", "analysis.json"))).toBe(false)
     expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
+    const probes = JSON.parse(readFileSync(join(writeRoot, "content", "probes.json"), "utf8"))
+    expect(probes).toHaveProperty("sourceCommit", expect.stringMatching(/^[a-f0-9]{40}$/))
+    expect(probes).toHaveProperty("data.features")
+    expect(probes).not.toHaveProperty("data.selected")
+    expect(existsSync(join(out, "content", "probes.json"))).toBe(false)
   } finally {
     // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
     // unavailable; `out` is this test's own mkdtemp scratch root
