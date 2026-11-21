@@ -101,7 +101,7 @@
       "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "702492f750ae14a35efe9fae6bb0afd9425aefd3af5f87592a37fdcc3b239d52"
+        "criterionSha256": "c0bcf228e0a6c0ab21852504cdae44f24ea81540da7b9334594a723607d81850"
       },
       "witnesses": [
         {
@@ -159,7 +159,7 @@
       "evidence": "@dev/16 issue 33165 reopened-65.md: no same-run outer command record; first: @dev/8 audit reopen-group-c-silence-rows.json sha256 20de8058abeec51014e221648966abe348599541ba41b6a3ebe92d93565bbba5",
       "exit": {
         "kind": "criterion-text",
-        "criterionSha256": "4fc6e7f284defa02907b1900809685fd277e6d9105548158084e7bc572e6ee0d"
+        "criterionSha256": "b7b42d6b5624b9031b8ca03682c33679a9a80c2d6db18bb67c70ceddc6c60658"
       },
       "witnesses": [
         {
