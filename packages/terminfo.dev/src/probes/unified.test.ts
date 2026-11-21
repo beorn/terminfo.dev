@@ -2611,65 +2611,44 @@ function geometryOwner(
   }
 }
 
-// Direct viewport fixtures bypass this input adaptation. Static pixels deliberately fail in-run
-// wheel displacement calibration: the contract here is native batch input/capture wiring without external wheelPlacement.
-it.each([
-  { deliverKey: false, replyCursor: true },
-  { deliverKey: true, replyCursor: true },
-  { deliverKey: true, replyCursor: false },
-])(
-  "calibrates viewport wheel placement in-run through the native batch (deliverKey: $deliverKey, replyCursor: $replyCursor)",
-  async ({ deliverKey, replyCursor }) => {
-    verifiedBatchFixture()
-    const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
-    receiptDirectories.push(directory)
-    const receiptPath = join(directory, "host-measured.json")
-    writeFileSync(receiptPath, JSON.stringify(validContainerReceipt()))
-    process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
-    const writes: string[] = []
-    process.stdout.write = ((text: string) => {
-      writes.push(text)
-      if (replyCursor && text.includes("\x1b[6n")) {
-        queueMicrotask(() => process.stdin.emit("data", Buffer.from("\x1b[1;1R")))
-      }
-      return true
-    }) as typeof process.stdout.write
-    const injectKey = vi.fn(async () => {
-      if (deliverKey) process.stdin.emit("data", Buffer.from("a"))
-    })
-    const injectClick = vi.fn(async () => {})
-    const capture = vi.fn(async ({ role, label }: { role: "control" | "target"; label: string }) => ({
-      frame: { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}`, pixelsDigest: "unchanged-surface" },
-      trace: {},
-    }))
-    const id = "scrollback.viewport-hold-output"
-    const batch = await runProbeBatch({
-      ids: [id],
-      subject: { kind: "term", id: "kitty", os: "linux" },
-      ownedTerminal: geometryOwner(measured(8, 30)),
-      input: { injectKey, injectClick },
-      capture,
-    })
-    const row = batch.results.find((result) => result.featureId === id)!
-    expect(row).toMatchObject({
-      status: "probe-todo",
-      reason: !replyCursor
-        ? "no cursor-position reply after painting calibration seed"
-        : deliverKey
-          ? "wheel placement bound not established"
-          : "viewport input delivery not observed",
-    })
-    expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({
-      calibration: !replyCursor ? {} : deliverKey ? { boundEstablished: false } : { delivery: null },
-    })
-    expect(capture).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 4 : 1)
-    expect(writes.length > 0).toBe(true)
-    expect(injectKey).toHaveBeenCalledTimes(!replyCursor ? 0 : 1)
-    expect(injectClick).toHaveBeenCalledTimes(!replyCursor ? 0 : deliverKey ? 43 : 0)
-    expect(batch.observations).toEqual([])
-    expect(batch.assertions).toEqual([])
-  },
-)
+// Linux viewport output hold reads only through a qualified held-viewport reader (4e2c57e4d replaced the in-run
+// wheel displacement calibration, #37289). Kitty on Linux has none, so the probe answers todo before any input or
+// capture, even with both wired.
+it("leaves Linux viewport output hold todo, with no input or capture, when the App has no qualified viewport reader", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const receiptPath = join(directory, "host-measured.json")
+  writeFileSync(receiptPath, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
+  process.stdout.write = ((text: string) => {
+    if (text.includes("\x1b[6n")) queueMicrotask(() => process.stdin.emit("data", Buffer.from("\x1b[1;1R")))
+    return true
+  }) as typeof process.stdout.write
+  const injectKey = vi.fn(async () => {})
+  const injectClick = vi.fn(async () => {})
+  const capture = vi.fn(async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+    frame: { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}`, pixelsDigest: "unchanged-surface" },
+    trace: {},
+  }))
+  const id = "scrollback.viewport-hold-output"
+  const batch = await runProbeBatch({
+    ids: [id],
+    subject: { kind: "term", id: "kitty", os: "linux" },
+    ownedTerminal: geometryOwner(measured(8, 30)),
+    input: { injectKey, injectClick },
+    capture,
+  })
+  expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
+    status: "probe-todo",
+    reason: "viewport output hold has no qualified owned viewport reader",
+  })
+  expect(capture).not.toHaveBeenCalled()
+  expect(injectKey).not.toHaveBeenCalled()
+  expect(injectClick).not.toHaveBeenCalled()
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+})
 
 it("declines a declared callback with missing or conflicting owned geometry before any feature bytes", async () => {
   verifiedBatchFixture()
