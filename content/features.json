@@ -2392,7 +2392,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 5 sets or queries special color resources used for text attributes. The sequence is <code>ESC ] 5 ; c ; spec BEL</code> where c identifies the special color: 0=bold, 1=underline, 2=blink, 3=reverse, 4=italic. To query: <code>ESC ] 5 ; c ; ? BEL</code>. These special colors override the rendered color of text with specific attributes — for example, making all bold text appear in a specific color regardless of the foreground setting. Support is limited to xterm and a few other terminals.\n\ntmux 3.6's complete OSC dispatcher handles 0, 2, 4, 7, 8, 10, 11, 12, 52, 104, 110, 111, 112 and 133 explicitly and logs anything else as unknown. tmux's dispatch has no <code>OSC 5</code> handler for this query (input.c:2633-2688), consumes it and emits nothing; that silence is tmux's decision and is not a terminal probe result.",
-    "probe": "Expected: Complete OSC 5 index-0 color reply.",
+    "probe": "Expected: Complete OSC 5 index-0 color reply. A device attributes answer with no reply before it is Unsupported.",
     "baseline": "rich",
     "sequence": "ESC ] 5 ; c ; spec BEL"
   },
