@@ -305,6 +305,23 @@ export function selectedSiteWorkingRun(env: NodeJS.ProcessEnv = process.env): Wo
   return selection
 }
 
+/**
+ * #35110: `bun analysis` cuts the client probe snapshot in its own process before the bundle; a run completing in
+ * between would make the bundle select a newer run than the snapshot (the build then refuses the snapshot). The build
+ * pins its process's selection to the snapshot's run, so every loader reads the run the snapshot was cut from.
+ */
+export function pinSiteWorkingRun(id: string | null, env: NodeJS.ProcessEnv = process.env): void {
+  const dir = siteWorkingRunsDir(env)
+  if (dir === undefined) {
+    if (id !== null) throw new Error(`the probe snapshot names working run ${id}, but ${WORKING_RUNS_ENV} is unset`)
+    return
+  }
+  if (id === null) throw new Error(`${WORKING_RUNS_ENV}=${dir}, but the probe snapshot names no working run`)
+  const [selection] = completeRunSelections(dir, id)
+  if (selection?.id !== id) throw new Error(`${dir}: the probe snapshot's working run ${id} is not a complete run here`)
+  ;(host[SELECTION_CACHE] ??= new Map()).set(dir, selection)
+}
+
 const REPO_ROOT = join(import.meta.dirname, "..", "..")
 
 export function siteWorkingRun(env: NodeJS.ProcessEnv = process.env): LoadedWorkingRun | null {

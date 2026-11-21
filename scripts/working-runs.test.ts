@@ -36,6 +36,7 @@ import {
   loadAppWorkingRun,
   loadWorkingRun,
   newestCompleteRun,
+  pinSiteWorkingRun,
   selectedSiteWorkingRun,
   workingCell,
   workingRunStamp,
@@ -277,6 +278,25 @@ describe("newestCompleteRun: the site reads the newest COMPLETE hourly run (requ
 
   it("leaves the site on accepted results only when the variable is unset", () => {
     expect(selectedSiteWorkingRun({})).toBeNull()
+  })
+
+  // #35110: h1 at a0ee67c1 cut its snapshot from one run, a newer run completed 5 min later, and the bundle selected
+  // the newer one and refused the snapshot. The build pins the snapshot's run for the rest of its process.
+  it("pins the snapshot's run although a newer complete run exists, and refuses a run that is not complete", () => {
+    const parent = runsDir()
+    run(parent, OLD, { complete: true })
+    run(parent, WRITING, { complete: true })
+    const env = { TERMINFO_SITE_WORKING_RUNS_DIR: parent }
+    pinSiteWorkingRun(OLD, env)
+    expect(selectedSiteWorkingRun(env)?.id).toBe(OLD)
+    run(parent, PARTIAL, { complete: false }, false)
+    expect(() => pinSiteWorkingRun(PARTIAL, env)).toThrow(
+      `the probe snapshot's working run ${PARTIAL} is not a complete run here`,
+    )
+    expect(() => pinSiteWorkingRun(null, env)).toThrow("the probe snapshot names no working run")
+    expect(() => pinSiteWorkingRun(OLD, {})).toThrow(
+      `the probe snapshot names working run ${OLD}, but TERMINFO_SITE_WORKING_RUNS_DIR is unset`,
+    )
   })
 })
 
