@@ -51,7 +51,7 @@ import {
   type ViewportScroll,
 } from "@terminfo/probe-defs"
 import { clipboardConfigAgrees } from "./clipboard-config.ts"
-import { readThroughSentinel } from "./sentinel-read.ts"
+import { readThroughSentinel, SentinelPaintWiderThanCell } from "./sentinel-read.ts"
 import { createPrePaintMeter, withPrePaintReading } from "./pre-paint-meter.ts"
 import { detectTerminal } from "./detect.ts"
 import { appSemanticDeclarations, declarationDrift, readSessionBus } from "./app-semantic-state.ts"
@@ -916,6 +916,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * a refusal that only reached stdout is lost to the artifact (measured: run 43102072805).
      */
     let inputInstallFact: string | undefined
+    /**
+     * Why this run stopped anchoring its reads on the painted sentinel, when that happened: the wide
+     * verdict's own message, recorded so the artifact says why every later read took a plain crop
+     * instead of leaving a silent fallback behind (@dev/15 peer read of 52da0fd43).
+     */
+    let sentinelFallbackFact: string | undefined
+    /**
+     * Whether the sentinel is unusable for the rest of this run. A terminal that draws U+2588 wide can
+     * never anchor a painted pair, so every later read would spend its whole deadline and then fail
+     * anyway; the run takes plain crops instead and records why (@dev/15 peer read of a887dda73).
+     */
+    let sentinelUnusable = false
     /** The window the Darwin capture install selected; keys-only viewport input targets exactly it (34313). */
     let darwinCaptureWindowId: number | undefined
     /** The subject owner's viewport route, never the public input fixture: only the history rows read it (34313). */
@@ -996,7 +1008,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             request.layoutGuard !== undefined && paintClasses !== undefined
               ? { ...request, layoutGuardBackground: paintClasses.background.members }
               : request
-          if (sentinel === undefined || source === undefined || regions.length === 0) {
+          if (sentinelUnusable || sentinel === undefined || source === undefined || regions.length === 0) {
             return adapter.capture(served, calibrated)
           }
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
@@ -1006,6 +1018,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // again on a sentinel retry, all inside the caller's adapterCallbackMs. The meter is created
           // per served capture and nothing about it is shared with the next one.
           const prePaintMeter = createPrePaintMeter()
+          // A wide verdict ends anchoring for the rest of the run, so its message is recorded on the
+          // run rather than thrown away with this one read's stack.
+          let fellBackToPlainCrop = false
           const read = await readThroughSentinel({
             source,
             ...(checkpoint.restoreAfterPaint !== undefined ? { restoreAfterPaint: checkpoint.restoreAfterPaint } : {}),
@@ -1032,7 +1047,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
             ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
+          }).catch((error: unknown) => {
+            if (!(error instanceof SentinelPaintWiderThanCell)) throw error
+            sentinelUnusable = true
+            sentinelFallbackFact = error.message
+            fellBackToPlainCrop = true
+            return undefined as never
           })
+          if (fellBackToPlainCrop) return adapter.capture(served, calibrated)
           return withPrePaintReading(read, prePaintMeter.reading())
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode }) => {
@@ -1777,6 +1799,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // 34555: the run file names a version with no reviewed rows next to the versions that have them.
               if (drift) result.rawReplies["collector.declarationDrift"] = JSON.stringify(drift)
               if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
+              if (sentinelFallbackFact) result.rawReplies["collector.sentinelFallback"] = sentinelFallbackFact
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)

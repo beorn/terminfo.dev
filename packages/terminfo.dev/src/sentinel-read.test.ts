@@ -258,7 +258,7 @@ test("a lone sentinel-coloured patch cannot stand in for the pair, and refuses b
     }),
   ).rejects.toThrow(
     new RegExp(
-      `^cells 1,1-2,2: the changed sentinel at ${WHERE} is not one painted pair: 1 connected regions changed into the sentinel colour — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
+      `^cells 1,1-2,2: the changed sentinel at ${WHERE} is not one painted pair: one connected region changed into the sentinel colour — 4 px in a 2x2 box at 10,6 — where the two painted cells need exactly two; it did not settle before this read's deadline$`,
     ),
   )
   // Both cells are still restored.
@@ -297,10 +297,60 @@ test("a sentinel-coloured run along a same-row pair reads as one wide box and re
       deadline: Date.now(),
     }),
   ).rejects.toThrow(
-    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: 1 connected regions changed into the sentinel colour — 24 px in a 12x2 box at 0,4 — where the two painted cells need exactly two; it did not settle before this read's deadline$/,
+    /^cells 1,1-2,2: the changed sentinel at cells 3,1 and 3,3 is not one painted pair: one connected region changed into the sentinel colour — 24 px in a 12x2 box at 0,4 — where the two painted cells need exactly two; it did not settle before this read's deadline$/,
   )
   // Both cells are still restored, in the pair's own order.
   expect(painted.writes.at(-1)).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b[3;3H \x1b[0m\x1b8")
+})
+
+// @dev/15's blocking finding on a887dda73: a terminal that really draws U+2588 wide widens BOTH
+// painted cells, so the diagonal pair touches and the difference answers ONE region. Counting first
+// called that "other change" and retried to the deadline; the wide verdict must fire instead, on the
+// FIRST attempt, and stop this run anchoring its reads (@dev/15 peer read of a887dda73).
+test("a diagonal pair drawn wide merges into one region and stops the run anchoring on the first attempt (33981)", async () => {
+  // A double-width glyph widens each painted cell by one cell in the column direction, so the two
+  // blocks of the diagonal pair touch and the difference answers ONE region that spans more than one
+  // column AND more than one row — the merged-pair shape, unlike a run along a single row.
+  const pre = before({ x: 0, y: 0 })
+  const frame = windowAt({ x: 0, y: 0 }, { painted: false })
+  const { cellWidth, cellHeight } = pixelGeometry
+  const boxes = [chosenPair.a, chosenPair.b].map((cell) => ({
+    x: (cell.col - 1) * cellWidth,
+    y: (cell.row - 1) * cellHeight,
+    width: 2 * cellWidth,
+    height: cellHeight,
+  }))
+  const left = Math.min(...boxes.map((box) => box.x))
+  const top = Math.min(...boxes.map((box) => box.y))
+  const right = Math.max(...boxes.map((box) => box.x + box.width))
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height))
+  for (const box of boxes) {
+    for (let y = box.y; y < box.y + box.height; y += 1) {
+      for (let x = box.x; x < box.x + box.width; x += 1) {
+        frame.rgba.set([...sentinel.rgb, 255], (y * frame.width + x) * 4)
+      }
+    }
+  }
+  const painted = source()
+  await expect(
+    readThroughSentinel({
+      source: painted.source,
+      prePaint: async () => pre,
+      capture: async (resolve) => resolve({ frame, pixelGeometry }),
+      label: "cells 1,1-2,2",
+      sentinel,
+      regions: [cells],
+      reading: { x: 0, y: 0 },
+      cell: { width: 2, height: 2 },
+      deadline: Date.now(),
+    }),
+  ).rejects.toThrow(
+    new RegExp(
+      `^cells 1,1-2,2: every region that changed is wider than one cell — one changed region, ${boxes.reduce((sum, box) => sum + box.width * box.height, 0)} px in a ${right - left}x${bottom - top} box at ${left},${top} against a 2x2 cell\\. Either the terminal drew U\\+2588 across two columns, or this frame changed over a wide area rather than at the pair; both make the pair unusable as an anchor, so this run stops anchoring its reads on the sentinel$`,
+    ),
+  )
+  // One paint and one clear: the verdict is reached before any retry repaints the cells.
+  expect(painted.writes).toEqual([PAINT, CLEAR])
 })
 
 // @dev/10 peer read, 34040: the tier-2 pair is the reason the tiers exist, so the READ has to accept
@@ -624,7 +674,7 @@ test("a pre-paint frame that lagged the probe's own drawing is retaken, and the 
 /** One pixel of a frame, by absolute position: what a reader sees at a witness box's own corner. */
 function pixelOf(frame: CapturedFrame, at: { x: number; y: number }) {
   const offset = (at.y * frame.width + at.x) * 4
-  return [...frame.rgba.slice(offset, offset + 4)]
+  return Array.from(frame.rgba.slice(offset, offset + 4))
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
   CALIBRATION_SOLID_PAINT,
+  CELL_EDGE_TOLERANCE_PX,
   sentinelCellsInFrame,
   originFromSentinel,
   SENTINEL_BOX_SLACK_PX,
@@ -59,6 +60,17 @@ function projectCalibratedBackground(
 
 /** A frame this read cannot anchor yet: the paint may still be one capture behind (33000). Never fatal. */
 class SentinelNotOnFrame extends Error {}
+
+/**
+ * A terminal that draws U+2588 double-width: the painted pair is wider than a cell, so it is unusable
+ * as an anchor and this RUN stops anchoring its reads on the sentinel. Named, and separate from
+ * SentinelNotOnFrame, because it is a verdict about the terminal rather than a frame the next capture
+ * may still carry: retrying it can only spend the read's whole deadline and then fail anyway
+ * (@dev/15 peer read of a887dda73).
+ */
+export class SentinelPaintWiderThanCell extends Error {
+  override name = "SentinelPaintWiderThanCell"
+}
 
 /**
  * A read that cannot prove where its crop goes. Never a fallback (34163, @cto 2b): a declared hold
@@ -306,6 +318,22 @@ export async function readThroughSentinel<T>(input: {
     return regions.length > 8 ? `${spelled}; and ${regions.length - 8} more` : spelled
   }
   let before = await input.prePaint()
+  /**
+   * Where a cell sits in these frames, from the witnessed text origin this read was handed. The wide
+   * verdict needs it before any geometry has been resolved from the picture: it has to say whether a
+   * changed region reached the cells this read painted, not merely that something wide changed.
+   */
+  const cellRect = (cell: { row: number; col: number }) => ({
+    x: input.reading.x + (cell.col - 1) * input.cell.width,
+    y: input.reading.y + (cell.row - 1) * input.cell.height,
+    width: input.cell.width,
+    height: input.cell.height,
+  })
+  const overlaps = (
+    one: { x: number; y: number; width: number; height: number },
+    two: { x: number; y: number; width: number; height: number },
+  ) =>
+    one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height
   // One projected copy per pre-paint capture, reused by selection (`choose`) and landing-pose (`pairClearBeforePaint`).
   let beforeProjected = paintClasses
     ? projectCalibratedBackground(before, paintClasses.background, input.label)
@@ -336,9 +364,51 @@ export async function readThroughSentinel<T>(input: {
       new SentinelNotOnFrame(
         `${input.label}: the changed sentinel at ${where()} is not one painted pair: ${reason}${noise}`,
       )
+    /**
+     * A terminal that draws U+2588 double-width widens BOTH painted cells, and the pair then touches:
+     * the lower block's first pixel sits directly under the upper block's last, so the difference
+     * answers ONE region. Counting first read that as "other change", retried to the deadline and then
+     * failed anyway, never reaching a wide verdict and never retiring the sentinel for the run
+     * (@dev/15 peer read of a887dda73). A changed region wider than a cell is that evidence, and it is
+     * testable before the count means anything.
+     */
+    /**
+     * The merged-pair shape, and only it: a diagonal pair drawn wide spans more than one column AND
+     * more than one row. A sentinel-coloured RUN along one row also spans columns, and 34040 decided
+     * that one is a reason to retry rather than to retire the anchor, so the one-axis case is left to
+     * that refusal and never reaches this verdict.
+     */
+    const spansBothAxes = (region: { box: { width: number; height: number } }) =>
+      region.box.width > size.width + CELL_EDGE_TOLERANCE_PX && region.box.height > size.height + CELL_EDGE_TOLERANCE_PX
+    /**
+     * The wide verdict retires the sentinel for the whole run, so it may only be drawn from a region
+     * that reaches one of the cells this read painted: an unrelated wide change in the window is a
+     * reason to retry, not a reason to give up anchoring (@dev/15 peer read of 52da0fd43).
+     */
+    const atPaintedCell = (region: { box: { x: number; y: number; width: number; height: number } }) =>
+      overlaps(region.box, cellRect(a)) || overlaps(region.box, cellRect(b))
+    const wideRefusal = (
+      seen: readonly { box: { x: number; y: number; width: number; height: number }; pixels: number }[],
+    ) => {
+      const widest = seen.reduce((grown, region) =>
+        region.box.width * region.box.height > grown.box.width * grown.box.height ? region : grown,
+      )
+      return new SentinelPaintWiderThanCell(
+        `${input.label}: every region that changed is wider than one cell — ${
+          seen.length === 1
+            ? `one changed region, ${widest.pixels} px in a ${widest.box.width}x${widest.box.height} box at ${widest.box.x},${widest.box.y}`
+            : `both changed regions, the larger ${widest.pixels} px in a ${widest.box.width}x${widest.box.height} box at ${widest.box.x},${widest.box.y}`
+        } against a ${size.width}x${size.height} cell${noise}. Either the terminal drew U+2588 across two columns, or this frame changed over a wide area rather than at the pair; both make the pair unusable as an anchor, so this run stops anchoring its reads on the sentinel`,
+      )
+    }
+    if (regions.length <= 2 && regions.every(spansBothAxes) && regions.every(atPaintedCell)) {
+      throw wideRefusal(regions)
+    }
     if (regions.length !== 2) {
       throw wrong(
-        `${regions.length} connected regions changed into the sentinel colour — ${named(regions)} — where the two painted cells need exactly two`,
+        `${
+          regions.length === 1 ? "one connected region changed" : `${regions.length} connected regions changed`
+        } into the sentinel colour — ${named(regions)} — where the two painted cells need exactly two`,
       )
     }
     const [first, second] = regions as [
