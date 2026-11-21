@@ -5,11 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import {
-  ALACRITTY_0_17_VIEWPORT_ROUTE,
-  LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
-  LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
-} from "@terminfo/probe-defs"
+import { ALACRITTY_0_17_VIEWPORT_ROUTE, LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE } from "@terminfo/probe-defs"
 import {
   createOwnedTerminal,
   gatedPrivateWrite,
@@ -221,11 +217,12 @@ test("Linux Alacritty 0.17.0 gets its own XTEST route only on its own unmultiple
   }
 })
 
-// @failure Linux Ghostty gets a viewport route at an unreviewed version, under a multiplexer or another run's launch,
-//   or under Alacritty's route name, so held rows trust keys nobody bound for that app (#37249, @cto f584ccea).
+// @failure Linux Ghostty 1.4.0 gets the default-binding XTEST route back: its key presses leave the overlay scrollbar
+//   in the bottom-right corner, the next calibration renewal refuses the grid, and the whole run dies with no
+//   cells (#37276; runs 2026-11-21T00-21-49Z and 00-34-20Z).
 // @level l1
 // @consumer The Linux owner record that createOwnedTerminal hands the held-viewport reader.
-test("Linux Ghostty 1.4.0 gets its own default-binding XTEST route only on its own unmultiplexed launch (#37249)", () => {
+test("Linux Ghostty 1.4.0 has no viewport route until its calibration renewal survives the keys (#37276)", () => {
   const run = "f".repeat(32)
   const qualified = {
     appId: "ghostty",
@@ -235,18 +232,9 @@ test("Linux Ghostty 1.4.0 gets its own default-binding XTEST route only on its o
     expectedLaunchRunId: run,
     multiplexed: false,
   }
-  expect(linuxViewportKeys(qualified)?.viewportKeys).toEqual({
-    route: LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE,
-    keys: { pageUp: "shift+Page_Up", pageDown: "shift+Page_Down", top: "shift+Home", bottom: "shift+End" },
-  })
-  expect(LINUX_GHOSTTY_1_4_VIEWPORT_ROUTE).not.toBe(LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE)
-  for (const [change, value] of [
-    ["targetVersion", "1.3.1"],
-    ["targetVersion", undefined],
-    ["platform", "darwin"],
-    ["runId", "e".repeat(32)],
-    ["multiplexed", true],
-  ] as const) {
-    expect(linuxViewportKeys({ ...qualified, [change]: value }), `${change}=${String(value)}`).toBeUndefined()
-  }
+  expect(linuxViewportKeys(qualified)).toBeUndefined()
+  // The routes this removal must not take with it: Linux Alacritty 0.17.0 on the same qualified launch.
+  expect(linuxViewportKeys({ ...qualified, appId: "alacritty", targetVersion: "0.17.0" })?.viewportKeys.route).toBe(
+    LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE,
+  )
 })
