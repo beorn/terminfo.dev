@@ -21,8 +21,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { parseSuiteManifest, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
-import { placeCollectedRun, placeSuiteManifest } from "./corpus-placement.ts"
+import { placeSuiteManifest, prepareCollectedRun, writePreparedRun } from "./corpus-placement.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
+
+/** The publisher's factual checks and its write, without placement-checks.ts's downgrade and index checks (#37256). */
+const placeCollectedRun = (...args: Parameters<typeof prepareCollectedRun>): string =>
+  writePreparedRun(prepareCollectedRun(...args)).destination
 
 const dirs: string[] = []
 afterEach(() => {

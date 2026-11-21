@@ -80,7 +80,10 @@ function served(
 
 /** The served cells of the run's subject, before and after placing it, compared cell by cell. */
 export function placementDowngrades(run: LoadedRun, contentDir: string = CONTENT_DIR): DowngradeReport {
-  const before = served(loadCurrentResults(contentDir), contentDir, run)
+  // An explicit empty working set is never served from loadCurrentResults' per-process cache: a process that places
+  // more than one run (terminfo-remeasure's default, then its supplements; #37256) reads the corpus as the previous
+  // placement left it, not as the first read found it.
+  const before = served(loadCurrentResults(contentDir, { workingRuns: [] }), contentDir, run)
   const after = served(loadCurrentResults(contentDir, { workingRuns: [run] }), contentDir, run)
   const downgrades: CellChange[] = []
   const flips: CellChange[] = []

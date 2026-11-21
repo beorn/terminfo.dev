@@ -38,7 +38,7 @@ import * as versions from "../packages/admin/versions.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
-import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
+import { loadStoredRuns, prepareCollectedRun, writePreparedRun } from "../packages/admin/corpus-placement.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
@@ -64,6 +64,10 @@ import {
   release1Census,
   type CollectionContext,
 } from "./release1-collection.ts"
+
+/** The publisher's factual checks and its write, without placement-checks.ts's downgrade and index checks (#37256). */
+const placeCollectedRun = (...args: Parameters<typeof prepareCollectedRun>): string =>
+  writePreparedRun(prepareCollectedRun(...args)).destination
 
 // Standalone checkouts have no superproject inputs; retain real hashing over private fixture bytes.
 const fingerprintFixture = await vi.hoisted(async () => {

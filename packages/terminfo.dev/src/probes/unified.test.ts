@@ -946,7 +946,7 @@ it("binds an App state assertion whose reader never wrote through the publishabl
 // Placement's own missing-file refusal only sees listed refs, so its existing cases cannot catch a producer that
 // never lists the frame. This drives the reader's recorder through the real batch and the strict run decoder.
 // @level l1
-// @consumer Owned editor reader -> batch capture recorder -> run screenshotRefs -> placeCollectedRun.
+// @consumer Owned editor reader -> batch capture recorder -> run screenshotRefs -> placeCheckedRun.
 it.each(["measured", "invalid", "untyped"] as const)(
   "lists an owned editor reader's window captures in the run's screenshotRefs: %s",
   async (shape) => {

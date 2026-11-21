@@ -597,15 +597,6 @@ export function refusedCaptureRows(loaded: LoadedRun): string | null {
   )
 }
 
-/** Place one collected record after all factual checks, using its own subject and run identity. */
-export function placeCollectedRun(
-  source: string,
-  trustedSuite: ProbeSuiteManifest,
-  contentDir: string = CONTENT_DIR,
-): string {
-  return writePreparedRun(prepareCollectedRun(source, trustedSuite, contentDir)).destination
-}
-
 /** A collected run that passed every factual check and is ready to write; nothing is written yet. */
 export interface PreparedRun {
   source: string
@@ -625,7 +616,8 @@ export interface WrittenRun {
 
 /**
  * Every factual check placement makes, with nothing written: the caller may refuse on its own grounds (#37245's
- * downgrade check, packages/admin/placement-checks.ts) between this and writePreparedRun.
+ * downgrade check, packages/admin/placement-checks.ts) between this and writePreparedRun. Production places through
+ * placement-checks.ts#placeCheckedRun only; the unchecked one-call writer was retired with its last caller (#37256).
  */
 export function prepareCollectedRun(
   source: string,
