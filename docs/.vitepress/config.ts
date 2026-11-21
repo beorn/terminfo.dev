@@ -494,12 +494,10 @@ export default defineConfig({
           pageData.description = `${params.terminalName} terminal emulator feature support for each operating system. ${params.backendDescription}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
-          // #30784 (@cto S1 on a41752fe): a run that decided nothing has no percentage and no
-          // answerable fraction, so it publishes neither. A decided run keeps its exact text, a
-          // genuine 0% included.
-          const share = params.pct === "" ? NOT_MEASURED_TEXT.toLowerCase() : `${params.pct}%`
-          const fraction = params.pct === "" ? "" : ` (${params.yes}/${params.total} features)`
-          pageData.description = `${params.backendName} terminal emulator feature support: ${share}${fraction}. ${params.backendDescription}`
+          // #37341 D2: the page's own readout, "S supported · T of N tested", never a percentage. A page with no
+          // selected run has no readout and says so.
+          const readout = params.readout ? params.readout : NOT_MEASURED_TEXT.toLowerCase()
+          pageData.description = `${params.backendName} terminal emulator feature support: ${readout}. ${params.backendDescription}`
         }
       } else if (rel.startsWith("os/")) {
         pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`

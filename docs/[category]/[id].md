@@ -78,7 +78,7 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current subjects in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current subjects with a result for this feature
 </p>
 <p v-else class="feature-score">No current sealed results for this feature.</p>
 

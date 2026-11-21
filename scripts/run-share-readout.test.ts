@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
   aggregateCurrentResults,
+  currentCoverageSentence,
   currentSupportedShare,
-  NOT_MEASURED_TEXT,
   runDecidedNothing,
 } from "../docs/data/release-scope.ts"
 
@@ -44,22 +44,26 @@ const run = (entries: Partial<Record<ProbeStatus, number>>) => {
   )
 }
 
+/** The one readout every page prints (#37341 D2). */
+const readout = (aggregate: ReturnType<typeof run>) =>
+  `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)}`
+
 describe("#30784 whole-run readout", () => {
-  it("prints the not-measured words for a run that decided nothing, and the same numbers for one that did", () => {
+  it("prints counts for a run that decided nothing, which never read like a run that was measured and failed", () => {
     // Windows Terminal's current run c4be39f3: 251 PROBE TODO + 22 PROBE INVALID of 273, nothing decided.
     const held = run({ "probe-todo": 251, "probe-invalid": 22 })
     expect(held.denominator).toBe(273)
     expect(runDecidedNothing(held.counts)).toBe(true)
-    expect(currentSupportedShare(held)).toBe(NOT_MEASURED_TEXT)
-    expect(currentSupportedShare(held)).not.toMatch(/%/)
+    expect(readout(held)).toBe("0 supported · 0 of 273 tested")
+    expect(readout(held)).not.toMatch(/%/)
 
-    // A decided run keeps exactly the line it printed before the fix, including a genuine zero.
+    // A measured fail tested every feature, so its zero differs from the undecided run's in the tested count.
     const measuredFail = run({ unsupported: 273 })
     expect(runDecidedNothing(measuredFail.counts)).toBe(false)
-    expect(currentSupportedShare(measuredFail)).toBe("0/273 supported (0%)")
+    expect(readout(measuredFail)).toBe("0 supported · 273 of 273 tested")
 
     const mixed = run({ supported: 36, unsupported: 137, "probe-todo": 100 })
-    expect(currentSupportedShare(mixed)).toBe("36/273 supported (13%)")
+    expect(readout(mixed)).toBe("36 supported · 173 of 273 tested")
   })
 
   it("publishes honest terminal descriptions through the real page transform", () => {
@@ -70,11 +74,11 @@ describe("#30784 whole-run readout", () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
     const script = `
       const { default: config } = await import("./docs/.vitepress/config.ts")
-      const describe = (pct, yes, total) => {
+      const describe = (readout) => {
         const pageData = {
           relativePath: "terminals/windows-terminal.md",
           frontmatter: {},
-          params: { backendName: "Windows Terminal", pct, yes, total, backendDescription: "Microsoft's terminal." },
+          params: { backendName: "Windows Terminal", readout, backendDescription: "Microsoft's terminal." },
         }
         config.transformPageData(pageData, {})
         return pageData.description
@@ -85,13 +89,13 @@ describe("#30784 whole-run readout", () => {
         return { title: pageData.title, description: pageData.description }
       }
       console.log(JSON.stringify({
-        undecided: describe("", "0", "273"),
-        zero: describe("0", "0", "273"),
-        mixed: describe("13", "36", "273"),
+        undecided: describe(""),
+        zero: describe("0 supported · 0 of 264 tested"),
+        mixed: describe("36 supported · 173 of 264 tested"),
         app: multi("terminals/app-alacritty.md", {
           backendName: "Alacritty (Linux)", terminalName: "Alacritty",
           osBackends: '["alacritty","alacritty@macos"]',
-          pct: "55", yes: "144", total: "264", backendDescription: "GPU terminal.",
+          readout: "144 supported · 200 of 264 tested", backendDescription: "GPU terminal.",
         }),
         compare: multi("compare/app-alacritty-vs-ghostty.md", {
           termALabel: "Alacritty (Linux)", termBLabel: "Ghostty (Linux)",
@@ -113,21 +117,21 @@ describe("#30784 whole-run readout", () => {
     expect(observed.undecided).toBe(
       "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
     )
-    // Neither a percentage nor the unexplained 0/273 fraction may survive on the undecided branch.
+    // A page with no selected run publishes no number at all.
     expect(observed.undecided).not.toContain("%")
     expect(observed.undecided).not.toContain("0/273")
 
-    // A decided run keeps exactly the description it published before, a genuine zero included.
+    // #37341 D2: a page with a run publishes the page's own readout, counts and never a percentage.
     expect(observed.zero).toBe(
-      "Windows Terminal terminal emulator feature support: 0% (0/273 features). Microsoft's terminal.",
+      "Windows Terminal terminal emulator feature support: 0 supported · 0 of 264 tested. Microsoft's terminal.",
     )
     expect(observed.mixed).toBe(
-      "Windows Terminal terminal emulator feature support: 13% (36/273 features). Microsoft's terminal.",
+      "Windows Terminal terminal emulator feature support: 36 supported · 173 of 264 tested. Microsoft's terminal.",
     )
     // A shared app route must not advertise only its legacy OS or that OS's score.
     expect(observed.app.title).toBe("Alacritty — Terminal Feature Support")
     expect(observed.app.description).toContain("each operating system")
-    expect(observed.app.description).not.toContain("55%")
+    expect(observed.app.description).not.toContain("144 supported")
     expect(observed.compare.title).toBe("Alacritty vs Ghostty — Selected Terminal Observations")
     expect(observed.compare.description).toContain("each operating system")
   }, 40_000)

@@ -6,7 +6,6 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
-import { NOT_MEASURED_TEXT } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -56,7 +55,7 @@ function evidenceClass(row) {
 </div>
 
 <div class="evidence-note">
-  Percentages show support among results with a recorded Supported or Unsupported value for each source run, not coverage of the full feature catalog or a platform-wide score. Open a terminal row for its selected version, OS context, and evidence; the <a href="/">feature matrix</a> shows individual results. Parser and reference rows do not establish full app behavior on this OS.
+  Each count says how many graded features a source run supports and how many it has a result for; a result we haven't decided is left blank. It is not a platform-wide score. Open a terminal row for its selected version, OS context, and evidence; the <a href="/">feature matrix</a> shows individual results. Parser and reference rows do not establish full app behavior on this OS.
 </div>
 
 ## App Terminals
@@ -76,7 +75,7 @@ function evidenceClass(row) {
         <a :href="'/terminals/' + row.slug">{{ row.label }}</a>
         <span v-if="row.url" class="external-link"> · <a :href="row.url" target="_blank" rel="noopener">site</a></span>
       </td>
-      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell"><span v-if="row.score">{{ row.score }}</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
@@ -99,7 +98,7 @@ function evidenceClass(row) {
   <tbody>
     <tr v-for="row in parserRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
-      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell"><span v-if="row.score">{{ row.score }}</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
@@ -124,7 +123,7 @@ function evidenceClass(row) {
   <tbody>
     <tr v-for="row in muxRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
-      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell"><span v-if="row.score">{{ row.score }}</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>

@@ -2,7 +2,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
 import { loadProbes, terminalSlug, loadPlatformsMeta } from "../data/load-probes"
-import { currentCoverageSentence, runDecidedNothing } from "../data/release-scope"
+import { currentCoverageSentence, currentSupportedShare } from "../data/release-scope"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -25,9 +25,8 @@ interface TerminalRow {
   url: string
   description: string
   kind: "term" | "lib" | "mux"
+  /** #37341 D2: the one readout, "S supported · T of N tested"; empty when the row has no source run. */
   score: string
-  notMeasured: boolean
-  scoreTitle: string
   yes: string
   total: string
   evidence: string
@@ -124,12 +123,9 @@ export default {
         url: term.url ?? "",
         description: term.description ?? "",
         kind,
-        // #30784: an undecided run keeps an empty score and carries the flag its cell renders.
-        score: stats?.pct == null ? "" : String(stats.pct),
-        notMeasured: stats ? runDecidedNothing(stats.counts, stats.derived) : false,
-        scoreTitle:
+        score:
           stats && source
-            ? currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)
+            ? `${currentSupportedShare(stats)} · ${currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)}`
             : "",
         yes: stats?.score.all ? String(stats.score.supported) : "",
         total: stats?.score.all ? String(stats.score.all) : "",
