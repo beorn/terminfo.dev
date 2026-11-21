@@ -2455,13 +2455,19 @@ describe("private finite daemon startup", () => {
       served.length = 0
       throwOn = 2
       const fallbackRun = await collectProbeRun({ ids })
+      const fallbackServed = [...served]
+      served.length = 0
+      throwOn = 3
+      const lateRun = await collectProbeRun({ ids })
+      const lateServed = [...served]
       // GREEN control: nothing is wider than a cell, so row 2 anchors on both of its seed reads and
       // the later anchored row on all three. Neither parser row reaches a sentinel read at all.
       assert.equal(controlServed.length, 5, "control: row 2 anchors twice and the later anchored row three times")
       assert.equal(controlRun.rawReplies["collector.sentinelFallback"], undefined, "control: a run that saw no wide frame records no fallback")
+      assert.deepEqual(Object.keys(controlRun.rawReplies).filter((key) => key.endsWith(".sentinelFallback")), [], "control: no row and no run carry a fallback")
       // RED: the second read throws the same wide verdict sentinel-read.test.ts drives.
-      assert.equal(served.length, 2, "the run stops anchoring at the read that retired the sentinel")
-      assert.ok(served[0].startsWith("editing.decsace"), "the reads that anchored before the fallback belong to row 2, never row 1")
+      assert.equal(fallbackServed.length, 2, "the run stops anchoring at the read that retired the sentinel")
+      assert.ok(fallbackServed[0].startsWith("editing.decsace"), "the reads that anchored before the fallback belong to row 2, never row 1")
       const fact = fallbackRun.rawReplies["collector.sentinelFallback"]
       assert.ok(fact && fact.includes("wider than one cell"), "the run carries the verdict")
       const keyed = Object.keys(fallbackRun.rawReplies).filter((key) => key.endsWith(".sentinelFallback") && key !== "collector.sentinelFallback").map((key) => key.slice(0, -".sentinelFallback".length)).sort()
@@ -2475,6 +2481,17 @@ describe("private finite daemon startup", () => {
       }
       for (const id of ["cursor.move.absolute", "cursor.move.home"])
         assert.equal(id + ".sentinelFallback" in fallbackRun.rawReplies, false, id + " paints no sentinel, so no fallback is charged to it")
+      // The gap a peer read found in the first version: in the arm above, the row that fell back is
+      // also the row that anchors, so a mutant that charged EVERY anchoring row would produce the
+      // same key set. Here row 2 finishes both of its anchored reads clean and the later row's first
+      // read is the one that throws, so only the row that fell back may carry the key.
+      assert.equal(lateServed.length, 3, "the clean row 2 anchors twice before the later row's first read throws")
+      assert.ok(lateServed[0].startsWith("editing.decsace") && lateServed[1].startsWith("editing.decsace"), "both of row 2's reads anchored before the retirement")
+      assert.ok(lateServed[2].startsWith("Shown steady block cursor"), "the retirement happens on the later row's first read")
+      const lateKeyed = Object.keys(lateRun.rawReplies).filter((key) => key.endsWith(".sentinelFallback") && key !== "collector.sentinelFallback").map((key) => key.slice(0, -".sentinelFallback".length)).sort()
+      assert.deepEqual(lateKeyed, ["cursor.hide"], "only the row that fell back is charged; the row that anchored cleanly before it is not")
+      assert.equal(lateRun.rawReplies["editing.decsace.sentinelFallback"], undefined, "row 2 anchored cleanly, so it carries no fallback")
+      assert.equal(lateRun.rawReplies["collector.sentinelFallback"], lateRun.rawReplies["cursor.hide.sentinelFallback"], "the later row's key is the run fact")
     `,
       120_000,
     )
