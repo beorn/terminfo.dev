@@ -67,6 +67,7 @@ test("a declared optional directory is excluded with its path and cause, never d
   }
 })
 
+// The retained App and mux fixtures totaled 2.1 GB and took 9–12 s to read and parse in serial runs.
 test("the repo's own content loads every default source, and every exclusion is a NAMED non-v2 run", () => {
   const root = join(import.meta.dirname, "../../../..")
   const read = loadGroupRows(join(root, "content"))
@@ -74,7 +75,7 @@ test("the repo's own content loads every default source, and every exclusion is 
   // guard no longer demands rows; it still proves no required source was absent or unreadable.
   expect(read.excluded.every((entry) => entry.cause.includes("schemaVersion"))).toBe(true)
   expect(read.excluded.every((entry) => entry.cause.includes("not 2"))).toBe(true)
-})
+}, 30_000)
 
 test("a non-v2 run is NAMED in excluded, never skipped in silence", () => {
   const { root, cleanup } = fixture()
