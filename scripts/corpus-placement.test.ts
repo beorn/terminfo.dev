@@ -31,8 +31,9 @@ import {
   identityRuleRevision,
   identityRuleSourceRevision,
   loadStoredRuns,
-  placeCollectedRun,
+  prepareCollectedRun,
   refusedCaptureRows,
+  writePreparedRun,
 } from "../packages/admin/corpus-placement.ts"
 import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -40,6 +41,10 @@ import { loadSelectedResults, projectResults } from "../docs/data/selected-resul
 import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { currentTrace } from "../docs/data/run-trace.ts"
+
+/** The publisher's factual checks and its write, without placement-checks.ts's downgrade and index checks (#37256). */
+const placeCollectedRun = (...args: Parameters<typeof prepareCollectedRun>): string =>
+  writePreparedRun(prepareCollectedRun(...args)).destination
 
 const dirs: string[] = []
 afterEach(() => {
