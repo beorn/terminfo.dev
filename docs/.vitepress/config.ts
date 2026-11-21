@@ -312,6 +312,8 @@ export default defineConfig({
     "**/drafts/**",
     "**/*.private.md",
     "**/*.draft.md",
+    // D9 (@cpo/term bfbbc644): the full-273 development preview prints the internal states; it is not built.
+    "release/full-273.md",
   ],
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
