@@ -3,8 +3,8 @@
  * (everything else symlinked from content/, rows of the two cross-checked files kept for that app), so the site's own
  * projection runs over real readings in seconds rather than the whole corpus.
  *
- * Case 1 (must refuse): Warp hosted run 44792556294 (fixture, sha256 0ccbcf10…5c4e) over the placed Warp macOS
- * readings: the projection serves 79 decided cells that would become undecided. Case 3 (must place): the Cursor
+ * Case 1 (must refuse): Warp hosted run 44792556294 (fixture, sha256 0ccbcf10…5c4e) over the original Warp macOS
+ * readings pinned below: the projection serves 79 decided cells that would become undecided. Case 3 (must place): the Cursor
  * 3.30.14 cohort run de27164b over the other placed Cursor 3.30.14 macOS readings: 0 downgrades, same context served.
  *
  * @failure  a placement that downgrades served cells goes through silently, or a harmless partial run is refused
@@ -14,7 +14,7 @@
  * @testonly none
  */
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -44,7 +44,7 @@ function corpusOf(id: string, runs: readonly string[]): string {
       writeFileSync(join(dir, name), JSON.stringify({ ...doc, rows: doc.rows.filter((row) => row.id === id) }))
     } else symlinkSync(join(CONTENT_DIR, name), join(dir, name))
   }
-  for (const run of runs) symlinkSync(run, join(dir, "probes-apps", basename(run)))
+  for (const run of runs) symlinkSync(realpathSync(run), join(dir, "probes-apps", basename(run)))
   return dir
 }
 
@@ -77,7 +77,24 @@ test("a hosted Warp run that would turn 79 served decided cells undecided is ref
 
   // The projection names, on stderr, a placed harness row it keeps over a changed probe; that note is not this test's.
   const notes = vi.spyOn(console, "error").mockImplementation(() => {})
-  const report = placementDowngrades(run, corpusOf("warp", placedRuns("warp-v0.2026.10.14.08.27.stable_01-macos-")))
+  // These are the placed readings at d4d03fb0c that defined the #37245 fixture. Later placements change the served count.
+  const warpRunIds = [
+    "212a517ee8174ce0dc4b30d203615f31",
+    "41ab1e8a4a9bf9c0e92f66af36479f39",
+    "425b133dbb0e3c63e2b92d0118fff092",
+    "5743e0c5f2d769deb4b746986c6b2901",
+    "5fa98ad6f3d36a4036bbd1b01a51c428",
+    "70c9b987db24a7ce69b4e85b9077df39",
+    "8f9b407091f636190ab1807e08e54685",
+    "b08f8f3df87e900215bb5355b0cd90ea",
+    "b2af2bee53143f15d87b57503cfc0d57",
+    "b87c3607dc208be956f61bf6424b796b",
+    "bacc74c09a1228e3933fa0be8dfd6220",
+    "eb336bbb11e439dbd7f2e884cb41c234",
+    "fa54b2e2b75ef4692be6c996cabfa700",
+  ]
+  const warpRuns = warpRunIds.map((id) => join(APPS, `warp-v0.2026.10.14.08.27.stable_01-macos-${id}.json`))
+  const report = placementDowngrades(run, corpusOf("warp", warpRuns))
   notes.mockRestore()
 
   expect(report.downgrades).toHaveLength(79)
