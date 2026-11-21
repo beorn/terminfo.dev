@@ -28,6 +28,8 @@ test("status reports reviewed current runs and refuses malformed archives", () =
     writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
     copyFileSync(join(source, "packages", "admin", "src", "status.ts"), join(admin, "src", "status.ts"))
     symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
+    // #37341 D12: the admin lines print the undecided split from this admin-only module.
+    symlinkSync(join(source, "packages", "admin", "undecided-split.ts"), join(admin, "undecided-split.ts"))
     symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
     symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
     symlinkSync(join(source, "packages", "terminfo.dev"), join(root, "packages", "terminfo.dev"), "dir")
@@ -157,9 +159,8 @@ test("status reports reviewed current runs and refuses malformed archives", () =
     expect(selected.error).toBeUndefined()
     expect(selected.status, selected.stdout + selected.stderr).toBe(0)
     expect(selected.stdout).toContain("reviewed-kitty")
-    expect(selected.stdout).toContain("1 PROBE TODO")
-    expect(selected.stdout).toContain("1 PROBE INVALID")
-    expect(selected.stdout).toContain("0/2 Supported / all")
+    // #37341 D12: the one readout, then the undecided split an admin line keeps, read from the same counts.
+    expect(selected.stdout).toContain("0 supported · 0 of 2 tested · 1 PROBE TODO · 1 PROBE INVALID · 0 PROBE CONFLICT")
     expect(selected.stdout).toContain("Archive apps: 1")
 
     const corruptPath = join(root, "content", "probes-libs", "corrupt.json")

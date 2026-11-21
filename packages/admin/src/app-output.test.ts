@@ -192,10 +192,8 @@ describe("probe app --output", () => {
       )
       const lines = log.mock.calls.map((call) => String(call[0]))
       log.mockRestore()
-      const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
-      expect(lines).toContain(
-        `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause} (retained)`,
-      )
+      // #37341 D2, D12: two counts over the graded features; the environment rows add no clause and no position.
+      expect(lines).toContain("  0 supported · 0 of 1 tested (retained)")
       expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
     },
   )
@@ -210,9 +208,7 @@ describe("probe app --output", () => {
     expect(shadowCollectedRun).toHaveBeenCalledWith("/private/http-responses/terminal-app.json")
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
-    expect(lines).toContain(
-      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT (written)",
-    )
+    expect(lines).toContain("  0 supported · 0 of 1 tested (written)")
   })
 })
 

@@ -9,16 +9,13 @@ import type {
 } from "../../docs/data/selected-results.ts"
 
 import { isEnvironmentGroup } from "@terminfo/probe-defs"
-import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
+import { currentCoverageSentence, currentSupportedShare } from "../../docs/data/release-scope.ts"
+import { undecidedSplit } from "./undecided-split.ts"
 
 type CurrentColumn = { label: string; contextKey: string; view: SelectedContextSummary }
 type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "CONFLICT" | "N/M" | "—"
 
 const ENVIRONMENT_GROUP_NOTE = "N/M manual by design (catalogue): no automatable probe exists for this feature"
-
-function score(run: SelectedContextSummary): string {
-  return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
-}
 
 function stateToken(cell: SelectedContextCell | undefined): StateToken {
   if (!cell) {
@@ -77,7 +74,8 @@ function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactEleme
       <Text color="$muted">context {column.contextKey}</Text>
       <Text>Contributing runs: {view.contributingRunIds.join(", ") || "none; no emitted evidence"}</Text>
       <Text>
-        {score(view)} · {currentCoverageSentence(view, view.catalogIds)} ·{" "}
+        {currentSupportedShare(view)} · {currentCoverageSentence(view, view.catalogIds)} · {undecidedSplit(view.counts)}{" "}
+        ·{" "}
         {view.complete ? "result coverage complete" : "result coverage incomplete"}
       </Text>
       {view.attempts.map((entry) => (

@@ -20,25 +20,56 @@ export function publicResultFor(
   return version.results.find((result) => result.featureId === featureId)
 }
 
+/** One published cell as the shared rollup reads it. */
+type PublishedCell = {
+  readonly featureId: string
+  readonly status: AppCellStatus
+  readonly derived?: unknown
+  readonly declared?: unknown
+}
+
 /**
- * The input the shared terminal rollup accepts: every published cell's verdict, including the derived
- * `differs-by-context` bucket (@cto c3c2f885). The rollup counts a disagreement in its own bucket: it is
- * decided, never Supported or Unsupported, and never open. Every bar, baseline and page that folds
- * published cells through the rollup reads them through here, and a status outside `AppCellStatus`
- * refuses loudly instead of being folded into a bucket that does not mean it.
+ * The input the shared terminal rollup accepts: every published cell's verdict over the whole recorded catalogue,
+ * including the derived `differs-by-context` bucket (@cto c3c2f885). The rollup counts a disagreement in its own
+ * bucket: it is decided, never Supported or Unsupported, and never open. Every bar, baseline and page that folds
+ * published cells through the rollup reads them through here.
+ *
+ * #37341 Q4: the public projection publishes a decided cell or nothing, so a catalogue id with no published cell is
+ * a result we haven't decided and folds as open (`probe-todo`, the bucket of a result not yet decided). A status
+ * outside `AppCellStatus`, an id outside the catalogue or a repeated id still refuses loudly instead of being folded
+ * into a bucket that does not mean it.
  */
 export function rollupInputs(
   app: string,
-  summary: Pick<PublicContextSummary, "featureResults">,
+  published: { readonly catalogIds: readonly string[] } & (
+    | { readonly featureResults: Readonly<Record<string, PublishedCell>> }
+    | { readonly results: readonly PublishedCell[] }
+  ),
 ): Array<{ featureId: string; status: AppCellStatus; derived?: unknown; declared?: unknown }> {
-  return Object.values(summary.featureResults).map((result) => {
+  if (!Array.isArray(published.catalogIds)) {
+    throw new Error(`${app}: published cells carry no catalogIds; a bar folds its cells over the catalogue it was measured on`)
+  }
+  const cells = "featureResults" in published ? Object.values(published.featureResults) : published.results
+  const catalogue = new Set(published.catalogIds)
+  const byId = new Map<string, { featureId: string; status: AppCellStatus; derived?: unknown; declared?: unknown }>()
+  for (const result of cells) {
     if (!APP_CELL_STATUSES.includes(result.status)) {
       throw new Error(
         `${app}: ${result.featureId} has unknown feature status ${JSON.stringify(result.status)}; this bar cannot count it`,
       )
     }
-    return { featureId: result.featureId, status: result.status, derived: result.derived, declared: result.declared }
-  })
+    if (!catalogue.has(result.featureId)) {
+      throw new Error(`${app}: ${result.featureId} is published outside its recorded catalogue; this bar cannot count it`)
+    }
+    if (byId.has(result.featureId)) throw new Error(`${app}: ${result.featureId} is published twice`)
+    byId.set(result.featureId, {
+      featureId: result.featureId,
+      status: result.status,
+      derived: result.derived,
+      declared: result.declared,
+    })
+  }
+  return published.catalogIds.map((featureId) => byId.get(featureId) ?? { featureId, status: "probe-todo" })
 }
 
 /** The populated categories a page displays, preserving the catalog's supplied order. */
@@ -440,39 +471,50 @@ export function completenessTierOf(statuses: Readonly<Record<string, string>>): 
   }
 }
 
-export function currentCoverageSentence(
-  aggregate: {
-    readonly counts: ReadableCounts
-    readonly derived?: number
-    readonly byReview?: number
-  },
-  catalogIds?: readonly string[],
-): string {
-  const counts = aggregate.counts
-  const conflict = counts["probe-conflict"] === undefined ? "" : ` · ${counts["probe-conflict"]} PROBE CONFLICT`
-  // #33019: the derived share sits right beside the Unsupported count it is part of.
-  const derived = aggregate.derived ? ` (of which derived: ${aggregate.derived})` : ""
-  // @cto b0d3cd4e condition 5: reviewed declarations sit beside the Untestable count they are part of, and a bar with
-  // none prints exactly what it printed before the table existed.
-  const byReview = aggregate.byReview ? ` (${aggregate.byReview} by review)` : ""
-  // @cto c3c2f885: a bar with a disagreement names it, and a bar with none prints exactly what it printed
-  // before this bucket existed, so today's corpus readouts stay byte-identical.
-  const differsCount = counts[DIFFERS_BY_CONTEXT] ?? 0
-  const differs = differsCount === 0 ? "" : ` · ${differsCount} Differs by context`
-  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported${derived}${differs} · ${counts.untestable} Untestable${byReview} · ${counts["probe-todo"]} PROBE TODO · ${counts["probe-invalid"]} PROBE INVALID${conflict}`
-  // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
-  // that knows the run's catalogue names the environment groups it recorded as ungraded.
-  const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
-  return environmentGroups === 0
-    ? graded
-    : `${graded} · ${environmentGroups} environment groups manual by design (catalogue), ungraded`
+/**
+ * How many graded features a count set has a decided result for, of how many graded features it folded
+ * (#37341 D1/D2, @cpo/term bfbbc644). Tested is Supported, Unsupported, Untestable and Differs by context; graded is
+ * every bucket, because a fold counts each graded id once. The fold's undecided buckets are required: a published
+ * count set has dropped them, so it cannot say how many features were graded, and refuses here.
+ */
+export function testedOfGraded(counts: ReadableCounts): { tested: number; graded: number } {
+  for (const bucket of ["supported", "unsupported", "untestable", "probe-todo", "probe-invalid"] as const) {
+    if (typeof counts[bucket] !== "number") {
+      throw new Error(
+        `coverage counts lack the ${bucket} bucket; fold the cells over their catalogue (rollupInputs) before counting`,
+      )
+    }
+  }
+  const differs = counts[DIFFERS_BY_CONTEXT] ?? 0
+  const tested = counts.supported + counts.unsupported + counts.untestable + differs
+  return { tested, graded: tested + counts["probe-todo"] + counts["probe-invalid"] + (counts["probe-conflict"] ?? 0) }
 }
 
-export function currentSupportedShare(aggregate: CurrentAggregate): string {
-  // #30784: the same rule as a baseline row, one level up. A run whose every cell is PROBE TODO or
-  // PROBE INVALID decided nothing, so "0/264 supported (0%)" would read as a measured fail.
-  if (runDecidedNothing(aggregate.counts, aggregate.derived)) return NOT_MEASURED_TEXT
-  return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
+/**
+ * The ONE coverage sentence (#37341 D1, D12): "T of N tested" over the graded features, the environment groups
+ * excluded. Every page, the admin tools and the CLI print it after `currentSupportedShare`, so the whole readout is
+ * "S supported · T of 264 tested". A caller that names the catalogue is checked against it: a count set that does
+ * not cover exactly that catalogue's graded features refuses.
+ */
+export function currentCoverageSentence(
+  aggregate: { readonly counts: ReadableCounts },
+  catalogIds?: readonly string[],
+): string {
+  const { tested, graded } = testedOfGraded(aggregate.counts)
+  if (catalogIds !== undefined) {
+    const named = scoredFeatureIds(catalogIds).length
+    if (named !== graded) {
+      throw new Error(
+        `coverage counts fold ${graded} graded features, but the catalogue they are printed for has ${named} graded features`,
+      )
+    }
+  }
+  return `${tested} of ${graded} tested`
+}
+
+/** The ONE supported readout (#37341 D2): a count, never a share of anything. */
+export function currentSupportedShare(aggregate: { readonly counts: Pick<ReadableCounts, "supported"> }): string {
+  return `${aggregate.counts.supported} supported`
 }
 
 /**
@@ -498,8 +540,8 @@ export type ReadableCounts = Readonly<
 
 /**
  * Whether a run judged nothing at all (#30784): every cell is PROBE TODO, PROBE INVALID or a reviewed
- * Untestable claim. This is the run-level twin of `notMeasuredReadout`, and the ONE predicate every
- * whole-run readout asks, so a page cannot print a measured-looking zero for it.
+ * Untestable claim. The ONE predicate a rollup asks before it prints a supported percentage, so a run that
+ * judged nothing carries `supportedPct: null` rather than a measured-looking zero.
  *
  * A differs cell was measured by two same-suite contexts and they disagreed, so a run whose only decided
  * cells disagree did judge something: it prints its real percentage, never the not-measured words
@@ -518,17 +560,6 @@ export function runDecidedNothing(counts: ReadableCounts, derived = 0): boolean 
  * "Not measured yet"; this placeholder ships until that approval lands.
  */
 export const NOT_MEASURED_TEXT = "Not measured yet"
-
-/**
- * The one thing both baseline pages share for a row that decided nothing (#30763): the not-measured
- * words, with what the row looked at in its title. A row with any decisive cell returns undefined and
- * each page keeps its own decided-row text, byte-identical to what it printed before the fix — the
- * defect is the false "0%", and nothing beside it may move.
- */
-export function notMeasuredReadout(counts: ReadableCounts, derived = 0): { text: string; title: string } | undefined {
-  if (!runDecidedNothing(counts, derived)) return undefined
-  return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts, derived }) }
-}
 
 /** Canonical probe methods, ordered from weakest to strongest. */
 export const PROBE_METHODS = ["source", "internal", "output", "visual", "end-to-end"] as const

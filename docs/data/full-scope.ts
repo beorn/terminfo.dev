@@ -28,6 +28,11 @@ export interface ScopeResult {
   }[]
 }
 
+/** Supported of graded, in whole percent; a scope with no graded feature has nothing to divide and reads 0 (#37341). */
+function supportedPct(supported: number, denominator: number): number {
+  return denominator === 0 ? 0 : Math.round((100 * supported) / denominator)
+}
+
 export function scopeAggregate(input: {
   scope: string
   catalogIds: readonly string[]
@@ -46,7 +51,7 @@ export function scopeAggregate(input: {
     supported: aggregate.supported,
     counts: aggregate.counts,
     fraction: `${aggregate.supported}/${aggregate.denominator}`,
-    pct: Math.round((100 * aggregate.supported) / aggregate.denominator),
+    pct: supportedPct(aggregate.supported, aggregate.denominator),
     complete: aggregate.complete,
     groups: [...grouped].map(([key, ids]) => {
       const members = new Set(ids)
@@ -60,7 +65,7 @@ export function scopeAggregate(input: {
         supported: group.supported,
         counts: group.counts,
         fraction: `${group.supported}/${group.denominator}`,
-        pct: Math.round((100 * group.supported) / group.denominator),
+        pct: supportedPct(group.supported, group.denominator),
         complete: group.complete,
       }
     }),

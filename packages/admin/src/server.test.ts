@@ -410,16 +410,15 @@ it.each([
       expect(vi.mocked(console.log).mock.calls.flat().join(" ")).not.toContain("required review pending")
     }
 
-    const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+    // #37341 D2, D12: two counts over the graded features; the environment rows add no clause and no position.
     const summary = vi
       .mocked(console.log)
       .mock.calls.map(([line]) => line)
-      .find((line) => line.includes("PROBE INVALID"))
-    const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause}`
+      .find((line) => /\d+ of \d+ tested/.test(String(line)))
     expect(summary).toBe(
       command === "server"
-        ? `  ${"kitty 0.49.1".padEnd(25)} Not measured yet · ${coverage} (identity unverified)`
-        : coverage,
+        ? `  ${"kitty 0.49.1".padEnd(25)} 0 supported · 0 of 1 tested (identity unverified)`
+        : "0 of 1 tested",
     )
   },
 )
