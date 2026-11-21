@@ -928,6 +928,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * anyway; the run takes plain crops instead and records why (@dev/15 peer read of a887dda73).
      */
     let sentinelUnusable = false
+    /**
+     * The rows whose reads were taken as plain crops BECAUSE the sentinel was retired. @cto (0df0bf30)
+     * requires a plain-crop pass never to be read as an anchored one wherever results are graded and
+     * published, so each of these names its own row's fact in run.json beside the run-level one, using
+     * the same per-probe reply-key pattern `declarationCollision` already uses.
+     */
+    const sentinelFallbackRows = new Set<string>()
     /** The window the Darwin capture install selected; keys-only viewport input targets exactly it (34313). */
     let darwinCaptureWindowId: number | undefined
     /** The subject owner's viewport route, never the public input fixture: only the history rows read it (34313). */
@@ -1008,7 +1015,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             request.layoutGuard !== undefined && paintClasses !== undefined
               ? { ...request, layoutGuardBackground: paintClasses.background.members }
               : request
-          if (sentinelUnusable || sentinel === undefined || source === undefined || regions.length === 0) {
+          // The row is AFFECTED only if it would have anchored its crop: a read with no sentinel to
+          // paint was never going to use one, so the fallback is not its fact and is not charged to it.
+          const wouldAnchor = sentinel !== undefined && source !== undefined && regions.length > 0
+          if (sentinelUnusable && wouldAnchor) sentinelFallbackRows.add(checkpoint.featureId)
+          if (sentinelUnusable || !wouldAnchor) {
             return adapter.capture(served, calibrated)
           }
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
@@ -1054,7 +1065,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             fellBackToPlainCrop = true
             return undefined as never
           })
-          if (fellBackToPlainCrop) return adapter.capture(served, calibrated)
+          if (fellBackToPlainCrop) {
+            sentinelFallbackRows.add(checkpoint.featureId)
+            return adapter.capture(served, calibrated)
+          }
           return withPrePaintReading(read, prePaintMeter.reading())
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode }) => {
@@ -1799,7 +1813,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // 34555: the run file names a version with no reviewed rows next to the versions that have them.
               if (drift) result.rawReplies["collector.declarationDrift"] = JSON.stringify(drift)
               if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
-              if (sentinelFallbackFact) result.rawReplies["collector.sentinelFallback"] = sentinelFallbackFact
+              if (sentinelFallbackFact) {
+                result.rawReplies["collector.sentinelFallback"] = sentinelFallbackFact
+                for (const featureId of sentinelFallbackRows) result.rawReplies[`${featureId}.sentinelFallback`] = sentinelFallbackFact
+              }
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
                 result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
