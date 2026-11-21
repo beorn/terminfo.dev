@@ -1706,6 +1706,83 @@ describe("completed batch survives attach SIGTERM (#28552)", () => {
   })
 })
 
+/**
+ * @failure an early /probe close (curl 18) leaves no record of which process died, so the next occurrence
+ *   cannot be told from a collector crash or a cgroup kill (#37259).
+ * @level l1 — sources record_teardown_witness against an owned fake cgroup root and a live child pid.
+ * @consumer scripts/linux-container-run.sh inside-container cleanup()
+ */
+describe("teardown witness records which process died and the cgroup's memory (#37259)", () => {
+  it("records exit and batch status, liveness before teardown, and the memory peak and events", () => {
+    const cgroup = join(dir, "cgroup")
+    mkdirSync(cgroup)
+    writeFileSync(join(cgroup, "memory.peak"), "2147483648\n")
+    writeFileSync(join(cgroup, "memory.current"), "1048576\n")
+    writeFileSync(join(cgroup, "memory.events"), "low 0\nhigh 0\nmax 3\noom 1\noom_kill 1\n")
+    const out = join(dir, "teardown-witness.json")
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail
+source "$1"
+bash -c 'exec sleep 30' &
+child=$!
+TERMINFO_CGROUP_ROOT="$2" TERMINFO_TEARDOWN_WITNESS="$3" record_teardown_witness 18 18 "$child" "" ""
+kill -KILL "$child" 2>/dev/null || true
+wait "$child" 2>/dev/null || true
+cat "$3"`,
+        "_",
+        launcher,
+        cgroup,
+        out,
+      ],
+      { encoding: "utf8", timeout: 15_000 },
+    )
+    expect(result.status).toBe(0)
+    const witness = JSON.parse(result.stdout) as {
+      exitStatus: number
+      batchStatus: number
+      processes: { daemonAlive: boolean; xvfbAlive: boolean; collectorAlive: boolean }
+      cgroup: {
+        memoryPeakBytes: number | null
+        memoryCurrentBytes: number | null
+        memoryEvents: { oom: number | null; oomKill: number | null }
+      }
+    }
+    expect(witness.exitStatus).toBe(18)
+    expect(witness.batchStatus).toBe(18)
+    expect(witness.processes.daemonAlive).toBe(true)
+    expect(witness.processes.xvfbAlive).toBe(false)
+    expect(witness.processes.collectorAlive).toBe(false)
+    expect(witness.cgroup.memoryPeakBytes).toBe(2147483648)
+    expect(witness.cgroup.memoryCurrentBytes).toBe(1048576)
+    expect(witness.cgroup.memoryEvents.oom).toBe(1)
+    expect(witness.cgroup.memoryEvents.oomKill).toBe(1)
+  })
+
+  it("reports a write failure on stderr and returns non-zero without stopping the caller", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail
+source "$1"
+TERMINFO_CGROUP_ROOT="$2" TERMINFO_TEARDOWN_WITNESS="/nonexistent-witness-dir/witness.json" record_teardown_witness 0 "" "" "" "" || echo WITNESS_FAILED
+echo AFTER`,
+        "_",
+        launcher,
+        join(dir, "no-cgroup"),
+      ],
+      { encoding: "utf8", timeout: 15_000 },
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("WITNESS_FAILED")
+    expect(result.stdout).toContain("AFTER")
+    expect(result.stderr).toContain("Teardown witness not written")
+  })
+})
+
 describe("in-image source archive proof", () => {
   it("refuses a wrong declared flat hash for either proof kind through one comparison", () => {
     // A matching real run can never exercise a mismatch, so it is proven here: the derived kind and
