@@ -13,7 +13,7 @@ next:
 
 # How we measure
 
-We test terminal apps for real. The app runs in a virtual display in our lab, and each probe makes the test its feature needs: a reply, cursor measurement or, for visual effects, before-and-after screenshots. Terminal engines, the parsing cores inside terminals such as xterm.js or libvterm, have no window to capture. Termless, our headless harness, drives only those, and we read their cells, cursor and modes instead. An engine result says what the engine did, not what a desktop app draws.
+We test terminal apps for real. The app runs in a virtual display in our lab, and each probe makes the test its feature needs: a reply, cursor measurement or, for visual effects, before-and-after screenshots. Terminal engines, the parsing cores inside terminals such as xterm.js or libvterm, have no window to capture. Termless, our headless test tool, drives only those, and we read their cells, cursor and modes instead. An engine result says what the engine did, not what a desktop app draws.
 
 Every current result comes from such a run, made in our lab or [contributed](/how-it-works/contribute-a-run) and recorded under the same result model. The [home page](/) shows what we cover now; each terminal's page names the version, configuration and run behind its results.
 
@@ -25,8 +25,8 @@ An **observation** is what the probe recorded. An **assertion** compares expecte
 
 1. **Probe.** The bytes to send and the test to make. The probe set is frozen and named by a hash, so each run names the scheduled tests and records its measurements and coverage.
 2. **Run.** The lab uses a fresh terminal with a recorded configuration, window size and font; permission settings can differ between runs (see Test environment). Each probe sends its bytes, then reads the reply, measures behavior or captures frames for a visual test. In an engine, we read the engine's state instead.
-3. **Result.** Each current run records the measurement time, target version and configuration, five-status results, retained raw replies, assertions and screenshot references. Historical raw files retain their original format. Images are separate artifacts. Identity evidence depends on the target: app provenance can include executable hashes, while engine records identify the loaded source or binary. Missing identity evidence is not filled in. Stored run bytes are not edited.
-4. **Finalize.** Automatic comparisons record their results. A criterion with no same-run pixel check remains PROBE TODO; an attempted image test that cannot produce a valid result is PROBE INVALID ([How to read a result](/how-it-works/how-to-read-a-result)).
+3. **Result.** Each current run records the measurement time, target version and configuration, a result for each probe, retained raw replies, assertions and screenshot references. Historical raw files retain their original format. Images are separate artifacts. Identity evidence depends on the target: app provenance can include executable hashes, while engine records identify the loaded source or binary. Missing identity evidence is not filled in. Stored run bytes are not edited.
+4. **Finalize.** Automatic comparisons record their results. A criterion with no same-run pixel check, or an image test that cannot produce a valid result, is left blank: a result we haven't decided ([How to read a result](/how-it-works/how-to-read-a-result)).
 5. **Publish.** Site, API and CLI show selected stored results. A site rebuild is not a new measurement; a result's time is when it was measured.
 
 Only same-run checks decide a result; no review of retained evidence changes it. Collection, storing a run and selecting results for the site are separate steps.
