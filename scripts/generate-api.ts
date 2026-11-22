@@ -375,6 +375,9 @@ export function generateApi(
         key,
         {
           ...context,
+          // #37341 D6 (@cto 87f47f5f): a context's catalogIds is its public catalogue view, so it names public ids only,
+          // like the top-level catalogIds. Each run receipt under sources keeps every position its run measured (D132 B).
+          catalogIds: context.catalogIds.filter((id) => allFeatureIds.has(id)),
           sources: Object.fromEntries(
             Object.keys(context.sources).map((runId) => {
               const original = originalRunFor(published.projection, key, runId)

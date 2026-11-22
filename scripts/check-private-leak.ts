@@ -332,10 +332,10 @@ const API_DATA = join("api", "v3", "data.json")
 
 /**
  * The published catalogue is the public one (#37341 Q2, D6; @cto f6a09e55). The API's top-level catalogIds and features
- * name exactly `publicIds`. A readout on any page counts over at most that many positions (a baseline row counts
- * over its own, smaller list), with supported <= tested <= positions. The home page prints at least one readout
- * over the whole public catalogue. Each context's catalogIds and each run receipt keep the positions the run
- * measured (D132 B), so they are not read here.
+ * name exactly `publicIds`, and each context's catalogIds names public ids only (@cto 87f47f5f). A readout on any
+ * page counts over at most that many positions (a baseline row counts over its own, smaller list), with supported <=
+ * tested <= positions. The home page prints at least one readout over the whole public catalogue. Each run receipt
+ * (a context's sources, api/v3/runs) keeps every position its run measured (D132 B), so receipts are not read here.
  */
 export function scanPublicCatalogue(distDir: string, publicIds: readonly string[]): Violation[] {
   const violations: Violation[] = []
@@ -349,7 +349,11 @@ export function scanPublicCatalogue(distDir: string, publicIds: readonly string[
       reason: "missing, so the API's catalogue was not checked",
     })
   } else {
-    const api = JSON.parse(readFileSync(apiPath, "utf-8")) as { catalogIds?: unknown; features?: unknown }
+    const api = JSON.parse(readFileSync(apiPath, "utf-8")) as {
+      catalogIds?: unknown
+      features?: unknown
+      contexts?: Record<string, { catalogIds?: unknown }>
+    }
     const lists: Array<[string, unknown]> = [
       ["catalogIds", api.catalogIds],
       ["features", api.features && typeof api.features === "object" ? Object.keys(api.features) : api.features],
@@ -367,6 +371,23 @@ export function scanPublicCatalogue(distDir: string, publicIds: readonly string[
         layer: "catalogue",
         path: `dist/${API_DATA}`,
         reason: `${field} names ${have.length} ids, the public catalogue ${want.length}; not public: ${extra.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}`,
+      })
+    }
+    const outside = new Map<string, string[]>()
+    for (const [key, context] of Object.entries(api.contexts ?? {})) {
+      if (!Array.isArray(context.catalogIds)) {
+        outside.set(key, ["(catalogIds is not a list of ids)"])
+        continue
+      }
+      const extra = (context.catalogIds as unknown[]).map(String).filter((id) => !want.includes(id))
+      if (extra.length > 0) outside.set(key, extra)
+    }
+    if (outside.size > 0) {
+      const [key, ids] = [...outside][0]!
+      violations.push({
+        layer: "catalogue",
+        path: `dist/${API_DATA}`,
+        reason: `contexts.*.catalogIds names ids outside the public catalogue in ${outside.size} context(s); first, ${key}: ${ids.join(", ")}`,
       })
     }
   }

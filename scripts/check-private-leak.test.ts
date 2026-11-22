@@ -258,6 +258,23 @@ describe("check-private-leak — public catalogue", () => {
     ])
   })
 
+  it("refuses an environment id in a context's catalogIds, but reads no run receipt (D132 B)", () => {
+    home("2 supported · 3 of 3 tested")
+    const write = (contexts: object) =>
+      writeFileSync(
+        join(dist, "api", "v3", "data.json"),
+        JSON.stringify({ catalogIds: PUBLIC, features: Object.fromEntries(PUBLIC.map((id) => [id, {}])), contexts }),
+      )
+    write({
+      "term:kitty": { catalogIds: ["sgr.bold"], sources: { r: { catalogIds: [...PUBLIC, "device.env-term"] } } },
+    })
+    expect(scanPublicCatalogue(dist, PUBLIC)).toEqual([])
+    write({ "term:kitty": { catalogIds: ["sgr.bold"] }, "term:xterm": { catalogIds: [...PUBLIC, "device.env-term"] } })
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.reason)).toEqual([
+      "contexts.*.catalogIds names ids outside the public catalogue in 1 context(s); first, term:xterm: device.env-term",
+    ])
+  })
+
   it("refuses a missing API file rather than passing it unread", () => {
     home("2 supported · 3 of 3 tested")
     expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.reason)).toEqual([

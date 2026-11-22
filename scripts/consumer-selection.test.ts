@@ -519,6 +519,9 @@ describe("consumer selection", () => {
         const actual = v3.contexts[key]
         expect(actual).toBeDefined()
         expect(actual?.featureResults).toEqual(context.featureResults)
+        // #37341 D6: each context lists its public positions only, in the projection's order.
+        expect(actual?.catalogIds).toEqual(context.catalogIds.filter((id) => publicIds.includes(id)))
+        expect(actual?.catalogIds.filter((id) => id.startsWith("device.env-"))).toEqual([])
         assertGroup(
           actual!.sources,
           Object.fromEntries(
