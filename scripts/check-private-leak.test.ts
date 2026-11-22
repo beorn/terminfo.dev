@@ -158,6 +158,8 @@ describe("check-private-leak — rendered internal states", () => {
     "<details><summary>WezTerm 0-unstable-2026-11-08</summary>hidden</details>",
     '<span aria-label="WezTerm 0-unstable-2026-11-08">WezTerm</span>',
     "<details><summary>Installation help</summary>WezTerm 0-unstable-2026-11-08</details>",
+    "<details><details><summary>Technical details</summary>provenance</details><p>WezTerm 0-unstable-2026-11-08</p></details>",
+    "<details><details>&lt;summary&gt;Technical details&lt;/summary&gt;</details><p>WezTerm 0-unstable-2026-11-08</p></details>",
   ])("refuses technical provenance in initially visible page text: %s", (body) => {
     writeFileSync(join(dist, "feature.html"), page(body))
     expect(scanRendered(dist)).toEqual([expect.objectContaining({ layer: "rendered", path: "dist/feature.html" })])
@@ -289,7 +291,7 @@ describe("check-private-leak — rendered internal states", () => {
     { context: "absent", stampId: "working-1", dataId: "working-1", status: "supported", allowed: false },
   ])("classifies only matched internal working data: %j", ({ context, stampId, dataId, status, allowed }) => {
     const startedAt = "2026-11-22T14:04:03.537Z"
-    if (context !== "absent")
+    if (context !== "absent") {
       writeFileSync(
         join(dist, "build.json"),
         JSON.stringify({
@@ -299,6 +301,7 @@ describe("check-private-leak — rendered internal states", () => {
           workingRun: { id: stampId, startedAt },
         }),
       )
+    }
     writeFileSync(
       join(dist, "api", "v3", "data.json"),
       JSON.stringify({

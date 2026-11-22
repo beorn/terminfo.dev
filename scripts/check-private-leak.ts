@@ -315,7 +315,9 @@ function disclosureText(html: string, technicalOnly = false): string {
             .trim()
         const technical = ownSummary && visibleText(summary[0]).trim() === "Technical details"
         const shown = /(?:^|\s)open(?:\s|=|$)/i.test(names) || (technicalOnly && !technical)
-        return visibleText("<details" + attrs + ">") + (shown ? body : (summary?.[0] ?? ""))
+        // A reduced child's summary stays readable, but cannot become its ancestor's own summary.
+        const reader = visibleText("<details" + attrs + ">") + visibleText(shown ? body : (summary?.[0] ?? ""))
+        return reader.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       },
     )
   } while (text !== previous)
