@@ -85,7 +85,7 @@ describe("displayVersion at each call site that prints a version (D11)", () => {
         { featureId, status: isEnvironmentGroup(featureId) ? "probe-todo" : "supported" },
       ]),
     )
-    const bar = aggregateCurrentResults(rollupInputs("fixture", { featureResults } as never), catalogIds)
+    const bar = aggregateCurrentResults(rollupInputs("fixture", { featureResults, catalogIds } as never), catalogIds)
     const run = (runId: string, version: string) => ({
       runId,
       subject: { version },

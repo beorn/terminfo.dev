@@ -64,7 +64,7 @@ function publishOne() {
         : { featureId, status: "supported" },
     ]),
   )
-  const bar = aggregateCurrentResults(rollupInputs(SUBJECT, { featureResults } as never), catalogIds)
+  const bar = aggregateCurrentResults(rollupInputs(SUBJECT, { featureResults, catalogIds } as never), catalogIds)
   const selected = {
     subject: { id: SUBJECT, kind: "lib", os: null },
     sources: {

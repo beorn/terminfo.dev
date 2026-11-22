@@ -13,6 +13,7 @@ import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
+import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import type { DeclaredUntestableCell } from "../docs/data/declared-untestable.ts"
@@ -67,7 +68,9 @@ function run(name: string, hour: number, rows: Row[], selected?: string[]) {
         observed: reply,
         ...(row.method === "input_bytes" && { action: "press test key" }),
       })
-      replies[row.id] = reply
+      // A decided result stores the exchange its evidence sentence is worded from (#37341 evidence module); this test is
+      // about which statuses publish, not about evidence, so every decided row stores the shared unanswered query.
+      replies[row.id] = UNANSWERED_QUERY
       results[index] = {
         featureId: row.id,
         status: row.status,

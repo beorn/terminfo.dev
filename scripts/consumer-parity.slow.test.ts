@@ -1455,9 +1455,10 @@ describe("selected-run consumer parity", () => {
     const site = loadClientProbes()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
-    // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
+    // #37341 Q2: a public baseline lists public positions only, so the core baseline's environment group is gone and
+    // every position it lists is graded.
     const graded = scoredFeatureIds(site.baselines.core ?? []).length
-    expect(graded).toBe(catalog - 1)
+    expect(graded).toBe(catalog)
     expect(site.baselineStats.kitty?.core).toMatchObject({
       score: { all: graded, supported: 1 },
       pct: Math.round(100 / graded),
