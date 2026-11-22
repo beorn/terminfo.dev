@@ -418,6 +418,8 @@ function rectangle(frame: CapturedFrame, selected: (offset: number) => boolean):
 
 const CLASS_RADIUS_MAX = 1
 const CLASS_SEPARATION_MIN = 16
+/** How many stray pixels a refusal quotes before summarising the rest by count. */
+const FIRST_OFFENDING_PIXELS = 6
 
 type RgbTriple = readonly [number, number, number]
 
@@ -1075,6 +1077,11 @@ export async function calibrateCaptureOrigin({
       const explained = new Set<number>()
       for (const blend of blends) for (const key of blend.pixels) explained.add(key)
       let changedInBand = 0
+      // A refusal names what it saw: the stage, how many pixels moved, and the first few of them
+      // with both colours. Without them an archived frame cannot be tied to the refusal, and an
+      // intermittent capture costs a full investigation on every occurrence (#37667).
+      let offending = 0
+      const firstOffending: string[] = []
       for (let y = 0; y < frame.height; y++) {
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
@@ -1089,10 +1096,25 @@ export async function calibrateCaptureOrigin({
           // exactly as the baseline frame had it even on an explained pixel.
           for (let channel = explained.has(y * frame.width + x) ? 3 : 0; channel < 4; channel++) {
             if (frame.rgba[offset + channel] !== before.rgba[offset + channel]) {
-              throw refusal("Capture calibration paint changed pixels outside the witnessed grid")
+              offending++
+              if (firstOffending.length < FIRST_OFFENDING_PIXELS) {
+                const rgba = (source: CapturedFrame) =>
+                  `${source.rgba[offset]},${source.rgba[offset + 1]},${source.rgba[offset + 2]}@${source.rgba[offset + 3]}`
+                firstOffending.push(`(${x},${y}) ${rgba(before)}->${rgba(frame)}${channel === 3 ? " alpha-only" : ""}`)
+              }
+              break
             }
           }
         }
+      }
+      if (offending > 0) {
+        throw refusal(
+          `Capture calibration paint changed pixels outside the witnessed grid: stage=${stage}, ` +
+            `${offending} pixel(s) outside grid (${grid.x},${grid.y} ${grid.width}x${grid.height}) of ` +
+            `${frame.width}x${frame.height}` +
+            (chromeBand ? `, ${changedInBand} band pixel(s) excused` : "") +
+            `; first: ${firstOffending.join("; ")}`,
+        )
       }
       if (chromeBand) excused.push({ stage, changed: changedInBand })
       return blends

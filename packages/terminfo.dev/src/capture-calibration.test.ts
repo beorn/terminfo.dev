@@ -827,7 +827,11 @@ test("a line outside the grid in another colour refuses", async () => {
   const solid = blendTop(rasterFrame("solid"))
   solid.rgba.set([217, 0, 0, 255], (1 * 12 + 5) * 4)
   const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
-  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+  // The refusal is the only evidence an archived intermittent run leaves, so it names the stage and
+  // the pixels it saw (#37667).
+  await expect(run.promise).rejects.toThrow(
+    /paint changed pixels outside the witnessed grid: stage=solid, 8 pixel\(s\) outside grid \(2,2 8x8\) of 12x12; first: \(2,1\) 0,0,0@255->217,0,217@255/,
+  )
 })
 
 test("a partial blend line refuses", async () => {
