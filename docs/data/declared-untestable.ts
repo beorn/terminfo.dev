@@ -7,7 +7,9 @@
  * Three rules (@cto 82a54984):
  * 1. A measured result always beats a declaration. A row whose cell reads anything but PROBE TODO (Supported,
  *    Unsupported, a probe's own Untestable, PROBE INVALID, PROBE CONFLICT, or a reopened cell) throws naming the row,
- *    and a row that matches no cell throws too; the fix is to remove the row.
+ *    and a row that matches no cell throws too; the fix is to remove the row. The narrow form (#33774, @cto b8b75cbc):
+ *    a row with `replacesInvalid` may read PROBE INVALID, and only from one of its named runs at its exact subject
+ *    version, so a later run re-tests the cell by construction; with the field set, any other cell still throws.
  * 2. Every row carries its review: `reviewedBy` and `reviewedOn`, and the reviewer is never the declarer.
  * 3. Every count that includes these cells shows them apart: "N Untestable (M by review)" (release-scope.ts).
  *
@@ -36,6 +38,12 @@ export interface DeclaredUntestableCell {
   reviewedOn: string
   /** The ruling, with its seat, date and message id. Kept in the file for us; never projected. */
   ruling: string
+  /**
+   * Only for a harness defect a ruling names (#33774): the runs whose PROBE INVALID this row replaces, and the exact
+   * subject version they measured. The cell must read PROBE INVALID from one of these runs at this version; any other
+   * run or version throws, so a rerun re-tests it. Kept in the file; never projected.
+   */
+  replacesInvalid?: { runs: string[]; version: string }
 }
 
 /** What a declared cell carries for its readers: the row's public words and review date. */
@@ -107,6 +115,17 @@ function checkRow(value: unknown, where: string): DeclaredUntestableCell {
   if (declaredBy === reviewedBy) {
     throw new Error(`${where}: reviewedBy is the declarer (${declaredBy}); a row needs a second person's review`)
   }
+  const replaces = row.replacesInvalid
+  if (
+    replaces !== undefined &&
+    (!Array.isArray(replaces.runs) ||
+      replaces.runs.length === 0 ||
+      !replaces.runs.every((run) => typeof run === "string" && run.length > 0) ||
+      typeof replaces.version !== "string" ||
+      replaces.version.length === 0)
+  ) {
+    throw new Error(`${where}: replacesInvalid needs runs (non-empty run ids) and version (non-empty)`)
+  }
   return {
     kind: row.kind,
     id: text("id"),
@@ -119,5 +138,6 @@ function checkRow(value: unknown, where: string): DeclaredUntestableCell {
     reviewedBy,
     reviewedOn: day("reviewedOn"),
     ruling: text("ruling"),
+    ...(replaces && { replacesInvalid: { runs: [...replaces.runs], version: replaces.version } }),
   }
 }

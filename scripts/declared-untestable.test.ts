@@ -41,7 +41,12 @@ const SUITE: ProbeSuiteManifest & { schemaVersion: 4 } = {
 }
 
 /** One schema-4 alacritty run on Linux: every id an untouched TODO except the measured ones. */
-function run(runId: string, measured: Record<string, "supported" | "unsupported">, measuredAt: string) {
+function run(
+  runId: string,
+  measured: Record<string, "supported" | "unsupported">,
+  measuredAt: string,
+  invalid: readonly string[] = [],
+) {
   const attempt = { scope: "probe" as const, startedAt: measuredAt }
   const draft = initializeRunDraft({
     runId,
@@ -69,6 +74,17 @@ function run(runId: string, measured: Record<string, "supported" | "unsupported"
   draft.results = ids.map((featureId): ProbeResult => {
     const index = entries.findIndex(([id]) => id === featureId)
     const status = measured[featureId]
+    if (invalid.includes(featureId)) {
+      return {
+        featureId,
+        status: "probe-invalid",
+        attempt,
+        tests: [
+          { id: "criterion", status: "probe-invalid", attempt, reason: "the frame moved after its cells were chosen" },
+        ],
+        reason: "the frame moved after its cells were chosen",
+      }
+    }
     if (!status) return { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "Not run" }
     return {
       featureId,
@@ -223,6 +239,55 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
   })
 })
 
+// #33774 (@cto b8b75cbc, the narrow form of rule 1): a row that names the runs and version whose PROBE INVALID it
+// replaces may read that cell; every other invalid, decided or TODO cell still throws, so a rerun re-tests it.
+describe("replacesInvalid: a reviewed row over a harness defect in named runs", () => {
+  const broken = run("broken", { "sgr.bold": "supported" }, "2026-11-13T07:00:00.000Z", [MARKS])
+  const named = { runs: ["older-a", "broken", "older-b"], version: "0.15.1" }
+
+  it("moves a PROBE INVALID cell from a named run at the named version to Untestable, with the row's words", () => {
+    const after = project([broken], [marksRow({ replacesInvalid: named })]).contexts["term:alacritty"]!
+    expect(after.cells[MARKS]!.featureResult).toMatchObject({ status: "untestable", strength: null })
+    expect(after.cells[MARKS]!.declared?.reason).toBe("the terminal has no observer that reads its prompt marks back")
+  })
+
+  it("a row without the field still refuses PROBE INVALID", () => {
+    expect(() => project([broken], [marksRow()])).toThrow(/reads probe-invalid in term:alacritty \(run broken\)/)
+  })
+
+  it("a fourth run id or another version throws: a rerun re-tests the cell", () => {
+    const fourth = run("fourth", {}, "2026-11-13T08:00:00.000Z", [MARKS])
+    expect(() => project([broken, fourth], [marksRow({ replacesInvalid: named })])).toThrow(
+      /1 declared-untestable row\(s\) match no context cell: term:alacritty\/linux\/extensions\.osc133-marks \(no cell from runs older-a, broken, older-b any more: a newer run re-tests it\); remove this row/,
+    )
+    expect(() => project([broken], [marksRow({ replacesInvalid: { ...named, version: "0.15.2" } })])).toThrow(
+      /\(run broken, version 0\.15\.1\); the row replaces PROBE INVALID only at version 0\.15\.2: remove this row/,
+    )
+  })
+
+  it("a second context measured by another run keeps its own reading; the join lets the declared context win", () => {
+    const other = run("other", {}, "2026-11-13T07:30:00.000Z")
+    other.subject = { ...other.subject!, osVersion: "6.9.0" }
+    const contexts = project([broken, other], [marksRow({ replacesInvalid: named })]).contexts
+    const statuses = Object.values(contexts).map((summary) => [
+      summary.contributingRunIds.join(),
+      summary.cells[MARKS]?.featureResult?.status,
+    ])
+    expect(statuses).toContainEqual(["broken", "untestable"])
+    expect(statuses).toContainEqual(["other", "probe-todo"])
+  })
+
+  it("a TODO or decided cell with the field set throws", () => {
+    expect(() => project([first], [marksRow({ replacesInvalid: { ...named, runs: ["first"] } })])).toThrow(
+      /reads probe-todo .*the row replaces PROBE INVALID, so a TODO cell takes a plain row: drop replacesInvalid/,
+    )
+    const measured = run("broken", { [MARKS]: "supported" }, "2026-11-13T06:00:00.000Z")
+    expect(() => project([measured], [marksRow({ replacesInvalid: named })])).toThrow(
+      /reads supported .*remove this row/,
+    )
+  })
+})
+
 describe("loadDeclaredUntestable", () => {
   const write = (rows: unknown[]): string => {
     const dir = mkdtempSync(join(tmpdir(), "declared-"))
@@ -247,6 +312,21 @@ describe("loadDeclaredUntestable", () => {
     expect(() => loadDeclaredUntestable(write([marksRow(), marksRow()]))).toThrow(/declared twice/)
     const { testableIf: _exit, ...noExit } = marksRow()
     expect(() => loadDeclaredUntestable(write([noExit]))).toThrow(/testableIf must be a non-empty string/)
+  })
+
+  it("reads replacesInvalid, and refuses one with no runs or no version (#33774)", () => {
+    const row = marksRow({ replacesInvalid: { runs: ["broken"], version: "0.15.1" } })
+    expect(loadDeclaredUntestable(write([row]))).toEqual([row])
+    for (const replacesInvalid of [
+      { runs: [], version: "0.15.1" },
+      { runs: ["broken"], version: "" },
+      { runs: [7], version: "1" },
+    ]) {
+      expect(
+        () => loadDeclaredUntestable(write([{ ...marksRow(), replacesInvalid }])),
+        JSON.stringify(replacesInvalid),
+      ).toThrow(/replacesInvalid needs runs \(non-empty run ids\) and version \(non-empty\)/)
+    }
   })
 
   it("refuses public words that name a seat, an id or an issue, or that read as a grade", () => {
