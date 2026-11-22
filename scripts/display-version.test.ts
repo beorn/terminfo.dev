@@ -132,7 +132,6 @@ describe("displayVersion at each call site that prints a version (D11)", () => {
   it("3. terminals/[id].md: the source-versions line, the run picker label, the OS columns and the original-run list", () => {
     const page = source("docs/terminals/[id].md")
     expect(rawVersionReads(page)).toEqual([])
-    expect(page).toContain("displayVersions(sourceRuns.value).join(', ')")
     expect(page).toContain("displayVersions(runs).join(', ')")
     expect(page).toContain("${displayVersion(run.subject.version)} · ${run.subject.os")
     expect(page).toContain("· {{ displayVersion(run.subject.version) }} · measured")

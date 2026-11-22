@@ -318,7 +318,7 @@ export function scanRendered(distDir: string): Violation[] {
         violations.push({
           layer: "rendered",
           path: `dist/${rel}`,
-          reason: `Page shows technical measurement metadata x${technical.length}; keep provenance in collapsed Technical details.`,
+          reason: `Page shows technical measurement metadata x${technical.length}: ${technical.slice(0, 3).join(", ")}; keep provenance in collapsed Technical details.`,
         })
       }
     }
