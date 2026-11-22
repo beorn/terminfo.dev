@@ -303,20 +303,22 @@ export function scanRendered(distDir: string): Violation[] {
     if (!isPage && !isJson && !full.endsWith(".js")) return
     const content = readFileSync(full, "utf-8")
     if (isPage) {
-      const summaries = [
-        ...content.matchAll(/<(section|div)\b[^>]*class=["'][^"']*\bscore-card\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi),
-      ]
-      const technical = summaries.flatMap(
-        (summary) =>
-          visibleText(summary[2] ?? "").match(
-            /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][\w.-]+\b|\b(?:SHA-?256|run ID|suite ID)\b|\b[a-f\d]{32,64}\b/gi,
-          ) ?? [],
+      // A closed disclosure shows its summary, while an open one shows its full body.
+      // Scope this presentation check to every page, not just Feature support cards.
+      const initiallyVisible = content.replace(
+        /<details\b([^>]*)>([\s\S]*?)<\/details>/gi,
+        (whole: string, attrs: string, body: string) =>
+          /\bopen(?:\s|=|$)/i.test(attrs) ? whole : (body.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/i)?.[0] ?? ""),
       )
+      const technical =
+        visibleText(initiallyVisible).match(
+          /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][\w.-]+\b|\b(?:SHA-?256|run ID|suite ID)\b|\b[a-f\d]{32,64}\b|\b(?:suite|source|capture)\s+[a-f\d]{8,64}\b/gi,
+        ) ?? []
       if (technical.length) {
         violations.push({
           layer: "rendered",
           path: `dist/${rel}`,
-          reason: `Feature support summary shows technical measurement metadata x${technical.length}; keep provenance in collapsed Test environment details.`,
+          reason: `Page shows technical measurement metadata x${technical.length}; keep provenance in collapsed Technical details.`,
         })
       }
     }

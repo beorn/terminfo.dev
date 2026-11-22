@@ -33,7 +33,6 @@ function resultRows(rows) {
       tone: category.style,
       icon: facts.icon(r.name),
       iconTitle: facts.platform(r.name),
-      note: r.note || undefined,
     }
   })
 }
@@ -156,6 +155,11 @@ function termTooltip(r) {
 </p>
 
 </div>
+
+<details v-if="backendResults.some(result => result.note)">
+  <summary>Technical details</summary>
+  <ul><li v-for="result in backendResults.filter(result => result.note)" :key="result.name"><strong>{{ facts.name(result.name) }}</strong>: {{ result.note }}</li></ul>
+</details>
 
 <RunHistory v-if="data.workingHistory" :history="data.workingHistory" :states="data.workingStates" :originals="data.workingOriginals" :feature-id="p.featureId" />
 

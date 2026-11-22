@@ -4,6 +4,7 @@ import type { WorkingContext } from "../../data/working-runs"
 import type { ClientProbeData, ClientWorkingView } from "../../data/probes.data"
 import { evidenceStatus, evidenceStatusWords } from "./evidence-status"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
+import { displayMeasuredDate, displayOs } from "./display-version"
 
 const props = defineProps<{
   history: ClientWorkingView[]
@@ -96,18 +97,19 @@ const gaps = computed(() =>
 <!-- oxfmt would add spaces inside this template's text nodes, which changes rendered spacing (33975). -->
 <!-- prettier-ignore -->
 <template>
-<section id="run-history" class="run-history">
+<details id="run-history" class="run-history">
+  <summary>Technical details</summary>
   <div v-if="originalEntries.length" id="selected-original-history">
-    <h2>Stored original measurements</h2>
-    <p>Each original keeps its recorded statuses and measurement time. Choosing one here does not change reviewed answers, scores or completion.</p>
+    <h2>Measurement history</h2>
+    <p>Recorded measurements and their technical provenance.</p>
     <label>Original measurement
       <select v-model="originalKey">
-        <option v-for="entry in originalEntries" :key="entry.key" :value="entry.key">{{ kindLabel(entry.original.subject.kind) }}: {{ entry.original.subject.id }} {{ entry.original.subject.version }} · {{ entry.original.subject.os ?? 'OS not recorded' }} · {{ entry.original.measuredAt }} · {{ entry.original.sha256.slice(0, 8) }}</option>
+        <option v-for="entry in originalEntries" :key="entry.key" :value="entry.key">{{ kindLabel(entry.original.subject.kind) }}: {{ entry.original.subject.id }} {{ entry.original.subject.version }} · {{ displayOs(entry.original.subject.os) }} · {{ displayMeasuredDate(entry.original.measuredAt) }}</option>
       </select>
     </label>
     <template v-if="originalEntry">
-      <p>Context <code>{{ originalEntry.contextKey }}</code>; <strong>{{ kindLabel(originalEntry.original.subject.kind) }}: {{ originalEntry.original.subject.id }} {{ originalEntry.original.subject.version }}</strong>; OS {{ originalEntry.original.subject.os ?? 'not recorded' }}.</p>
-      <p>Original run <code>{{ originalEntry.original.runId }}</code>; measured {{ originalEntry.original.measuredAt }}; suite <code>{{ originalEntry.original.suiteId }}</code>; source <code>{{ originalEntry.original.sourceRevision }}</code>; capture SHA-256 <code>{{ originalEntry.original.sha256 }}</code>.</p>
+      <p>Context <code>{{ originalEntry.contextKey }}</code>; <strong>{{ kindLabel(originalEntry.original.subject.kind) }}: {{ originalEntry.original.subject.id }} {{ originalEntry.original.subject.version }}</strong>; OS {{ displayOs(originalEntry.original.subject.os) }}.</p>
+      <p>Original run <code>{{ originalEntry.original.runId }}</code>; measured {{ displayMeasuredDate(originalEntry.original.measuredAt) }}; suite <code>{{ originalEntry.original.suiteId }}</code>; source <code>{{ originalEntry.original.sourceRevision }}</code>; capture SHA-256 <code>{{ originalEntry.original.sha256 }}</code>.</p>
       <p>Stored Supported / graded features: {{ originalEntry.original.score.supported }} / {{ originalEntry.original.score.all }}. Environment groups are ungraded.</p>
       <p>Comparison unavailable: the selected-original projection does not retain qualified runtime identity.</p>
       <table v-if="originalCells.length">
@@ -124,12 +126,12 @@ const gaps = computed(() =>
   </ul>
   <label>Collection
     <select v-model="collectionId">
-      <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ view.run.startedAt }} · {{ view.run.id }}{{ view.unreadable ? ' · unreadable' : '' }}</option>
+      <option v-for="view in history" :key="view.run.id" :value="view.run.id">{{ displayMeasuredDate(view.run.startedAt) }}{{ view.unreadable ? ' · unreadable' : '' }}</option>
     </select>
   </label>
-  <p>{{ history.length }} retained collection entries, including entries with unreadable inputs. Oldest {{ history[0]?.run.startedAt }}, newest {{ history.at(-1)?.run.startedAt }}. Times are UTC.</p>
+  <p>{{ history.length }} retained collection entries, including entries with unreadable inputs. <template v-if="history.length">Oldest {{ displayMeasuredDate(history[0].run.startedAt) }}, newest {{ displayMeasuredDate(history.at(-1)!.run.startedAt) }}.</template> Dates are UTC.</p>
   <template v-if="selected">
-    <p>Collection <code>{{ selected.run.id }}</code>; started {{ selected.run.startedAt }}; newest capture {{ selected.run.newestCaptureAt }}.</p>
+    <p>Collection <code>{{ selected.run.id }}</code>; started {{ displayMeasuredDate(selected.run.startedAt) }}; newest capture {{ selected.run.newestCaptureAt ? displayMeasuredDate(selected.run.newestCaptureAt) : 'not recorded' }}.</p>
     <p v-if="selected.unapplied" class="warning custom-block">{{ selected.unapplied }}</p>
     <div v-if="selected.unreadable" class="danger custom-block">
       <p><strong>{{ selected.unreadable.banner }}</strong></p>
@@ -142,7 +144,7 @@ const gaps = computed(() =>
         </select>
       </label>
       <template v-if="context">
-        <p><strong>{{ kindLabel(context.kind) }}: {{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ context.measuredAt }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
+        <p><strong>{{ kindLabel(context.kind) }}: {{ context.engine }} {{ context.version }}</strong>; original capture <code>{{ context.runId }}</code>; measured {{ displayMeasuredDate(context.measuredAt) }}; suite <code>{{ context.suiteId }}</code>; source <code>{{ context.sourceRevision }}</code>; capture SHA-256 <code>{{ context.sha256 }}</code>; identity {{ context.identity }}.</p>
         <p>Raw Supported / graded features: {{ context.counts.supported }} / {{ context.positions }}. Environment groups are ungraded; shown-but-not-counted and reference results retain the existing rollup treatment.</p>
         <p v-if="context.changeBaseline">Recorded comparison baseline: <code>{{ context.changeBaseline }}</code>.</p>
         <p>{{ context.changeQualification }}</p>
@@ -160,7 +162,7 @@ const gaps = computed(() =>
     </template>
     <p v-else>No matching context was recorded in this collection.</p>
   </template>
-</section>
+</details>
 </template>
 
 <style scoped>

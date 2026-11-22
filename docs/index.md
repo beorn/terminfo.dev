@@ -18,6 +18,7 @@ hero:
 
 <script setup>
 import { ref, computed } from 'vue'
+import { displayMeasuredDate } from './.vitepress/theme/display-version.ts'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 import { baselineReadout } from './data/baseline-readouts.ts'
@@ -424,7 +425,7 @@ function backendTooltip(name) {
 <p class="footer-note">
   Select any result for recorded evidence.<br/>
   Data from <a href="https://termless.dev">Termless</a> probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
-  {{ data.generated ? 'Latest selected measurement: ' + data.generated : '' }}
+  {{ data.generated ? 'Latest selected measurement: ' + displayMeasuredDate(data.generated) : '' }}
 </p>
 
 ## Explore

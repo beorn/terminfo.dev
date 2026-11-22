@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { realpathSync } from "node:fs"
+import { displayMeasuredDate } from "../docs/.vitepress/theme/display-version.ts"
 
 export interface BuildMetadata {
   sourceCommit: string
@@ -84,5 +85,5 @@ export function buildStamp(metadata: BuildMetadata): string {
     : metadata.dirty
       ? "local changes"
       : "local build"
-  return `Site build ${source} · ${metadata.builtAt} · ${origin}`
+  return `Site build ${source} · ${displayMeasuredDate(metadata.builtAt)} · ${origin}`
 }

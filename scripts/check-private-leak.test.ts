@@ -139,11 +139,23 @@ describe("check-private-leak — rendered internal states", () => {
         expect.objectContaining({
           layer: "rendered",
           path: "dist/terminal.html",
-          reason: expect.stringContaining("Feature support summary shows technical measurement metadata"),
+          reason: expect.stringContaining("Page shows technical measurement metadata"),
         }),
       ])
     },
   )
+
+  // #37761: the public-text rule applies to history, feature, comparison and home pages too.
+  // The old score-card-only case never reached these rendered routes.
+  it.each([
+    "<p>Latest selected measurement: 2026-11-18T22:50:00.000Z</p>",
+    "<li>Transmit was refused in run 3f767f8501c088b27a9dbb6ccdc04f42</li>",
+    "<p>Original measurements · older suite bd8cfc7bcfc3</p>",
+    "<details open><summary>Technical details</summary><p>run-deadbeef</p></details>",
+  ])("refuses technical provenance in initially visible page text: %s", (body) => {
+    writeFileSync(join(dist, "feature.html"), page(body))
+    expect(scanRendered(dist)).toEqual([expect.objectContaining({ layer: "rendered", path: "dist/feature.html" })])
+  })
 
   it("allows plain measurement dates and keeps technical provenance inside collapsed environment details", () => {
     writeFileSync(

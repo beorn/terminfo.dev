@@ -10,7 +10,7 @@ import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor, rollupInputs } from '../data/release-scope.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
-import { displayVersion, displayVersions } from '../.vitepress/theme/display-version.ts'
+import { displayVersion, displayVersions, displayMeasuredDate as plainMeasuredDate, displayMeasuredRange, displayOs } from '../.vitepress/theme/display-version.ts'
 import { categoryIds, categoryOf } from '../data/result-categories.ts'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 const { params } = useData()
@@ -85,16 +85,9 @@ function featureRows(features) {
 }
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
 const staleText = computed(() => stale.value ? 'These measurements use an earlier feature set; see Test environment for their context.' : '')
-const measuredDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
-function plainMeasuredDate(value) {
-  const at = Date.parse(value)
-  if (!Number.isFinite(at)) throw new Error(`Terminal measurement date is unreadable: ${value}`)
-  return measuredDate.format(at)
-}
 function measurementSummary(runs, os) {
-  if (!runs.length) return `Measurement date not recorded · ${p.terminalName} · ${os || 'OS not recorded'}`
-  const dates = runs.map(run => { plainMeasuredDate(run.measuredAt); return Date.parse(run.measuredAt) })
-  return `Measured ${measuredDate.formatRange(Math.min(...dates), Math.max(...dates))} · ${p.terminalName} ${displayVersions(runs).join(', ')} · ${os || 'OS not recorded'}`
+  if (!runs.length) return `Measurement date not recorded · ${p.terminalName} · ${displayOs(os)}`
+  return `Measured ${displayMeasuredRange(runs.map(run => run.measuredAt))} · ${p.terminalName} ${displayVersions(runs).join(', ')} · ${displayOs(os)}`
 }
 function runLabel(run) {
   return `${displayVersion(run.subject.version)} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`

@@ -8,7 +8,7 @@ next: false
 import { currentCoverageSentence, currentSupportedShare, publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { displayVersion } from '../.vitepress/theme/display-version.ts'
+import { displayVersion, displayMeasuredDate, displayOs } from '../.vitepress/theme/display-version.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => ({
@@ -94,7 +94,7 @@ function differenceRows(pair) {
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
       <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
-      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
+      <tr><th>Measured</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ displayMeasuredDate(run.measuredAt) }} · {{ displayVersion(run.subject.version) }} · {{ displayOs(run.subject.os) }}</li></ul></td></tr>
     </tbody>
   </table>
 </div>
@@ -104,7 +104,7 @@ function differenceRows(pair) {
     <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
     </a>
-    <p class="compare-context"><strong>Source versions: {{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
+    <p class="compare-context"><strong>Source versions: {{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ displayOs(p.termAOs) }} {{ p.termAOsVersion }}</p>
     <div class="compare-score">{{ p.termAReadout }}</div>
     <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
@@ -120,7 +120,7 @@ function differenceRows(pair) {
     <a :href="'/terminals/' + p.termBSlug" class="compare-card-link">
       <h3>{{ p.termBLabel }}</h3>
     </a>
-    <p class="compare-context"><strong>Source versions: {{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
+    <p class="compare-context"><strong>Source versions: {{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ displayOs(p.termBOs) }} {{ p.termBOsVersion }}</p>
     <div class="compare-score">{{ p.termBReadout }}</div>
     <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
