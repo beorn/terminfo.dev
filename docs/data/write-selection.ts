@@ -8,17 +8,18 @@ import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { CONTENT_DIR } from "../../packages/admin/corpus-placement.ts"
-import { loadRawCapture, loadRawCaptureWithManifest } from "../../packages/admin/raw-capture.ts"
+import { loadRawCapture, loadRawCaptureWithManifest, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.ts"
 import {
   loadSelectedResults,
+  projectResults,
   suiteRelationOf,
   type SelectedContextCell,
   type SelectedProjection,
 } from "./selected-results.ts"
 import { compatibilitySubjects, joinedAppCells, type CurrentResult } from "./current-results.ts"
 import { sameRunEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.ts"
-import { publicDeclaredReason } from "./declared-untestable.ts"
+import { loadDeclaredUntestable, publicDeclaredReason } from "./declared-untestable.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
 import { rollupTerminalStatuses } from "./release-scope.ts"
@@ -125,10 +126,13 @@ export function parseSelectionArgs(argv: readonly string[]): {
   workingRuns: string[]
   /** A file of {id, os, probe} rows a status page defers to a later release; each app's asideTier leaves them out. */
   aside?: string
+  /** A file of {name, drafts} rows: write each run's own joined read (runReads) instead of the selection. */
+  runReads?: string
 } {
   let out: string | undefined
   let content = CONTENT_DIR
   let aside: string | undefined
+  let runReads: string | undefined
   const workingRuns: string[] = []
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -145,12 +149,24 @@ export function parseSelectionArgs(argv: readonly string[]): {
     } else if (arg === "--aside" && next) {
       aside = next
       i++
+    } else if (arg === "--run-reads" && next) {
+      runReads = next
+      i++
     } else {
       throw new Error(`unknown argument ${arg ?? ""}`)
     }
   }
   if (!out) throw new Error("--out is required")
-  return aside === undefined ? { out, content, workingRuns } : { out, content, workingRuns, aside }
+  if (runReads !== undefined && (workingRuns.length > 0 || aside !== undefined)) {
+    throw new Error("--run-reads reads each run alone; it takes no --working-run or --aside")
+  }
+  return {
+    out,
+    content,
+    workingRuns,
+    ...(aside !== undefined && { aside }),
+    ...(runReads !== undefined && { runReads }),
+  }
 }
 
 /** One collection record: `collection.json` for a headless collection, `pass.json` for an app, hosted or owned-app pass. */
@@ -332,9 +348,113 @@ export function writeSelection(options: {
   return document.cells.length
 }
 
+/** One earlier run for --run-reads: the name the caller keys it by and the raw draft of every pass it holds. */
+export interface RunReadInput {
+  name: string
+  drafts: string[]
+}
+
+/**
+ * A run's own read: per app section the run measured, its joined status per probe; or why the run cannot be read, when a
+ * pass's suite has neither a retained nor a committed manifest (a pass written before suiteManifest existed).
+ */
+export type RunRead =
+  | { sections: Record<string, { id: string; os: string | null; cells: Record<string, AppCellStatus> }> }
+  | { refused: string }
+
+/**
+ * Each run's own read, joined by the site's rule (#37686): a run's drafts alone, with no placed record, projected and
+ * joined exactly as a --working-run is, so its read-allowed pass decides the cells its default pass left open. A status
+ * page dates every earlier burn point by this read instead of re-deriving the join. Ruling reopens are left to the
+ * caller, which reads them at the selection's status; declared untestable cells apply as on the site.
+ */
+export function runReads(options: { content: string; runs: readonly RunReadInput[] }): Record<string, RunRead> {
+  const catalog = Object.keys(loadFeatures(options.content))
+  const root = resolve(options.content, "..")
+  const currentProbeHash = probeHash()
+  const declared = loadDeclaredUntestable(options.content)
+  const out: Record<string, RunRead> = {}
+  for (const run of options.runs) {
+    if (run.drafts.length === 0) throw new Error(`${run.name}: --run-reads names a run with no drafts`)
+    if (run.name in out) throw new Error(`${run.name}: --run-reads names this run twice`)
+    let reads: WorkingRead[]
+    try {
+      reads = run.drafts.map((path) => readWorkingRun(path, options.content, root, catalog))
+    } catch (error) {
+      if (!(error instanceof UntrustedSuiteError)) throw error
+      out[run.name] = { refused: error.message }
+      continue
+    }
+    const projection = projectResults(
+      [],
+      catalog,
+      {
+        currentProbeHash,
+        workingRuns: reads.map((read) => read.run),
+        // A declared row must match a cell in the projection, so only the rows for the subjects this run measured apply.
+        declared: declared.filter((row) =>
+          reads.some(
+            ({ run: { subject } }) => subject.kind === row.kind && subject.id === row.id && subject.os === row.os,
+          ),
+        ),
+        log: (line) => console.error(line),
+      },
+      [],
+    )
+    const apps = appSections(
+      projection,
+      compatibilitySubjects(projection, options.content),
+      options.content,
+      retainedEntryHashes(reads),
+    )
+    if (Object.keys(apps).length === 0) {
+      throw new Error(`${run.name}: its ${run.drafts.length} draft(s) form no app section`)
+    }
+    out[run.name] = {
+      sections: Object.fromEntries(
+        Object.entries(apps).map(([key, app]) => [
+          key,
+          {
+            id: app.id,
+            os: app.os,
+            cells: Object.fromEntries(Object.entries(app.cells).map(([featureId, cell]) => [featureId, cell.status])),
+          },
+        ]),
+      ),
+    }
+  }
+  return out
+}
+
+/** --run-reads: a JSON array of {name, drafts} rows in, each run's read out (the file is never committed). */
+export function readRunReadInputs(path: string): RunReadInput[] {
+  const rows = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (!Array.isArray(rows)) throw new Error(`${path}: --run-reads takes a JSON array of {name, drafts} rows`)
+  return rows.map((row, index) => {
+    if (!isRecord(row) || typeof row.name !== "string" || !Array.isArray(row.drafts)) {
+      throw new Error(`${path}: row ${index} is not {name: string, drafts: string[]}`)
+    }
+    const name = row.name
+    const drafts = row.drafts.map((draft) => {
+      if (typeof draft !== "string") {
+        throw new Error(`${path}: row ${index} (${name}) has a draft that is not a path`)
+      }
+      return draft
+    })
+    return { name, drafts }
+  })
+}
+
 if (import.meta.main) {
   const args = parseSelectionArgs(process.argv.slice(2))
-  writeSelection(args)
+  if (args.runReads === undefined) {
+    writeSelection(args)
+  } else {
+    refuseOutputUnderContent(args.out, args.content)
+    const reads = runReads({ content: args.content, runs: readRunReadInputs(args.runReads) })
+    writeFileSync(args.out, `${JSON.stringify(reads)}\n`)
+    console.log(`wrote ${Object.keys(reads).length} run reads`)
+  }
 }
 
 /** One app as the site counts it: every context that measured the same release, joined by rule (@cto d321729a). */

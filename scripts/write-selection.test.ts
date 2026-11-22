@@ -7,11 +7,14 @@ import {
   appTiers,
   parseSelectionArgs,
   readAsideRows,
+  readRunReadInputs,
   refuseOutputUnderContent,
+  runReads,
   selectionFile,
   workingRunRecord,
 } from "../docs/data/write-selection.ts"
 import { retainedSuiteManifestPath } from "../packages/admin/suite-retention.ts"
+import { CONTENT_DIR } from "../packages/admin/corpus-placement.ts"
 
 const projection = {
   contexts: {
@@ -284,4 +287,36 @@ test("--aside names a file of {id, os, probe} rows; a malformed row is refused b
   const bad = join(dir, "bad.json")
   writeFileSync(bad, JSON.stringify([{ id: "terminal-app", probe: "cursor.shape" }]))
   expect(() => readAsideRows(bad)).toThrow(/bad\.json row 0 .*id, os and probe/)
+})
+
+// #37686: a status page reads each earlier run alone through the selection's join; the run list is a file, and a run
+// with no drafts or a malformed row is refused by name rather than read as an empty run.
+test("--run-reads takes a file of {name, drafts} rows and no --working-run or --aside", () => {
+  expect(parseSelectionArgs(["--out", "/o.json", "--run-reads", "/runs.json"]).runReads).toBe("/runs.json")
+  expect(parseSelectionArgs(["--out", "/o.json"]).runReads).toBeUndefined()
+  expect(() => parseSelectionArgs(["--out", "/o.json", "--run-reads", "/r.json", "--working-run", "a.json"])).toThrow(
+    /--run-reads reads each run alone/,
+  )
+  expect(() => parseSelectionArgs(["--out", "/o.json", "--run-reads", "/r.json", "--aside", "/a.json"])).toThrow(
+    /--run-reads reads each run alone/,
+  )
+  const dir = mkdtempSync(join(tmpdir(), "run-reads-"))
+  const good = join(dir, "good.json")
+  writeFileSync(good, JSON.stringify([{ name: "2026-11-20T08-00", drafts: ["/runs/a/raw/v3-run.draft.json"] }]))
+  expect(readRunReadInputs(good)).toEqual([{ name: "2026-11-20T08-00", drafts: ["/runs/a/raw/v3-run.draft.json"] }])
+  const notArray = join(dir, "object.json")
+  writeFileSync(notArray, JSON.stringify({ name: "x", drafts: [] }))
+  expect(() => readRunReadInputs(notArray)).toThrow(/object\.json: --run-reads takes a JSON array/)
+  const badRow = join(dir, "bad.json")
+  writeFileSync(badRow, JSON.stringify([{ name: "x", drafts: "/one.json" }]))
+  expect(() => readRunReadInputs(badRow)).toThrow(/bad\.json: row 0 is not \{name: string, drafts: string\[\]\}/)
+  const badDraft = join(dir, "draft.json")
+  writeFileSync(badDraft, JSON.stringify([{ name: "x", drafts: [7] }]))
+  expect(() => readRunReadInputs(badDraft)).toThrow(/draft\.json: row 0 \(x\) has a draft that is not a path/)
+})
+
+test("runReads refuses a run with no drafts before reading any", () => {
+  expect(() => runReads({ content: CONTENT_DIR, runs: [{ name: "empty", drafts: [] }] })).toThrow(
+    /empty: --run-reads names a run with no drafts/,
+  )
 })
