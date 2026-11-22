@@ -49,8 +49,14 @@ function corpusOf(id: string, runs: readonly string[]): string {
   for (const name of readdirSync(CONTENT_DIR)) {
     if (name === "probes-apps" || name === "probes-mux" || name === "probes-libs") mkdirSync(join(dir, name))
     else if (name === "reopened-cells.json" || name === "declared-untestable.json") {
-      const doc = JSON.parse(readFileSync(join(CONTENT_DIR, name), "utf8")) as { rows: Array<{ id: string }> }
-      writeFileSync(join(dir, name), JSON.stringify({ ...doc, rows: doc.rows.filter((row) => row.id === id) }))
+      const doc = JSON.parse(readFileSync(join(CONTENT_DIR, name), "utf8")) as {
+        rows: Array<{ id: string; replacesInvalid?: { runs: string[] } }>
+      }
+      // A row that replaces PROBE INVALID from named runs (#33774) belongs to a corpus holding one of those runs; this
+      // snapshot of placed readings predates them, so such a row did not exist for it.
+      const held = (row: { replacesInvalid?: { runs: string[] } }) =>
+        row.replacesInvalid === undefined || row.replacesInvalid.runs.some((r) => runs.some((path) => path.includes(r)))
+      writeFileSync(join(dir, name), JSON.stringify({ ...doc, rows: doc.rows.filter((row) => row.id === id && held(row)) }))
     } else symlinkSync(join(CONTENT_DIR, name), join(dir, name))
   }
   for (const run of runs) symlinkSync(realpathSync(run), join(dir, "probes-apps", basename(run)))

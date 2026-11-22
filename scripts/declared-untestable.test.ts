@@ -79,7 +79,9 @@ function run(
         featureId,
         status: "probe-invalid",
         attempt,
-        tests: [{ id: "criterion", status: "probe-invalid", attempt, reason: "the frame moved after its cells were chosen" }],
+        tests: [
+          { id: "criterion", status: "probe-invalid", attempt, reason: "the frame moved after its cells were chosen" },
+        ],
         reason: "the frame moved after its cells were chosen",
       }
     }
@@ -267,7 +269,10 @@ describe("replacesInvalid: a reviewed row over a harness defect in named runs", 
     const other = run("other", {}, "2026-11-13T07:30:00.000Z")
     other.subject = { ...other.subject!, osVersion: "6.9.0" }
     const contexts = project([broken, other], [marksRow({ replacesInvalid: named })]).contexts
-    const statuses = Object.values(contexts).map((summary) => [summary.contributingRunIds.join(), summary.cells[MARKS]?.featureResult?.status])
+    const statuses = Object.values(contexts).map((summary) => [
+      summary.contributingRunIds.join(),
+      summary.cells[MARKS]?.featureResult?.status,
+    ])
     expect(statuses).toContainEqual(["broken", "untestable"])
     expect(statuses).toContainEqual(["other", "probe-todo"])
   })
@@ -277,7 +282,9 @@ describe("replacesInvalid: a reviewed row over a harness defect in named runs", 
       /reads probe-todo .*the row replaces PROBE INVALID, so a TODO cell takes a plain row: drop replacesInvalid/,
     )
     const measured = run("broken", { [MARKS]: "supported" }, "2026-11-13T06:00:00.000Z")
-    expect(() => project([measured], [marksRow({ replacesInvalid: named })])).toThrow(/reads supported .*remove this row/)
+    expect(() => project([measured], [marksRow({ replacesInvalid: named })])).toThrow(
+      /reads supported .*remove this row/,
+    )
   })
 })
 
@@ -310,10 +317,15 @@ describe("loadDeclaredUntestable", () => {
   it("reads replacesInvalid, and refuses one with no runs or no version (#33774)", () => {
     const row = marksRow({ replacesInvalid: { runs: ["broken"], version: "0.15.1" } })
     expect(loadDeclaredUntestable(write([row]))).toEqual([row])
-    for (const replacesInvalid of [{ runs: [], version: "0.15.1" }, { runs: ["broken"], version: "" }, { runs: [7], version: "1" }]) {
-      expect(() => loadDeclaredUntestable(write([{ ...marksRow(), replacesInvalid }])), JSON.stringify(replacesInvalid)).toThrow(
-        /replacesInvalid needs runs \(non-empty run ids\) and version \(non-empty\)/,
-      )
+    for (const replacesInvalid of [
+      { runs: [], version: "0.15.1" },
+      { runs: ["broken"], version: "" },
+      { runs: [7], version: "1" },
+    ]) {
+      expect(
+        () => loadDeclaredUntestable(write([{ ...marksRow(), replacesInvalid }])),
+        JSON.stringify(replacesInvalid),
+      ).toThrow(/replacesInvalid needs runs \(non-empty run ids\) and version \(non-empty\)/)
     }
   })
 
