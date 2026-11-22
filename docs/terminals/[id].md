@@ -38,7 +38,6 @@ const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.s
 const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
 // #37761 (@cto e81def55): observer-only switches sit beside the configuration, never in it.
 const observerSwitches = computed(() => [...new Set(sourceRuns.value.flatMap(run => data.observers[run.runId] ?? []))].join(', '))
-const sourceVersions = computed(() => displayVersions(sourceRuns.value).join(', '))
 const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
@@ -85,7 +84,18 @@ function featureRows(features) {
   })
 }
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
-const staleText = computed(() => stale.value ? sourceRuns.value.map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; ') : '')
+const staleText = computed(() => stale.value ? 'These measurements use an earlier feature set; see Test environment for their context.' : '')
+const measuredDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+function plainMeasuredDate(value) {
+  const at = Date.parse(value)
+  if (!Number.isFinite(at)) throw new Error(`Terminal measurement date is unreadable: ${value}`)
+  return measuredDate.format(at)
+}
+function measurementSummary(runs, os) {
+  if (!runs.length) return `Measurement date not recorded · ${p.terminalName} · ${os || 'OS not recorded'}`
+  const dates = runs.map(run => { plainMeasuredDate(run.measuredAt); return Date.parse(run.measuredAt) })
+  return `Measured ${measuredDate.formatRange(Math.min(...dates), Math.max(...dates))} · ${p.terminalName} ${displayVersions(runs).join(', ')} · ${os || 'OS not recorded'}`
+}
 function runLabel(run) {
   return `${displayVersion(run.subject.version)} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
@@ -97,7 +107,6 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
-const testDate = computed(() => sourceRuns.value.map(run => `${run.runId}: ${run.measuredAt}`).join('; '))
 const isHistorical = p.historical === 'true'
 const isCurrentApp = !isHistorical && (p.terminalType === 'term' || p.terminalType === 'term+lib')
 
@@ -209,28 +218,19 @@ const breadcrumbParent = (() => {
 
 <p v-if="!defaultRun && !isHistorical">No result is selected for the main {{ p.terminalType === 'lib' ? 'library' : p.terminalType === 'mux' ? 'multiplexer' : 'application' }} table.</p>
 
-<div v-if="multipleSystems" class="score-card">
+<section v-if="multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
-  <div class="term-rows">
-    <TermRow v-for="column in osColumns" :key="column.name" :name="facts.name(column.name)" :href="facts.termHref(column.name)"
-      :os="facts.os(column.name)" :platform="facts.platform(column.name)" :version="displayVersions(column.sources).join(', ')"
-      :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)"
+  <div v-for="column in osColumns" :key="column.name" class="measurement-system">
+    <p class="selected-run">{{ measurementSummary(column.sources, facts.os(column.name)) }}</p>
+    <SupportBar :label="facts.name(column.name)" :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)"
       :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, column.selected.catalogIds)" />
   </div>
-  <table class="feature-table">
-    <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
-    <tbody>
-      <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
-      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ displayVersions(column.sources).join(', ') }}</td></tr>
-      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in column.sources" :key="run.runId">{{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
-    </tbody>
-  </table>
-</div>
+</section>
 
-<div v-if="measuredBar && !multipleSystems" class="score-card">
+<section v-if="measuredBar && !multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
-  <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
+  <p class="selected-run">{{ measurementSummary(sourceRuns, facts.os(p.backendId)) }}</p>
   <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="term-rows term-rows-single">
     <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)"
@@ -238,7 +238,7 @@ const breadcrumbParent = (() => {
   </div>
   <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
   <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
-</div>
+</section>
 
 <details v-if="selectedRun && !multipleSystems" class="run-context">
   <summary>Test environment and recorded versions</summary>
@@ -254,7 +254,7 @@ const breadcrumbParent = (() => {
   </div>
 
   <ul>
-    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
+    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · measured {{ plainMeasuredDate(run.measuredAt) }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
   </ul>
   <dl>
     <dt>Subject</dt><dd>{{ selectedRun.subject?.kind }} · {{ selectedRun.subject?.id }}</dd>

@@ -302,6 +302,24 @@ export function scanRendered(distDir: string): Violation[] {
     const isJson = full.endsWith(".json")
     if (!isPage && !isJson && !full.endsWith(".js")) return
     const content = readFileSync(full, "utf-8")
+    if (isPage) {
+      const summaries = [
+        ...content.matchAll(/<(section|div)\b[^>]*class=["'][^"']*\bscore-card\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi),
+      ]
+      const technical = summaries.flatMap(
+        (summary) =>
+          visibleText(summary[2] ?? "").match(
+            /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][\w.-]+\b|\b(?:SHA-?256|run ID|suite ID)\b|\b[a-f\d]{32,64}\b/gi,
+          ) ?? [],
+      )
+      if (technical.length) {
+        violations.push({
+          layer: "rendered",
+          path: `dist/${rel}`,
+          reason: `Feature support summary shows technical measurement metadata x${technical.length}; keep provenance in collapsed Test environment details.`,
+        })
+      }
+    }
     const undecided = isJson ? (content.match(UNDECIDED_JSON_STATUS)?.length ?? 0) : 0
     const found = isJson
       ? undecided > 0

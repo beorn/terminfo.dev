@@ -127,6 +127,36 @@ describe("check-private-leak — rendered internal states", () => {
     expect(scanRendered(dist)).toEqual([])
   })
 
+  // #37761: metadata visible beside Feature support must be plain dates/version/OS, not capture identifiers.
+  it.each(["2026-11-18T22:50:00.000Z", "run-deadbeef", "a".repeat(64)])(
+    "refuses technical measurement metadata in a feature-support summary: %s",
+    (value) => {
+      writeFileSync(
+        join(dist, "terminal.html"),
+        page(`<section class="score-card"><h2>Feature support</h2><p>${value}</p><div>bar</div></section>`),
+      )
+      expect(scanRendered(dist)).toEqual([
+        expect.objectContaining({
+          layer: "rendered",
+          path: "dist/terminal.html",
+          reason: expect.stringContaining("Feature support summary shows technical measurement metadata"),
+        }),
+      ])
+    },
+  )
+
+  it("allows plain measurement dates and keeps technical provenance inside collapsed environment details", () => {
+    writeFileSync(
+      join(dist, "terminal.html"),
+      page(
+        '<section class="score-card"><h2>Feature support</h2><p>Measured Nov 8–18, 2026 · iTerm2 3.6.11 · macOS</p><div>bar</div></section><details><summary>Test environment</summary>run-deadbeef · ' +
+          "a".repeat(64) +
+          "</details>",
+      ),
+    )
+    expect(scanRendered(dist)).toEqual([])
+  })
+
   it.each([
     ["PROBE TODO", "<td>PROBE TODO</td>"],
     ["PROBE INVALID", "<td>PROBE INVALID</td>"],
