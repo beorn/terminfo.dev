@@ -31,7 +31,9 @@ An observation's **assertion type** says what kind of evidence the probe read: `
 
 A successful capture does not itself establish the visual effect; only a same-run pixel check decides it. Missing authorization or a tool we have not built yet can leave a required test unstarted; other evidence does not turn that missing measurement into Unsupported or Untestable.
 
-## Untestable and blank results {#untestable-probe-todo-and-probe-invalid}
+<span id="untestable-probe-todo-and-probe-invalid" aria-hidden="true"></span>
+
+## Untestable and blank results {#untestable-and-blank-results}
 
 **Untestable** carries an explicit reason: **passed to the app**, **no way**, **no setup**, or **no observer**. A generic hook can pass an app-job command to the app without implementing its effect; real library state or a typed notification store can still establish Supported. A tap on a library-job command may instead say **no way to tell**, and an effect the library keeps nothing of its own for may say **app**. An effect that shows outside what the run captures says **no observer**: OSC 9;4 progress appears in a title bar, tab bar or taskbar, so a run that captures only the window cannot tell an ignored command from a consumed one. A step that can only be measured after an earlier step, such as leaving the alternate screen after entering it, reads Untestable (**no setup**) when the same run read that earlier step Unsupported; its reason names the earlier step and its result, and the earlier step keeps its own result. Missing controls or an undeclared engine identity leave the result blank. A **blank** result is one we haven't decided: the test has not run, or it ran and could not produce a valid result. A blank describes our test, not the terminal.
 

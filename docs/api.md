@@ -96,10 +96,6 @@ A live terminal's reply (a query's `match`) appears only when it fits a shape it
 
 A card for a cell derived from its parent cites the parent's entry, which is what decided it. A cell declared untestable by review cites its review: its `reason` states it, and its trace has no entry for it.
 
-## Changes
-
-- 2026-11-21: Results we haven't decided are absent from `data.json`, `runs/*.json` and `traces/*.json`, and so are tests we haven't decided inside a decided result. Count objects no longer carry the keys `probe-todo`, `probe-invalid` and `probe-conflict`; `methodology.statuses` lists `supported`, `unsupported` and `untestable`. A context's `refusals` and a cell's `priorDecision` are gone, and a derived cell's `derived` no longer carries `ownStatus` or `ownReason`. Each trace receipt's `sha256` is now the public trace digest, computed over the published trace; the stored run and its own `sha256` are unchanged.
-
 ## Frozen v1 {#historical-v1-and-v2}
 
 **`GET /api/v1/data.json`** is frozen. Frozen 2026-10-22, not updated; current data /api/v3/data.json. The bytes stay exactly as they are and are no longer generated.
