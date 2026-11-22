@@ -21,6 +21,7 @@ import { sameRunEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.t
 import { publicDeclaredReason } from "./declared-untestable.ts"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
 import type { AppCellStatus } from "./app-cells.ts"
+import { rollupTerminalStatuses } from "./release-scope.ts"
 
 export interface SelectionFileCell {
   featureId: string
@@ -122,9 +123,12 @@ export function parseSelectionArgs(argv: readonly string[]): {
   out: string
   content: string
   workingRuns: string[]
+  /** A file of {id, os, probe} rows a status page defers to a later release; each app's asideTier leaves them out. */
+  aside?: string
 } {
   let out: string | undefined
   let content = CONTENT_DIR
+  let aside: string | undefined
   const workingRuns: string[] = []
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -138,12 +142,15 @@ export function parseSelectionArgs(argv: readonly string[]): {
     } else if (arg === "--working-run" && next) {
       workingRuns.push(next)
       i++
+    } else if (arg === "--aside" && next) {
+      aside = next
+      i++
     } else {
       throw new Error(`unknown argument ${arg ?? ""}`)
     }
   }
   if (!out) throw new Error("--out is required")
-  return { out, content, workingRuns }
+  return aside === undefined ? { out, content, workingRuns } : { out, content, workingRuns, aside }
 }
 
 /** One collection record: `collection.json` for a headless collection, `pass.json` for an app, hosted or owned-app pass. */
@@ -264,7 +271,52 @@ function retainedEntryHashes(reads: readonly WorkingRead[]): Map<string, RunEntr
   return byRun
 }
 
-export function writeSelection(options: { out: string; content: string; workingRuns: readonly string[] }): number {
+/**
+ * The --aside file: a JSON array of {id, os, probe} rows, keyed here as "<id>/<os>/<probe>". A row missing a field is refused
+ * by its index, never skipped, so a status page cannot set aside less than it listed (#37673).
+ */
+export function readAsideRows(path: string): Set<string> {
+  const rows: unknown = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (!Array.isArray(rows)) throw new Error(`${path}: --aside takes a JSON array of {id, os, probe} rows`)
+  return new Set(
+    rows.map((row, index) => {
+      if (!isRecord(row) || typeof row.id !== "string" || typeof row.os !== "string" || typeof row.probe !== "string") {
+        throw new Error(`${path} row ${index} needs string id, os and probe: ${JSON.stringify(row)}`)
+      }
+      return `${row.id}/${row.os}/${row.probe}`
+    }),
+  )
+}
+
+/**
+ * One joined app's completeness tier as the site counts it, and the same rule with `aside` (feature ids) left out of both
+ * the statuses and the catalogue, with how many open results that set aside (#37673): a set-aside result a run has since
+ * decided lowers no tier, so it is not counted. All three read rollupTerminalStatuses, the one tier rule; a status page
+ * shows them side by side and never re-derives any.
+ */
+export function appTiers(
+  cells: Readonly<Record<string, { readonly status: AppCellStatus }>>,
+  catalogIds: readonly string[],
+  aside: ReadonlySet<string>,
+): { completenessTier: 0 | 1 | 2 | 3; asideTier: 0 | 1 | 2 | 3; aside: number } {
+  const statuses = Object.fromEntries(Object.entries(cells).map(([featureId, cell]) => [featureId, cell.status]))
+  const kept = catalogIds.filter((featureId) => !aside.has(featureId))
+  const keptStatuses = Object.fromEntries(Object.entries(statuses).filter(([featureId]) => !aside.has(featureId)))
+  const site = rollupTerminalStatuses(statuses, catalogIds)
+  const release = rollupTerminalStatuses(keptStatuses, kept)
+  return {
+    completenessTier: site.completenessTier,
+    asideTier: release.completenessTier,
+    aside: site.open - release.open,
+  }
+}
+
+export function writeSelection(options: {
+  out: string
+  content: string
+  workingRuns: readonly string[]
+  aside?: string
+}): number {
   refuseOutputUnderContent(options.out, options.content)
   const catalog = Object.keys(loadFeatures(options.content))
   const root = resolve(options.content, "..")
@@ -273,7 +325,8 @@ export function writeSelection(options: { out: string; content: string; workingR
   const projection = loadSelectedResults(options.content, probeHash(), { workingRuns: loaded })
   const document = selectionFile(projection, new Set(loaded.map((run) => run.runId)), options.content)
   const subjects = compatibilitySubjects(projection, options.content)
-  const apps = appSections(projection, subjects, options.content, retainedEntryHashes(reads))
+  const aside = options.aside === undefined ? new Set<string>() : readAsideRows(options.aside)
+  const apps = appSections(projection, subjects, options.content, retainedEntryHashes(reads), aside)
   writeFileSync(options.out, `${JSON.stringify({ ...document, apps }, null, 2)}\n`)
   console.log(`wrote ${document.cells.length} cells`)
   return document.cells.length
@@ -302,6 +355,11 @@ export interface SelectionFileApp {
   /** The graded probe positions the counts fold over; the catalogue's environment groups are not scores. */
   positions: number
   counts: Record<AppCellStatus, number>
+  /** The site's completeness tier over the joined cells, and the same rule with the --aside rows left out (#37673). */
+  completenessTier: 0 | 1 | 2 | 3
+  asideTier: 0 | 1 | 2 | 3
+  /** How many open results --aside left out of asideTier (a decided one lowers no tier and is not counted). */
+  aside: number
   cells: Record<string, { status: AppCellStatus; from: Array<{ context: string; status: string }> }>
 }
 
@@ -315,6 +373,8 @@ export function appSections(
   subjects: ReadonlyMap<string, CurrentResult>,
   contentDir: string,
   working: ReadonlyMap<string, RunEntryHashes> = new Map(),
+  /** "<id>/<os>/<probe>" rows set aside from each app's asideTier (readAsideRows). */
+  aside: ReadonlySet<string> = new Set(),
 ): Record<string, SelectionFileApp> {
   const joined = joinedAppCells(projection, subjects, contentDir, undefined, working)
   const apps: Record<string, SelectionFileApp> = {}
@@ -350,6 +410,13 @@ export function appSections(
       paths: [...paths].sort(),
       positions: scoredFeatureIds(primary.catalogIds).length,
       counts: { ...app.counts },
+      ...appTiers(
+        app.cells,
+        primary.catalogIds,
+        new Set(
+          primary.catalogIds.filter((featureId) => aside.has(`${primary.subject.id}/${subject.os}/${featureId}`)),
+        ),
+      ),
       cells: Object.fromEntries(
         Object.entries(app.cells).map(([featureId, cell]) => [
           featureId,

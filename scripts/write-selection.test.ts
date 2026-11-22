@@ -4,7 +4,9 @@ import { dirname, join } from "node:path"
 import { expect, test } from "vitest"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
 import {
+  appTiers,
   parseSelectionArgs,
+  readAsideRows,
   refuseOutputUnderContent,
   selectionFile,
   workingRunRecord,
@@ -238,4 +240,48 @@ test("a headless run is read through the collection written beside it", () => {
     directory: dirname(raw),
     recordPath: join(dirname(raw), "collection.json"),
   })
+})
+
+// #37673: the status page shows each terminal's completeness tier twice when they differ: the site's own, and the same
+// rule with the results the page defers to a later release set aside. Both come from rollupTerminalStatuses here,
+// never from a copy of its rule in the page builder.
+test("an app's tiers: the site's rule, then the same rule with the set-aside results left out; aside counts only the open ones it removed", () => {
+  const catalog = ["sgr.bold", "sgr.reset", "cursor.shape"]
+  const cells = (statuses: string[]) =>
+    Object.fromEntries(catalog.map((id, i) => [id, { status: statuses[i] as "supported" }]))
+  expect(appTiers(cells(["supported", "unsupported", "untestable"]), catalog, new Set())).toEqual({
+    completenessTier: 3,
+    asideTier: 3,
+    aside: 0,
+  })
+  expect(appTiers(cells(["supported", "probe-todo", "untestable"]), catalog, new Set(["sgr.reset"]))).toEqual({
+    completenessTier: 1,
+    asideTier: 3,
+    aside: 1,
+  })
+  expect(appTiers(cells(["probe-invalid", "probe-todo", "supported"]), catalog, new Set(["sgr.reset"]))).toEqual({
+    completenessTier: 1,
+    asideTier: 2,
+    aside: 1,
+  })
+  // A set-aside result a run has since decided lowers no tier, so it is not counted as set aside.
+  expect(
+    appTiers(cells(["supported", "probe-todo", "unsupported"]), catalog, new Set(["sgr.reset", "cursor.shape"])),
+  ).toEqual({
+    completenessTier: 1,
+    asideTier: 3,
+    aside: 1,
+  })
+})
+
+test("--aside names a file of {id, os, probe} rows; a malformed row is refused by name", () => {
+  expect(parseSelectionArgs(["--out", "/o.json", "--aside", "/aside.json"]).aside).toBe("/aside.json")
+  expect(parseSelectionArgs(["--out", "/o.json"]).aside).toBeUndefined()
+  const dir = mkdtempSync(join(tmpdir(), "aside-"))
+  const good = join(dir, "good.json")
+  writeFileSync(good, JSON.stringify([{ id: "terminal-app", os: "macos", probe: "cursor.shape" }]))
+  expect(readAsideRows(good)).toEqual(new Set(["terminal-app/macos/cursor.shape"]))
+  const bad = join(dir, "bad.json")
+  writeFileSync(bad, JSON.stringify([{ id: "terminal-app", probe: "cursor.shape" }]))
+  expect(() => readAsideRows(bad)).toThrow(/bad\.json row 0 .*id, os and probe/)
 })
