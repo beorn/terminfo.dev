@@ -157,6 +157,7 @@ describe("check-private-leak — rendered internal states", () => {
     "<details open><summary>Technical details</summary>WezTerm 0-unstable-2026-11-08</details>",
     "<details><summary>WezTerm 0-unstable-2026-11-08</summary>hidden</details>",
     '<span aria-label="WezTerm 0-unstable-2026-11-08">WezTerm</span>',
+    "<details><summary>Installation help</summary>WezTerm 0-unstable-2026-11-08</details>",
   ])("refuses technical provenance in initially visible page text: %s", (body) => {
     writeFileSync(join(dist, "feature.html"), page(body))
     expect(scanRendered(dist)).toEqual([expect.objectContaining({ layer: "rendered", path: "dist/feature.html" })])

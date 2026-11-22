@@ -295,6 +295,33 @@ function countsIn(text: string, inScripts: boolean, versionText = text): Array<{
     .filter(({ count }) => count > 0)
 }
 
+/** One disclosure reducer; only the version policy retains ordinary closed reader content. */
+function disclosureText(html: string, technicalOnly = false): string {
+  let text = html.replace(SCRIPT_OR_STYLE, " ")
+  let previous: string
+  do {
+    previous = text
+    // Innermost first: a closed technical ancestor also hides an open child's provenance.
+    text = text.replace(
+      /<details\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:(?!<details\b)[\s\S])*?)<\/details>/gi,
+      (_whole: string, attrs: string, body: string) => {
+        const names = attrs.replace(/"[^"]*"|'[^']*'/g, "")
+        const summary = body.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/i)
+        const ownSummary =
+          summary &&
+          !body
+            .slice(0, summary.index)
+            .replace(/<!--[\s\S]*?-->/g, "")
+            .trim()
+        const technical = ownSummary && visibleText(summary[0]).trim() === "Technical details"
+        const shown = /(?:^|\s)open(?:\s|=|$)/i.test(names) || (technicalOnly && !technical)
+        return visibleText("<details" + attrs + ">") + (shown ? body : (summary?.[0] ?? ""))
+      },
+    )
+  } while (text !== previous)
+  return visibleText(text)
+}
+
 export function scanRendered(distDir: string): Violation[] {
   const violations: Violation[] = []
   if (!existsSync(distDir)) return violations
@@ -343,28 +370,10 @@ export function scanRendered(distDir: string): Violation[] {
     }
     let versionText = ""
     if (isPage) {
-      // A closed disclosure shows its summary, while an open one shows its full body.
-      // Scope this presentation check to every page, not just Feature support cards.
-      let initiallyVisible = content.replace(SCRIPT_OR_STYLE, " ")
-      let previous: string
-      do {
-        previous = initiallyVisible
-        // Reduce innermost disclosures first so a closed ancestor also hides an open child's body.
-        initiallyVisible = initiallyVisible.replace(
-          /<details\b((?:"[^"]*"|'[^']*'|[^'">])*)>((?:(?!<details\b)[\s\S])*?)<\/details>/gi,
-          (_whole: string, attrs: string, body: string) => {
-            const names = attrs.replace(/"[^"]*"|'[^']*'/g, "")
-            const shown = /(?:^|\s)open(?:\s|=|$)/i.test(names)
-              ? body
-              : (body.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/i)?.[0] ?? "")
-            return visibleText("<details" + attrs + ">") + shown
-          },
-        )
-      } while (initiallyVisible !== previous)
       // Raw measured versions belong in closed provenance; other internal labels keep their full scan.
-      versionText = visibleText(initiallyVisible)
+      versionText = disclosureText(content, true)
       const technical =
-        versionText.match(
+        disclosureText(content).match(
           /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][a-f\d]{8,64}\b|(?<![\w/])\b[a-f\d]{32,64}\b|\b(?:SHA-?256|run ID|suite ID|suite|source|capture)\s*[:=]?\s+[a-f\d]{8,64}\b|\bContext\s*\[\s*["'](?:term|lib|mux)["']/gi,
         ) ?? []
       if (technical.length) {
