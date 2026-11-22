@@ -8,10 +8,9 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
-import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
+import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor, rollupInputs } from '../data/release-scope.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
-import { refusalSummarySentence } from '../data/prior-decision.ts'
+import { displayVersion, displayVersions } from '../.vitepress/theme/display-version.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -20,9 +19,9 @@ const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
     name,
     label: data.meta[name]?.label ?? name,
     selected,
-    bar: aggregateCurrentResults(Object.values(selected.featureResults), selected.catalogIds),
+    // #37341 Q4: published cells are decided ones only; the fold reads an absent catalogue id as no result yet.
+    bar: aggregateCurrentResults(rollupInputs(name, selected), selected.catalogIds),
     sources: Object.values(selected.sources),
-    refusalLines: (selected.refusals ?? []).map(refusalSummarySentence),
   }
 })
 const multipleSystems = osColumns.length > 1
@@ -35,17 +34,13 @@ const historySubjects = JSON.parse(p.historySubjects || '[]')
 const runSha = ref('')
 const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun)
 const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
-const sourceVersions = computed(() => [...new Set(sourceRuns.value.map(run => run.subject.version))].join(', '))
+const sourceVersions = computed(() => displayVersions(sourceRuns.value).join(', '))
 const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
-  return aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)
+  return aggregateCurrentResults(rollupInputs(p.backendId, selection), selection.catalogIds)
 })
-// 34691: the suite, the refused open cells and their reasons; rows with an older decision say so as history.
-const refusalLines = computed(() => {
-  const selection = selectedRun.value
-  return selection && 'refusals' in selection ? (selection.refusals ?? []).map(refusalSummarySentence) : []
-})
+// #37341 D2: the readout's first half; the template prints it beside the coverage sentence, never a percentage.
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 // @cto c3c2f885 condition 3: the bar names the cells whose same-suite contexts disagreed, and each row
 // below names the two contexts and their grades; a colour alone would not say what disagreed.
@@ -58,7 +53,6 @@ const differsTitle = computed(() => {
     result.featureId + ' — ' + result.joined.from.map(from => contextLabel(from.context) + ' ' + from.status).join(' vs ')
   ).join('; ')
 })
-const manualEnvironmentCount = computed(() => selectedRun.value ? environmentGroupIds(selectedRun.value.catalogIds).length : 0)
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
@@ -66,7 +60,7 @@ function featureNote(id) {
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
 const staleText = computed(() => stale.value ? sourceRuns.value.map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; ') : '')
 function runLabel(run) {
-  return `${run.subject.version} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
+  return `${displayVersion(run.subject.version)} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
 
 function featureTooltip(f) {
@@ -175,7 +169,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && !isCurrentApp && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
-  <span v-if="selectedRun || p.version"> · v{{ sourceVersions || p.version }}</span>
+  <span v-if="selectedRun || p.version"> · {{ sourceVersions || p.version }}</span>
 </div>
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
@@ -193,10 +187,8 @@ const breadcrumbParent = (() => {
   <table class="feature-table">
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
-      <tr><th>Supported share</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }}</td></tr>
-      <tr><th>Coverage</th><td v-for="column in osColumns" :key="column.name">{{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
-      <tr v-if="osColumns.some(column => column.refusalLines.length)"><th>Refused</th><td v-for="column in osColumns" :key="column.name"><p v-for="line in column.refusalLines" :key="line">{{ line }}</p></td></tr>
-      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ [...new Set(column.sources.map(run => run.subject.version))].join(', ') }}</td></tr>
+      <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
+      <tr><th>Source versions</th><td v-for="column in osColumns" :key="column.name">{{ displayVersions(column.sources).join(', ') }}</td></tr>
       <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in column.sources" :key="run.runId">{{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
     </tbody>
   </table>
@@ -206,20 +198,15 @@ const breadcrumbParent = (() => {
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
-  <p class="result-share-label" :title="currentCoverageSentence(measuredBar, selectedRun.catalogIds)">{{ measuredShare }}</p>
-  <p>{{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
-  <p v-for="line in refusalLines" :key="line" class="refusal-summary">{{ line }}</p>
+  <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['differs-by-context']" class="result-share-differs" :title="differsTitle" :style="{ width: `${measuredBar.counts['differs-by-context'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['probe-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['probe-todo'] / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['probe-invalid']" class="result-share-error" :style="{ width: `${measuredBar.counts['probe-invalid'] / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['probe-conflict']" class="result-share-error" title="PROBE CONFLICT" :style="{ width: `${measuredBar.counts['probe-conflict'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p v-if="measuredBar.complete && manualEnvironmentCount > 0">Every graded feature has a result. {{ manualEnvironmentCount }} environment {{ manualEnvironmentCount === 1 ? 'feature is' : 'features are' }} manual by design and not graded. See each row for whether it is supported.</p>
-  <p v-else>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
+  <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
+  <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
 </div>
 
 <details v-if="selectedRun && !multipleSystems" class="run-context">
@@ -236,7 +223,7 @@ const breadcrumbParent = (() => {
   </div>
 
   <ul>
-    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ run.subject.version }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
+    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
   </ul>
   <dl>
     <dt>Subject</dt><dd>{{ selectedRun.subject?.kind }} · {{ selectedRun.subject?.id }}</dd>
@@ -439,8 +426,6 @@ const breadcrumbParent = (() => {
 .result-share-unsupported { background: #ef4444; }
 .result-share-differs { background: #6366f1; }
 .result-share-inconclusive { background: #8b5cf6; }
-.result-share-not-tested { background: var(--vp-c-text-3); }
-.result-share-error { background: #a34620; }
 
 .score-card .result-counts {
   display: grid;

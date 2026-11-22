@@ -208,6 +208,8 @@ vi.mock("../docs/data/current-results.ts", async () => {
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
+  // #37341: each fixture cell stores an exchange, because a decided result with no stored record fails the build.
+  const { UNANSWERED_QUERY } = await import("./stored-exchange.fixture.ts")
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
     // A real selected collection leaves exactly one older original cell visible.
@@ -231,8 +233,10 @@ vi.mock("../docs/data/current-results.ts", async () => {
         tests: [],
         assertionType: cell?.assertionType,
         reason: cell?.note,
+        ...(cell && { rawReplyRef: featureId }),
       }
     })
+    const exchanges = Object.fromEntries(Object.keys(run.cells).map((featureId) => [featureId, UNANSWERED_QUERY]))
     return {
       schemaVersion: 4,
       source: { kind: "live" },
@@ -249,16 +253,17 @@ vi.mock("../docs/data/current-results.ts", async () => {
       results,
       suiteComplete: true,
       suiteProbeCount: ids.length,
-      rawReplies: selectedIds
-        ? {
-            "collector.selection": JSON.stringify({ ids: selectedIds }),
-            "collector.collectionAttempt": JSON.stringify({
-              ids: selectedIds,
-              startedAt: run.measuredAt,
-              result: "completed",
-            }),
-          }
-        : {},
+      rawReplies: {
+        ...exchanges,
+        ...(selectedIds && {
+          "collector.selection": JSON.stringify({ ids: selectedIds }),
+          "collector.collectionAttempt": JSON.stringify({
+            ids: selectedIds,
+            startedAt: run.measuredAt,
+            result: "completed",
+          }),
+        }),
+      },
       assertions: [],
       observations: [],
       origin: { kind: "collector" },
@@ -457,7 +462,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
           const {sources, ...summary} = api.contexts[key];
           // #33600: the published document is the stored shape — six stored statuses, never the site's
           // derived differs bucket.
-          assert.deepEqual(summary, storedDocument((({sources, ...rest}) => rest)(context), key));
+          // #37341 D6: the API context lists the public catalogue, so its catalogIds is the projection's, filtered to
+          // the API's public ids; every other field is the stored shape of the published context.
+          const publicIds = new Set(v3.catalogIds);
+          assert.deepEqual(summary, storedDocument((({sources, ...rest}) => ({...rest, catalogIds: rest.catalogIds.filter((id) => publicIds.has(id))}))(context), key));
           assert.deepEqual(keys(sources), keys(context.sources));
           for (const [id, cell] of Object.entries(context.featureResults)) {
             assert.ok(sources[cell.origin.runId], key + "/" + id + " has original source");
@@ -630,6 +638,10 @@ function prepareAnalysisFixture(out: string): string {
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
   mkdirSync(join(out, "docs"))
   cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+  // probes.data.ts reads displayVersions from the theme (#37341 D11), its one import outside docs/data.
+  mkdirSync(join(out, "docs", ".vitepress", "theme"), { recursive: true })
+  const displayVersion = join("docs", ".vitepress", "theme", "display-version.ts")
+  cpSync(join(sourceRoot, displayVersion), join(out, displayVersion))
   for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
   const script = join(out, "scripts", "generate-analysis.ts")
   cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
@@ -934,8 +946,12 @@ describe("selected-run consumer parity", () => {
       for (const path of summaries) {
         const summary = read(path)
         expect(report.dataJsonBytes[path]).toBe(Buffer.byteLength(summary))
-        // A summary may carry a run's receipt; it never carries the trace's records.
-        for (const url of traces) expect(summary).not.toContain(JSON.stringify(cellsOf(url)))
+        // A summary may carry a run's receipt; it never carries the trace's records. #37341 D5: a run whose results
+        // are all undecided has an empty public trace, which holds no record to leak.
+        for (const url of traces) {
+          const records = cellsOf(url)
+          if (Object.keys(records).length > 0) expect(summary).not.toContain(JSON.stringify(records))
+        }
       }
     } finally {
       rmSync(out, { recursive: true, force: true })
@@ -987,7 +1003,15 @@ describe("selected-run consumer parity", () => {
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
       const raw = current.readRaw()
-      raw.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
+      // A stored exchange whose read window holds a private marker; only the reply that fits sgr.bold's declared
+      // control-report shape is published (#37341, @cto 0e2bbcf6).
+      raw.rawReplies = {
+        ...raw.rawReplies,
+        "bold-reply": JSON.stringify({
+          writes: ["\u001b[1m"],
+          queries: [{ sequence: "\u001b[6n", reason: "reply", match: ["\u001b[1;2R"], raw: "RETAINED_CURRENT_REPLY" }],
+        }),
+      }
       raw.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
@@ -999,7 +1023,7 @@ describe("selected-run consumer parity", () => {
       ])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
-      // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
+      // 30565, #37341: the displayed run's trace publishes the result's declared-shape record and its sentences only.
       const receipt = unpublished.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
       if (!receipt) throw new Error("Missing trace receipt for the displayed current run")
       expect(receipt.url).toBe(`/api/v3/traces/${current.sha256}.json`)
@@ -1010,9 +1034,12 @@ describe("selected-run consumer parity", () => {
       expect(cells["sgr.bold"]).toEqual({
         status: "supported",
         ...(result.assertionType && { assertionType: result.assertionType }),
-        replyWithheld: true,
-        assertions: [{ kind: "positive", expected: "expected criterion", observed: "actual response" }],
+        evidence: ["The terminal sent back ESC [ 1;2 R."],
+        writes: ["\u001b[1m"],
+        queries: [{ sequence: "\u001b[6n", reason: "reply", match: ["\u001b[1;2R"] }],
+        assertions: [{ kind: "positive", expected: "expected criterion" }],
       })
+      expect(trace.bytes).not.toContain("actual response")
       for (const marker of [
         "RETAINED_CURRENT_REPLY",
         "UNAPPROVED_CURRENT_REASON",
@@ -1259,24 +1286,21 @@ describe("selected-run consumer parity", () => {
       counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 263, "probe-invalid": 0 },
       complete: false,
     })
+    // #37341 D2: the bar width still reads Supported of graded; the page prints the two counts, never a percentage.
     expect(site.stats.screen?.pct).toBe(0)
-    expect(terminal?.params).toMatchObject({
-      pct: "0",
-    })
+    expect(terminal?.params).toMatchObject({ readout: "0 supported · 1 of 264 tested" })
+    expect(terminal?.params).not.toHaveProperty("pct")
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      expect.objectContaining({
-        version: fixture.screen.subject.version,
-        pct: 0,
-        suiteFreshness: "tree suite current",
-      }),
-      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite older-suite" }),
+      { version: fixture.screen.subject.version, total: 264, yes: 0, suiteFreshness: "tree suite current" },
+      { version: "4.9", total: 264, yes: 1, suiteFreshness: "older suite older-suite" },
     ])
     const screen = loadProbes().selectedByBackend.screen!.selected
     const olderRunId = "screen-older-reviewed-sealed-cccccccc"
     const currentRunId = "screen-reviewed-sealed-dddddddd"
     expect(screen.contributingRunIds).toEqual([olderRunId, currentRunId])
     expect(Object.values(screen.featureResults).filter((cell) => cell.origin.runId === olderRunId)).toHaveLength(1)
-    expect(Object.values(screen.featureResults).filter((cell) => cell.origin.runId === currentRunId)).toHaveLength(272)
+    // #37341 Q4: the current run decided none of its 272 cells, so it publishes none; it still contributes its source.
+    expect(Object.values(screen.featureResults).filter((cell) => cell.origin.runId === currentRunId)).toHaveLength(0)
     expect(screen.featureResults["extensions.sixel"]).toMatchObject({
       status: "unsupported",
       origin: { runId: olderRunId, resultId: "extensions.sixel" },
@@ -1284,12 +1308,8 @@ describe("selected-run consumer parity", () => {
       suiteRelation: "older",
       measuredAt: fixture.measuredAt,
     })
-    expect(screen.featureResults["sgr.bold"]).toMatchObject({
-      status: "probe-todo",
-      origin: { runId: currentRunId, resultId: "sgr.bold" },
-      suiteRelation: "tree",
-      measuredAt: fixture.screen.measuredAt,
-    })
+    // The current run's PROBE TODO bold is a result we haven't decided, so the selection leaves it out.
+    expect(screen.featureResults["sgr.bold"]).toBeUndefined()
     expect(screen.sources[olderRunId]).toMatchObject({
       suiteFreshness: "older suite older-suite",
       suiteRelation: "older",
@@ -1310,14 +1330,20 @@ describe("selected-run consumer parity", () => {
           [page.params.termAId, page.params.termBId].includes("screen") &&
           [page.params.termAId, page.params.termBId].includes("kitty"),
       )
-    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("264")
+    // #37341 D2: the comparison card prints the same two-count readout as the terminal page.
+    expect(comparison?.params[comparison.params.termAId === "screen" ? "termAReadout" : "termBReadout"]).toBe(
+      "0 supported · 1 of 264 tested",
+    )
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
-    expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
-      expect.objectContaining({ name: "screen", score: { all: 79, supported: 0 }, pct: 0 }),
+    const screenCore = (JSON.parse(core?.params.scores ?? "[]") as Array<Record<string, unknown>>).find(
+      (row) => row.name === "screen",
     )
+    expect(screenCore).toMatchObject({ score: { all: 79, supported: 0 } })
+    expect(screenCore).not.toHaveProperty("pct")
+    // Only Kitty decided bold: the screen and tmux PROBE TODO cells are results we haven't decided, so neither counts.
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
-    expect(bold?.params).toMatchObject({ yesCount: "1", totalCount: "3" })
+    expect(bold?.params).toMatchObject({ yesCount: "1", totalCount: "1" })
   })
 
   it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
@@ -1336,6 +1362,28 @@ describe("selected-run consumer parity", () => {
       const result = run.featureResults[id]
       if (!result) throw new Error(`Missing fixture result ${id}`)
       return result
+    }
+    /**
+     * #37341 Q4: a selection publishes decided cells only, so a run that decided every feature publishes a cell for
+     * every catalogue id; each added cell reads as measured by the run's current source, with no recorded evidence
+     * method, exactly like the fixture's unmeasured cells.
+     */
+    function decideEvery(run: PublicContextSummary, template: PublicContextSummary["featureResults"][string]) {
+      const runId = run.contributingRunIds.at(-1)
+      const source = runId === undefined ? undefined : run.sources[runId]
+      if (!runId || !source) throw new Error(`Missing current source for ${run.contextKey}`)
+      const { assertionType: _assertionType, ...unmeasured } = structuredClone(template)
+      for (const id of run.catalogIds) {
+        run.featureResults[id] ??= {
+          ...unmeasured,
+          featureId: id,
+          origin: { runId, resultId: id },
+          suiteId: source.suiteId,
+          suiteRelation: source.suiteRelation,
+          measuredAt: source.measuredAt,
+        }
+        Object.assign(run.featureResults[id], { status: "unsupported" })
+      }
     }
     function refresh(entry: NonNullable<ReturnType<typeof loadProbes>["selectedByBackend"][string]>) {
       entry.states = Object.fromEntries(
@@ -1365,9 +1413,8 @@ describe("selected-run consumer parity", () => {
     const originalTmux = structuredClone(tmux)
     try {
       screen.subject.mux = tmux.subject.mux
-      for (const result of [...Object.values(screen.featureResults), ...Object.values(tmux.featureResults)]) {
-        Object.assign(result, { status: "unsupported" })
-      }
+      decideEvery(screen, bold)
+      decideEvery(tmux, bold)
       Object.assign(requiredResult(screen, "sgr.bold"), { assertionType: bold.assertionType, status: "unsupported" })
       Object.assign(requiredResult(tmux, "sgr.bold"), { assertionType: bold.assertionType, status: "supported" })
       Object.assign(requiredResult(screen, "extensions.sixel"), {
@@ -1411,13 +1458,14 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("scores baseline support over the full catalog and exposes test failures", () => {
+  it("scores baseline support over the full catalog and counts an undecided cell as not tested", () => {
     const site = loadClientProbes()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
-    // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
+    // #37341 Q2: a public baseline lists public positions only, so the core baseline's environment group is gone and
+    // every position it lists is graded.
     const graded = scoredFeatureIds(site.baselines.core ?? []).length
-    expect(graded).toBe(catalog - 1)
+    expect(graded).toBe(catalog)
     expect(site.baselineStats.kitty?.core).toMatchObject({
       score: { all: graded, supported: 1 },
       pct: Math.round(100 / graded),
@@ -1430,19 +1478,25 @@ describe("selected-run consumer parity", () => {
     })
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     const scores = JSON.parse(core?.params.scores || "[]") as Array<Record<string, unknown>>
-    expect(scores.find((score) => score.name === "kitty")).toMatchObject({
+    // #37341 D2: the page row carries counts for the two-count readout, never a percentage.
+    const kittyCore = scores.find((score) => score.name === "kitty")
+    expect(kittyCore).toMatchObject({
       version: fixture.selected.subject.version,
       score: { all: graded, supported: 1 },
-      pct: Math.round(100 / graded),
     })
+    expect(kittyCore).not.toHaveProperty("pct")
     const screenBold = fixture.screen.cells["sgr.bold"] as SelectedCell
     if (!screenBold) throw new Error("Missing screen error-count fixture cell")
     const originalScreenBold = structuredClone(screenBold)
     try {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
-      expect(loadClientProbes().baselineStats.screen?.core).toMatchObject({
-        counts: { "probe-invalid": 1, "probe-todo": graded - 1 },
+      // #37341 Q1, Q4: a PROBE INVALID cell is a result we haven't decided. The public projection leaves it out, so
+      // the site never prints the invalid count; the baseline folds it as not tested, like any other blank.
+      const reloaded = loadClientProbes()
+      expect(reloaded.results.screen?.["sgr.bold"]).toBeUndefined()
+      expect(reloaded.baselineStats.screen?.core).toMatchObject({
+        counts: { "probe-invalid": 0, "probe-todo": graded },
         score: { all: graded, supported: 0 },
       })
     } finally {
@@ -1494,18 +1548,18 @@ describe("selected-run consumer parity", () => {
   it("uses selected public notes across routes without promoting unscoped annotations", () => {
     const data = loadProbes()
     const reviewed = data.selectedByBackend.kitty?.selected.featureResults["sgr.bold"]
-    const inconclusive = data.selectedByBackend.screen?.selected.featureResults["sgr.bold"]
-    if (!reviewed || !inconclusive) throw new Error("Missing selected bold cells in parity fixture")
+    if (!reviewed) throw new Error("Missing selected Kitty bold cell in parity fixture")
+    // #37341 Q4, D3: screen's PROBE TODO bold is a result we haven't decided, so it is not published and no note can
+    // attach to it; every route prints its Notes column blank.
+    expect(data.selectedByBackend.screen?.selected.featureResults["sgr.bold"]).toBeUndefined()
+    expect(data.notes.screen?.["sgr.bold"]).toBeUndefined()
     const originalNote = reviewed.reason
-    const originalInconclusiveNote = inconclusive.reason
     const originalBoldAnnotation = data.annotations["kitty:sgr.bold"]
     const originalSixelAnnotation = data.annotations["kitty:extensions.sixel"]
     const originalScreenAnnotation = data.annotations["screen:sgr.bold"]
     const originalNotes = structuredClone(data.notes)
     reviewed.reason = "Reviewed Kitty bold note"
     data.notes.kitty = { ...data.notes.kitty, "sgr.bold": "Reviewed Kitty bold note" }
-    data.notes.screen = { ...data.notes.screen, "sgr.bold": "Reviewed screen inconclusive note" }
-    inconclusive.reason = "Reviewed screen inconclusive note"
     data.annotations["kitty:sgr.bold"] = {
       note: "Unscoped conflicting bold annotation",
       url: "https://example.org/unscoped-implementation",
@@ -1543,7 +1597,7 @@ describe("selected-run consumer parity", () => {
       for (const [backendName, featureId, categoryId, tagId, baselineId, expected] of [
         ["kitty", "sgr.bold", "sgr", "ecma-48", "core", "Reviewed Kitty bold note"],
         ["kitty", "extensions.sixel", "extensions", "sixel", "rich", ""],
-        ["screen", "sgr.bold", "sgr", "ecma-48", "core", "Reviewed screen inconclusive note"],
+        ["screen", "sgr.bold", "sgr", "ecma-48", "core", ""],
       ] as const) {
         const category = categories.find((page) => page.params.id === categoryId)
         const tag = categories.find((page) => page.params.id === tagId)
@@ -1558,7 +1612,7 @@ describe("selected-run consumer parity", () => {
         expect(comparison?.params.termAId === backendName ? comparisonRow?.noteA : comparisonRow?.noteB).toBe(expected)
         expect(terminalNote(backendName, featureId)).toBe(expected)
       }
-      expect(data.results.screen?.["sgr.bold"]).toBe("probe-todo")
+      expect(data.results.screen?.["sgr.bold"]).toBeUndefined()
       const bold = features.find((page) => page.params.featureId === "sgr.bold")
       const boldResults = JSON.parse(bold?.params.backendResults ?? "[]") as Array<Record<string, unknown>>
       expect(boldResults.find((row) => row.name === "kitty")).not.toHaveProperty("url")
@@ -1570,8 +1624,6 @@ describe("selected-run consumer parity", () => {
       data.notes = originalNotes
       if (originalNote === undefined) delete reviewed.reason
       else reviewed.reason = originalNote
-      if (originalInconclusiveNote === undefined) delete inconclusive.reason
-      else inconclusive.reason = originalInconclusiveNote
       if (originalBoldAnnotation === undefined) delete data.annotations["kitty:sgr.bold"]
       else data.annotations["kitty:sgr.bold"] = originalBoldAnnotation
       if (originalSixelAnnotation === undefined) delete data.annotations["kitty:extensions.sixel"]

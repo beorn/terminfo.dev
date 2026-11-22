@@ -158,10 +158,8 @@ it.each([
     }
     expect(placeCheckedRun).not.toHaveBeenCalled()
     if (mode === "private") {
-      const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
-      expect(log).toHaveBeenCalledWith(
-        expect.stringContaining(`1 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause} (retained privately)`),
-      )
+      // #37341 D2, D12: two counts over the graded features; the environment rows add no clause and no position.
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("0 supported · 0 of 1 tested (retained privately)"))
       expect(readFileSync(join(output, "http-response.json"), "utf8")).toBe(bytes)
       const raw = readdirSync(output).find((name) => name.startsWith("tmux-3.6a-"))
       expect(raw).toBeTruthy()

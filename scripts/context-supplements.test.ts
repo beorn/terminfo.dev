@@ -26,6 +26,7 @@ import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import * as currentResults from "../docs/data/current-results.ts"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
+import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
 
 const READ = "extensions.osc52-read"
 const ROUND_TRIP = "extensions.osc52-clipboard"
@@ -80,7 +81,7 @@ function run(
   draft.measuredAt = measuredAt
   draft.origin = { kind: "collector" }
   const entries = Object.entries(measured)
-  draft.rawReplies = Object.fromEntries(entries.map(([id, status]) => [id, status === "supported" ? "ACK" : "NO"]))
+  draft.rawReplies = Object.fromEntries(entries.map(([id]) => [id, UNANSWERED_QUERY]))
   draft.results = catalog.ids.map((featureId): ProbeResult => {
     const index = entries.findIndex(([id]) => id === featureId)
     const status = measured[featureId]

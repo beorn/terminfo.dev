@@ -42,7 +42,8 @@ export interface TraceCellRecord {
   status?: ProbeStatus
   assertionType?: Observation["assertionType"] | ProbeResult["assertionType"]
   reason?: ObservationReason
-  replyWithheld?: true
+  /** One or two plain sentences on what the test observed, worded at trace build (evidence-messages.ts). */
+  evidence?: string[]
   writes?: string[]
   queries?: TraceQuery[]
   events?: TraceEvent[]
@@ -83,12 +84,10 @@ export interface TracePaneItem {
 
 export interface TracePaneCopy {
   tested: {
-    reasonLine?: string
     items: TracePaneItem[]
     sourceLine: string
     /** Absent when the trace carries no identity-rule check (#34617): the recorded draft field is no verdict. */
     identityLine?: string
-    notKeptLine: string
     text: string
   }
   expected: {
@@ -104,18 +103,6 @@ export interface TracePaneOptions {
   probeGuidance?: string
   subjectKind?: string
   hasReferenceImage?: boolean
-}
-
-export const REASON_EXPLANATIONS: Record<ObservationReason, string> = {
-  "no-response": "No terminal reply was recorded for this query.",
-  timeout: "The probe did not finish before its time limit.",
-  permission: "Required permission was not available for this probe.",
-  "policy-refused": "The configured policy declined to run or allow this probe.",
-  "collector-error": "The collector failed to complete this probe.",
-  "invalid-reply": "The recorded reply did not match this probe’s expected format.",
-  "insufficient-evidence": "The recorded observation does not establish support; more evidence is needed.",
-  "fenced-silence":
-    "The device attributes answer came back with no reply before it; the feature row's silence rule decides the result.",
 }
 
 const CONTROL_NAMES: Record<number, string> = {
@@ -425,6 +412,19 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
   } as LoadedCellEvidence
 }
 
+const DECIDED_STATUSES = new Set(["supported", "unsupported", "untestable"])
+
+/** A decided current cell carries one or two evidence sentences; an undecided one carries none. */
+function evidenceFits(status: string, evidence: unknown): boolean {
+  if (!DECIDED_STATUSES.has(status)) return evidence === undefined
+  return (
+    Array.isArray(evidence) &&
+    evidence.length >= 1 &&
+    evidence.length <= 2 &&
+    evidence.every((sentence) => typeof sentence === "string" && sentence.length > 0)
+  )
+}
+
 /**
  * Validate a parsed per-run trace document (`version: 1`) and extract the trace cell for
  * `expectation.featureId` (#30565, @cto ruling 2239262c condition 2).
@@ -458,13 +458,13 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
   if (currentRuleCheck === null) throw new Error("Trace document identity or structure does not match this result")
   const cellEntry = featureResults[expectation.featureId]
   if (cellEntry === undefined) {
-    throw new Error("no trace stored for this cell")
+    throw new Error(`Trace document for run ${expectation.runId} holds no result for ${expectation.featureId}`)
   }
   if (
     !isRecord(cellEntry) ||
     !Array.isArray(cellEntry.assertions) ||
     (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
-      ? typeof cellEntry.status !== "string"
+      ? typeof cellEntry.status !== "string" || !evidenceFits(cellEntry.status, cellEntry.evidence)
       : typeof cellEntry.outcome !== "string" ||
         (cellEntry.assertionType !== undefined && typeof cellEntry.assertionType !== "string"))
   ) {
@@ -487,23 +487,25 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
 }
 
 /**
- * Format the TESTED and EXPECTED popover panes from a validated cell trace and catalog metadata (#30565).
+ * Format the TESTED and EXPECTED popover panes from a validated cell trace and catalog metadata (#30565). The
+ * TESTED pane shows the bytes the probe wrote and asked, then the evidence sentences the trace carries; every
+ * word of those sentences comes from evidence-messages.ts at trace build (#37341).
  */
 export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOptions = {}): TracePaneCopy {
   const { cell } = trace
   const measuredDate = trace.measuredAt.slice(0, 10)
   const shortRunId = trace.runId.slice(0, 8)
   const runPrefix = trace.schemaVersion === 3 || trace.schemaVersion === 4 ? "Current run" : "Historical run"
-  const evidenceMethod = cell.assertionType ?? "no typed observation retained"
-  const sourceLine = `${runPrefix} ${shortRunId} · ${measuredDate} · ${evidenceMethod} · presentation not reviewed`
+  const sourceLine = [
+    `${runPrefix} ${shortRunId}`,
+    measuredDate,
+    ...(cell.assertionType ? [cell.assertionType] : []),
+  ].join(" · ")
   const identityLine = formatTraceIdentity(trace.identity)
-  const reasonLine = cell.reason ? `${cell.reason}: ${REASON_EXPLANATIONS[cell.reason] ?? cell.reason}` : undefined
 
   const items: TracePaneItem[] = []
-  let notKeptLine: string
-
-  const isHeadless =
-    options.subjectKind === "lib" || cell.assertionType === "buffer_state" || cell.parserState !== undefined
+  // A headless library has a parser state; a live terminal's buffer_state read is not one (#37341).
+  const isHeadless = options.subjectKind === "lib" || cell.parserState !== undefined
   const writes =
     cell.writes && cell.writes.length > 0
       ? cell.writes
@@ -512,111 +514,28 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     cell.queries && cell.queries.length > 0
       ? cell.queries
       : (cell.events ?? []).flatMap((e) =>
-          e.kind === "query" && typeof e.sequence === "string"
-            ? [
-                {
-                  sequence: e.sequence,
-                  ...(e.reason && { reason: e.reason }),
-                  ...(e.match !== undefined && { match: e.match }),
-                },
-              ]
-            : [],
+          e.kind === "query" && typeof e.sequence === "string" ? [{ sequence: e.sequence }] : [],
         )
-
-  if (isHeadless) {
-    const rev = trace.sourceRevision ? trace.sourceRevision.slice(0, 8) : "not recorded"
-    items.push({
-      label: "Sent",
-      text: `Input bytes were not stored by this run (source revision ${rev}).`,
-    })
-    const observedState =
-      cell.parserState !== undefined
-        ? formatParserState(cell.parserState)
-        : cell.assertions
-            .map((a) => a.observed)
-            .filter((v): v is string => v !== undefined && v !== "")
-            .map(formatControlBytes)
-            .join("\n") || "Nothing"
-    items.push({
-      label: "Observed · parser state",
-      pre: observedState,
-    })
-    notKeptLine = "Not kept: screenshot (headless parser has none), input bytes"
-  } else if (writes.length > 0 || queries.length > 0) {
-    if (writes.length > 0) {
-      items.push({
-        label: "Sent",
-        code: writes.map(formatControlBytes).join("  "),
-      })
-    }
-    if (queries.length > 0) {
-      const reasons = [...new Set(queries.map((q) => q.reason).filter(Boolean))].join(", ")
-      items.push({
-        label: `Query${reasons ? ` · ${reasons}` : ""}`,
-        code: queries.map((q) => formatControlBytes(q.sequence)).join("  "),
-      })
-    }
-    const primaryMatches = queries
-      .map((q) => (q.match?.[0] !== undefined ? formatControlBytes(q.match[0]) : undefined))
-      .filter((v): v is string => v !== undefined)
-    const observedValues = cell.assertions
-      .map((a) => a.observed)
-      .filter((v): v is string => v !== undefined && v !== "")
-      .map(formatControlBytes)
-
-    if (cell.replyWithheld) {
-      items.push({
-        label: "Observed",
-        text: "Observed bytes not reviewed for publication.",
-      })
-    } else if (primaryMatches.length > 0) {
-      items.push({
-        label: "Observed",
-        code: primaryMatches.join("  "),
-        ...(observedValues.length > 0 && { text: `Observed: ${observedValues.join(", ")}` }),
-      })
-    } else if (observedValues.length > 0) {
-      items.push({
-        label: "Observed",
-        code: observedValues.join("\n"),
-      })
-    } else {
-      const reasons = [...new Set(queries.map((q) => q.reason).filter(Boolean))].join(", ")
-      items.push({
-        label: "Observed",
-        text: queries.length > 0 ? `No matching reply (${reasons || "none"}).` : "No reply recorded.",
-      })
-    }
-    notKeptLine = "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file"
-  } else if (cell.replyWithheld) {
-    items.push({
-      label: "Sent",
-      text: "Input bytes were not stored by this run.",
-    })
-    items.push({
-      label: "Observed",
-      text: "Observed bytes not reviewed for publication.",
-    })
-    notKeptLine = "Not kept: screenshot, raw read window, reviewed evidence file"
-  } else {
-    const nothingSent = cell.reason === "policy-refused" || cell.reason === "permission"
-    items.push({
-      label: "Sent",
-      text: nothingSent ? "Nothing" : "Input bytes were not stored by this run.",
-    })
-    items.push({
-      label: "Observed",
-      text: "Nothing",
-    })
-    notKeptLine = "Not kept: collector note, screenshot, reviewed evidence file"
+  if (writes.length > 0) items.push({ label: "Sent", code: writes.map(formatControlBytes).join("  ") })
+  const asked = queries.filter((query) => query.sequence !== "")
+  if (asked.length > 0) {
+    items.push({ label: "Query", code: asked.map((q) => formatControlBytes(q.sequence)).join("  ") })
+  }
+  // A current decided cell always carries its sentences (readCellTrace checks it); a historical trace has none,
+  // and shows only what it stored: the bytes and a headless parser state.
+  const evidence = cell.evidence
+  const state =
+    isHeadless && cell.parserState !== undefined && typeof cell.parserState !== "string"
+      ? formatParserState(cell.parserState)
+      : undefined
+  if (evidence !== undefined || state !== undefined) {
+    items.push({ label: "Observed", ...(evidence && { text: evidence.join(" ") }), ...(state && { pre: state }) })
   }
 
   const testedLines = [
-    ...(reasonLine ? [reasonLine] : []),
-    ...items.flatMap((item) => [item.label, item.code, item.pre, item.text].filter((v): v is string => Boolean(v))),
+    ...items.flatMap((item) => [item.label, item.code, item.text, item.pre].filter((v): v is string => Boolean(v))),
     sourceLine,
     ...(identityLine ? [identityLine] : []),
-    notKeptLine,
   ]
 
   const sequence = options.sequence ? formatControlBytes(options.sequence) : undefined
@@ -634,11 +553,9 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
 
   return {
     tested: {
-      ...(reasonLine && { reasonLine }),
       items,
       sourceLine,
       ...(identityLine && { identityLine }),
-      notKeptLine,
       text: testedLines.join("\n"),
     },
     expected: {

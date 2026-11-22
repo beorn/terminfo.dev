@@ -17,6 +17,8 @@ function stageRepo(root: string): void {
   copyFileSync(join(source, "packages", "admin", "src", "report.ts"), join(admin, "src", "report.ts"))
   copyFileSync(join(source, "packages", "admin", "report.tsx"), join(admin, "report.tsx"))
   symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
+  // #37341 D12: the admin lines print the undecided split from this admin-only module.
+  symlinkSync(join(source, "packages", "admin", "undecided-split.ts"), join(admin, "undecided-split.ts"))
   symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
   symlinkSync(join(source, "packages", "admin", "suite-manifest.ts"), join(admin, "suite-manifest.ts"))
   symlinkSync(join(source, "packages", "admin", "suite-retention.ts"), join(admin, "suite-retention.ts"))
@@ -156,8 +158,8 @@ test("report renders computed conflicts with unscored environment rows and origi
   const matrix = plain.split("Feature comparison")[1]?.split("Observation reasons and notes")[0]
   expect(matrix?.split("\n").find((row) => row.trimStart().startsWith(featureId))).toMatch(/\bCONFLICT\b/)
   expect(matrix?.split("\n").find((row) => row.trimStart().startsWith(environmentId))).toMatch(/\bN\/M\b/)
-  expect(plain).toContain("0/1 Supported / all (0%)")
-  expect(plain).toMatch(/\b1 PROBE\s+CONFLICT\b/)
+  // #37341 D12: the one readout (two counts, no share), then the undecided split from the same counts.
+  expect(plain).toMatch(/0 supported · 0 of 1 tested · 0 PROBE\s+TODO · 0 PROBE\s+INVALID · 1 PROBE\s+CONFLICT/)
   expect(plain).toContain("result coverage incomplete")
   expect(plain).toContain(`${featureId}:output`)
   expect(plain).toContain(`${featureId}:end-to-end`)
@@ -520,8 +522,9 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(stateRow("sgr.italic")).toMatchObject({ [normal!]: "TODO", [allInconclusive!]: "TODO" })
     expect(plain).toContain(`${normal} extensions.query: timeout`)
     expect(plain).toContain(`${normal} modes.autowrap: collector-error`)
-    expect(plain).toContain("1/5 Supported / all (20%)")
-    expect(plain).toContain("0/5 Supported / all (0%)")
+    // #37341 D2, D12: two counts per context (1 Supported, 1 Unsupported decided; the all-inconclusive run none).
+    expect(plain).toContain("1 supported · 2 of 5 tested")
+    expect(plain).toContain("0 supported · 0 of 5 tested")
     expect(plain).not.toContain("NaN")
     expect(plain).toContain("Excluded runs:")
 
@@ -643,7 +646,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     const lastFeature = fixtureFeatures.at(-1)
     expect(composed.stdout).toContain(`${lastFeature}: baseline-kitty / ${lastFeature}`)
     expect(composed.stdout).toContain("partial collector stopped")
-    expect(composed.stdout).toContain("0/5 Supported / all")
+    expect(composed.stdout).toMatch(/0 supported · \d of 5 tested/)
 
     // A pre-start draft has intent and an error, not measured subject/identity or a sealed run.
     const refusedPath = join(root, "refused.draft.json")

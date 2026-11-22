@@ -274,7 +274,7 @@ For **terminal applications**, query probes record replies such as cursor positi
 
 For **headless backends**, [Termless](https://termless.dev) sends sequences and tests replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
 
-The methods complement each other. Missing observations are PROBE TODO; an attempted probe without a result is PROBE INVALID; Untestable has no current route. Permissions and intermediaries such as multiplexers are part of the measurement context.
+The methods complement each other. When nothing was observed, or an attempt gave no valid result, the result is left blank: we haven't decided it. Untestable means the context cannot show the feature at all, and the result says why. Permissions and intermediaries such as multiplexers are part of the measurement context.
 
 ---
 

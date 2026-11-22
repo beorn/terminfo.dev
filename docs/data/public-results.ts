@@ -1,6 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import { isEnvironmentGroup, isHarnessOutcome } from "@terminfo/probe-defs"
+import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   FeatureResultStatus,
@@ -12,14 +12,13 @@ import type {
 import { classifyProjectionSetups, type CurrentResult } from "./current-results.ts"
 import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
 import type { SetupStanding } from "./run-selection.ts"
-import { standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
-import type { FeatureResult } from "./release-scope.ts"
+import { isPublishedStatus, standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
+import type { FeatureResult, RollupCounts } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
-import { publicDerivedReason } from "./derived-cells.ts"
+import { publicDerivedReason, type DerivedMarker } from "./derived-cells.ts"
 import { publicHeldReason } from "./held-negatives.ts"
 import {
-  type PriorDecision,
   type SelectedCell,
   type SelectedContextCell,
   type SelectedContextSummary,
@@ -138,26 +137,41 @@ function screenGeometry(receipt: string | undefined): { rows: number; cols: numb
   return undefined
 }
 
-/** Current public results retain stored statuses; evidence remains separately publication-reviewed. */
+/**
+ * Current public results retain stored statuses; evidence remains separately publication-reviewed. #37341 Q4: only a
+ * decided result is published, with its decided tests only; a result we haven't decided is absent.
+ */
 export interface PublicProbeResult extends Pick<
   ProbeResult,
   "featureId" | "status" | "attempt" | "tests" | "assertionType"
 > {
   reason?: string
   /**
-   * The Windows console-host hold this reader applied (#30720): it names the host that answered the
-   * queries, which is why the cell reads PROBE TODO. Published even when the cell's own evidence prose is
-   * not approved for publication, because it explains the displayed verdict rather than adding evidence.
+   * The Windows console-host hold this reader applied (#30720): it names the host that answered the queries. Read
+   * from a decided console-host test only, so no undecided test's words reach a card (@cto 760e9219).
    */
   hold?: string
   record?: PublicImages
   presentation: PublicPresentation
 }
 
+/** #37341 Q4, D6: the counts a published document carries: its decided buckets, never the undecided keys. */
+export type PublicCounts = Omit<RollupCounts, (typeof UNPUBLISHED_COUNT_KEYS)[number]>
+
+/** The count keys a published document leaves out (#37341 D6); api.md's dated note names them. */
+export const UNPUBLISHED_COUNT_KEYS = ["probe-todo", "probe-invalid", "probe-conflict"] as const
+
+/** A count set as a published document carries it: the undecided keys are left out by name. */
+export function publicCounts(counts: Readonly<Record<string, number>>): PublicCounts {
+  const { "probe-todo": _todo, "probe-invalid": _invalid, "probe-conflict": _conflict, ...decided } = counts
+  return decided as PublicCounts
+}
+
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo" | "identityRuleCheck"
+  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo" | "identityRuleCheck" | "counts"
 > {
+  counts: PublicCounts
   results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
   trace?: TraceReceipt
@@ -187,12 +201,9 @@ export type PublicFeatureResult = Omit<PublicProbeResult, "status"> &
     status: AppCellStatus
   }
 
-export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
-  /**
-   * 34691: the current cells a harness refusal holds open, once per suite that refused them; absent when none. `open` is
-   * every such cell; `withPriorDecision` is the subset whose row shows an older decision as history. Display only.
-   */
-  refusals?: PublicRefusalSummary[]
+export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts" | "counts"> {
+  /** The context's decided buckets (#37341 Q4); `score` and `complete` stay folded over the whole catalogue. */
+  counts: PublicCounts
   /**
    * The context's standing among its own app's setups: the group's newest setup, or one strictly behind it. Explicit on
    * every published context, so no reader can read an absence as current (@cto 026fd6fd rule 2).
@@ -214,8 +225,12 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       supplement?: SelectedContextCell["supplement"]
       /** Present only when a reopened-cells row withdrew this cell's grade (#33164); `reason` says so in words. */
       reopened?: SelectedContextCell["reopened"]
-      /** Present only when a declared pair derived this cell from its parent (#33019); `reason` says so in words. */
-      derived?: SelectedContextCell["derived"]
+      /**
+       * Present only when a declared pair derived this cell from its parent (#33019); `reason` says so in words. The
+       * cell cites the parent's entry, which the derivation read (#37341 D5); the child's own undecided reading stays
+       * in the stored run and is never published.
+       */
+      derived?: Omit<DerivedMarker, "ownStatus" | "ownReason">
       /** Present only when a held negative waits for a Supported reading in its suite (#33034); `reason` says so. */
       held?: SelectedContextCell["held"]
       /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
@@ -226,13 +241,6 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
        * refused attempt, its time read from that run's own original.
        */
       refusedAttempt?: NonNullable<SelectedContextCell["refusedAttempt"]>
-      /**
-       * Present only when a same-version attempt under another suite refused this cell and replaced an older decision
-       * (34691). The cell's own status, reason and origin are that newest refusal, current and open; this is the last
-       * decided original, dated and attributed to its suite, never a current grade. `reason` is that original's public
-       * reason; `reopened` says its grade was later withdrawn.
-       */
-      priorDecision?: PublicPriorDecision
     }
   >
   sources: Record<string, PublicRunMetadata>
@@ -243,69 +251,6 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
    * app version and probe suite (@cto d321729a). Absent when the app has one context.
    */
   contexts?: string[]
-}
-
-/** 34691: a historical decision as the public page shows it: resolved through the original run, never copied. */
-export interface PublicPriorDecision {
-  origin: { runId: string; resultId: string }
-  status: FeatureResultStatus
-  version: string
-  suiteId: string
-  measuredAt: string
-  reason?: string
-  reopened?: NonNullable<SelectedContextCell["reopened"]>
-}
-
-/** 34691: one suite's refused current cells in one context, with the public reasons they read. */
-export interface PublicRefusalSummary {
-  suiteId: string
-  open: number
-  withPriorDecision: number
-  reasons: Array<{ reason: string; cells: number }>
-}
-
-/**
- * 34691: count each current cell a harness refusal holds open once, under the suite of the run that refused it. A cell
- * kept as an older decision (`refusedAttempt`) is decided, not open, so it is not counted. Reasons are the rows' public
- * reasons, most common first.
- */
-export function refusalSummary(
-  cells: Readonly<Record<string, SelectedContextCell>>,
-  reasonOf: (id: string) => string | undefined,
-): PublicRefusalSummary[] {
-  const bySuite = new Map<string, { open: number; withPriorDecision: number; reasons: Map<string, number> }>()
-  for (const [id, cell] of Object.entries(cells)) {
-    if (isEnvironmentGroup(id) || !isHarnessOutcome(cell.result.harnessOutcome)) continue
-    const suite = bySuite.get(cell.run.suiteId) ?? { open: 0, withPriorDecision: 0, reasons: new Map<string, number>() }
-    suite.open += 1
-    if (cell.priorDecision) suite.withPriorDecision += 1
-    const reason = reasonOf(id) ?? cell.result.harnessOutcome
-    suite.reasons.set(reason, (suite.reasons.get(reason) ?? 0) + 1)
-    bySuite.set(cell.run.suiteId, suite)
-  }
-  return [...bySuite].map(([suiteId, suite]) => ({
-    suiteId,
-    open: suite.open,
-    withPriorDecision: suite.withPriorDecision,
-    reasons: [...suite.reasons]
-      .map(([reason, count]) => ({ reason, cells: count }))
-      .sort((a, b) => b.cells - a.cells || (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0)),
-  }))
-}
-
-/** 34691: the history marker with its time, suite and public reason read from its original run's public mapping. */
-function publicPriorDecision(priorDecision: PriorDecision, original: PublicVersion): PublicPriorDecision {
-  const result = original.results.find((row) => row.featureId === priorDecision.resultId)
-  if (!result) throw new Error(`History original ${original.runId} lacks result ${priorDecision.resultId}`)
-  return {
-    origin: { runId: priorDecision.runId, resultId: priorDecision.resultId },
-    status: priorDecision.status,
-    version: priorDecision.version,
-    suiteId: original.suiteId,
-    measuredAt: original.measuredAt,
-    ...(result.reason !== undefined && { reason: result.reason }),
-    ...(priorDecision.reopened && { reopened: priorDecision.reopened }),
-  }
 }
 
 /** One context's contribution to a joined cell's grade, for the cell that must name its contexts. */
@@ -378,41 +323,70 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
-const UNSAFE_TODO_CLAUSE =
-  /(?:^|[\s(])(?:\/[a-z0-9._-]+|[a-z0-9._/-]+\/[a-z0-9._-]+\.[a-z0-9]+|@[a-z0-9/_-]+|#\d+|sha256:[0-9a-f]+)\b|[{}]|:\d+[:-]\d+|\b(?:TypeError|ReferenceError|SyntaxError|RangeError|JSON Parse error|Error):|^Pixel capture unavailable:|^cannot read structured\b|\b(?:unchecked collector note|UNAPPROVED_CURRENT_REASON|kept answers disagree|kept originals|not re-verified|TEST TODO)\b/i
+/**
+ * #37341 D5: the entry a derived cell cites is its parent's, which is what the derivation read: the parent cell of the
+ * same context, measured by the run the marker names. Anything else refuses, naming the cell.
+ */
+function derivedOrigin(
+  key: string,
+  id: string,
+  derived: DerivedMarker,
+  cells: Readonly<Record<string, SelectedContextCell>>,
+): SelectedContextCell["origin"] {
+  const parent = cells[derived.parent]
+  if (!parent || parent.origin.runId !== derived.parentRunId) {
+    throw new Error(
+      `${key}/${id}: derived from ${derived.parent} in run ${derived.parentRunId}, but this context's ${derived.parent} cell is ${parent ? `from run ${parent.origin.runId}` : "absent"}`,
+    )
+  }
+  return parent.origin
+}
 
-/** Maps a stored `probe-todo` reason to a short reader-safe missing-evidence explanation, withholding raw diagnostics and paths. */
-function publicTodoReason(reason: string | undefined): string | undefined {
-  if (!reason || reason === "Required probe test has not started") return undefined
-  if (reason === "source answer no longer counts (operator 2026-11-03)") {
-    return "no qualified probe observation in this run"
+/** #37341 Q4: a derived marker as published: the child's own undecided reading stays in the stored run. */
+function publishedDerived(derived: DerivedMarker): Omit<DerivedMarker, "ownStatus" | "ownReason"> {
+  const { ownStatus: _ownStatus, ownReason: _ownReason, ...published } = derived
+  return published
+}
+
+/**
+ * #37341 Q4 (@cpo/term f16a5a52): the ONE place a result we haven't decided leaves the public projection. Its cell is
+ * absent (so the site renders the blank it renders for no result), a joined cell names only the contexts that decided
+ * it, and the counts carry the decided buckets only; `score` and `complete` stay folded over the whole catalogue.
+ */
+function decidedSummary(summary: PublicContextSummary): PublicContextSummary {
+  const featureResults: PublicContextSummary["featureResults"] = {}
+  for (const [id, cell] of Object.entries(summary.featureResults)) {
+    if (!isPublishedStatus(cell.status)) continue
+    featureResults[id] = cell.joined
+      ? {
+          ...cell,
+          joined: { ...cell.joined, from: cell.joined.from.filter((grade) => isPublishedStatus(grade.status)) },
+        }
+      : cell
   }
-  if (
-    reason === "stored visual review not re-admitted: needs a same-run pixel check" ||
-    reason === "Source answer requires a current deciding negative assertion"
-  ) {
-    return "needs a same-run pixel check"
+  return { ...summary, counts: publicCounts(summary.counts), featureResults }
+}
+
+/**
+ * #37341 D5 (@cto 97ba8eea): every published card cites an entry of its run's public trace that is itself decided, or,
+ * for a reviewed declaration, its review (the cell's reason). A card whose citation is missing refuses here, at build
+ * time, naming the cell, instead of failing in a reader's browser.
+ */
+function checkCitations(where: string, summary: PublicContextSummary, documents: PublicDocuments): void {
+  for (const [id, cell] of Object.entries(summary.featureResults)) {
+    if (cell.declared) continue
+    const receipt = summary.sources[cell.origin.runId]?.trace
+    const document = receipt ? documents.get(receipt.url)?.document : undefined
+    const entry =
+      document && "featureResults" in document && !("cells" in document)
+        ? (document as CurrentTraceDocument).featureResults[cell.origin.resultId]
+        : undefined
+    if (!entry || !isPublishedStatus(entry.status)) {
+      throw new Error(
+        `${where}/${id}: the published cell cites ${cell.origin.runId}/${cell.origin.resultId}, which its run's public trace does not hold as a decided entry`,
+      )
+    }
   }
-  if (reason === "TERM_FEATURES: no engine-specific API source citation at this runtime") {
-    return "TERM_FEATURES: a library context spawns no application child to receive the environment export"
-  }
-  if (reason.startsWith("instrument gap Original measured-context rationale:")) {
-    if (/ligature/i.test(reason)) return "no calibrated ligature-capable font in this run"
-    if (/blink|one phase/i.test(reason)) return "single-phase capture cannot decide blink oscillation"
-    return "missing measurement control in this run"
-  }
-  const withoutPrefix = reason
-    .replace(/^(?:Collector policy:\s+|Instrument gap:\s+|[a-z0-9-]+(?:\.[a-z0-9-]+)+:\s+|#\d+\s+)/i, "")
-    .replace(/\bno audited library target readback\b/i, "no library target readback")
-    .replace(/^Our probe source lacks\b/i, "Probe runner lacks")
-    .replace(/\s+—\s+Capture calibration\b.*$/i, "")
-    .replace(/\s*\(seed sha256:[0-9a-f]+,\s*reference sha256:[0-9a-f]+\)$/i, "")
-  if (/^Pixel capture unavailable:/i.test(withoutPrefix)) return "Pixel capture unavailable"
-  const clauses = withoutPrefix
-    .split(/;\s+/)
-    .map((clause) => clause.trim())
-    .filter((clause) => clause.length > 0 && !UNSAFE_TODO_CLAUSE.test(clause))
-  return clauses.length > 0 ? clauses.join("; ") : undefined
 }
 
 /** The API and site consume canonical contexts and original run-owned evidence documents. */
@@ -427,33 +401,25 @@ export function publicResults(
   const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
-  const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
-    const hold = result.tests.find((check) => check.id === "console-host")?.reason
-    const isScoredTodo = result.status === "probe-todo" && !isEnvironmentGroup(result.featureId)
-    const selection = isScoredTodo && result.attempt.scope === "none" ? version.selection : undefined
-    // Scheduling facts explain an untouched row; attempted TODO rows expose their reader-safe missing-evidence cause.
-    const reason =
-      selection && !selection.ids.includes(result.featureId)
-        ? "Not selected for this collection; no test was attempted."
-        : isScoredTodo && result.attempt.scope !== "none"
-          ? publicTodoReason(result.reason)
-          : undefined
-    const mapped: PublicProbeResult = {
+  // #37341 Q4: a result's undecided tests, and the words they recorded, are never published (@cto 760e9219). A
+  // decided result carries no reason of its own here: a cell's reason comes from the marker that decided it.
+  const mapResult = (result: ProbeResult): PublicProbeResult => {
+    const tests = result.tests.filter((check) => isPublishedStatus(check.status))
+    const hold = tests.find((check) => check.id === "console-host")?.reason
+    return {
       featureId: result.featureId,
       status: result.status,
       attempt: publicAttempt(result.attempt),
-      tests: result.tests.map((check) => ({
+      tests: tests.map((check) => ({
         id: check.id,
         status: check.status,
         attempt: publicAttempt(check.attempt),
         ...(check.assertionRefs && { assertionRefs: [...check.assertionRefs] }),
       })),
       ...(result.assertionType && { assertionType: result.assertionType }),
-      ...(reason !== undefined && { reason }),
       ...(hold !== undefined && { hold }),
       presentation: { state: "not-reviewed" },
     }
-    return mapped
   }
   const mappedRuns = new Map<string, PublicVersion>()
   const mapVersion = (version: CurrentSelectedVersion): PublicVersion => {
@@ -473,21 +439,28 @@ export function publicResults(
       ...metadata
     } = version
     const screen = screenGeometry(version.screenRecord)
-    const mappedResults = results.map((result) => mapResult(result, version))
+    // Every result is mapped, so a decided cell built on an undecided reading (a derived or declared cell) still
+    // finds its original here; `publishedVersion` leaves the undecided ones out of every published document.
+    const mappedResults = results.map(mapResult)
     const mapped: PublicVersion = {
       ...metadata,
       ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version), version.schemaVersion)),
       ...(screen && { screen }),
       catalogIds: [...version.catalogIds],
-      counts: { ...version.counts },
+      counts: publicCounts(version.counts),
       score: { ...version.score },
       results: mappedResults,
     }
     mappedRuns.set(version.runId, mapped)
     return mapped
   }
+  /** #37341 Q4, D6: a published run carries its decided results only. */
+  const publishedVersion = (version: CurrentSelectedVersion): PublicVersion => {
+    const mapped = mapVersion(version)
+    return { ...mapped, results: mapped.results.filter((result) => isPublishedStatus(result.status)) }
+  }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>
-    Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
+    Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(publishedVersion)]))
   const contexts: Record<string, PublicContextSummary> = Object.fromEntries(
     Object.entries(projection.contexts).map(([key, context]) => {
       const sources: Record<string, PublicRunMetadata> = {}
@@ -498,11 +471,14 @@ export function publicResults(
       }
       const featureResults = Object.fromEntries(
         Object.entries(context.cells).map(([id, cell]) => {
-          const original = originalRunFor(projection, key, cell.origin.runId)
-          const result = mapVersion(original).results.find((row) => row.featureId === cell.origin.resultId)
+          const own = originalRunFor(projection, key, cell.origin.runId)
+          const result = mapVersion(own).results.find((row) => row.featureId === cell.origin.resultId)
           if (!result) {
-            throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
+            throw new Error(`Original run ${own.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
           }
+          // #37341 D5: a derived card cites the parent entry its derivation read, never the child's own undecided one.
+          const origin = cell.derived ? derivedOrigin(key, id, cell.derived, context.cells) : cell.origin
+          const original = origin === cell.origin ? own : originalRunFor(projection, key, origin.runId)
           const featureResult = isEnvironmentGroup(id)
             ? { status: result.status, strength: null, conflictingProbes: [] }
             : cell.featureResult
@@ -514,7 +490,7 @@ export function publicResults(
               status: featureResult.status,
               strength: featureResult.strength,
               conflictingProbes: featureResult.conflictingProbes,
-              origin: cell.origin,
+              origin,
               measuredAt: original.measuredAt,
               suiteId: original.suiteId,
               suiteRelation: original.suiteRelation,
@@ -525,7 +501,7 @@ export function publicResults(
               }),
               ...(cell.held && { held: cell.held, reason: publicHeldReason(cell.held) }),
               ...(cell.derived && {
-                derived: cell.derived,
+                derived: publishedDerived(cell.derived),
                 reason: publicDerivedReason(cell.derived),
               }),
               ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
@@ -537,17 +513,10 @@ export function publicResults(
                   measuredAt: originalRunFor(projection, key, cell.refusedAttempt.runId).measuredAt,
                 },
               }),
-              ...(cell.priorDecision && {
-                priorDecision: publicPriorDecision(
-                  cell.priorDecision,
-                  mapVersion(originalRunFor(projection, key, cell.priorDecision.runId)),
-                ),
-              }),
             },
           ]
         }),
       )
-      const refusals = refusalSummary(context.cells, (id) => featureResults[id]?.reason)
       const { cells: _cells, ...metadata } = context
       const standing = setups.standings.get(key)
       if (standing === undefined) {
@@ -561,7 +530,6 @@ export function publicResults(
           contributingRunIds: context.contributingRunIds,
           featureResults,
           sources,
-          ...(refusals.length > 0 && { refusals }),
           attempts: context.attempts.map((attempt) => ({
             runId: attempt.runId,
             noOutputIds: attempt.noOutputIds,
@@ -571,8 +539,13 @@ export function publicResults(
       ]
     }),
   )
+  const published = (where: string, summary: PublicContextSummary) => {
+    const decided = decidedSummary(summary)
+    checkCitations(where, decided, documents)
+    return decided
+  }
   const selected: PublicProjection = {
-    contexts,
+    contexts: Object.fromEntries(Object.entries(contexts).map(([key, context]) => [key, published(key, context)])),
     versions: mapGroups(projection.versions),
     history: mapGroups(projection.history),
     contextCount: Object.keys(contexts).length,
@@ -583,18 +556,17 @@ export function publicResults(
       const context = contexts[value.contextKey]
       if (!context) throw new Error(`Selected context ${value.contextKey} for ${key} is absent from public contexts`)
       const app = joined?.get(key)
+      // The join reads every context's full cells; only its decided result is published.
+      const summary = published(key, app ? composeJoinedSummary(context, app, contexts) : context)
       return [
         key,
         {
           routeKey: value.routeKey,
           os: value.os,
           contextKey: value.contextKey,
-          selected: app ? composeJoinedSummary(context, app, contexts) : context,
+          selected: summary,
           states: Object.fromEntries(
-            context.catalogIds.map((id) => [
-              id,
-              app?.cells[id]?.status ?? context.featureResults[id]?.status ?? "probe-todo",
-            ]),
+            Object.values(summary.featureResults).map((result) => [result.featureId, result.status]),
           ),
         },
       ]

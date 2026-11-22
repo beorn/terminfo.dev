@@ -13,7 +13,7 @@ next:
 
 # How to read a result
 
-A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "PROBE INVALID: the attempted query produced no usable result". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". PROBE TODO means required work remains, including an unattempted probe or a missing observable. PROBE INVALID means an attempted test broke or could not produce a valid result; a functioning oracle's documented negative result is Unsupported instead.
+A result is Supported, Unsupported or Untestable. It states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "Unsupported: verified in terminal response". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A result we haven't decided is left blank: the cell shows "—" with no label, and its hover reads "No result yet". A blank is not Unsupported, and it is left out of the support counts.
 
 ## Supported and Unsupported: verified in …
 
@@ -31,26 +31,29 @@ An observation's **assertion type** says what kind of evidence the probe read: `
 
 A successful capture does not itself establish the visual effect; only a same-run pixel check decides it. Missing authorization or a tool we have not built yet can leave a required test unstarted; other evidence does not turn that missing measurement into Unsupported or Untestable.
 
-## Untestable, PROBE TODO and PROBE INVALID
+## Untestable and blank results {#untestable-probe-todo-and-probe-invalid}
 
-**Untestable** carries an explicit reason: **passed to the app**, **no way**, **no setup**, or **no observer**. A generic hook can pass an app-job command to the app without implementing its effect; real library state or a typed notification store can still establish Supported. A tap on a library-job command may instead say **no way to tell**, and an effect the library keeps nothing of its own for may say **app**. An effect that shows outside what the run captures says **no observer**: OSC 9;4 progress appears in a title bar, tab bar or taskbar, so a run that captures only the window cannot tell an ignored command from a consumed one. A step that can only be measured after an earlier step, such as leaving the alternate screen after entering it, reads Untestable (**no setup**) when the same run read that earlier step Unsupported; its reason names the earlier step and its result, and the earlier step keeps its own result. Missing controls or an undeclared engine identity stay PROBE TODO. **PROBE TODO** means required work remains, including an unattempted probe or a missing observable. **PROBE INVALID** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
+**Untestable** carries an explicit reason: **passed to the app**, **no way**, **no setup**, or **no observer**. A generic hook can pass an app-job command to the app without implementing its effect; real library state or a typed notification store can still establish Supported. A tap on a library-job command may instead say **no way to tell**, and an effect the library keeps nothing of its own for may say **app**. An effect that shows outside what the run captures says **no observer**: OSC 9;4 progress appears in a title bar, tab bar or taskbar, so a run that captures only the window cannot tell an ignored command from a consumed one. A step that can only be measured after an earlier step, such as leaving the alternate screen after entering it, reads Untestable (**no setup**) when the same run read that earlier step Unsupported; its reason names the earlier step and its result, and the earlier step keeps its own result. Missing controls or an undeclared engine identity leave the result blank. A **blank** result is one we haven't decided: the test has not run, or it ran and could not produce a valid result. A blank describes our test, not the terminal.
 
-- **PROBE INVALID: no usable reply** or **PROBE INVALID: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
-- **PROBE INVALID: the reply was not in the expected form** — we cannot derive a Supported or Unsupported probe result from a reply we cannot parse.
-- **PROBE TODO: permission prevented the query from starting** — no measurement was attempted.
-- **PROBE INVALID: an attempted permission test did not produce a valid result** — a denial is a failure only when the attempted test did not establish a documented negative result.
-- **PROBE TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
-- **PROBE INVALID: the terminal accepted the query, but nothing visible changed** — this is a failure when the required observation did not resolve the claim; a validated negative oracle can establish Unsupported instead.
-- **PROBE INVALID: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
-- **PROBE TODO: screenshots await a pixel check** — the screenshots were taken, but no same-run pixel check decided the effect in them.
+A result is left blank when:
+
+- **no usable reply, or no reply in time** — the query was sent, but no result arrived before the deadline and no documented negative reply established Unsupported.
+- **the reply was not in the expected form** — we cannot derive Supported or Unsupported from a reply we cannot parse.
+- **permission stopped the query from starting** — nothing was measured.
+- **a permission test did not produce a valid result** — a denial reads Unsupported only when the test established a documented negative result.
+- **the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
+- **the terminal accepted the query, but nothing visible changed** — the required observation did not settle the claim; a negative check we have validated can establish Unsupported instead.
+- **the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
+- **screenshots await a pixel check** — the screenshots were taken, but no same-run pixel check decided the effect in them.
+- **the measured contexts disagree** — two contexts that measured the same release decided differently.
 
 ## Other feature results
 
-- **PROBE TODO: no reviewed evidence** — an old result without evidence does not establish a current status.
-- **PROBE INVALID: the test did not complete** — this describes the attempt, not the terminal.
+- **No reviewed evidence** — an old result without evidence is left blank; it does not establish a current status.
+- **The test did not complete** — the result is left blank; this describes the attempt, not the terminal.
 - **Untestable** — the admitted result names why this context cannot decide the feature: passed to the app, no way, no setup, or no observer.
-- **PROBE TODO** — no attempt covers this feature in the selected run. This does not mean Unsupported.
-- **PROBE TODO: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
+- **No test in the selected run** — the result is left blank. This does not mean Unsupported.
+- **No reviewed run for this terminal yet** — the result is left blank; see [Contribute a run](/how-it-works/contribute-a-run).
 
 ## Result history
 

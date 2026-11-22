@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url"
 import { loadTerminals as loadTerminalCatalog, subjectLabel, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
+import { currentCoverageSentence, currentSupportedShare } from "../data/release-scope"
+import { displayVersion } from "../.vitepress/theme/display-version"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -11,12 +13,11 @@ interface VersionInfo {
   version: string
   total: number
   yes: number
-  pct: number | null
   suiteFreshness: string
 }
 
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
-function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
+export function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
   const current = data.selectedByBackend[backendName]
   if (!current?.selected.subject) return []
   const subject = current.selected.subject
@@ -28,9 +29,11 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
       total: selected.score.all,
       yes: selected.score.supported,
       suiteFreshness: selected.suiteFreshness,
-      pct: selected.score.all > 0 ? Math.round((selected.score.supported / selected.score.all) * 100) : null,
     }))
-  return versions.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+  // Ordered by the stored version; only the printed copy reads "dev snapshot" (Q3).
+  return versions
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+    .map((row) => ({ ...row, version: displayVersion(row.version) }))
 }
 
 export default {
@@ -126,6 +129,13 @@ export default {
               .flat()
               .filter((run) => run.subject.id === selected.subject?.id && run.subject.kind === selected.subject?.kind)
           : []
+        // #37341 D2: the page description prints the page's own readout, "S supported · T of N tested": the release
+        // bar folds the same published cells the page's default run folds, over the same catalogue.
+        const bar = data.releaseBars[b.name]
+        if (selected && !bar) throw new Error(`Missing release bar for selected terminal ${b.name}`)
+        const readout = bar
+          ? `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected?.catalogIds)}`
+          : ""
 
         return {
           params: {
@@ -160,7 +170,7 @@ export default {
             yes: stats ? String(stats.score.supported) : "",
             no: stats ? String(stats.counts.unsupported) : "",
             partial: "0",
-            pct: stats?.pct == null ? "" : String(stats.pct),
+            readout,
             categories: JSON.stringify(categories),
             versions: JSON.stringify(versions),
             otherRuns: JSON.stringify(otherRuns),
@@ -217,7 +227,7 @@ export default {
         yes: "",
         no: "",
         partial: "",
-        pct: "",
+        readout: "",
         categories: "",
         versions: "",
       }
@@ -245,7 +255,7 @@ export default {
           yes: inheritedStats.yes,
           no: inheritedStats.no,
           partial: inheritedStats.partial,
-          pct: inheritedStats.pct,
+          readout: inheritedStats.readout,
           categories: inheritedStats.categories,
           versions: inheritedStats.versions ?? "",
           inheritedFrom,

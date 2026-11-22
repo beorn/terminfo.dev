@@ -6,10 +6,10 @@ import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteWorkingRun, workingRunStamp } from "../data/working-runs"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
-import { NOT_MEASURED_TEXT } from "../data/release-scope"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
+import { publicFeatures } from "../data/public-features.ts"
 
 function stripHtml(html: string): string {
   return html
@@ -42,9 +42,10 @@ function loadPlatformItems(): Array<{ text: string; link: string }> {
 function buildSidebar() {
   // Both catalogs come through their one loader (@terminfo/catalog); the per-field validation this
   // function used to repeat now lives there. `terminalsData` keeps its historical/intermediary
-  // fields, and `featuresData` its tags, through the same records the rest of the site reads.
+  // fields, and `featuresData` its tags, through the same records the rest of the site reads. The sidebar and nav
+  // list the public catalogue (Q2): no link to an environment position's page.
   const terminalsData: Record<string, TerminalRecord> = loadTerminals(contentDir)
-  const featuresData: Record<string, FeatureRecord> = loadFeatures(contentDir)
+  const featuresData: Record<string, FeatureRecord> = publicFeatures(loadFeatures(contentDir))
   const tags = new Set<string>()
   for (const entry of Object.values(featuresData)) {
     for (const tag of entry.tags ?? []) tags.add(tag)
@@ -310,6 +311,8 @@ export default defineConfig({
     "**/drafts/**",
     "**/*.private.md",
     "**/*.draft.md",
+    // D9 (@cpo/term bfbbc644): the full-273 development preview prints the internal states; it is not built.
+    "release/full-273.md",
   ],
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
@@ -494,12 +497,10 @@ export default defineConfig({
           pageData.description = `${params.terminalName} terminal emulator feature support for each operating system. ${params.backendDescription}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
-          // #30784 (@cto S1 on a41752fe): a run that decided nothing has no percentage and no
-          // answerable fraction, so it publishes neither. A decided run keeps its exact text, a
-          // genuine 0% included.
-          const share = params.pct === "" ? NOT_MEASURED_TEXT.toLowerCase() : `${params.pct}%`
-          const fraction = params.pct === "" ? "" : ` (${params.yes}/${params.total} features)`
-          pageData.description = `${params.backendName} terminal emulator feature support: ${share}${fraction}. ${params.backendDescription}`
+          // #37341 D2: the page's own readout, "S supported · T of N tested", never a percentage. A page with no
+          // selected run has no readout, and its description prints none (no placeholder; @cto f6a09e55).
+          const readout = params.readout ? `: ${params.readout}` : ""
+          pageData.description = `${params.backendName} terminal emulator feature support${readout}. ${params.backendDescription}`
         }
       } else if (rel.startsWith("os/")) {
         pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`

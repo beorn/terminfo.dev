@@ -16,6 +16,7 @@ import { DERIVED_UNSUPPORTED, publicDerivedReason } from "../docs/data/derived-c
 import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
 import {
   aggregateCurrentResults,
   rollupInputs,
@@ -75,9 +76,7 @@ function run(runId: string, rows: Record<string, Row>) {
   draft.measuredAt = measuredAt
   draft.origin = { kind: "collector" }
   const decided = Object.entries(rows).filter(([, row]) => row.status === "supported" || row.status === "unsupported")
-  draft.rawReplies = Object.fromEntries(
-    Object.entries(rows).map(([id, row]) => [id, row.status === "supported" ? "ACK" : "NO"]),
-  )
+  draft.rawReplies = Object.fromEntries(Object.keys(rows).map((id) => [id, UNANSWERED_QUERY]))
   draft.results = ids.map((featureId): ProbeResult => {
     const row = rows[featureId]
     if (!row) return { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "Not run" }
@@ -178,7 +177,8 @@ describe("unsupported, derived (33019)", () => {
     const bar = aggregateCurrentResults(rollupInputs("term:xterm", published), published.catalogIds)
     expect(bar.counts.unsupported).toBe(2)
     expect(bar.derived).toBe(1)
-    expect(currentCoverageSentence(bar)).toContain("2 Unsupported (of which derived: 1)")
+    // #37341 D2: the readout is two counts; the derived split stays on the aggregate, not in the sentence.
+    expect(currentCoverageSentence(bar, published.catalogIds)).toBe("3 of 3 tested")
     expect(runDecidedNothing(bar.counts, bar.derived)).toBe(false)
   })
 

@@ -58,6 +58,15 @@ export const DECIDED_STATUSES: ReadonlySet<string> = new Set<FeatureResultStatus
 ])
 const DECIDED = DECIDED_STATUSES
 
+/**
+ * #37341 Q4 (@cpo/term f16a5a52; @cto 97ba8eea D5, D6): whether a cell, test or trace entry carries a result we have
+ * decided, and so is published. A decided status or the decided disagreement bucket; a result we haven't decided is
+ * left out. The one rule the public projection (`publicResults`), its trace (`currentTrace`) and its runs share.
+ */
+export function isPublishedStatus(status: string): boolean {
+  return DECIDED.has(status) || status === DIFFERS_BY_CONTEXT
+}
+
 /** What one context recorded for one probe, reduced to the facts the join compares and names. */
 export interface ContextCellFacts {
   status: FeatureResultStatus

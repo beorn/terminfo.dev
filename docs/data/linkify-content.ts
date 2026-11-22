@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url"
 import { createLinkifier } from "vitepress-enrich"
 import { loadFeatures, loadTerminals, type FeatureRecord } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
+import { publicFeatures } from "./public-features.ts"
 
 interface GlossaryEntity {
   term: string
@@ -105,7 +106,8 @@ export function loadTerminfoEntities(options: TerminfoEntitiesOptions = {}): Glo
     pushEntity(entities, term, entry.link, tooltip, tooltipOnlyHrefs, 0)
   }
 
-  const features = loadFeatures(contentDir)
+  // Only a built feature page is linked: the environment positions have none (Q2).
+  const features = publicFeatures(loadFeatures(contentDir))
   for (const [id, entry] of Object.entries(features)) {
     if (!entry.name) continue
     const href = featureHref(id, entry)

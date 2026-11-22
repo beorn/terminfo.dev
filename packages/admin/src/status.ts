@@ -1,4 +1,5 @@
-import { currentCoverageSentence } from "../../../docs/data/release-scope.ts"
+import { currentCoverageSentence, currentSupportedShare } from "../../../docs/data/release-scope.ts"
+import { undecidedSplit } from "../undecided-split.ts"
 /**
  * Status command — show installed backends, reviewed current results, and saved archives.
  */
@@ -69,7 +70,7 @@ export async function handleStatus(): Promise<void> {
   console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
   for (const [key, run] of current) {
     console.log(
-      `    ${key} (sources ${run.contributingRunIds.join(", ")}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
+      `    ${key} (sources ${run.contributingRunIds.join(", ")}): ${currentSupportedShare(run)} · ${currentCoverageSentence(run, run.catalogIds)} · ${undecidedSplit(run.counts)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
   if (current.length === 0) console.log("    No current stored runs; historical results remain available.")

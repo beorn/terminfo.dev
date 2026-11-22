@@ -1,6 +1,6 @@
 /**
  * @failure A cell two same-suite contexts disagree on stops the whole site build; is counted Supported or
- *           Unsupported; an app whose every decided cell differs prints "Not measured yet"; the disagreement
+ *           Unsupported; an app whose every decided cell differs reads as having judged nothing; the disagreement
  *           bucket is dropped from a bar, a coverage sentence or a page segment; or the derived bucket leaks
  *           into the stored status union or a stored-status reader.
  * @level    l1
@@ -73,40 +73,43 @@ describe("the shared rollup carries one bucket per AppCellStatus", () => {
 
 describe("one real disagreement renders instead of stopping the build", () => {
   it("passes a differs cell through the bar input, naming the cell", () => {
+    // #37341 Q4: a bar input names its catalogue, so a cell left unpublished folds as a result not yet decided.
     const inputs = rollupInputs("codimac", {
+      catalogIds: ["sgr.bold"],
       featureResults: {
         "sgr.bold": { featureId: "sgr.bold", status: DIFFERS_BY_CONTEXT },
       },
     } as never)
-    expect(inputs).toEqual([{ featureId: "sgr.bold", status: DIFFERS_BY_CONTEXT, derived: undefined }])
+    expect(inputs).toEqual([
+      { featureId: "sgr.bold", status: DIFFERS_BY_CONTEXT, derived: undefined, declared: undefined },
+    ])
   })
 
   it("states the denominator and keeps the differs cell out of the supported numerator", () => {
     const aggregate = bar(["supported", DIFFERS_BY_CONTEXT])
     expect(aggregate.supported).toBe(1)
     expect(aggregate.denominator).toBe(2)
-    expect(currentSupportedShare(aggregate)).toBe("1/2 supported (50%)")
+    // #37341 D2: the share is a count of Supported, never a percentage.
+    expect(currentSupportedShare(aggregate)).toBe("1 supported")
     expect(aggregate.counts[DIFFERS_BY_CONTEXT]).toBe(1)
     expect(aggregate.idsByState[DIFFERS_BY_CONTEXT]).toEqual(["sgr.italic"])
   })
 
-  it("names the disagreeing cells a page can point a reader at, not just a colour", () => {
-    expect(currentCoverageSentence(bar(["supported", DIFFERS_BY_CONTEXT]))).toBe(
-      "1 Supported · 0 Unsupported · 1 Differs by context · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT",
-    )
+  it("counts a disagreeing cell as tested: both contexts measured it", () => {
+    // #37341 D2: tested = supported + unsupported + untestable + differs-by-context.
+    expect(currentCoverageSentence(bar(["supported", DIFFERS_BY_CONTEXT]))).toBe("2 of 2 tested")
   })
 
-  it("prints a percentage, never the not-measured words, when every decided cell differs", () => {
+  it("prints a count, never the not-measured words, when every decided cell differs", () => {
     const aggregate = bar([DIFFERS_BY_CONTEXT, DIFFERS_BY_CONTEXT])
     expect(runDecidedNothing(aggregate.counts, aggregate.derived)).toBe(false)
-    expect(currentSupportedShare(aggregate)).toBe("0/2 supported (0%)")
+    expect(currentSupportedShare(aggregate)).toBe("0 supported")
+    expect(currentCoverageSentence(aggregate)).toBe("2 of 2 tested")
   })
 
-  it("leaves today's corpus readouts byte-identical: a bar with no disagreement prints no differs words", () => {
-    expect(currentCoverageSentence(bar(["supported", "unsupported"]))).toBe(
-      "1 Supported · 1 Unsupported · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT",
-    )
-    expect(currentSupportedShare(bar(["supported", "unsupported"]))).toBe("1/2 supported (50%)")
+  it("prints no differs words for a bar with no disagreement", () => {
+    expect(currentCoverageSentence(bar(["supported", "unsupported"]))).toBe("2 of 2 tested")
+    expect(currentSupportedShare(bar(["supported", "unsupported"]))).toBe("1 supported")
     expect(completenessTierOf({ "sgr.bold": "supported", "sgr.italic": "untestable" })).toEqual({
       completenessTier: 3,
       todo: 0,
@@ -136,6 +139,7 @@ describe("the build's own chain, from the join to what a page reads", () => {
     }
     const joined = joinContextCells(primary, [other], [...CATALOG], () => null, [...CATALOG])
     const summary = {
+      catalogIds: [...CATALOG],
       featureResults: Object.fromEntries(
         Object.entries(joined.cells).map(([featureId, entry]) => [featureId, { featureId, status: entry.status }]),
       ),
@@ -143,7 +147,9 @@ describe("the build's own chain, from the join to what a page reads", () => {
     const aggregate = aggregateCurrentResults(rollupInputs("codimac", summary), [...CATALOG])
     expect(aggregate.counts[DIFFERS_BY_CONTEXT]).toBe(0)
     expect(aggregate.counts["probe-conflict"]).toBe(1)
-    expect(currentSupportedShare(aggregate)).toBe("1/2 supported (50%)")
+    expect(currentSupportedShare(aggregate)).toBe("1 supported")
+    // The open conflict is not tested; the agreeing cell is.
+    expect(currentCoverageSentence(aggregate, [...CATALOG])).toBe("1 of 2 tested")
     // The page points a reader at the open cell; the row itself names both contexts and grades.
     expect(aggregate.idsByState["probe-conflict"]).toEqual(["sgr.bold"])
     expect(joined.cells["sgr.bold"]?.from).toEqual([
@@ -197,14 +203,14 @@ describe("stored shapes drop the bucket at zero and refuse a nonzero one", () =>
     expect(() => storedRollup(rollup, "summary.json rollup kitty")).toThrow(/differs-by-context is 1/)
   })
 
-  it("reads the same percentage in the bar and in the rollup when every decided cell differs", () => {
+  it("reads zero supported in the bar and in the rollup when every decided cell differs", () => {
     const rollup = rollupTerminalStatuses({ "sgr.bold": DIFFERS_BY_CONTEXT }, ["sgr.bold"])
     expect(rollup.supportedPct).toBe(0)
     expect(
       currentSupportedShare(
         aggregateCurrentResults([{ featureId: "sgr.bold", status: DIFFERS_BY_CONTEXT }], ["sgr.bold"]),
       ),
-    ).toBe("0/1 supported (0%)")
+    ).toBe("0 supported")
   })
 
   it("still reads null when nothing was decided at all", () => {
@@ -217,6 +223,7 @@ describe("a bar input refuses a status the rollup does not know", () => {
   it("throws loudly rather than folding an unknown string into a bucket", () => {
     expect(() =>
       rollupInputs("codimac", {
+        catalogIds: ["sgr.bold"],
         featureResults: { "sgr.bold": { featureId: "sgr.bold", status: "probably-fine" } },
       } as never),
     ).toThrow(/unknown feature status/)

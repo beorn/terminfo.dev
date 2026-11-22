@@ -28,8 +28,8 @@ export default {
     const baselinesPath = join(__dirname, "..", "..", "content", "baselines.json")
     const baselines = JSON.parse(readFileSync(baselinesPath, "utf-8")) as Record<string, BaselineMeta>
 
-    // Keep terminal rows easy to scan. Baseline percentages are subset-specific,
-    // so sorting by the global score makes the row order disagree with the values.
+    // Keep terminal rows easy to scan. Baseline counts are subset-specific,
+    // so sorting by the global count makes the row order disagree with the values.
     const sortedBackends = [...data.backends].sort((a, b) =>
       (data.meta[a.name]?.label ?? a.name).localeCompare(data.meta[b.name]?.label ?? b.name),
     )
@@ -85,11 +85,10 @@ export default {
           type: b.type ?? "lib",
           platforms: b.platforms ?? [],
           score: bs.score,
+          // #37341 D2: every bucket the row's fold counted; the page prints "S supported · T of N tested" from it.
           counts: bs.counts,
-          // #33441: shareRow needs the derived count, or a derived-only row reads as measured 0%.
           derived: bs.derived,
           complete: bs.complete,
-          pct: bs.pct,
         }
       })
 

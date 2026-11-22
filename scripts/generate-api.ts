@@ -32,13 +32,13 @@ import {
   compatibilitySubjects,
   loadCurrentResults,
 } from "../docs/data/current-results.ts"
-import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../docs/data/working-runs.ts"
 import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 import { storedCounts } from "../docs/data/release-scope.ts"
+import { publicFeatureIds } from "../docs/data/public-features.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -105,9 +105,10 @@ export function assertDeploymentLimits(dir: string): {
 }
 
 /**
- * A published API document as a STORED shape (#33600): every `counts` object goes through `storedCounts`, so
- * the six stored statuses stay and a NON-zero derived bucket refuses naming the document. The v3 documents
- * are byte-stable contracts keyed by the original run's sha256; `where` names the file in that refusal.
+ * A published API document as a STORED shape (#33600): every `counts` object goes through `storedCounts`, so a
+ * NON-zero derived bucket refuses naming the document and a zero one is dropped. The counts it is handed are already
+ * the public ones (#37341 D6: `publicResults` leaves the undecided keys out). The v3 documents are keyed by the
+ * original run's sha256; `where` names the file in that refusal.
  */
 export const storedDocument = <T>(document: T, where: string): T =>
   JSON.parse(
@@ -309,7 +310,9 @@ export function generateApi(
   const working = options.working === undefined ? siteWorkingRun() : options.working
   const workingView = working ? composeWorkingView(projection, reviewed, working) : null
   const runDocuments = new Map<string, Buffer>()
-  const allFeatureIds = new Set(Object.keys(featuresJson))
+  // #37341 D6 (@cto 97ba8eea): the API lists the public catalogue, as every public page does; the nine environment
+  // positions (device.env-*) are not public, so neither the features map nor catalogIds names them.
+  const allFeatureIds = new Set(publicFeatureIds(featuresJson))
 
   // Build features map
   const features: Record<string, ApiFeature> = {}
@@ -350,12 +353,14 @@ export function generateApi(
         .flatMap((context) => Object.values(context.sources).map((source) => source.measuredAt))
         .sort()
         .at(-1) ?? "",
+    // #37341 Q4, D2, D6: the published statuses are the decided ones; a result we haven't decided is absent.
     methodology: {
-      revision: "2026-10-29-composed-contexts",
-      statuses: PROBE_STATUSES,
-      score: "Supported / graded catalog positions; environment rows remain visible and ungraded.",
+      revision: "2026-11-21-decided-results",
+      statuses: ["supported", "unsupported", "untestable"],
+      score:
+        "score.supported counts Supported results of score.all graded catalog positions. Tested is the sum of the decided counts: supported, unsupported and untestable.",
       completion:
-        "A context is complete only with zero PROBE TODO and PROBE INVALID. Absent required contexts remain incomplete.",
+        "A context is complete when every graded feature has a decided result. Absent required contexts remain incomplete.",
       historical: { v1: "/api/v1/data.json" },
       evidence: "Captures, free-form reasons and diagnostics require the separate exact-run presentation decision.",
     },
@@ -370,6 +375,9 @@ export function generateApi(
         key,
         {
           ...context,
+          // #37341 D6 (@cto 87f47f5f): a context's catalogIds is its public catalogue view, so it names public ids only,
+          // like the top-level catalogIds. Each run receipt under sources keeps every position its run measured (D132 B).
+          catalogIds: context.catalogIds.filter((id) => allFeatureIds.has(id)),
           sources: Object.fromEntries(
             Object.keys(context.sources).map((runId) => {
               const original = originalRunFor(published.projection, key, runId)

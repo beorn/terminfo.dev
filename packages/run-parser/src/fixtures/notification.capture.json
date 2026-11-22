@@ -49,7 +49,8 @@
       }
     ],
     "rawReplies": {
-      "extensions.notifications": "{\"nonce\":\"fixture-notify-nonce\",\"notifications\":[{\"id\":2,\"summary\":\"fixture-notify-nonce\"}]}",
+      "extensions.notifications": "{\"writes\":[\"\\u001b]9;fixture-notify-nonce\\u0007\"],\"queries\":[],\"events\":[{\"kind\":\"write\",\"sequence\":\"\\u001b]9;fixture-notify-nonce\\u0007\"}]}",
+      "extensions.notifications.callbackResponse": "{\"selector\":\"9\",\"nonce\":\"fixture-notify-nonce\",\"sequence\":\"\\u001b]9;fixture-notify-nonce\\u0007\",\"deadlineMs\":1000,\"noNonceCallByDeadline\":false,\"notifications\":[{\"kind\":\"notify\",\"appName\":\"kitty\",\"summary\":\"fixture-notify-nonce\",\"body\":\"\",\"id\":2}],\"problems\":[],\"missing\":[]}",
       "device.primary-da": "\u001b[?62;52;c",
       "device.xtversion": "kitty(0.49.2)"
     },
@@ -59,8 +60,8 @@
         "kind": "positive",
         "assertionType": "notification",
         "rawReplyRef": "extensions.notifications",
-        "expected": "Desktop Notify carries the target nonce",
-        "observed": "{\"nonce\":\"fixture-notify-nonce\",\"notifications\":[{\"id\":2,\"summary\":\"fixture-notify-nonce\"}]}"
+        "expected": "The terminal sends a Notify carrying the target OSC nonce to the owned desktop service",
+        "observed": "{\"selector\":\"9\",\"nonce\":\"fixture-notify-nonce\",\"sequence\":\"\\u001b]9;fixture-notify-nonce\\u0007\",\"deadlineMs\":1000,\"noNonceCallByDeadline\":false,\"notifications\":[{\"kind\":\"notify\",\"appName\":\"kitty\",\"summary\":\"fixture-notify-nonce\",\"body\":\"\",\"id\":2}],\"problems\":[],\"missing\":[]}"
       }
     ],
     "screenshotRefs": [],

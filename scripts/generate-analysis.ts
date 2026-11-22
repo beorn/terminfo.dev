@@ -18,7 +18,13 @@ import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { isEnvironmentGroup, type FeatureResultStatus } from "@terminfo/probe-defs"
-import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
+import {
+  aggregateCurrentResults,
+  currentCoverageSentence,
+  currentSupportedShare,
+  testedOfGraded,
+  type CurrentAggregate,
+} from "../docs/data/release-scope.ts"
 import {
   collectGarbage,
   compatibilitySubjects,
@@ -36,6 +42,7 @@ import {
 import { siteAnalysisPath, siteProbesPath } from "./site-out.ts"
 import { createBuildMetadata } from "./build-metadata.ts"
 import { selectedSiteWorkingRun } from "../docs/data/working-runs.ts"
+import { publicFeatures } from "../docs/data/public-features.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -99,9 +106,13 @@ interface TerminalStats {
   total: number
   yes: number
   no: number
-  pct: number
+  /** Supported + Unsupported + Untestable + Differs by context over the graded ids (#37341 D2); never a share. */
+  tested: number
+  /** The whole-catalogue fold the readout prints through `currentSupportedShare` / `currentCoverageSentence`. */
+  aggregate: CurrentAggregate
+  catalogIds: string[]
   results: Record<string, FeatureResultStatus>
-  baselineCompliance: Record<string, { total: number; yes: number; pct: number; complete: boolean }>
+  baselineCompliance: Record<string, { total: number; yes: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
   missingFeatures: string[]
@@ -317,7 +328,9 @@ function computeTerminalStats(
   const total = data.aggregate.denominator
   const yes = data.aggregate.counts.supported
   const no = data.aggregate.counts.unsupported
-  const pct = total > 0 ? Math.round((yes / total) * 100) : 0
+  // #37341 D2 (@cpo/term bfbbc644): the readout is counts, never a percentage. Q1: an undecided result (PROBE TODO,
+  // INVALID, CONFLICT) is neither supported nor tested.
+  const { tested } = testedOfGraded(data.aggregate.counts)
 
   // Per-baseline compliance
   const baselineCompliance: TerminalStats["baselineCompliance"] = {}
@@ -335,7 +348,6 @@ function computeTerminalStats(
     baselineCompliance[baselineName] = {
       total: baselineTotal,
       yes: baselineYes,
-      pct: baselineTotal > 0 ? Math.round((baselineYes / baselineTotal) * 100) : 0,
       complete: aggregate?.complete ?? false,
     }
   }
@@ -373,7 +385,9 @@ function computeTerminalStats(
     total,
     yes,
     no,
-    pct,
+    tested,
+    aggregate: data.aggregate,
+    catalogIds: data.catalogIds,
     results,
     baselineCompliance,
     uniquelySupported,
@@ -398,8 +412,28 @@ function buildBaselineFeatureMap(features: Record<string, FeatureMeta>): Record<
 
 // --- Ranking ---
 
+/** A baseline (or other feature set) every one of whose graded positions reads Supported; 0/0 is never full. */
+function fullySupported(score: { total: number; yes: number }): boolean {
+  return score.total > 0 && score.yes === score.total
+}
+
+/** Some graded positions recorded, not every one of them Supported. */
+function partlySupported(score: { total: number; yes: number }): boolean {
+  return score.total > 0 && score.yes < score.total
+}
+
+/** Words for a target with no graded catalogue position: "0 of 0 tested" would read as a measurement. */
+const NO_GRADED_POSITIONS = "has no graded catalog features recorded"
+
+/** The terminal readout (#37341 D2): "<strong>S supported</strong> · T of 264 tested", never a percentage. */
+function terminalReadout(stats: TerminalStats): string {
+  if (stats.total === 0) return `${stats.name} ${NO_GRADED_POSITIONS}`
+  return `${stats.name}: <strong>${currentSupportedShare(stats.aggregate)}</strong> · ${currentCoverageSentence(stats.aggregate, stats.catalogIds)}`
+}
+
 function rankTerminals(stats: Map<string, TerminalStats>): Map<string, number> {
-  const sorted = [...stats.entries()].sort((a, b) => b[1].pct - a[1].pct || b[1].yes - a[1].yes)
+  // #37341 D2: rank by the Supported count (a stable sort keeps catalog order on ties), never by a share.
+  const sorted = [...stats.entries()].sort((a, b) => b[1].yes - a[1].yes)
   const ranks = new Map<string, number>()
   for (const [index, [id]] of sorted.entries()) {
     ranks.set(id, index + 1)
@@ -426,25 +460,22 @@ function generateTerminalAnalysis(
 
   // Baseline compliance
   const failedBaselines = Object.entries(stats.baselineCompliance)
-    .filter(([, bl]) => bl.total > 0 && bl.pct < 100)
+    .filter(([, bl]) => partlySupported(bl))
     .map(([name]) => baselines[name]?.label ?? name)
   const passedBaselines = Object.entries(stats.baselineCompliance)
-    .filter(([, bl]) => bl.complete && bl.pct === 100)
+    .filter(([, bl]) => bl.complete && fullySupported(bl))
     .map(([name]) => baselines[name]?.label ?? name)
 
   // Score summary + baseline in one sentence
+  const readout = terminalReadout(stats)
   if (failedBaselines.length === 0 && passedBaselines.length > 0) {
-    parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
-    )
+    parts.push(`${readout}, with complete support for the measured baselines (${passedBaselines.join(", ")})`)
   } else if (failedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions, with less than full recorded support in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
+      `${readout}, with less than full recorded support in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
     )
   } else {
-    parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions`,
-    )
+    parts.push(readout)
   }
 
   // Ranking
@@ -518,15 +549,10 @@ function generateBaselineAnalysis(
   const parts: string[] = []
   const terminals = [...allStats.values()]
 
-  const perfect = terminals.filter(
-    (s) => s.baselineCompliance[baselineName]?.complete && s.baselineCompliance[baselineName]?.pct === 100,
-  )
-  const imperfect = terminals
-    .filter(
-      (s) =>
-        (s.baselineCompliance[baselineName]?.total ?? 0) > 0 && (s.baselineCompliance[baselineName]?.pct ?? 0) < 100,
-    )
-    .sort((a, b) => (a.baselineCompliance[baselineName]?.pct ?? 0) - (b.baselineCompliance[baselineName]?.pct ?? 0))
+  const score = (s: TerminalStats) => s.baselineCompliance[baselineName] ?? { total: 0, yes: 0, complete: false }
+  const perfect = terminals.filter((s) => score(s).complete && fullySupported(score(s)))
+  // #37341 D2: fewest Supported first, never ordered by a share.
+  const imperfect = terminals.filter((s) => partlySupported(score(s))).sort((a, b) => score(a).yes - score(b).yes)
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
@@ -537,10 +563,9 @@ function generateBaselineAnalysis(
   }
 
   if (imperfect.length > 0) {
-    const laggards = imperfect.slice(0, 3).map((s) => {
-      const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} recorded baseline positions supported)`
-    })
+    const laggards = imperfect
+      .slice(0, 3)
+      .map((s) => `${s.name} (${score(s).yes} of ${score(s).total} recorded baseline positions supported)`)
     parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
 
     // Find what features the laggards are missing
@@ -584,33 +609,28 @@ function generateCategoryAnalysis(
   parts.push(`The <strong>${catMeta.label}</strong> category covers ${categoryFeatures.length} features`)
 
   // Find best and worst terminals for this category
-  const catScores: { name: string; yes: number; total: number; pct: number; complete: boolean }[] = []
+  const catScores: { name: string; yes: number; total: number; complete: boolean }[] = []
   for (const [, stats] of allStats) {
     const relevant = categoryFeatures.filter((id) => id in stats.results)
     const yes = relevant.filter((id) => stats.results[id] === "supported").length
     const total = relevant.length
     if (total > 0) {
-      catScores.push({
-        name: stats.name,
-        yes,
-        total,
-        pct: Math.round((yes / total) * 100),
-        complete: total === categoryFeatures.length,
-      })
+      catScores.push({ name: stats.name, yes, total, complete: total === categoryFeatures.length })
     }
   }
-  catScores.sort((a, b) => b.pct - a.pct || b.yes - a.yes)
+  // #37341 D2: order by the Supported count, never by a share.
+  catScores.sort((a, b) => b.yes - a.yes)
 
   if (catScores.length === 0) parts.push("Analysis awaiting verified measurements for this category")
 
-  const perfect = catScores.filter((s) => s.complete && s.pct === 100)
+  const perfect = catScores.filter((s) => s.complete && fullySupported(s))
   if (perfect.length > 0) {
     const names = perfect.map((s) => s.name)
     if (perfect.length === catScores.length) {
-      parts.push(`All ${catScores.length} measured targets have support for every category check (100%)`)
+      parts.push(`All ${catScores.length} measured targets have support for every category check`)
     } else {
       parts.push(
-        `Targets with support for every category check (100%): ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`,
+        `Targets with support for every category check: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`,
       )
     }
   }
@@ -659,41 +679,37 @@ function generateStandardAnalysis(
   )
 
   // Adoption: how many terminals support all features in this standard?
-  const stdScores: { name: string; yes: number; total: number; pct: number; complete: boolean }[] = []
+  const stdScores: { name: string; yes: number; total: number; complete: boolean }[] = []
   for (const [, stats] of allStats) {
     const relevant = taggedFeatures.filter((id) => id in stats.results)
     const yes = relevant.filter((id) => stats.results[id] === "supported").length
     const total = relevant.length
     if (total > 0) {
-      stdScores.push({
-        name: stats.name,
-        yes,
-        total,
-        pct: Math.round((yes / total) * 100),
-        complete: total === taggedFeatures.length,
-      })
+      stdScores.push({ name: stats.name, yes, total, complete: total === taggedFeatures.length })
     }
   }
-  stdScores.sort((a, b) => b.pct - a.pct || b.yes - a.yes)
+  // #37341 D2: order by the Supported count, never by a share.
+  stdScores.sort((a, b) => b.yes - a.yes)
 
   if (stdScores.length === 0) parts.push("Analysis awaiting verified measurements for this standard")
 
+  // #37341 D2: the former average of per-target percentages has no count form, so the page states how many
+  // targets support every tagged feature instead.
+  const perfect = stdScores.filter((s) => s.complete && fullySupported(s))
   if (stdScores.length > 0) {
-    const avgPct = Math.round(stdScores.reduce((sum, s) => sum + s.pct, 0) / stdScores.length)
-    parts.push(`Average support among recorded tagged-feature results: <strong>${avgPct}%</strong>`)
-  }
-
-  const perfect = stdScores.filter((s) => s.complete && s.pct === 100)
-  if (perfect.length > 0) {
     const names = perfect.map((s) => s.name)
+    const listed =
+      names.length > 0
+        ? `: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`
+        : ""
     parts.push(
-      `Full compliance (100%): ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`,
+      `<strong>${perfect.length}</strong> of ${stdScores.length} measured targets have recorded support for every ${stdMeta.label} feature${listed}`,
     )
   }
 
   const worst = stdScores.at(-1)
-  if (worst && worst.pct < 100) {
-    parts.push(`Lowest: ${worst.name} at ${worst.pct}% (${worst.yes}/${worst.total})`)
+  if (worst && partlySupported(worst)) {
+    parts.push(`Lowest: ${worst.name}, with ${worst.yes} of ${worst.total} ${stdMeta.label} features supported`)
   }
 
   return {
@@ -736,9 +752,7 @@ function generateFeatureAnalysis(
     }
   }
 
-  const pct = Math.round((supported / total) * 100)
-
-  // Support summary
+  // Support summary (#37341 D2: counts, never a percentage)
   if (supported === total) {
     parts.push(
       `Recorded tests report support in <strong>all ${total}</strong> stored current context runs for this feature`,
@@ -747,7 +761,7 @@ function generateFeatureAnalysis(
     parts.push(`No recorded support among <strong>${total}</strong> measured targets`)
   } else {
     parts.push(
-      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> stored current targets (${pct}%)`,
+      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> stored current targets`,
     )
   }
 
@@ -789,13 +803,10 @@ function generateFrameworkAnalysis(
   const baselineMeta = baselines[baselineName]
   const baselineLabel = baselineMeta?.label ?? baselineName
 
-  // Count terminals that meet the required baseline (100% compliance)
-  const compatible = terminals.filter(
-    (s) => s.baselineCompliance[baselineName]?.complete && s.baselineCompliance[baselineName]?.pct === 100,
-  )
-  const incompatible = terminals.filter(
-    (s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0 && (s.baselineCompliance[baselineName]?.pct ?? 0) < 100,
-  )
+  // Count terminals that support every graded position of the required baseline
+  const score = (s: TerminalStats) => s.baselineCompliance[baselineName] ?? { total: 0, yes: 0, complete: false }
+  const compatible = terminals.filter((s) => score(s).complete && fullySupported(score(s)))
+  const incompatible = terminals.filter((s) => partlySupported(score(s)))
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
@@ -811,10 +822,9 @@ function generateFrameworkAnalysis(
   }
 
   if (incompatible.length > 0 && incompatible.length <= 5) {
-    const laggards = incompatible.map((s) => {
-      const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} recorded baseline positions supported)`
-    })
+    const laggards = incompatible.map(
+      (s) => `${s.name} (${score(s).yes} of ${score(s).total} recorded baseline positions supported)`,
+    )
     parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
   }
 
@@ -860,27 +870,30 @@ function validateHtml(html: string, key: string): void {
   assert(openP === closeP, `${key}: Unclosed <p> tags (${openP} open, ${closeP} close)`)
 }
 
-function validateNumbersInAnalysis(key: string, analysis: string, stats: TerminalStats | null): void {
-  if (!stats) return
-
-  // Extract percentage from analysis
-  const pctMatch = analysis.match(/has <strong>(\d+)%<\/strong>/)
-  if (pctMatch) {
-    const pctInText = Number.parseInt(pctMatch[1] ?? "", 10)
-    assert(pctInText === stats.pct, `${key}: Percentage in text (${pctInText}%) doesn't match computed (${stats.pct}%)`)
+/**
+ * The terminal readout's three printed numbers must equal the computed counts (#37341 D2). The readout is required:
+ * a terminal analysis that prints no "S supported · T of N tested" line fails instead of passing unchecked.
+ */
+function validateNumbersInAnalysis(key: string, analysis: string, stats: TerminalStats): void {
+  if (stats.total === 0) {
+    assert(analysis.includes(NO_GRADED_POSITIONS), `${key}: no graded positions, but the analysis does not say so`)
+    return
   }
-
-  // Extract yes/total counts
-  const countMatch = analysis.match(/\((\d+)\/(\d+)\)/)
-  if (countMatch) {
-    const yesInText = Number.parseInt(countMatch[1] ?? "", 10)
-    const totalInText = Number.parseInt(countMatch[2] ?? "", 10)
-    assert(yesInText === stats.yes, `${key}: Pass count in text (${yesInText}) doesn't match computed (${stats.yes})`)
-    assert(
-      totalInText === stats.total,
-      `${key}: Total count in text (${totalInText}) doesn't match computed (${stats.total})`,
-    )
-  }
+  const readout = analysis.match(/<strong>(\d+) supported<\/strong> · (\d+) of (\d+) tested/)
+  assert(readout, `${key}: terminal analysis lacks its "<strong>S supported</strong> · T of N tested" readout`)
+  const [supportedInText, testedInText, gradedInText] = readout.slice(1, 4).map((value) => Number.parseInt(value, 10))
+  assert(
+    supportedInText === stats.yes,
+    `${key}: Supported count in text (${supportedInText}) doesn't match computed (${stats.yes})`,
+  )
+  assert(
+    testedInText === stats.tested,
+    `${key}: Tested count in text (${testedInText}) doesn't match computed (${stats.tested})`,
+  )
+  assert(
+    gradedInText === stats.total,
+    `${key}: Graded count in text (${gradedInText}) doesn't match computed (${stats.total})`,
+  )
 }
 
 // --- Index page analyses ---
@@ -896,42 +909,12 @@ function generateStandardsIndexAnalysis(
   // Count total standards and features
   const standardIds = Object.keys(standards)
   parts.push(
-    `Terminfo.dev tracks <strong>${standardIds.length}</strong> terminal standards and protocol families, including ECMA-48 and Kitty extensions.`,
+    `Terminfo.dev tracks <strong>${standardIds.length}</strong> terminal standards and protocol families, including ECMA-48 and Kitty extensions`,
   )
 
-  // Find which standard has best/worst adoption
-  const stdAdoption: { id: string; label: string; avgPct: number }[] = []
-  for (const [stdId, stdMeta] of Object.entries(standards)) {
-    const taggedFeatures = Object.entries(features)
-      .filter(([, f]) => f.tags?.includes(stdId))
-      .map(([id]) => id)
-    if (taggedFeatures.length === 0) continue
+  // #37341 D2: the former highest/lowest average-percentage comparison has no count form and is not printed.
 
-    let totalPct = 0
-    let count = 0
-    for (const stats of terminals) {
-      const relevant = taggedFeatures.filter((id) => id in stats.results)
-      if (relevant.length === 0) continue
-      const yes = relevant.filter((id) => stats.results[id] === "supported").length
-      totalPct += Math.round((yes / relevant.length) * 100)
-      count++
-    }
-    if (count > 0) {
-      stdAdoption.push({ id: stdId, label: stdMeta.label, avgPct: Math.round(totalPct / count) })
-    }
-  }
-
-  stdAdoption.sort((a, b) => b.avgPct - a.avgPct)
-
-  const best = stdAdoption[0]
-  const worst = stdAdoption.at(-1)
-  if (best && worst && best !== worst) {
-    parts.push(
-      `Highest average support among recorded tagged-feature tests: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
-    )
-  }
-
-  // Count terminals with 100% on foundational standards
+  // Count terminals with full support for the foundational standards
   const foundational = ["ecma-48", "vt100"]
   for (const stdId of foundational) {
     const taggedFeatures = Object.entries(features)
@@ -945,7 +928,7 @@ function generateStandardsIndexAnalysis(
     })
     if (perfect.length > 0) {
       parts.push(
-        `<strong>${perfect.length}</strong> of ${terminals.length} terminals achieve 100% ${standards[stdId]?.label ?? stdId} compliance`,
+        `<strong>${perfect.length}</strong> of ${terminals.length} terminals have recorded support for every ${standards[stdId]?.label ?? stdId} feature`,
       )
     }
   }
@@ -972,37 +955,7 @@ function generateFeaturesIndexAnalysis(
     `The terminfo.dev matrix covers <strong>${totalFeatures}</strong> features across <strong>${totalCategories}</strong> categories`,
   )
 
-  // Find best category (highest avg adoption) and worst
-  const catAdoption: { id: string; label: string; avgPct: number }[] = []
-  for (const [catId, catMeta] of Object.entries(categories)) {
-    const catFeatures = Object.entries(features)
-      .filter(([id]) => id.startsWith(catId + "."))
-      .map(([id]) => id)
-    if (catFeatures.length === 0) continue
-
-    let totalPct = 0
-    let count = 0
-    for (const stats of terminals) {
-      const relevant = catFeatures.filter((id) => id in stats.results)
-      if (relevant.length === 0) continue
-      const yes = relevant.filter((id) => stats.results[id] === "supported").length
-      totalPct += Math.round((yes / relevant.length) * 100)
-      count++
-    }
-    if (count > 0) {
-      catAdoption.push({ id: catId, label: catMeta.label, avgPct: Math.round(totalPct / count) })
-    }
-  }
-
-  catAdoption.sort((a, b) => b.avgPct - a.avgPct)
-
-  const best = catAdoption[0]
-  const worst = catAdoption.at(-1)
-  if (best && worst && best !== worst) {
-    parts.push(
-      `Highest observed average support among recorded category tests: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
-    )
-  }
+  // #37341 D2: the former highest/lowest average-percentage category comparison has no count form and is not printed.
 
   // Count universally supported features
   const universalCount =
@@ -1227,7 +1180,9 @@ function escapeHtmlAttr(s: string): string {
 // --- Main ---
 
 function loadAllData() {
-  const features = loadFeatures()
+  const catalog = loadFeatures()
+  // Q2: the analysis counts, lists and links the public catalogue; the cross-check below reads the whole one.
+  const features = publicFeatures(catalog)
   const terminals = loadTerminals()
   const categories = loadCategories(contentDir)
   const standards = loadStandards()
@@ -1239,7 +1194,7 @@ function loadAllData() {
   const resultMap = buildTerminalResultMap()
 
   // Cross-validate
-  crossValidate(features, terminals, resultMap)
+  crossValidate(catalog, terminals, resultMap)
 
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }

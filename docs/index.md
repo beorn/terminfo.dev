@@ -19,8 +19,9 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { currentCoverageSentence, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
-import { homeBaselineRow } from './data/baseline-readouts.ts'
+import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { baselineReadout } from './data/baseline-readouts.ts'
+import { displayVersion } from './.vitepress/theme/display-version.ts'
 // The deep source path, not the package root: the root re-exports probe extensions that import
 // node:crypto, which Vite's browser build cannot resolve (measured 2026-10-23 on this branch).
 import { isEnvironmentGroup } from '../packages/probe-defs/src/environment-groups.ts'
@@ -35,7 +36,6 @@ const displayedSelections = { ...data.selectedByBackend }
 
 // D132 B (#30917): the environment groups a run records are ungraded, so no bar, tooltip or order
 // counts them; the legend below names them instead of leaving the smaller denominator unexplained.
-const environmentGroupCount = data.features.filter((feature) => isEnvironmentGroup(feature.id)).length
 
 // Baseline metadata for filter dropdown
 const baselineOptions = [
@@ -55,17 +55,16 @@ const categoryLabels = data.categoryLabels ?? {}
 
 // ONE basis for this page: the release bar. Its widths, its tooltips and this order all fold the same
 // classified rows, so no two of them can tell a different story about a terminal (28792 item 1). The
-// share read here is the bar's own SUPPORTED share of its denominator — the green segment's fraction.
-function releaseSharePct(backendName) {
+// order reads the bar's Supported COUNT (#37341 D2): a count, never a share; a row with no bar sorts last.
+function releaseSupported(backendName) {
   const bar = data.releaseBars[backendName]
-  if (!bar?.denominator) return -1
-  return (bar.counts.supported / bar.denominator) * 100
+  return bar ? bar.counts.supported : -1
 }
 
-// Sort backends by that one basis (highest first), then by name so the order is deterministic.
+// Sort backends by that one basis (most Supported first), then by name so the order is deterministic.
 const sortedBackends = computed(() => {
   return [...data.backends].sort((a, b) => {
-    const delta = releaseSharePct(b.name) - releaseSharePct(a.name)
+    const delta = releaseSupported(b.name) - releaseSupported(a.name)
     return delta !== 0 ? delta : a.name.localeCompare(b.name)
   })
 })
@@ -97,9 +96,13 @@ function platformIcons(backendName) {
   return os ? platformIcon(os) : ''
 }
 
+// #37341 D2: the one readout, "S supported · T of N tested", printed beside the bar and in its tooltip.
+function releaseReadout(backendName) {
+  return data.releaseBars[backendName] ? `${data.releaseShares[backendName]} · ${coverageLabel(backendName)}` : undefined
+}
+
 function supportFraction(backendName) {
-  const bar = data.releaseBars[backendName]
-  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : data.selectedByBackend[backendName] ? NOT_MEASURED_TEXT : 'Historical'
+  return releaseReadout(backendName) ?? 'Historical'
 }
 
 const sortedCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
@@ -151,7 +154,7 @@ function barSegmentItems(backendName, segment) {
     const feature = data.features.find(feature => feature.id === result.featureId)
     return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
       href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
-      symbol: {supported:'✓',unsupported:'✗','differs-by-context':'≠',untestable:'?', 'probe-todo':'–', 'probe-invalid':'!', 'probe-conflict':'!'}[segment],
+      symbol: {supported:'✓',unsupported:'✗','differs-by-context':'≠',untestable:'?'}[segment],
       note: result.reason }
   })
 }
@@ -163,18 +166,16 @@ const barSegments = [
   // rather than stopping the bar or reading as Supported/Unsupported.
   { id: 'differs-by-context', label: 'Differs by context', style: 'differs' },
   { id: 'untestable', label: 'Untestable', style: 'partial' },
-  { id: 'probe-todo', label: 'PROBE TODO', style: 'remainder' },
-  { id: 'probe-invalid', label: 'PROBE INVALID', style: 'remainder' },
-  { id: 'probe-conflict', label: 'PROBE CONFLICT', style: 'remainder' },
 ]
 
+// Widths are over the graded positions, so a result we haven't decided leaves the rest of the bar blank (#37341 Q1).
 function segmentWidth(name, segment) {
   const bar = data.releaseBars[name]
-  return bar ? (bar.counts[segment] / bar.denominator * 100) + '%' : '0%'
+  return bar?.denominator ? (bar.counts[segment] / bar.denominator * 100) + '%' : '0%'
 }
 
 function scoreLabel(backendName) {
-  return data.releaseShares[backendName] ?? 'No current sealed score'
+  return releaseReadout(backendName) ?? 'No current sealed score'
 }
 
 function coverageLabel(backendName) {
@@ -183,13 +184,11 @@ function coverageLabel(backendName) {
   return currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)
 }
 
-// #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
-// it printed before the fix.
+// #37341 D2: every baseline row prints the one readout, "S supported · T of N tested".
 function baselineRow(backendName, baseline) {
   const stats = data.baselineStats[backendName]?.[baseline]
   if (!stats) return { text: '', title: undefined }
-  // #33441: the derived count travel with the counts, or a derived-only row prints a measured-looking 0%.
-  return homeBaselineRow(stats)
+  return baselineReadout(stats)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -225,12 +224,12 @@ function featureTooltip(f) {
 function backendTooltip(name, version) {
   const meta = data.meta[name]
   if (!meta) return name
-  const parts = [backendContextLabel(name), meta.description, scoreLabel(name), coverageLabel(name)]
+  const parts = [backendContextLabel(name), meta.description, scoreLabel(name)]
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Source versions: ${version}`)
   const sources = Object.values(displayedSelections[name]?.selected.sources ?? {})
-  for (const source of sources) parts.push(`Source ${source.runId}: ${source.subject.version} · ${source.measuredAt} · suite ${source.suiteId}`)
+  for (const source of sources) parts.push(`Source ${source.runId}: ${displayVersion(source.subject.version)} · ${source.measuredAt} · suite ${source.suiteId}`)
   if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
@@ -247,7 +246,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">PROBE TODO / PROBE INVALID / PROBE CONFLICT</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue)</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-no-result">— No result yet</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -276,7 +275,7 @@ function backendTooltip(name, version) {
       </div>
     </div>
     <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
+    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
@@ -391,7 +390,7 @@ function backendTooltip(name, version) {
       </div>
     </div>
     <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
+    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 
@@ -471,7 +470,7 @@ function backendTooltip(name, version) {
       </div>
     </div>
     <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
+    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 
@@ -544,7 +543,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; tests that change terminal state remain PROBE TODO
+the community CLI runs reviewed queries; tests that change terminal state are left blank
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 
@@ -1136,15 +1135,14 @@ strips, or mishandles.
 }
 
 /* Compact homepage comparison; terminal detail tables keep their own layout. */
-.VPHome .summary-row { display:grid; grid-template-columns:148px 18px 82px minmax(0,1fr) 74px; gap:14px; padding:12px 0; border-bottom:1px solid var(--vp-c-divider); }
+.VPHome .summary-row { display:grid; grid-template-columns:148px 18px 82px minmax(0,1fr) auto; gap:14px; padding:12px 0; border-bottom:1px solid var(--vp-c-divider); }
 .VPHome .summary-name { width:auto; min-width:0; white-space:normal; font-size:14px; }
 .VPHome .summary-platforms { width:18px; }
 .VPHome .summary-version { width:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .VPHome .summary-bar { height:24px; min-width:0; border-radius:4px; }
 .VPHome .summary-pct { width:auto; min-width:0; font-variant-numeric:tabular-nums; font-size:14px; }
 .VPHome .bar-fail { background:var(--vp-c-divider); }
-.VPHome .bar-remainder { background:#7c3aed; }
-.VPHome .summary-muted .summary-row { grid-template-columns:148px 82px minmax(0,1fr) 74px; }
+.VPHome .summary-muted .summary-row { grid-template-columns:148px 82px minmax(0,1fr) auto; }
 .VPHome .problem-summary { max-width:none; margin:0 0 32px; padding:0; background:none; border-radius:0; font-size:16px; }
 .VPHome .VPHero .main { max-width:none; }
 .VPHome .VPHero .text { max-width:900px; }
@@ -1152,8 +1150,7 @@ strips, or mishandles.
 .support-legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:6px; border-radius:2px; background:var(--vp-c-divider); }
 .support-legend .legend-supported::before { background:#10b981; }
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
-.support-legend .legend-unmeasured::before { background:#7c3aed; }
-.support-legend .legend-manual::before { background:transparent; border:1px dashed var(--vp-c-text-3); }
+.support-legend .legend-no-result::before { background:var(--vp-c-bg-soft); border:1px solid var(--vp-c-divider); }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
 .summary-history,.baseline-history { display:none; }
