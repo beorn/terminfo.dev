@@ -13,7 +13,7 @@ import { priorDecisionSentence } from "../../data/prior-decision"
 import { describeTracePanes, readCellTrace, type LoadedCellTrace } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
-import { contextLabel } from "./context-label"
+import { contextLine } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
 import { evidenceStatus } from "./evidence-status"
 import ResultSteps from "./ResultSteps.vue"
@@ -90,19 +90,17 @@ const STATUS_WORD: Record<string, string> = {
 }
 /**
  * Rule 4: a cell names the contexts its grade comes from unless every context of the app carries that
- * same decided grade. The names are the recorded machine and launch profile, never a context key.
+ * same decided grade. The names are the recorded machine and launch profile, never a context key; the
+ * rule is context-label.ts `contextLine`, where it is testable.
  */
-const joinedGrades = computed(() => {
-  const grades = joined.value?.from
-  if (!grades || grades.length === 0) return undefined
-  const every = props.version && "contexts" in props.version ? (props.version.contexts ?? []) : []
-  const uniform = new Set(grades.map((grade) => grade.status)).size === 1
-  if (uniform && every.length > 0 && grades.length === every.length) return undefined
-  const named = grades.map((grade) => `${contextLabel(grade.context)} — ${STATUS_WORD[grade.status] ?? grade.status}`)
-  return joined.value?.status === DIFFERS_BY_CONTEXT
-    ? `Differs by context: ${named.join(" · ")}`
-    : `Context: ${named.join(" · ")}`
-})
+const joinedGrades = computed(() =>
+  contextLine(
+    joined.value?.from,
+    props.version && "contexts" in props.version ? (props.version.contexts ?? []).length : 0,
+    joined.value?.status === DIFFERS_BY_CONTEXT,
+    (grade) => STATUS_WORD[grade] ?? grade,
+  ),
+)
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
