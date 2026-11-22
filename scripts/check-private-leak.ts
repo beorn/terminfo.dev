@@ -383,11 +383,11 @@ export function scanPublicCatalogue(distDir: string, publicIds: readonly string[
       if (extra.length > 0) outside.set(key, extra)
     }
     if (outside.size > 0) {
-      const [key, ids] = [...outside][0]!
+      const named = [...outside].slice(0, 3).map(([key, ids]) => `${key} (${ids.join(", ")})`)
       violations.push({
         layer: "catalogue",
         path: `dist/${API_DATA}`,
-        reason: `contexts.*.catalogIds names ids outside the public catalogue in ${outside.size} context(s); first, ${key}: ${ids.join(", ")}`,
+        reason: `contexts.*.catalogIds names ids outside the public catalogue in ${outside.size} context(s): ${named.join("; ")}${outside.size > 3 ? "; and more" : ""}`,
       })
     }
   }

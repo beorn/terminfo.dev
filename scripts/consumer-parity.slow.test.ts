@@ -462,7 +462,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
           const {sources, ...summary} = api.contexts[key];
           // #33600: the published document is the stored shape — six stored statuses, never the site's
           // derived differs bucket.
-          assert.deepEqual(summary, storedDocument((({sources, ...rest}) => rest)(context), key));
+          // #37341 D6: the API context lists the public catalogue, so its catalogIds is the projection's, filtered to
+          // the API's public ids; every other field is the stored shape of the published context.
+          const publicIds = new Set(v3.catalogIds);
+          assert.deepEqual(summary, storedDocument((({sources, ...rest}) => ({...rest, catalogIds: rest.catalogIds.filter((id) => publicIds.has(id))}))(context), key));
           assert.deepEqual(keys(sources), keys(context.sources));
           for (const [id, cell] of Object.entries(context.featureResults)) {
             assert.ok(sources[cell.origin.runId], key + "/" + id + " has original source");
@@ -635,6 +638,10 @@ function prepareAnalysisFixture(out: string): string {
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
   mkdirSync(join(out, "docs"))
   cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
+  // probes.data.ts reads displayVersions from the theme (#37341 D11), its one import outside docs/data.
+  mkdirSync(join(out, "docs", ".vitepress", "theme"), { recursive: true })
+  const displayVersion = join("docs", ".vitepress", "theme", "display-version.ts")
+  cpSync(join(sourceRoot, displayVersion), join(out, displayVersion))
   for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
   const script = join(out, "scripts", "generate-analysis.ts")
   cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)

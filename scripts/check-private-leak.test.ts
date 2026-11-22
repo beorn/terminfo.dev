@@ -271,7 +271,7 @@ describe("check-private-leak — public catalogue", () => {
     expect(scanPublicCatalogue(dist, PUBLIC)).toEqual([])
     write({ "term:kitty": { catalogIds: ["sgr.bold"] }, "term:xterm": { catalogIds: [...PUBLIC, "device.env-term"] } })
     expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.reason)).toEqual([
-      "contexts.*.catalogIds names ids outside the public catalogue in 1 context(s); first, term:xterm: device.env-term",
+      "contexts.*.catalogIds names ids outside the public catalogue in 1 context(s): term:xterm (device.env-term)",
     ])
   })
 

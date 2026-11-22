@@ -20,7 +20,12 @@ import { publicFeatureIds } from "../docs/data/public-features.ts"
 import { getAllTags, getFeaturesForTag } from "../docs/data/load-probes.ts"
 import { loadTerminfoEntities } from "../docs/data/linkify-content.ts"
 import { featurePageParams } from "../docs/[category]/[id].paths.ts"
-import config from "../docs/.vitepress/config.ts"
+// Loaded by URL, as build-metadata and run-share-readout load it, so the root type program does not take in the
+// VitePress config: the site build compiles it, and on main it has never been part of the root typecheck.
+const CONFIG_URL = new URL("../docs/.vitepress/config.ts", import.meta.url).href
+const { default: config } = (await import(CONFIG_URL)) as {
+  default: { themeConfig?: { sidebar?: unknown; nav?: unknown } }
+}
 
 // The corpus is replaced by one published subject over the REAL catalogue, so loadFullProbes runs its own code
 // over every catalogue id without reading 150 s of stored runs.

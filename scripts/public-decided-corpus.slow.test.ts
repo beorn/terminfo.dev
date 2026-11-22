@@ -173,8 +173,9 @@ describe("no public card reads an undecided reason (@cto 760e9219)", () => {
     }
     for (const [key, versions] of Object.entries(published.projection.versions)) {
       for (const version of versions) {
-        for (const result of version.results)
+        for (const result of version.results) {
           if (read(result.reason) || read(result.hold)) leaks.push(`${key}/${result.featureId}`)
+        }
       }
     }
     expect(leaks).toEqual([])

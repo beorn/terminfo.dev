@@ -202,20 +202,22 @@ const SHAPES = {
   /** XTGETTCAP: the capability name and its value. */
   xtgettcap: (reply) => {
     const found = /^\x1bP([01])\+r([0-9A-Fa-f]+)(?:=([0-9A-Fa-f]*))?\x1b\\$/.exec(reply)
-    const name = found && hexText(found[2]!)
+    const name = found?.[2] === undefined ? undefined : hexText(found[2])
     const value = found?.[3] === undefined ? "" : hexText(found[3])
-    if (!found || !name || !/^[A-Za-z0-9_]{1,16}$/.test(name) || value === undefined || !printable(value, 64))
+    if (!found || !name || !/^[A-Za-z0-9_]{1,16}$/.test(name) || value === undefined || !printable(value, 64)) {
       return undefined
+    }
     if (value.includes("/")) return undefined
     return { shown: found[1] === "1" ? `${name}=${value}` : `${name} (not known to the terminal)` }
   },
   /** XTGETXRES: the resource name and its value, never a path. */
   xtgetxres: (reply) => {
     const found = /^\x1bP([01])\+R([0-9A-Fa-f]+)(?:=([0-9A-Fa-f]*))?\x1b\\$/.exec(reply)
-    const name = found && hexText(found[2]!)
+    const name = found?.[2] === undefined ? undefined : hexText(found[2])
     const value = found?.[3] === undefined ? "" : hexText(found[3])
-    if (!found || !name || !/^[A-Za-z0-9_.*]{1,40}$/.test(name) || value === undefined || !printable(value, 64))
+    if (!found || !name || !/^[A-Za-z0-9_.*]{1,40}$/.test(name) || value === undefined || !printable(value, 64)) {
       return undefined
+    }
     if (value.includes("/")) return undefined
     return { shown: found[1] === "1" ? `${name}: ${value}` : `${name} (not set)` }
   },
@@ -670,8 +672,10 @@ export const APP_STATE_READS: Readonly<Record<string, readonly AppStateRead[]>> 
 function waitOf(stored: StoredEvidence, query: StoredQuery): Wait {
   if (query.reason === "sentinel") {
     const graceMs = query.sentinel?.graceMs
-    if (!Number.isSafeInteger(graceMs)) fail(stored, "no-reply", "a fenced query without its grace time")
-    return { kind: "fence", graceMs: graceMs! }
+    if (graceMs === undefined || !Number.isSafeInteger(graceMs)) {
+      return fail(stored, "no-reply", "a fenced query without its grace time")
+    }
+    return { kind: "fence", graceMs }
   }
   if (query.reason === "timeout") {
     if (query.timeoutMs === undefined) return { kind: "limit" }
@@ -933,7 +937,11 @@ export function evidenceFacts(stored: StoredEvidence): EvidenceFacts {
   }
   if (stored.assertionType === "buffer_state") return appState(stored)
   if (stored.queries.length > 0) {
-    const replies = stored.queries.filter(answered).map((query) => replyValue(stored, query.match![0]!))
+    const replies = stored.queries
+      .filter(answered)
+      .map((query) =>
+        replyValue(stored, query.match?.[0] ?? fail(stored, "byte-reply", "an answered query without its reply")),
+      )
     const silent = stored.queries.filter((query) => !answered(query)).map((query) => waitOf(stored, query))
     if (replies.length > 0) return { kind: "byte-reply", queries: stored.queries.length, replies, silent }
     return {
@@ -982,7 +990,8 @@ function waited(waits: readonly Wait[]): { fenced: true; ms: string } | { fenced
   }
   return {
     fenced: false,
-    within: `within ${ms(waits.map((wait) => (wait.kind === "fence" ? wait.graceMs : wait.ms!)))}`,
+    // Every limit wait holds its time here: a limit with none returned "before the test stopped waiting" above.
+    within: `within ${ms(waits.flatMap((wait) => (wait.kind === "fence" ? [wait.graceMs] : wait.ms === undefined ? [] : [wait.ms])))}`,
   }
 }
 
@@ -1005,13 +1014,16 @@ const UNTESTABLE_REASON: Readonly<Record<string, string>> = {
   "policy-refused": "this run's settings did not allow the test",
 }
 
-type Template<K extends EvidenceKind> = (facts: Extract<EvidenceFacts, { kind: K }>, probeId: string) => string[]
+// An intersection, not Extract: the screen facts declare kind "screen" | "text-readback" in one member, which Extract
+// drops for either kind alone, leaving those two templates typed never.
+type Template<K extends EvidenceKind> = (facts: EvidenceFacts & { kind: K }, probeId: string) => string[]
 
 const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
   "byte-reply": ({ replies, silent }) => {
+    const [only] = replies
     const sent =
-      replies.length === 1
-        ? `The terminal sent back ${words(replies[0]!)}.`
+      replies.length === 1 && only !== undefined
+        ? `The terminal sent back ${words(only)}.`
         : `The terminal sent back ${replies.length} replies: ${list(replies.map(words))}.`
     if (silent.length === 0) return [sent]
     const other = silent.length === 1 ? "The other query" : `The other ${silent.length} queries`

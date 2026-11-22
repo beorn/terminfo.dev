@@ -518,8 +518,9 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
         )
   if (writes.length > 0) items.push({ label: "Sent", code: writes.map(formatControlBytes).join("  ") })
   const asked = queries.filter((query) => query.sequence !== "")
-  if (asked.length > 0)
+  if (asked.length > 0) {
     items.push({ label: "Query", code: asked.map((q) => formatControlBytes(q.sequence)).join("  ") })
+  }
   // A current decided cell always carries its sentences (readCellTrace checks it); a historical trace has none,
   // and shows only what it stored: the bytes and a headless parser state.
   const evidence = cell.evidence

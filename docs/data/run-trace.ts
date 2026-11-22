@@ -230,7 +230,7 @@ function publishedExchange(
   publishable: (reply: string) => boolean,
 ): Pick<TraceRecord, "writes" | "queries" | "events"> {
   const shown = (match: string[] | null | undefined): { match?: string[] | null } =>
-    match === undefined ? {} : match === null || match.length === 0 || publishable(match[0]!) ? { match } : {}
+    match === undefined ? {} : match === null || match[0] === undefined || publishable(match[0]) ? { match } : {}
   const writes = stored.writes
   const queries = stored.queries?.map(({ sequence, reason, match }): TraceQuery => ({
     sequence,

@@ -90,7 +90,7 @@ function card(dir: string, runId: string, featureId: string, edit?: (raw: RawRec
 
 /** Change one stored JSON value of a real record (the exchange, a callback) in place. */
 function editJson(raw: RawRecord, key: string, change: (value: Record<string, any>) => void) {
-  const value = JSON.parse(raw.rawReplies[key]!)
+  const value = JSON.parse(raw.rawReplies[key]!) as Record<string, any>
   change(value)
   raw.rawReplies[key] = JSON.stringify(value)
 }
