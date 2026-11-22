@@ -1,4 +1,12 @@
 /**
+ * @failure A served Unsupported card words its evidence wrongly for its stored record: a placeholder, a sentence
+ *   that is not its evidence kind template, or a value outside its feature declared shapes (#37341).
+ * @level l2
+ * @consumer docs/data/evidence-messages.ts, read through currentTrace, readCellTrace and describeTracePanes (the
+ *   evidence pane of a card)
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json
+ * @testonly none
+ *
  * #37341: every served Unsupported card words its evidence in one or two plain sentences built from the
  * record's own values, from one module (docs/data/evidence-messages.ts; @cto b8e68da0, 0e2bbcf6).
  *
