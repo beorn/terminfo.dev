@@ -16,6 +16,7 @@ import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-wri
 import { cellLabel, loadReopenedCells, publicReopenedReason, type ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
 
 const VERSION = "extensions.osc702-version"
 const BLINK = "sgr.blink"
@@ -60,7 +61,7 @@ function run(runId: string, measured: Measured, measuredAt: string, manifest = O
   draft.measuredAt = measuredAt
   draft.origin = { kind: "collector" }
   const entries = Object.entries(measured)
-  draft.rawReplies = Object.fromEntries(entries.map(([id, status]) => [id, status === "supported" ? "ACK" : "NO"]))
+  draft.rawReplies = Object.fromEntries(entries.map(([id]) => [id, UNANSWERED_QUERY]))
   draft.results = ids.map((featureId): ProbeResult => {
     const index = entries.findIndex(([id]) => id === featureId)
     const status = measured[featureId]

@@ -31,6 +31,7 @@ import {
 } from "../docs/data/run-selection.ts"
 import { selectionCoversCohort } from "../docs/data/selected-results.ts"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
+import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -105,7 +106,7 @@ function supportedBaseline() {
     ...value,
     runId: "baseline-run",
     assertions,
-    rawReplies: { ...value.rawReplies, ...Object.fromEntries(ids.slice(0, 4).map((id) => [id, "ACK"])) },
+    rawReplies: { ...value.rawReplies, ...Object.fromEntries(ids.slice(0, 4).map((id) => [id, UNANSWERED_QUERY])) },
   })
 }
 // Gate 1: independent current methods combine; reruns replace only their method, never another version.
@@ -159,7 +160,7 @@ it.each([false, true])("composes current methods without losing conflicts (selec
         : [],
       rawReplies: {
         ...value.rawReplies,
-        ...(method && { [featureId]: reply }),
+        ...(method && { [featureId]: UNANSWERED_QUERY }),
         ...(selected && hour > 5
           ? {
               "collector.selection": JSON.stringify({ ids: [featureId] }),
@@ -633,7 +634,7 @@ describe("current execution projection", () => {
       expect(current.cells[ids[2]!]!.result).toBe(prior.results?.[2])
       expect(current.cells[ids[3]!]!.result).toBe(latest.results?.[3])
       expect(current.cells[ids[1]!]!.run.readRaw()).toBe(prior)
-      expect(current.cells[ids[1]!]!.run.readRaw().rawReplies[ids[1]!]).toBe("ACK")
+      expect(current.cells[ids[1]!]!.run.readRaw().rawReplies[ids[1]!]).toBe(UNANSWERED_QUERY)
       expect(current.cells[ids[1]!]!.run.assertions[1]?.featureId).toBe(ids[1])
       expect(current.cells[ids[2]!]!.run.measuredAt).toBe(prior.measuredAt)
       expect(current.attempts).toMatchObject([

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { FeatureResultStatus, ObservationReason } from "@terminfo/probe-defs"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import type {
   PublicProbeResult,
   PublicRunMetadata,
@@ -10,12 +10,7 @@ import type {
   PublicPriorDecision,
 } from "../../data/public-results"
 import { priorDecisionSentence } from "../../data/prior-decision"
-import {
-  describeTracePanes,
-  REASON_EXPLANATIONS,
-  readCellTrace,
-  type LoadedCellTrace,
-} from "../../data/evidence-reader"
+import { describeTracePanes, readCellTrace, type LoadedCellTrace } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
 import { contextLabel } from "./context-label"
@@ -73,8 +68,6 @@ let evidenceController: AbortController | null = null
 let openPreviewClose: (() => void) | undefined
 const id = useId()
 const tooltipId = `${id}-preview`
-
-const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
 // Composed and original-run views both retain the cell's recorded status.
 // The rule itself is evidence-status.ts, where it is testable; only a stored PROBE TODO on an
@@ -148,8 +141,8 @@ const tracePaneCopy = computed(() => {
 const compactCause = computed(() => {
   if (evidenceError.value) return evidenceError.value
   if (evidenceLoading.value) return "Loading recorded evidence…"
-  if (currentResult.value)
-    return currentResult.value.reason ?? "Recorded details have not been approved for publication."
+  // A served cell with no trace has nothing to word: it reads as no result (@cto 0e2bbcf6).
+  if (currentResult.value) return currentResult.value.reason ?? "No result yet"
   return reasonExplanation.value ?? "No retained result for this selection."
 })
 
@@ -203,9 +196,7 @@ const plainResult = computed(() => {
   return table?.summary ?? reason
 })
 
-const actionLabel = computed(() =>
-  props.cell ? "Original evidence not reviewed for presentation" : "No evidence in current selection",
-)
+const actionLabel = computed(() => (props.cell ? "Opens how this was tested" : "No evidence in current selection"))
 const accessibleName = computed(
   () =>
     `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
@@ -260,7 +251,6 @@ async function loadEvidence(): Promise<void> {
   {
     const traceReceipt = version.trace
     if (!traceReceipt) {
-      evidenceError.value = "no trace stored for this cell"
       repositionPreview()
       return
     }
@@ -480,14 +470,11 @@ onBeforeUnmount(() => {
           <figure>
             <figcaption>TESTED</figcaption>
             <div v-if="tracePaneCopy" class="result-evidence__trace-pane">
-              <p v-if="tracePaneCopy.tested.reasonLine" class="result-evidence__trace-p">
-                {{ readerSafeExplanation(tracePaneCopy.tested.reasonLine) }}
-              </p>
               <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
                 <div class="result-evidence__trace-label">{{ item.label }}</div>
                 <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
-                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
                 <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
+                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
               </template>
             </div>
             <div v-else class="result-evidence__missing-image">
@@ -530,7 +517,6 @@ onBeforeUnmount(() => {
             <template v-if="tracePaneCopy">
               <span>{{ tracePaneCopy.tested.sourceLine }}</span>
               <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
-              <span>{{ tracePaneCopy.tested.notKeptLine }}</span>
             </template>
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
             <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>

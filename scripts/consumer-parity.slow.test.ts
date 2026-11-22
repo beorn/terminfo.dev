@@ -208,6 +208,8 @@ vi.mock("../docs/data/current-results.ts", async () => {
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
+  // #37341: each fixture cell stores an exchange, because a decided result with no stored record fails the build.
+  const { UNANSWERED_QUERY } = await import("./stored-exchange.fixture.ts")
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
     // A real selected collection leaves exactly one older original cell visible.
@@ -231,8 +233,10 @@ vi.mock("../docs/data/current-results.ts", async () => {
         tests: [],
         assertionType: cell?.assertionType,
         reason: cell?.note,
+        ...(cell && { rawReplyRef: featureId }),
       }
     })
+    const exchanges = Object.fromEntries(Object.keys(run.cells).map((featureId) => [featureId, UNANSWERED_QUERY]))
     return {
       schemaVersion: 4,
       source: { kind: "live" },
@@ -249,16 +253,17 @@ vi.mock("../docs/data/current-results.ts", async () => {
       results,
       suiteComplete: true,
       suiteProbeCount: ids.length,
-      rawReplies: selectedIds
-        ? {
-            "collector.selection": JSON.stringify({ ids: selectedIds }),
-            "collector.collectionAttempt": JSON.stringify({
-              ids: selectedIds,
-              startedAt: run.measuredAt,
-              result: "completed",
-            }),
-          }
-        : {},
+      rawReplies: {
+        ...exchanges,
+        ...(selectedIds && {
+          "collector.selection": JSON.stringify({ ids: selectedIds }),
+          "collector.collectionAttempt": JSON.stringify({
+            ids: selectedIds,
+            startedAt: run.measuredAt,
+            result: "completed",
+          }),
+        }),
+      },
       assertions: [],
       observations: [],
       origin: { kind: "collector" },
@@ -989,7 +994,15 @@ describe("selected-run consumer parity", () => {
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
       const raw = current.readRaw()
-      raw.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
+      // A stored exchange whose read window holds a private marker; only the reply that fits sgr.bold's declared
+      // control-report shape is published (#37341, @cto 0e2bbcf6).
+      raw.rawReplies = {
+        ...raw.rawReplies,
+        "bold-reply": JSON.stringify({
+          writes: ["\u001b[1m"],
+          queries: [{ sequence: "\u001b[6n", reason: "reply", match: ["\u001b[1;2R"], raw: "RETAINED_CURRENT_REPLY" }],
+        }),
+      }
       raw.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
@@ -1001,7 +1014,7 @@ describe("selected-run consumer parity", () => {
       ])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
-      // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
+      // 30565, #37341: the displayed run's trace publishes the result's declared-shape record and its sentences only.
       const receipt = unpublished.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
       if (!receipt) throw new Error("Missing trace receipt for the displayed current run")
       expect(receipt.url).toBe(`/api/v3/traces/${current.sha256}.json`)
@@ -1012,9 +1025,12 @@ describe("selected-run consumer parity", () => {
       expect(cells["sgr.bold"]).toEqual({
         status: "supported",
         ...(result.assertionType && { assertionType: result.assertionType }),
-        replyWithheld: true,
-        assertions: [{ kind: "positive", expected: "expected criterion", observed: "actual response" }],
+        evidence: ["The terminal sent back ESC [ 1;2 R."],
+        writes: ["\u001b[1m"],
+        queries: [{ sequence: "\u001b[6n", reason: "reply", match: ["\u001b[1;2R"] }],
+        assertions: [{ kind: "positive", expected: "expected criterion" }],
       })
+      expect(trace.bytes).not.toContain("actual response")
       for (const marker of [
         "RETAINED_CURRENT_REPLY",
         "UNAPPROVED_CURRENT_REASON",

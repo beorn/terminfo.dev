@@ -1,4 +1,7 @@
 /**
+ * @failure A card's evidence pane prints a placeholder ("Observed bytes not reviewed for publication.",
+ *   "Not kept: ...") instead of the sentences its trace carries, or accepts a current decided cell without them
+ *   (#37341). The sentences themselves are pinned on real records in evidence-messages.test.ts.
  * @level l2
  * @consumer terminfo.dev result pages (docs/.vitepress/theme/ResultEvidenceCell.vue)
  * @failure A retained source-answer cell reaches the site as a graded or source-captioned result instead of PROBE TODO
@@ -107,7 +110,16 @@ it("publishes short reader-safe missing-evidence reasons on probe-todo cells whi
   expect(JSON.stringify(features)).not.toContain("src/terminal/osc.zig")
 })
 
-describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto rulings 3f4b1d98 & 2239262c)", () => {
+/** The words every card used to fall back to (#37341); none may appear in a pane again. */
+const PLACEHOLDERS = [
+  "Input bytes were not stored by this run",
+  "Observed bytes not reviewed for publication",
+  "Not kept:",
+  "presentation not reviewed",
+  "no typed observation retained",
+]
+
+describe("popover trace panes (#30565, @cto rulings 3f4b1d98 & 2239262c; sentences #37341)", () => {
   const defaultCellSnapshot = (char: string, bg: { r: number; g: number; b: number } | null) => ({
     char,
     fg: null,
@@ -124,37 +136,126 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     wide: false,
     continuation: false,
   })
+  const currentDocument = (featureId: string, cell: Record<string, unknown>) => ({
+    version: 1 as const,
+    runId: "c70e8c3c37c8a735cb5f395052698c35",
+    runSha256: "f3e4844f65081832e63d138e7764c1688230a8f92854fa5899daebf9df16f537",
+    measuredAt: "2026-10-19T15:16:41.358Z",
+    sourceRevision: "78be23e4938f4328d5b710034cf8803a51a1af2e",
+    identity: { recorded: "unverified" },
+    featureResults: { [featureId]: cell },
+  })
+  const readCurrent = (document: ReturnType<typeof currentDocument>, featureId: string) =>
+    readCellTrace(document, {
+      schemaVersion: 4,
+      runId: document.runId,
+      runSha256: document.runSha256,
+      featureId,
+    })
 
-  it("renders a headless parser-state cell with 'Input bytes were not stored by this run', source revision, parser state, and no draft identity line", () => {
+  it("prints a live cell's sent bytes and query, then its evidence sentences, with no placeholder", () => {
+    const document = currentDocument("sgr.bg.default", {
+      status: "supported",
+      assertionType: "query_reply",
+      evidence: ["The terminal sent back ESC P 1 $ r 0 m ESC \\."],
+      events: [
+        { kind: "write", sequence: "\u001b[0m" },
+        { kind: "write", sequence: "\u001b[42m\u001b[49m" },
+        {
+          kind: "query",
+          sequence: "\u001bP$qm\u001b\\\u001b[c",
+          reason: "reply",
+          match: ["\u001bP1$r0m\u001b\\", "0"],
+        },
+        { kind: "write", sequence: "\u001b[0m" },
+      ],
+      assertions: [{ kind: "positive", expected: "sgr.bg.default: DECRQSS reports  after \u001b[42m\u001b[49m" }],
+    })
+    const panes = describeTracePanes(readCurrent(document, "sgr.bg.default"), {
+      sequence: "ESC [ 49 m",
+      subjectKind: "term",
+    })
+    expect(panes.tested.items).toEqual([
+      { label: "Sent", code: "ESC [ 0 m  ESC [ 42 m ESC [ 49 m  ESC [ 0 m" },
+      { label: "Query", code: "ESC P $ q m ESC \\ ESC [ c" },
+      { label: "Observed", text: "The terminal sent back ESC P 1 $ r 0 m ESC \\." },
+    ])
+    expect(panes.tested.sourceLine).toBe("Current run c70e8c3c · 2026-10-19 · query_reply")
+    expect(panes.tested.identityLine).toBeUndefined()
+    for (const placeholder of PLACEHOLDERS) expect(panes.tested.text).not.toContain(placeholder)
+    expect(panes.expected.behavior).toBe("sgr.bg.default: DECRQSS reports  after ESC [ 42 m ESC [ 49 m")
+  })
+
+  it("prints a headless library's sentence and its parser state; a live buffer_state read is not headless", () => {
+    const document = currentDocument("sgr.bg.default", {
+      status: "supported",
+      assertionType: "buffer_state",
+      evidence: ["The library's state after the test is shown below."],
+      parserState: {
+        baseline: defaultCellSnapshot("C", null),
+        before: defaultCellSnapshot("X", { r: 0, g: 128, b: 0 }),
+        after: defaultCellSnapshot("R", null),
+      },
+      assertions: [{ kind: "positive", expected: "sgr.bg.default: reset R restores the measured C bg" }],
+    })
+    const panes = describeTracePanes(readCurrent(document, "sgr.bg.default"), { subjectKind: "lib" })
+    expect(panes.tested.items).toHaveLength(1)
+    expect(panes.tested.items[0]?.text).toBe("The library's state after the test is shown below.")
+    expect(panes.tested.text).toContain('baseline: "C" bg null (default)')
+    expect(panes.tested.text).toContain('before: "X" bg rgb(0,128,0)')
+    for (const placeholder of PLACEHOLDERS) expect(panes.tested.text).not.toContain(placeholder)
+
+    const live = currentDocument("extensions.osc2-title", {
+      status: "supported",
+      assertionType: "buffer_state",
+      evidence: ["Set the window title 4 times and read it back each time: 4 of 4 readings matched."],
+      writes: ["\u001b]2;terminfo-title-target-A\u0007"],
+      assertions: [{ kind: "positive", expected: "OSC 2 sets the title" }],
+    })
+    const livePanes = describeTracePanes(readCurrent(live, "extensions.osc2-title"), { subjectKind: "term" })
+    expect(livePanes.tested.items.map((item) => item.label)).toEqual(["Sent", "Observed"])
+    expect(livePanes.tested.items[1]?.pre).toBeUndefined()
+  })
+
+  it("refuses a current decided cell without evidence sentences, and an undecided cell that carries some", () => {
+    const decided = currentDocument("sgr.bg.256", { status: "unsupported", assertions: [] })
+    expect(() => readCurrent(decided, "sgr.bg.256")).toThrow(
+      "Trace document identity or structure does not match this result",
+    )
+    const tooMany = currentDocument("sgr.bg.256", {
+      status: "unsupported",
+      evidence: ["One.", "Two.", "Three."],
+      assertions: [],
+    })
+    expect(() => readCurrent(tooMany, "sgr.bg.256")).toThrow(
+      "Trace document identity or structure does not match this result",
+    )
+    const undecided = currentDocument("sgr.bg.256", {
+      status: "probe-todo",
+      evidence: ["The terminal sent back ESC [ 0 m."],
+      assertions: [],
+    })
+    expect(() => readCurrent(undecided, "sgr.bg.256")).toThrow(
+      "Trace document identity or structure does not match this result",
+    )
+    const blank = currentDocument("sgr.bg.256", { status: "probe-todo", assertions: [] })
+    expect(describeTracePanes(readCurrent(blank, "sgr.bg.256")).tested.items).toEqual([])
+  })
+
+  it("reads a historical trace's bytes and parser state with no placeholder and no draft identity line", () => {
     const document = {
       version: 1 as const,
       runId: "29e1f818-4988-445c-a498-ef369021bd6d",
       runSha256: "849390283359114480b610eae1f0e37d56066bea38132f86c1460a120c43a924",
       measuredAt: "2026-10-16T09:44:32.280Z",
       sourceRevision: "2cf6de203b151aed5b14d15609c1874e5bf5e5eb",
-      identity: {
-        recorded: "verified",
-        admission: {
-          rule: "runtime-identity",
-          xtversion: "kitty(0.49.2)",
-        },
-      },
+      identity: { recorded: "verified", admission: { rule: "runtime-identity", xtversion: "kitty(0.49.2)" } },
       cells: {
         "sgr.bg.default": {
           outcome: "supported",
           assertionType: "buffer_state",
-          parserState: {
-            baseline: defaultCellSnapshot("C", null),
-            before: defaultCellSnapshot("X", { r: 0, g: 128, b: 0 }),
-            after: defaultCellSnapshot("R", null),
-          },
-          assertions: [
-            {
-              kind: "positive",
-              expected: "sgr.bg.default: reset R restores the measured C bg after a distinct colored X",
-              observed: "{}",
-            },
-          ],
+          parserState: { after: defaultCellSnapshot("R", null) },
+          assertions: [{ kind: "positive", expected: "sgr.bg.default: reset R restores the measured C bg" }],
         },
       },
     }
@@ -166,269 +267,15 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       expectedSha256: SAMPLE_SHA256,
       actualSha256: SAMPLE_SHA256,
     })
-    const panes = describeTracePanes(loaded, {
-      sequence: "ESC [ 49 m",
-      probeGuidance: "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R.",
-      subjectKind: "lib",
-    })
-
-    expect(panes.tested.text).toContain("Input bytes were not stored by this run (source revision 2cf6de20).")
-    expect(panes.tested.text).not.toContain("ESC [ 42 m")
-    expect(panes.tested.text).toContain('baseline: "C" bg null (default)')
-    expect(panes.tested.text).toContain('before: "X" bg rgb(0,128,0)')
+    const panes = describeTracePanes(loaded, { subjectKind: "lib" })
     expect(panes.tested.text).toContain('after: "R" bg null (default)')
-    expect(panes.tested.sourceLine).toBe(
-      "Historical run 29e1f818 · 2026-10-16 · buffer_state · presentation not reviewed",
-    )
+    expect(panes.tested.sourceLine).toBe("Historical run 29e1f818 · 2026-10-16 · buffer_state")
     expect(panes.tested.identityLine).toBeUndefined()
-    expect(panes.tested.text).not.toContain("in run file")
-    expect(panes.tested.notKeptLine).toContain("Not kept: screenshot (headless parser has none), input bytes")
-
-    expect(panes.expected.sequence).toBe("ESC [ 49 m")
-    expect(panes.expected.behavior).toBe(
-      "sgr.bg.default: reset R restores the measured C bg after a distinct colored X",
-    )
+    for (const placeholder of PLACEHOLDERS) expect(panes.tested.text).not.toContain(placeholder)
     expect(panes.expected.referenceStatus).toBe("No reference image recorded")
   })
 
-  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and no unverified identity line", () => {
-    const document = {
-      version: 1 as const,
-      runId: "c70e8c3c37c8a735cb5f395052698c35",
-      runSha256: "f3e4844f65081832e63d138e7764c1688230a8f92854fa5899daebf9df16f537",
-      measuredAt: "2026-10-19T15:16:41.358Z",
-      sourceRevision: "78be23e4938f4328d5b710034cf8803a51a1af2e",
-      identity: {
-        recorded: "unverified",
-        admission: {
-          rule: "ghostty",
-          da1: "\u001b[?62;22;52c",
-          xtversion: "ghostty 1.3.1",
-        },
-      },
-      cells: {
-        "sgr.bg.default": {
-          outcome: "supported",
-          assertionType: "query_reply",
-          events: [
-            { kind: "write", sequence: "\u001b[0m" },
-            { kind: "write", sequence: "\u001b[42m\u001b[49m" },
-            {
-              kind: "query",
-              sequence: "\u001bP$qm\u001b\\\u001b[c",
-              reason: "reply",
-              match: ["\u001bP1$r0m\u001b\\", "0"],
-            },
-            { kind: "write", sequence: "\u001b[0m" },
-          ],
-          assertions: [
-            {
-              kind: "positive",
-              expected: "sgr.bg.default: DECRQSS reports  after \u001b[42m\u001b[49m",
-              observed: "0",
-            },
-          ],
-        },
-      },
-    }
-    const loaded = readCellTrace(document, {
-      schemaVersion: 2,
-      runId: document.runId,
-      runSha256: document.runSha256,
-      featureId: "sgr.bg.default",
-    })
-    const panes = describeTracePanes(loaded, {
-      sequence: "ESC [ 49 m",
-      probeGuidance: "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R.",
-      subjectKind: "term",
-    })
-
-    expect(panes.tested.items).toEqual([
-      { label: "Sent", code: "ESC [ 0 m  ESC [ 42 m ESC [ 49 m  ESC [ 0 m" },
-      { label: "Query · reply", code: "ESC P $ q m ESC \\ ESC [ c" },
-      { label: "Observed", code: "ESC P 1 $ r 0 m ESC \\", text: "Observed: 0" },
-    ])
-    expect(panes.tested.sourceLine).toBe(
-      "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
-    )
-    expect(panes.tested.identityLine).toBeUndefined()
-    expect(panes.tested.text).not.toContain("in run file")
-    expect(panes.tested.notKeptLine).toBe(
-      "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file",
-    )
-    expect(panes.expected.sequence).toBe("ESC [ 49 m")
-    expect(panes.expected.behavior).toBe("sgr.bg.default: DECRQSS reports  after ESC [ 42 m ESC [ 49 m")
-  })
-
-  it("renders an unlisted-reply cell with 'Observed bytes not reviewed for publication.' and no draft identity line", () => {
-    const document = {
-      version: 1 as const,
-      runId: "trace-run-unlisted",
-      runSha256: SAMPLE_SHA256,
-      measuredAt: "2026-09-28T12:00:00.000Z",
-      sourceRevision: "2".repeat(40),
-      identity: {
-        recorded: "verified",
-        admission: {
-          rule: "kitty",
-          da1: "\u001b[?62;52;c",
-          xtversion: "kitty(0.49.2)",
-        },
-      },
-      cells: {
-        "device.xtwinops-21": {
-          outcome: "unsupported",
-          assertionType: "query_reply",
-          replyWithheld: true as const,
-          events: [
-            { kind: "write", sequence: "\u001b[0m" },
-            { kind: "query", sequence: "\u001b[21t\u001b[c", reason: "reply" },
-          ],
-          assertions: [{ kind: "negative", expected: "no window title report" }],
-        },
-      },
-    }
-    const loaded = readCellTrace(document, {
-      schemaVersion: 2,
-      runId: document.runId,
-      runSha256: document.runSha256,
-      featureId: "device.xtwinops-21",
-    })
-    const panes = describeTracePanes(loaded, {
-      sequence: "ESC [ 21 t",
-      subjectKind: "term",
-    })
-
-    expect(panes.tested.text.toLowerCase()).toContain("observed bytes not reviewed for publication")
-    expect(panes.tested.items).toEqual([
-      { label: "Sent", code: "ESC [ 0 m" },
-      { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
-      { label: "Observed", text: "Observed bytes not reviewed for publication." },
-    ])
-    expect(panes.tested.identityLine).toBeUndefined()
-    expect(panes.tested.text).not.toContain("in run file")
-    expect(panes.expected.sequence).toBe("ESC [ 21 t")
-    expect(panes.expected.behavior).toBe("no window title report")
-  })
-
-  it("never renders an observed or matched reply on a replyWithheld fixture even if one is present (@cto REVISE 1)", () => {
-    const document = {
-      version: 1 as const,
-      runId: "trace-run-withheld-leak",
-      runSha256: SAMPLE_SHA256,
-      measuredAt: "2026-09-28T12:00:00.000Z",
-      sourceRevision: "2".repeat(40),
-      identity: {
-        recorded: "verified",
-        admission: {
-          rule: "kitty",
-          da1: "\u001b[?62;52;c",
-          xtversion: "kitty(0.49.2)",
-        },
-      },
-      cells: {
-        "device.xtwinops-21": {
-          outcome: "unsupported",
-          assertionType: "query_reply",
-          replyWithheld: true as const,
-          events: [
-            { kind: "write", sequence: "\u001b[0m" },
-            { kind: "query", sequence: "\u001b[21t\u001b[c", reason: "reply", match: ["\u001b]lsecret-title\u001b\\"] },
-          ],
-          assertions: [{ kind: "negative", expected: "no window title report", observed: "secret-title" }],
-        },
-        "extensions.osc52-read": {
-          outcome: "unsupported",
-          assertionType: "query_reply",
-          replyWithheld: true as const,
-          assertions: [{ kind: "negative", expected: "no clipboard read", observed: "secret-clipboard" }],
-        },
-      },
-    }
-    const withQuery = readCellTrace(document, {
-      schemaVersion: 2,
-      runId: document.runId,
-      runSha256: document.runSha256,
-      featureId: "device.xtwinops-21",
-    })
-    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", subjectKind: "term" })
-    expect(queryPanes.tested.items).toEqual([
-      { label: "Sent", code: "ESC [ 0 m" },
-      { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
-      { label: "Observed", text: "Observed bytes not reviewed for publication." },
-    ])
-    expect(queryPanes.tested.text).not.toContain("secret-title")
-
-    const withoutQuery = readCellTrace(document, {
-      schemaVersion: 2,
-      runId: document.runId,
-      runSha256: document.runSha256,
-      featureId: "extensions.osc52-read",
-    })
-    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", subjectKind: "term" })
-    expect(noQueryPanes.tested.items).toEqual([
-      { label: "Sent", text: "Input bytes were not stored by this run." },
-      { label: "Observed", text: "Observed bytes not reviewed for publication." },
-    ])
-    expect(noQueryPanes.tested.text).not.toContain("secret-clipboard")
-  })
-
-  it("renders an empty-trace policy-refused cell with reader-safe reason text, Sent/Observed Nothing, no draft identity line, and no private collector note", () => {
-    const document = {
-      version: 1 as const,
-      runId: "3105bbe99bf76151e86f4d90eb21c179",
-      runSha256: "594ec74912e9bfaf757edf05007e310a354536b1cbcef7de1180e831456256ac",
-      measuredAt: "2026-10-18T17:30:28.939Z",
-      sourceRevision: "7b74b406abe357e43a1b909f93879f5d996e7181",
-      identity: {
-        recorded: "unverified",
-        admission: {
-          rule: "kitty",
-          da1: "\u001b[?62;52;c",
-          xtversion: "kitty(0.48.2)",
-        },
-      },
-      cells: {
-        "sgr.bg.256": {
-          outcome: "inconclusive",
-
-          reason: "policy-refused",
-          events: [],
-          assertions: [],
-        },
-      },
-    }
-    const loaded = readCellTrace(document, {
-      schemaVersion: 2,
-      runId: document.runId,
-      runSha256: document.runSha256,
-      featureId: "sgr.bg.256",
-    })
-    const panes = describeTracePanes(loaded, {
-      sequence: "ESC [ 48;5;N m",
-      probeGuidance:
-        "Headless: compare background SGR 48;5;67 and 48;5;173 cells with two independently exact direct-RGB cube reference cells.",
-      subjectKind: "term",
-    })
-
-    expect(panes.tested.reasonLine).toBe("policy-refused: The configured policy declined to run or allow this probe.")
-    expect(panes.tested.items).toEqual([
-      { label: "Sent", text: "Nothing" },
-      { label: "Observed", text: "Nothing" },
-    ])
-    expect(panes.tested.sourceLine).toBe(
-      "Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed",
-    )
-    expect(panes.tested.identityLine).toBeUndefined()
-    expect(panes.tested.text).not.toContain("in run file")
-    expect(panes.tested.text).not.toContain("terminal-ownership receipt")
-    expect(panes.tested.text).not.toContain("Attempt refused before sending probe bytes")
-    expect(panes.expected.sequence).toBe("ESC [ 48;5;N m")
-    expect(panes.expected.behavior).toContain("compare background SGR 48;5;67 and 48;5;173 cells")
-    expect(panes.expected.referenceStatus).toBe("No reference image recorded")
-  })
-
-  it("refuses a digest mismatch with 'trace failed its receipt' and a missing cell with 'no trace stored for this cell' (@cto ruling 2239262c)", () => {
+  it("refuses a digest mismatch with 'trace failed its receipt' and names the run and result a trace lacks (@cto ruling 2239262c)", () => {
     const document = {
       version: 1 as const,
       runId: "3105bbe99bf76151e86f4d90eb21c179",
@@ -458,6 +305,6 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
         expectedSha256: SAMPLE_SHA256,
         actualSha256: SAMPLE_SHA256,
       }),
-    ).toThrow("no trace stored for this cell")
+    ).toThrow("Trace document for run 3105bbe99bf76151e86f4d90eb21c179 holds no result for sgr.bg.256")
   })
 })
