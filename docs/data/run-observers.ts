@@ -25,8 +25,9 @@ export function loadRunObservers(contentDir: string, featureIds: ReadonlySet<str
   const path = join(contentDir, "run-observers.json")
   if (!existsSync(path)) throw new Error(`run-observers.json not found at ${path}`)
   const raw = parseJsonStrict(path, readFileSync(path, "utf8"))
-  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${path}: expected an object keyed by run id`)
+  }
   const storedRuns = new Set(
     RUN_DIRS.flatMap((dir) =>
       existsSync(join(contentDir, dir))
@@ -36,16 +37,18 @@ export function loadRunObservers(contentDir: string, featureIds: ReadonlySet<str
   )
   const rows: Record<string, RunObservers> = {}
   for (const [runId, row] of Object.entries(raw as Record<string, unknown>)) {
-    if (!storedRuns.has(runId))
+    if (!storedRuns.has(runId)) {
       throw new Error(`${path}: run ${runId} is not a stored run under ${RUN_DIRS.join(", ")}`)
+    }
     const { observers, featureIds: ids, note } = (row ?? {}) as Record<string, unknown>
     const strings = (value: unknown) =>
       Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" && v !== "")
     if (!strings(observers)) throw new Error(`${path}: run ${runId} needs a non-empty observers list`)
     if (!strings(ids)) throw new Error(`${path}: run ${runId} needs a non-empty featureIds list`)
     if (typeof note !== "string" || note.trim() === "") throw new Error(`${path}: run ${runId} needs a note`)
-    for (const id of ids as string[])
+    for (const id of ids as string[]) {
       if (!featureIds.has(id)) throw new Error(`${path}: run ${runId} names unknown feature ${id}`)
+    }
     rows[runId] = { observers: observers as string[], featureIds: ids as string[], note }
   }
   return rows

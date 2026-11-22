@@ -77,9 +77,10 @@ export function rowFacts(data: RowData) {
     categoryOf: (key: string, featureId: string) => categoryOf(data.releaseBars[key], featureId),
     /** One feature as a popover row: its name, a link to its result, and the result's reason unless Supported. */
     describe: (key: string) => {
-      if (!describers.has(key)) {
+      let describe = describers.get(key)
+      if (!describe) {
         const results = data.selectedByBackend[key]?.selected.featureResults ?? {}
-        describers.set(key, (featureId, category) => ({
+        describe = (featureId, category) => ({
           id: featureId,
           name: data.featureDescriptions[featureId]?.name ?? featureId,
           href: featureHref(featureId),
@@ -87,9 +88,10 @@ export function rowFacts(data: RowData) {
             category === "supported" || category === "no-result"
               ? undefined
               : (data.notes[key]?.[featureId] ?? results[featureId]?.reason),
-        }))
+        })
+        describers.set(key, describe)
       }
-      return describers.get(key)!
+      return describe
     },
   }
 }

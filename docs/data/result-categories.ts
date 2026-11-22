@@ -18,6 +18,14 @@ export interface ResultCategory {
   readonly optional?: boolean
 }
 
+const NO_RESULT_CATEGORY: ResultCategory = {
+  id: "no-result",
+  label: "No result yet",
+  mark: "—",
+  style: "none",
+  meaning: "We haven't run this test here yet.",
+}
+
 export const RESULT_CATEGORIES: readonly ResultCategory[] = [
   {
     id: "supported",
@@ -48,7 +56,7 @@ export const RESULT_CATEGORIES: readonly ResultCategory[] = [
     style: "partial",
     meaning: "We can't run this test in this terminal; each result says why.",
   },
-  { id: "no-result", label: "No result yet", mark: "—", style: "none", meaning: "We haven't run this test here yet." },
+  NO_RESULT_CATEGORY,
 ]
 
 /**
@@ -95,5 +103,5 @@ export function categoryMark(id: CategoryId): string {
 export function categoryOf(bar: Pick<CurrentAggregate, "idsByState"> | undefined, featureId: string): ResultCategory {
   const ids = bar ? categoryIds(bar) : undefined
   const found = RESULT_CATEGORIES.find((category) => ids?.[category.id].includes(featureId))
-  return found ?? RESULT_CATEGORIES.find((category) => category.id === "no-result")!
+  return found ?? NO_RESULT_CATEGORY
 }
