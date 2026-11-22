@@ -388,7 +388,11 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
 
   it("wires the home page bar, tooltip and legend to the one predicate", () => {
     const home = source("docs/index.md")
-    expect(home).toContain("!isEnvironmentGroup(result.featureId)")
+    // #37761: the bar, its popover lists and their counts all read the bar's own fold, whose ids come from
+    // scoredFeatureIds, so no environment group can be drawn, listed or counted.
+    expect(home).toContain("categoryIds(bar)")
+    expect(source("docs/data/result-categories.ts")).toContain("const ids = bar.idsByState")
+    expect(source("docs/data/release-scope.ts")).toContain("for (const id of scoredFeatureIds(catalogIds)) {")
     expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
     // #37341 Q2: the public catalogue holds no environment position, so no public page names one.
     expect(home).not.toMatch(/manual[ -]by[ -]design/i)

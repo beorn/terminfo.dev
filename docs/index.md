@@ -21,10 +21,8 @@ import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 import { baselineReadout } from './data/baseline-readouts.ts'
-import { displayVersion } from './.vitepress/theme/display-version.ts'
-// The deep source path, not the package root: the root re-exports probe extensions that import
-// node:crypto, which Vite's browser build cannot resolve (measured 2026-10-23 on this branch).
-import { isEnvironmentGroup } from '../packages/probe-defs/src/environment-groups.ts'
+import { categoryIds, categoryIdsWithin } from './data/result-categories.ts'
+import { platformIcon } from './.vitepress/theme/platform-icons.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -83,12 +81,73 @@ const appBackends = computed(() => {
   return allAppBackends.value.filter(b => b.platforms?.includes(platformFilter.value))
 })
 
-// Platform SVG icons (greyscale, 14x14)
-function platformIcon(os) {
-  if (os === 'macos') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M12.2 5.5c-.1 0-1.6.9-1.6 2.8 0 2.2 1.9 3 2 3-.1.1-.3 1.1-1 2.2-.6 1-1.3 1.9-2.3 1.9s-1.3-.6-2.4-.6c-1.2 0-1.6.6-2.5.6-.9 0-1.6-.9-2.3-2C1.3 12 .8 10.2.8 8.6c0-2.6 1.7-4 3.3-4 .9 0 1.6.6 2.2.6.5 0 1.4-.6 2.4-.6.4 0 1.8.1 2.6 1.3-.1 0-1.5.9-1.5 2.6h.4z" fill="#888"/><path d="M10 1c.5.6.9 1.5.8 2.4-.8.1-1.7-.4-2.2-1.1-.5-.6-.9-1.5-.8-2.3.9 0 1.7.4 2.2 1z" fill="#888"/></svg>'
-  if (os === 'linux') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M8 1C5.8 1 4 3.4 4 6.4c0 1.5.4 2.8 1.1 3.8-.5.3-1.5 1-1.5 2.1 0 .4.1.8.4 1.1.5.5 1.4.6 2.2.6h3.6c.8 0 1.7-.1 2.2-.6.3-.3.4-.7.4-1.1 0-1.1-1-1.8-1.5-2.1.7-1 1.1-2.3 1.1-3.8C12 3.4 10.2 1 8 1zm-1.5 5c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8zm3 0c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8z" fill="#888"/></svg>'
-  if (os === 'windows') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M1 3.5l5.5-.8v5.3H1V3.5zm6.3-.9L15 1.5v6.5H7.3V2.6zM15 8.5v6.3l-7.7-1.1V8.5H15zM6.5 13.5L1 12.8V8.5h5.5v5z" fill="#888"/></svg>'
-  return ''
+// #37761: the platform filter is count pills over what the list shows; a platform with no terminal is left out.
+const PLATFORM_ORDER = ['macos', 'linux', 'windows']
+const platformOptions = computed(() => {
+  const counts = new Map()
+  for (const b of allAppBackends.value) for (const os of b.platforms ?? []) counts.set(os, (counts.get(os) ?? 0) + 1)
+  const order = (os) => (PLATFORM_ORDER.includes(os) ? PLATFORM_ORDER.indexOf(os) : PLATFORM_ORDER.length)
+  return [
+    { id: 'all', label: 'All', count: allAppBackends.value.length },
+    ...[...counts.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b)).map((os) => ({ id: os, label: data.platformLabels?.[os] ?? os, count: counts.get(os) })),
+  ]
+})
+
+// #37761: one row shape for every bar list. Beside its platform icon a name never repeats the platform in words.
+function rowName(name) {
+  return data.meta[name]?.shortLabel ?? backendLabel(name)
+}
+function rowOs(name) {
+  return displayedSelections[name]?.selected.subject?.os ?? null
+}
+function rowPlatform(name) {
+  const os = rowOs(name)
+  return os ? (data.platformLabels?.[os] ?? os) : undefined
+}
+function rowIds(name) {
+  const bar = data.releaseBars[name]
+  return bar ? categoryIds(bar) : undefined
+}
+const featureHrefs = new Map(data.features.map((feature) => [feature.id, '/' + feature.category + '/' + featureSlug(feature.id)]))
+const describers = new Map()
+// One feature as a popover row: its name, a link to its result, and the result's reason when it was not Supported.
+function describeFor(name) {
+  if (!describers.has(name)) {
+    const results = data.selectedByBackend[name]?.selected.featureResults ?? {}
+    describers.set(name, (featureId, category) => ({
+      id: featureId,
+      name: data.featureDescriptions[featureId]?.name ?? featureId,
+      href: featureHrefs.get(featureId),
+      note: category === 'supported' || category === 'no-result' ? undefined : results[featureId]?.reason,
+    }))
+  }
+  return describers.get(name)
+}
+const BASELINES = ['core', 'modern', 'rich', 'unicode']
+const BASELINE_COLORS = { core: '#10b981', modern: '#3b82f6', rich: '#8b5cf6', unicode: '#06b6d4' }
+const BASELINE_ICONS = { core: '🟢', modern: '🔵', rich: '🟣', unicode: '🌐' }
+// Kept in the script: the glossary linker rewrites words in page text, which would break a template expression.
+const BASELINE_DESCRIPTIONS = {
+  core: 'Every terminal should support these — SGR basics, cursor, erase, alt screen',
+  modern: 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse',
+  rich: 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts',
+  unicode: 'Unicode correctness — wide chars, combining, emoji, grapheme clusters',
+}
+const cardIdsCache = new Map()
+// A Baseline card row: the same categories limited to the card's features (#37761 7c).
+function cardIds(name, baseline) {
+  const key = name + '|' + baseline
+  if (!cardIdsCache.has(key)) {
+    const bar = data.releaseBars[name]
+    cardIdsCache.set(key, bar ? categoryIdsWithin(bar, data.baselines[baseline] ?? []) : undefined)
+  }
+  return cardIdsCache.get(key)
+}
+// #37761 7b: Supported over the card's features, so it matches the bar and never counts an untested feature.
+function cardPercent(name, baseline) {
+  const ids = cardIds(name, baseline)
+  const features = data.baselines[baseline]?.length ?? 0
+  return ids && features ? Math.round((ids.supported.length / features) * 100) + '%' : ''
 }
 
 function platformIcons(backendName) {
@@ -99,10 +158,6 @@ function platformIcons(backendName) {
 // #37341 D2: the one readout, "S supported · T of N tested", printed beside the bar and in its tooltip.
 function releaseReadout(backendName) {
   return data.releaseBars[backendName] ? `${data.releaseShares[backendName]} · ${coverageLabel(backendName)}` : undefined
-}
-
-function supportFraction(backendName) {
-  return releaseReadout(backendName) ?? 'Historical'
 }
 
 const sortedCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
@@ -147,37 +202,6 @@ function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
 
-function barSegmentItems(backendName, segment) {
-  const selected = data.selectedByBackend[backendName]?.selected
-  if (!selected) return []
-  return Object.values(selected.featureResults).filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
-    const feature = data.features.find(feature => feature.id === result.featureId)
-    return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
-      href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
-      symbol: {supported:'✓',unsupported:'✗','differs-by-context':'≠',untestable:'?'}[segment],
-      note: result.reason }
-  })
-}
-
-const barSegments = [
-  { id: 'supported', label: 'Supported', style: 'yes' },
-  { id: 'unsupported', label: 'Unsupported', style: 'fail' },
-  // @cto c3c2f885: a cell two same-suite contexts disagree on is decided, so it gets its own segment
-  // rather than stopping the bar or reading as Supported/Unsupported.
-  { id: 'differs-by-context', label: 'Differs by context', style: 'differs' },
-  { id: 'untestable', label: 'Untestable', style: 'partial' },
-]
-
-// Widths are over the graded positions, so a result we haven't decided leaves the rest of the bar blank (#37341 Q1).
-function segmentWidth(name, segment) {
-  const bar = data.releaseBars[name]
-  return bar?.denominator ? (bar.counts[segment] / bar.denominator * 100) + '%' : '0%'
-}
-
-function scoreLabel(backendName) {
-  return releaseReadout(backendName) ?? 'No current sealed score'
-}
-
 function coverageLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No selected run'
@@ -205,13 +229,6 @@ function backendLabel(name) {
   return data.meta[name]?.label ?? name
 }
 
-// Every score belongs to one physical context, which may retain several original runs.
-// Print its OS so separate Linux and macOS contexts remain distinct (28047).
-function backendContextLabel(name) {
-  const os = displayedSelections[name]?.selected.subject?.os
-  return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
-}
-
 function featureTooltip(f) {
   const desc = data.featureDescriptions[f.id]
   if (!desc) return f.name
@@ -221,17 +238,13 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
-function backendTooltip(name, version) {
+// #37761 item 10: a terminal's hover says who it is: name, platform, one line, website. No run ids, suite ids or times.
+function backendTooltip(name) {
   const meta = data.meta[name]
-  if (!meta) return name
-  const parts = [backendContextLabel(name), meta.description, scoreLabel(name)]
-  if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
-  if (meta.type) parts.push(`Type: ${meta.type}`)
-  if (version) parts.push(`Source versions: ${version}`)
-  const sources = Object.values(displayedSelections[name]?.selected.sources ?? {})
-  for (const source of sources) parts.push(`Source ${source.runId}: ${displayVersion(source.subject.version)} · ${source.measuredAt} · suite ${source.suiteId}`)
-  if (meta.url) parts.push(meta.url)
-  if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
+  const parts = [[rowName(name), rowPlatform(name)].filter(Boolean).join(' · ')]
+  const line = meta?.description?.split(/(?<=[.!?])\s/u)[0]
+  if (line) parts.push(line)
+  if (meta?.url) parts.push(meta.url)
   return parts.join('\n')
 }
 </script>
@@ -246,37 +259,14 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-no-result">— No result yet</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-unsupported">Unsupported</span><span class="legend-inconclusive">Untestable</span><span class="legend-no-result">No result yet</span></div>
 
-<div class="platform-filter">
-  <label for="app-platform-filter">Platform:</label>
-  <select id="app-platform-filter" v-model="platformFilter">
-    <option value="all">All Platforms</option>
-    <option value="macos">macOS</option>
-    <option value="linux">Linux</option>
-    <option value="windows">Windows</option>
-  </select>
-</div>
+<CountPills v-model="platformFilter" :options="platformOptions" label="Platform" />
 
-<div v-if="appBackends.length > 0" class="summary">
-  <div v-for="b in appBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
-    <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
-    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
-    <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
-        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
-        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
-          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
-          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
-            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
-          </li></ul>
-        </div>
-      </div>
-    </div>
-    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
-  </div>
+<div v-if="appBackends.length > 0" class="term-rows">
+  <TermRow v-for="b in appBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
+    :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
+    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
 
@@ -285,24 +275,18 @@ function backendTooltip(name, version) {
 <p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support. For the weird and wonderful history of protocols that didn't make the cut, see the <a href="/baseline/legacy">Legacy baseline</a>.</p>
 
 <div class="baseline-grid">
-  <a v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card baseline-card-link" :href="'/baseline/' + bl">
+  <div v-for="bl in BASELINES" :key="bl" class="baseline-card">
     <div class="baseline-header">
-      <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
-      <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
+      <span class="baseline-icon">{{ BASELINE_ICONS[bl] }}</span>
+      <a class="baseline-name" :href="'/baseline/' + bl">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</a>
       <span class="baseline-count">{{ data.baselines[bl]?.length ?? 0 }} features</span>
     </div>
-    <div class="baseline-desc">{{ bl === 'core' ? 'Every terminal should support these — SGR basics, cursor, erase, alt screen' : bl === 'modern' ? 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse' : bl === 'rich' ? 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts' : 'Unicode correctness — wide chars, combining, emoji, grapheme clusters' }}</div>
-    <div class="baseline-backends">
-      <div v-for="b in appBackends" :key="b.name" class="baseline-backend" :class="{ 'baseline-backend-historical': !data.selectedByBackend[b.name] }">
-        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
-        <span class="baseline-backend-bar">
-          <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
-        </span>
-        <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct" :title="baselineRow(b.name, bl).title">{{ baselineRow(b.name, bl).text }}</span>
-      </div>
+    <div class="baseline-desc">{{ BASELINE_DESCRIPTIONS[bl] }}</div>
+    <div class="term-rows term-rows-card">
+      <TermRow v-for="b in appBackends" :key="b.name" card :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
+        :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
     </div>
-  </a>
+  </div>
 </div>
 
 ## Feature Matrix {#matrix}
@@ -339,7 +323,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in appBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name)">{{ rowName(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
@@ -374,46 +358,26 @@ function backendTooltip(name, version) {
   Headless backends test parser correctness, not rendering. A <span class="cell-yes-inline">✓</span> means the parser accepts the sequence, not that it renders correctly.
 </div>
 
-<div class="summary summary-muted">
-  <div v-for="b in headlessBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
-    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
-    <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
-        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
-        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
-          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
-          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
-            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
-          </li></ul>
-        </div>
-      </div>
-    </div>
-    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
-  </div>
+<div class="term-rows term-rows-muted">
+  <TermRow v-for="b in headlessBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
+    :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
+    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 
 ### Headless Baseline Coverage
 
 <div class="baseline-grid">
-  <a v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card baseline-card-link" :href="'/baseline/' + bl">
+  <div v-for="bl in BASELINES" :key="bl" class="baseline-card">
     <div class="baseline-header">
-      <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
-      <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
+      <span class="baseline-icon">{{ BASELINE_ICONS[bl] }}</span>
+      <a class="baseline-name" :href="'/baseline/' + bl">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</a>
       <span class="baseline-count">{{ data.baselines[bl]?.length ?? 0 }} features</span>
     </div>
-    <div class="baseline-backends">
-      <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend" :class="{ 'baseline-backend-historical': !data.selectedByBackend[b.name] }">
-        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
-        <span class="baseline-backend-bar">
-          <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
-        </span>
-        <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct" :title="baselineRow(b.name, bl).title">{{ baselineRow(b.name, bl).text }}</span>
-      </div>
+    <div class="term-rows term-rows-card">
+      <TermRow v-for="b in headlessBackends" :key="b.name" card :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
+        :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
     </div>
-  </a>
+  </div>
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
@@ -423,7 +387,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in headlessBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name)">{{ rowName(b.name) }}</a>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
@@ -454,24 +418,10 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Which features survive tmux and screen? Pass-through testing shows what each multiplexer correctly relays.</p>
 
-<div class="summary summary-muted">
-  <div v-for="b in muxBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
-    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
-    <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
-        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
-        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
-          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
-          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
-            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
-          </li></ul>
-        </div>
-      </div>
-    </div>
-    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
-    <span class="summary-pct">{{ supportFraction(b.name) }}</span>
-  </div>
+<div class="term-rows term-rows-muted">
+  <TermRow v-for="b in muxBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
+    :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
+    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
@@ -481,7 +431,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in muxBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name)">{{ rowName(b.name) }}</a>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
@@ -633,31 +583,6 @@ strips, or mishandles.
 }
 
 /* Platform filter */
-.platform-filter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 1em;
-  font-size: 0.9em;
-}
-
-.platform-filter select {
-  padding: 4px 8px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  font-size: 0.9em;
-}
-
-/* Platform icons */
-.summary-platforms {
-  display: flex;
-  gap: 3px;
-  flex-shrink: 0;
-  align-items: center;
-}
-
 .th-platforms {
   display: flex;
   gap: 2px;
@@ -682,106 +607,12 @@ strips, or mishandles.
 }
 
 /* Muted style for headless sections */
-.summary-muted {
+.term-rows-muted {
   opacity: 0.85;
 }
 
 .matrix-muted {
   opacity: 0.85;
-}
-
-/* Summary section */
-.summary {
-  margin: 1em 0 2em;
-}
-
-.summary-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.summary-name {
-  width: 120px;
-  font-weight: 600;
-  font-size: 0.9em;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.summary-version {
-  width: 60px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.8em;
-  color: var(--vp-c-text-3);
-  flex-shrink: 0;
-}
-
-.summary-bar {
-  flex: 1;
-  height: 22px;
-  background: var(--vp-c-bg-soft);
-  border-radius: 4px;
-  display: flex;
-  cursor: pointer;
-}
-
-.bar-yes {
-  height: 100%;
-  background: #10b981;
-  transition: width 0.3s ease;
-}
-
-.bar-partial {
-  height: 100%;
-  background: #f59e0b;
-  transition: width 0.3s ease;
-}
-
-.bar-fail {
-  height: 100%;
-  background: transparent;
-  transition: width 0.3s ease;
-}
-
-.bar-differs {
-  height: 100%;
-  background: #6366f1;
-  transition: width 0.3s ease;
-}
-
-.bar-remainder {
-  height: 100%;
-  background: transparent;
-  transition: width 0.3s ease;
-}
-
-.VPHome .summary-pct {
-  width: auto;
-  min-width: 16ch;
-  white-space: nowrap;
-  font-weight: 600;
-  font-size: 0.9em;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.VPHome .summary-counts {
-  width: auto;
-  white-space: nowrap;
-  font-size: 0.8em;
-  color: var(--vp-c-text-3);
-  text-align: right;
-  flex-shrink: 0;
-}
-
-@media (max-width: 900px) {
-  .summary-row { flex-wrap: wrap; }
-  .VPHome .summary-bar { order: 1; flex-basis: 100%; }
-  .VPHome .summary-pct { order: 2; width: auto; text-align: left; }
-  .VPHome .summary-counts { order: 3; width: 100%; white-space: normal; text-align: left; }
 }
 
 /* Filters */
@@ -812,9 +643,15 @@ strips, or mishandles.
 /* Baseline 2026 cards */
 .baseline-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin: 1em 0 2em;
+}
+@media (max-width: 960px) {
+  .baseline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .baseline-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .baseline-card {
@@ -824,31 +661,15 @@ strips, or mishandles.
   background: var(--vp-c-bg-soft);
 }
 
-.baseline-card-link,
-.baseline-card-link:link,
-.baseline-card-link:visited {
+/* #37761: the card's tier name is its link; the rows inside are TermRows. */
+.baseline-name,
+.vp-doc a.baseline-name {
   color: inherit;
-  text-decoration: none !important;
-  display: block;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  cursor: pointer;
+  text-decoration: none;
 }
-
-.baseline-card-link:hover {
-  border-color: var(--vp-c-brand-1);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-
-/* Prevent VitePress link styling inside baseline cards */
-.baseline-card-link,
-.baseline-card-link:hover {
-  color: inherit !important;
-  text-decoration: none !important;
-}
-
-/* Only the baseline tier name gets brand color on hover */
-.baseline-card-link:hover .baseline-name {
-  color: var(--vp-c-brand-1) !important;
+.vp-doc a.baseline-name:hover,
+.vp-doc a.baseline-name:focus-visible {
+  color: var(--vp-c-brand-1);
 }
 
 .baseline-header {
@@ -878,51 +699,6 @@ strips, or mishandles.
   color: var(--vp-c-text-3);
   margin-bottom: 8px;
   line-height: 1.3;
-}
-
-.baseline-backends {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.baseline-backend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8em;
-}
-
-.baseline-backend-name {
-  width: 80px;
-  flex-shrink: 0;
-  white-space: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.95em;
-}
-
-.baseline-backend-bar {
-  flex: 1;
-  height: 10px;
-  background: var(--vp-c-bg);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.baseline-fill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.baseline-backend-pct {
-  width: 20ch;
-  white-space: normal;
-  text-align: right;
-  font-weight: 600;
-  flex-shrink: 1;
 }
 
 /* Keep growing matrices within the page, with headers in their scroll region. */
@@ -1088,22 +864,6 @@ strips, or mishandles.
   display: none;
 }
 
-/* Bar segment tooltips appear below with opaque background */
-.bar-yes[data-tooltip]:hover::after,
-.bar-partial[data-tooltip]:hover::after,
-.bar-fail[data-tooltip]:hover::after,
-.bar-remainder[data-tooltip]:hover::after {
-  bottom: auto;
-  top: 100%;
-  margin-top: 4px;
-  left: 0;
-  transform: none;
-  max-width: 80vw;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
 .problem-summary {
   max-width: 720px;
   margin: -24px auto 32px;
@@ -1135,14 +895,6 @@ strips, or mishandles.
 }
 
 /* Compact homepage comparison; terminal detail tables keep their own layout. */
-.VPHome .summary-row { display:grid; grid-template-columns:148px 18px 82px minmax(0,1fr) auto; gap:14px; padding:12px 0; border-bottom:1px solid var(--vp-c-divider); }
-.VPHome .summary-name { width:auto; min-width:0; white-space:normal; font-size:14px; }
-.VPHome .summary-platforms { width:18px; }
-.VPHome .summary-version { width:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.VPHome .summary-bar { height:24px; min-width:0; border-radius:4px; }
-.VPHome .summary-pct { width:auto; min-width:0; font-variant-numeric:tabular-nums; font-size:14px; }
-.VPHome .bar-fail { background:var(--vp-c-divider); }
-.VPHome .summary-muted .summary-row { grid-template-columns:148px 82px minmax(0,1fr) auto; }
 .VPHome .problem-summary { max-width:none; margin:0 0 32px; padding:0; background:none; border-radius:0; font-size:16px; }
 .VPHome .VPHero .main { max-width:none; }
 .VPHome .VPHero .text { max-width:900px; }
@@ -1153,16 +905,7 @@ strips, or mishandles.
 .support-legend .legend-no-result::before { background:var(--vp-c-bg-soft); border:1px solid var(--vp-c-divider); }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
-.summary-history,.baseline-history { display:none; }
 @media (max-width:600px) {
- .VPHome .summary-row,.VPHome .summary-muted .summary-row { grid-template-columns:minmax(0,1fr) 18px 84px; gap:8px 10px; padding:14px 0; }
- .VPHome .summary-muted .summary-version { grid-column:3; }
- .VPHome .summary-bar { grid-column:1 / -1; grid-row:2; order:initial; }
- .VPHome .summary-pct,.VPHome .baseline-backend-pct { display:none; }
- .VPHome .summary-row-historical .summary-bar,.VPHome .baseline-backend-historical .baseline-backend-bar { display:none; }
- .VPHome .summary-history { display:block; grid-column:1 / -1; font-size:13px; }
- .VPHome .baseline-history { display:block; font-size:12px; color:var(--vp-c-text-2); }
- .VPHome .baseline-backend-historical .baseline-backend-name { flex:1; width:auto; }
  .VPHome .matrix .feature-col,.VPHome .matrix .feature-name { position:sticky; left:0; z-index:2; box-sizing:border-box; width:180px; min-width:180px; max-width:180px; white-space:normal; background:var(--vp-c-bg); }
  .VPHome .matrix th.feature-col { z-index:11; background:var(--vp-c-bg-soft); }
  .VPHome .matrix .feature-name > a { display:block; overflow-wrap:anywhere; }

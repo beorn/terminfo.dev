@@ -301,9 +301,11 @@ export function headlessName(terminals: LabelSource, id: string): string | undef
 
 /**
  * The display name of catalog id `id` measured as `kind` on a page of its own: the catalog's headless
- * name for a library subject, else the entry label (or `fallback`) qualified by the kind.
+ * name for a library subject, else the entry label (or `fallback`) qualified by the kind. "term" is the
+ * default kind and is never printed (#37761, operator): "WezTerm", never "WezTerm (term)".
  */
 export function subjectLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
+  if (kind === "term") return terminals[id]?.label ?? fallback
   return (kind === "lib" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
 }
 

@@ -161,7 +161,9 @@ describe("the build's own chain, from the join to what a page reads", () => {
   it("declares the differs segment on every page that draws a bar", () => {
     const root = join(import.meta.dirname, "..")
     const pages: Array<[string, string]> = [
-      ["docs/index.md", "id: 'differs-by-context'"],
+      // #37761: the home page draws every bar through SupportBar, whose segments are the one category list.
+      ["docs/data/result-categories.ts", 'id: "differs-by-context"'],
+      ["docs/index.md", "categoryIds(bar)"],
       ["docs/baseline/[id].md", "id: 'differs-by-context'"],
       ["docs/terminals/[id].md", "counts['differs-by-context']"],
     ]

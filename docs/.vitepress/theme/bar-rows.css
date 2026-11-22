@@ -1,0 +1,421 @@
+/* #37761: one style per pattern, for every page. Per-terminal bar rows (TermRow + SupportBar and its popover),
+   result lists (ResultList, or the .result-list classes in a page template) and few-option filters (CountPills). */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Bar rows: one line each, the bar alone is the summary. ---- */
+.term-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 24px;
+}
+.term-row {
+  display: grid;
+  grid-template-columns: minmax(0, 13rem) 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-height: 40px;
+}
+.term-row-historical .term-history {
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+}
+.term-name {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.term-name-link,
+.vp-doc a.term-name-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.vp-doc a.term-name-link:hover,
+.vp-doc a.term-name-link:focus-visible {
+  color: var(--vp-c-brand-1);
+}
+.term-platform {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+}
+.term-version {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--vp-c-text-3);
+}
+/* The name card: information only. It never takes the pointer, so it can never cover and swallow the click on the
+   next row's name (#37761 item 9); it opens after a short pause so moving down the list does not flash it. */
+.term-about {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: var(--vp-c-bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.1s ease,
+    visibility 0s linear 0.1s;
+}
+.term-name:hover .term-about,
+.term-name:focus-within .term-about {
+  visibility: visible;
+  opacity: 1;
+  transition:
+    opacity 0.1s ease 0.35s,
+    visibility 0s linear 0.35s;
+}
+.term-about-line {
+  color: var(--vp-c-text-2);
+}
+.term-about-site {
+  color: var(--vp-c-text-3);
+  font-size: 12px;
+}
+
+/* ---- The bar and its popover. ---- */
+.support-bar {
+  position: relative;
+  min-width: 0;
+}
+.support-bar-track {
+  display: flex;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+}
+.support-bar-seg {
+  flex: none;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+.support-bar-seg.bar-yes {
+  background: #10b981;
+}
+.support-bar-seg.bar-fail {
+  background: var(--vp-c-divider);
+}
+.support-bar-seg.bar-differs {
+  background: #6366f1;
+}
+.support-bar-seg.bar-partial {
+  background: #f59e0b;
+}
+.support-bar-seg:hover,
+.support-bar-seg:focus-visible,
+.support-bar-seg[aria-expanded="true"] {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--vp-c-text-1);
+}
+.support-bar-fill .support-bar-seg:not([data-category="supported"]) {
+  background: transparent;
+}
+.support-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(60vh, 420px);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+.support-pop-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 6px;
+}
+.support-pop-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.support-pop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.support-pop-tab {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--vp-c-text-2);
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+.support-pop-tab::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--vp-c-bg-soft);
+  box-shadow: inset 0 0 0 1px var(--vp-c-divider);
+}
+.support-pop-tab-yes::before {
+  background: #10b981;
+  box-shadow: none;
+}
+.support-pop-tab-fail::before {
+  background: var(--vp-c-divider);
+  box-shadow: none;
+}
+.support-pop-tab-differs::before {
+  background: #6366f1;
+  box-shadow: none;
+}
+.support-pop-tab-partial::before {
+  background: #f59e0b;
+  box-shadow: none;
+}
+.support-pop-tab:hover,
+.support-pop-tab:focus-visible {
+  outline: none;
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-1);
+}
+.support-pop-tab[aria-selected="true"] {
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+}
+.support-pop-n {
+  color: var(--vp-c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.support-pop-panel {
+  min-height: 0;
+  padding: 8px 4px;
+  overflow: auto;
+}
+.support-pop-meaning,
+.vp-doc .support-pop-meaning {
+  margin: 0 8px 6px;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.support-pop-all,
+.vp-doc a.support-pop-all {
+  display: block;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-brand-1);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+/* ---- Card rows (Baseline cards): short name, thin bar, one percent. ---- */
+.term-rows-card {
+  gap: 4px;
+  margin: 0;
+}
+.term-row-card {
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) 3rem;
+  gap: 8px;
+  min-height: 24px;
+}
+.term-row-card .term-name-link,
+.vp-doc .term-row-card a.term-name-link {
+  font-size: 13px;
+  font-weight: 400;
+}
+.term-row-card .support-bar-track {
+  height: 10px;
+  border-radius: 3px;
+  background: var(--vp-c-bg);
+}
+.term-percent {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- Result lists: the mark is the bullet; the whole row is the link. ---- */
+.result-list,
+.vp-doc .result-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.result-list li + li,
+.vp-doc .result-list li + li {
+  margin-top: 0;
+}
+.result-row,
+.vp-doc a.result-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--vp-c-text-1);
+  font-weight: 400;
+  line-height: 1.45;
+  text-decoration: none;
+}
+a.result-row:hover,
+.vp-doc a.result-row:hover,
+a.result-row:focus-visible,
+.vp-doc a.result-row:focus-visible {
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+}
+a.result-row:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: -2px;
+}
+.result-mark {
+  flex: none;
+  width: 1.1em;
+  font-weight: 600;
+  text-align: center;
+}
+.result-list-yes .result-mark {
+  color: #10b981;
+}
+.result-list-fail .result-mark {
+  color: var(--vp-c-text-2);
+}
+.result-list-differs .result-mark {
+  color: #6366f1;
+}
+.result-list-partial .result-mark {
+  color: #d97706;
+}
+.result-list-none .result-mark {
+  color: var(--vp-c-text-3);
+}
+.result-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-note {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vp-c-text-3);
+  font-size: 0.92em;
+}
+
+/* ---- Few-option filters: count pills. ---- */
+.count-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.count-pill {
+  padding: 3px 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+  appearance: none;
+}
+.count-pill:hover {
+  border-color: var(--vp-c-text-3);
+  color: var(--vp-c-text-1);
+}
+.count-pill:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+.count-pill-on,
+.count-pill-on:hover {
+  border-color: var(--vp-c-text-1);
+  background: var(--vp-c-text-1);
+  color: var(--vp-c-bg);
+}
+.count-pill-n {
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+  .term-row {
+    grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr);
+    gap: 10px;
+  }
+  .term-version {
+    display: none;
+  }
+  .term-row-card {
+    grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) 3rem;
+  }
+}

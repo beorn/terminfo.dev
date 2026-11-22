@@ -166,9 +166,11 @@ describe("displayVersion at each call site that prints a version (D11)", () => {
     expect(cell.match(/\{\{ sourceRun\.subject\.version \}\}/g)).toBeNull()
   })
 
-  it("8. index.md backendTooltip: each source run in the home page's terminal tooltip", () => {
+  it("8. index.md backendTooltip: names who the terminal is, never a source run (#37761 item 10)", () => {
     const home = source("docs/index.md")
     expect(rawVersionReads(home)).toEqual([])
-    expect(home).toContain("parts.push(`Source ${source.runId}: ${displayVersion(source.subject.version)} ·")
+    // The operator: no hashes, suite ids or ISO times in a name's hover; name, platform, one line, website.
+    expect(home).not.toContain("source.runId")
+    expect(home).not.toContain("source.measuredAt")
   })
 })

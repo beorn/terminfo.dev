@@ -66,7 +66,10 @@ export interface TerminalMeta {
 }
 
 export interface BackendMeta {
+  /** Unique in plain text: names the platform in words when two contexts share one terminal page. */
   label?: string
+  /** #37761: the same name without the platform words, for places that show the platform icon beside it. */
+  shortLabel?: string
   description?: string
   body?: string
   url?: string
@@ -227,6 +230,15 @@ function loadPlatformLabels(): Record<string, string> {
   )
 }
 
+/**
+ * #37761 item 10: an app's own facts. The catalog entry wins as before; what only the manifest's headless backend
+ * of the same id supplies (its upstream package, engine type and caveat) is left out instead of being shown as the app's.
+ */
+function appMeta(merged: BackendMeta | undefined, entry: object | undefined): BackendMeta {
+  const { upstream: _upstream, type: _type, caveat: _caveat, ...kept } = merged ?? {}
+  return { ...kept, ...(entry as BackendMeta | undefined) }
+}
+
 function loadBackendMeta(): Record<string, BackendMeta> {
   const m = manifest()
   const meta: Record<string, BackendMeta> = {}
@@ -290,28 +302,37 @@ export function loadFullProbes(): ProbeData {
   const routeMeta = new Map<string, BackendMeta>()
   const platformLabels = loadPlatformLabels()
   for (const { routeKey } of bySubject.values()) systemCounts.set(routeKey, (systemCounts.get(routeKey) ?? 0) + 1)
+  // #37761: a non-default kind is named only where a terminal app ("term", the default) shares its catalog id.
+  const appIds = new Set(
+    [...bySubject.values()].flatMap(({ selected }) => (selected.subject?.kind === "term" ? [selected.subject.id] : [])),
+  )
   // Columns have their own explicit OS, but every OS of one app links to its released app route.
   for (const [key, { selected, routeKey, os }] of bySubject) {
     if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
+    const kind = selected.subject.kind
+    // #37761 item 10: a manifest backend entry describes the headless library of that id (Ghostty's is the
+    // ghostty-web wasm build), so an app or multiplexer context keeps only the catalog's own facts about it.
+    const own = kind === "lib" ? meta[id] : appMeta(meta[id], catalog[id])
     const original =
       routeMeta.get(routeKey) ??
-      (routeKey === id
-        ? { ...meta[id] }
+      (routeKey === id && (kind === "term" || !appIds.has(id))
+        ? { ...own }
         : {
-            ...meta[id],
-            label: subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label),
-            slug: routeKey,
+            ...own,
+            label: subjectLabel(catalog, id, kind, own?.label),
+            ...(routeKey !== id && { slug: routeKey }),
           })
     routeMeta.set(routeKey, original)
-    const contextMeta = {
+    const platform = os === null ? "OS not recorded" : (platformLabels[os] ?? os)
+    const contextMeta: BackendMeta = {
       ...original,
-      ...((systemCounts.get(routeKey) ?? 0) > 1 && {
-        label: `${original.label ?? id} (${os === null ? "OS not recorded" : (platformLabels[os] ?? os)})`,
-      }),
+      shortLabel: original.label ?? id,
+      ...((systemCounts.get(routeKey) ?? 0) > 1 && { label: `${original.label ?? id} (${platform})` }),
     }
-    if (selected.subject.kind === "mux" && id === "tmux" && selected.subject.config === "tmux: focus-events on") {
+    if (kind === "mux" && id === "tmux" && selected.subject.config === "tmux: focus-events on") {
       contextMeta.label = `${contextMeta.label ?? id} (focus-events on; default off)`
+      contextMeta.shortLabel = `${contextMeta.shortLabel ?? id} (focus-events on; default off)`
     }
     meta[key] = contextMeta
   }

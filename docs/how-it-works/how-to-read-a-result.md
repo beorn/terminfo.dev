@@ -9,6 +9,11 @@ next:
   link: /how-it-works/contribute-a-run
 ---
 
+<script setup>
+// #37761: the one home of what each bar category means; every bar's popover reads the same lines.
+import { RESULT_CATEGORIES } from '../data/result-categories.ts'
+</script>
+
 [How it works](/how-it-works/) › How to read a result
 
 # How to read a result
@@ -56,6 +61,14 @@ A result is left blank when:
 - **Untestable** — the admitted result names why this context cannot decide the feature: passed to the app, no way, no setup, or no observer.
 - **No test in the selected run** — the result is left blank. This does not mean Unsupported.
 - **No reviewed run for this terminal yet** — the result is left blank; see [Contribute a run](/how-it-works/contribute-a-run).
+
+## A terminal's bar {#a-terminals-bar}
+
+Each terminal's bar sorts its features into these groups. Hover, tap or focus a part of the bar to list the features in it, each linked to its result.
+
+<ul class="result-list bar-categories">
+  <li v-for="category in RESULT_CATEGORIES" :key="category.id"><span class="result-row"><span class="result-mark" aria-hidden="true">{{ category.mark }}</span><span><strong>{{ category.label }}</strong> — {{ category.meaning }}</span></span></li>
+</ul>
 
 ## Result history
 
