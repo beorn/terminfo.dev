@@ -761,6 +761,9 @@ function applyReopened(
  * of its app on its OS. Its cell must read PROBE TODO: then the feature result reads untestable with the row's words,
  * and result, run and origin stay. A measured cell, a probe's own Untestable, a probe defect (PROBE INVALID, PROBE
  * CONFLICT), a reopened cell or a missing cell throws naming the row: a measured result always beats a declaration.
+ * A row with replacesInvalid (#33774, @cto b8b75cbc) reads only cells measured by its named runs, which must read PROBE
+ * INVALID at its exact version; another run's cell is not the row's and keeps its own reading (the context join lets
+ * one decided context win), so a rerun leaves the row matching nothing and the unmatched check throws: re-tested.
  */
 function applyDeclared(
   contextKey: string,
@@ -776,7 +779,22 @@ function applyDeclared(
     const cell = cells[row.featureId]
     const featureResult = cell?.featureResult
     const status = cell?.reopened ? "reopened" : (featureResult?.status ?? "missing")
-    if (!cell || !featureResult || status !== "probe-todo") {
+    const replaces = row.replacesInvalid
+    if (replaces && cell && !replaces.runs.includes(cell.run.runId)) continue
+    if (replaces && cell && featureResult && status === "probe-todo") {
+      throw new Error(
+        `Declared-untestable cell ${cellLabel(row)} reads probe-todo in ${contextKey} (run ${cell.run.runId}), but the row ` +
+          "replaces PROBE INVALID, so a TODO cell takes a plain row: drop replacesInvalid",
+      )
+    }
+    if (replaces && cell && featureResult && status === "probe-invalid") {
+      if (subject.version !== replaces.version) {
+        throw new Error(
+          `Declared-untestable cell ${cellLabel(row)} reads probe-invalid in ${contextKey} (run ${cell.run.runId}, version ` +
+            `${subject.version}); the row replaces PROBE INVALID only at version ${replaces.version}: ${REMOVE_DECLARED_ROW}`,
+        )
+      }
+    } else if (!cell || !featureResult || status !== "probe-todo") {
       throw new Error(
         `Declared-untestable cell ${cellLabel(row)} reads ${status} in ${contextKey}${
           cell ? ` (run ${cell.run.runId})` : ""
@@ -1144,7 +1162,11 @@ function composeContextSummaries(
   if (undeclared.length > 0) {
     throw new Error(
       `${undeclared.length} declared-untestable row(s) match no context cell: ${undeclared
-        .map((row) => cellLabel(row))
+        .map((row) =>
+          row.replacesInvalid
+            ? `${cellLabel(row)} (no cell from runs ${row.replacesInvalid.runs.join(", ")} any more: a newer run re-tests it)`
+            : cellLabel(row),
+        )
         .join(", ")}; ${REMOVE_DECLARED_ROW}`,
     )
   }
