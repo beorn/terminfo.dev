@@ -46,10 +46,55 @@ function outsideGridRefusal(detail: string, frames: CaptureCalibrationRefusal["f
   })
 }
 
-function paintTimeout(message: string): Error {
+/**
+ * What a confirmation stage's captures did, carried on its paint timeout so a refusal can say whether the paint
+ * never came or a capture outran the deadline (#37678). Only the last frame is kept: frames are megabytes each.
+ */
+interface StageCaptures {
+  captures: Array<{ ms: number; late: boolean; accepted?: boolean }>
+  last?: CapturedFrame
+}
+
+function paintTimeout(message: string, stage?: StageCaptures): Error {
   const error = new Error(message)
   error.name = "CapturePaintTimeout"
-  return error
+  return stage === undefined ? error : Object.assign(error, { stage })
+}
+
+/** Every pixel `after` changed from `before`: the count, bounding box, distinct after-colours and the first few. */
+function frameDifference(before: CapturedFrame, after: CapturedFrame): string {
+  if (before.width !== after.width || before.height !== after.height) {
+    return `is ${after.width}x${after.height}, the normal sentinel paint ${before.width}x${before.height}`
+  }
+  let pixels = 0
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = -1
+  let maxY = -1
+  const colours = new Set<string>()
+  const first: string[] = []
+  const rgba = (source: CapturedFrame, offset: number) =>
+    `${source.rgba[offset]},${source.rgba[offset + 1]},${source.rgba[offset + 2]}@${source.rgba[offset + 3]}`
+  for (let y = 0; y < after.height; y++) {
+    for (let x = 0; x < after.width; x++) {
+      const offset = (y * after.width + x) * 4
+      if ([0, 1, 2, 3].every((channel) => after.rgba[offset + channel] === before.rgba[offset + channel])) continue
+      pixels++
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+      colours.add(rgba(after, offset))
+      if (first.length < FIRST_OFFENDING_PIXELS) {
+        first.push(`(${x},${y}) ${rgba(before, offset)}->${rgba(after, offset)}`)
+      }
+    }
+  }
+  if (pixels === 0) return "equals the normal sentinel paint"
+  return (
+    `differs from the normal sentinel paint in ${pixels} pixel(s), bbox (${minX},${minY})-(${maxX},${maxY}), ` +
+    `${colours.size} distinct after-colour(s); first: ${first.join("; ")}`
+  )
 }
 
 /**
@@ -940,12 +985,23 @@ export async function calibrateCaptureOrigin({
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("Capture calibration requires the oracle's positive timeoutMs")
   }
-  const capture = async (label: string, deadline: number) => {
-    if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`)
+  const capture = async (label: string, deadline: number, stage: StageCaptures) => {
+    if (Date.now() >= deadline) {
+      throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`, stage)
+    }
+    const started = Date.now()
     const frame = await captureRaw(`collector raster calibration: ${label}`, deadline)
-    if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout after capture`)
+    const late = Date.now() >= deadline
+    const record: StageCaptures["captures"][number] = { ms: Date.now() - started, late }
+    stage.captures.push(record)
+    if (late) {
+      // The late frame is still what the window showed; a refusal archives it.
+      stage.last = frame
+      throw paintTimeout(`Capture calibration ${label}: paint witness timeout after capture`, stage)
+    }
     validateFrame(frame)
-    return frame
+    stage.last = frame
+    return { frame, record }
   }
   const confirmedFrame = async (
     label: string,
@@ -953,20 +1009,23 @@ export async function calibrateCaptureOrigin({
     changedFrom?: CapturedFrame,
   ) => {
     const deadline = Date.now() + timeoutMs
+    const stage: StageCaptures = { captures: [] }
     let previous: CapturedFrame | undefined
     for (;;) {
       if (Date.now() >= deadline) {
-        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
+        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`, stage)
       }
-      const current = await capture(previous ? `${label} confirmation` : label, deadline)
-      if ((!changedFrom || !equal(current, changedFrom)) && accepts(current) && previous && equal(previous, current)) {
+      const { frame: current, record } = await capture(previous ? `${label} confirmation` : label, deadline, stage)
+      const accepted = (!changedFrom || !equal(current, changedFrom)) && accepts(current)
+      record.accepted = accepted
+      if (accepted && previous && equal(previous, current)) {
         return current
       }
       // A confirmation is also the next candidate. Discarding it misses stable
       // consecutive pairs while consuming the same fixed paint deadline.
       previous = current
       if (Date.now() >= deadline) {
-        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
+        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`, stage)
       }
     }
   }
@@ -1339,9 +1398,26 @@ export async function calibrateCaptureOrigin({
         )
       } catch (cause) {
         if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
-        throw refusal(
-          "Capture calibration reverse screen: the normal sentinel paint did not return after DECSCNM was reset, so this calibration is invalid",
-          cause,
+        // #37678: name what each capture did and archive the last frame against the paint it waited for, so a
+        // slow capture and a paint that never came back read differently from the run alone.
+        const { captures = [], last } = (cause as Error & { stage?: StageCaptures }).stage ?? {}
+        const each = captures
+          .map(
+            ({ ms, late, accepted }, index) =>
+              `#${index + 1} ${ms} ms ${late ? "ended after the deadline" : accepted ? "accepted" : "not accepted"}`,
+          )
+          .join("; ")
+        throw Object.assign(
+          refusal(
+            "Capture calibration reverse screen: the normal sentinel paint did not return after DECSCNM was reset, so this calibration is invalid",
+            cause,
+          ),
+          {
+            detail:
+              `stage=reverse screen return, ${captures.length} capture(s) in ${timeoutMs} ms: ${each}` +
+              (last ? `; last frame ${frameDifference(normalSolid, last)}` : "; no frame captured"),
+            ...(last && { frames: { before: normalSolid, after: last, stage: "reverse screen return" } }),
+          },
         )
       }
     }
