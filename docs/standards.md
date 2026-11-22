@@ -120,7 +120,7 @@ function standardAdoption(tag) {
   let totalPct = 0
   for (const b of appBackends) {
     const relevant = featureIds.filter(id => data.results[b.name]?.[id] !== undefined)
-    const yes = relevant.filter(id => data.results[b.name]?.[id] === 'yes').length
+    const yes = relevant.filter(id => data.results[b.name]?.[id] === 'supported').length
     totalPct += relevant.length > 0 ? Math.round((yes / relevant.length) * 100) : 0
   }
   return Math.round(totalPct / appBackends.length)

@@ -243,6 +243,8 @@ describe("website sidebar metadata", () => {
       const { default: config } = await import("./docs/.vitepress/config.ts");
       const { loadFullProbes } = await import("./docs/data/probes.data.ts");
       const presentation = await import("./docs/data/release-scope.ts");
+      // The home page builds its row helpers at setup (#37761), so they run here with the real data too.
+      const { rowFacts } = await import("./docs/.vitepress/theme/row-facts.ts");
       const data = loadFullProbes();
       const categoryId = item => item.link.slice(1);
       const nav = config.themeConfig.nav.find(item => item.text === "Features").items
@@ -253,9 +255,9 @@ describe("website sidebar metadata", () => {
         const setup = source.slice(source.indexOf("<script setup>") + 14, source.indexOf("</script>"))
           .replace(/^import[^\\n]*\\n/gm, "");
         // Execute the complete page computation with its real Vue primitives, data and page imports.
-        return new Function("ref", "computed", "data", "isEnvironmentGroup", ...Object.keys(presentation),
+        return new Function("ref", "computed", "data", "isEnvironmentGroup", "rowFacts", ...Object.keys(presentation),
           setup + "\\nreturn " + binding + ".value;")
-          (ref, computed, data, isEnvironmentGroup, ...Object.values(presentation));
+          (ref, computed, data, isEnvironmentGroup, rowFacts, ...Object.values(presentation));
       }
       console.log(JSON.stringify({ expected, nav, sidebar,
         home: pageCategories("./docs/index.md", "sortedCategories"),

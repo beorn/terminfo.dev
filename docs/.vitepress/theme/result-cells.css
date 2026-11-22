@@ -97,6 +97,9 @@
   min-width: 12ch;
   justify-content: flex-start;
 }
+.result-evidence--label .result-evidence__trigger {
+  min-width: 11ch;
+}
 .result-evidence__label {
   white-space: nowrap;
 }

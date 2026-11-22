@@ -85,9 +85,9 @@ function topTerminals(cat, limit = 3) {
   const appBackends = data.backends.filter(b => b.type === 'term')
   const scores = appBackends.map(b => {
     const featureIds = features.map(f => f.id)
-    const conclusive = featureIds.filter(id => ['yes', 'no'].includes(data.results[b.name]?.[id]))
+    const conclusive = featureIds.filter(id => ['supported', 'unsupported'].includes(data.results[b.name]?.[id]))
     if (conclusive.length === 0) return null
-    const yes = featureIds.filter(id => data.results[b.name]?.[id] === 'yes').length
+    const yes = featureIds.filter(id => data.results[b.name]?.[id] === 'supported').length
     return {
       name: data.meta[b.name]?.label ?? b.name,
       slug: data.meta[b.name]?.slug ?? b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),

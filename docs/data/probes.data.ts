@@ -25,6 +25,7 @@ import { selectedSiteWorkingRun, siteWorkingHistory, type WorkingContext, type W
 import { createBuildMetadata } from "../../scripts/build-metadata.ts"
 import { siteProbesPath } from "../../scripts/site-out.ts"
 import { publicFeatures } from "./public-features.ts"
+import { loadRunObservers, type RunObservers } from "./run-observers.ts"
 import { displayVersions } from "../.vitepress/theme/display-version.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
@@ -93,6 +94,8 @@ export interface ProbeData {
   results: Record<string, Record<string, AppCellStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
+  /** run id -> the observer-only switches that run turned on (#37761, @cto e81def55); absent when none. */
+  observers: Record<string, string[]>
   /** Current counts: Supported and tested of the graded positions, independently of completion (#37341 D2). */
   stats: Record<string, CurrentStats>
   /** backend name -> metadata from backends.json */
@@ -340,6 +343,13 @@ export function loadFullProbes(): ProbeData {
   const backends: BackendInfo[] = []
   const results: ProbeData["results"] = {}
   const notes: ProbeData["notes"] = {}
+  const runObservers: Record<string, RunObservers> = loadRunObservers(
+    contentDir,
+    new Set(Object.keys(featureDescriptions)),
+  )
+  const observers: ProbeData["observers"] = Object.fromEntries(
+    Object.entries(runObservers).map(([runId, row]) => [runId, [...row.observers]]),
+  )
   const stats: ProbeData["stats"] = {}
   const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(bySubject)
   for (const [key, { selected }] of bySubject) {
@@ -361,11 +371,15 @@ export function loadFullProbes(): ProbeData {
         .map((result) => [result.featureId, result.status]),
     )
     notes[key] = Object.fromEntries(
-      Object.values(selected.featureResults).flatMap((result) =>
-        result.reason && Object.hasOwn(featureDescriptions, result.featureId)
-          ? [[result.featureId, result.reason]]
-          : [],
-      ),
+      Object.values(selected.featureResults).flatMap((result) => {
+        if (!Object.hasOwn(featureDescriptions, result.featureId)) return []
+        // #37761 (@cto e81def55): a cell an observer-only switch let the probe read says so beside its own reason.
+        // A cell names the run it came from (origin); a cell with none came from no observed run.
+        const observed = result.origin ? runObservers[result.origin.runId] : undefined
+        const note = observed?.featureIds.includes(result.featureId) ? observed.note : undefined
+        const text = [result.reason, note].filter(Boolean).join(" ")
+        return text ? [[result.featureId, text]] : []
+      }),
     )
     stats[key] = subjectStats(selected, app)
   }
@@ -403,6 +417,7 @@ export function loadFullProbes(): ProbeData {
     categories,
     results,
     notes,
+    observers,
     stats,
     meta,
     annotations,

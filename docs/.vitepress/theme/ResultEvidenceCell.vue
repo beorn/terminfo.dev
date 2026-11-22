@@ -31,7 +31,8 @@ const props = withDefaults(
       | (PublicFeatureResult & {
           joined?: { status: AppCellStatus; from: Array<{ context: string; status: FeatureResultStatus }> }
         })
-    display?: "compact" | "text"
+    /** compact: the mark alone (matrices); text: mark and word; label: the word alone, for a list whose bullet is the mark (#37761). */
+    display?: "compact" | "text" | "label"
   }>(),
   { display: "compact" },
 )
@@ -393,8 +394,8 @@ onBeforeUnmount(() => {
       @keydown.esc.stop="closePreview"
       @click="focusPreview"
     >
-      <span aria-hidden="true">{{ status.icon }}</span>
-      <span v-if="display === 'text'" class="result-evidence__label">{{ shortLabel }}</span>
+      <span v-if="display !== 'label'" aria-hidden="true">{{ status.icon }}</span>
+      <span v-if="display !== 'compact'" class="result-evidence__label">{{ shortLabel }}</span>
     </button>
 
     <Teleport v-if="!blank" to="body">

@@ -11,6 +11,8 @@ import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor, rollupInputs } from '../data/release-scope.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
 import { displayVersion, displayVersions } from '../.vitepress/theme/display-version.ts'
+import { categoryIds, categoryOf } from '../data/result-categories.ts'
+import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -34,6 +36,8 @@ const historySubjects = JSON.parse(p.historySubjects || '[]')
 const runSha = ref('')
 const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun)
 const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
+// #37761 (@cto e81def55): observer-only switches sit beside the configuration, never in it.
+const observerSwitches = computed(() => [...new Set(sourceRuns.value.flatMap(run => data.observers[run.runId] ?? []))].join(', '))
 const sourceVersions = computed(() => displayVersions(sourceRuns.value).join(', '))
 const measuredBar = computed(() => {
   const selection = selectedRun.value
@@ -42,20 +46,43 @@ const measuredBar = computed(() => {
 })
 // #37341 D2: the readout's first half; the template prints it beside the coverage sentence, never a percentage.
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
-// @cto c3c2f885 condition 3: the bar names the cells whose same-suite contexts disagreed, and each row
-// below names the two contexts and their grades; a colour alone would not say what disagreed.
-const differsTitle = computed(() => {
-  const selection = selectedRun.value
-  if (!selection || !('featureResults' in selection)) return undefined
-  const rows = Object.values(selection.featureResults).filter(result => result.joined?.status === 'differs-by-context')
-  if (!rows.length) return undefined
-  return 'Differs by context: ' + rows.map(result =>
-    result.featureId + ' — ' + result.joined.from.map(from => contextLabel(from.context) + ' ' + from.status).join(' vs ')
-  ).join('; ')
-})
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
+}
+// #37761: the shared bar, popover and result list. A popover or list row names the feature, links to its result and,
+// unless Supported, carries the selected run's own reason; a Differs row names the contexts that disagreed and their
+// grades, so a colour alone never says what disagreed (@cto c3c2f885 condition 3).
+const facts = rowFacts(data)
+function differsNote(selection, id) {
+  const result = selection && 'featureResults' in selection ? selection.featureResults[id] : undefined
+  return result?.joined?.status === 'differs-by-context'
+    ? result.joined.from.map(from => contextLabel(from.context) + ' ' + from.status).join(' vs ')
+    : undefined
+}
+function describeIn(selection) {
+  return (featureId, category) => ({
+    id: featureId,
+    name: data.featureDescriptions[featureId]?.name ?? featureId,
+    href: facts.featureHref(featureId),
+    note: category === 'supported' || category === 'no-result'
+      ? undefined
+      : category === 'differs-by-context' ? differsNote(selection, featureId) : publicResultFor(selection, featureId)?.reason || undefined,
+  })
+}
+const measuredIds = computed(() => measuredBar.value ? categoryIds(measuredBar.value) : undefined)
+function featureRows(features) {
+  return features.map(f => {
+    const category = categoryOf(measuredBar.value, f.id)
+    return {
+      id: f.id,
+      name: f.name,
+      href: '/' + f.category + '/' + f.slug,
+      mark: category.mark,
+      tone: category.style,
+      note: category.id === 'differs-by-context' ? differsNote(selectedRun.value, f.id) : featureNote(f.id) || undefined,
+    }
+  })
 }
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
 const staleText = computed(() => stale.value ? sourceRuns.value.map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; ') : '')
@@ -184,6 +211,12 @@ const breadcrumbParent = (() => {
 
 <div v-if="multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
+  <div class="term-rows">
+    <TermRow v-for="column in osColumns" :key="column.name" :name="facts.name(column.name)" :href="facts.termHref(column.name)"
+      :os="facts.os(column.name)" :platform="facts.platform(column.name)" :version="displayVersions(column.sources).join(', ')"
+      :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)"
+      :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, column.selected.catalogIds)" />
+  </div>
   <table class="feature-table">
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
@@ -199,11 +232,9 @@ const breadcrumbParent = (() => {
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
   <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
-  <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
-    <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts['differs-by-context']" class="result-share-differs" :title="differsTitle" :style="{ width: `${measuredBar.counts['differs-by-context'] / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
+  <div v-if="measuredBar.denominator > 0" class="term-rows term-rows-single">
+    <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)"
+      :readout="measuredShare + ' · ' + currentCoverageSentence(measuredBar, selectedRun.catalogIds)" />
   </div>
   <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
   <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
@@ -230,6 +261,7 @@ const breadcrumbParent = (() => {
     <dt>OS</dt><dd>{{ selectedRun.subject?.os || 'Not recorded' }} {{ selectedRun.subject?.osVersion || '' }}</dd>
     <dt>Permissions</dt><dd>{{ selectedRun.subject?.permissions || 'No explicit override recorded' }}</dd>
     <dt>Configuration</dt><dd><code>{{ selectedRun.subject?.config || 'Not recorded' }}</code></dd>
+    <template v-if="observerSwitches"><dt>Observer-only switches</dt><dd><code>{{ observerSwitches }}</code> <a href="/how-it-works/how-we-measure">(changes nothing measured)</a></dd></template>
     <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.subject?.outerTerminal || 'None recorded' }} / {{ selectedRun.subject?.mux || 'None recorded' }}</dd>
   </dl>
 </details>
@@ -246,26 +278,24 @@ const breadcrumbParent = (() => {
 
 <h2 :id="cat.name">{{ cat.label }}</h2>
 
-<table class="feature-table">
+<ResultList v-if="!multipleSystems" :items="featureRows(cat.features)">
+  <template #after="{ item }">
+    <ResultEvidenceCell :feature-id="item.id" :probe-guidance="data.featureDescriptions[item.id]?.probe" :feature-name="item.name" :subject-name="p.backendName"
+      :version="selectedRun" :cell="publicResultFor(selectedRun, item.id)" display="label" />
+  </template>
+</ResultList>
+<table v-else class="feature-table">
   <thead>
     <tr>
       <th>Feature</th>
-      <template v-if="multipleSystems"><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></template>
-      <template v-else><th>Support</th><th>Notes</th></template>
+      <th v-for="column in osColumns" :key="column.name">{{ column.label }}</th>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <template v-if="multipleSystems">
-        <td v-for="column in osColumns" :key="column.name" class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
-          :version="column.selected" :cell="publicResultFor(column.selected, f.id)" display="text" /></td>
-      </template>
-      <template v-else>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="p.backendName"
-        :version="selectedRun" :cell="publicResultFor(selectedRun, f.id)" display="text" /></td>
-      <td class="note-cell">{{ featureNote(f.id) }}</td>
-      </template>
+      <td v-for="column in osColumns" :key="column.name" class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
+        :version="column.selected" :cell="publicResultFor(column.selected, f.id)" display="text" /></td>
     </tr>
   </tbody>
 </table>
@@ -420,12 +450,8 @@ const breadcrumbParent = (() => {
 .result-verdict { margin: 1em 0 0.35em; font-weight: 600; }
 .result-verdict-detail { font-weight: 400; color: var(--vp-c-text-2); }
 .result-share-label { margin: 0 0 0.35em; font-weight: 400; color: var(--vp-c-text-2); }
-.result-share { display: flex; height: 12px; overflow: hidden; border-radius: 6px; background: var(--vp-c-divider); }
-.result-share span { display: block; height: 100%; }
-.result-share-supported { background: #10b981; }
-.result-share-unsupported { background: #ef4444; }
-.result-share-differs { background: #6366f1; }
-.result-share-inconclusive { background: #8b5cf6; }
+.term-rows-single { margin: 0.4em 0 0.8em; }
+.category-section .result-list { margin: 0.4em 0 1.2em; }
 
 .score-card .result-counts {
   display: grid;
@@ -496,10 +522,6 @@ const breadcrumbParent = (() => {
   white-space: nowrap;
 }
 
-.note-cell {
-  color: var(--vp-c-text-2);
-  font-size: 0.95em;
-}
 
 @media (max-width: 640px) {
   .backend-page .feature-table td:first-child {

@@ -661,6 +661,8 @@ function prepareAnalysisFixture(out: string): string {
   ]) {
     cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
   }
+  // This tree stores none of the runs run-observers.json names, and the loader refuses a row for an unknown run.
+  writeFileSync(join(out, "content", "run-observers.json"), "{}")
   cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
   cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
   for (const args of [

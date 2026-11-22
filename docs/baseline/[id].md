@@ -10,6 +10,8 @@ import { data } from '../data/probes.data'
 import { publicResultFor } from '../data/release-scope'
 import { baselineReadout } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
+import { platformIcon } from '../.vitepress/theme/platform-icons.ts'
+import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 const { params } = useData()
 const p = params.value
 
@@ -21,14 +23,10 @@ const appBackends = backends.filter(b => b.type === 'term')
 const headlessBackends = backends.filter(b => b.type === 'lib')
 const appScores = scores.filter(s => s.type === 'term')
 const headlessScores = scores.filter(s => s.type === 'lib')
-const barSegments = [
-  { id: 'supported', label: 'Supported', symbol: '✓' },
-  { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
-  // @cto c3c2f885: decided by two disagreeing same-suite contexts, never Supported or Unsupported.
-  { id: 'differs-by-context', label: 'Differs by context', symbol: '≠' },
-  { id: 'untestable', label: 'Untestable', symbol: '?' },
-]
-
+// #37761 7d: the same rows as home's Baseline cards: the bar and its popover cover this baseline's graded features,
+// a feature the run never decided reads "No result yet", and the percent is Supported over those features.
+const facts = rowFacts(data)
+const within = features.map(f => f.id).filter(id => !isEnvironmentGroup(id))
 function featureTooltip(f) {
   const parts = [f.name]
   if (f.tags?.length) parts.push('Tags: ' + f.tags.join(', '))
@@ -36,57 +34,13 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
+// #37761 item 10: a terminal's hover is who it is (name, platform, one line, website), the same on every page.
 function termTooltip(b) {
-  // The matrix is per baseline: a column header has the backend row, while its coverage for THIS
-  // baseline lives in the matching score row. Calling coverageLabel on the backend row threw
-  // "undefined is not an object (evaluating 'counts.supported')" on every baseline page (found while
-  // verifying #30784 on main, where the build exits 0 and only the SSR log shows it). A backend with
-  // no row in this baseline's scores prints no coverage line rather than a fabricated one.
-  const parts = [b.label]
-  const score = scores.find((row) => row.name === b.name)
-  if (score) parts.push(coverageLabel(score))
-  if (b.description) parts.push(b.description)
-  if (b.type) parts.push('Type: ' + b.type)
-  if (b.version) parts.push('Source versions: ' + b.version)
-  if (b.url) parts.push(b.url)
-  return parts.join('\n') || b.label
-}
-
-function barSegmentItems(s, segment) {
-  const items = []
-  for (const f of features) {
-    if (isEnvironmentGroup(f.id)) continue
-    // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
-    // only (a raw field, not a classification), exactly as the compare page reads its assertion type.
-    const entry = data.selectedByBackend[s.name]
-    const state = entry?.states[f.id]
-    if (state !== segment) continue
-    const note = data.notes[s.name]?.[f.id]
-    items.push({ id: f.id, name: f.name, href: `/${f.category}/${f.slug}`, note })
-  }
-  return items
-}
-
-// Widths are over the baseline's graded features, so a result we haven't decided leaves the rest of the bar blank.
-function barWidth(s, segment) {
-  return s.score.all ? (s.counts[segment] / s.score.all * 100) + '%' : '0%'
-}
-
-// #37341 D2: the one readout over this baseline's features, "S supported · T of N tested". The row's counts cover
-// this baseline only, so the run's whole catalogue is not passed: it would name a different number of features.
-function coverageLabel(s) {
-  return baselineReadout(s).text
+  return facts.about(b.name)
 }
 
 function shareRow(s) {
   return baselineReadout(s)
-}
-
-function platformIcon(os) {
-  if (os === 'macos') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M12.2 5.5c-.1 0-1.6.9-1.6 2.8 0 2.2 1.9 3 2 3-.1.1-.3 1.1-1 2.2-.6 1-1.3 1.9-2.3 1.9s-1.3-.6-2.4-.6c-1.2 0-1.6.6-2.5.6-.9 0-1.6-.9-2.3-2C1.3 12 .8 10.2.8 8.6c0-2.6 1.7-4 3.3-4 .9 0 1.6.6 2.2.6.5 0 1.4-.6 2.4-.6.4 0 1.8.1 2.6 1.3-.1 0-1.5.9-1.5 2.6h.4z" fill="#888"/><path d="M10 1c.5.6.9 1.5.8 2.4-.8.1-1.7-.4-2.2-1.1-.5-.6-.9-1.5-.8-2.3.9 0 1.7.4 2.2 1z" fill="#888"/></svg>'
-  if (os === 'linux') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M8 1C5.8 1 4 3.4 4 6.4c0 1.5.4 2.8 1.1 3.8-.5.3-1.5 1-1.5 2.1 0 .4.1.8.4 1.1.5.5 1.4.6 2.2.6h3.6c.8 0 1.7-.1 2.2-.6.3-.3.4-.7.4-1.1 0-1.1-1-1.8-1.5-2.1.7-1 1.1-2.3 1.1-3.8C12 3.4 10.2 1 8 1zm-1.5 5c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8zm3 0c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8z" fill="#888"/></svg>'
-  if (os === 'windows') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M1 3.5l5.5-.8v5.3H1V3.5zm6.3-.9L15 1.5v6.5H7.3V2.6zM15 8.5v6.3l-7.7-1.1V8.5H15zM6.5 13.5L1 12.8V8.5h5.5v5z" fill="#888"/></svg>'
-  return ''
 }
 
 function platformIcons(b) {
@@ -131,25 +85,10 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 
 ### Terminal Applications
 
-<div v-if="appScores.length > 0" class="summary">
-  <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :aria-label="'Terminal: ' + s.label + (s.version ? '; Source versions: ' + s.version : '')" :title="s.label" :data-tooltip="termTooltip(s)"><span class="summary-name-text">{{ s.label }}</span></a>
-    <span class="summary-platforms" v-html="platformIcons(s)"></span>
-    <span class="summary-version" tabindex="0" :aria-label="'Source versions: ' + s.version" :title="s.version" :data-tooltip="'Source versions: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
-    <div class="summary-bar" :aria-label="coverageLabel(s)">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
-        <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
-        <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
-          <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
-          <ul><li v-for="item in barSegmentItems(s, segment.id)" :key="item.id">
-            {{ segment.symbol }} <a :href="item.href">{{ item.name }}</a><template v-if="item.note">: {{ item.note }}</template>
-          </li></ul>
-        </div>
-      </div>
-    </div>
-    <span class="summary-pct" :title="shareRow(s).title">{{ shareRow(s).text }}</span>
-  </div>
+<div v-if="appScores.length > 0" class="term-rows">
+  <TermRow v-for="s in appScores" :key="s.name" :name="facts.name(s.name)" :href="'/terminals/' + s.slug" :os="facts.os(s.name)" :platform="facts.platform(s.name)"
+    :description="data.meta[s.name]?.description" :website="data.meta[s.name]?.url" :version="s.version"
+    :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
 
@@ -157,24 +96,10 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 
 ### Headless Backends
 
-<div class="summary summary-muted">
-  <div v-for="s in headlessScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
-    <span class="summary-version">{{ s.version }}</span>
-    <div class="summary-bar" :aria-label="coverageLabel(s)">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
-        <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
-        <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
-          <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
-          <ul><li v-for="item in barSegmentItems(s, segment.id)" :key="item.id">
-            {{ segment.symbol }} <a :href="item.href">{{ item.name }}</a><template v-if="item.note">: {{ item.note }}</template>
-          </li></ul>
-        </div>
-      </div>
-    </div>
-    <span class="summary-pct" :title="shareRow(s).title">{{ shareRow(s).text }}</span>
-  </div>
+<div class="term-rows term-rows-muted">
+  <TermRow v-for="s in headlessScores" :key="s.name" :name="facts.name(s.name)" :href="'/terminals/' + s.slug" :os="facts.os(s.name)" :platform="facts.platform(s.name)"
+    :description="data.meta[s.name]?.description" :website="data.meta[s.name]?.url" :version="s.version"
+    :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
 </div>
 
 </div>
@@ -311,110 +236,6 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 .baseline-meta {
   color: var(--vp-c-text-3);
   font-size: 0.9em;
-}
-
-/* Scorecard — reuses .summary-* classes from index.md */
-.summary {
-  margin: 1em 0 2em;
-}
-
-.summary-muted {
-  opacity: 0.85;
-}
-
-.baseline-page .summary-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.summary-name {
-  width: 120px;
-  font-weight: 600;
-  font-size: 0.9em;
-  flex-shrink: 0;
-  white-space: nowrap;
-  overflow: visible;
-}
-
-.baseline-page .summary-name-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.summary-platforms {
-  display: flex;
-  gap: 3px;
-  flex-shrink: 0;
-  align-items: center;
-}
-
-.baseline-page .summary-bar {
-  flex: 1 1 160px;
-  min-width: 100px;
-  height: 22px;
-  background: var(--vp-c-bg-soft);
-  border-radius: 4px;
-  display: flex;
-}
-
-.baseline-page .bar-supported,
-.baseline-page .bar-unsupported,
-.baseline-page .bar-inconclusive,
-.baseline-page .bar-errors,
-.baseline-page .bar-differs,
-.baseline-page .bar-untested {
-  height: 100%;
-  transition: width 0.3s ease;
-}
-
-.baseline-page .bar-supported { background: #10b981; }
-.baseline-page .bar-unsupported { background: #ef4444; }
-.baseline-page .bar-inconclusive { background: #f59e0b; }
-.baseline-page .bar-errors { background: #a855f7; }
-.baseline-page .bar-differs { background: #6366f1; }
-.baseline-page .bar-untested { background: var(--vp-c-divider); }
-
-.baseline-page .summary-version {
-  color: var(--vp-c-text-3);
-  font-size: 0.8em;
-  flex: 0 0 5em;
-  white-space: nowrap;
-  overflow: visible;
-  cursor: help;
-}
-
-.baseline-page .summary-version-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.baseline-page .summary-pct {
-  width: auto;
-  min-width: 23ch;
-  white-space: nowrap;
-  font-weight: 400;
-  font-size: 0.9em;
-  text-align: right;
-  flex-shrink: 0;
-  color: #566171;
-}
-
-.dark .baseline-page .summary-pct {
-  color: #c3c9d6;
-}
-
-.baseline-page .summary-counts {
-  flex: 1 1 26em;
-  font-size: 0.8em;
-  color: var(--vp-c-text-3);
-  text-align: left;
 }
 
 /* Guidance */

@@ -1,0 +1,13 @@
+{
+  "f2781665ede724094f5f4011fee465bd": {
+    "observers": ["iterm2: EnableAPIServer true"],
+    "featureIds": [
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-d",
+      "extensions.semantic-prompts"
+    ],
+    "note": "Read through iTerm2's API server, an observer-only switch this run turned on (EnableAPIServer). It changes nothing iTerm2 draws or sends to the application, only what the probe can read."
+  }
+}

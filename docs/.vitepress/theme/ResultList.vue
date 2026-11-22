@@ -8,6 +8,12 @@ export interface ResultItem {
   /** One short line after the name (an Untestable reason, say); the full text stays on hover. */
   readonly note?: string
   readonly mark?: string
+  /** Colours this row's mark (yes, fail, differs, partial or none) in a list that mixes categories. */
+  readonly tone?: string
+  /** A platform icon's markup (platformIcon) beside the name, so two platforms of one app read apart. */
+  readonly icon?: string
+  /** The platform in words, the icon's hover. */
+  readonly iconTitle?: string
 }
 
 defineProps<{
@@ -21,22 +27,23 @@ defineProps<{
 
 <template>
   <ul class="result-list" :class="tone ? 'result-list-' + tone : undefined">
-    <li v-for="item in items" :key="item.id">
-      <a
-        v-if="item.href"
+    <li
+      v-for="item in items"
+      :key="item.id"
+      :class="[item.tone && 'result-tone-' + item.tone, $slots.after && 'result-with-after']"
+    >
+      <component
+        :is="item.href ? 'a' : 'span'"
         class="result-row"
         :href="item.href"
         :title="item.note ? item.name + ': ' + item.note : undefined"
       >
         <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
         <span class="result-name">{{ item.name }}</span>
+        <span v-if="item.icon" class="result-icon" :title="item.iconTitle" v-html="item.icon" />
         <span v-if="item.note" class="result-note">{{ item.note }}</span>
-      </a>
-      <span v-else class="result-row" :title="item.note ? item.name + ': ' + item.note : undefined">
-        <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
-        <span class="result-name">{{ item.name }}</span>
-        <span v-if="item.note" class="result-note">{{ item.note }}</span>
-      </span>
+      </component>
+      <span v-if="$slots.after" class="result-after"><slot name="after" :item="item" /></span>
     </li>
   </ul>
 </template>

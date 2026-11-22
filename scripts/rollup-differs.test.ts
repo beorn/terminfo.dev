@@ -163,9 +163,10 @@ describe("the build's own chain, from the join to what a page reads", () => {
     const pages: Array<[string, string]> = [
       // #37761: the home page draws every bar through SupportBar, whose segments are the one category list.
       ["docs/data/result-categories.ts", 'id: "differs-by-context"'],
-      ["docs/index.md", "categoryIds(bar)"],
-      ["docs/baseline/[id].md", "id: 'differs-by-context'"],
-      ["docs/terminals/[id].md", "counts['differs-by-context']"],
+      ["docs/index.md", "rowFacts(data)"],
+      ["docs/.vitepress/theme/row-facts.ts", "categoryIds(bar)"],
+      ["docs/baseline/[id].md", "facts.within(s.name, within, p.id)"],
+      ["docs/terminals/[id].md", "category === 'differs-by-context' ? differsNote(selection, featureId)"],
     ]
     for (const [page, needle] of pages) expect(readFileSync(join(root, page), "utf8")).toContain(needle)
   })

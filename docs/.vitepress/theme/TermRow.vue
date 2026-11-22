@@ -22,7 +22,7 @@ const props = defineProps<{
   describe: (featureId: string, category: CategoryId) => ResultItem
   readout?: string
   fill?: string
-  /** A Baseline card row prints one percent after the bar. */
+  /** A Baseline row (a home card or a Baseline page) prints one percent after the bar. */
   percent?: string
   card?: boolean
 }>()
@@ -40,7 +40,10 @@ const firstLine = computed(() => props.description?.split(/(?<=[.!?])\s/u)[0])
 </script>
 
 <template>
-  <div class="term-row" :class="{ 'term-row-card': card, 'term-row-historical': !ids }">
+  <div
+    class="term-row"
+    :class="{ 'term-row-card': card, 'term-row-percent': !card && percent !== undefined, 'term-row-historical': !ids }"
+  >
     <span class="term-name">
       <a class="term-name-link" :href="href">{{ name }}</a>
       <span v-if="icon" class="term-platform" :title="platform" v-html="icon" />
@@ -62,6 +65,6 @@ const firstLine = computed(() => props.description?.split(/(?<=[.!?])\s/u)[0])
       :href="card ? undefined : href"
     />
     <a v-else class="term-history" :href="href">Historical results →</a>
-    <span v-if="card" class="term-percent">{{ ids ? percent : "" }}</span>
+    <span v-if="card || percent !== undefined" class="term-percent">{{ ids ? percent : "" }}</span>
   </div>
 </template>

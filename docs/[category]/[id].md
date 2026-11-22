@@ -8,6 +8,7 @@ next: false
 import { publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
+import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 const { params } = useData()
 const p = params.value
 
@@ -17,6 +18,25 @@ const subFeatures = JSON.parse(p.subFeatures || '[]')
 const backendNames = JSON.parse(p.backendNames || '[]')
 const appResults = backendResults.filter(r => r.type === 'term')
 const headlessResults = backendResults.filter(r => r.type === 'lib')
+// #37761: one result row per terminal. The mark is this terminal's category for the feature, read from its bar's own
+// fold; the short name sits beside its platform icon (two Ghostty rows read apart); the row links to the terminal and
+// the evidence cell stays at the row's end.
+const facts = rowFacts(data)
+function resultRows(rows) {
+  return rows.map(r => {
+    const category = facts.categoryOf(r.name, p.featureId)
+    return {
+      id: r.name,
+      name: facts.name(r.name),
+      href: '/terminals/' + r.slug,
+      mark: category.mark,
+      tone: category.style,
+      icon: facts.icon(r.name),
+      iconTitle: facts.platform(r.name),
+      note: r.note || undefined,
+    }
+  })
+}
 const appBackends = backendNames.filter(b => b.type === 'term')
 const headlessBackends = backendNames.filter(b => b.type === 'lib')
 
@@ -84,27 +104,12 @@ function termTooltip(r) {
 
 ## Terminal Applications
 
-<table v-if="appResults.length > 0" class="support-table">
-  <thead>
-    <tr>
-      <th>Terminal</th>
-      <th>Source versions</th>
-      <th>Support</th>
-      <th>Notes</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr v-for="r in appResults" :key="r.name">
-      <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
-      <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="r.label"
-        :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
-      <td class="note-cell">
-        {{ r.note }}
-      </td>
-    </tr>
-  </tbody>
-</table>
+<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" class="feature-results">
+  <template #after="{ item }">
+    <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
+  </template>
+</ResultList>
 <p v-else class="no-data-inline">No app results yet.</p>
 
 <div v-if="headlessResults.length > 0">
@@ -113,27 +118,12 @@ function termTooltip(r) {
 
 <p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
 
-<table class="support-table support-table-muted">
-  <thead>
-    <tr>
-      <th>Backend</th>
-      <th>Source versions</th>
-      <th>Support</th>
-      <th>Notes</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr v-for="r in headlessResults" :key="r.name">
-      <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
-      <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="r.label"
-        :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
-      <td class="note-cell">
-        {{ r.note }}
-      </td>
-    </tr>
-  </tbody>
-</table>
+<ResultList :items="resultRows(headlessResults)" class="feature-results result-list-muted">
+  <template #after="{ item }">
+    <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
+  </template>
+</ResultList>
 
 </div>
 
@@ -361,22 +351,9 @@ function termTooltip(r) {
   text-decoration: underline;
 }
 
-.version-cell {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.9em;
-  color: var(--vp-c-text-3);
-}
-
 .result-cell {
   font-weight: 600;
   white-space: nowrap;
-}
-
-.note-cell {
-  color: var(--vp-c-text-2);
-  font-size: 0.95em;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
 }
 
 /* cell-yes, cell-partial, cell-no, cell-unknown: use shared result-cells.css */
@@ -406,8 +383,11 @@ function termTooltip(r) {
   color: var(--vp-c-brand-1);
 }
 
-.support-table-muted {
+.result-list-muted {
   opacity: 0.85;
+}
+.feature-results {
+  margin: 0.4em 0 1.2em;
 }
 
 .back-link {

@@ -34,7 +34,7 @@ describe("an undecided cell is published as a blank (Q1)", () => {
   it("keeps every decided status as stored, and no status carries an internal label", () => {
     expect(evidenceStatus("sgr.bold", "supported")).toEqual({ text: "Supported", icon: "✓", tone: "yes" })
     expect(evidenceStatus("sgr.bold", "unsupported")).toEqual({ text: "Unsupported", icon: "✗", tone: "no" })
-    expect(evidenceStatus("sgr.bold", "untestable")).toEqual({ text: "Untestable", icon: "–", tone: "ungraded" })
+    expect(evidenceStatus("sgr.bold", "untestable")).toEqual({ text: "Untestable", icon: "?", tone: "ungraded" })
     expect(evidenceStatus("extensions.kitty-graphics.display", "unsupported", true).text).toBe("Unsupported, derived")
     for (const value of Object.values(statusModule)) {
       if (typeof value === "object") expect(JSON.stringify(value)).not.toMatch(LABELS)

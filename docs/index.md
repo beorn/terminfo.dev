@@ -21,8 +21,8 @@ import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 import { baselineReadout } from './data/baseline-readouts.ts'
-import { categoryIds, categoryIdsWithin } from './data/result-categories.ts'
 import { platformIcon } from './.vitepress/theme/platform-icons.ts'
+import { rowFacts } from './.vitepress/theme/row-facts.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -42,6 +42,9 @@ const baselineOptions = [
   { id: 'rich', label: 'Rich', count: data.baselines.rich?.length ?? 0 },
   { id: 'unicode', label: 'Unicode', count: data.baselines.unicode?.length ?? 0 },
 ]
+
+// #37761 item 9: a few-option filter is count pills; All counts every feature the matrix can list.
+const baselinePills = [{ id: 'all', label: 'All', count: data.features.length }, ...baselineOptions]
 
 // Set of feature IDs in selected baseline
 const baselineFeatureIds = computed(() => {
@@ -94,35 +97,13 @@ const platformOptions = computed(() => {
 })
 
 // #37761: one row shape for every bar list. Beside its platform icon a name never repeats the platform in words.
-function rowName(name) {
-  return data.meta[name]?.shortLabel ?? backendLabel(name)
-}
-function rowOs(name) {
-  return displayedSelections[name]?.selected.subject?.os ?? null
-}
-function rowPlatform(name) {
-  const os = rowOs(name)
-  return os ? (data.platformLabels?.[os] ?? os) : undefined
-}
-function rowIds(name) {
-  const bar = data.releaseBars[name]
-  return bar ? categoryIds(bar) : undefined
-}
-const featureHrefs = new Map(data.features.map((feature) => [feature.id, '/' + feature.category + '/' + featureSlug(feature.id)]))
-const describers = new Map()
-// One feature as a popover row: its name, a link to its result, and the result's reason when it was not Supported.
-function describeFor(name) {
-  if (!describers.has(name)) {
-    const results = data.selectedByBackend[name]?.selected.featureResults ?? {}
-    describers.set(name, (featureId, category) => ({
-      id: featureId,
-      name: data.featureDescriptions[featureId]?.name ?? featureId,
-      href: featureHrefs.get(featureId),
-      note: category === 'supported' || category === 'no-result' ? undefined : results[featureId]?.reason,
-    }))
-  }
-  return describers.get(name)
-}
+// #37761: the shared row facts (row-facts.ts), the same ones the Baseline and feature pages read.
+const facts = rowFacts(data)
+const rowName = facts.name
+const rowOs = facts.os
+const rowPlatform = facts.platform
+const rowIds = facts.ids
+const describeFor = facts.describe
 const BASELINES = ['core', 'modern', 'rich', 'unicode']
 const BASELINE_COLORS = { core: '#10b981', modern: '#3b82f6', rich: '#8b5cf6', unicode: '#06b6d4' }
 const BASELINE_ICONS = { core: '🟢', modern: '🔵', rich: '🟣', unicode: '🌐' }
@@ -133,21 +114,12 @@ const BASELINE_DESCRIPTIONS = {
   rich: 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts',
   unicode: 'Unicode correctness — wide chars, combining, emoji, grapheme clusters',
 }
-const cardIdsCache = new Map()
-// A Baseline card row: the same categories limited to the card's features (#37761 7c).
+// A Baseline card row: the same categories limited to the card's features (#37761 7b, 7c).
 function cardIds(name, baseline) {
-  const key = name + '|' + baseline
-  if (!cardIdsCache.has(key)) {
-    const bar = data.releaseBars[name]
-    cardIdsCache.set(key, bar ? categoryIdsWithin(bar, data.baselines[baseline] ?? []) : undefined)
-  }
-  return cardIdsCache.get(key)
+  return facts.within(name, data.baselines[baseline] ?? [], baseline)
 }
-// #37761 7b: Supported over the card's features, so it matches the bar and never counts an untested feature.
 function cardPercent(name, baseline) {
-  const ids = cardIds(name, baseline)
-  const features = data.baselines[baseline]?.length ?? 0
-  return ids && features ? Math.round((ids.supported.length / features) * 100) + '%' : ''
+  return facts.percentWithin(name, data.baselines[baseline] ?? [], baseline)
 }
 
 function platformIcons(backendName) {
@@ -301,15 +273,7 @@ function backendTooltip(name) {
       </option>
     </select>
   </label>
-  <label>
-    Baseline:
-    <select v-model="baselineFilter">
-      <option value="all">All</option>
-      <option v-for="bl in baselineOptions" :key="bl.id" :value="bl.id">
-        {{ bl.label }} ({{ bl.count }})
-      </option>
-    </select>
-  </label>
+  <CountPills v-model="baselineFilter" :options="baselinePills" label="Baseline" />
   <label>
     Search:
     <input v-model="filter" type="text" placeholder="Filter features..." />

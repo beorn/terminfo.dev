@@ -145,7 +145,7 @@ async function renderTerminalPage(selected: Record<string, unknown>): Promise<st
   const dataStub = join(out, "probes-stub.ts")
   writeFileSync(
     dataStub,
-    `export const data = { selectedByBackend: { ghostty: { selected: ${JSON.stringify(selected)} } }, featureDescriptions: {}, features: [] }\n`,
+    `export const data = { selectedByBackend: { ghostty: { selected: ${JSON.stringify(selected)} } }, featureDescriptions: {}, features: [], observers: {} }\n`,
   )
 
   const { createServer } = (await import(VITE)) as { createServer(options: unknown): Promise<SsrServer> }

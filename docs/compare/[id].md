@@ -50,6 +50,21 @@ for (const cat of categories) {
     if (f.comparable && f.resultB === 'yes' && f.resultA === 'no') onlyBFeatures.push({ ...f, categoryLabel: cat.label })
   }
 }
+// #37761: compare's feature lists are result lists; the words stay in the script, away from the glossary linker.
+function onlyRows(features) {
+  return features.map(f => ({ id: f.id, name: f.name, href: '/' + f.category + '/' + f.slug, note: f.categoryLabel }))
+}
+function differenceRows(pair) {
+  const word = (result) => result === 'yes' ? 'Supported' : 'Unsupported'
+  return pair.differences.map(feature => ({
+    id: feature.id,
+    name: feature.name,
+    href: '/' + feature.category + '/' + feature.slug,
+    mark: feature.resultA === 'yes' ? '✓' : '✗',
+    tone: feature.resultA === 'yes' ? 'yes' : 'fail',
+    note: pair.labelA + ': ' + word(feature.resultA) + ' · ' + pair.labelB + ': ' + word(feature.resultB),
+  }))
+}
 </script>
 
 <div class="compare-page">
@@ -166,12 +181,7 @@ for (const cat of categories) {
 
 <p class="only-in-desc">{{ onlyAFeatures.length }} comparable observations support this difference:</p>
 
-<ul class="only-list">
-  <li v-for="f in onlyAFeatures" :key="f.id">
-    <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-    <span class="only-cat">{{ f.categoryLabel }}</span>
-  </li>
-</ul>
+<ResultList :items="onlyRows(onlyAFeatures)" mark="✓" tone="yes" />
 
 </div>
 
@@ -181,12 +191,7 @@ for (const cat of categories) {
 
 <p class="only-in-desc">{{ onlyBFeatures.length }} comparable observations support this difference:</p>
 
-<ul class="only-list">
-  <li v-for="f in onlyBFeatures" :key="f.id">
-    <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-    <span class="only-cat">{{ f.categoryLabel }}</span>
-  </li>
-</ul>
+<ResultList :items="onlyRows(onlyBFeatures)" mark="✓" tone="yes" />
 
 </div>
 
@@ -195,7 +200,7 @@ for (const cat of categories) {
     <h2>{{ pair.labelA }} vs {{ pair.labelB }}</h2>
     <p v-if="pair.comparable">{{ pair.differ }} differences among {{ pair.conclusive }} shared features measured by the same method.</p>
     <p v-else>Recorded contexts differ or are incomplete; no pairwise support difference is claimed.</p>
-    <ul><li v-for="feature in pair.differences" :key="feature.id"><a :href="'/' + feature.category + '/' + feature.slug">{{ feature.name }}</a> · {{ pair.labelA }}: {{ feature.resultA === 'yes' ? 'Supported' : 'Unsupported' }} · {{ pair.labelB }}: {{ feature.resultB === 'yes' ? 'Supported' : 'Unsupported' }}</li></ul>
+    <ResultList v-if="pair.differences.length" :items="differenceRows(pair)" />
   </section>
 </div>
 
@@ -403,35 +408,6 @@ for (const cat of categories) {
 .only-in-desc {
   color: var(--vp-c-text-2);
   font-size: 0.95em;
-}
-
-.only-list {
-  list-style: none;
-  padding: 0;
-}
-
-.only-list li {
-  padding: 4px 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75em;
-}
-
-.only-list a {
-  color: var(--vp-c-brand-1);
-  text-decoration: none;
-}
-
-.only-list a:hover {
-  text-decoration: underline;
-}
-
-.only-cat {
-  font-size: 0.8em;
-  color: var(--vp-c-text-3);
-  background: var(--vp-c-bg-soft);
-  padding: 1px 6px;
-  border-radius: 4px;
 }
 
 .back-link {

@@ -83,3 +83,17 @@ export function categoryIdsWithin(
   out["no-result"] = within.filter((featureId) => !decided.has(featureId))
   return out
 }
+
+/** A category's row mark (the evidence cell and every result list read it here). */
+export function categoryMark(id: CategoryId): string {
+  const category = RESULT_CATEGORIES.find((entry) => entry.id === id)
+  if (!category) throw new Error(`Unknown result category ${id}`)
+  return category.mark
+}
+
+/** One feature's category in a bar's own fold: the row mark and colour a result list shows for it. */
+export function categoryOf(bar: Pick<CurrentAggregate, "idsByState"> | undefined, featureId: string): ResultCategory {
+  const ids = bar ? categoryIds(bar) : undefined
+  const found = RESULT_CATEGORIES.find((category) => ids?.[category.id].includes(featureId))
+  return found ?? RESULT_CATEGORIES.find((category) => category.id === "no-result")!
+}

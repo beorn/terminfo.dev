@@ -10,6 +10,7 @@
  */
 import type { FeatureResultStatus } from "../../../packages/probe-defs/src/types.ts"
 import { DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
+import { categoryMark } from "../../data/result-categories.ts"
 
 export type EvidenceTone = "yes" | "no" | "ungraded" | "unknown" | "error" | "differs"
 
@@ -27,7 +28,8 @@ export const NO_RESULT_STATUS: EvidenceStatus = { text: "", icon: "—", tone: "
 const STORED_STATUS: Readonly<Record<FeatureResultStatus, EvidenceStatus>> = {
   supported: { text: "Supported", icon: "✓", tone: "yes" },
   unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
-  untestable: { text: "Untestable", icon: "–", tone: "ungraded" },
+  // #37761: the same mark the bar's popover and every result list use (result-categories.ts is its one home).
+  untestable: { text: "Untestable", icon: categoryMark("untestable"), tone: "ungraded" },
   "probe-todo": NO_RESULT_STATUS,
   "probe-invalid": NO_RESULT_STATUS,
   "probe-conflict": NO_RESULT_STATUS,

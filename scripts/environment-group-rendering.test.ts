@@ -390,7 +390,8 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
     const home = source("docs/index.md")
     // #37761: the bar, its popover lists and their counts all read the bar's own fold, whose ids come from
     // scoredFeatureIds, so no environment group can be drawn, listed or counted.
-    expect(home).toContain("categoryIds(bar)")
+    expect(home).toContain("rowFacts(data)")
+    expect(source("docs/.vitepress/theme/row-facts.ts")).toContain("categoryIds(bar)")
     expect(source("docs/data/result-categories.ts")).toContain("const ids = bar.idsByState")
     expect(source("docs/data/release-scope.ts")).toContain("for (const id of scoredFeatureIds(catalogIds)) {")
     expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
@@ -400,12 +401,14 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
 
   it("wires the baseline bar and its meta line to the one predicate", () => {
     const baseline = source("docs/baseline/[id].md")
-    expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
+    // #37761 7d: the rows are home's Baseline-card rows, over this baseline's graded features only.
+    expect(baseline).toContain("const within = features.map(f => f.id).filter(id => !isEnvironmentGroup(id))")
+    expect(baseline).toContain(':ids="facts.within(s.name, within, p.id)"')
     expect(baseline).not.toMatch(/manual[ -]by[ -]design/i)
-    // The bar width reads the projection's single denominator. #33441: the printed words moved to the one row
-    // readout, so the page delegates; #37341 D2: the helper prints the shared two counts and nothing else.
-    expect(baseline).toContain("s.counts[segment] / s.score.all")
-    expect(baseline).toContain("return baselineReadout(s).text")
+    // #33441: the printed words are the one row readout, so the page delegates; #37341 D2: the helper prints the
+    // shared two counts and nothing else.
+    expect(baseline).toContain(':readout="shareRow(s).text"')
+    expect(baseline).toContain("return baselineReadout(s)")
     const readouts = source("docs/data/baseline-readouts.ts")
     expect(readouts).toContain("`${currentSupportedShare(stats)} · ${currentCoverageSentence(stats)}`")
   })

@@ -124,6 +124,8 @@ it("analysis generation writes under the override and leaves the source tree alo
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
+    // This tree stores none of the runs run-observers.json names, and the loader refuses a row for an unknown run.
+    writeFileSync(join(out, "content", "run-observers.json"), "{}")
     cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
     for (const name of ["generate-analysis.ts", "site-out.ts", "build-metadata.ts"]) {
