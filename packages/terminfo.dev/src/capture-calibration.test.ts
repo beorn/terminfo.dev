@@ -5,7 +5,11 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
-import { calibrateCaptureOrigin, type CaptureChromeBand } from "./capture-calibration.ts"
+import {
+  calibrateCaptureOrigin,
+  type CaptureCalibrationRefusal,
+  type CaptureChromeBand,
+} from "./capture-calibration.ts"
 import { command, type CapturedFrame } from "./capture-core.ts"
 import { decodeRetainedPng } from "./testing/retained-png.ts"
 import { hostedDarwinAppFromExecutablePath } from "./owned-terminal.ts"
@@ -833,7 +837,12 @@ test("a line outside the grid in another colour refuses", async () => {
     detail: expect.stringMatching(
       /^stage=solid, 8 pixel\(s\) outside grid \(2,2 8x8\) of 12x12, bbox \(2,1\)-\(9,1\), 2 distinct after-colour\(s\); first: \(2,1\) 0,0,0@255->217,0,217@255/,
     ),
+    // The run archives the pair it judged, and the retry rule reads this code, never the sentence.
+    code: "paint-outside-grid",
   })
+  const refusal = (await run.promise.catch((error: unknown) => error)) as CaptureCalibrationRefusal
+  expect(refusal.frames?.stage).toBe("solid")
+  expect(Array.from(refusal.frames?.after.rgba ?? [])).not.toEqual(Array.from(refusal.frames?.before.rgba ?? []))
 })
 
 test("a partial blend line refuses", async () => {
