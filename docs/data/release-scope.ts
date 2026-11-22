@@ -551,16 +551,6 @@ export function runDecidedNothing(counts: ReadableCounts, derived = 0): boolean 
   return decisiveCells(counts, derived) === 0 && (counts[DIFFERS_BY_CONTEXT] ?? 0) === 0
 }
 
-/**
- * The words a baseline row prints in place of a percentage when its run judged nothing (#30763):
- * "0%" there reads as a measured fail for a terminal no run ever decided. The counts stay in the
- * row's tooltip.
- *
- * TBD (#30763 AC5): the operator's naming menu has not ruled between "Not tested yet" and
- * "Not measured yet"; this placeholder ships until that approval lands.
- */
-export const NOT_MEASURED_TEXT = "Not measured yet"
-
 /** Canonical probe methods, ordered from weakest to strongest. */
 export const PROBE_METHODS = ["source", "internal", "output", "visual", "end-to-end"] as const
 export type ProbeMethod = (typeof PROBE_METHODS)[number]

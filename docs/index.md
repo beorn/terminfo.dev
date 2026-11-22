@@ -36,7 +36,6 @@ const displayedSelections = { ...data.selectedByBackend }
 
 // D132 B (#30917): the environment groups a run records are ungraded, so no bar, tooltip or order
 // counts them; the legend below names them instead of leaving the smaller denominator unexplained.
-const environmentGroupCount = data.features.filter((feature) => isEnvironmentGroup(feature.id)).length
 
 // Baseline metadata for filter dropdown
 const baselineOptions = [
@@ -247,7 +246,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-no-result">— No result yet</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue)</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-no-result">— No result yet</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -1152,7 +1151,6 @@ strips, or mishandles.
 .support-legend .legend-supported::before { background:#10b981; }
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
 .support-legend .legend-no-result::before { background:var(--vp-c-bg-soft); border:1px solid var(--vp-c-divider); }
-.support-legend .legend-manual::before { background:transparent; border:1px dashed var(--vp-c-text-3); }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
 .summary-history,.baseline-history { display:none; }

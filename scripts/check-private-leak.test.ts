@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   checkPrivateLeak,
   scanDist,
+  scanPublicCatalogue,
   scanRendered,
   scanSitemap,
   scanSources,
@@ -131,6 +132,7 @@ describe("check-private-leak — rendered internal states", () => {
     ["PROBE INVALID", "<td>PROBE INVALID</td>"],
     ["PROBE CONFLICT", "<td>PROBE CONFLICT</td>"],
     ["NOT MEASURED", "<td>NOT MEASURED</td>"],
+    ["Not measured yet", "<p>Not measured yet</p>"],
     ["manual by design", "<p>manual-by-design</p>"],
     ["unstable version string", "<span>WezTerm 0-unstable-2026-11-08</span>"],
     ["placeholder: not stored by this run", "<p>Input bytes were not stored by this run.</p>"],
@@ -158,6 +160,21 @@ describe("check-private-leak — rendered internal states", () => {
   ])("refuses an internal state in the %s attribute a reader meets", (_attribute, body) => {
     writeFileSync(join(dist, "x.html"), page(body))
     expect(scanRendered(dist)).toHaveLength(1)
+  })
+
+  // @cto f6a09e55: a page with no selected run described itself as "not measured yet" to search results only.
+  it.each([
+    ["description", '<meta name="description" content="WezTerm feature support: not measured yet.">'],
+    ["og:description", '<meta property="og:description" content="WezTerm feature support: not measured yet.">'],
+    ["twitter:description", "<meta name='twitter:description' content='WezTerm feature support: not measured yet.'>"],
+  ])("refuses an internal state in the page's %s, which search results and link previews show", (_name, meta) => {
+    writeFileSync(join(dist, "x.html"), `<html><head>${meta}</head><body><p>WezTerm</p></body></html>`)
+    expect(scanRendered(dist).map((v) => v.reason)).toEqual(["page text shows internal state: Not measured yet x1"])
+  })
+
+  it("does not read other meta content, which is data", () => {
+    writeFileSync(join(dist, "x.html"), '<html><head><meta name="generator" content="PROBE TODO"></head><body></body></html>')
+    expect(scanRendered(dist)).toEqual([])
   })
 
   it("does not read other attributes, which are data", () => {
@@ -195,5 +212,77 @@ describe("check-private-leak — rendered internal states", () => {
   it("is part of the aggregate check", () => {
     writeFileSync(join(dist, "index.html"), page("<td>PROBE TODO</td>"))
     expect(checkPrivateLeak(docs).map((v) => v.layer)).toEqual(["rendered"])
+  })
+})
+
+// Layer 5 (#37341 Q2, D6; @cto f6a09e55): the API and every readout name the public catalogue, and home prints it whole.
+describe("check-private-leak — public catalogue", () => {
+  const PUBLIC = ["cursor.cup", "sgr.bold", "sgr.italic"]
+  let dist: string
+  beforeEach(() => {
+    dist = join(docs, ".vitepress", "dist")
+    mkdirSync(join(dist, "api", "v3"), { recursive: true })
+    mkdirSync(join(dist, "terminals"), { recursive: true })
+  })
+  const api = (catalogIds: string[], features: string[] = catalogIds) =>
+    writeFileSync(
+      join(dist, "api", "v3", "data.json"),
+      JSON.stringify({ catalogIds, features: Object.fromEntries(features.map((id) => [id, { id }])) }),
+    )
+  const home = (readout: string) =>
+    writeFileSync(join(dist, "index.html"), `<html><body><span class="readout">${readout}</span></body></html>`)
+
+  it("passes when the API names the public ids and home reads over all of them", () => {
+    api([...PUBLIC].reverse())
+    home("2 supported · 3 of 3 tested")
+    writeFileSync(join(dist, "terminals", "x.html"), "<html><body><td>1 supported · 2 of 2 tested</td></body></html>")
+    expect(scanPublicCatalogue(dist, PUBLIC)).toEqual([])
+  })
+
+  it("refuses an environment id in the API's catalogIds or features, naming it", () => {
+    api([...PUBLIC, "device.env-term"], PUBLIC)
+    home("2 supported · 3 of 3 tested")
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => [v.layer, v.path, v.reason])).toEqual([
+      [
+        "catalogue",
+        "dist/api/v3/data.json",
+        "catalogIds names 4 ids, the public catalogue 3; not public: device.env-term; missing: none",
+      ],
+    ])
+    api(PUBLIC, ["cursor.cup", "sgr.bold"])
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.reason)).toEqual([
+      "features names 2 ids, the public catalogue 3; not public: none; missing: sgr.italic",
+    ])
+  })
+
+  it("refuses a missing API file rather than passing it unread", () => {
+    home("2 supported · 3 of 3 tested")
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.reason)).toEqual([
+      "missing, so the API's catalogue was not checked",
+    ])
+  })
+
+  it("refuses a readout over more positions than the public catalogue, or with tested above positions", () => {
+    api(PUBLIC)
+    home("2 supported · 3 of 3 tested")
+    writeFileSync(join(dist, "terminals", "x.html"), "<html><body><td>2 supported · 3 of 4 tested</td></body></html>")
+    writeFileSync(join(dist, "terminals", "y.html"), '<html><body><td title="1 supported · 3 of 2 tested">-</td></body></html>')
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.path).sort()).toEqual([
+      "dist/terminals/x.html",
+      "dist/terminals/y.html",
+    ])
+  })
+
+  it("refuses a home page with no readout over the whole public catalogue", () => {
+    api(PUBLIC)
+    home("1 supported · 2 of 2 tested")
+    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => [v.path, v.reason])).toEqual([
+      ["dist/index.html", 'prints no readout "S supported · T of 3 tested" over the whole public catalogue'],
+    ])
+  })
+
+  it("checks nothing when no build exists", () => {
+    rmSync(dist, { recursive: true, force: true })
+    expect(scanPublicCatalogue(dist, PUBLIC)).toEqual([])
   })
 })

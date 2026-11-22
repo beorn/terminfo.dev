@@ -390,13 +390,14 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
     const home = source("docs/index.md")
     expect(home).toContain("!isEnvironmentGroup(result.featureId)")
     expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
-    expect(home).toContain("manual by design (catalogue)")
+    // #37341 Q2: the public catalogue holds no environment position, so no public page names one.
+    expect(home).not.toMatch(/manual[ -]by[ -]design/i)
   })
 
   it("wires the baseline bar and its meta line to the one predicate", () => {
     const baseline = source("docs/baseline/[id].md")
     expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
-    expect(baseline).toContain("manual by design (catalogue)")
+    expect(baseline).not.toMatch(/manual[ -]by[ -]design/i)
     // The bar width reads the projection's single denominator. #33441: the printed words moved to the one row
     // readout, so the page delegates; #37341 D2: the helper prints the shared two counts and nothing else.
     expect(baseline).toContain("s.counts[segment] / s.score.all")
@@ -408,6 +409,7 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
   it("wires the terminal page's coverage sentence to the run's own catalogue", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
+    expect(terminal).not.toMatch(/manual[ -]by[ -]design/i)
     // #37341 Q4: the published cells fold over the run's own catalogue, so an unpublished cell counts as no result.
     expect(terminal).toContain("aggregateCurrentResults(rollupInputs(p.backendId, selection), selection.catalogIds)")
     expect(terminal).toContain("const defaultRun = data.selectedByBackend[p.backendId]?.selected")

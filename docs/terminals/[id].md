@@ -9,7 +9,6 @@ import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor, rollupInputs } from '../data/release-scope.ts'
-import { environmentGroupIds } from '../../packages/probe-defs/src/environment-groups.ts'
 import { contextLabel } from '../.vitepress/theme/context-label.ts'
 import { displayVersion, displayVersions } from '../.vitepress/theme/display-version.ts'
 const { params } = useData()
@@ -54,7 +53,6 @@ const differsTitle = computed(() => {
     result.featureId + ' — ' + result.joined.from.map(from => contextLabel(from.context) + ' ' + from.status).join(' vs ')
   ).join('; ')
 })
-const manualEnvironmentCount = computed(() => selectedRun.value ? environmentGroupIds(selectedRun.value.catalogIds).length : 0)
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
@@ -207,8 +205,8 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts['differs-by-context']" class="result-share-differs" :title="differsTitle" :style="{ width: `${measuredBar.counts['differs-by-context'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p v-if="measuredBar.complete && manualEnvironmentCount > 0">Every graded feature has a result. {{ manualEnvironmentCount }} environment {{ manualEnvironmentCount === 1 ? 'feature is' : 'features are' }} manual by design and not graded. See each row for whether it is supported.</p>
-  <p v-else>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
+  <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
+  <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>
 </div>
 
 <details v-if="selectedRun && !multipleSystems" class="run-context">

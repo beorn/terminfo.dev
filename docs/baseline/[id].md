@@ -15,7 +15,6 @@ const p = params.value
 
 const features = JSON.parse(p.features)
 // D132 B (#30917): the environment groups in this baseline are ungraded.
-const environmentGroupCount = features.filter((feature) => isEnvironmentGroup(feature.id)).length
 const backends = JSON.parse(p.backends)
 const scores = JSON.parse(p.scores)
 const appBackends = backends.filter(b => b.type === 'term')
@@ -115,7 +114,7 @@ function platformIcons(b) {
 
 <p class="baseline-description" v-html="p.description"></p>
 
-<p class="baseline-meta">{{ p.featureCount }} features in this baseline<template v-if="environmentGroupCount">, including {{ environmentGroupCount }} environment {{ environmentGroupCount === 1 ? 'group' : 'groups' }}: manual by design (catalogue)</template></p>
+<p class="baseline-meta">{{ p.featureCount }} features in this baseline</p>
 
 <div v-if="p.analysis" class="analysis">
   <div class="analysis-header">

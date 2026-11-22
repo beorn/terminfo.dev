@@ -18,9 +18,14 @@
  *   4. RENDERED — no internal state or placeholder text in what a reader sees:
  *                built page text, built scripts (client-rendered text), and
  *                undecided status values in public JSON (#37341).
+ *   5. CATALOGUE — the published catalogue is the public one (#37341 Q2, D6): the
+ *                API's catalogIds and features name exactly the public ids, no page's
+ *                readout counts over more positions than that, and the home page prints
+ *                the readout over all of them (@cto f6a09e55).
  *
- * SOURCE is always checked; BUILD/SITEMAP/RENDERED are checked when dist/ exists.
- * In CI this runs right after `bun run build`, so all four layers are active.
+ * SOURCE is always checked; BUILD/SITEMAP/RENDERED/CATALOGUE are checked when dist/ exists.
+ * In CI this runs right after `bun run build`, so all five layers are active. The built
+ * output is `docs/.vitepress/dist`, or `<TERMINFO_SITE_OUT_DIR>/dist` when that is set.
  *
  * Exit code: 1 if any leak is found, 0 otherwise. 2 on usage error.
  *
@@ -32,6 +37,9 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadFeatures } from "@terminfo/catalog"
+import { publicFeatureIds } from "../docs/data/public-features.ts"
+import { siteDistDir } from "./site-out.ts"
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -66,7 +74,7 @@ const FRONTMATTER_OPT_OUT: Array<{ key: string; value: string }> = [
 ]
 
 export interface Violation {
-  layer: "source" | "build" | "sitemap" | "rendered"
+  layer: "source" | "build" | "sitemap" | "rendered" | "catalogue"
   path: string
   reason: string
 }
@@ -230,6 +238,7 @@ export const INTERNAL_STATE_TEXT: ReadonlyArray<{
   { name: "PROBE INVALID", pattern: /PROBE INVALID/g, inScripts: true },
   { name: "PROBE CONFLICT", pattern: /PROBE CONFLICT/g, inScripts: true },
   { name: "NOT MEASURED", pattern: /NOT MEASURED/g, inScripts: true },
+  { name: "Not measured yet", pattern: /not measured yet/gi, inScripts: true },
   { name: "manual by design", pattern: /manual[ -]by[ -]design/gi, inScripts: true },
   { name: "unstable version string", pattern: /\b\d+-unstable-\d{4}-\d{2}-\d{2}\b/g, inScripts: false },
   { name: "placeholder: not stored by this run", pattern: /not stored by this run/gi, inScripts: true },
@@ -257,15 +266,21 @@ const ENTITY: Readonly<Record<string, string>> = {
  */
 const READ_ATTRIBUTE = /\s(?:title|data-tooltip|aria-label|alt)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi
 
+/** A page's search and link-preview description, which a reader meets in search results and shared links. */
+const SEARCH_DESCRIPTION =
+  /^<meta\b(?=[^>]*\s(?:name|property)\s*=\s*["'](?:description|og:description|twitter:description)["'])[^>]*\scontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i
+
 /**
- * A built page's reader text: its visible text plus the read attribute values (@cto 97ba8eea D11), entities
- * decoded. A state named only in script data or in another attribute is not counted.
+ * A built page's reader text: its visible text plus the read attribute values (@cto 97ba8eea D11) and its search
+ * description, entities decoded. A state named only in script data or in another attribute is not counted.
  */
 export function visibleText(html: string): string {
   return html
     .replace(SCRIPT_OR_STYLE, " ")
     .replace(TAG, (tag) => {
       const read = [...tag.matchAll(READ_ATTRIBUTE)].map((match) => match[1] ?? match[2] ?? "")
+      const description = tag.match(SEARCH_DESCRIPTION)
+      if (description) read.push(description[1] ?? description[2] ?? "")
       return " " + read.join(" ") + " "
     })
     .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, name: string) => ENTITY[name] ?? " ")
@@ -307,11 +322,83 @@ export function scanRendered(distDir: string): Violation[] {
 }
 
 // ---------------------------------------------------------------------------
+// Layer 5: CATALOGUE
+// ---------------------------------------------------------------------------
+
+/** The one readout (#37341 D2): "S supported · T of N tested". */
+const READOUT = /(\d+) supported · (\d+) of (\d+) tested/g
+
+const API_DATA = join("api", "v3", "data.json")
+
+/**
+ * The published catalogue is the public one (#37341 Q2, D6; @cto f6a09e55). The API's top-level catalogIds and features
+ * name exactly `publicIds`. A readout on any page counts over at most that many positions (a baseline row counts
+ * over its own, smaller list), with supported <= tested <= positions. The home page prints at least one readout
+ * over the whole public catalogue. Each context's catalogIds and each run receipt keep the positions the run
+ * measured (D132 B), so they are not read here.
+ */
+export function scanPublicCatalogue(distDir: string, publicIds: readonly string[]): Violation[] {
+  const violations: Violation[] = []
+  if (!existsSync(distDir)) return violations
+  const want = [...publicIds].sort()
+  const apiPath = join(distDir, API_DATA)
+  if (!existsSync(apiPath)) {
+    violations.push({ layer: "catalogue", path: `dist/${API_DATA}`, reason: "missing, so the API's catalogue was not checked" })
+  } else {
+    const api = JSON.parse(readFileSync(apiPath, "utf-8")) as { catalogIds?: unknown; features?: unknown }
+    const lists: Array<[string, unknown]> = [
+      ["catalogIds", api.catalogIds],
+      ["features", api.features && typeof api.features === "object" ? Object.keys(api.features) : api.features],
+    ]
+    for (const [field, value] of lists) {
+      if (!Array.isArray(value)) {
+        violations.push({ layer: "catalogue", path: `dist/${API_DATA}`, reason: `${field} is not a list of ids` })
+        continue
+      }
+      const have = (value as unknown[]).map(String).sort()
+      const extra = have.filter((id) => !want.includes(id))
+      const missing = want.filter((id) => !have.includes(id))
+      if (extra.length === 0 && missing.length === 0 && have.length === want.length) continue
+      violations.push({
+        layer: "catalogue",
+        path: `dist/${API_DATA}`,
+        reason: `${field} names ${have.length} ids, the public catalogue ${want.length}; not public: ${extra.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}`,
+      })
+    }
+  }
+  let homeReadouts = 0
+  walk(distDir, (full) => {
+    if (!full.endsWith(".html")) return
+    const rel = relative(distDir, full)
+    const wrong: string[] = []
+    for (const match of visibleText(readFileSync(full, "utf-8")).matchAll(READOUT)) {
+      const [supported, tested, positions] = [match[1], match[2], match[3]].map(Number) as [number, number, number]
+      if (positions > want.length || tested > positions || supported > tested) wrong.push(`"${match[0]}"`)
+      else if (rel === "index.html" && positions === want.length) homeReadouts++
+    }
+    if (wrong.length > 0) {
+      violations.push({
+        layer: "catalogue",
+        path: `dist/${rel}`,
+        reason: `readout over more than the ${want.length}-position public catalogue, or with tested above positions: ${wrong.slice(0, 3).join(", ")}${wrong.length > 3 ? ` and ${wrong.length - 3} more` : ""}`,
+      })
+    }
+  })
+  if (homeReadouts === 0) {
+    violations.push({
+      layer: "catalogue",
+      path: "dist/index.html",
+      reason: `prints no readout "S supported · T of ${want.length} tested" over the whole public catalogue`,
+    })
+  }
+  return violations
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate
 // ---------------------------------------------------------------------------
 
-export function checkPrivateLeak(docsDir: string): Violation[] {
-  const distDir = join(docsDir, ".vitepress", "dist")
+export function checkPrivateLeak(docsDir: string, distDir: string = join(docsDir, ".vitepress", "dist")): Violation[] {
   return [...scanSources(docsDir), ...scanDist(distDir), ...scanSitemap(distDir), ...scanRendered(distDir)]
 }
 
@@ -329,14 +416,16 @@ function main(): void {
     process.exit(2)
   }
 
-  const distDir = join(docsDir, ".vitepress", "dist")
+  const repoRoot = resolve(__dirname, "..")
+  const distDir = process.argv[2] ? join(docsDir, ".vitepress", "dist") : siteDistDir(repoRoot)
   const builtNote = existsSync(distDir)
-    ? `${DIM}(scanning source + built dist + sitemap + rendered text)${RESET}`
-    : `${YELLOW}(no dist/ — source-only scan; run "bun run build" for full coverage)${RESET}`
+    ? `${DIM}(scanning source + built ${distDir} + sitemap + rendered text + public catalogue)${RESET}`
+    : `${YELLOW}(no ${distDir} — source-only scan; run "bun run build" for full coverage)${RESET}`
 
   console.error(`${BOLD}check-private-leak${RESET} ${builtNote}`)
 
-  const violations = checkPrivateLeak(docsDir)
+  const publicIds = publicFeatureIds(loadFeatures(join(repoRoot, "content")))
+  const violations = [...checkPrivateLeak(docsDir, distDir), ...scanPublicCatalogue(distDir, publicIds)]
 
   if (violations.length === 0) {
     console.error(`${GREEN}✓${RESET} no internal/private content would be published`)
@@ -348,7 +437,13 @@ function main(): void {
     console.error(`  ${RED}✗${RESET} [${v.layer}] ${BOLD}${v.path}${RESET}`)
     console.error(`      ${v.reason}`)
   }
-  if (violations.some((v) => v.layer !== "rendered")) {
+  if (violations.some((v) => v.layer === "catalogue")) {
+    console.error(
+      `\n${YELLOW}The published catalogue is not the public one.${RESET} The API and every readout count the public` +
+        ` positions only (publicFeatureIds, docs/data/public-features.ts); the nine environment positions stay out.\n`,
+    )
+  }
+  if (violations.some((v) => v.layer !== "rendered" && v.layer !== "catalogue")) {
     console.error(
       `\n${YELLOW}Internal artifacts must not live under docs/.${RESET} Move them out of the` +
         ` published tree (e.g. a private location outside this repo) — they must never become routes.\n`,

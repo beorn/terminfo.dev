@@ -114,10 +114,9 @@ describe("#30784 whole-run readout", () => {
       compare: { title: string; description: string }
     }
 
-    expect(observed.undecided).toBe(
-      "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
-    )
-    // A page with no selected run publishes no number at all.
+    expect(observed.undecided).toBe("Windows Terminal terminal emulator feature support. Microsoft's terminal.")
+    // A page with no selected run publishes no number and no placeholder (@cto f6a09e55).
+    expect(observed.undecided).not.toMatch(/not measured/i)
     expect(observed.undecided).not.toContain("%")
     expect(observed.undecided).not.toContain("0/273")
 
