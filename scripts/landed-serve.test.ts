@@ -2,10 +2,11 @@
  * @failure The preview 404s or 500s every clean URL the site links to (`cleanUrls: true`), so the operator's click on a baseline chip lands on a broken page (30757).
  * @level l2
  * @consumer The `terminfo-site` resident's `landed-serve`, and every preview link the operator clicks.
+ * @reach fs-walk <fixture-only: mkdtempSync out roots and the staging/dist.previous trees each case creates there>
  * @testonly none
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync, spawn, spawnSync } from "node:child_process"
@@ -312,6 +313,13 @@ describe("landed-serve hourly-run rebuild", () => {
     writeFileSync(join(runsDir, id, "cells.json"), "{}")
   }
 
+  /** The one `.unproven-*` tree the run kept beside `name`, proving it was preserved rather than deleted. */
+  function keptAside(out: string, name: "staging" | "dist.previous"): string {
+    const kept = readdirSync(out).filter((entry) => entry.startsWith(`${name}.unproven-`))
+    expect(kept).toHaveLength(1)
+    return join(out, kept[0] ?? "")
+  }
+
   it("asks for a run rebuild only when the code matches and the newest complete run differs", () => {
     expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBe("run")
     expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_B }, RUN_B)).toBeNull()
@@ -395,5 +403,97 @@ describe("landed-serve hourly-run rebuild", () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  /**
+   * @cto 2026-11-22 (#34952): a path named `staging` or `dist.previous` is containment evidence only. These three
+   * cases pin the line between output this program produced (replaceable) and a tree that merely has the name
+   * (retained, moved aside, reported).
+   */
+  it("keeps a pre-existing staging tree of unproven origin and builds into a marked staging root", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
+    stamp(join(out, "dist"), RUN_A)
+    mkdirSync(join(out, "staging", "dist"), { recursive: true })
+    writeFileSync(join(out, "staging", "dist", "index.html"), "somebody-elses-build")
+    const errors: string[] = []
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => errors.push(String(line)))
+    try {
+      const ok = await rebuildForRun({
+        outRoot: out,
+        target: CODE,
+        runId: RUN_B,
+        runBuild: async (env) => {
+          stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_B)
+          return 0
+        },
+      })
+      expect(ok).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(readFileSync(join(keptAside(out, "staging"), "dist", "index.html"), "utf8")).toBe("somebody-elses-build")
+    expect(errors.join("\n")).toContain("is not this program's build scratch")
+  })
+
+  it("keeps a dist.previous of unproven origin instead of deleting it", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
+    stamp(join(out, "dist"), RUN_A)
+    mkdirSync(join(out, "dist.previous"), { recursive: true })
+    writeFileSync(join(out, "dist.previous", "evidence.txt"), "hand-copied output")
+    const errors: string[] = []
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => errors.push(String(line)))
+    try {
+      const ok = await rebuildForRun({
+        outRoot: out,
+        target: CODE,
+        runId: RUN_B,
+        runBuild: async (env) => {
+          stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_B)
+          return 0
+        },
+      })
+      expect(ok).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(readFileSync(join(keptAside(out, "dist.previous"), "evidence.txt"), "utf8")).toBe("hand-copied output")
+    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(errors.join("\n")).toContain("carries no terminfo build stamp")
+  })
+
+  it("reuses the staging root its own marker claims, replacing a failed attempt's output", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
+    stamp(join(out, "dist"), RUN_A)
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const failed = await rebuildForRun({
+        outRoot: out,
+        target: CODE,
+        runId: RUN_A,
+        runBuild: async (env) => {
+          const staged = join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist")
+          mkdirSync(staged, { recursive: true })
+          writeFileSync(join(staged, "index.html"), "half-written")
+          return 1
+        },
+      })
+      expect(failed).toBe(false)
+      expect(existsSync(join(out, "staging", "dist", "index.html"))).toBe(true)
+      const ok = await rebuildForRun({
+        outRoot: out,
+        target: CODE,
+        runId: RUN_B,
+        runBuild: async (env) => {
+          stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_B)
+          return 0
+        },
+      })
+      expect(ok).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(readdirSync(out).filter((entry) => entry.includes(".unproven-"))).toEqual([])
+    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
   })
 })

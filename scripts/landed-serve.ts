@@ -25,9 +25,15 @@
  * rebuild keeps serving the previous build, says so on stderr, leaves the rebuild marker behind (as a failed code
  * rebuild does), and is not retried for the same run. The check runs at start and on changes under the runs directory
  * (an inotify watch inside this process; no new timer, service or gate).
+ *
+ * Only output this program produced is ever deleted. `<out>/staging` is reused when its own marker names a staging
+ * tree this program created, and `<out>/dist.previous` when the retired dist's own `build.json` proves a terminfo
+ * build wrote it; anything else — a tree that merely has the name — is renamed aside and reported on stderr, because
+ * a pre-existing staging or retired tree of unproven origin is retained evidence, not scratch (@cto 2026-11-22,
+ * #34952).
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process"
-import { existsSync, readFileSync, renameSync, rmSync, statSync, watch } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
@@ -115,6 +121,78 @@ export function siteBuildArgs(env: NodeJS.ProcessEnv): string[] {
       ]
 }
 
+/**
+ * The marker this program writes into a staging root before a build writes there. It is what makes the tree
+ * provably this program's scratch on a later run: the path alone proves nothing (@cto 2026-11-22, #34952).
+ */
+const STAGING_MARKER = ".terminfo-site-staging.json"
+const STAGING_MARKER_SCHEMA = "terminfo-site-staging/1"
+
+/** The `.unproven-<timestamp>` name a kept tree takes, so nothing of unknown origin is ever overwritten. */
+function keptAside(path: string, now: Date): string {
+  return `${path}.unproven-${now.toISOString().replace(/[:.]/g, "-")}`
+}
+
+function carriesStagingMarker(staging: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(staging, STAGING_MARKER), "utf8"))
+    return (
+      parsed !== null && typeof parsed === "object" && (parsed as { schema?: unknown }).schema === STAGING_MARKER_SCHEMA
+    )
+  } catch {
+    // silent-fallback-allow: provenance test only — absent, unreadable or foreign marker all mean "not ours", which the caller keeps instead of deleting
+    return false
+  }
+}
+
+/**
+ * Make `staging` a tree this program may build into and clear. A staging root carrying our own marker is reused,
+ * including the remains of a build that failed (a retry must be free to replace those); anything else is renamed
+ * aside and reported, never deleted. Returns the path an unproven tree was kept at, or null when there was nothing.
+ */
+export function claimStaging(
+  staging: string,
+  build: { target: string; runId: string },
+  now: Date = new Date(),
+): string | null {
+  let kept: string | null = null
+  if (existsSync(staging) && !carriesStagingMarker(staging)) {
+    kept = keptAside(staging, now)
+    renameSync(staging, kept)
+    console.error(
+      `terminfo-site: ${staging} is not this program's build scratch (no ${STAGING_MARKER} naming a terminfo ` +
+        `build); kept it at ${kept} instead of deleting it`,
+    )
+  }
+  mkdirSync(staging, { recursive: true })
+  writeFileSync(
+    join(staging, STAGING_MARKER),
+    `${JSON.stringify({ schema: STAGING_MARKER_SCHEMA, ...build, startedAt: now.toISOString() })}\n`,
+  )
+  // raw-delete-allow: standalone component repository without hh's removely; the staged dist is this program's own scratch output under a staging root it just marked
+  rmSync(join(staging, "dist"), { recursive: true, force: true })
+  return kept
+}
+
+/**
+ * Delete a retired dist only when its own `build.json` proves a terminfo build wrote it. `<out>/dist.previous` under
+ * our root is normally the output the last swap retired, but the name is not proof: a tree of unproven origin is
+ * renamed aside and reported, never deleted. Returns the kept path, or null.
+ */
+export function discardRetiredDist(retired: string, now: Date = new Date()): string | null {
+  if (!existsSync(retired)) return null
+  const source = readServedStamp(retired).sourceCommit
+  if (source !== null && /^[0-9a-f]{40}$/.test(source)) {
+    // raw-delete-allow: standalone component repository without hh's removely; the tree's own build stamp proves a terminfo build produced it
+    rmSync(retired, { recursive: true, force: true })
+    return null
+  }
+  const kept = keptAside(retired, now)
+  renameSync(retired, kept)
+  console.error(`terminfo-site: ${retired} carries no terminfo build stamp; kept it at ${kept} instead of deleting it`)
+  return kept
+}
+
 /** The real site build, run asynchronously so the previous build keeps serving while it runs. */
 const siteBuild: RunBuild = (env) =>
   new Promise((resolve) => {
@@ -151,8 +229,7 @@ export async function rebuildForRun(args: {
     `terminfo-site: hourly run ${args.runId} is newer than the served ${previous} — rebuilding into ${staging}`,
   )
   const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot })
-  // raw-delete-allow: standalone component repository without hh's removely; the staged dist is this program's own scratch output under its state root
-  rmSync(stagedDist, { recursive: true, force: true })
+  claimStaging(staging, { target: args.target, runId: args.runId })
   const status = await (args.runBuild ?? siteBuild)({
     ...process.env,
     TERMINFO_SITE_OUT_DIR: staging,
@@ -164,11 +241,10 @@ export async function rebuildForRun(args: {
     return fail(`staged build stamped ${staged.sourceCommit ?? "nothing"} / run ${staged.workingRunId ?? "none"}`)
   }
   const retired = join(args.outRoot, "dist.previous")
-  // raw-delete-allow: standalone component repository without hh's removely; dist.previous is this program's own retired output
-  rmSync(retired, { recursive: true, force: true })
+  discardRetiredDist(retired)
   if (existsSync(served)) renameSync(served, retired)
   renameSync(stagedDist, served)
-  // raw-delete-allow: standalone component repository without hh's removely; dist.previous is this program's own retired output
+  // raw-delete-allow: standalone component repository without hh's removely; this is exactly the served dist the swap above retired a moment ago
   rmSync(retired, { recursive: true, force: true })
   clearMarker?.()
   console.log(`terminfo-site: now serving hourly run ${staged.workingRunId} (${args.target.slice(0, 10)})`)
