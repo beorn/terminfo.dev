@@ -56,7 +56,10 @@ function corpusOf(id: string, runs: readonly string[]): string {
       // snapshot of placed readings predates them, so such a row did not exist for it.
       const held = (row: { replacesInvalid?: { runs: string[] } }) =>
         row.replacesInvalid === undefined || row.replacesInvalid.runs.some((r) => runs.some((path) => path.includes(r)))
-      writeFileSync(join(dir, name), JSON.stringify({ ...doc, rows: doc.rows.filter((row) => row.id === id && held(row)) }))
+      writeFileSync(
+        join(dir, name),
+        JSON.stringify({ ...doc, rows: doc.rows.filter((row) => row.id === id && held(row)) }),
+      )
     } else symlinkSync(join(CONTENT_DIR, name), join(dir, name))
   }
   for (const run of runs) symlinkSync(realpathSync(run), join(dir, "probes-apps", basename(run)))
