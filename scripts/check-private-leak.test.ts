@@ -306,7 +306,6 @@ describe("check-private-leak — public catalogue", () => {
   })
 
   it("checks nothing when no build exists", () => {
-    rmSync(dist, { recursive: true, force: true })
-    expect(scanPublicCatalogue(dist, PUBLIC)).toEqual([])
+    expect(scanPublicCatalogue(join(docs, "no-build"), PUBLIC)).toEqual([])
   })
 })

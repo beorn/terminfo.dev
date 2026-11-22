@@ -77,7 +77,13 @@ function storeOneContext(): void {
 describe("the generated analysis covers the public catalogue only", () => {
   it("counts, lists and links no environment position", () => {
     storeOneContext()
+    // The fixture stores one context, so the generator names every other terminal as having no current runs; any
+    // other warning fails the test.
+    const warnings: string[] = []
+    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const analysis = generateAnalysis()
+    warning.mockRestore()
+    expect(warnings.filter((line) => !/^Warning: Terminal .+ has no stored current runs$/.test(line))).toEqual([])
     const hiddenKeys = catalogIds
       .filter((id) => isEnvironmentGroup(id))
       .map((id) => `${id.split(".")[0]}/${catalog[id]?.slug ?? id.replaceAll(".", "-")}`)
