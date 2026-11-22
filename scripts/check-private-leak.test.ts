@@ -153,6 +153,7 @@ describe("check-private-leak — rendered internal states", () => {
     "<p>Original measurements · older suite bd8cfc7bcfc3</p>",
     '<p>Context ["term","wezterm","macos",null]</p>',
     "<details open><summary>Technical details</summary><p>run-deadbeef</p></details>",
+    '<details title="run-deadbeef"><summary>Technical details</summary>hidden</details>',
   ])("refuses technical provenance in initially visible page text: %s", (body) => {
     writeFileSync(join(dist, "feature.html"), page(body))
     expect(scanRendered(dist)).toEqual([expect.objectContaining({ layer: "rendered", path: "dist/feature.html" })])
@@ -167,6 +168,18 @@ describe("check-private-leak — rendered internal states", () => {
           "</details>",
       ),
     )
+    expect(scanRendered(dist)).toEqual([])
+  })
+
+  // Native disclosure visibility follows ancestors and the actual open attribute, not similarly named data.
+  it.each([
+    "<details><summary>Technical details</summary><details><summary>More</summary>hidden</details>run-deadbeef</details>",
+    '<details data-open="true"><summary>Technical details</summary>run-deadbeef</details>',
+    '<details class="keep open extra"><summary>Technical details</summary>run-deadbeef</details>',
+    "<details open><summary>Technical details</summary><details><summary>More</summary>run-deadbeef</details></details>",
+    "<details><summary>Technical details</summary><details open><summary>More</summary>run-deadbeef</details></details>",
+  ])("keeps hidden disclosure provenance hidden: %s", (body) => {
+    writeFileSync(join(dist, "nested.html"), page(body))
     expect(scanRendered(dist)).toEqual([])
   })
 
