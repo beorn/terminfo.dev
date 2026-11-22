@@ -38,6 +38,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { publicFeatureIds } from "../docs/data/public-features.ts"
 import { siteDistDir } from "./site-out.ts"
 
@@ -133,7 +134,6 @@ export function scanSources(docsDir: string): Violation[] {
     }
 
     const content = readFileSync(full, "utf-8")
-
     const marker = FORBIDDEN_MARKERS.find((m) => content.includes(m))
     if (marker) {
       violations.push({
@@ -305,6 +305,42 @@ export function scanRendered(distDir: string): Violation[] {
     const isJson = full.endsWith(".json")
     if (!isPage && !isJson && !full.endsWith(".js")) return
     const content = readFileSync(full, "utf-8")
+    let publicJson = content
+    if (isJson && rel.split(sep).join("/") === "api/v3/data.json") {
+      const data = parseJsonStrict(full, content) as { working?: { run?: { id?: string; startedAt?: string } } }
+      if (Object.hasOwn(data, "working")) {
+        const stampPath = join(distDir, "build.json")
+        const stamp = existsSync(stampPath)
+          ? (parseJsonStrict(stampPath, readFileSync(stampPath, "utf8")) as {
+              context?: string
+              sourceCommit?: string
+              githubRun?: unknown
+              workingRun?: { id?: string; startedAt?: string }
+            })
+          : null
+        const run = data.working?.run
+        const internal =
+          stamp?.context === "local" &&
+          stamp.githubRun === null &&
+          /^[a-f\d]{40}$/i.test(stamp.sourceCommit ?? "") &&
+          typeof run?.id === "string" &&
+          run.id.length > 0 &&
+          Number.isFinite(Date.parse(run.startedAt ?? "")) &&
+          stamp.workingRun?.id === run.id &&
+          stamp.workingRun.startedAt === run.startedAt
+        if (internal) {
+          // Only this stamped private view is raw; the accepted projection is checked unchanged.
+          const { working: _working, ...accepted } = data
+          publicJson = JSON.stringify(accepted)
+        } else {
+          violations.push({
+            layer: "rendered",
+            path: `dist/${rel}`,
+            reason: "public JSON contains an internal working view without a matching local build identity",
+          })
+        }
+      }
+    }
     let versionText = ""
     if (isPage) {
       // A closed disclosure shows its summary, while an open one shows its full body.
@@ -339,7 +375,7 @@ export function scanRendered(distDir: string): Violation[] {
         })
       }
     }
-    const undecided = isJson ? (content.match(UNDECIDED_JSON_STATUS)?.length ?? 0) : 0
+    const undecided = isJson ? (publicJson.match(UNDECIDED_JSON_STATUS)?.length ?? 0) : 0
     const found = isJson
       ? undecided > 0
         ? [{ name: "undecided status value", count: undecided }]

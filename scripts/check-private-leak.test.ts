@@ -278,6 +278,48 @@ describe("check-private-leak — rendered internal states", () => {
     ])
   })
 
+  // The private preview's stamp and working data must identify the same run; public artifacts remain strict.
+  it.each([
+    { context: "local", stampId: "working-1", dataId: "working-1", status: "probe-todo", allowed: true },
+    { context: "github", stampId: "working-1", dataId: "working-1", status: "probe-todo", allowed: false },
+    { context: "github", stampId: "working-1", dataId: "working-1", status: "supported", allowed: false },
+    { context: "local", stampId: "working-1", dataId: "another-run", status: "probe-todo", allowed: false },
+    { context: "local", stampId: "", dataId: "", status: "probe-todo", allowed: false },
+    { context: "absent", stampId: "working-1", dataId: "working-1", status: "supported", allowed: false },
+  ])("classifies only matched internal working data: %j", ({ context, stampId, dataId, status, allowed }) => {
+    const startedAt = "2026-11-22T14:04:03.537Z"
+    if (context !== "absent")
+      writeFileSync(
+        join(dist, "build.json"),
+        JSON.stringify({
+          sourceCommit: "a".repeat(40),
+          context,
+          githubRun: context === "github" ? "123" : null,
+          workingRun: { id: stampId, startedAt },
+        }),
+      )
+    writeFileSync(
+      join(dist, "api", "v3", "data.json"),
+      JSON.stringify({
+        contexts: { accepted: { status: "supported" } },
+        working: { run: { id: dataId, startedAt }, contexts: [{ status }] },
+      }),
+    )
+    expect(scanRendered(dist).length > 0).toBe(!allowed)
+    if (allowed) {
+      writeFileSync(
+        join(dist, "api", "v3", "data.json"),
+        JSON.stringify({
+          contexts: { accepted: { status: "probe-todo" } },
+          working: { run: { id: dataId, startedAt }, contexts: [{ status }] },
+        }),
+      )
+      expect(scanRendered(dist).map((v) => v.reason)).toEqual([
+        "public JSON shows internal state: undecided status value x1",
+      ])
+    }
+  })
+
   it("is part of the aggregate check", () => {
     writeFileSync(join(dist, "index.html"), page("<td>PROBE TODO</td>"))
     expect(checkPrivateLeak(docs).map((v) => v.layer)).toEqual(["rendered"])
