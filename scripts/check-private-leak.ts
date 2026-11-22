@@ -286,9 +286,12 @@ export function visibleText(html: string): string {
     .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, name: string) => ENTITY[name] ?? " ")
 }
 
-function countsIn(text: string, inScripts: boolean): Array<{ name: string; count: number }> {
+function countsIn(text: string, inScripts: boolean, versionText = text): Array<{ name: string; count: number }> {
   return INTERNAL_STATE_TEXT.filter((needle) => !inScripts || needle.inScripts)
-    .map((needle) => ({ name: needle.name, count: text.match(needle.pattern)?.length ?? 0 }))
+    .map((needle) => ({
+      name: needle.name,
+      count: (needle.name === "unstable version string" ? versionText : text).match(needle.pattern)?.length ?? 0,
+    }))
     .filter(({ count }) => count > 0)
 }
 
@@ -302,6 +305,7 @@ export function scanRendered(distDir: string): Violation[] {
     const isJson = full.endsWith(".json")
     if (!isPage && !isJson && !full.endsWith(".js")) return
     const content = readFileSync(full, "utf-8")
+    let versionText = ""
     if (isPage) {
       // A closed disclosure shows its summary, while an open one shows its full body.
       // Scope this presentation check to every page, not just Feature support cards.
@@ -321,8 +325,10 @@ export function scanRendered(distDir: string): Violation[] {
           },
         )
       } while (initiallyVisible !== previous)
+      // Raw measured versions belong in closed provenance; other internal labels keep their full scan.
+      versionText = visibleText(initiallyVisible)
       const technical =
-        visibleText(initiallyVisible).match(
+        versionText.match(
           /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][a-f\d]{8,64}\b|(?<![\w/])\b[a-f\d]{32,64}\b|\b(?:SHA-?256|run ID|suite ID|suite|source|capture)\s*[:=]?\s+[a-f\d]{8,64}\b|\bContext\s*\[\s*["'](?:term|lib|mux)["']/gi,
         ) ?? []
       if (technical.length) {
@@ -339,7 +345,7 @@ export function scanRendered(distDir: string): Violation[] {
         ? [{ name: "undecided status value", count: undecided }]
         : []
       : isPage
-        ? countsIn(visibleText(content), false)
+        ? countsIn(visibleText(content), false, versionText)
         : countsIn(content, true)
     if (found.length === 0) return
     violations.push({

@@ -154,6 +154,9 @@ describe("check-private-leak — rendered internal states", () => {
     '<p>Context ["term","wezterm","macos",null]</p>',
     "<details open><summary>Technical details</summary><p>run-deadbeef</p></details>",
     '<details title="run-deadbeef"><summary>Technical details</summary>hidden</details>',
+    "<details open><summary>Technical details</summary>WezTerm 0-unstable-2026-11-08</details>",
+    "<details><summary>WezTerm 0-unstable-2026-11-08</summary>hidden</details>",
+    '<span aria-label="WezTerm 0-unstable-2026-11-08">WezTerm</span>',
   ])("refuses technical provenance in initially visible page text: %s", (body) => {
     writeFileSync(join(dist, "feature.html"), page(body))
     expect(scanRendered(dist)).toEqual([expect.objectContaining({ layer: "rendered", path: "dist/feature.html" })])
@@ -178,9 +181,16 @@ describe("check-private-leak — rendered internal states", () => {
     '<details class="keep open extra"><summary>Technical details</summary>run-deadbeef</details>',
     "<details open><summary>Technical details</summary><details><summary>More</summary>run-deadbeef</details></details>",
     "<details><summary>Technical details</summary><details open><summary>More</summary>run-deadbeef</details></details>",
+    "<details><summary>Technical details</summary>WezTerm 0-unstable-2026-11-08</details>",
+    "<details><summary>Technical details</summary><details open><summary>Original</summary>WezTerm 0-unstable-2026-11-08</details></details>",
   ])("keeps hidden disclosure provenance hidden: %s", (body) => {
     writeFileSync(join(dist, "nested.html"), page(body))
     expect(scanRendered(dist)).toEqual([])
+  })
+
+  it("still checks internal labels inside closed technical history", () => {
+    writeFileSync(join(dist, "history.html"), page("<details><summary>Technical details</summary>PROBE TODO</details>"))
+    expect(scanRendered(dist).map((v) => v.reason)).toEqual(["page text shows internal state: PROBE TODO x1"])
   })
 
   it.each([
