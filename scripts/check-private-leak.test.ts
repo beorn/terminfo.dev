@@ -151,6 +151,7 @@ describe("check-private-leak — rendered internal states", () => {
     "<p>Latest selected measurement: 2026-11-18T22:50:00.000Z</p>",
     "<li>Transmit was refused in run 3f767f8501c088b27a9dbb6ccdc04f42</li>",
     "<p>Original measurements · older suite bd8cfc7bcfc3</p>",
+    '<p>Context ["term","wezterm","macos",null]</p>',
     "<details open><summary>Technical details</summary><p>run-deadbeef</p></details>",
   ])("refuses technical provenance in initially visible page text: %s", (body) => {
     writeFileSync(join(dist, "feature.html"), page(body))
@@ -161,7 +162,7 @@ describe("check-private-leak — rendered internal states", () => {
     writeFileSync(
       join(dist, "terminal.html"),
       page(
-        '<section class="score-card"><h2>Feature support</h2><p>Measured Nov 8–18, 2026 · iTerm2 3.6.11 · macOS</p><div>bar</div></section><details><summary>Test environment</summary>run-deadbeef · ' +
+        '<section class="score-card"><h2>Feature support</h2><p>Measured Nov 8–18, 2026 · iTerm2 3.6.11 · macOS</p><div>bar</div></section><p>A run ID identifies a submission; SHA-256 describes its digest.</p><a title="Spec: gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda">OSC 8 specification</a><details><summary>Test environment</summary>run-deadbeef · ' +
           "a".repeat(64) +
           "</details>",
       ),

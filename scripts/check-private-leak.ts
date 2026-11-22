@@ -312,7 +312,7 @@ export function scanRendered(distDir: string): Violation[] {
       )
       const technical =
         visibleText(initiallyVisible).match(
-          /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][\w.-]+\b|\b(?:SHA-?256|run ID|suite ID)\b|\b[a-f\d]{32,64}\b|\b(?:suite|source|capture)\s+[a-f\d]{8,64}\b/gi,
+          /\b\d{4}-\d{2}-\d{2}T[\d:.]+Z?\b|\brun[-_][a-f\d]{8,64}\b|(?<![\w/])\b[a-f\d]{32,64}\b|\b(?:SHA-?256|run ID|suite ID|suite|source|capture)\s*[:=]?\s+[a-f\d]{8,64}\b|\bContext\s*\[\s*["'](?:term|lib|mux)["']/gi,
         ) ?? []
       if (technical.length) {
         violations.push({

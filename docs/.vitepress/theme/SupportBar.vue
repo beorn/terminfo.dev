@@ -154,7 +154,7 @@ onBeforeUnmount(close)
       </div>
       <div class="support-pop-panel" role="tabpanel">
         <p class="support-pop-meaning">{{ current.meaning }}</p>
-        <ResultList v-if="items.length" :items="items" :mark="current.mark" :tone="current.style" />
+        <ResultList v-if="items.length" :items="items" :mark="current.mark" :tone="current.style" technical-notes />
       </div>
       <a v-if="href" class="support-pop-all" :href="href">All results for {{ label }} →</a>
     </div>

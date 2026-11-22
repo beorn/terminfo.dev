@@ -22,6 +22,8 @@ defineProps<{
   mark?: string
   /** Colours the marker: yes, fail, differs, partial or none. */
   tone?: string
+  /** Recorded reasons may contain provenance; disclose those outside the navigation link. */
+  technicalNotes?: boolean
 }>()
 </script>
 
@@ -36,14 +38,18 @@ defineProps<{
         :is="item.href ? 'a' : 'span'"
         class="result-row"
         :href="item.href"
-        :title="item.note ? item.name + ': ' + item.note : undefined"
+        :title="item.note && !technicalNotes ? item.name + ': ' + item.note : undefined"
       >
         <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
         <span class="result-name">{{ item.name }}</span>
         <span v-if="item.icon" class="result-icon" :title="item.iconTitle" v-html="item.icon" />
-        <span v-if="item.note" class="result-note">{{ item.note }}</span>
+        <span v-if="item.note && !technicalNotes" class="result-note">{{ item.note }}</span>
       </component>
       <span v-if="$slots.after" class="result-after"><slot name="after" :item="item" /></span>
+      <details v-if="item.note && technicalNotes" class="result-note-details">
+        <summary>Technical details</summary>
+        <p>{{ item.note }}</p>
+      </details>
     </li>
   </ul>
 </template>

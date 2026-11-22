@@ -33,6 +33,7 @@ function resultRows(rows) {
       tone: category.style,
       icon: facts.icon(r.name),
       iconTitle: facts.platform(r.name),
+      note: r.note || undefined,
     }
   })
 }
@@ -103,7 +104,7 @@ function termTooltip(r) {
 
 ## Terminal Applications
 
-<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" class="feature-results">
+<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" class="feature-results" technical-notes>
   <template #after="{ item }">
     <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
       :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
@@ -117,7 +118,7 @@ function termTooltip(r) {
 
 <p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
 
-<ResultList :items="resultRows(headlessResults)" class="feature-results result-list-muted">
+<ResultList :items="resultRows(headlessResults)" class="feature-results result-list-muted" technical-notes>
   <template #after="{ item }">
     <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
       :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
@@ -155,11 +156,6 @@ function termTooltip(r) {
 </p>
 
 </div>
-
-<details v-if="backendResults.some(result => result.note)">
-  <summary>Technical details</summary>
-  <ul><li v-for="result in backendResults.filter(result => result.note)" :key="result.name"><strong>{{ facts.name(result.name) }}</strong>: {{ result.note }}</li></ul>
-</details>
 
 <RunHistory v-if="data.workingHistory" :history="data.workingHistory" :states="data.workingStates" :originals="data.workingOriginals" :feature-id="p.featureId" />
 

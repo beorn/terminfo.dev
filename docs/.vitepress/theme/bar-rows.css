@@ -378,6 +378,7 @@ a.result-row:focus-visible {
 }
 .result-with-after {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -387,6 +388,12 @@ a.result-row:focus-visible {
 }
 .result-after {
   flex: none;
+}
+.result-note-details {
+  flex-basis: 100%;
+  margin: 0 8px 8px 29px;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
 }
 .result-note {
   flex: 1 1 0;

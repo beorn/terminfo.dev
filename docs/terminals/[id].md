@@ -260,7 +260,8 @@ const breadcrumbParent = (() => {
 </details>
 
 <details v-if="p.analysis && !runSha && !multipleSystems" class="analysis">
-  <summary>Analysis · {{ p.analysisDate }}</summary>
+  <summary>Analysis</summary>
+  <p>{{ p.analysisDate }}</p>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </details>
@@ -271,7 +272,7 @@ const breadcrumbParent = (() => {
 
 <h2 :id="cat.name">{{ cat.label }}</h2>
 
-<ResultList v-if="!multipleSystems" :items="featureRows(cat.features)">
+<ResultList v-if="!multipleSystems" :items="featureRows(cat.features)" technical-notes>
   <template #after="{ item }">
     <ResultEvidenceCell :feature-id="item.id" :probe-guidance="data.featureDescriptions[item.id]?.probe" :feature-name="item.name" :subject-name="p.backendName"
       :version="selectedRun" :cell="publicResultFor(selectedRun, item.id)" display="label" />
