@@ -85,8 +85,9 @@ function frameDifference(before: CapturedFrame, after: CapturedFrame): string {
       maxX = Math.max(maxX, x)
       maxY = Math.max(maxY, y)
       colours.add(rgba(after, offset))
-      if (first.length < FIRST_OFFENDING_PIXELS)
+      if (first.length < FIRST_OFFENDING_PIXELS) {
         first.push(`(${x},${y}) ${rgba(before, offset)}->${rgba(after, offset)}`)
+      }
     }
   }
   if (pixels === 0) return "equals the normal sentinel paint"
@@ -991,7 +992,8 @@ export async function calibrateCaptureOrigin({
     const started = Date.now()
     const frame = await captureRaw(`collector raster calibration: ${label}`, deadline)
     const late = Date.now() >= deadline
-    stage.captures.push({ ms: Date.now() - started, late })
+    const record: StageCaptures["captures"][number] = { ms: Date.now() - started, late }
+    stage.captures.push(record)
     if (late) {
       // The late frame is still what the window showed; a refusal archives it.
       stage.last = frame
@@ -999,7 +1001,7 @@ export async function calibrateCaptureOrigin({
     }
     validateFrame(frame)
     stage.last = frame
-    return frame
+    return { frame, record }
   }
   const confirmedFrame = async (
     label: string,
@@ -1013,9 +1015,9 @@ export async function calibrateCaptureOrigin({
       if (Date.now() >= deadline) {
         throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`, stage)
       }
-      const current = await capture(previous ? `${label} confirmation` : label, deadline, stage)
+      const { frame: current, record } = await capture(previous ? `${label} confirmation` : label, deadline, stage)
       const accepted = (!changedFrom || !equal(current, changedFrom)) && accepts(current)
-      stage.captures.at(-1)!.accepted = accepted
+      record.accepted = accepted
       if (accepted && previous && equal(previous, current)) {
         return current
       }
