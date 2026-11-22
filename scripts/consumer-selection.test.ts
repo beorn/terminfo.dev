@@ -33,6 +33,8 @@ import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { publicFeatureIds } from "../docs/data/public-features.ts"
+import { loadFeatures } from "@terminfo/catalog"
 import type { PublicVersion, PublicContextSummary } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { FeatureResultDisplayState } from "../docs/data/release-scope.ts"
@@ -455,11 +457,18 @@ describe("consumer selection", () => {
       const projection = loadCurrentResults(contentDir).projection
       const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
+        features: Record<string, unknown>
+        catalogIds: string[]
         contexts: Record<string, PublicContextSummary & { sources: Record<string, RunReference> }>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
         exclusions: unknown[]
       }
+      // #37341 D6: the API's catalogue is the public one, without the nine environment positions (device.env-*).
+      const publicIds = publicFeatureIds(loadFeatures(contentDir)).sort()
+      expect(v3.catalogIds).toEqual(publicIds)
+      expect(Object.keys(v3.features).sort()).toEqual(publicIds)
+      expect(v3.catalogIds.filter((id) => id.startsWith("device.env-"))).toEqual([])
       // Contexts, versions and history reference the same immutable documents. Check every
       // reference's digest, but parse each expected version only once (#33804).
       const documentDigests = new Map<string, string>()

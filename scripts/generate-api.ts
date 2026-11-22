@@ -38,6 +38,7 @@ import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-resu
 import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../docs/data/working-runs.ts"
 import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 import { storedCounts } from "../docs/data/release-scope.ts"
+import { publicFeatureIds } from "../docs/data/public-features.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -309,7 +310,9 @@ export function generateApi(
   const working = options.working === undefined ? siteWorkingRun() : options.working
   const workingView = working ? composeWorkingView(projection, reviewed, working) : null
   const runDocuments = new Map<string, Buffer>()
-  const allFeatureIds = new Set(Object.keys(featuresJson))
+  // #37341 D6 (@cto 97ba8eea): the API lists the public catalogue, as every public page does; the nine environment
+  // positions (device.env-*) are not public, so neither the features map nor catalogIds names them.
+  const allFeatureIds = new Set(publicFeatureIds(featuresJson))
 
   // Build features map
   const features: Record<string, ApiFeature> = {}
