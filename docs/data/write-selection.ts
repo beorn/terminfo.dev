@@ -398,6 +398,7 @@ export function appSections(
         if (cell.run.measuredAt > date) date = cell.run.measuredAt
       }
     }
+    const asideKey = `${primary.subject.id}/${subject.os}/`
     apps[key] = {
       routeKey: subject.routeKey,
       kind: primary.subject.kind,
@@ -413,9 +414,7 @@ export function appSections(
       ...appTiers(
         app.cells,
         primary.catalogIds,
-        new Set(
-          primary.catalogIds.filter((featureId) => aside.has(`${primary.subject.id}/${subject.os}/${featureId}`)),
-        ),
+        new Set(primary.catalogIds.filter((featureId) => aside.has(asideKey + featureId))),
       ),
       cells: Object.fromEntries(
         Object.entries(app.cells).map(([featureId, cell]) => [
