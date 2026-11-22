@@ -2215,12 +2215,37 @@ test("an apparatus error inside a reverse capture before its stage deadline stay
 test("a failed return to the normal paint invalidates the whole calibration", async () => {
   const stuck = onCanvas(rasterFrame("solid", false, [10, 20, 30]), REVERSED_CANVAS)
   const run = calibration({ screenMode: "reverse", frames: { "reverse screen return": [stuck] } })
-  await expect(run.promise).rejects.toMatchObject({
+  const refused = await run.promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused).toMatchObject({
     name: "CaptureCalibrationRefused",
     message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
   })
+  // #37678: codimac Terminal.app refused here with nothing kept. The refusal carries the normal paint it waited
+  // for and the last frame it saw, for the run's archive, and says what each capture of the stage did.
+  expect(refused?.frames).toEqual({ before: rasterFrame("solid"), after: stuck, stage: "reverse screen return" })
+  expect(refused?.detail).toMatch(
+    /^stage=reverse screen return, 2 capture\(s\) in 100 ms: #1 1 ms not accepted; #2 100 ms ended after the deadline; last frame differs from the normal sentinel paint in \d+ pixel\(s\), bbox \(\d+,\d+\)-\(\d+,\d+\), \d+ distinct after-colour\(s\)/,
+  )
   // The established restore still runs and is witnessed after the refusal.
   expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("a return seen once but not confirmed in time says the paint returned and the capture was slow", async () => {
+  const run = calibration({ screenMode: "reverse", frames: { "reverse screen return": [rasterFrame("solid")] } })
+  const refused = await run.promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused?.name).toBe("CaptureCalibrationRefused")
+  // The stable sentence stays; the detail separates a slow capture from a paint that never came back.
+  expect(refused?.detail).toBe(
+    "stage=reverse screen return, 2 capture(s) in 100 ms: #1 1 ms accepted; #2 100 ms ended after the deadline; " +
+      "last frame equals the normal sentinel paint",
+  )
+  expect(refused?.frames?.after).toEqual(rasterFrame("solid"))
 })
 
 test("an error while reversed still resets the mode before the restore is witnessed", async () => {
