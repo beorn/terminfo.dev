@@ -699,7 +699,9 @@ function generateStandardAnalysis(
   if (stdScores.length > 0) {
     const names = perfect.map((s) => s.name)
     const listed =
-      names.length > 0 ? `: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}` : ""
+      names.length > 0
+        ? `: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`
+        : ""
     parts.push(
       `<strong>${perfect.length}</strong> of ${stdScores.length} measured targets have recorded support for every ${stdMeta.label} feature${listed}`,
     )

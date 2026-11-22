@@ -56,7 +56,9 @@ describe("the real corpus publishes decided results only (Q4)", () => {
     const undecided = new RegExp(UNDECIDED_JSON_STATUS.source)
     expect(JSON.stringify(published.projection)).not.toMatch(undecided)
     expect(JSON.stringify(published.selectedByBackend)).not.toMatch(undecided)
-    const leaking = [...published.documents].filter(([, document]) => undecided.test(document.bytes)).map(([url]) => url)
+    const leaking = [...published.documents]
+      .filter(([, document]) => undecided.test(document.bytes))
+      .map(([url]) => url)
     expect(leaking).toEqual([])
   })
 
@@ -161,7 +163,8 @@ describe("no public card reads an undecided reason (@cto 760e9219)", () => {
     }
     expect(undecidedWords.size).toBeGreaterThan(0)
     const read = (text: string | undefined) =>
-      text !== undefined && (undecidedWords.has(text) || text.split(/;\s+/).some((clause) => undecidedWords.has(clause)))
+      text !== undefined &&
+      (undecidedWords.has(text) || text.split(/;\s+/).some((clause) => undecidedWords.has(clause)))
     const leaks: string[] = []
     for (const [where, summary] of summaries()) {
       for (const [id, cell] of Object.entries(summary.featureResults)) {
@@ -170,7 +173,8 @@ describe("no public card reads an undecided reason (@cto 760e9219)", () => {
     }
     for (const [key, versions] of Object.entries(published.projection.versions)) {
       for (const version of versions) {
-        for (const result of version.results) if (read(result.reason) || read(result.hold)) leaks.push(`${key}/${result.featureId}`)
+        for (const result of version.results)
+          if (read(result.reason) || read(result.hold)) leaks.push(`${key}/${result.featureId}`)
       }
     }
     expect(leaks).toEqual([])

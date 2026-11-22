@@ -75,8 +75,7 @@ function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactEleme
       <Text>Contributing runs: {view.contributingRunIds.join(", ") || "none; no emitted evidence"}</Text>
       <Text>
         {currentSupportedShare(view)} · {currentCoverageSentence(view, view.catalogIds)} · {undecidedSplit(view.counts)}{" "}
-        ·{" "}
-        {view.complete ? "result coverage complete" : "result coverage incomplete"}
+        · {view.complete ? "result coverage complete" : "result coverage incomplete"}
       </Text>
       {view.attempts.map((entry) => (
         <Text key={entry.runId} color="$muted">

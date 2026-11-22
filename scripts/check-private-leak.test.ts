@@ -173,7 +173,10 @@ describe("check-private-leak — rendered internal states", () => {
   })
 
   it("does not read other meta content, which is data", () => {
-    writeFileSync(join(dist, "x.html"), '<html><head><meta name="generator" content="PROBE TODO"></head><body></body></html>')
+    writeFileSync(
+      join(dist, "x.html"),
+      '<html><head><meta name="generator" content="PROBE TODO"></head><body></body></html>',
+    )
     expect(scanRendered(dist)).toEqual([])
   })
 
@@ -266,11 +269,15 @@ describe("check-private-leak — public catalogue", () => {
     api(PUBLIC)
     home("2 supported · 3 of 3 tested")
     writeFileSync(join(dist, "terminals", "x.html"), "<html><body><td>2 supported · 3 of 4 tested</td></body></html>")
-    writeFileSync(join(dist, "terminals", "y.html"), '<html><body><td title="1 supported · 3 of 2 tested">-</td></body></html>')
-    expect(scanPublicCatalogue(dist, PUBLIC).map((v) => v.path).sort()).toEqual([
-      "dist/terminals/x.html",
-      "dist/terminals/y.html",
-    ])
+    writeFileSync(
+      join(dist, "terminals", "y.html"),
+      '<html><body><td title="1 supported · 3 of 2 tested">-</td></body></html>',
+    )
+    expect(
+      scanPublicCatalogue(dist, PUBLIC)
+        .map((v) => v.path)
+        .sort(),
+    ).toEqual(["dist/terminals/x.html", "dist/terminals/y.html"])
   })
 
   it("refuses a home page with no readout over the whole public catalogue", () => {

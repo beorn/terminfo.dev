@@ -133,7 +133,9 @@ export default {
         // bar folds the same published cells the page's default run folds, over the same catalogue.
         const bar = data.releaseBars[b.name]
         if (selected && !bar) throw new Error(`Missing release bar for selected terminal ${b.name}`)
-        const readout = bar ? `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected?.catalogIds)}` : ""
+        const readout = bar
+          ? `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected?.catalogIds)}`
+          : ""
 
         return {
           params: {

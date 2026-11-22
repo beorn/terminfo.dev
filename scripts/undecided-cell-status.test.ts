@@ -50,7 +50,7 @@ describe("the evidence cell reads the one status rule (Q1, D3)", () => {
     // The blank branch comes before the button, so a cell with no result has nothing to click or focus.
     expect(cell).toMatch(/<span\s+v-if="blank"[^>]*:title="status\.title"/)
     expect(cell).toMatch(/<button\s+v-else\b/)
-    expect(cell).toContain('const blank = computed(() => status.value === NO_RESULT_STATUS)')
+    expect(cell).toContain("const blank = computed(() => status.value === NO_RESULT_STATUS)")
   })
 
   it("grades the step table by the stored status value, never by the label text", () => {
@@ -60,8 +60,12 @@ describe("the evidence cell reads the one status rule (Q1, D3)", () => {
 
   it("prints no reason beside a blank, and names no action for it", () => {
     // The blank returns before any reason is read, so no undecided reason reaches the line under a blank.
-    expect(cell).toMatch(/const plainResult = computed\(\(\) => \{\s*if \(blank\.value\) return NO_RESULT_STATUS\.title\n/)
-    expect(cell).toContain("${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}")
+    expect(cell).toMatch(
+      /const plainResult = computed\(\(\) => \{\s*if \(blank\.value\) return NO_RESULT_STATUS\.title\n/,
+    )
+    expect(cell).toContain(
+      "${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}",
+    )
   })
 
   it("drops the earlier-result line, the reopen reason and the refusal summary from public pages (D3)", () => {

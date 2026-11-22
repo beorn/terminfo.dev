@@ -145,9 +145,12 @@ const output = run("output-run", 5, [
   { id: "capability.3", status: "supported", method: "query_reply" },
   { id: "capability.5", status: "probe-todo" },
 ])
-const interaction = run("interaction-run", 6, [{ id: "capability.3", status: "unsupported", method: "input_bytes" }], [
-  "capability.3",
-])
+const interaction = run(
+  "interaction-run",
+  6,
+  [{ id: "capability.3", status: "unsupported", method: "input_bytes" }],
+  ["capability.3"],
+)
 const declared: DeclaredUntestableCell[] = [
   {
     kind: "term",
@@ -179,7 +182,10 @@ describe("publicResults publishes decided results only (Q4)", () => {
 
   it("leaves every undecided cell, result, test, state and count key out of the site and API projection", () => {
     expect(Object.keys(context.featureResults).sort()).toEqual(["capability.0", "capability.1", "capability.4"])
-    const runs = [...Object.values(published.projection.versions), ...Object.values(published.projection.history)].flat()
+    const runs = [
+      ...Object.values(published.projection.versions),
+      ...Object.values(published.projection.history),
+    ].flat()
     expect([...new Set(runs.map((version) => version.runId))].sort()).toEqual(["interaction-run", "output-run"])
     for (const version of runs) {
       for (const result of version.results) {
@@ -187,7 +193,12 @@ describe("publicResults publishes decided results only (Q4)", () => {
         for (const test of result.tests) expect(["supported", "unsupported", "untestable"]).toContain(test.status)
       }
       // D6: a run's counts keep the decided buckets (and the join's zero differs bucket) and lose the undecided keys.
-      expect(Object.keys(version.counts).sort()).toEqual(["differs-by-context", "supported", "unsupported", "untestable"])
+      expect(Object.keys(version.counts).sort()).toEqual([
+        "differs-by-context",
+        "supported",
+        "unsupported",
+        "untestable",
+      ])
     }
     // A declared cell cites its review, which its reason states.
     expect(context.featureResults["capability.4"]!.reason).toMatch(/^untestable by review 2026-11-20: /)

@@ -343,7 +343,11 @@ export function scanPublicCatalogue(distDir: string, publicIds: readonly string[
   const want = [...publicIds].sort()
   const apiPath = join(distDir, API_DATA)
   if (!existsSync(apiPath)) {
-    violations.push({ layer: "catalogue", path: `dist/${API_DATA}`, reason: "missing, so the API's catalogue was not checked" })
+    violations.push({
+      layer: "catalogue",
+      path: `dist/${API_DATA}`,
+      reason: "missing, so the API's catalogue was not checked",
+    })
   } else {
     const api = JSON.parse(readFileSync(apiPath, "utf-8")) as { catalogIds?: unknown; features?: unknown }
     const lists: Array<[string, unknown]> = [

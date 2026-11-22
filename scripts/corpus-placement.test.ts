@@ -132,7 +132,9 @@ function fixture(runId = "fixture-run", { decided = false }: { decided?: boolean
             assertionType: "query_reply" as const,
             rawReplyRef: featureId,
             attempt,
-            tests: [{ id: "criterion", status: "supported" as const, attempt, assertionRefs: [0], rawReplyRef: featureId }],
+            tests: [
+              { id: "criterion", status: "supported" as const, attempt, assertionRefs: [0], rawReplyRef: featureId },
+            ],
           }
         : result,
     )

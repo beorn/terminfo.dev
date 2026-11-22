@@ -358,7 +358,10 @@ function decidedSummary(summary: PublicContextSummary): PublicContextSummary {
   for (const [id, cell] of Object.entries(summary.featureResults)) {
     if (!isPublishedStatus(cell.status)) continue
     featureResults[id] = cell.joined
-      ? { ...cell, joined: { ...cell.joined, from: cell.joined.from.filter((grade) => isPublishedStatus(grade.status)) } }
+      ? {
+          ...cell,
+          joined: { ...cell.joined, from: cell.joined.from.filter((grade) => isPublishedStatus(grade.status)) },
+        }
       : cell
   }
   return { ...summary, counts: publicCounts(summary.counts), featureResults }

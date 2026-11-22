@@ -375,9 +375,9 @@ onBeforeUnmount(() => {
 
 <template>
   <span class="result-evidence" :class="`result-evidence--${display}`">
-    <span v-if="blank" class="result-evidence__blank" role="img" :title="status.title" :aria-label="accessibleName"
-      >{{ status.icon }}</span
-    >
+    <span v-if="blank" class="result-evidence__blank" role="img" :title="status.title" :aria-label="accessibleName">{{
+      status.icon
+    }}</span>
     <button
       v-else
       ref="trigger"

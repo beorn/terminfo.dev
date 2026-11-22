@@ -190,7 +190,9 @@ it.each([false, true])("composes current methods without losing conflicts (selec
   expect(cell.run.readRaw()).toBe(interaction)
   expect(conflicted.contexts["term:kitty"]?.contributingRunIds).toEqual([output.runId, interaction.runId])
   // #37341 Q4: a conflict is not decided, so the public projection publishes no cell for it.
-  expect(publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId]).toBeUndefined()
+  expect(
+    publicResults(conflicted, new Map()).projection.contexts["term:kitty"]?.featureResults[featureId],
+  ).toBeUndefined()
   const agreeing = compose([output, interaction, rerun]).contexts["term:kitty"]!.cells[featureId]!
   expect(agreeing.featureResult).toMatchObject({
     status: "supported",

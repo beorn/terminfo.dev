@@ -65,9 +65,10 @@ it.each([
     expect(projection.contexts[context]?.cells[featureId]?.featureResult?.status).toBe("probe-todo")
     const mapped = publicResults(projection, new Map())
     expect(mapped.projection.contexts[context]?.featureResults[featureId]).toBeUndefined()
-    const publicBytes = [JSON.stringify(mapped.projection), ...[...mapped.documents.values()].map((doc) => doc.bytes)].join(
-      "\n",
-    )
+    const publicBytes = [
+      JSON.stringify(mapped.projection),
+      ...[...mapped.documents.values()].map((doc) => doc.bytes),
+    ].join("\n")
     expect(publicBytes).not.toContain(reason)
     expect(publicBytes).not.toContain("not re-verified")
     expect(publicBytes).not.toContain("kept answers disagree")
@@ -108,9 +109,10 @@ it("publishes no probe-todo cell and none of its reason, raw diagnostic tail or 
     expect(byFeature.get(id)?.status, id).toBe("probe-todo")
     expect(features?.[id], id).toBeUndefined()
   }
-  const publicBytes = [JSON.stringify(mapped.projection), ...[...mapped.documents.values()].map((doc) => doc.bytes)].join(
-    "\n",
-  )
+  const publicBytes = [
+    JSON.stringify(mapped.projection),
+    ...[...mapped.documents.values()].map((doc) => doc.bytes),
+  ].join("\n")
   for (const text of [
     "no library target readback",
     "shared core encoder carries no prompt state",

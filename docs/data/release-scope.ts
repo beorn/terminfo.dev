@@ -47,7 +47,9 @@ export function rollupInputs(
   ),
 ): Array<{ featureId: string; status: AppCellStatus; derived?: unknown; declared?: unknown }> {
   if (!Array.isArray(published.catalogIds)) {
-    throw new Error(`${app}: published cells carry no catalogIds; a bar folds its cells over the catalogue it was measured on`)
+    throw new Error(
+      `${app}: published cells carry no catalogIds; a bar folds its cells over the catalogue it was measured on`,
+    )
   }
   const cells = "featureResults" in published ? Object.values(published.featureResults) : published.results
   const catalogue = new Set(published.catalogIds)
@@ -59,7 +61,9 @@ export function rollupInputs(
       )
     }
     if (!catalogue.has(result.featureId)) {
-      throw new Error(`${app}: ${result.featureId} is published outside its recorded catalogue; this bar cannot count it`)
+      throw new Error(
+        `${app}: ${result.featureId} is published outside its recorded catalogue; this bar cannot count it`,
+      )
     }
     if (byId.has(result.featureId)) throw new Error(`${app}: ${result.featureId} is published twice`)
     byId.set(result.featureId, {
