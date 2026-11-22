@@ -1,23 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { FeatureResultStatus, ObservationReason } from "@terminfo/probe-defs"
+import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import type {
   PublicProbeResult,
   PublicRunMetadata,
   PublicContextSummary,
   PublicFeatureResult,
 } from "../../data/public-results"
-import {
-  describeTracePanes,
-  REASON_EXPLANATIONS,
-  readCellTrace,
-  type LoadedCellTrace,
-} from "../../data/evidence-reader"
+import { describeTracePanes, readCellTrace, type LoadedCellTrace } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
-import { textEvidenceExplanation } from "./ungraded-explanation"
-import { contextLabel } from "./context-label"
+import { contextLine } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
 import { evidenceStatus, NO_RESULT_STATUS } from "./evidence-status"
 import { displayVersion } from "./display-version"
@@ -74,8 +68,6 @@ let openPreviewClose: (() => void) | undefined
 const id = useId()
 const tooltipId = `${id}-preview`
 
-const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
-
 // Composed and original-run views both retain the cell's recorded status.
 // The rule itself is evidence-status.ts, where it is testable; a result we haven't decided is left blank (#37341 Q1).
 // #33019: a cell derived from a refused parent says so in its label.
@@ -98,19 +90,17 @@ const STATUS_WORD: Record<string, string> = {
 }
 /**
  * Rule 4: a cell names the contexts its grade comes from unless every context of the app carries that
- * same decided grade. The names are the recorded machine and launch profile, never a context key.
+ * same decided grade. The names are the recorded machine and launch profile, never a context key; the
+ * rule is context-label.ts `contextLine`, where it is testable.
  */
-const joinedGrades = computed(() => {
-  const grades = joined.value?.from
-  if (!grades || grades.length === 0) return undefined
-  const every = props.version && "contexts" in props.version ? (props.version.contexts ?? []) : []
-  const uniform = new Set(grades.map((grade) => grade.status)).size === 1
-  if (uniform && every.length > 0 && grades.length === every.length) return undefined
-  const named = grades.map((grade) => `${contextLabel(grade.context)} — ${STATUS_WORD[grade.status] ?? grade.status}`)
-  return joined.value?.status === DIFFERS_BY_CONTEXT
-    ? `Differs by context: ${named.join(" · ")}`
-    : `Context: ${named.join(" · ")}`
-})
+const joinedGrades = computed(() =>
+  contextLine(
+    joined.value?.from,
+    props.version && "contexts" in props.version ? (props.version.contexts ?? []).length : 0,
+    joined.value?.status === DIFFERS_BY_CONTEXT,
+    (grade) => STATUS_WORD[grade] ?? grade,
+  ),
+)
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
@@ -149,8 +139,8 @@ const tracePaneCopy = computed(() => {
 const compactCause = computed(() => {
   if (evidenceError.value) return evidenceError.value
   if (evidenceLoading.value) return "Loading recorded evidence…"
-  if (currentResult.value)
-    return currentResult.value.reason ?? "Recorded details have not been approved for publication."
+  // A served cell with no trace has nothing to word: it reads as no result (@cto 0e2bbcf6).
+  if (currentResult.value) return currentResult.value.reason ?? "No result yet"
   return reasonExplanation.value ?? "No retained result for this selection."
 })
 
@@ -185,9 +175,7 @@ const plainResult = computed(() => {
   return table?.summary ?? reason
 })
 
-const actionLabel = computed(() =>
-  props.cell ? "Original evidence not reviewed for presentation" : "No evidence in current selection",
-)
+const actionLabel = computed(() => (props.cell ? "Opens how this was tested" : "No evidence in current selection"))
 const accessibleName = computed(
   () =>
     `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${displayVersion(sourceRun.value.subject.version)}` : ""}: ${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}`,
@@ -243,7 +231,6 @@ async function loadEvidence(): Promise<void> {
   {
     const traceReceipt = version.trace
     if (!traceReceipt) {
-      evidenceError.value = "no trace stored for this cell"
       repositionPreview()
       return
     }
@@ -468,14 +455,11 @@ onBeforeUnmount(() => {
           <figure>
             <figcaption>TESTED</figcaption>
             <div v-if="tracePaneCopy" class="result-evidence__trace-pane">
-              <p v-if="tracePaneCopy.tested.reasonLine" class="result-evidence__trace-p">
-                {{ readerSafeExplanation(tracePaneCopy.tested.reasonLine) }}
-              </p>
               <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
                 <div class="result-evidence__trace-label">{{ item.label }}</div>
                 <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
-                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
                 <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
+                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
               </template>
             </div>
             <div v-else class="result-evidence__missing-image">
@@ -518,7 +502,6 @@ onBeforeUnmount(() => {
             <template v-if="tracePaneCopy">
               <span>{{ tracePaneCopy.tested.sourceLine }}</span>
               <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
-              <span>{{ tracePaneCopy.tested.notKeptLine }}</span>
             </template>
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
             <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>

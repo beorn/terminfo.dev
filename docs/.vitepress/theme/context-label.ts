@@ -34,8 +34,29 @@ export function contextLabel(key: string): string {
   const parts = [`${recorded.os ?? "?"} ${recorded.osVersion ?? ""}`.trim()]
   if (recorded.config) parts.push(launchName(recorded.config))
   else parts.push("default profile")
-  parts.push(recorded.permissions ? `perms ${recorded.permissions}` : "no permissions")
+  // An empty permissions field names nothing about the grade, so it prints nothing (#37341).
+  if (recorded.permissions) parts.push(`perms ${recorded.permissions}`)
   if (recorded.mux) parts.push(`mux ${recorded.mux}`)
   if (recorded.outerTerminal) parts.push(`outer ${recorded.outerTerminal}`)
   return parts.join(" · ")
+}
+
+/**
+ * The line under a joined cell's badge (rule 4): it names the contexts the grade comes from, unless every context of
+ * the app carries that same grade. A "Context:" line never repeats the grade the badge already shows; a "Differs by
+ * context:" line says each context's grade, because that difference is what the line is for (#37341).
+ * Extracted from ResultEvidenceCell.vue so the rule has a reader a test can call (as evidence-status.ts is).
+ */
+export function contextLine(
+  grades: ReadonlyArray<{ readonly context: string; readonly status: string }> | undefined,
+  contextCount: number,
+  differs: boolean,
+  word: (status: string) => string,
+): string | undefined {
+  if (!grades || grades.length === 0) return undefined
+  const uniform = new Set(grades.map((grade) => grade.status)).size === 1
+  if (uniform && contextCount > 0 && grades.length === contextCount) return undefined
+  return differs
+    ? `Differs by context: ${grades.map((grade) => `${contextLabel(grade.context)} — ${word(grade.status)}`).join(" · ")}`
+    : `Context: ${grades.map((grade) => contextLabel(grade.context)).join(" · ")}`
 }

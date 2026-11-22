@@ -1,275 +1,33 @@
 /**
  * Stored-run traces (#30565). For each run a reader can open a result from, one lazy document holds the
- * stored record of every cell through the public evidence allowlist. @cto's rulings 3f4b1d98 and
- * 2239262c (one document per displayed run) set what it publishes without that review; docs/api.md
+ * stored record of every cell as a public card may show it. @cto's rulings 3f4b1d98 and 2239262c (one document
+ * per displayed run) set what it publishes without review, and 0e2bbcf6 sets what a card may show; docs/api.md
  * "Evidence and publication" states the same contract for API readers.
  *
- * Published: each cell's outcome or status, assertion type and reason code; the bytes the probe wrote;
- * each query's sequence and reason; the headless parser state; each assertion's kind and expected text;
- * and, for features on REPLY_LIST only, a query's `match` and a live assertion's `observed`.
- * Never published here: notes, assertion actions, ungraded diagnostics, screenshots and frames, and
- * every read window (a key named `raw` or `rawBase64`, or ending in `Raw`, at any depth). A cell carries
- * no path, so no path reaches a trace.
+ * Published: each cell's outcome or status, assertion type and reason code; the bytes the probe wrote; each
+ * query's sequence and reason; the headless parser state; each assertion's kind and expected text; a query's
+ * `match` only when it fits a reply shape its feature declares (evidence-messages.ts `REPLY_SHAPES`), a live
+ * assertion's `observed` only where `OBSERVED_SHAPES` declares one; and `evidence`, the one or two sentences
+ * evidence-messages.ts words from the stored record (#37341).
+ * Never published here: notes, assertion actions, ungraded diagnostics, screenshots and frames, and every read
+ * window (a key named `raw` or `rawBase64`, or ending in `Raw`, at any depth). A cell carries no path, so no
+ * path reaches a trace.
  */
 import { createHash } from "node:crypto"
 import type { ProbeResult, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
+import {
+  evidenceFacts,
+  evidenceSentences,
+  OBSERVED_SHAPES,
+  REPLY_SHAPES,
+  replyPublishable,
+  type StoredEvidence,
+  type StoredQuery,
+} from "./evidence-messages.ts"
 import type { CurrentSelectedVersion, SelectedVersion } from "./selected-results.ts"
 import { isPublishedStatus } from "./app-cells.ts"
 
-/**
- * The 226 features whose stored replies use a closed grammar: digits, separators and fixed tokens, as in
- * DECRQSS, DECRPM, DA and colour reports. Fail closed: the live reply of any other feature is withheld,
- * and its cell says so. Derived from the 2026-10-21 reply-grammar census at terminfo 9b080d6dc9 over
- * every committed run (444 runs, 101,140 cells, 263 features seen: 236 LIST, 9 REVIEW, 18 HOLD), keeping
- * 217 LIST ids plus 9 ids approved in @cto review 758fe191 (`erase.line.all`, `erase.line.left`,
- * `erase.line.right`, `erase.screen.above`, `erase.screen.all`, `erase.screen.below`,
- * `extensions.osc1337-capabilities`, `extensions.osc21-kitty-color`, `extensions.osc702-version`), while
- * excluding titles, icon labels, kitty-graphics error replies, clipboard, paths, unit IDs and free text.
- * A feature joins only with the same census evidence and a review.
- */
-const REPLY_LIST: ReadonlySet<string> = new Set([
-  // charsets (4)
-  "charsets.dec-line-drawing",
-  "charsets.dec-special",
-  "charsets.g0-g1-switching",
-  "charsets.utf8",
-  // cursor (22)
-  "cursor.ansi-restore",
-  "cursor.ansi-save",
-  "cursor.cpl",
-  "cursor.cud-past-bottom",
-  "cursor.cup-boundaries",
-  "cursor.cup-scroll-region",
-  "cursor.cuu-past-top",
-  "cursor.hide",
-  "cursor.horizontal-absolute",
-  "cursor.hpa",
-  "cursor.move.absolute",
-  "cursor.move.back",
-  "cursor.move.down",
-  "cursor.move.forward",
-  "cursor.move.home",
-  "cursor.move.up",
-  "cursor.next-line",
-  "cursor.position-report",
-  "cursor.reverse-wrap",
-  "cursor.save-restore",
-  "cursor.shape",
-  "cursor.vpa",
-  // device (12)
-  "device.decrpm",
-  "device.decrqss",
-  "device.dsr-996-color-scheme",
-  "device.primary-da",
-  "device.secondary-da",
-  "device.status-report",
-  "device.xtreportcolors",
-  "device.xtwinops-14",
-  "device.xtwinops-16",
-  "device.xtwinops-18",
-  "device.xtwinops-22",
-  "device.xtwinops-23",
-  // editing (17)
-  "editing.deccara",
-  "editing.deccra",
-  "editing.decdc",
-  "editing.decera",
-  "editing.decfra",
-  "editing.decic",
-  "editing.decrara",
-  "editing.decrqcra",
-  "editing.decsace",
-  "editing.decsera",
-  "editing.delete-chars",
-  "editing.delete-lines",
-  "editing.insert-chars",
-  "editing.insert-lines",
-  "editing.repeat-char",
-  "editing.sl",
-  "editing.sr",
-  // erase (11)
-  "erase.character",
-  "erase.ed-scroll-region",
-  "erase.el-with-attrs",
-  "erase.line.all",
-  "erase.line.left",
-  "erase.line.right",
-  "erase.screen.above",
-  "erase.screen.all",
-  "erase.screen.below",
-  "erase.screen.scrollback",
-  "erase.selective",
-  // extensions (51)
-  "extensions.kitty-keyboard",
-  "extensions.kitty-keyboard.disambiguate",
-  "extensions.kitty-keyboard.report-all-keys",
-  "extensions.kitty-keyboard.report-alternate",
-  "extensions.kitty-keyboard.report-events",
-  "extensions.kitty-keyboard.report-text",
-  "extensions.osc-633-vscode",
-  "extensions.osc10-fg-color",
-  "extensions.osc11-bg-color",
-  "extensions.osc117-reset-highlight-bg",
-  "extensions.osc119-reset-highlight-fg",
-  "extensions.osc12-cursor-color",
-  "extensions.osc133-a",
-  "extensions.osc133-b",
-  "extensions.osc133-c",
-  "extensions.osc133-d",
-  "extensions.osc133-p",
-  "extensions.osc1337-capabilities",
-  "extensions.osc1337-cellsize",
-  "extensions.osc17-highlight-bg",
-  "extensions.osc176-app-id",
-  "extensions.osc19-highlight-fg",
-  "extensions.osc21-kitty-color",
-  "extensions.osc22-pointer",
-  "extensions.osc30001-color-stack-push",
-  "extensions.osc3008-context",
-  "extensions.osc30101-color-stack-pop",
-  "extensions.osc4-palette",
-  "extensions.osc440-audio",
-  "extensions.osc5-special-color",
-  "extensions.osc555-flash",
-  "extensions.osc633-a",
-  "extensions.osc633-b",
-  "extensions.osc633-c",
-  "extensions.osc633-d",
-  "extensions.osc633-e",
-  "extensions.osc633-p",
-  "extensions.osc66-text-sizing",
-  "extensions.osc702-version",
-  "extensions.osc720-scroll-up",
-  "extensions.osc776-cell-size",
-  "extensions.osc777-notify",
-  "extensions.osc7770-font-size",
-  "extensions.osc7777-font-window-size",
-  "extensions.osc8",
-  "extensions.osc9-progress",
-  "extensions.semantic-prompts",
-  "extensions.sixel",
-  "extensions.sixel-da1",
-  "extensions.sixel-geometry-report",
-  "extensions.truecolor",
-  // input (11)
-  "input.button-event-mouse",
-  "input.csi-u",
-  "input.kitty-click-events",
-  "input.modify-other-keys",
-  "input.modify-other-keys-3",
-  "input.pixel-mouse",
-  "input.urxvt-mouse",
-  "input.x10-mouse",
-  "input.xtest-click",
-  "input.xtest-key",
-  "input.xtest-wheel",
-  // modes (29)
-  "modes.alt-screen.enter",
-  "modes.alt-screen.exit",
-  "modes.alt-scroll-1007",
-  "modes.altscreen-1047",
-  "modes.altscreen-1048",
-  "modes.altscreen-47",
-  "modes.application-cursor",
-  "modes.application-keypad",
-  "modes.auto-wrap",
-  "modes.color-scheme-reporting",
-  "modes.deccolm",
-  "modes.decsclm",
-  "modes.decsscls",
-  "modes.focus-tracking",
-  "modes.insert-replace",
-  "modes.left-right-margin",
-  "modes.mouse-all",
-  "modes.mouse-sgr",
-  "modes.mouse-tracking",
-  "modes.origin",
-  "modes.reverse-video",
-  "modes.synchronized-output",
-  "modes.utf8-mouse-1005",
-  "modes.xtpopcolors",
-  "modes.xtpopsgr",
-  "modes.xtpushcolors",
-  "modes.xtpushsgr",
-  "modes.xtrestore",
-  "modes.xtsave",
-  // reset (4)
-  "reset.decaln",
-  "reset.ris",
-  "reset.sgr",
-  "reset.soft",
-  // scrollback (9)
-  "scrollback.accumulate",
-  "scrollback.alt-screen",
-  "scrollback.decstbm",
-  "scrollback.decstbm-reset",
-  "scrollback.reverse-index",
-  "scrollback.scroll-down",
-  "scrollback.scroll-up",
-  "scrollback.set-region",
-  "scrollback.total-lines",
-  // sgr (32)
-  "sgr.bg.256",
-  "sgr.bg.bright",
-  "sgr.bg.default",
-  "sgr.bg.standard",
-  "sgr.bg.truecolor",
-  "sgr.blink",
-  "sgr.bold",
-  "sgr.faint",
-  "sgr.fg.256",
-  "sgr.fg.bright",
-  "sgr.fg.default",
-  "sgr.fg.standard",
-  "sgr.fg.truecolor",
-  "sgr.hidden",
-  "sgr.inverse",
-  "sgr.italic",
-  "sgr.overline",
-  "sgr.reset",
-  "sgr.selective-reset.bold",
-  "sgr.selective-reset.inverse",
-  "sgr.selective-reset.italic",
-  "sgr.selective-reset.underline",
-  "sgr.strikethrough",
-  "sgr.underline-color-indexed",
-  "sgr.underline-color-reset",
-  "sgr.underline-color-rgb",
-  "sgr.underline.color",
-  "sgr.underline.curly",
-  "sgr.underline.dashed",
-  "sgr.underline.dotted",
-  "sgr.underline.double",
-  "sgr.underline.single",
-  // text (20)
-  "text.backspace",
-  "text.basic",
-  "text.cbt",
-  "text.cht",
-  "text.combining",
-  "text.cr",
-  "text.hts",
-  "text.index",
-  "text.newline",
-  "text.next-line",
-  "text.overwrite",
-  "text.reverse-index-scroll",
-  "text.tab",
-  "text.tbc",
-  "text.wide.cjk",
-  "text.wide.emoji",
-  "text.wide.emoji-flags",
-  "text.wide.emoji-vs16",
-  "text.wide.emoji-zwj",
-  "text.wrap",
-  // unicode (4)
-  "unicode.east-asian-ambiguous",
-  "unicode.grapheme-cursor",
-  "unicode.tab-stops",
-  "unicode.wrap-boundary",
-])
-
-/** A read window: terminal reply bytes retained privately unless allowlisted. */
+/** A read window: terminal reply bytes, never published. */
 const READ_WINDOW = /(?:^raw|Raw)(?:Base64)?$/
 /** A reason code; free-text reasons remain private. */
 const REASON_CODE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -296,8 +54,8 @@ interface TraceAssertion {
 
 interface TraceRecord {
   reason?: string
-  /** The run stored reply content that this trace leaves out; a read window alone does not count. */
-  replyWithheld?: true
+  /** One or two plain sentences on what the test observed, worded at build time (evidence-messages.ts). */
+  evidence?: string[]
   writes?: string[]
   queries?: TraceQuery[]
   events?: TraceEvent[]
@@ -382,25 +140,24 @@ function optionalString(value: unknown, where: string): string | undefined {
   return value
 }
 
-type Exchange = Pick<TraceRecord, "writes" | "queries" | "events"> & { leftOut: boolean }
+/** A live probe's stored exchange, read in full for the evidence template; publication is decided per value. */
+interface StoredExchange {
+  writes?: string[]
+  queries?: StoredQuery[]
+  events?: Array<TraceEvent & Pick<StoredQuery, "timeoutMs" | "sentinel">>
+  /** The exchange's other stored keys (captures, clipboard, title reads), read windows removed. */
+  extra: Record<string, unknown>
+}
 
 const EXCHANGE_KEYS = new Set(["writes", "queries", "events"])
 
-/**
- * A live probe's stored exchange: the bytes it wrote and each query it made, in order. Other stored keys
- * (captures, clipboard, grid and the like) and a query's timing stay out; `leftOut` says content did.
- */
-function exchange(value: unknown, listed: boolean, where: string): Exchange | undefined {
+/** A live probe's stored exchange: the bytes it wrote and each query it made, in order. */
+function exchange(value: unknown, where: string): StoredExchange | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined
   const stored = value as Record<string, unknown>
   if (stored.writes === undefined && stored.queries === undefined && stored.events === undefined) return undefined
-  let leftOut = Object.keys(stored).some((key) => !EXCHANGE_KEYS.has(key) && !READ_WINDOW.test(key))
-  const match = (raw: unknown, at: string): { match?: string[] | null } => {
-    if (raw === undefined) return {}
-    const values = raw === null ? null : strings(raw, at)
-    if (!listed && values !== null && values.length > 0) leftOut = true
-    return listed ? { match: values } : {}
-  }
+  const match = (raw: unknown, at: string): { match?: string[] | null } =>
+    raw === undefined ? {} : { match: raw === null ? null : strings(raw, at) }
   const item = (raw: unknown, at: string): Record<string, unknown> => {
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${at}: expected an object`)
     return raw as Record<string, unknown>
@@ -409,22 +166,35 @@ function exchange(value: unknown, listed: boolean, where: string): Exchange | un
     if (!Array.isArray(raw)) throw new Error(`${at}: expected a list`)
     return raw
   }
+  const timing = (query: Record<string, unknown>): Pick<StoredQuery, "timeoutMs" | "sentinel"> => ({
+    ...(typeof query.timeoutMs === "number" && { timeoutMs: query.timeoutMs }),
+    ...(query.sentinel !== undefined &&
+      query.sentinel !== null &&
+      typeof query.sentinel === "object" && {
+        sentinel: { graceMs: (query.sentinel as { graceMs?: number }).graceMs },
+      }),
+  })
   const writes = stored.writes === undefined ? undefined : strings(stored.writes, `${where}.writes`)
   const queries =
     stored.queries === undefined
       ? undefined
-      : list(stored.queries, `${where}.queries`).map((raw, index): TraceQuery => {
+      : list(stored.queries, `${where}.queries`).map((raw, index): StoredQuery => {
           const at = `${where}.queries[${index}]`
           const query = item(raw, at)
           const sequence = optionalString(query.sequence, `${at}.sequence`)
           if (sequence === undefined) throw new Error(`${at}: query has no sequence`)
           const reason = optionalString(query.reason, `${at}.reason`)
-          return { sequence, ...(reason !== undefined && { reason }), ...match(query.match, `${at}.match`) }
+          return {
+            sequence,
+            ...(reason !== undefined && { reason }),
+            ...match(query.match, `${at}.match`),
+            ...timing(query),
+          }
         })
   const events =
     stored.events === undefined
       ? undefined
-      : list(stored.events, `${where}.events`).map((raw, index): TraceEvent => {
+      : list(stored.events, `${where}.events`).map((raw, index) => {
           const at = `${where}.events[${index}]`
           const event = item(raw, at)
           const kind = optionalString(event.kind, `${at}.kind`)
@@ -436,10 +206,43 @@ function exchange(value: unknown, listed: boolean, where: string): Exchange | un
             ...(sequence !== undefined && { sequence }),
             ...(reason !== undefined && { reason }),
             ...match(event.match, `${at}.match`),
+            ...timing(event),
           }
         })
-  // Keep `events` alone only when it equals `writes` plus `queries` in order (2026-10-21 census: 55,983 of
-  // 55,983 exchanges with `events`); otherwise keep all three.
+  const extra = Object.fromEntries(
+    Object.entries(stored)
+      .filter(([key]) => !EXCHANGE_KEYS.has(key) && !READ_WINDOW.test(key))
+      .map(([key, child]) => {
+        const text = typeof child === "string" ? storedJson(child, `${where}.${key}`) : undefined
+        return [key, withoutReadWindows(text ? text.value : child)]
+      }),
+  )
+  return { ...(writes && { writes }), ...(queries && { queries }), ...(events && { events }), extra }
+}
+
+/**
+ * The published form of a stored exchange: sequences and reasons, and a reply only when it fits its feature's
+ * declared shape. Keep `events` alone only when it equals `writes` plus `queries` in order (2026-10-21 census:
+ * 55,983 of 55,983 exchanges with `events`); otherwise keep all three.
+ */
+function publishedExchange(
+  stored: StoredExchange,
+  publishable: (reply: string) => boolean,
+): Pick<TraceRecord, "writes" | "queries" | "events"> {
+  const shown = (match: string[] | null | undefined): { match?: string[] | null } =>
+    match === undefined ? {} : match === null || match.length === 0 || publishable(match[0]!) ? { match } : {}
+  const writes = stored.writes
+  const queries = stored.queries?.map(({ sequence, reason, match }): TraceQuery => ({
+    sequence,
+    ...(reason !== undefined && { reason }),
+    ...shown(match),
+  }))
+  const events = stored.events?.map(({ kind, sequence, reason, match }): TraceEvent => ({
+    kind,
+    ...(sequence !== undefined && { sequence }),
+    ...(reason !== undefined && { reason }),
+    ...shown(match),
+  }))
   const eventsEqualWritesAndQueries =
     events !== undefined &&
     events.every((event) => event.kind === "write" || event.kind === "query") &&
@@ -447,51 +250,84 @@ function exchange(value: unknown, listed: boolean, where: string): Exchange | un
       JSON.stringify((writes ?? []).map((sequence) => ({ kind: "write", sequence }))) &&
     JSON.stringify(events.filter((event) => event.kind === "query")) ===
       JSON.stringify((queries ?? []).map((query) => ({ kind: "query", ...query })))
-  if (eventsEqualWritesAndQueries) return { events, leftOut }
-  return {
-    ...(writes && { writes }),
-    ...(queries && { queries }),
-    ...(events && { events }),
-    leftOut,
-  }
+  if (eventsEqualWritesAndQueries) return { events }
+  return { ...(writes && { writes }), ...(queries && { queries }), ...(events && { events }) }
+}
+
+const DECIDED = new Set<ProbeResult["status"]>(["supported", "unsupported", "untestable"])
+
+/** The stored JSON under one raw-reply key, or undefined when the run kept none or kept plain text. */
+function storedRecord(raw: Readonly<Record<string, string>>, key: string, where: string): unknown {
+  const text = raw[key]
+  return text === undefined ? undefined : storedJson(text, `${where}.${key}`)?.value
 }
 
 function traceRecord(
-  featureId: string,
-  headless: boolean,
-  reason: string | undefined,
+  version: Pick<CurrentSelectedVersion, "runId" | "subject">,
+  result: ProbeResult,
+  raw: ReturnType<CurrentSelectedVersion["readRaw"]>,
   rawReply: string | undefined,
-  assertions: readonly Pick<ProbeAssertion, "kind" | "expected" | "observed">[],
   where: string,
 ): TraceRecord {
-  const listed = REPLY_LIST.has(featureId)
-  const showObserved = headless || listed
-  let withheld = false
+  const { featureId } = result
+  const headless = version.subject.kind === "lib"
+  const assertions = raw.assertions.filter((assertion) => assertion.featureId === featureId)
   let parserState: unknown
-  let stored: Exchange | undefined
+  let stored: StoredExchange | undefined
   if (rawReply !== undefined && rawReply !== "") {
     const json = storedJson(rawReply, `${where}.rawReply`)
     if (headless) parserState = json ? withoutReadWindows(json.value) : rawReply
-    else {
-      stored = json && exchange(json.value, listed, where)
-      // A live reply stored outside an exchange (screen state, a single read) is never published here.
-      if (stored ? stored.leftOut : true) withheld = true
-    }
+    else stored = json && exchange(json.value, where)
   }
+  // A probe that keeps the read itself as its reply (DA1, DA2, XTVERSION) stores its exchange beside it.
+  if (!headless && stored === undefined) {
+    const traced = storedRecord(raw.rawReplies, `${featureId}.trace`, where)
+    if (traced !== undefined) stored = exchange(traced, `${where}.trace`)
+  }
+  const reasonCode = result.reason !== undefined && REASON_CODE.test(result.reason) ? result.reason : undefined
+  const evidence: StoredEvidence = {
+    runId: version.runId,
+    featureId,
+    subjectKind: version.subject.kind,
+    os: version.subject.os,
+    status: result.status,
+    ...(result.assertionType && { assertionType: result.assertionType }),
+    ...(reasonCode !== undefined && { reasonCode }),
+    frameKinds: (result.frames ?? []).flatMap((frame) => (frame.kind ? [frame.kind] : [])),
+    writes:
+      stored?.writes ?? stored?.events?.flatMap((e) => (e.kind === "write" && e.sequence ? [e.sequence] : [])) ?? [],
+    queries:
+      stored?.queries ??
+      stored?.events?.flatMap((e) =>
+        e.kind === "query" && e.sequence !== undefined ? [{ ...e, sequence: e.sequence }] : [],
+      ) ??
+      [],
+    exchangeExtra: stored?.extra ?? {},
+    callback: headless ? undefined : storedRecord(raw.rawReplies, `${featureId}.callbackResponse`, where),
+    ...(parserState !== undefined && { parserState }),
+    assertions: assertions.map(({ kind, expected, observed }) => ({ kind, expected, observed })),
+  }
+  const sentences = DECIDED.has(result.status) ? evidenceSentences(featureId, evidenceFacts(evidence)) : undefined
+  const observedShape = OBSERVED_SHAPES[featureId]
   const traced = assertions.map((assertion, index): TraceAssertion => {
-    if (!showObserved && assertion.observed !== "") withheld = true
+    const published = headless || (observedShape !== undefined && observedShape(assertion.observed))
     return {
       kind: assertion.kind,
       expected: assertion.expected,
-      ...(showObserved && { observed: publishedText(assertion.observed, `${where}.assertions[${index}].observed`) }),
+      ...(published && { observed: publishedText(assertion.observed, `${where}.assertions[${index}].observed`) }),
     }
   })
   return {
-    ...(reason !== undefined && REASON_CODE.test(reason) && { reason }),
-    ...(withheld && { replyWithheld: true as const }),
-    ...(stored?.writes && { writes: stored.writes }),
-    ...(stored?.queries && { queries: stored.queries }),
-    ...(stored?.events && { events: stored.events }),
+    ...(reasonCode !== undefined && { reason: reasonCode }),
+    ...(sentences && { evidence: sentences }),
+    // A decided cell's reply must have a declared shape (the build fails otherwise); an undecided cell never
+    // reaches a public card, so a reply with no declared shape is simply not published.
+    ...(stored &&
+      publishedExchange(
+        stored,
+        (reply) =>
+          (sentences !== undefined || REPLY_SHAPES[featureId] !== undefined) && replyPublishable(evidence, reply),
+      )),
     ...(parserState !== undefined && { parserState }),
     assertions: traced,
   }
@@ -547,11 +383,11 @@ function freezeTrace(value: unknown): void {
  * public projection (`isPublishedStatus`) leaves every undecided entry out BEFORE the bytes are hashed, so its digest,
  * the public trace digest, covers exactly what is served. A run whose results are all undecided still has its (empty)
  * trace, so every contributing source keeps its receipt. The stored run and its own digest are never touched.
+ * Each value is written as its feature's declared shapes allow.
  */
 export function currentTrace(version: CurrentSelectedVersion) {
   if (version.traceMemo?.value) return version.traceMemo.value
   const raw = version.readRaw()
-  const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
     if (!isPublishedStatus(result.status)) continue
@@ -562,14 +398,7 @@ export function currentTrace(version: CurrentSelectedVersion) {
     cells[result.featureId] = {
       status: result.status,
       ...(result.assertionType && { assertionType: result.assertionType }),
-      ...traceRecord(
-        result.featureId,
-        headless,
-        result.reason,
-        rawReply,
-        raw.assertions.filter((assertion) => assertion.featureId === result.featureId),
-        `run ${version.runId} feature ${result.featureId}`,
-      ),
+      ...traceRecord(version, result, raw, rawReply, `run ${version.runId} feature ${result.featureId}`),
     }
   }
   const trace = traceDocument(3, { ...version, identity: raw.identity }, cells, version.results.length)

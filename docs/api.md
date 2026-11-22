@@ -87,11 +87,12 @@ Free-form execution reasons and captured diagnostics pass the existing presentat
 Each contributing original source carries `trace`: the URL and the **public trace digest** (the SHA-256 of the served trace bytes) of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every decided result without a presentation decision, keyed by feature ID under `featureResults[featureId]`; a result we haven't decided is absent, so the public trace digest covers exactly what is served:
 
 - the outcome or status, the assertion type and a reason code;
+- `evidence`: one or two plain sentences on what the test observed, worded at build time from the stored record. Every Supported, Unsupported and Untestable result has them; a result we haven't decided has none;
 - the bytes the probe wrote, and each query's sequence and reason;
 - a headless engine's parser state;
 - each assertion's kind and expected text.
 
-A live terminal's reply (a query's `match`, an assertion's `observed`) appears only for features whose replies use a closed grammar, such as numeric reports. Other stored reply content, such as screen state or a clipboard, does not appear; a result whose stored reply the trace leaves out says `replyWithheld: true`. Notes, actions, diagnostics, captures, raw read windows and paths never appear in a trace.
+A live terminal's reply (a query's `match`) appears only when it fits a shape its feature declares: a numeric or other control report, an XTVERSION name and version, an XTGETTCAP or XTGETXRES name and value with no path, or text the test itself sent (its clipboard nonce, a title it set). Any other reply is left out, and the sentences describe it by its size. An assertion's `observed` appears for a headless engine, and for a live terminal only where its feature declares that shape (the reverse-wrap cursor reports). Notes, actions, diagnostics, captures, raw read windows, process ids, tty names and paths never appear in a trace.
 
 A card for a cell derived from its parent cites the parent's entry, which is what decided it. A cell declared untestable by review cites its review: its `reason` states it, and its trace has no entry for it.
 

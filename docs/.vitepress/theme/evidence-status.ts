@@ -6,7 +6,7 @@
  * position is no exception. Any decided status shows as stored.
  *
  * Extracted from ResultEvidenceCell.vue so the rule has a reader a test can call; the SFC is outside
- * the TS-only unit population (same arrangement as `ungraded-explanation.ts`).
+ * the TS-only unit population (same arrangement as `context-label.ts`).
  */
 import type { FeatureResultStatus } from "../../../packages/probe-defs/src/types.ts"
 import { DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
