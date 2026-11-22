@@ -407,8 +407,9 @@ export function runReads(options: { content: string; runs: readonly RunReadInput
       options.content,
       retainedEntryHashes(reads),
     )
-    if (Object.keys(apps).length === 0)
+    if (Object.keys(apps).length === 0) {
       throw new Error(`${run.name}: its ${run.drafts.length} draft(s) form no app section`)
+    }
     out[run.name] = {
       sections: Object.fromEntries(
         Object.entries(apps).map(([key, app]) => [
@@ -433,12 +434,14 @@ export function readRunReadInputs(path: string): RunReadInput[] {
     if (!isRecord(row) || typeof row.name !== "string" || !Array.isArray(row.drafts)) {
       throw new Error(`${path}: row ${index} is not {name: string, drafts: string[]}`)
     }
+    const name = row.name
     const drafts = row.drafts.map((draft) => {
-      if (typeof draft !== "string")
-        throw new Error(`${path}: row ${index} (${row.name}) has a draft that is not a path`)
+      if (typeof draft !== "string") {
+        throw new Error(`${path}: row ${index} (${name}) has a draft that is not a path`)
+      }
       return draft
     })
-    return { name: row.name, drafts }
+    return { name, drafts }
   })
 }
 
