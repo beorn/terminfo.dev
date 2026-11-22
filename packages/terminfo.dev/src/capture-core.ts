@@ -229,6 +229,38 @@ export function retainedSource(source: Pick<CaptureSource, "bytes" | "format">):
   }
 }
 
+/**
+ * Encode one captured frame as PNG for an archive the run keeps beside a refusal (#37667). The same
+ * determinism args the capture conversion uses, so two runs that judged identical pixels archive the
+ * same digest. There is no second encoder here: the frame itself carries pixels only, and the
+ * converter that already produced every retained PNG produces this one, under the caller's deadline.
+ */
+export async function encodeFramePng(frame: CapturedFrame, deadline: number): Promise<Buffer> {
+  const bytes = await command(
+    "magick",
+    [
+      ...CONVERSION_THREAD_ARGS,
+      "-size",
+      `${frame.width}x${frame.height}`,
+      "-depth",
+      "8",
+      "rgba:-",
+      "-define",
+      "png:exclude-chunks=date,time",
+      "-set",
+      "comment",
+      "",
+      "png:-",
+    ],
+    Buffer.from(frame.rgba),
+    deadline,
+  )
+  if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    throw new Error(`Frame archive encoding returned ${bytes.length} bytes that are not a PNG`)
+  }
+  return bytes
+}
+
 /** One captured frame's raw pixels, exactly the bytes the collector digests. */
 export interface CapturedFrame {
   width: number
