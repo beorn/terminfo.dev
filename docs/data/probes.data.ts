@@ -24,6 +24,8 @@ import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { selectedSiteWorkingRun, siteWorkingHistory, type WorkingContext, type WorkingView } from "./working-runs.ts"
 import { createBuildMetadata } from "../../scripts/build-metadata.ts"
 import { siteProbesPath } from "../../scripts/site-out.ts"
+import { publicFeatures } from "./public-features.ts"
+import { displayVersions } from "../.vitepress/theme/display-version.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
@@ -94,7 +96,7 @@ export interface ProbeData {
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string }>
-  /** feature id -> { name, url? } from features.json */
+  /** feature id -> { name, url? } from features.json: the public catalogue, without the environment positions (Q2) */
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
@@ -268,7 +270,10 @@ export function loadFullProbes(): ProbeData {
   const joined = joinedAppCells(projection, subjects, contentDir)
   const published = publicResults(projection, subjects, joined)
   const bySubject = new Map(Object.entries(published.selectedByBackend))
-  const featureDescriptions = loadFeatureDescriptions()
+  // Q2 (@cpo/term f16a5a52): pages list the public catalogue, so the nine environment positions leave features,
+  // categories, the client payload, results, notes and baselines here. No count moves: the folds grade the graded
+  // ids only, and the stats and bars below still read each run's full recorded catalogIds.
+  const featureDescriptions = publicFeatures(loadFeatureDescriptions())
   const features: FeatureResult[] = Object.entries(featureDescriptions)
     .filter(([id]) => !id.startsWith("$"))
     .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
@@ -322,17 +327,23 @@ export function loadFullProbes(): ProbeData {
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
       name: key,
-      versions: [...new Set(Object.values(selected.sources).map((source) => source.subject.version))],
+      versions: displayVersions(Object.values(selected.sources)),
       engine: "",
       type: kind,
       ...(os && { platforms: [os] }),
     })
     const app = joined.get(key)
-    // #37341 Q1: the published cells only; publicResults left out every result we haven't decided.
-    results[key] = Object.fromEntries(Object.values(selected.featureResults).map((result) => [result.featureId, result.status]))
+    // #37341 Q1: the published cells only; publicResults left out every result we haven't decided. Q2: public features only.
+    results[key] = Object.fromEntries(
+      Object.values(selected.featureResults)
+        .filter((result) => Object.hasOwn(featureDescriptions, result.featureId))
+        .map((result) => [result.featureId, result.status]),
+    )
     notes[key] = Object.fromEntries(
       Object.values(selected.featureResults).flatMap((result) =>
-        result.reason ? [[result.featureId, result.reason]] : [],
+        result.reason && Object.hasOwn(featureDescriptions, result.featureId)
+          ? [[result.featureId, result.reason]]
+          : [],
       ),
     )
     stats[key] = subjectStats(selected, app)

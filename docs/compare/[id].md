@@ -8,6 +8,7 @@ next: false
 import { currentCoverageSentence, currentSupportedShare, publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
+import { displayVersion } from '../.vitepress/theme/display-version.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => ({
@@ -78,7 +79,7 @@ for (const cat of categories) {
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
       <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
-      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ run.subject.version }} · {{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
+      <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
     </tbody>
   </table>
 </div>
@@ -96,7 +97,7 @@ for (const cat of categories) {
       <dt>Outer terminal</dt><dd>{{ p.termAOuter }}</dd>
       <dt>Multiplexer</dt><dd>{{ p.termAMux }}</dd>
       <dt>Source suites</dt><dd>{{ p.termASuite }} · {{ p.termASuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
-      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termASources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ run.subject.version }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
+      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termASources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
   </div>
   <div class="compare-vs">vs</div>
@@ -112,7 +113,7 @@ for (const cat of categories) {
       <dt>Outer terminal</dt><dd>{{ p.termBOuter }}</dd>
       <dt>Multiplexer</dt><dd>{{ p.termBMux }}</dd>
       <dt>Source suites</dt><dd>{{ p.termBSuite }} · {{ p.termBSuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
-      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termBSources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ run.subject.version }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
+      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termBSources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
   </div>
 </div>

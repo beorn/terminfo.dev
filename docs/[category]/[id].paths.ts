@@ -16,6 +16,16 @@ import { isPublishedStatus } from "../data/app-cells"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
 
+/**
+ * The route of one feature's page, as this loader builds it: `/<category>/<id>`. docs/public/_redirects sends each
+ * hidden feature's old page to its category page, and its test derives those URLs from here, never by hand.
+ */
+export function featurePageParams(featureId: string): { category: string; id: string } {
+  const category = featureId.split(".")[0]
+  if (!category) throw new Error(`Feature ${featureId} has no category, so it has no page route`)
+  return { category, id: featureSlug(featureId) }
+}
+
 export default {
   paths() {
     const data = loadProbes()
@@ -23,7 +33,7 @@ export default {
     const allAnalysis = loadAnalysis()
 
     return data.features.map((f) => {
-      const slug = featureSlug(f.id)
+      const { category, id: slug } = featurePageParams(f.id)
       const desc = data.featureDescriptions[f.id]
       const meta = featuresMeta[f.id]
 
@@ -128,7 +138,7 @@ export default {
 
       return {
         params: {
-          category: f.category,
+          category,
           id: slug,
           featureId: f.id,
           featureName: desc?.name ?? f.name,

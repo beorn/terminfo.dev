@@ -20,6 +20,7 @@ import { textEvidenceExplanation } from "./ungraded-explanation"
 import { contextLabel } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
 import { evidenceStatus, NO_RESULT_STATUS } from "./evidence-status"
+import { displayVersion } from "./display-version"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -189,7 +190,7 @@ const actionLabel = computed(() =>
 )
 const accessibleName = computed(
   () =>
-    `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}`,
+    `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${displayVersion(sourceRun.value.subject.version)}` : ""}: ${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}`,
 )
 const evidenceIdentity = computed(() => {
   return JSON.stringify([
@@ -437,7 +438,9 @@ onBeforeUnmount(() => {
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
           >{{ subjectName
-          }}<template v-if="sourceRun"> · {{ sourceRun.subject.version }} · {{ sourceRun.subject.os }}</template></span
+          }}<template v-if="sourceRun">
+            · {{ displayVersion(sourceRun.subject.version) }} · {{ sourceRun.subject.os }}</template
+          ></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
         <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
