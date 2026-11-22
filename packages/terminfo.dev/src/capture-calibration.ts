@@ -23,11 +23,12 @@ function refusal(message: string, cause?: unknown): Error {
  */
 export const CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL = "Capture calibration paint changed pixels outside the witnessed grid"
 
-/** The per-refusal detail a caller records once per run, never inside each row's stored reason. */
-export function captureCalibrationRefusalDetail(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined
-  const detail: unknown = (error as { detail?: unknown }).detail
-  return typeof detail === "string" ? detail : undefined
+/**
+ * The per-refusal detail a caller records once per run, never inside each row's stored reason. It rides on the
+ * error rather than its message, so the message stays the sentence every stored row already quotes.
+ */
+export interface CaptureCalibrationRefusal extends Error {
+  detail?: string
 }
 
 function outsideGridRefusal(detail: string): Error {

@@ -86,8 +86,8 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import {
   calibrateCaptureOrigin,
-  captureCalibrationRefusalDetail,
   type CaptureChromeBand,
+  type CaptureCalibrationRefusal,
   type ReverseScreenWitness,
 } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
@@ -1263,7 +1263,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure) throw error
             calibrationError = error
             probeSource.captureGeometryRefusal = error.message
-            const refusalDetail = captureCalibrationRefusalDetail(error)
+            // Read from the error, never a second export: this module is mocked with calibrateCaptureOrigin alone.
+            const refusalDetail = (error as Partial<CaptureCalibrationRefusal>).detail
             // 34306 AC1: a refusal names no origin, but the renewals the run already asked for stay
             // facts of the run, so a later install still reports them in run order.
             const refusalRenewals = captureCalibration?.renewals ?? []
