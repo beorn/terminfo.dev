@@ -12,6 +12,13 @@
  * It also enforces the build's resident-memory ceiling (28662 AC3): an in-process guard samples the resident set and
  * fails the build LOUDLY the moment it passes `TERMINFO_SITE_PEAK_CEILING_BYTES` (default 16 GiB, the declared value),
  * naming the peak and the phase. See `./build-peak-guard.ts` for why a silent continue is not an option here.
+ *
+ * #37734 (@cto 2026-11-22, option A): the render runs under a `BUN_JSC_forceRAMSize` cap declared in ONE place — the
+ * package's `build` entry, the script `bun run build` resolves to — so a hand-run, CI and the hab unit all inherit it
+ * and an environment that sets the variable still wins. Measured on landing 1c1b815b (terminfo 83f6184c2), alternating
+ * full builds on the same input: uncapped 14.49 / 17.04 / 16.39 GB (two refused by the 16 GB guard); capped at 8 GiB
+ * 9.76 / 9.22 / 9.78 / 9.55 GB, every run passing, at ~15% more wall time (176 s vs 153 s). The ceiling stays as the
+ * backstop; the cap is what makes the peak deterministic. Bounding the render itself is the real cure (28679).
  */
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
