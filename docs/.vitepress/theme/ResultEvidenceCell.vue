@@ -18,7 +18,6 @@ import {
 } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
-import { textEvidenceExplanation } from "./ungraded-explanation"
 import { contextLabel } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
 import { evidenceStatus } from "./evidence-status"

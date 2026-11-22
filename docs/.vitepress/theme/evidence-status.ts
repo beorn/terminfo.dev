@@ -8,7 +8,7 @@
  * that was measured (@cto 98cd142b D1, the same rule as packages/admin/report.tsx).
  *
  * Extracted from ResultEvidenceCell.vue so the rule has a reader a test can call; the SFC is outside
- * the TS-only unit population (same arrangement as `ungraded-explanation.ts`).
+ * the TS-only unit population (same arrangement as `context-label.ts`).
  */
 import type { FeatureResultStatus } from "../../../packages/probe-defs/src/types.ts"
 import { DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
