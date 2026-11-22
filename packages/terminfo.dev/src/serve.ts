@@ -91,7 +91,7 @@ import {
   type ReverseScreenWitness,
 } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
-import { retain } from "./capture-core.ts"
+import { encodeFramePng, retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
 import { ORDINARY_OPEN_COLLECTOR_KEY } from "./ordinary-open-receipt.ts"
 import {
@@ -127,6 +127,31 @@ import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 import { holdLaunchSettle, stampMsAfterLaunchSettle } from "./launch-settle.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
+
+/**
+ * Exactly one bounded recapture, only for a changed paint outside the grid (#37667 a, @cto 6254e549).
+ * The first attempt's refusal and the pair it judged are returned so the run records them: a retry that
+ * passes can never hide the evidence that it retried. A second refusal propagates exactly as a single
+ * attempt's did, and the caller's refusal fact is built from it unchanged.
+ */
+export async function calibrateWithOneRecapture<T>(input: {
+  calibrate: () => Promise<T>
+  archiveFrames: (frames: NonNullable<CaptureCalibrationRefusal["frames"]>) => Promise<RefusalFrameArchive>
+}): Promise<{ result: T; attempts: number; firstRefusal?: CaptureCalibrationFact["firstRefusal"] }> {
+  try {
+    return { result: await input.calibrate(), attempts: 1 }
+  } catch (first) {
+    // The code, never the sentence: every stored row keeps quoting the message.
+    if (!(first instanceof Error) || (first as CaptureCalibrationRefusal).code !== "paint-outside-grid") throw first
+    const refusal = first as CaptureCalibrationRefusal
+    const firstRefusal = {
+      message: refusal.message,
+      ...(refusal.detail !== undefined && { detail: refusal.detail }),
+      ...(refusal.frames !== undefined && { frames: await input.archiveFrames(refusal.frames) }),
+    }
+    return { result: await input.calibrate(), attempts: 2, firstRefusal }
+  }
+}
 
 /**
  * The reading a successful calibration installs on its source: the normal sentinel always, and the reverse
@@ -498,6 +523,16 @@ interface CaptureCalibrationQuery {
   match?: TerminalQueryOutcome["match"]
 }
 
+/** The retained before/solid pair a calibration refusal judged, named beside its offender detail
+ * (#37667, @cto 6254e549 b). `error` names an archive that could not be written; the refusal itself
+ * is never hidden by it. */
+interface RefusalFrameArchive {
+  stage: string
+  before?: string
+  after?: string
+  error?: string
+}
+
 /** #30932 S1: the raw viprobe call log (format version 1) of the geometry pre-flight, kept once per run. */
 const CAPTURE_PREFLIGHT_LOG = "collector.captureCalibration.preflight.callLog"
 
@@ -536,6 +571,14 @@ interface CaptureCalibrationFact {
   /** The refusal's measured detail (stage, stray pixels, bounding box), recorded once per run so every row
    * keeps quoting the stable sentence above (#37667 review d0efc86e). */
   refusalDetail?: string
+  /** The frame pair the refusal judged, retained into the run's artifact directory (#37667 b). */
+  refusalFrames?: RefusalFrameArchive
+  /** Calibration attempts this preparation made: 2 exactly when the one bounded recapture ran
+   * (#37667 a). Absent when one attempt sufficed, so a clean run's record is unchanged. */
+  attempts?: number
+  /** The first attempt's refusal when the recapture passed, or when a second one failed: its text,
+   * detail and frame paths, so a passing retry never hides the evidence that it retried. */
+  firstRefusal?: { message: string; detail?: string; frames?: RefusalFrameArchive }
   causes?: Array<{ name: string; message: string; captureCommand?: unknown }>
   /** Every renewal this run asked for, in the order it happened: the row that asked, the origin the
    * rows before it were graded against, and the origin every later row is graded against. A run that
@@ -1080,6 +1123,45 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           return withPrePaintReading(read, prePaintMeter.reading())
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode }) => {
+          /**
+           * #37667 (@cto 6254e549 b): a calibration refusal keeps the before/solid pair it judged, in the
+           * run's own artifact directory. The pair is encoded by the converter that produced every other
+           * retained PNG and recorded through the same observer, so the run's blob manifest and the
+           * fact's paths agree. A pair that cannot be archived says so in the fact rather than
+           * disappearing: the refusal is the only record the failing run leaves.
+           */
+          const archiveRefusalFrames = async (
+            frames: NonNullable<CaptureCalibrationRefusal["frames"]>,
+          ): Promise<RefusalFrameArchive> => {
+            if (!captureDirectory) {
+              return { stage: frames.stage, error: "the run has no TERMINFO_CAPTURE_DIRECTORY to retain the pair in" }
+            }
+            const retained: Array<{ path: string; sha256: string }> = []
+            try {
+              mkdirSync(captureDirectory, { recursive: true, mode: 0o700 })
+              const deadline = Date.now() + DEFAULT_TIMEOUT_MS
+              const before = await encodeFramePng(frames.before, deadline)
+              const after = await encodeFramePng(frames.after, deadline)
+              retain(captureDirectory, before, "png", (artifact) => {
+                retained.push(artifact)
+                onRetained(artifact)
+              })
+              retain(captureDirectory, after, "png", (artifact) => {
+                retained.push(artifact)
+                onRetained(artifact)
+              })
+              return {
+                stage: frames.stage,
+                ...(retained[0] !== undefined && { before: retained[0].path }),
+                ...(retained[1] !== undefined && { after: retained[1].path }),
+              }
+            } catch (error) {
+              return {
+                stage: frames.stage,
+                error: `frame archive failed: ${error instanceof Error ? error.message : String(error)}`,
+              }
+            }
+          }
           // 34306 AC1: the origin the rows before this one were graded against. This is the last
           // install that succeeded, not `textOrigin`, which a refused attempt clears.
           const previousOrigin = installedOrigin
@@ -1094,8 +1176,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           let heldViewportReaderFor: HeldViewportReaderFor | undefined
           // Text restoration remains fatal, outside the pixel calibration refusal handling.
           await prepareTextCapture?.({ source: probeSource, featureId, recordCapture })
-          try {
-            textOrigin = await calibrateCaptureOrigin({
+          const calibrateOnce = () =>
+            calibrateCaptureOrigin({
               ctx: probeSource,
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -1109,6 +1191,19 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
               ...(screenMode !== undefined ? { screenMode } : {}),
             })
+          // @cto 6254e549 (a): exactly one bounded recapture, only for a changed paint outside the grid.
+          // The first attempt's refusal and the pair it judged are recorded, so a retry that passes can
+          // never hide the evidence that it retried; a second refusal fails exactly as one attempt did.
+          let attempts = 1
+          let firstRefusal: CaptureCalibrationFact["firstRefusal"]
+          try {
+            const calibrated = await calibrateWithOneRecapture({
+              calibrate: calibrateOnce,
+              archiveFrames: archiveRefusalFrames,
+            })
+            textOrigin = calibrated.result
+            attempts = calibrated.attempts
+            firstRefusal = calibrated.firstRefusal
             activeReverseScreen = textOrigin.reverseScreen
             probeSource.captureGeometry = installedGeometry(textOrigin)
             // 34306 AC1: a renewal is a fact of the run, not of one install. Carry the renewals the
@@ -1149,6 +1244,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(preflightCallLog !== undefined && { preflight: CAPTURE_PREFLIGHT_LOG }),
               installCensus,
               ...(renewals.length > 0 && { renewals }),
+              ...(attempts > 1 && firstRefusal !== undefined && { attempts, firstRefusal }),
             }
             captureCalibration = installedCalibration
             installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }
@@ -1265,6 +1361,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             probeSource.captureGeometryRefusal = error.message
             // Read from the error, never a second export: this module is mocked with calibrateCaptureOrigin alone.
             const refusalDetail = (error as Partial<CaptureCalibrationRefusal>).detail
+            const refusalFramePair = (error as Partial<CaptureCalibrationRefusal>).frames
+            const refusalFrames =
+              refusalFramePair === undefined ? undefined : await archiveRefusalFrames(refusalFramePair)
             // 34306 AC1: a refusal names no origin, but the renewals the run already asked for stay
             // facts of the run, so a later install still reports them in run order.
             const refusalRenewals = captureCalibration?.renewals ?? []
@@ -1275,6 +1374,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(initialOrigin !== undefined && { initialOrigin }),
               refusal: error.message,
               ...(refusalDetail !== undefined && { refusalDetail }),
+              ...(refusalFrames !== undefined && { refusalFrames }),
+              ...(attempts > 1 && firstRefusal !== undefined && { attempts, firstRefusal }),
               causes,
               installCensus,
               ...(refusalRenewals.length > 0 && { renewals: refusalRenewals }),

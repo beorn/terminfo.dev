@@ -29,10 +29,21 @@ export const CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL = "Capture calibration paint cha
  */
 export interface CaptureCalibrationRefusal extends Error {
   detail?: string
+  /** The baseline and the refusing stage's frame, carried so the run can archive the pair it judged. */
+  frames?: { before: CapturedFrame; after: CapturedFrame; stage: string }
+  /**
+   * The stable kind of refusal. `paint-outside-grid` is the one case the run retries once (#37667 a);
+   * the message stays the stored rows' stable sentence, so the kind never rides on wording.
+   */
+  code?: "paint-outside-grid"
 }
 
-function outsideGridRefusal(detail: string): Error {
-  return Object.assign(refusal(CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL), { detail })
+function outsideGridRefusal(detail: string, frames: CaptureCalibrationRefusal["frames"]): Error {
+  return Object.assign(refusal(CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL), {
+    code: "paint-outside-grid" as const,
+    detail,
+    frames,
+  })
 }
 
 function paintTimeout(message: string): Error {
@@ -1149,6 +1160,7 @@ export async function calibrateCaptureOrigin({
             `${afterColours.size} distinct after-colour(s)` +
             (chromeBand ? `, ${changedInBand} band pixel(s) excused` : "") +
             `; first: ${firstOffending.join("; ")}`,
+          { before, after: frame, stage },
         )
       }
       if (chromeBand) excused.push({ stage, changed: changedInBand })
