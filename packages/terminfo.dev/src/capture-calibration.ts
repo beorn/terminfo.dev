@@ -17,6 +17,23 @@ function refusal(message: string, cause?: unknown): Error {
   return error
 }
 
+/**
+ * The stable sentence every stored row reason quotes (#37667 review d0efc86e). Detail rides beside it on
+ * the error, so a run read later groups by the sentence and the changing pixel facts are recorded once.
+ */
+export const CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL = "Capture calibration paint changed pixels outside the witnessed grid"
+
+/** The per-refusal detail a caller records once per run, never inside each row's stored reason. */
+export function captureCalibrationRefusalDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined
+  const detail: unknown = (error as { detail?: unknown }).detail
+  return typeof detail === "string" ? detail : undefined
+}
+
+function outsideGridRefusal(detail: string): Error {
+  return Object.assign(refusal(CAPTURE_PAINT_OUTSIDE_GRID_REFUSAL), { detail })
+}
+
 function paintTimeout(message: string): Error {
   const error = new Error(message)
   error.name = "CapturePaintTimeout"
@@ -1082,6 +1099,13 @@ export async function calibrateCaptureOrigin({
       // intermittent capture costs a full investigation on every occurrence (#37667).
       let offending = 0
       const firstOffending: string[] = []
+      // The bounding box and the distinct after-colours separate a line, a band and scattered noise,
+      // which six samples in raster order cannot (#37667 review d0efc86e).
+      let minX = Number.POSITIVE_INFINITY
+      let minY = Number.POSITIVE_INFINITY
+      let maxX = -1
+      let maxY = -1
+      const afterColours = new Set<string>()
       for (let y = 0; y < frame.height; y++) {
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
@@ -1094,13 +1118,23 @@ export async function calibrateCaptureOrigin({
           }
           // The blend model covers colour only: it says nothing about the alpha byte, which stays
           // exactly as the baseline frame had it even on an explained pixel.
-          for (let channel = explained.has(y * frame.width + x) ? 3 : 0; channel < 4; channel++) {
+          const blendExplained = explained.has(y * frame.width + x)
+          for (let channel = blendExplained ? 3 : 0; channel < 4; channel++) {
             if (frame.rgba[offset + channel] !== before.rgba[offset + channel]) {
               offending++
+              if (x < minX) minX = x
+              if (y < minY) minY = y
+              if (x > maxX) maxX = x
+              if (y > maxY) maxY = y
+              afterColours.add(
+                `${frame.rgba[offset]},${frame.rgba[offset + 1]},${frame.rgba[offset + 2]}@${frame.rgba[offset + 3]}`,
+              )
               if (firstOffending.length < FIRST_OFFENDING_PIXELS) {
                 const rgba = (source: CapturedFrame) =>
                   `${source.rgba[offset]},${source.rgba[offset + 1]},${source.rgba[offset + 2]}@${source.rgba[offset + 3]}`
-                firstOffending.push(`(${x},${y}) ${rgba(before)}->${rgba(frame)}${channel === 3 ? " alpha-only" : ""}`)
+                // An explained pixel's colour is the blend's own excuse, so only its alpha is a defect.
+                const label = blendExplained ? " alpha (blend-explained)" : channel === 3 ? " alpha" : ""
+                firstOffending.push(`(${x},${y}) ${rgba(before)}->${rgba(frame)}${label}`)
               }
               break
             }
@@ -1108,10 +1142,10 @@ export async function calibrateCaptureOrigin({
         }
       }
       if (offending > 0) {
-        throw refusal(
-          `Capture calibration paint changed pixels outside the witnessed grid: stage=${stage}, ` +
-            `${offending} pixel(s) outside grid (${grid.x},${grid.y} ${grid.width}x${grid.height}) of ` +
-            `${frame.width}x${frame.height}` +
+        throw outsideGridRefusal(
+          `stage=${stage}, ${offending} pixel(s) outside grid (${grid.x},${grid.y} ${grid.width}x${grid.height}) ` +
+            `of ${frame.width}x${frame.height}, bbox (${minX},${minY})-(${maxX},${maxY}), ` +
+            `${afterColours.size} distinct after-colour(s)` +
             (chromeBand ? `, ${changedInBand} band pixel(s) excused` : "") +
             `; first: ${firstOffending.join("; ")}`,
         )

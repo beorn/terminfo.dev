@@ -84,7 +84,12 @@ import {
 } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
-import { calibrateCaptureOrigin, type CaptureChromeBand, type ReverseScreenWitness } from "./capture-calibration.ts"
+import {
+  calibrateCaptureOrigin,
+  captureCalibrationRefusalDetail,
+  type CaptureChromeBand,
+  type ReverseScreenWitness,
+} from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { muxAttachmentConfigMatches, muxAttachmentVersionMatches } from "./disposable-receipt.ts"
@@ -528,6 +533,9 @@ interface CaptureCalibrationFact {
   queries: CaptureCalibrationQuery[]
   /** The named cause, present exactly when the geometry was refused. */
   refusal?: string
+  /** The refusal's measured detail (stage, stray pixels, bounding box), recorded once per run so every row
+   * keeps quoting the stable sentence above (#37667 review d0efc86e). */
+  refusalDetail?: string
   causes?: Array<{ name: string; message: string; captureCommand?: unknown }>
   /** Every renewal this run asked for, in the order it happened: the row that asked, the origin the
    * rows before it were graded against, and the origin every later row is graded against. A run that
@@ -1255,6 +1263,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure) throw error
             calibrationError = error
             probeSource.captureGeometryRefusal = error.message
+            const refusalDetail = captureCalibrationRefusalDetail(error)
             // 34306 AC1: a refusal names no origin, but the renewals the run already asked for stay
             // facts of the run, so a later install still reports them in run order.
             const refusalRenewals = captureCalibration?.renewals ?? []
@@ -1264,6 +1273,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ...(preflightCallLog !== undefined && { preflight: CAPTURE_PREFLIGHT_LOG }),
               ...(initialOrigin !== undefined && { initialOrigin }),
               refusal: error.message,
+              ...(refusalDetail !== undefined && { refusalDetail }),
               causes,
               installCensus,
               ...(refusalRenewals.length > 0 && { renewals: refusalRenewals }),
@@ -1815,7 +1825,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               if (inputInstallFact) result.rawReplies["collector.inputInstall"] = inputInstallFact
               if (sentinelFallbackFact) {
                 result.rawReplies["collector.sentinelFallback"] = sentinelFallbackFact
-                for (const featureId of sentinelFallbackRows) result.rawReplies[`${featureId}.sentinelFallback`] = sentinelFallbackFact
+                for (const featureId of sentinelFallbackRows) {
+                  result.rawReplies[`${featureId}.sentinelFallback`] = sentinelFallbackFact
+                }
               }
               if (identityQuery) {
                 result.rawReplies["collector.xtversion"] = identityQuery.raw
