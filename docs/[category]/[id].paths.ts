@@ -11,6 +11,7 @@ import {
 } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 import { probeStatusOf } from "../data/probe-status"
+import { isPublishedStatus } from "../data/app-cells"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -39,8 +40,13 @@ export default {
       }> = []
 
       for (const b of data.backends) {
+        // #37341 Q1: an absent result is no result yet, so its row reads "unknown" and carries no note. A result we
+        // haven't decided never reaches this page; one that does is a loader bug, refused here rather than counted.
         const result = data.results[b.name]?.[f.id] ?? "unknown"
-        const note = data.notes[b.name]?.[f.id] ?? ""
+        if (result !== "unknown" && !isPublishedStatus(result)) {
+          throw new Error(`${b.name}: ${f.id} reached the feature page with undecided result ${JSON.stringify(result)}`)
+        }
+        const note = result === "unknown" ? "" : (data.notes[b.name]?.[f.id] ?? "")
         const bmeta = data.meta[b.name]
         backendResults.push({
           name: b.name,
@@ -60,15 +66,13 @@ export default {
           supported: 0,
           unsupported: 1,
           untestable: 2,
-          "probe-todo": 3,
-          "probe-invalid": 4,
-          "probe-conflict": 5,
         }
         return (order[a.result] ?? 3) - (order[b.result] ?? 3)
       })
 
       const yesCount = backendResults.filter((r) => r.result === "supported").length
-      const totalCount = backendResults.filter((r) => r.result !== "unknown").length
+      // Subjects with a decided result for this feature; a result we haven't decided is not counted.
+      const totalCount = backendResults.filter((r) => isPublishedStatus(r.result)).length
 
       // Build tags with labels for display
       const tags = (meta?.tags ?? []).map((t: string) => ({

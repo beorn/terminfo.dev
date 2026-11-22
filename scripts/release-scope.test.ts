@@ -29,6 +29,7 @@ import {
   staleCaption,
 } from "../docs/data/release-scope.ts"
 import { generateApi } from "./generate-api.ts"
+import { loadCurrentResults } from "../docs/data/current-results.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -640,7 +641,7 @@ describe("probe method classification", () => {
                 {
                   status: string
                   origin: { runId: string }
-                  derived?: { ownStatus: string }
+                  derived?: { ownStatus?: string }
                   outerAbsent?: { measured: string }
                 }
               >
@@ -677,7 +678,13 @@ describe("probe method classification", () => {
           "mux:tmux input.x10-mouse",
           "mux:tmux modes.application-keypad",
         ])
-        const pins = Object.entries(api.contexts)
+        // #37341 Q4: the API no longer publishes a result we haven't decided, nor a derived cell's own status, so
+        // the pin reads the same verdicts from the projection the API is built from: still byte-identical, so no
+        // verdict moved. The API is then checked to publish exactly that projection's decided cells.
+        const { projection } = loadCurrentResults(historicalContentDir)
+        const statusOf = (cell: (typeof projection.contexts)[string]["cells"][string] | undefined, id: string) =>
+          ENVIRONMENT_GROUP_IDS.includes(id as never) ? cell?.result.status : cell?.featureResult?.status
+        const pins = Object.entries(projection.contexts)
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([key, context]) => [
             key,
@@ -688,15 +695,30 @@ describe("probe method classification", () => {
                   id,
                   // Each derived cell is read back at its own pre-derivation status, so this pin still proves
                   // that nothing else moved (#33019); a demoted mux cell likewise at its measured status (#33665).
-                  context.featureResults[id]?.derived?.ownStatus ??
-                    context.featureResults[id]?.outerAbsent?.measured ??
-                    context.featureResults[id]?.status ??
+                  context.cells[id]?.derived?.ownStatus ??
+                    context.cells[id]?.outerAbsent?.measured ??
+                    statusOf(context.cells[id], id) ??
                     "probe-todo",
-                  context.featureResults[id]?.origin.runId ?? null,
+                  context.cells[id]?.origin.runId ?? null,
                 ]),
             ),
           ])
         expect(digest(pins)).toBe("c228b11dab50616727f15958420173202746b715543cdf668be15cb5f4ae2daf")
+        const decided = new Set(["supported", "unsupported", "untestable", "differs-by-context"])
+        for (const [key, context] of Object.entries(projection.contexts)) {
+          const published = Object.fromEntries(
+            Object.entries(api.contexts[key]!.featureResults).map(([id, result]) => [id, result.status]),
+          )
+          const expected = Object.fromEntries(
+            Object.entries(context.cells)
+              .map(([id, cell]): [string, string | undefined] => [id, statusOf(cell, id)])
+              .filter((entry): entry is [string, string] => entry[1] !== undefined && decided.has(entry[1])),
+          )
+          expect(published, key).toEqual(expected)
+          for (const result of Object.values(api.contexts[key]!.featureResults)) {
+            expect(result.derived ?? {}, key).not.toHaveProperty("ownStatus")
+          }
+        }
       } finally {
         // raw-delete-allow: this test owns the temporary API output directory.
         rmSync(out, { recursive: true, force: true })

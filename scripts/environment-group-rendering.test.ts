@@ -27,11 +27,10 @@ import * as probeOutput from "../packages/terminfo.dev/src/probe-output.ts"
 import * as daemonClient from "../packages/terminfo.dev/src/daemon-client.ts"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
-import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/theme/evidence-status.ts"
+import { evidenceStatus, NO_RESULT_STATUS } from "../docs/.vitepress/theme/evidence-status.ts"
 
 const root = join(import.meta.dirname, "..")
 const source = (path: string) => readFileSync(join(root, path), "utf8")
-const PHRASE = "manual by design (catalogue), ungraded"
 vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
   collectProbeRun: vi.fn(),
   getTrustedSuiteReceipt: vi.fn(),
@@ -75,12 +74,13 @@ describe("public test CLI coverage uses the collected manifest", () => {
     }
   })
 
+  // #37341 D2, D12: the CLI prints the one coverage readout; the environment rows add no clause and no position.
   it.each([
-    ["current", catalogIds, ` · 9 environment groups ${PHRASE}`, undefined],
-    ["historical", gradedIds, "", undefined],
-    ["selected", catalogIds, ` · 9 environment groups ${PHRASE}`, ["device.primary-da"]],
-    ["empty", catalogIds, "", []],
-  ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause, probeIds) => {
+    ["current", catalogIds, undefined],
+    ["historical", gradedIds, undefined],
+    ["selected", catalogIds, ["device.primary-da"]],
+    ["empty", catalogIds, []],
+  ] as const)("prints the %s catalogue's coverage over its graded features only", async (_label, ids, probeIds) => {
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "abcdef123456",
@@ -158,10 +158,8 @@ describe("public test CLI coverage uses the collected manifest", () => {
         expect(stderr.mock.calls.flat().join(" ")).not.toContain("identity unverified")
         return
       }
-      const summary = output.mock.calls.map(([line]) => line).find((line) => line.includes("PROBE INVALID"))
-      expect(summary).toBe(
-        `0 Supported · 0 Unsupported · 0 Untestable · 264 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT${clause}`,
-      )
+      const summary = output.mock.calls.map(([line]) => line).find((line) => /\d+ of \d+ tested/.test(String(line)))
+      expect(summary).toBe("0 of 264 tested")
     } finally {
       output.mockRestore()
       stdout.mockRestore()
@@ -370,15 +368,13 @@ describe("public test CLI coverage uses the collected manifest", () => {
   })
 })
 
-describe("#30917 environment groups are named, never PROBE TODO", () => {
-  it("names the groups the run recorded and leaves the graded counts alone", () => {
+describe("#30917 environment groups are never graded, and never PROBE TODO", () => {
+  // #37341 D2 supersedes the named clause: the readout counts the graded features only and names no group.
+  it("counts the graded features only and names no environment group", () => {
     const bar = aggregateCurrentResults(todos(), catalogIds)
     expect(bar.denominator).toBe(264)
-    expect(currentCoverageSentence(bar, catalogIds)).toBe(
-      `0 Supported · 0 Unsupported · 0 Untestable · 264 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT · ${ENVIRONMENT_GROUP_IDS.length} environment groups manual by design (catalogue), ungraded`,
-    )
-    // A caller that does not know the catalogue never invents a count for it.
-    expect(currentCoverageSentence(bar)).not.toContain("environment groups")
+    expect(currentCoverageSentence(bar, catalogIds)).toBe("0 of 264 tested")
+    expect(currentCoverageSentence(bar)).toBe("0 of 264 tested")
   })
 
   it("scores 264 of 273 catalogue positions and keeps every recorded position counted as one", () => {
@@ -401,22 +397,19 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     const baseline = source("docs/baseline/[id].md")
     expect(baseline).toContain("if (isEnvironmentGroup(f.id)) continue")
     expect(baseline).toContain("manual by design (catalogue)")
-    // The bar width and the printed share read the projection's single denominator. #33441: the printed share moved
-    // to the one row readout, which also carries the derived count, so the page delegates and the helper owns the words.
+    // The bar width reads the projection's single denominator. #33441: the printed words moved to the one row
+    // readout, so the page delegates; #37341 D2: the helper prints the shared two counts and nothing else.
     expect(baseline).toContain("s.counts[segment] / s.score.all")
-    expect(baseline).toContain("return baselineShareRow(s)")
+    expect(baseline).toContain("return baselineReadout(s).text")
     const readouts = source("docs/data/baseline-readouts.ts")
-    expect(readouts).toContain("${s.score.supported}/${s.score.all} supported")
-    expect(readouts).toContain("notMeasuredReadout(s.counts, s.derived)")
-    expect(readouts).toContain("notMeasuredReadout(stats.counts, stats.derived)")
+    expect(readouts).toContain("`${currentSupportedShare(stats)} · ${currentCoverageSentence(stats)}`")
   })
 
   it("wires the terminal page's coverage sentence to the run's own catalogue", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
-    expect(terminal).toContain(
-      "aggregateCurrentResults('featureResults' in selection ? Object.values(selection.featureResults) : selection.results, selection.catalogIds)",
-    )
+    // #37341 Q4: the published cells fold over the run's own catalogue, so an unpublished cell counts as no result.
+    expect(terminal).toContain("aggregateCurrentResults(rollupInputs(p.backendId, selection), selection.catalogIds)")
     expect(terminal).toContain("const defaultRun = data.selectedByBackend[p.backendId]?.selected")
     expect(terminal).toContain("runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun")
   })
@@ -436,22 +429,20 @@ describe("#30917 environment groups are named, never PROBE TODO", () => {
     // #33019: only an Unsupported cell can wear the derived words.
     expect(evidenceStatus("extensions.kitty-graphics.display", "unsupported", true).text).toBe("Unsupported, derived")
     expect(evidenceStatus("extensions.kitty-graphics.display", "untestable", true).text).toBe("Untestable")
-    expect(evidenceStatus("device.env-term", "probe-invalid").text).toBe("PROBE INVALID")
-    // Only the catalogue's own PROBE TODO wears the manual-by-design words, and never the TODO label.
-    expect(evidenceStatus("device.env-term", "probe-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)
-    expect(evidenceStatus("device.env-term", "probe-todo").text).not.toBe("PROBE TODO")
-    expect(MANUAL_BY_DESIGN_STATUS.text).toBe("Manual by design (catalogue), NOT MEASURED")
-    // A graded row keeps its stored status untouched.
-    expect(evidenceStatus("sgr.bold", "probe-todo").text).toBe("PROBE TODO")
-    expect(evidenceStatus("sgr.bold", "probe-conflict")).toEqual({ text: "PROBE CONFLICT", icon: "!", tone: "error" })
-    expect(evidenceStatus("sgr.bold", undefined)).toEqual({ text: "", icon: "–", tone: "unknown" })
+    // #37341 Q1: every undecided status, on an environment row or a graded one, is the one blank: no label.
+    expect(evidenceStatus("device.env-term", "probe-invalid")).toBe(NO_RESULT_STATUS)
+    expect(evidenceStatus("device.env-term", "probe-todo")).toBe(NO_RESULT_STATUS)
+    expect(evidenceStatus("sgr.bold", "probe-todo")).toBe(NO_RESULT_STATUS)
+    expect(evidenceStatus("sgr.bold", "probe-conflict")).toBe(NO_RESULT_STATUS)
+    expect(evidenceStatus("sgr.bold", undefined)).toBe(NO_RESULT_STATUS)
   })
 
   it("publishes the term-feature denominator and manual environment groups as contract text", () => {
+    // #37341 D2, D6: the API states the graded denominator and that an undecided result is absent.
     const api = source("docs/api.md")
-    expect(api).toContain("**term features** (264")
-    expect(api).toContain("**manual by design (catalogue)** and excluded from the score")
-    expect(api).toContain("only a stored PROBE TODO")
+    expect(api).toContain("`score.all` is the number of graded features (264")
+    expect(api).toContain("A result we haven't decided is left blank")
+    expect(api).not.toMatch(/manual by design|PROBE TODO|NOT MEASURED/)
     const full = source("docs/release/full-273.md")
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")

@@ -27,16 +27,16 @@ Decode that JSON string to read `ids`; decode `rawReplies["collector.collectionA
 | ----------- | -------------------------------------------------------------------------------- |
 | `empty`     | Explicit selection scheduled nothing; no start or measured identity is invented. |
 | `started`   | Actual collection started; an interrupted record may retain this checkpoint.     |
-| `completed` | Collection returned; PROBE TODO rows may remain.                                 |
+| `completed` | Collection returned; rows with a result not yet decided may remain.              |
 | `failed`    | Original error retained; a pre-start refusal has no invented start.              |
 | `cancelled` | Cancellation retained with its original diagnostic.                              |
 
-Draft initialization retains every catalogue position as an unattempted TODO.
-Only emitted results have a top-level `ProbeResult.attempt` with scope `probe` or `collection`; a selected but unreached TODO remains scope `none`.
+Draft initialization retains every catalogue position as unattempted, with no decided result.
+Only emitted results have a top-level `ProbeResult.attempt` with scope `probe` or `collection`; a selected but unreached position keeps scope `none`.
 An unsuccessful attempt does not refresh an older result's date or review.
 Each capture retains its own run ID and evidence.
 
-The `complete` field still describes the whole required cohort; selecting a subset does not make the cohort complete.
+The `complete` field still describes the whole required set of contexts and probes; selecting a subset does not make that set complete.
 Use the existing private report with explicit pass inputs to inspect composed results. The same selectors constrain hosted macOS and Windows work: only the selected workflow jobs start, and each collector receives the resolved probe IDs.
 
 Hosted workflow transport uses the existing `context_matrix` and `probe_ids` inputs. The full matrix lives once, in each workflow input default; the dispatcher always sends the actual selected rows, preserving macOS bundle paths, even when probe IDs are omitted. Unfiltered collection omits `probe_ids`; context-only selection retains its resolved full schedule. Empty context or probe arrays return before dispatch. Selected hosted inline collectors receive the existing `--probe-ids` JSON argument; null selection leaves their command arguments unchanged. The Linux container keeps `TERMINFO_PROBE_IDS` because its collector runs `test --serve`.

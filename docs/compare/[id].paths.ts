@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { loadFeatures, loadTerminals, subjectLabel } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicContextSummary } from "../data/public-results"
-import { publicResultFor } from "../data/release-scope"
+import { currentCoverageSentence, currentSupportedShare, publicResultFor } from "../data/release-scope"
 import type { AppCellStatus } from "../data/app-cells"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -51,8 +51,13 @@ export default {
       const states = data.selectedByBackend[b.name]?.states
       if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
+      // #37341 D2: the card prints the one readout, "S supported · T of N tested", from the same release bar the
+      // home page and the terminal page fold over this run's catalogue.
+      const bar = data.releaseBars[b.name]
+      if (!bar) throw new Error(`Missing release bar for comparison terminal ${b.name}`)
       return {
         name: b.name,
+        readout: `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected.catalogIds)}`,
         routeKey: current.routeKey,
         appLabel: subjectLabel(
           catalog,
@@ -218,10 +223,8 @@ export default {
             termASuiteComplete: String(a.selected.complete),
             termBSuiteComplete: String(b.selected.complete),
             comparableScope: String(comparableScope),
-            termAPass: String(a.selected.counts.supported),
-            termBPass: String(b.selected.counts.supported),
-            termATotal: String(a.selected.score.all),
-            termBTotal: String(b.selected.score.all),
+            termAReadout: a.readout,
+            termBReadout: b.readout,
             jointConclusive: comparableScope ? String(jointConclusive) : "",
             supportedA: comparableScope ? String(supportedA) : "",
             supportedB: comparableScope ? String(supportedB) : "",

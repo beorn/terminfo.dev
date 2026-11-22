@@ -1,23 +1,13 @@
 /**
- * The two baseline row readouts (#30763, #33441): a row that decided nothing prints the not-measured words, and a row
- * whose only decided cell is a derived Unsupported decided nothing either (#33019) - so the derived count has to travel
- * with the counts, not be dropped on the way to the page.
- *
- * Both pages keep their own decided-row text, byte-identical to what they printed before the fix: only the
- * not-measured branch moves.
+ * The baseline row readout both pages print (#30763, #33441, #37341 D2): the one readout every page prints,
+ * "S supported · T of N tested" over the row's graded features. A count never reads as a measured fail the way a
+ * "0%" did, so a row that decided nothing prints its zeros like any other row.
  */
-import type { ProbeStatus } from "../../packages/probe-defs/src/types.ts"
-import { notMeasuredReadout } from "./release-scope.ts"
+import { currentCoverageSentence, currentSupportedShare, type ReadableCounts } from "./release-scope.ts"
 
-/** Counts as a page holds them: the status map plus how many of its Unsupported cells are derived (#33019). */
+/** Counts as a page holds them: every bucket the row's fold counted, undecided ones included. */
 export interface RowCounts {
-  readonly counts: Readonly<Record<ProbeStatus, number> & Partial<Record<"probe-conflict", number>>>
-  readonly derived: number
-}
-
-export interface RowScore {
-  readonly supported: number
-  readonly all: number
+  readonly counts: ReadableCounts
 }
 
 export interface RowReadout {
@@ -25,19 +15,7 @@ export interface RowReadout {
   readonly title: string | undefined
 }
 
-/** The Home page baseline card: `pct% · supported/all supported / all`, or the not-measured words. */
-export function homeBaselineRow(stats: RowCounts & { readonly pct?: number; readonly score: RowScore }): RowReadout {
-  const readout = notMeasuredReadout(stats.counts, stats.derived)
-  if (readout !== undefined) return readout
-  return {
-    text: `${stats.pct ?? 0}% · ${stats.score.supported}/${stats.score.all} supported / all`,
-    title: undefined,
-  }
-}
-
-/** The /baseline/[id] coverage row: `supported/all supported (pct%)`, or the not-measured words. */
-export function baselineShareRow(s: RowCounts & { readonly pct?: number; readonly score: RowScore }): RowReadout {
-  const readout = notMeasuredReadout(s.counts, s.derived)
-  if (readout !== undefined) return readout
-  return { text: `${s.score.supported}/${s.score.all} supported (${s.pct ?? 0}%)`, title: undefined }
+/** The Home page baseline card and the /baseline/[id] coverage row: `S supported · T of N tested`. */
+export function baselineReadout(stats: RowCounts): RowReadout {
+  return { text: `${currentSupportedShare(stats)} · ${currentCoverageSentence(stats)}`, title: undefined }
 }

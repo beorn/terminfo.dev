@@ -176,14 +176,13 @@ async function renderTerminalPage(selected: Record<string, unknown>): Promise<st
 }
 
 describe("the real terminal page renders one joined disagreement", () => {
-  it("reads the disagreement as one open PROBE CONFLICT, draws no differs segment, and keeps it out of the numerator", async () => {
+  it("reads the disagreement as no result yet, draws no differs segment, and keeps it out of the numerator", async () => {
     const rendered = await renderTerminalPage(selectionOf(joinedRow().featureResults as Record<string, unknown>))
     expect(rendered).not.toContain('class="result-share-differs"')
     expect(rendered).not.toContain("Differs by context")
-    expect(rendered).toContain(
-      "1 Supported · 0 Unsupported · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 1 PROBE CONFLICT",
-    )
-    expect(rendered).toContain("1/2 supported (50%)")
+    // #37341 D2: the one readout is counts; the open conflict is neither supported nor tested, and no label names it.
+    expect(rendered).toContain("1 supported · 1 of 2 tested")
+    expect(rendered).not.toContain("PROBE CONFLICT")
   }, 60_000)
 
   it("prints nothing about a disagreement when no cell disagrees", async () => {
@@ -193,9 +192,6 @@ describe("the real terminal page renders one joined disagreement", () => {
     )
     expect(rendered).not.toContain("result-share-differs")
     expect(rendered).not.toContain("Differs by context")
-    expect(rendered).toContain(
-      "2 Supported · 0 Unsupported · 0 Untestable · 0 PROBE TODO · 0 PROBE INVALID · 0 PROBE CONFLICT",
-    )
-    expect(rendered).toContain("2/2 supported (100%)")
+    expect(rendered).toContain("2 supported · 2 of 2 tested")
   }, 60_000)
 })

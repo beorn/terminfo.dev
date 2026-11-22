@@ -7,8 +7,8 @@
  */
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import { describe, expect, it } from "vitest"
-import { decisiveCells, NOT_MEASURED_TEXT, notMeasuredReadout } from "../docs/data/release-scope.ts"
-import { baselineShareRow, homeBaselineRow } from "../docs/data/baseline-readouts.ts"
+import { decisiveCells } from "../docs/data/release-scope.ts"
+import { baselineReadout } from "../docs/data/baseline-readouts.ts"
 
 const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStatus, number> => ({
   supported: 0,
@@ -20,31 +20,28 @@ const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStat
 })
 
 describe("#30763 baseline row readout", () => {
-  it("owns only the not-measured branch; a decided row is the page's own text", () => {
+  it("prints counts on every row, so a row that decided nothing never reads as a measured zero (#37341 D2)", () => {
     // Windows Terminal's rich row: 88 PROBE TODO + 11 PROBE INVALID, nothing decided.
     const held = counts({ "probe-todo": 88, "probe-invalid": 11 })
     expect(decisiveCells(held)).toBe(0)
-    expect(notMeasuredReadout(held)).toEqual({
-      text: NOT_MEASURED_TEXT,
-      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 PROBE TODO · 11 PROBE INVALID",
-    })
-    expect(NOT_MEASURED_TEXT).not.toMatch(/%/)
+    expect(baselineReadout({ counts: held })).toEqual({ text: "0 supported · 0 of 99 tested", title: undefined })
+    expect(baselineReadout({ counts: held }).text).not.toMatch(/%|PROBE/)
 
-    // vt220.js rich: 36 judged unsupported, so its zero is a measured zero.
+    // vt220.js rich: 36 judged unsupported, so its zero is a measured zero, and its tested count says so.
     const judged = counts({ unsupported: 36, untestable: 12, "probe-todo": 33, "probe-invalid": 18 })
     expect(decisiveCells(judged)).toBe(36)
-    expect(notMeasuredReadout(judged)).toBeUndefined()
+    expect(baselineReadout({ counts: judged }).text).toBe("0 supported · 48 of 99 tested")
 
     // Alacritty on Windows rich: the one rich cell it genuinely supports.
     const oneSupported = counts({ supported: 1, "probe-todo": 81, "probe-invalid": 17 })
-    expect(notMeasuredReadout(oneSupported)).toBeUndefined()
+    expect(baselineReadout({ counts: oneSupported }).text).toBe("1 supported · 1 of 99 tested")
   })
 
   /**
    * #33441: the same predicate, asked by both pages. A row whose only decided cell is a derived Unsupported decided
    * nothing (#33019), so it must print the not-measured words rather than a measured-looking 0%.
    */
-  it("a derived-only row reads not-measured on the home card and the baseline row", () => {
+  it("a derived-only row prints counts with no percentage, the same on the home card and the baseline row", () => {
     const derivedOnly = {
       counts: counts({ unsupported: 1, "probe-todo": 5 }),
       derived: 1,
@@ -52,24 +49,17 @@ describe("#30763 baseline row readout", () => {
       score: { supported: 0, all: 6 },
     }
     expect(decisiveCells(derivedOnly.counts, derivedOnly.derived)).toBe(0)
-    expect(homeBaselineRow(derivedOnly)).toEqual({
-      text: NOT_MEASURED_TEXT,
-      title: "0 Supported · 1 Unsupported (of which derived: 1) · 0 Untestable · 5 PROBE TODO · 0 PROBE INVALID",
-    })
-    expect(baselineShareRow(derivedOnly)).toEqual(homeBaselineRow(derivedOnly))
+    // #37341 D2: one readout serves both pages, so the two cannot disagree; a count never reads as a measured 0%.
+    expect(baselineReadout(derivedOnly)).toEqual({ text: "0 supported · 1 of 6 tested", title: undefined })
+    expect(baselineReadout(derivedOnly).text).not.toMatch(/%/)
 
-    // The same row with derived 0 is the defect the pages had: a measured-looking 0% (#33441).
-    expect(homeBaselineRow({ ...derivedOnly, derived: 0 }).text).toBe("0% · 0/6 supported / all")
-
-    // A decided row keeps each page's own text, byte-identical to before the fix.
     const decided = {
       counts: counts({ unsupported: 2, "probe-todo": 4 }),
       derived: 0,
       pct: 0,
       score: { supported: 0, all: 6 },
     }
-    expect(homeBaselineRow(decided)).toEqual({ text: "0% · 0/6 supported / all", title: undefined })
-    expect(baselineShareRow(decided)).toEqual({ text: "0/6 supported (0%)", title: undefined })
+    expect(baselineReadout(decided)).toEqual({ text: "0 supported · 2 of 6 tested", title: undefined })
   })
 
   /**

@@ -7,14 +7,14 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { currentCoverageSentence, publicResultFor } from '../data/release-scope'
-import { baselineShareRow } from '../data/baseline-readouts.ts'
+import { publicResultFor } from '../data/release-scope'
+import { baselineReadout } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 const { params } = useData()
 const p = params.value
 
 const features = JSON.parse(p.features)
-// D132 B (#30917): the environment groups in this baseline are ungraded, never PROBE TODO.
+// D132 B (#30917): the environment groups in this baseline are ungraded.
 const environmentGroupCount = features.filter((feature) => isEnvironmentGroup(feature.id)).length
 const backends = JSON.parse(p.backends)
 const scores = JSON.parse(p.scores)
@@ -28,9 +28,6 @@ const barSegments = [
   // @cto c3c2f885: decided by two disagreeing same-suite contexts, never Supported or Unsupported.
   { id: 'differs-by-context', label: 'Differs by context', symbol: '≠' },
   { id: 'untestable', label: 'Untestable', symbol: '?' },
-  { id: 'probe-todo', label: 'PROBE TODO', symbol: '–' },
-  { id: 'probe-invalid', label: 'PROBE INVALID', symbol: '!' },
-  { id: 'probe-conflict', label: 'PROBE CONFLICT', symbol: '!' },
 ]
 
 function featureTooltip(f) {
@@ -71,19 +68,19 @@ function barSegmentItems(s, segment) {
   return items
 }
 
+// Widths are over the baseline's graded features, so a result we haven't decided leaves the rest of the bar blank.
 function barWidth(s, segment) {
   return s.score.all ? (s.counts[segment] / s.score.all * 100) + '%' : '0%'
 }
 
+// #37341 D2: the one readout over this baseline's features, "S supported · T of N tested". The row's counts cover
+// this baseline only, so the run's whole catalogue is not passed: it would name a different number of features.
 function coverageLabel(s) {
-  return `${currentCoverageSentence(s, data.selectedByBackend[s.name]?.selected.catalogIds)} / ${s.score.all} features`
+  return baselineReadout(s).text
 }
 
-// #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
-// it printed before the fix.
 function shareRow(s) {
-  // #33441: same derived count as the Home card, so the two pages agree with runDecidedNothing.
-  return baselineShareRow(s)
+  return baselineReadout(s)
 }
 
 function platformIcon(os) {
@@ -131,7 +128,7 @@ function platformIcons(b) {
 
 ## Coverage and results
 
-Untestable reasons name the cause: **passed to the app**, **no way**, **no setup**, or **no observer** (the effect shows outside what the run captures). A generic OSC hook handing an app-job command to the app does not establish Supported; a reading of the library's own state or typed notification store can. A missing control or undeclared tap identity stays PROBE TODO. [Result meanings](/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid).
+Untestable reasons name the cause: **passed to the app**, **no way**, **no setup**, or **no observer** (the effect shows outside what the run captures). A generic OSC hook handing an app-job command to the app does not establish Supported; a reading of the library's own state or typed notification store can. A result we haven't decided, such as one with a missing control or an undeclared tap identity, is left blank. [Result meanings](/how-it-works/how-to-read-a-result#untestable-probe-todo-and-probe-invalid).
 
 ### Terminal Applications
 
@@ -142,7 +139,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
     <span class="summary-version" tabindex="0" :aria-label="'Source versions: ' + s.version" :title="s.version" :data-tooltip="'Source versions: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -167,7 +164,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs', 'probe-todo': 'untested', 'probe-invalid': 'errors', 'probe-conflict': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'differs-by-context': 'differs' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -400,7 +397,8 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 }
 
 .baseline-page .summary-pct {
-  width: 23ch;
+  width: auto;
+  min-width: 23ch;
   white-space: nowrap;
   font-weight: 400;
   font-size: 0.9em;

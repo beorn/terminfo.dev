@@ -38,12 +38,12 @@ export default {
     const data = loadProbes()
     const featuresMeta = loadFeatures(contentDir)
 
-    // Sort backends by score (highest first)
-    const sortedBackends = [...data.backends].sort((a, b) => {
-      const aPct = data.stats[a.name]?.pct ?? 0
-      const bPct = data.stats[b.name]?.pct ?? 0
-      return bPct - aPct
-    })
+    // #37341 D2: rank by Supported count (most first), then by name, never by a share.
+    const sortedBackends = [...data.backends].sort(
+      (a, b) =>
+        (data.stats[b.name]?.score.supported ?? 0) - (data.stats[a.name]?.score.supported ?? 0) ||
+        a.name.localeCompare(b.name),
+    )
 
     const backends = sortedBackends.map((b) => ({
       name: b.name,

@@ -72,7 +72,11 @@ function muxSpecimen() {
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-function fixture(runId = "fixture-run") {
+/**
+ * `decided` gives the run one Supported cell (sgr.bold, a query reply): since #37341 D5 a public trace holds decided
+ * entries only, so a test that reads a trace entry needs one.
+ */
+function fixture(runId = "fixture-run", { decided = false }: { decided?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-placement-"))
   dirs.push(dir)
   const content = join(dir, "content")
@@ -117,7 +121,39 @@ function fixture(runId = "fixture-run") {
       engineVersion: "6.0.0",
     },
   })
-  const run = finalizeCollectedDraft(draft as CapturedRunDraft)
+  if (decided) {
+    const featureId = "sgr.bold"
+    const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+    draft.results = draft.results.map((result) =>
+      result.featureId === featureId
+        ? {
+            featureId,
+            status: "supported" as const,
+            assertionType: "query_reply" as const,
+            rawReplyRef: featureId,
+            attempt,
+            tests: [{ id: "criterion", status: "supported" as const, attempt, assertionRefs: [0], rawReplyRef: featureId }],
+          }
+        : result,
+    )
+  }
+  const finalized = finalizeCollectedDraft(draft as CapturedRunDraft)
+  const run = decided
+    ? {
+        ...finalized,
+        assertions: [
+          {
+            featureId: "sgr.bold",
+            kind: "positive" as const,
+            assertionType: "query_reply" as const,
+            rawReplyRef: "sgr.bold",
+            expected: "ACK",
+            observed: "ACK",
+          },
+        ],
+        rawReplies: { ...finalized.rawReplies, "sgr.bold": "ACK" },
+      }
+    : finalized
   const source = join(dir, "run.json")
   const save = () => writeFileSync(source, JSON.stringify(run))
   save()
@@ -194,7 +230,7 @@ test("publication names a stored run changed after projection loaded", () => {
 
 // A stored run's trace is shared across readers. Equal bytes alone miss a mutable shared document.
 test("publication reuses a deeply frozen trace for a stored run", () => {
-  const f = fixture()
+  const f = fixture(undefined, { decided: true })
   writeFileSync(join(f.content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
   placeCollectedRun(f.source, f.manifest, f.content)
   const projection = loadSelectedResults(f.content, f.manifest.probeHash)
@@ -1182,7 +1218,7 @@ function storedTracePanes(f: ReturnType<typeof fixture>, workingRuns: ReturnType
 }
 
 test("a stored run's trace names this build's identity-rule match; a working run of the same bytes gets none", () => {
-  const f = fixture()
+  const f = fixture(undefined, { decided: true })
   placeCollectedRun(f.source, f.manifest, f.content)
   const working = parseRun(
     f.source,
@@ -1222,11 +1258,11 @@ test("a stored run's trace names this build's identity-rule match; a working run
 })
 
 test("a disputed stored run gets no identity-rule object and no panel line, and its selection is unchanged", () => {
-  const verified = fixture()
+  const verified = fixture(undefined, { decided: true })
   placeCollectedRun(verified.source, verified.manifest, verified.content)
   const before = storedTracePanes(verified)
 
-  const f = fixture()
+  const f = fixture(undefined, { decided: true })
   const destination = placeCollectedRun(f.source, f.manifest, f.content)
   const stored = JSON.parse(readFileSync(destination, "utf8")) as Record<string, unknown>
   writeFileSync(destination, JSON.stringify({ ...stored, identity: "disputed" }))
@@ -1251,7 +1287,7 @@ test.each([
   ["a receipt without its version", { receipt: {} }],
   ["an unknown key", { verifiedAt: "admission" }],
 ])("a trace whose identity-rule object has %s is the existing structure error, never a claim", (_name, patch) => {
-  const f = fixture()
+  const f = fixture(undefined, { decided: true })
   placeCollectedRun(f.source, f.manifest, f.content)
   const { bytes, expectation } = storedTracePanes(f)
   const parsed = JSON.parse(bytes) as { identity: { currentRuleCheck?: unknown } }

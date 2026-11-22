@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto"
 import type { ProbeResult, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentSelectedVersion, SelectedVersion } from "./selected-results.ts"
+import { isPublishedStatus } from "./app-cells.ts"
 
 /**
  * The 226 features whose stored replies use a closed grammar: digits, separators and fixed tokens, as in
@@ -507,8 +508,10 @@ function traceDocument<Cell>(
   apiVersion: 2 | 3,
   version: TraceVersion,
   featureResults: Record<string, Cell>,
+  /** How many results the run stored: a run with none has no trace; one whose results are all undecided has an empty one. */
+  storedResults: number,
 ): { url: string; sha256: string; bytes: string; document: TraceDocument<Cell> } | undefined {
-  if (Object.keys(featureResults).length === 0) return undefined
+  if (storedResults === 0) return undefined
   if (version.identity === undefined) throw new Error(`run ${version.runId}: no recorded identity for its trace`)
   const document: TraceDocument<Cell> = {
     ...(version.schemaVersion === 4 && version.source && { source: { ...version.source } }),
@@ -539,13 +542,19 @@ function freezeTrace(value: unknown): void {
   Object.freeze(value)
 }
 
-/** The allowlisted trace of a current run's stored results. */
+/**
+ * The allowlisted PUBLIC trace of a current run's stored results (#37341 D5, @cto 97ba8eea): the same decision as the
+ * public projection (`isPublishedStatus`) leaves every undecided entry out BEFORE the bytes are hashed, so its digest,
+ * the public trace digest, covers exactly what is served. A run whose results are all undecided still has its (empty)
+ * trace, so every contributing source keeps its receipt. The stored run and its own digest are never touched.
+ */
 export function currentTrace(version: CurrentSelectedVersion) {
   if (version.traceMemo?.value) return version.traceMemo.value
   const raw = version.readRaw()
   const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
+    if (!isPublishedStatus(result.status)) continue
     const rawReply = result.rawReplyRef === undefined ? undefined : raw.rawReplies[result.rawReplyRef]
     if (result.rawReplyRef !== undefined && rawReply === undefined) {
       throw new Error(`Run ${version.runId}/${result.featureId}: missing retained raw reply ${result.rawReplyRef}`)
@@ -563,7 +572,7 @@ export function currentTrace(version: CurrentSelectedVersion) {
       ),
     }
   }
-  const trace = traceDocument(3, { ...version, identity: raw.identity }, cells)
+  const trace = traceDocument(3, { ...version, identity: raw.identity }, cells, version.results.length)
   if (trace && version.traceMemo) {
     freezeTrace(trace)
     version.traceMemo.value = trace

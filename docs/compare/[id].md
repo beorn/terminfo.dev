@@ -5,7 +5,7 @@ next: false
 ---
 
 <script setup>
-import { publicResultFor } from '../data/release-scope'
+import { currentCoverageSentence, currentSupportedShare, publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()
@@ -14,6 +14,7 @@ const osColumns = JSON.parse(p.osBackends || '[]').map(name => ({
   name,
   label: data.meta[name]?.label ?? name,
   selected: data.selectedByBackend[name].selected,
+  bar: data.releaseBars[name],
 }))
 const multipleSystems = osColumns.length > 2
 const comparisonPairs = JSON.parse(p.comparisonPairs || '[]')
@@ -64,7 +65,7 @@ for (const cat of categories) {
 
 <p v-if="multipleSystems" class="compare-scope">Each operating system has its own measurements. Pairwise differences below require matching recorded contexts, suites and methods.</p>
 <p v-else-if="p.comparableScope === 'true'" class="compare-scope">
-  Support scores use each frozen catalog. Differences require matching recorded contexts, suites and methods. Other environment differences may remain.
+  Support counts use each frozen catalog. Differences require matching recorded contexts, suites and methods. Other environment differences may remain.
 </p>
 <p v-else class="compare-scope compare-scope--limited">
   Recorded physical contexts differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
@@ -76,7 +77,7 @@ for (const cat of categories) {
   <table class="compare-table">
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
-      <tr><th>Supported / graded features</th><td v-for="column in osColumns" :key="column.name">{{ column.selected.counts.supported }} / {{ column.selected.score.all }}</td></tr>
+      <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
       <tr><th>Original measurements</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ run.subject.version }} · {{ run.measuredAt }} · {{ run.suiteFreshness }}</li></ul></td></tr>
     </tbody>
   </table>
@@ -88,8 +89,7 @@ for (const cat of categories) {
       <h3>{{ p.termALabel }}</h3>
     </a>
     <p class="compare-context"><strong>Source versions: {{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
-    <div class="compare-score">{{ p.termAPass }}/{{ p.termATotal }}</div>
-    <div class="compare-detail">Supported / all catalog features</div>
+    <div class="compare-score">{{ p.termAReadout }}</div>
     <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
@@ -105,8 +105,7 @@ for (const cat of categories) {
       <h3>{{ p.termBLabel }}</h3>
     </a>
     <p class="compare-context"><strong>Source versions: {{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
-    <div class="compare-score">{{ p.termBPass }}/{{ p.termBTotal }}</div>
-    <div class="compare-detail">Supported / all catalog features</div>
+    <div class="compare-score">{{ p.termBReadout }}</div>
     <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
@@ -289,7 +288,7 @@ for (const cat of categories) {
 }
 
 .compare-score {
-  font-size: 2.5em;
+  font-size: 1.4em;
   font-weight: 700;
   color: var(--vp-c-brand-1);
   line-height: 1;
