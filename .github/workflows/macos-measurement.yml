@@ -1,4 +1,5 @@
 name: macos-measurement
+# CONTROL-ONLY source for #32555: keep this variant out of ordinary collection/main.
 
 on:
   workflow_dispatch:
@@ -579,6 +580,10 @@ jobs:
             ghostty)
               mkdir -p "$HOME/.config/ghostty"
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
+              printf 'env = TERM_FEATURES=TERMINFO_CONTROL_32555\n' >> "$HOME/.config/ghostty/config"
+              cp "$HOME/.config/ghostty/config" "$OUT/CONTROL-32555-ghostty.config"
+              shasum -a 256 "$OUT/CONTROL-32555-ghostty.config" > "$OUT/CONTROL-32555-ghostty.config.sha256"
+              printf 'CONTROL 32555: terminal-native TERM_FEATURES=TERMINFO_CONTROL_32555; workflow_source=%s; collector_source=%s; no corpus placement\n' "$GITHUB_SHA" "$MEASURED_SHA" > "$OUT/CONTROL-32555.txt"
               APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
               term_features_launch_env || exit 1
@@ -1110,6 +1115,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: CONTROL-32555-macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/measurement-artifacts
           if-no-files-found: error
