@@ -930,14 +930,14 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   // On 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its
   // last observation "Terminal", the pre-marker name. Every raster-capture census of the same cmux window
   // (id 36, /Applications/cmux.app) after the marker write did record that run's title, through
-  // 23:17:27.999Z — so the receipt showed a capped read, not an app that can never expose its title; the
-  // counted runs attempted no title-row read (titleRead none).
+  // 23:17:27.999Z — so the receipt showed a capped read, not an app that can never expose its title.
+  // #34155: the refusal used to throw before the reader could spawn, so no hosted run ever attempted the
+  // read; cmux now takes the same CG window-name reader as the other window-title rows, and the next
+  // hosted run measures whether that read fits the budget (or records its own timing plus raster census).
   cmux: {
     id: "cmux",
     comm: "cmux",
-    titleRead: "none",
-    titleUnavailable:
-      'Hosted Darwin title read unavailable for cmux: on 33821 calibration run 43327254711 the 2 s window-name measurement was killed at 2003 ms with its last observation "Terminal", the pre-marker name, while raster-capture censuses of the same cmux window after the marker write did record that run\'s title, so the bounded read was what failed and not the app; the counted runs attempted no title-row read (titleRead none)',
+    titleRead: "window",
   },
 }
 const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
