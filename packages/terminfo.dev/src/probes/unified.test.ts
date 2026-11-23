@@ -6926,6 +6926,44 @@ it.each(["conflict", "malformed", "live mismatch"] as const)(
   },
 )
 
+// 33917 (@cto 860aef2f after-merge read): the deleted cursor-mode group was the only unified.test.ts case that
+// drove the real calibrateCaptureOrigin to a refusal and checked the batch. Keep that boundary on a
+// still-reachable refusal: the paint is observed only in the alpha byte, so the solid witness has no changed RGB.
+it("a solid-grid refusal reaches the capture rows as probe-todo and leaves query rows graded", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
+    if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))
+    return true
+  }) as typeof process.stdout.write)
+  const frame = (alpha: number) => {
+    const rgba = new Uint8Array(8 * 8 * 4)
+    for (let offset = 3; offset < rgba.length; offset += 4) rgba[offset] = alpha
+    return { width: 8, height: 8, rgba }
+  }
+  let calls = 0
+  const capture = vi.fn()
+  const captureRaw = vi.fn(async () => frame((calls += 1) > 2 && (calls += 0) <= 4 ? 255 : 0))
+  const batch = await runProbeBatch({
+    ids: ["device.primary-da", "erase.line.all"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    capture,
+    prepareCapture: async ({ source: probeSource }) => {
+      await calibrateCaptureOrigin({ ctx: probeSource, timeoutMs: 100, captureRaw })
+    },
+  })
+  expect(batch.observations).toContainEqual(
+    expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
+  )
+  expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({
+    status: "probe-todo",
+    reason: expect.stringMatching(/no changed pixels/),
+  })
+  expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+    refusal: expect.stringMatching(/no changed pixels/),
+  })
+  expect(capture).not.toHaveBeenCalled()
+})
+
 // 34672 (@cto warp-geometry-ruling-1252, Q1 option 1): a reply that agrees on columns and differs only in
 // rows no longer refuses before painting. The complete-raster calibration tests ONE candidate - the stable
 // owned PTY grid - and the conflict stays in the trace exactly as the terminal answered it.
