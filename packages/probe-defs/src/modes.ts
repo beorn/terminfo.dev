@@ -2146,7 +2146,40 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 const reverseVideoProtocol = decrpmModeProbe(
   "modes.reverse-video",
   5,
-  headlessDecrpmArm(5, "reverseVideo", { requireReadback: true, stateReadback: true }),
+  (ctx) => {
+    const result = headlessDecrpmArm(5, "reverseVideo", { requireReadback: true, stateReadback: true })(ctx)
+    const psZeroPair = result.tests?.find((test) =>
+      test.reason?.startsWith("DECRPM mode 5: set Ps 0, reset Ps 0"),
+    )?.reason
+    // The wezterm-d2 cohort already pins backendName, engineVersion 0.1.0-fork.5, the lock, the loaded
+    // binary and this sourceCommit with the weztermPixelMouse adapter audit; the two checks beside it
+    // only keep the boundary readable, and name the identity the 2026 boundary rides (@dev/5 review).
+    if (
+      psZeroPair &&
+      hasAuditedOscInterfaceAbsence(ctx, "wezterm-d2") &&
+      ctx.runtimeIdentity?.kind === "native" &&
+      ctx.runtimeIdentity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e"
+    ) {
+      // This native build has Set and Reset arms for mode 5 but no QueryDecPrivateMode arm, so its
+      // DECRPM catch-all answers Ps 0. The library applies reverse video and never reports it (#37960).
+      const note = `${psZeroPair}; standalone WezTerm terminal library applies reverse video but has no DECRPM query arm for mode 5, so the engine answers Ps 0 (not recognized); presentation (inverted frame) unmeasured; protocol measured`
+      return {
+        pass: false,
+        response: result.response,
+        note,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply",
+            kind: "negative",
+            expected: "DECRPM mode 5 set after DECSET",
+            observed: result.response ?? "",
+          },
+        ],
+      }
+    }
+    return result
+  },
   true,
 )
 

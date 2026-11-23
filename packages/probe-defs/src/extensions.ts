@@ -295,7 +295,13 @@ export function hasAuditedOscInterfaceAbsence(
         tree === "60088603eff12a69d1c810fa2ee699a821e29d0f" ||
         tree === "0db06083bfe1f65e53f556469c45983789e0d272")) ||
     (identity.engineVersion === "0.14.0" &&
-      (tree === "e94b7948e9ad7871d57addfb23f0e9cc57dc6928" || tree === "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209"))
+      // The vterm repository carries vterm.js and the two strict DEC engines beside it. vt100 and
+      // vt220 expose no OSC 7/9 state on their public surface and no image interface, so the two
+      // engine package trees join the same audited absence census (#37960).
+      (tree === "e94b7948e9ad7871d57addfb23f0e9cc57dc6928" ||
+        tree === "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209" ||
+        tree === "12283b14668a92872f97bd8eecffe5307fc1cab8" ||
+        tree === "4c490d55a36aea132819d38c09a305a765720ffb"))
   )
 }
 

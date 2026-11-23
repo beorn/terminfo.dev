@@ -1073,6 +1073,11 @@ describe("audited OSC interface absence", () => {
     ["vt220", vtIdentity("vt220", "232e7bd71913340475d283b313f67a4e624057be", "0.13.2")],
     ["vt100", vtIdentity("vt100", "e94b7948e9ad7871d57addfb23f0e9cc57dc6928", "0.14.0")],
     ["vt220", vtIdentity("vt220", "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209", "0.14.0")],
+    // The two strict DEC engines at their own 0.14.0 package trees (#37960). They moved off the
+    // vterm.js package tree, so the earlier 0.14.0 pair never matched them and their OSC 7/9 and
+    // image cells fell back to PROBE TODO.
+    ["vt100", vtIdentity("vt100", "12283b14668a92872f97bd8eecffe5307fc1cab8", "0.14.0")],
+    ["vt220", vtIdentity("vt220", "4c490d55a36aea132819d38c09a305a765720ffb", "0.14.0")],
   ] as const
   const readerSubjects = [["vt100", vt100], ...current] as const
   const alacritty = {
@@ -1193,6 +1198,26 @@ describe("audited OSC interface absence", () => {
           feedCapture: () => "",
           getTitle: () => "",
           runtimeIdentity: vtIdentity("vt220", "5162719d063ab59d2905d588df3e127d38b110d1", "0.13.1"),
+        },
+        /vt220\.js exposes.*sixel\/Kitty graphics deliberately absent/i,
+      ],
+      [
+        "vt100",
+        {
+          ...library("vt100"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt100", "12283b14668a92872f97bd8eecffe5307fc1cab8", "0.14.0"),
+        },
+        /vt100\.js exposes.*strict DEC VT100/i,
+      ],
+      [
+        "vt220",
+        {
+          ...library("vt220"),
+          feedCapture: () => "",
+          getTitle: () => "",
+          runtimeIdentity: vtIdentity("vt220", "4c490d55a36aea132819d38c09a305a765720ffb", "0.14.0"),
         },
         /vt220\.js exposes.*sixel\/Kitty graphics deliberately absent/i,
       ],

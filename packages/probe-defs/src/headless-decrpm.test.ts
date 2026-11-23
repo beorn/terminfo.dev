@@ -207,29 +207,32 @@ test.each(readbackModes)("$id leaves a negative report unresolved when the mode 
   }
 })
 
+// The retained native WezTerm identity both qualified engine boundaries share (#37960).
+const weztermPixelMouseIdentity: HeadlessRuntimeIdentity = {
+  kind: "native",
+  adapterVersion: "0.11.0",
+  termlessRevision: "343c2e5df74d918fc625943203ba521c48a3d1d6",
+  engineVersion: "0.1.0-fork.5",
+  loadedBinary: {
+    path: "termless-wezterm.node",
+    sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
+  },
+  provenance: {
+    sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
+    sourceCommit: "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e",
+    lockSha256: "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886",
+    buildHash: "10d2930241d0f0c080bf3974b280b42454ea66e8b1ff3b9ab4d37bdc8049090f",
+    toolchain: "retained native identity fixture",
+  },
+  adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.weztermPixelMouse).map(([path, blobOid]) => ({
+    path,
+    blobOid,
+  })),
+}
+
 // @failure The qualified standalone WezTerm negative is mistaken for absence in the full application/mux.
 test("synchronized-output names the qualified standalone WezTerm library boundary", () => {
-  const identity: HeadlessRuntimeIdentity = {
-    kind: "native",
-    adapterVersion: "0.11.0",
-    termlessRevision: "343c2e5df74d918fc625943203ba521c48a3d1d6",
-    engineVersion: "0.1.0-fork.5",
-    loadedBinary: {
-      path: "termless-wezterm.node",
-      sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
-    },
-    provenance: {
-      sha256: "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746",
-      sourceCommit: "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e",
-      lockSha256: "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886",
-      buildHash: "10d2930241d0f0c080bf3974b280b42454ea66e8b1ff3b9ab4d37bdc8049090f",
-      toolchain: "retained native identity fixture",
-    },
-    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.weztermPixelMouse).map(([path, blobOid]) => ({
-      path,
-      blobOid,
-    })),
-  }
+  const identity = weztermPixelMouseIdentity
   for (const qualified of [true, false]) {
     const { source } = readbackContext(2026, { setPs: 2, setMode: null, resetMode: null })
     const result = headless("modes.synchronized-output")({
@@ -257,6 +260,33 @@ test("strict support needs Ps2 after reset, not a permanently-set reply", () => 
   >
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
+})
+
+// @failure The standalone WezTerm library's missing DECRPM query arm for mode 5 is left inconclusive, or an
+//   identity that is not that audited build is graded from its reply (CTO 8be19f1f shape, #37960).
+test("reverse video names the qualified standalone WezTerm DECRPM query absence", () => {
+  for (const qualified of [true, false]) {
+    const { source } = readbackContext(5, { setPs: 0, resetPs: 0, setMode: true, resetMode: false })
+    const result = headless("modes.reverse-video")({
+      ...source,
+      backendName: "wezterm",
+      runtimeIdentity: qualified
+        ? weztermPixelMouseIdentity
+        : { ...weztermPixelMouseIdentity, engineVersion: "unqualified" },
+    }) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+    if (qualified) {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative" })])
+      expect(result.note).toContain("set Ps 0, reset Ps 0")
+      expect(result.note).toContain("no DECRPM query arm for mode 5")
+      expect(result.observation?.note).toBe(result.note)
+      expect(result.tests).toBeUndefined()
+    } else {
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.tests).toMatchObject([{ id: "criterion", status: "probe-todo" }])
+      expect(result.assertions ?? []).toEqual([])
+    }
+  }
 })
 
 // @failure DEC-private4 mutates ANSI insertMode yet a positive DECRPM reply still establishes smooth-scroll support.
