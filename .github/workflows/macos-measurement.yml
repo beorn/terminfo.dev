@@ -217,8 +217,8 @@ jobs:
               x64: ["https://downloads.cursor.com/production/5f54c8173e5552412beb40702adac16275677fa0/darwin/x64/Cursor-darwin-x64.zip", "8ea93499ba2db4f7af2efb7648a167f2351ad86534130c9fc30ae1040966fc51"]
             },
             "com.microsoft.VSCode": {
-              arm64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin-arm64.zip", "099d3514fda308822a150d65ea36d4c4bfc565ee1b7fbc5a3fff97700f7af408"],
-              x64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin.zip", "cbe7bfbfe576f4315ffd5d4ac67c8dd550972659b7f1785999ed96505f25a31a"]
+              arm64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/8a14f0cc1b08d531eb83255ea3764ae22aa932b5/VSCode-darwin-arm64.zip", "149d944feb599b076b48406b174e1c3cd1d510e9d673854777a20a6f4116a59a"],
+              x64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/8a14f0cc1b08d531eb83255ea3764ae22aa932b5/VSCode-darwin.zip", "a91677b96c1a73de366f54cb4a497c8095459e07e95457ffab985820f93fb298"]
             }
           };
           const selected = artifacts[app]?.[process.arch];
