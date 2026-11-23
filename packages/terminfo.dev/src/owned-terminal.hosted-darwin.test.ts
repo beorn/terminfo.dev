@@ -925,19 +925,19 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
       reason: "ruling C on 33774: run 44687076948 first held its calibrated origin 139 s after launch",
     },
   })
+  // 34155: cmux attempts the CG window-name read on the next hosted run instead of refusing before the
+  // reader spawns, so its row can be measured rather than declared.
   expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
     id: "cmux",
     comm: "cmux",
-    titleRead: "none",
-    titleUnavailable: expect.stringContaining('"Terminal"'),
+    titleRead: "window",
   })
-  // 34087: each sentence names its calibration run first and says the counted runs read nothing, so no
-  // app-own-title row can be read as a live measurement of a run that attempted none; the calibration
-  // pid is gone because it is not a fact about the row.
+  // 34087: each remaining sentence names its calibration run first and says the counted runs read
+  // nothing, so no app-own-title row can be read as a live measurement of a run that attempted none; the
+  // calibration pid is gone because it is not a fact about the row.
   for (const [path, calibrationRun] of [
     ["/Applications/Cursor.app/Contents/MacOS/Cursor", "43325922491"],
     ["/Applications/Visual Studio Code.app/Contents/MacOS/Code", "43325922491"],
-    ["/Applications/cmux.app/Contents/MacOS/cmux", "43327254711"],
   ] as const) {
     const sentence = hostedDarwinAppFromExecutablePath(path).titleUnavailable ?? ""
     expect(sentence).toContain(`on 33821 calibration run ${calibrationRun}`)
