@@ -6,7 +6,7 @@
  * @reach fs-walk vendor/terminfo.dev/.github/workflows/macos-measurement.yml vendor/terminfo.dev/.github/workflows/windows-measurement.yml
  * @testonly none
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
@@ -322,9 +322,13 @@ test.each([
     // receipt run-id read and the already-running check stubbed, so the launched binary must inherit the marker.
     const helper = os === "macos" ? /^term_features_launch_env\(\) \{\n[\s\S]*?\n\}\n/mu.exec(collect)?.[0] : ""
     if (os === "macos") expect(helper, "the launch step defines the marker helper").toBeDefined()
+    const pgrep =
+      app === "ghostty"
+        ? "pgrep() { printf '4242 %s\\n' \"$APP_BUNDLE/Contents/MacOS/ghostty\"; return 0; }"
+        : "pgrep() { return 1; }"
     const stubs =
       os === "macos"
-        ? `node() { if [ "$3" = run-id ]; then echo ${MARKER}; else command node "$@"; fi; }\npgrep() { return 1; }\n${helper}`
+        ? `node() { if [ "$3" = run-id ]; then echo ${MARKER}; else command node "$@"; fi; }\n${pgrep}\n${helper}`
         : ""
     const result = spawnSync("/bin/bash", ["-e", "-c", `cygpath() { printf '%s' "$2"; };\n${stubs}${arm![1]}\nwait`], {
       encoding: "utf8",
@@ -340,9 +344,20 @@ test.each([
         WIN_OUT: "C:\\run with spaces",
         WIN_COMMAND: "C:\\run with spaces\\serve.ps1",
         COMMAND_PATH: join(directory, "serve with spaces.command"),
+        GITHUB_OUTPUT: join(out, "github-output.txt"),
       },
     })
     expect(result.status, result.stderr).toBe(0)
+    if (os === "macos" && app === "ghostty") {
+      expect(readFileSync(join(out, "reuse-refusal.txt"), "utf8")).toContain(
+        "already running; a reused process cannot carry this run's marker; launch refused",
+      )
+      expect(readFileSync(join(out, "reuse-before.pids"), "utf8")).toBe(
+        readFileSync(join(out, "reuse-after.pids"), "utf8"),
+      )
+      expect(existsSync(join(out, "run.json"))).toBe(false)
+      return
+    }
     const actual = JSON.parse(readFileSync(launched, "utf8"))
     expect(actual).toEqual(expect.arrayContaining([expect.any(String)]))
     expect(JSON.parse(readFileSync(join(out, "app-argv.json"), "utf8"))).toEqual(actual)
@@ -2084,10 +2099,11 @@ test.each([
   }
 })
 
-// 32555 (@cto c8b7704b): the direct-binary arms launch under one helper that names this job's receipt run id as
-// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process; Terminal.app,
-// iTerm2 and cmux (`open -a`) keep their named PROBE TODO. The helper is read out of the workflow and run with
-// stubbed node and pgrep.
+// 32555 (@cto c8b7704b, turn36): WezTerm, Alacritty and Warp launch under one helper that names this
+// job's receipt run id as the TERM_FEATURES clean-launch marker. Ghostty on this control branch is the
+// separate reuse observation: an unmarked incumbent, then the real helper's refusal, then no feature
+// collection. Terminal.app, iTerm2 and cmux (`open -a`) keep their named PROBE TODO. The helper is read
+// out of the workflow and run with stubbed node and pgrep.
 test("the direct-binary arms launch under the TERM_FEATURES marker helper, which refuses a missing id or a reused app", () => {
   const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const helper = /^ {10}term_features_launch_env\(\) \{\n[\s\S]*?\n {10}\}\n/mu.exec(macos)?.[0]
@@ -2098,14 +2114,30 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
     (step) => step.id === "collect",
   )!.run!
   for (const m of collect.matchAll(/^ {2}([a-z0-9.|-]+)\)\n([\s\S]*?)\n {4};;$/gmu)) arms.set(m[1]!, m[2]!)
-  for (const app of ["ghostty", "wezterm", "alacritty", "warp"]) {
+  for (const app of ["wezterm", "alacritty", "warp"]) {
     expect(arms.get(app), `${app} arm`).toMatch(
       /term_features_launch_env \|\| exit 1\n.*"\$\{TERM_FEATURES_LAUNCH_ENV\[@\]\}"/u,
     )
   }
+  const ghostty = arms.get("ghostty")
+  expect(ghostty, "ghostty reuse arm").toBeDefined()
+  expect(ghostty).toContain("REUSE-32555")
+  expect(ghostty).not.toContain("TERM_FEATURES=TERMINFO_CONTROL_32555")
+  expect(ghostty).not.toContain("TERM_FEATURES_LAUNCH_ENV")
+  expect(ghostty).toContain('nohup "${APP_ARGV[@]}"')
+  expect(ghostty).toContain("term_features_launch_env")
+  expect(ghostty).toContain("already running; a reused process cannot carry this run's marker; launch refused")
+  expect(ghostty).toContain("reuse-before.txt")
+  expect(ghostty).toContain("reuse-after.txt")
+  expect(ghostty).toMatch(/\n\s*exit 0$/u)
   // Alacritty joined after the first proof run (@dev/8 de116252): an arm that starts "${APP_ARGV[@]}" itself, at
-  // the start of a command, starts it without the marker.
+  // the start of a command, starts it without the marker. Ghostty's one unmarked start is the incumbent the
+  // refusal is about; it must not also be launched under the marker env.
   for (const [app, arm] of arms) {
+    if (app === "ghostty") {
+      expect(arm.match(/nohup "\$\{APP_ARGV\[@\]\}"/gu)).toHaveLength(1)
+      continue
+    }
     expect(arm, `${app} arm starts its app binary without the marker`).not.toMatch(
       /^\s*(?:nohup )?"\$\{APP_ARGV\[@\]\}"/mu,
     )

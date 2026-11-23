@@ -1,5 +1,6 @@
 name: macos-measurement
-# CONTROL-ONLY source for #32555: keep this variant out of ordinary collection/main.
+# REUSE-ONLY source for #32555: unmarked Ghostty incumbent, then the real launch refusal.
+# The positive control remains at b29553a1. Keep this variant out of ordinary collection/main.
 
 on:
   workflow_dispatch:
@@ -578,16 +579,56 @@ jobs:
               fi
               ;;
             ghostty)
+              # 32555 reuse (@cto turn36): an unmarked incumbent is already alive before this job's
+              # marker is attempted. The real helper must refuse. No second launch and no feature rows.
+              # The positive control stays at b29553a1; this head is the separate observation.
               mkdir -p "$HOME/.config/ghostty"
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              printf 'env = TERM_FEATURES=TERMINFO_CONTROL_32555\n' >> "$HOME/.config/ghostty/config"
-              cp "$HOME/.config/ghostty/config" "$OUT/CONTROL-32555-ghostty.config"
-              shasum -a 256 "$OUT/CONTROL-32555-ghostty.config" > "$OUT/CONTROL-32555-ghostty.config.sha256"
-              printf 'CONTROL 32555: terminal-native TERM_FEATURES=TERMINFO_CONTROL_32555; workflow_source=%s; collector_source=%s; no corpus placement\n' "$GITHUB_SHA" "$MEASURED_SHA" > "$OUT/CONTROL-32555.txt"
+              cp "$HOME/.config/ghostty/config" "$OUT/REUSE-32555-ghostty.config"
+              shasum -a 256 "$OUT/REUSE-32555-ghostty.config" > "$OUT/REUSE-32555-ghostty.config.sha256"
+              if grep -q 'TERM_FEATURES' "$OUT/REUSE-32555-ghostty.config"; then
+                echo "reuse incumbent config must not set TERM_FEATURES" >&2
+                exit 1
+              fi
+              printf 'REUSE 32555: unmarked incumbent then real launch refusal; workflow_source=%s; collector_source=%s; no feature rows; no corpus placement\n' "$GITHUB_SHA" "$MEASURED_SHA" > "$OUT/REUSE-32555.txt"
               APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty")
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
-              term_features_launch_env || exit 1
-              "${TERM_FEATURES_LAUNCH_ENV[@]}" nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/incumbent.log" 2>&1 &
+              for _ in 1 2 3 4 5 6 7 8 9 10; do
+                if pgrep -fl -- "^$APP_BUNDLE/Contents/MacOS/" > "$OUT/reuse-before.txt"; then
+                  break
+                fi
+                sleep 0.2
+              done
+              if ! [ -s "$OUT/reuse-before.txt" ]; then
+                echo "reuse incumbent did not appear" >&2
+                exit 1
+              fi
+              if term_features_launch_env > "$OUT/reuse-refusal.txt" 2>&1; then
+                echo "reuse: helper accepted a live incumbent; refusal required" >&2
+                exit 1
+              fi
+              if ! grep -F "already running; a reused process cannot carry this run's marker; launch refused" "$OUT/reuse-refusal.txt"; then
+                echo "reuse: helper refusal text missing" >&2
+                cat "$OUT/reuse-refusal.txt" >&2
+                exit 1
+              fi
+              if ! pgrep -fl -- "^$APP_BUNDLE/Contents/MacOS/" > "$OUT/reuse-after.txt"; then
+                echo "reuse incumbent exited during the refusal" >&2
+                exit 1
+              fi
+              awk '{print $1}' "$OUT/reuse-before.txt" | sort > "$OUT/reuse-before.pids"
+              awk '{print $1}' "$OUT/reuse-after.txt" | sort > "$OUT/reuse-after.pids"
+              if ! cmp -s "$OUT/reuse-before.pids" "$OUT/reuse-after.pids"; then
+                echo "reuse incumbent identity changed" >&2
+                exit 1
+              fi
+              if [ -f "$OUT/run.json" ]; then
+                echo "reuse: a feature run was written for the incumbent" >&2
+                exit 1
+              fi
+              printf 'reuse=refused\n' >> "$GITHUB_OUTPUT"
+              exit 0
               ;;
             wezterm)
               # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
@@ -1115,6 +1156,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CONTROL-32555-macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: REUSE-32555-macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/measurement-artifacts
           if-no-files-found: error
