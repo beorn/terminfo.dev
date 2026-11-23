@@ -932,8 +932,11 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   // (id 36, /Applications/cmux.app) after the marker write did record that run's title, through
   // 23:17:27.999Z — so the receipt showed a capped read, not an app that can never expose its title.
   // #34155: the refusal used to throw before the reader could spawn, so no hosted run ever attempted the
-  // read; cmux now takes the same CG window-name reader as the other window-title rows, and the next
-  // hosted run measures whether that read fits the budget (or records its own timing plus raster census).
+  // read; cmux now takes the same CG window-name reader as the other window-title rows. Measured on hosted
+  // run 45185185819 at c0c5edf8: OSC 2 reads returned the run's control and target titles inside the budget
+  // (extensions.osc2-title supported, four values, seven rereads each), so the "Terminal" observation was
+  // the capped calibration measurement, not an app that cannot expose its title. OSC 0 icon+title keeps its
+  // own row: its title-clause controls did not read back in the same run.
   cmux: {
     id: "cmux",
     comm: "cmux",
