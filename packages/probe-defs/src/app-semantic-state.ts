@@ -171,5 +171,7 @@ export function gradeAppSemanticState(reading: AppSemanticReading): ProbeCallbac
       reading,
     )
   }
+  // Published rows call a third value "no result" (osc633-p, osc133-a, osc633-a, semantic-prompts),
+  // which is probe-todo. A failed control is already probe-invalid above.
   return pending("App semantic target changed to an unexpected state")
 }

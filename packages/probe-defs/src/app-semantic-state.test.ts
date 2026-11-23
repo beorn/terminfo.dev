@@ -57,6 +57,32 @@ test("state decides only a fresh target transition behind both same-path control
   })
 })
 
+test("osc633-p's third directory value is no result, not probe-invalid", () => {
+  // features.json extensions.osc633-p: "The reader changed to anything else ... no result."
+  // The same last branch serves the other App state rows, and their published sentences also
+  // call any other reading no result (osc133-a, osc633-a, semantic-prompts). A failed control
+  // is the probe-invalid branch above this one.
+  const sent = JSON.stringify(["/terminfo-633-cwd-A", "/terminfo-633-cwd-B"])
+  const prior = JSON.stringify(["/terminfo-osc7-control-B", "/terminfo-633-cwd-A"])
+  const third = JSON.stringify(["/somewhere-else", "/also-else"])
+  const reading: AppSemanticReading = {
+    status: "measured",
+    reader: "state",
+    runId: "a".repeat(32),
+    unknown: { before: "/initial", after: "/initial" },
+    handled: {
+      before: JSON.stringify(["/initial", "/terminfo-osc7-control-A"]),
+      after: JSON.stringify(["/terminfo-osc7-control-A", "/terminfo-osc7-control-B"]),
+      expected: JSON.stringify(["/terminfo-osc7-control-A", "/terminfo-osc7-control-B"]),
+    },
+    target: { before: prior, after: third, expected: sent },
+    detail: { reader: "iterm2-prompt" },
+  }
+  expect(gradeAppSemanticState(reading)).toMatchObject({
+    tests: [{ status: "probe-todo", reason: "App semantic target changed to an unexpected state" }],
+  })
+})
+
 test("a fresh exact-command report gives only Unsupported; empty or unrelated logs decide nothing", () => {
   const reading = report()
   expect(gradeAppSemanticState(reading)).toMatchObject({ observation: { outcome: "unsupported" } })
