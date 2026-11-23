@@ -28,7 +28,7 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import probesLoader from "../docs/data/probes.data.ts"
-import { generateApi, storedDocument } from "./generate-api.ts"
+import { storedDocument } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
@@ -453,9 +453,28 @@ describe("consumer selection", () => {
     try {
       // Exercise real current run references; display fixtures deliberately carry no admission grant.
       const contentDir = join(import.meta.dirname, "..", "content")
-      const { dataPath } = generateApi(out, { contentDir })
+      // #33556: generateApi holds every expected document at once while it writes. In-process it piled that on the
+      // retained projection below and the worker peaked 1.8-2.7 GiB against the 3 GiB root watchdog line. Generate in
+      // a child, as consumer-parity's corpus case does, so the two peaks are sequential and the selection log is still
+      // read back into the same admission filter.
+      const generation = spawnSync(
+        process.execPath,
+        [
+          "--eval",
+          `
+          import { generateApi } from ${JSON.stringify(join(import.meta.dirname, "generate-api.ts"))};
+          const { dataPath } = generateApi(${JSON.stringify(out)}, { contentDir: ${JSON.stringify(contentDir)} });
+          console.log(JSON.stringify({ dataPath }));
+        `,
+        ],
+        { encoding: "utf8" },
+      )
+      stderr.push(...generation.stderr.split("\n").filter((line) => line !== ""))
+      expect(generation.status).toBe(0)
+      const { dataPath } = JSON.parse(generation.stdout) as { dataPath: string }
       const projection = loadCurrentResults(contentDir).projection
       const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
+      collectGarbage()
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
         features: Record<string, unknown>
         catalogIds: string[]
@@ -473,6 +492,12 @@ describe("consumer selection", () => {
       // reference's digest, but parse each expected version only once (#33804).
       const documentDigests = new Map<string, string>()
       const comparedVersions = new WeakSet<PublicVersion>()
+      // 33549/#33556: each re-read parse is garbage once compared; collect as the reads go so the loop's transient
+      // parses never sit on the retained projection.
+      let referencesRead = 0
+      const collectEveryFewReferences = () => {
+        if (++referencesRead % 5 === 0) collectGarbage()
+      }
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
         // The expected side is the published projection itself: it has no url/documentSha256 yet.
@@ -511,6 +536,7 @@ describe("consumer selection", () => {
               expect(JSON.parse(bytes.toString("utf8"))).toEqual(storedDocument(version, ref.url))
               comparedVersions.add(version)
             }
+            collectEveryFewReferences()
           })
         }
       }
