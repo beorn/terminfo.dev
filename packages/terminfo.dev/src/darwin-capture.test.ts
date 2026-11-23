@@ -805,8 +805,10 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
       { featureId: "extensions.truecolor", role: "control", label: "diagnostic" },
       deadline,
     )
+    // #35129 (Ghostty run 45287200654): Darwin conversion owns its own per-process budget instead of
+    // inheriting the paint deadline that screencapture and the restore census already spent.
     expect(decoder.mock.calls.map(([{ featureId, deadline, retain }]) => ({ featureId, deadline, retain }))).toEqual([
-      { featureId: "extensions.truecolor", deadline, retain: "original" },
+      { featureId: "extensions.truecolor", deadline: undefined, retain: "original" },
     ])
     expect(decoded.width).toBe(own.bounds.width)
     expect(decoded.height).toBe(own.bounds.height)

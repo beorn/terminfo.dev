@@ -480,13 +480,17 @@ export async function createDarwinCapture(
     const restoreMs = Math.round(performance.now() - restoreStart)
     // The one converter owner reads the screenshot's own extent, then decodes it (two processes); the
     // screencapture PNG is retained as acquired (#34549). Scale acceptance stays this adapter's.
+    // #35129 (Ghostty run 45287200654): do not hand the paint deadline to convertCapture — screencapture
+    // and the restore census can leave only a few milliseconds (e.g. 5 ms) on the paint budget, causing
+    // magick to be SIGKILLed mid-decode instead of returning the already-captured frame to calibration's
+    // own `late` check. Omitting deadline gives each magick subprocess command()'s own 10 s budget,
+    // matching DARWIN_CENSUS_TIMEOUT_MS above.
     const convertStart = performance.now()
     const { png, frame: decoded } = await convertCapture({
       bytes,
       format: "png",
       retain: "original",
       featureId,
-      deadline,
     })
     const convertMs = Math.round(performance.now() - convertStart)
     requireDarwinScale(window, decoded)
