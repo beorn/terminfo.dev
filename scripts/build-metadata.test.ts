@@ -224,13 +224,13 @@ describe("website build identity", () => {
 describe("website sidebar metadata", () => {
   const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
 
-  it("follows catalog order in navigation and both page category lists", () => {
+  it("follows catalog order in navigation and sidebar", () => {
     // Changing the real catalog's order must reach the consumers, rather than matching a copied list.
+    // This child loads only the config and the catalogs it reads; the home/features page computations
+    // need the whole probe corpus and live in build-metadata.slow.test.ts (#34112).
     const script = `
       import * as fs from "node:fs";
       import { mock } from "bun:test";
-      import { ref, computed } from "vue";
-      import { isEnvironmentGroup } from "./packages/probe-defs/src/environment-groups.ts";
       const read = fs.readFileSync;
       const catalog = JSON.parse(read("./content/categories.json", "utf8"));
       const expected = Object.keys(catalog).filter(id => !id.startsWith("$")).reverse();
@@ -241,49 +241,28 @@ describe("website sidebar metadata", () => {
           ? JSON.stringify(catalog) : read(path, ...args),
       }));
       const { default: config } = await import("./docs/.vitepress/config.ts");
-      const { loadFullProbes } = await import("./docs/data/probes.data.ts");
-      const presentation = await import("./docs/data/release-scope.ts");
-      // The home page builds its row helpers at setup (#37761), so they run here with the real data too.
-      const { rowFacts } = await import("./docs/.vitepress/theme/row-facts.ts");
-      const data = loadFullProbes();
       const categoryId = item => item.link.slice(1);
       const nav = config.themeConfig.nav.find(item => item.text === "Features").items
         .filter(item => item.link && Object.hasOwn(catalog, categoryId(item))).map(categoryId);
       const sidebar = config.themeConfig.sidebar.find(item => item.text === "Categories").items.map(categoryId);
-      function pageCategories(path, binding) {
-        const source = read(path, "utf8");
-        const setup = source.slice(source.indexOf("<script setup>") + 14, source.indexOf("</script>"))
-          .replace(/^import[^\\n]*\\n/gm, "");
-        // Execute the complete page computation with its real Vue primitives, data and page imports.
-        return new Function("ref", "computed", "data", "isEnvironmentGroup", "rowFacts", ...Object.keys(presentation),
-          setup + "\\nreturn " + binding + ".value;")
-          (ref, computed, data, isEnvironmentGroup, rowFacts, ...Object.values(presentation));
-      }
-      console.log(JSON.stringify({ expected, nav, sidebar,
-        home: pageCategories("./docs/index.md", "sortedCategories"),
-        features: pageCategories("./docs/features.md", "activeCategories") }));
+      console.log(JSON.stringify({ expected, nav, sidebar }));
     `
-    // The child loads the vitepress config and every probe: 17.9 s alone at load 20, so 20 s left no margin.
-    // Hang protection only: on a loaded shared host (load 45-64, 2026-11-18, 34904) the same corpus load hit
-    // the 90 s guard (spawnSync ETIMEDOUT at 90.2 s). @cto 73e68f53: 180 s for this child alone.
-    // stderr is piped, not inherited: the selection's "placed … because the probe changed" log is the child's
-    // own, and inherited it failed the root runner's no-output check (full-test-suite 1a1ef3d8926, 34904).
+    // #34112: config-only child measured 0.65 s on 2026-11-23 (the whole-corpus child was 75 s here).
+    // The 30 s bound is hang protection, not the expected runtime.
     const observed = JSON.parse(
       execFileSync(process.execPath, ["-e", script], {
         cwd: siteRoot,
         encoding: "utf8",
-        timeout: 180_000,
+        timeout: 30_000,
         stdio: ["ignore", "pipe", "pipe"],
       }),
-    ) as { expected: string[]; nav: string[]; sidebar: string[]; home: string[]; features: string[] }
+    ) as { expected: string[]; nav: string[]; sidebar: string[] }
     expect(observed).toEqual({
       expected: observed.expected,
       nav: observed.expected,
       sidebar: observed.expected,
-      home: observed.expected,
-      features: observed.expected,
     })
-  }, 185_000)
+  }, 35_000)
 
   it.each([
     ["features", "features.json"],
