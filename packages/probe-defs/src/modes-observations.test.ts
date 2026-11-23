@@ -341,6 +341,99 @@ test("App reverse video selects the reverse screen paint on exactly the reads ta
   expect(surface.getMode("reverseVideo")).toBe(false)
 })
 
+// #37240 AC3 (@cto 9b959406): WezTerm (Linux and macOS) applies BCE with SGR 7 inverse on ED 2 (\x1b[2J),
+// so setting SGR 7 before ED 2 fills the entire viewport with the inverse background colour and makes the
+// normal-mode expected baseline refuse against the calibrated (0,0,0) background anchor. Clearing in SGR 0
+// first and wrapping only REVERSED in SGR 7..0 keeps blank canvas and sentinel cells at normal background.
+test("App reverse video expected frame clears in SGR 0 before SGR 7 so BCE-with-inverse terminals keep normal blank cells", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  const cols = 20
+  const rows = 5
+  const surface = createSemanticSurface({ cols, rows })
+  let sequence = 0
+  const writes: string[] = []
+  let sgr7Active = false
+  let bceInverseBlankCanvas = false
+  const plane = (rectangle: CaptureCells) => {
+    const cells: unknown[] = []
+    for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+      for (let col = rectangle.left; col <= rectangle.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        const inv =
+          (cell.inverse || (bceInverseBlankCanvas && cell.char === " ")) !== (surface.getMode("reverseVideo") === true)
+        cells.push([cell.char, inv])
+      }
+    }
+    return JSON.stringify(cells)
+  }
+  const source = replayTermProbeSource(new Map(), {
+    cols,
+    rows,
+    captureKind: "pixels",
+    write: (text) => {
+      writes.push(text)
+      // Track SGR 0/7 and ED 2 in write order to model WezTerm's BCE-with-inverse screen clear.
+      for (const match of text.matchAll(/\x1b\[([0-9;]*)([mJ])/g)) {
+        const [, params = "", cmd] = match
+        if (cmd === "m") {
+          for (const part of (params === "" ? "0" : params).split(";")) {
+            if (part === "0" || part === "27") sgr7Active = false
+            else if (part === "7") sgr7Active = true
+          }
+        } else if (cmd === "J" && params === "2") {
+          bceInverseBlankCanvas = sgr7Active
+        }
+      }
+      surface.feed(text)
+    },
+    queryCursorPosition: async () => {
+      const cursor = surface.getCursor()
+      return { row: cursor.y + 1, col: cursor.x + 1 }
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry, screenMode }) => {
+      if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+      if (screenMode === undefined && bceInverseBlankCanvas) {
+        throw new Error(
+          `${label}: projected frame modal background (178,178,178) differs from calibrated background anchor (0,0,0)`,
+        )
+      }
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+  })
+  vi.useFakeTimers()
+  let result: ProbeCallbackResult
+  try {
+    const pending = definition.term(source)
+    await vi.runAllTimersAsync()
+    result = await pending
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(result.observation?.outcome).toBe("supported")
+  const expectedWrite = writes.find((entry) => entry.includes("REVERSED") && entry.includes("\x1b[7m"))
+  expect(expectedWrite).toBe("\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7mREVERSED\x1b[0m")
+  expect(sgr7Active).toBe(false)
+})
+
 // #33036: the DA sentinel answers in the same raw reply as the DECRPM 0, so the probe records
 // whose 0 it was beside the no-change pixel read; without DA bytes beside it, no witness exists.
 test.each([

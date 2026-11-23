@@ -2230,7 +2230,9 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     edit: "\x1b[?5h",
     // The edit leaves DECSCNM set for the target's reads; the expected and ignored frames reset it first.
     editScreenMode: "reverse",
-    expected: "\x1b[?5l\x1b[0;7m\x1b[2J\x1b[HREVERSED",
+    // Clear in normal SGR 0 before enabling SGR 7 for the cropped REVERSED region (#37240 AC3, @cto 9b959406):
+    // terminals with BCE-with-inverse (WezTerm Linux/macOS) fill the whole erased viewport when SGR 7 precedes ED 2.
+    expected: "\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7mREVERSED\x1b[0m",
     ignored: plain,
     discriminator: { signal: "reverse-video-pixels", expected: "change" },
     cleanup: "\x1b[?5l\x1b[0m",
