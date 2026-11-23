@@ -129,6 +129,30 @@ import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 /**
+ * Unwrap a `paint-outside-grid` calibration refusal even when `finally` wrapped it inside a
+ * `CaptureRestoreFailed` AggregateError (#38084): the secondary restoration error must never hide
+ * `code="paint-outside-grid"`, `detail`, or the refused frame pair from retry or refusal archival.
+ */
+function paintOutsideGridRefusal(error: unknown): (Error & CaptureCalibrationRefusal) | undefined {
+  if (!(error instanceof Error)) return undefined
+  if ((error as Partial<CaptureCalibrationRefusal>).code === "paint-outside-grid") {
+    return error as Error & CaptureCalibrationRefusal
+  }
+  if (error instanceof AggregateError && error.name === "CaptureRestoreFailed") {
+    const nested: readonly unknown[] = Array.isArray(error.errors) ? (error.errors as unknown[]) : []
+    for (const candidate of [error.cause, ...nested]) {
+      if (
+        candidate instanceof Error &&
+        (candidate as Partial<CaptureCalibrationRefusal>).code === "paint-outside-grid"
+      ) {
+        return candidate as Error & CaptureCalibrationRefusal
+      }
+    }
+  }
+  return undefined
+}
+
+/**
  * Exactly one bounded recapture, only for a changed paint outside the grid (#37667 a, @cto 6254e549).
  * The first attempt's refusal and the pair it judged are returned so the run records them: a retry that
  * passes can never hide the evidence that it retried. A second refusal propagates exactly as a single
@@ -142,8 +166,8 @@ export async function calibrateWithOneRecapture<T>(input: {
     return { result: await input.calibrate(), attempts: 1 }
   } catch (first) {
     // The code, never the sentence: every stored row keeps quoting the message.
-    if (!(first instanceof Error) || (first as CaptureCalibrationRefusal).code !== "paint-outside-grid") throw first
-    const refusal = first as CaptureCalibrationRefusal
+    const refusal = paintOutsideGridRefusal(first)
+    if (refusal === undefined) throw first
     const firstRefusal = {
       message: refusal.message,
       ...(refusal.detail !== undefined && { detail: refusal.detail }),
@@ -1356,12 +1380,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             // each affected row names the existing no-adapter outcome.
             const darwinCommandFailure =
               process.platform === "darwin" && causes.some((cause) => cause.captureCommand !== undefined)
-            if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure) throw error
+            const outsideRefusal = paintOutsideGridRefusal(error)
+            if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure && outsideRefusal === undefined) {
+              throw error
+            }
             calibrationError = error
             probeSource.captureGeometryRefusal = error.message
             // Read from the error, never a second export: this module is mocked with calibrateCaptureOrigin alone.
-            const refusalDetail = (error as Partial<CaptureCalibrationRefusal>).detail
-            const refusalFramePair = (error as Partial<CaptureCalibrationRefusal>).frames
+            const refusalSource = outsideRefusal ?? (error as Partial<CaptureCalibrationRefusal>)
+            const refusalDetail = refusalSource.detail
+            const refusalFramePair = refusalSource.frames
             const refusalFrames =
               refusalFramePair === undefined ? undefined : await archiveRefusalFrames(refusalFramePair)
             // 34306 AC1: a refusal names no origin, but the renewals the run already asked for stay

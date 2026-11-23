@@ -115,4 +115,75 @@ describe("calibrateWithOneRecapture", () => {
     expect(calls).toBe(1)
     expect(out).toEqual({ result: "installed", attempts: 1 })
   })
+
+  // #38084 (Ghostty runs 45269053904 and 45287200654): when finally's restoreGrid also fails after
+  // paint-outside-grid, capture-calibration wraps [failure, cause] in AggregateError(name="CaptureRestoreFailed").
+  // That wrapper must never mask code="paint-outside-grid" or drop detail/frames from the bounded retry.
+  it("unwraps CaptureRestoreFailed wrapping paint-outside-grid and still runs the bounded recapture (#38084)", async () => {
+    const primary = paintOutsideGrid()
+    const secondary = Object.assign(
+      new Error("Capture calibration restore grid paint confirmation: paint witness timeout"),
+      {
+        name: "CapturePaintTimeout",
+      },
+    )
+    const wrapped = Object.assign(
+      new AggregateError(
+        [primary, secondary],
+        `${primary.name}: ${primary.message}; secondary capture restoration failure: ${secondary.message}`,
+        {
+          cause: primary,
+        },
+      ),
+      { name: "CaptureRestoreFailed" },
+    )
+    let calls = 0
+    const archived: Array<{ stage: string }> = []
+    const out = await calibrateWithOneRecapture({
+      calibrate: async () => {
+        calls++
+        if (calls === 1) throw wrapped
+        return "installed-after-retry"
+      },
+      archiveFrames: async (frames) => {
+        archived.push({ stage: frames.stage })
+        return { stage: frames.stage, before: "/c/before.png", after: "/c/after.png" }
+      },
+    })
+    expect(calls).toBe(2)
+    expect(out.attempts).toBe(2)
+    expect(out.result).toBe("installed-after-retry")
+    expect(archived).toEqual([{ stage: "grid settle" }])
+    expect(out.firstRefusal).toEqual({
+      message: primary.message,
+      detail: primary.detail,
+      frames: { stage: "grid settle", before: "/c/before.png", after: "/c/after.png" },
+    })
+  })
+
+  it("does not recapture CaptureRestoreFailed wrapping a non-paint-outside-grid error (#38084)", async () => {
+    const primary = Object.assign(new Error("Capture calibration fixture: other refusal"), {
+      name: "CaptureCalibrationRefused",
+    })
+    const secondary = new Error("restore failed")
+    const wrapped = Object.assign(
+      new AggregateError([primary, secondary], "other refusal; secondary capture restoration failure: restore failed", {
+        cause: primary,
+      }),
+      { name: "CaptureRestoreFailed" },
+    )
+    let calls = 0
+    await expect(
+      calibrateWithOneRecapture({
+        calibrate: async () => {
+          calls++
+          throw wrapped
+        },
+        archiveFrames: async () => {
+          throw new Error("must not archive non-paint-outside-grid failure")
+        },
+      }),
+    ).rejects.toBe(wrapped)
+    expect(calls).toBe(1)
+  })
 })

@@ -2261,3 +2261,70 @@ test("an error while reversed still resets the mode before the restore is witnes
   expect(run.writes[restoreWrite]).toMatch(/^\x1b\[0m\x1b\[\?5l/)
   expect(run.reads.get("restore grid paint")).toBe(2)
 })
+
+// #38084: when a transient outside-grid overlay (such as Ghostty's macOS scrollbar) is present in
+// baseline and fades out during stage=solid, restoreGrid must verify the grid itself restored to
+// baseline rather than waiting forever for the faded overlay to reappear and masking paint-outside-grid
+// inside CaptureRestoreFailed.
+test("after paint-outside-grid from a faded outside strip, restore verifies the grid and keeps code=paint-outside-grid (#38084)", async () => {
+  const withOverlay = (frame: CapturedFrame): CapturedFrame => {
+    const rgba = new Uint8Array(frame.rgba)
+    for (let y = 10; y < 20; y++) {
+      const offset = (y * frame.width + (frame.width - 2)) * 4
+      rgba[offset] = 158
+      rgba[offset + 1] = 160
+      rgba[offset + 2] = 163
+      rgba[offset + 3] = 255
+    }
+    return { width: frame.width, height: frame.height, rgba }
+  }
+  const beforeWithScrollbar = withOverlay(blank)
+  // During solid paint, the overlay scrollbar faded away to blank background (outside the grid).
+  // After erase, the grid matches baseline while the scrollbar stays gone.
+  const run = calibration({
+    frames: {
+      "before grid paint": [beforeWithScrollbar, beforeWithScrollbar],
+      "solid grid paint": [rasterFrame("solid"), rasterFrame("solid")],
+      "restore grid paint": [blank, blank],
+    },
+  })
+  const refused = await run.promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    code: "paint-outside-grid",
+  })
+  expect(refused?.frames?.stage).toBe("solid")
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("after paint-outside-grid, a grid that genuinely fails to restore still throws CaptureRestoreFailed (#38084)", async () => {
+  const withOverlay = (frame: CapturedFrame): CapturedFrame => {
+    const rgba = new Uint8Array(frame.rgba)
+    for (let y = 10; y < 20; y++) {
+      const offset = (y * frame.width + (frame.width - 2)) * 4
+      rgba[offset] = 158
+      rgba[offset + 1] = 160
+      rgba[offset + 2] = 163
+      rgba[offset + 3] = 255
+    }
+    return { width: frame.width, height: frame.height, rgba }
+  }
+  const beforeWithScrollbar = withOverlay(blank)
+  // Grid stays painted solid during restore (never clears), so restoration genuinely failed.
+  const run = calibration({
+    frames: {
+      "before grid paint": [beforeWithScrollbar, beforeWithScrollbar],
+      "solid grid paint": [rasterFrame("solid"), rasterFrame("solid")],
+      "restore grid paint": [rasterFrame("solid"), rasterFrame("solid")],
+    },
+  })
+  const refused = await run.promise.then(
+    () => undefined,
+    (error: unknown) => error as AggregateError,
+  )
+  expect(refused?.name).toBe("CaptureRestoreFailed")
+  expect(refused?.cause).toMatchObject({ name: "CaptureCalibrationRefused", code: "paint-outside-grid" })
+})

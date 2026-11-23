@@ -206,6 +206,40 @@ function equal(left: CapturedFrame, right: CapturedFrame): boolean {
 }
 
 /**
+ * Pixel equality restricted to one axis-aligned box (#38084): after a paint-outside-grid refusal
+ * (e.g. a macOS overlay scrollbar fading out after baseline was captured), restoreGrid must still
+ * prove the witnessed grid itself returned to baseline rather than spinning until timeout waiting
+ * for the already-faded outside chrome to reappear.
+ */
+function equalInside(
+  left: CapturedFrame,
+  right: CapturedFrame,
+  box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+): boolean {
+  validateFrame(left)
+  validateFrame(right)
+  if (left.width !== right.width || left.height !== right.height) {
+    throw new Error("Capture calibration window dimensions changed")
+  }
+  const endY = Math.min(left.height, box.y + box.height)
+  const endX = Math.min(left.width, box.x + box.width)
+  for (let y = Math.max(0, box.y); y < endY; y++) {
+    for (let x = Math.max(0, box.x); x < endX; x++) {
+      const offset = (y * left.width + x) * 4
+      if (
+        left.rgba[offset] !== right.rgba[offset] ||
+        left.rgba[offset + 1] !== right.rgba[offset + 1] ||
+        left.rgba[offset + 2] !== right.rgba[offset + 2] ||
+        left.rgba[offset + 3] !== right.rgba[offset + 3]
+      ) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+/**
  * A macOS window's rounded corner cuts a monotone staircase out of the grid instead of painting it.
  * The observed macOS staircase spans 5 rows by 4 px, so this bound leaves room for a slightly larger
  * radius while still refusing any occlusion that reaches further into the grid.
@@ -1083,6 +1117,9 @@ export async function calibrateCaptureOrigin({
   let failure: unknown
   // The band excuses nothing until it is proven clear of the witnessed grid; the restore match stays strict before that.
   let bandClearOfGrid = false
+  let witnessedGrid:
+    | { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+    | undefined
   // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
   let reverseSet = false
   const inBand = (x: number, y: number) =>
@@ -1150,6 +1187,7 @@ export async function calibrateCaptureOrigin({
       witness,
       witnessClass,
     )
+    witnessedGrid = grid
     const filletMask = dilateFilletMask(fillets, grid, solidFrame.width)
     const backgroundClass = findBackgroundPaintClass(before, grid, filletMask, witnessClass)
     // The band may not reach the grid or the one-pixel blend line beside it, so no paint the grid owns is excused.
@@ -1498,9 +1536,18 @@ export async function calibrateCaptureOrigin({
           )
         }
         const before = baseline
+        const gridBox =
+          failure instanceof Error && (failure as Partial<CaptureCalibrationRefusal>).code === "paint-outside-grid"
+            ? witnessedGrid
+            : undefined
         const restored = await confirmedFrame(
           "restore grid paint",
-          (frame) => (bandClearOfGrid ? bandDifference(frame, before).equalOutside : equal(frame, before)),
+          (frame) =>
+            gridBox !== undefined
+              ? equalInside(frame, before, gridBox)
+              : bandClearOfGrid
+                ? bandDifference(frame, before).equalOutside
+                : equal(frame, before),
           observedPaint,
         )
         if (bandClearOfGrid && result) {
