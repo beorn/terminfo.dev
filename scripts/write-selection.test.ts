@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
+import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
 import {
   appTiers,
@@ -12,9 +13,12 @@ import {
   runReads,
   selectionFile,
   workingRunRecord,
+  writeSelection,
 } from "../docs/data/write-selection.ts"
 import { retainedSuiteManifestPath } from "../packages/admin/suite-retention.ts"
 import { CONTENT_DIR } from "../packages/admin/corpus-placement.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 
 const projection = {
   contexts: {
@@ -319,4 +323,119 @@ test("runReads refuses a run with no drafts before reading any", () => {
   expect(() => runReads({ content: CONTENT_DIR, runs: [{ name: "empty", drafts: [] }] })).toThrow(
     /empty: --run-reads names a run with no drafts/,
   )
+})
+
+// #35011 (gap from #34999 review 9b9466f6): prove writeSelection's own retainedEntryHashes call site uses
+// sameRunEntryHashes rather than JSON.stringify — one raw run read twice through retained manifests whose
+// catalogEntrySha256 keys differ only in order must build, while a different entry hash must refuse naming
+// --working-run.
+test("writeSelection builds when one working run is read twice through reordered retained manifests, and refuses a hash difference", () => {
+  const base = mkdtempSync(join(tmpdir(), "write-selection-35011-"))
+  try {
+    const content = join(base, "content")
+    mkdirSync(content)
+    for (const file of ["features.json", "terminals.json"]) {
+      copyFileSync(join(CONTENT_DIR, file), join(content, file))
+    }
+    writeFileSync(join(content, "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+    writeFileSync(join(content, "reopened-cells.json"), JSON.stringify({ rows: [] }))
+    writeFileSync(join(content, "declared-untestable.json"), JSON.stringify({ rows: [] }))
+    writeFileSync(join(content, "legacy-entry-hashes.json"), JSON.stringify({}))
+    for (const dir of ["probes-apps", "probes-libs", "probes-mux", "suites"]) {
+      mkdirSync(join(content, dir))
+    }
+
+    const suiteId = "112233445566"
+    const liveManifest = derivedSuiteManifest(probeSuiteSnapshot())
+    const entryHashes = liveManifest.catalogEntrySha256
+    if (entryHashes === undefined) throw new Error("live suite manifest is missing catalogEntrySha256")
+    const reversedHashes = Object.fromEntries(Object.entries(entryHashes).reverse())
+    const firstFeature = Object.keys(entryHashes)[0]
+    if (firstFeature === undefined) throw new Error("live suite manifest has no catalogEntrySha256 keys")
+    const differentHashes = { ...entryHashes, [firstFeature]: "0".repeat(64) }
+    expect(JSON.stringify(reversedHashes)).not.toBe(JSON.stringify(entryHashes))
+
+    const manifestA = { ...liveManifest, probeHash: suiteId, catalogEntrySha256: entryHashes }
+    const manifestB = { ...liveManifest, probeHash: suiteId, catalogEntrySha256: reversedHashes }
+    const manifestC = { ...liveManifest, probeHash: suiteId, catalogEntrySha256: differentHashes }
+
+    const subject = {
+      kind: "lib" as const,
+      id: "xtermjs",
+      version: "6.0.0",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    }
+    const draft = initializeRunDraft({
+      runId: "35011-reordered-run",
+      sourceRevision: "a".repeat(40),
+      manifest: manifestA,
+      source: { kind: "live" },
+      intendedSubject: subject,
+    })
+    Object.assign(draft, {
+      subject,
+      identity: "verified",
+      measuredAt: "2026-11-23T00:00:00.000Z",
+      origin: { kind: "collector" },
+      runtimeIdentity: {
+        kind: "js",
+        adapterVersion: "0.10.2",
+        termlessRevision: "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
+        resolvedPath: "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+        integrity: {
+          kind: "registry",
+          lockIntegrity:
+            "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+        },
+        runtimeFormat: "js",
+        engineVersion: "6.0.0",
+      },
+    })
+    const runBytes = JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft))
+
+    const writePass = (name: string, manifest: object): string => {
+      const passDir = join(base, name)
+      const rawPath = join(passDir, "headless", "xtermjs.draft.json")
+      mkdirSync(dirname(rawPath), { recursive: true })
+      mkdirSync(join(passDir, "suites"), { recursive: true })
+      writeFileSync(rawPath, runBytes)
+      writeFileSync(join(passDir, "suites", `${suiteId}.json`), JSON.stringify(manifest))
+      writeFileSync(
+        join(passDir, "pass.json"),
+        JSON.stringify({ suiteManifest: `suites/${suiteId}.json`, contexts: [{ rawRun: rawPath }] }),
+      )
+      return rawPath
+    }
+
+    const rawA = writePass("pass-a", manifestA)
+    const rawB = writePass("pass-b", manifestB)
+    const rawC = writePass("pass-c", manifestC)
+
+    const outOk = join(base, "selection-ok.json")
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    let cellCount: number
+    try {
+      cellCount = writeSelection({ out: outOk, content, workingRuns: [rawA, rawB] })
+      expect(cellCount).toBeGreaterThan(0)
+      expect(logSpy).toHaveBeenCalledWith(`wrote ${cellCount} cells`)
+    } finally {
+      logSpy.mockRestore()
+    }
+    const written = JSON.parse(readFileSync(outOk, "utf8")) as { cells: unknown[]; apps: Record<string, unknown> }
+    expect(written.cells.length).toBe(cellCount)
+    expect(Object.keys(written.apps).length).toBeGreaterThan(0)
+
+    const outBad = join(base, "selection-bad.json")
+    expect(() => writeSelection({ out: outBad, content, workingRuns: [rawA, rawC] })).toThrow(
+      /working run 35011-reordered-run was read twice through different retained manifests.*--working-run/,
+    )
+  } finally {
+    // raw-delete-allow: base is an isolated mkdtempSync fixture created by this test.
+    rmSync(base, { recursive: true, force: true })
+  }
 })
