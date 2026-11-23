@@ -733,6 +733,39 @@ describe("device query observations", () => {
       }
     },
   )
+
+  // Bare App two-sided working-fake check (#34529 L57): same-run readTermFeatures proves both
+  // present=true -> supported (positive) and present=false -> unsupported (negative) outside any mux.
+  test.each([
+    {
+      present: true,
+      value: "T3:M2:U2:F1",
+      outcome: "supported",
+      kind: "positive",
+      observed: JSON.stringify("T3:M2:U2:F1"),
+    },
+    { present: false, value: "", outcome: "unsupported", kind: "negative", observed: "absent" },
+  ] as const)(
+    "on a bare App, TERM_FEATURES present=$present grades $outcome",
+    async ({ present, value, outcome, kind, observed }) => {
+      const definition = deviceProbes.find((item) => item.id === "device.term-features")
+      if (!definition?.term) throw new Error("missing TERM_FEATURES callback")
+      const reading = {
+        status: "measured" as const,
+        present,
+        value,
+        runId: "f".repeat(32),
+        launchMarker: "f".repeat(32),
+        pid: 43,
+        tty: "tty_nr=34816;fd=1;rdev=34816",
+      }
+      const result = await definition.term({ readTermFeatures: async () => reading } as unknown as TermProbeSource)
+      expect(result.pass).toBe(present)
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome, assertionType: "process_environment" })
+      expect(result.assertions).toMatchObject([{ assertionType: "process_environment", kind, observed }])
+    },
+  )
 })
 
 /**
