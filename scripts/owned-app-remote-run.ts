@@ -128,8 +128,14 @@ const STAGE_MARKER_VALUE = "owned-app-transport stage v1"
 /** Written only when the staged index is proven unreadable; the checkout step reads it. */
 const STAGE_REBUILD_MARKER = ".owned-app-transport-rebuild"
 const CONNECT_TIMEOUT_SECONDS = "15"
-/** Default limits. Both are parameters so a test can drive a small one and prove the refusal. */
+/** Default limits. All are parameters so a test can drive a small one and prove the refusal. */
 const DEFAULT_SSH_TIMEOUT_MS = 15 * 60_000
+/**
+ * Default wall for re-attaching a remote probe that outlived the initial ssh wall (#37678).
+ * Full macOS owned-app runs (Terminal.app, iTerm2) take ~35–45 min on codimac; 15m + 45m = 60m
+ * total keeps short ssh steps failing fast at 15m while letting full remote runs finish cleanly.
+ */
+const DEFAULT_REATTACH_TIMEOUT_MS = 45 * 60_000
 const DEFAULT_RSYNC_TIMEOUT_MS = 30 * 60_000
 /** Link-closure passes before the run refuses: a deeper chain is named, never cut short. */
 const CLOSURE_PASSES = 3
@@ -390,7 +396,10 @@ function parseArgs(argv: readonly string[]): Parsed {
   const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
   const probeBudgetMs =
     values["probe-budget-ms"] === undefined ? undefined : limitOf(values["probe-budget-ms"], DEFAULT_SSH_TIMEOUT_MS)
-  const reattachTimeoutMs = limitOf(values["reattach-timeout-ms"], sshTimeoutMs)
+  const reattachTimeoutMs = limitOf(
+    values["reattach-timeout-ms"],
+    values["ssh-timeout-ms"] !== undefined ? sshTimeoutMs : DEFAULT_REATTACH_TIMEOUT_MS,
+  )
   if (probeBudgetMs !== undefined && sshTimeoutMs < probeBudgetMs) {
     fail(
       "ssh wall under the cohort bound",

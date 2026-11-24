@@ -1071,6 +1071,30 @@ describe("owned-app ssh transport", () => {
     )
   }, 30_000)
 
+  it("defaults re-attach wall to 45 min (60 min total) while honoring explicit ssh/reattach overrides (37678)", () => {
+    const defaultRun = run()
+    expect(defaultRun.status, defaultRun.stderr).toBe(0)
+    const defaultReceipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      limits: { sshTimeoutMs: number; reattachTimeoutMs: number; probeBudgetMs: number | null }
+    }
+    expect(defaultReceipt.limits).toEqual({
+      sshTimeoutMs: 15 * 60_000,
+      reattachTimeoutMs: 45 * 60_000,
+      probeBudgetMs: null,
+    })
+
+    const overrideRun = run({}, ["--ssh-timeout-ms", "120000"], ["bun", "packages/admin/src/index.ts"], "wezterm")
+    expect(overrideRun.status, overrideRun.stderr).toBe(0)
+    const overrideReceipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      limits: { sshTimeoutMs: number; reattachTimeoutMs: number; probeBudgetMs: number | null }
+    }
+    expect(overrideReceipt.limits).toEqual({
+      sshTimeoutMs: 120_000,
+      reattachTimeoutMs: 120_000,
+      probeBudgetMs: null,
+    })
+  }, 60_000)
+
   it("removes an owned stage after a failed run when asked, renaming it aside before deleting", () => {
     const result = run({ SHIM_RSYNC_TAMPER: "1" }, ["--remove-stage"])
     expect(result.status).toBe(1)
