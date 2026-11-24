@@ -9,6 +9,7 @@ import { sampleHostedIdentity, parseDisposableReceipt } from "../packages/termin
 import {
   ALACRITTY_VERSION_PATTERN,
   MAC_ALACRITTY_LAUNCH_DEVIATION,
+  MAC_GHOSTTY_LAUNCH_DEVIATION,
   MAC_WARP_LAUNCH_DEVIATION,
   MAC_WARP_STOCK_HEADER_DEVIATION,
   WINDOWS_MESA_RENDERER_DLLS,
@@ -662,7 +663,12 @@ async function main(): Promise<void> {
       ["-o", "window.padding.x=1", "-o", "window.padding.y=1", "-e"].every(
         (argument, index) => argv[index + 1] === argument,
       )
-    const launchDeviation = paddedAlacritty ? MAC_ALACRITTY_LAUNCH_DEVIATION : undefined
+    const noScrollbarGhostty = os === "macOS" && appId === "ghostty" && argv.slice(1).includes("--scrollbar=never")
+    const launchDeviation = paddedAlacritty
+      ? MAC_ALACRITTY_LAUNCH_DEVIATION
+      : noScrollbarGhostty
+        ? MAC_GHOSTTY_LAUNCH_DEVIATION
+        : undefined
     appLaunch = parseAppLaunchReceipt(
       { ...appLaunch, argv, ...(launchDeviation !== undefined && { launchDeviation }) },
       "collector",

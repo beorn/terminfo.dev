@@ -44,6 +44,15 @@ export const MAC_ALACRITTY_LAUNCH_DEVIATION =
   "window padding explicitly set to 1 px on both axes instead of stock 0, to move cells away from the macOS shaded window edge"
 
 /**
+ * Mac Ghostty's one non-stock setting (#37667): the workflow sets `scrollbar = never` / `--scrollbar=never`
+ * so macOS's overlay vertical scrollbar (default `system`) does not fade out in the 3 px strip beside the
+ * witnessed grid during calibration renewals (runs 45269053904 and 45287200654); scrolling via keybind/AppleScript
+ * is unchanged, and the receipt states the override here.
+ */
+export const MAC_GHOSTTY_LAUNCH_DEVIATION =
+  "macOS overlay scrollbar turned off (--scrollbar=never / scrollbar = never) instead of stock system, so scrollbar fade-out beside the grid does not invalidate calibration renewals"
+
+/**
  * Mac Warp's one non-stock setting (33000, @cto 6d29aed9/da23ce0a): the workflow's Warp preference step writes
  * SnackbarEnabled=false so the sticky command header does not cover grid rows 1-3, and the receipt states it here.
  */

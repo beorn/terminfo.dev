@@ -577,9 +577,12 @@ jobs:
               fi
               ;;
             ghostty)
+              # 37667: turn off Ghostty's macOS overlay scrollbar (default `system`), which fades out in the 3 px
+              # strip right beside the witnessed grid (x=794..796, runs 45269053904 and 45287200654) during
+              # calibration renewals. appLaunch.launchDeviation records this override from app-argv.json.
               mkdir -p "$HOME/.config/ghostty"
-              printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty")
+              printf 'command = /bin/bash %s\nscrollbar = never\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
+              APP_ARGV=("$APP_BUNDLE/Contents/MacOS/ghostty" --scrollbar=never)
               printf '%s\0' "${APP_ARGV[@]}" | node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" --app-argv > "$OUT/app-argv.json"
               term_features_launch_env || exit 1
               "${TERM_FEATURES_LAUNCH_ENV[@]}" nohup "${APP_ARGV[@]}" </dev/null >> "$OUT/launcher.log" 2>&1 &
