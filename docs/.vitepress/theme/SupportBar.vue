@@ -4,6 +4,7 @@
 // starts with the category's one-line meaning (data/result-categories.ts, the one home) and lists the features.
 import { computed, onBeforeUnmount, ref } from "vue"
 import { RESULT_CATEGORIES, type CategoryId } from "../../data/result-categories.ts"
+import { segmentPopoverShift } from "./bar-layout.ts"
 import ResultList, { type ResultItem } from "./ResultList.vue"
 
 const props = defineProps<{
@@ -39,7 +40,7 @@ const root = ref<HTMLElement | null>(null)
 const open = ref(false)
 const pinned = ref(false)
 const engaged = ref(false)
-/** Pixels the popover moves left of the bar's start so it stays 16px inside the page. */
+/** Pixels from the bar's start to the popover's left edge (anchored to the active segment, clamped to the page). */
 const shift = ref(0)
 const tab = ref<CategoryId>("supported")
 const current = computed(() => RESULT_CATEGORIES.find((category) => category.id === tab.value) ?? RESULT_CATEGORIES[0]!)
@@ -52,24 +53,31 @@ const items = computed(() =>
 )
 let hideTimer: ReturnType<typeof setTimeout> | undefined
 
-function place() {
+function place(anchor?: HTMLElement | null) {
   const box = root.value?.getBoundingClientRect()
   if (!box) return
   // The layout width, not innerWidth: on a phone innerWidth grows to take in whatever overflows, the popover too.
   const page = document.documentElement.clientWidth
   const popWidth = Math.min(440, page - 32)
-  shift.value = Math.max(16 - box.left, Math.min(0, page - 16 - (box.left + popWidth)))
+  const segLeft = anchor ? anchor.getBoundingClientRect().left : box.left
+  shift.value = segmentPopoverShift({
+    barLeft: box.left,
+    segmentLeft: segLeft,
+    popWidth,
+    pageWidth: page,
+  })
 }
 function onOutside(event: PointerEvent) {
   if (root.value && !root.value.contains(event.target as Node)) close()
 }
-function show(id: CategoryId, from: "hover" | "focus" | "tap") {
+function show(id: CategoryId, from: "hover" | "focus" | "tap", anchor?: HTMLElement | null) {
   clearTimeout(hideTimer)
   if (from === "hover" && open.value && engaged.value) return
   tab.value = id
   if (from === "tap") pinned.value = true
+  const seg = anchor ?? root.value?.querySelector<HTMLElement>(`.support-bar-seg[data-category="${id}"]`)
+  place(seg)
   if (open.value) return
-  place()
   open.value = true
   document.addEventListener("pointerdown", onOutside, true)
 }
@@ -122,9 +130,9 @@ onBeforeUnmount(close)
         :style="{ width: width(segment.count), ...(fill && segment.id === 'supported' ? { background: fill } : {}) }"
         :aria-label="`${label}: ${segment.label} ${segment.count}`"
         :aria-expanded="open && tab === segment.id"
-        @mouseenter="show(segment.id, 'hover')"
-        @focus="show(segment.id, 'focus')"
-        @click="show(segment.id, 'tap')"
+        @mouseenter="show(segment.id, 'hover', $event.currentTarget as HTMLElement)"
+        @focus="show(segment.id, 'focus', $event.currentTarget as HTMLElement)"
+        @click="show(segment.id, 'tap', $event.currentTarget as HTMLElement)"
       />
     </div>
     <div

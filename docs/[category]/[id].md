@@ -386,8 +386,21 @@ function termTooltip(r) {
 .result-list-muted {
   opacity: 0.85;
 }
-.feature-results {
+.feature-results,
+.vp-doc .feature-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 24px;
+  row-gap: 2px;
   margin: 0.4em 0 1.2em;
+}
+
+@media (max-width: 640px) {
+  .feature-results,
+  .vp-doc .feature-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .back-link {
